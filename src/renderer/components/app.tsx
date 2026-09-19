@@ -693,7 +693,13 @@ export const App = observer(function App() {
         <StoreProvider key={session.sessionId} store={session}>
           <DrawWorkspace
             draw={session.drawStore}
-            onBack={() => void store.backToAgent()}
+            sidebarCollapsed={sidebarCollapsed}
+            canGoBack={shell.canGoBack}
+            canGoForward={shell.canGoForward}
+            onBackToAgent={() => void store.backToAgent()}
+            onToggleSidebar={toggleSidebar}
+            onGoBack={goBack}
+            onGoForward={goForward}
             projectChat={session.conversationSessionStore.chatStore}
             sideChat={session.conversationSessionStore.sideChatStore}
             projectSidebar={projectSidebar}

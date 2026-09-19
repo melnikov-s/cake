@@ -115,7 +115,10 @@ const cakeTopics = [
     summary:
       "Give code tours and walkthroughs, navigate and review source, or debug in embedded VS Code.",
   },
-  { name: "draw", summary: "Open, inspect, render, and explicitly edit Cake Draw boards." },
+  {
+    name: "draw",
+    summary: "Open, inspect, render, and explicitly edit a session's Cake Draw board.",
+  },
   { name: "subagents", summary: "Delegate explicitly requested work." },
   { name: "notifications", summary: "Notify the user." },
   { name: "worktrees", summary: "Complete an active worktree landing workflow." },

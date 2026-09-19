@@ -167,6 +167,11 @@ export const makeDrawBoardStorageLive = (root: string) =>
             const boards = yield* loadCatalogUnlocked();
             if (boards.some((candidate) => candidate.id === board.id))
               return yield* storageError("create", `Draw board ${board.id} already exists`);
+            if (boards.some((candidate) => candidate.sessionId === board.sessionId))
+              return yield* storageError(
+                "create",
+                `Project Session ${board.sessionId} already has a draw board`,
+              );
             yield* Effect.uninterruptible(
               Effect.gen(function* () {
                 yield* writeBoardUnlocked({ board, snapshot: null });

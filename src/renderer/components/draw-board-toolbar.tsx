@@ -1,129 +1,80 @@
-import { useState } from "react";
 import { observer } from "r-state-tree/react";
+import { cn } from "../lib/utils";
 import type { DrawStore } from "../stores/DrawStore";
 import { Button } from "./ui/button";
-import {
-  DialogBackdrop,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog";
 import { IconButton } from "./ui/icon-button";
-import { BackIcon, EditIcon, PlusIcon, TrashIcon } from "./ui/icons";
-import { Input } from "./ui/input";
-import { Select } from "./ui/select";
+import { BackIcon, ForwardIcon, SidebarIcon } from "./ui/icons";
 
 export const DrawBoardToolbar = observer(function DrawBoardToolbar({
   store,
-  onBack,
+  sidebarCollapsed,
+  canGoBack,
+  canGoForward,
+  onBackToAgent,
+  onToggleSidebar,
+  onGoBack,
+  onGoForward,
 }: {
   store: DrawStore;
-  onBack(): void;
+  sidebarCollapsed: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  onBackToAgent(): void;
+  onToggleSidebar(): void;
+  onGoBack(): void;
+  onGoForward(): void;
 }) {
-  const [dialog, setDialog] = useState<"rename" | "delete">();
-  const [title, setTitle] = useState("");
-  const activeBoard = store.activeBoard;
-  const closeDialog = () => setDialog(undefined);
-
   return (
-    <>
-      <header className="flex h-[35px] shrink-0 items-center gap-2 border-b border-border bg-background px-2 [-webkit-app-region:drag]">
-        <IconButton
-          className="[-webkit-app-region:no-drag]"
-          tooltip="Back to conversation"
-          onClick={onBack}
-        >
-          <BackIcon />
-        </IconButton>
-        <strong className="shrink-0 text-xs">Cake Draw</strong>
-        <Select
-          size="sm"
-          className="max-w-56 [-webkit-app-region:no-drag]"
-          aria-label="Active whiteboard"
-          value={store.activeBoardId ?? ""}
-          disabled={store.loading}
-          onChange={(event) => void store.selectBoard(event.target.value)}
-        >
-          {store.boards.map((board) => (
-            <option key={board.id} value={board.id}>
-              {board.title}
-            </option>
-          ))}
-        </Select>
-        <IconButton
-          className="[-webkit-app-region:no-drag]"
-          tooltip="New whiteboard"
-          disabled={store.loading}
-          onClick={() => void store.createBoard()}
-        >
-          <PlusIcon />
-        </IconButton>
-        <IconButton
-          className="[-webkit-app-region:no-drag]"
-          tooltip="Rename whiteboard"
-          disabled={!activeBoard || store.loading}
-          onClick={() => {
-            setTitle(activeBoard?.title ?? "");
-            setDialog("rename");
-          }}
-        >
-          <EditIcon />
-        </IconButton>
-        <IconButton
-          className="[-webkit-app-region:no-drag]"
-          tooltip="Delete whiteboard"
-          disabled={!activeBoard || store.boards.length <= 1 || store.loading}
-          onClick={() => setDialog("delete")}
-        >
-          <TrashIcon />
-        </IconButton>
-        <span className="ml-auto text-[10px] text-muted-foreground" role="status">
-          {store.loading ? "Loading…" : store.saving ? "Saving…" : store.error ? store.error : ""}
-        </span>
-      </header>
-      {dialog && activeBoard ? (
-        <DialogBackdrop onClose={closeDialog} aria-label={`${dialog} whiteboard`}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {dialog === "rename" ? "Rename whiteboard" : "Delete whiteboard?"}
-              </DialogTitle>
-              {dialog === "delete" ? (
-                <DialogDescription>
-                  “{activeBoard.title}” will be deleted permanently.
-                </DialogDescription>
-              ) : null}
-            </DialogHeader>
-            {dialog === "rename" ? (
-              <Input
-                className="mt-4"
-                autoFocus
-                aria-label="Whiteboard name"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-              />
-            ) : null}
-            <DialogFooter>
-              <Button variant="ghost" onClick={closeDialog}>
-                Cancel
-              </Button>
-              <Button
-                variant={dialog === "delete" ? "destructive" : "default"}
-                disabled={dialog === "rename" && !title.trim()}
-                onClick={() => {
-                  if (dialog === "rename") void store.renameBoard(activeBoard.id, title);
-                  else void store.deleteBoard(activeBoard.id);
-                  closeDialog();
-                }}
-              >
-                {dialog === "rename" ? "Rename" : "Delete"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </DialogBackdrop>
+    <header
+      className={cn(
+        "flex h-[46px] shrink-0 items-center gap-1 border-b border-border bg-background px-3 [-webkit-app-region:drag]",
+        sidebarCollapsed && "pl-[103px]",
+      )}
+    >
+      {sidebarCollapsed ? (
+        <div className="flex items-center gap-1 [-webkit-app-region:no-drag]">
+          <IconButton
+            data-slot="header-sidebar-toggle"
+            data-cake-hint-key="s"
+            tooltip="Toggle sidebar"
+            onClick={onToggleSidebar}
+          >
+            <SidebarIcon />
+          </IconButton>
+          <IconButton
+            data-cake-hint-key="b"
+            tooltip="Back"
+            disabled={!canGoBack}
+            onClick={onGoBack}
+            ariaLabel="Go back in session history"
+          >
+            <BackIcon />
+          </IconButton>
+          <IconButton
+            data-cake-hint-key="f"
+            tooltip="Forward"
+            disabled={!canGoForward}
+            onClick={onGoForward}
+            ariaLabel="Go forward in session history"
+          >
+            <ForwardIcon />
+          </IconButton>
+          <div className="mx-1 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
+        </div>
       ) : null}
-    </>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="[-webkit-app-region:no-drag]"
+        onClick={onBackToAgent}
+      >
+        <BackIcon />
+        Back to agent
+      </Button>
+      <strong className="ml-1 shrink-0 text-xs">Cake Draw</strong>
+      <span className="ml-auto text-[10px] text-muted-foreground" role="status">
+        {store.loading ? "Loading…" : store.saving ? "Saving…" : store.error ? store.error : ""}
+      </span>
+    </header>
   );
 });

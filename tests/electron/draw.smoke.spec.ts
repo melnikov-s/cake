@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
@@ -73,7 +73,7 @@ async function launchFixture(root: string, initialize = true) {
   return { application };
 }
 
-test("Cake Draw preserves chat, native strokes, and multiple boards through Electron", async () => {
+test("Cake Draw preserves chat and its session board through Electron", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-draw-smoke-"));
   let application: ElectronApplication | undefined;
   try {
@@ -87,6 +87,16 @@ test("Cake Draw preserves chat, native strokes, and multiple boards through Elec
     });
     const canvas = page.locator(".excalidraw__canvas.interactive");
     await expect(canvas).toBeVisible();
+
+    await page.getByRole("button", { name: "Toggle sidebar" }).click();
+    const collapsedSidebarToggle = page.locator(
+      '[aria-label="Cake Draw whiteboard"] [data-slot="header-sidebar-toggle"]',
+    );
+    await expect(collapsedSidebarToggle).toBeVisible();
+    expect((await collapsedSidebarToggle.boundingBox())?.x).toBeGreaterThanOrEqual(84);
+    await expect(page.getByRole("button", { name: "Go back in session history" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Go forward in session history" })).toBeVisible();
+    await collapsedSidebarToggle.click();
 
     await composer.click();
     await expect(composer).toBeFocused();
@@ -105,34 +115,28 @@ test("Cake Draw preserves chat, native strokes, and multiple boards through Elec
     await page.mouse.up();
     await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 
-    await page.getByRole("button", { name: "New whiteboard" }).click();
-    await expect(page.getByLabel("Active whiteboard")).toHaveValue(/.+/);
-    await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
-    await page.getByRole("radio", { name: "Rectangle", exact: true }).click({ force: true });
-    const secondBox = await canvas.evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      return { x: rect.x, y: rect.y };
-    });
-    await page.mouse.move(secondBox.x + 120, secondBox.y + 120);
-    await page.mouse.down();
-    await page.mouse.move(secondBox.x + 220, secondBox.y + 200, { steps: 4 });
-    await page.mouse.up();
-    await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
-
-    await page.getByLabel("Active whiteboard").selectOption({ label: "Board 1" });
-    await expect(page.locator(".excalidraw__canvas.interactive")).toBeVisible();
     await expect(composer).toHaveValue("Retained Draw draft");
+    await page.getByRole("button", { name: "Back to agent" }).click();
+    await expect(page.getByRole("button", { name: "Open Cake Draw" })).toBeVisible();
 
     await application.close();
     application = undefined;
 
+    const boardDirectory = join(temporaryRoot, "cake-home", "state", "draw-boards", "boards");
+    const boardFiles = await readdir(boardDirectory);
+    expect(boardFiles).toHaveLength(1);
+    const persistedBoard = JSON.parse(await readFile(join(boardDirectory, boardFiles[0]!), "utf8"));
+    expect(persistedBoard.data.snapshot.elements.length).toBeGreaterThan(0);
+
     ({ application } = await launchFixture(temporaryRoot, false));
     const reopened = await application.firstWindow();
-    await expect(reopened.getByRole("region", { name: "Cake Draw whiteboard" })).toBeVisible({
+    await expect(reopened.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
       timeout: 20_000,
     });
+    const reopenedDraw = reopened.getByRole("region", { name: "Cake Draw whiteboard" });
+    if (!(await reopenedDraw.isVisible()))
+      await reopened.getByRole("button", { name: "Open Cake Draw" }).click();
     await expect(reopened.locator(".excalidraw__canvas.interactive")).toBeVisible();
-    await expect(reopened.getByLabel("Active whiteboard")).toHaveValue(/.+/);
   } finally {
     await application?.close();
     await rm(temporaryRoot, { recursive: true, force: true });

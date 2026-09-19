@@ -126,6 +126,40 @@ describe("DrawBoardStorage", () => {
     }),
   );
 
+  it.effect("allows only one board per Project Session", () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "cake-draw-")));
+      const createdAt = "2026-01-01T00:00:00.000Z";
+      yield* run(root, (storage) =>
+        storage.create({
+          id: boardId,
+          sessionId,
+          title,
+          revision: 0,
+          createdAt,
+          updatedAt: createdAt,
+        }),
+      );
+
+      const failure = yield* run(root, (storage) =>
+        storage
+          .create({
+            id: DrawBoardId.make("00000000-0000-4000-8000-000000000002"),
+            sessionId,
+            title,
+            revision: 0,
+            createdAt,
+            updatedAt: createdAt,
+          })
+          .pipe(Effect.flip),
+      );
+
+      assert.equal(failure.operation, "create");
+      assert.match(failure.message, /already has a draw board/);
+      assert.equal((yield* run(root, (storage) => storage.list(sessionId))).length, 1);
+    }),
+  );
+
   it.effect("enforces session association and expected revision", () =>
     Effect.gen(function* () {
       const root = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "cake-draw-")));

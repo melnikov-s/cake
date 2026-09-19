@@ -98,60 +98,6 @@ export class DrawStore extends Store<DrawStoreProps> {
     await this.loadBoard(boardId);
   }
 
-  async createBoard(title = `Board ${this.boards.length + 1}`) {
-    this.clearError();
-    try {
-      await this.flush();
-      const board = await this.client.create(
-        { sessionId: this.props.sessionId, title },
-        { signal: this.signal },
-      );
-      if (this.signal.aborted) return undefined;
-      this.boards.push(board);
-      await this.loadBoard(board.id);
-      return board;
-    } catch (error) {
-      if (!this.signal.aborted) this.setError(error);
-      return undefined;
-    }
-  }
-
-  async renameBoard(boardId: string, title: string) {
-    const trimmed = title.trim();
-    if (!trimmed) return;
-    this.clearError();
-    try {
-      const board = await this.client.rename(
-        { sessionId: this.props.sessionId, boardId, title: trimmed },
-        { signal: this.signal },
-      );
-      if (!this.signal.aborted) this.replaceBoard(board);
-    } catch (error) {
-      if (!this.signal.aborted) this.setError(error);
-    }
-  }
-
-  async deleteBoard(boardId: string) {
-    if (this.boards.length <= 1) throw new Error("A session must keep at least one board");
-    this.clearError();
-    try {
-      if (boardId === this.activeBoardId) await this.flush();
-      await this.client.delete(
-        { sessionId: this.props.sessionId, boardId },
-        { signal: this.signal },
-      );
-      if (this.signal.aborted) return;
-      const index = this.boards.findIndex((board) => board.id === boardId);
-      if (index >= 0) this.boards.splice(index, 1);
-      if (boardId === this.activeBoardId) {
-        const next = this.boards[Math.min(index, this.boards.length - 1)]!;
-        await this.loadBoard(next.id);
-      }
-    } catch (error) {
-      if (!this.signal.aborted) this.setError(error);
-    }
-  }
-
   attachEditor(adapter: DrawEditorAdapter) {
     this.detachDocumentListener?.();
     this.editorAdapter = adapter;

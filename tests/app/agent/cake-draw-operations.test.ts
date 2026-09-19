@@ -97,13 +97,11 @@ describe("Cake Draw operations", () => {
     expect(help.text).toContain("does not publish an artifact");
   });
 
-  it("keeps caller identity out of list and create tool inputs", async () => {
+  it("keeps caller identity out of the board metadata input", async () => {
     const fake = control();
     const registry = new CakeOperationRegistry(createCakeDrawOperations(fake));
     await registry.invoke({ command: "draw.list", input: {} }, context());
-    await registry.invoke({ command: "draw.create", input: { title: "System map" } }, context());
     expect(fake.list).toHaveBeenCalledWith(expect.any(AbortSignal));
-    expect(fake.create).toHaveBeenCalledWith("System map", expect.any(AbortSignal));
     expect(registry.topicHelp("draw")).not.toContain('"sessionId"');
   });
 

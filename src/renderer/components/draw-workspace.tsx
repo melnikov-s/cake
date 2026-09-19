@@ -12,7 +12,13 @@ import { WorkspaceChatLayout } from "./workspace-chat-layout";
 
 export const DrawWorkspace = observer(function DrawWorkspace({
   draw,
-  onBack,
+  sidebarCollapsed,
+  canGoBack,
+  canGoForward,
+  onBackToAgent,
+  onToggleSidebar,
+  onGoBack,
+  onGoForward,
   projectChat,
   sideChat,
   headerActions,
@@ -32,7 +38,13 @@ export const DrawWorkspace = observer(function DrawWorkspace({
   onChatSidebarWidthChange,
 }: {
   draw: DrawStore;
-  onBack(): void;
+  sidebarCollapsed: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  onBackToAgent(): void;
+  onToggleSidebar(): void;
+  onGoBack(): void;
+  onGoForward(): void;
   projectChat: ChatStore;
   sideChat: SideChatStore;
   headerActions?: ReactNode;
@@ -85,7 +97,16 @@ export const DrawWorkspace = observer(function DrawWorkspace({
     <WorkspaceChatLayout
       workspace={
         <div className="flex h-full min-h-0 flex-col">
-          <DrawBoardToolbar store={draw} onBack={onBack} />
+          <DrawBoardToolbar
+            store={draw}
+            sidebarCollapsed={sidebarCollapsed}
+            canGoBack={canGoBack}
+            canGoForward={canGoForward}
+            onBackToAgent={onBackToAgent}
+            onToggleSidebar={onToggleSidebar}
+            onGoBack={onGoBack}
+            onGoForward={onGoForward}
+          />
           <div className="min-h-0 flex-1">
             {draw.activeBoardId && !draw.loading ? (
               <DrawCanvas key={draw.activeBoardId} store={draw} />
@@ -104,7 +125,7 @@ export const DrawWorkspace = observer(function DrawWorkspace({
       terminalDock={terminalDock}
       chatSidebar={
         <>
-          <header className="flex h-[35px] select-none items-center justify-between gap-3 border-b border-border px-3 [-webkit-app-region:drag]">
+          <header className="flex h-[46px] select-none items-center justify-between gap-3 border-b border-border px-3 [-webkit-app-region:drag]">
             <strong className="block min-w-0 truncate text-xs">{sessionTitle}</strong>
             <div className="flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">
               {headerActions}

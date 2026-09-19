@@ -36,7 +36,6 @@ export interface CakeDrawControl {
 
 const empty = Schema.Struct({});
 const optionalBoardId = Schema.optionalKey(Schema.String.check(Schema.isUUID(4)));
-const title = Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(200)));
 
 function requireSuccess(response: typeof DrawControlResponse.Type) {
   if (!response.ok) throw new Error(`${response.code}: ${response.message}`);
@@ -140,22 +139,11 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
     }),
     operation({
       command: "draw.list",
-      summary: "List the calling Project Session's boards without opening the canvas.",
+      summary: "Inspect the calling Project Session's board metadata without opening the canvas.",
       schema: empty,
       example: {},
-      result: "Board metadata including IDs, titles, revisions, and timestamps.",
+      result: "The board metadata, including its ID, revision, and timestamps.",
       execute: async (_input, signal) => [...(await control.list(signal))],
-    }),
-    operation({
-      command: "draw.create",
-      summary: "Create a blank board without opening or switching the canvas.",
-      schema: Schema.Struct({ title }),
-      example: { title: "Architecture sketch" },
-      result: "Metadata for the newly created blank board.",
-      execute: async (input, signal) => {
-        requireMutable(control);
-        return control.create(input.title, signal);
-      },
     }),
     operation({
       command: "draw.open",
