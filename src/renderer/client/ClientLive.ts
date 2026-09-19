@@ -159,6 +159,52 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           options,
         ),
     },
+    draw: {
+      list: (input, options) =>
+        run(
+          "draw.list",
+          withClient((client) => client.draw.list(input)),
+          options,
+        ),
+      create: (input, options) =>
+        run(
+          "draw.create",
+          withClient((client) => client.draw.create(input)),
+          options,
+        ),
+      read: (input, options) =>
+        run(
+          "draw.read",
+          withClient((client) => client.draw.read(input)),
+          options,
+        ),
+      save: (input, options) =>
+        run(
+          "draw.save",
+          withClient((client) => client.draw.save(input)),
+          options,
+        ),
+      rename: (input, options) =>
+        run(
+          "draw.rename",
+          withClient((client) => client.draw.rename(input)),
+          options,
+        ),
+      delete: (input, options) =>
+        run(
+          "draw.delete",
+          withClient((client) => client.draw.delete(input)),
+          options,
+        ),
+    },
+    drawControl: {
+      respond: (input, options) =>
+        run(
+          "drawControl.respond",
+          withClient((client) => client.drawControl.respond(input)),
+          options,
+        ),
+    },
     scheduledMessages: {
       list: (targetSessionId, options) =>
         run(

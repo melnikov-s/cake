@@ -1,7 +1,7 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const WINDOW_STATE_DOCUMENT_VERSION = 10;
+const WINDOW_STATE_DOCUMENT_VERSION = 11;
 const WINDOW_STATE_DOCUMENT_NAME = "window-state.json";
 
 const JsonRecord = Schema.Record(Schema.String, Schema.Json);
@@ -712,6 +712,44 @@ const migrateVersion9WindowState = (snapshot: Schema.Schema.Type<typeof Schema.J
   };
 };
 
+/** Replaces the binary IDE flag with the durable per-session presentation enum. */
+const migrateVersion10WindowState = (
+  snapshot: Schema.Schema.Type<typeof Schema.Json>,
+): Schema.Schema.Type<typeof Schema.Json> => {
+  const migrateStore = (
+    value: Schema.Schema.Type<typeof Schema.Json>,
+  ): Schema.Schema.Type<typeof Schema.Json> => {
+    if (Array.isArray(value)) return value.map(migrateStore);
+    const store = decodeJsonRecord(value);
+    if (!store) return value;
+    const state = decodeJsonRecord(store.state);
+    const children = decodeJsonRecord(store.children);
+    const nextState = state ? { ...state } : undefined;
+    if (nextState && "ideMode" in nextState) {
+      nextState.presentationMode = nextState.ideMode === true ? "vscode" : "normal";
+      delete nextState.ideMode;
+    }
+    if (nextState && "ideChatSidebarVisible" in nextState) {
+      nextState.workspaceChatSidebarVisible = nextState.ideChatSidebarVisible;
+      delete nextState.ideChatSidebarVisible;
+    }
+    if (nextState && "ideChatSidebarWidth" in nextState) {
+      nextState.workspaceChatSidebarWidth = nextState.ideChatSidebarWidth;
+      delete nextState.ideChatSidebarWidth;
+    }
+    return compactJsonRecord({
+      ...store,
+      state: nextState,
+      children: children
+        ? Object.fromEntries(
+            Object.entries(children).map(([name, child]) => [name, migrateStore(child)]),
+          )
+        : undefined,
+    });
+  };
+  return migrateStore(snapshot);
+};
+
 const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(function* (
   legacy: LegacyWindowState,
 ) {
@@ -951,12 +989,14 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
   ).pipe(
     Effect.mapError((cause) => new WindowStateMalformedDocumentError({ message: cause.message })),
   );
-  return migrateVersion9WindowState(
-    migrateVersion8WindowState(
-      migrateVersion7WindowState(
-        migrateVersion6WindowState(
-          migrateVersion5WindowState(
-            migrateVersion4WindowState(migrateVersion3WindowState(decoded)),
+  return migrateVersion10WindowState(
+    migrateVersion9WindowState(
+      migrateVersion8WindowState(
+        migrateVersion7WindowState(
+          migrateVersion6WindowState(
+            migrateVersion5WindowState(
+              migrateVersion4WindowState(migrateVersion3WindowState(decoded)),
+            ),
           ),
         ),
       ),
@@ -1006,7 +1046,7 @@ export const makeWindowStateStorageLive = (userDataDirectory: string) =>
         if (envelope._tag === "Success") {
           if (envelope.success.version === WINDOW_STATE_DOCUMENT_VERSION)
             return envelope.success.data;
-          if (envelope.success.version >= 2 && envelope.success.version <= 9) {
+          if (envelope.success.version >= 2 && envelope.success.version <= 10) {
             let migrated = envelope.success.data;
             if (envelope.success.version <= 2) migrated = migrateVersion2WindowState(migrated);
             if (envelope.success.version <= 3) migrated = migrateVersion3WindowState(migrated);
@@ -1015,7 +1055,8 @@ export const makeWindowStateStorageLive = (userDataDirectory: string) =>
             if (envelope.success.version <= 6) migrated = migrateVersion6WindowState(migrated);
             if (envelope.success.version <= 7) migrated = migrateVersion7WindowState(migrated);
             if (envelope.success.version <= 8) migrated = migrateVersion8WindowState(migrated);
-            migrated = migrateVersion9WindowState(migrated);
+            if (envelope.success.version <= 9) migrated = migrateVersion9WindowState(migrated);
+            migrated = migrateVersion10WindowState(migrated);
             yield* saveUnlocked(migrated);
             return migrated;
           }

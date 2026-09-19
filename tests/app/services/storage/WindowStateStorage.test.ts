@@ -549,7 +549,7 @@ describe("WindowStateStorage", () => {
         const project = loaded.children.sessionRegistry.children.sessions[0]!;
         const cakeChat =
           loaded.children.cakeChatCollectionStore.children.registry.children.sessions[0]!;
-        assert.deepStrictEqual(project.state, { ideMode: true });
+        assert.deepStrictEqual(project.state, { presentationMode: "vscode" });
         assert.deepStrictEqual(project.children.worktreeStore, { state: {}, children: {} });
         const projectChildren = project.children as Record<string, unknown>;
         const cakeChatChildren = cakeChat.children as Record<string, unknown>;
@@ -563,6 +563,49 @@ describe("WindowStateStorage", () => {
         );
         assert.equal("composerStore" in projectChildren, false);
         assert.equal("chatStore" in cakeChatChildren, false);
+      }),
+    );
+  });
+
+  it.effect("migrates version-ten session presentation and shared drawer geometry", () => {
+    const snapshot = {
+      state: {},
+      children: {
+        sessionRegistry: {
+          state: {},
+          children: {
+            sessions: [
+              {
+                key: "session-1",
+                state: {
+                  ideMode: true,
+                  ideChatSidebarVisible: false,
+                  ideChatSidebarWidth: 512,
+                },
+                children: {},
+              },
+              {
+                key: "session-2",
+                state: { ideMode: false },
+                children: {},
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    return withStorage(JSON.stringify({ version: 10, data: snapshot }), (storage) =>
+      Effect.gen(function* () {
+        const loaded = yield* storage.load();
+        const root = loaded as typeof snapshot;
+        const sessions = root.children.sessionRegistry.children.sessions;
+        assert.deepStrictEqual(sessions[0]?.state, {
+          presentationMode: "vscode",
+          workspaceChatSidebarVisible: false,
+          workspaceChatSidebarWidth: 512,
+        });
+        assert.deepStrictEqual(sessions[1]?.state, { presentationMode: "normal" });
       }),
     );
   });

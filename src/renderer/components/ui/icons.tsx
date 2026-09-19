@@ -290,6 +290,12 @@ export const VsCodeIcon = () => (
     <path d="M17.5 2.3 9.2 10 4.4 6.3 2 7.7v8.6l2.4 1.4 4.8-3.7 8.3 7.7 4.5-2.2v-15zM4.7 14.5v-5l2.9 2.5zm12.6 2.2L11.1 12l6.2-4.7z" />
   </svg>
 );
+export const WhiteboardIcon = () => (
+  <Icon>
+    <rect x="3" y="4" width="18" height="14" rx="2" />
+    <path d="m7 14 3-3 2.5 2 4-5M8 21l2-3M16 21l-2-3" />
+  </Icon>
+);
 export const DockBottomIcon = () => (
   <Icon>
     <rect x="3.5" y="4" width="17" height="16" rx="2.5" />

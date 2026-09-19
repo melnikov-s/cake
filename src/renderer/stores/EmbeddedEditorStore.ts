@@ -6,11 +6,12 @@ import type { EmbeddedEditorStateSnapshot, EmbeddedEditorStatus } from "../clien
 import { ClientContext } from "./context/ClientContext";
 import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../lib/error-details";
+import type { ProjectSessionPresentationMode } from "./ProjectSessionStore";
 
 export interface EmbeddedEditorStoreProps {
   projectPath(): string | undefined;
-  ideMode(): boolean;
-  setIdeMode(active: boolean): void;
+  presentationMode(): ProjectSessionPresentationMode;
+  setPresentationMode(mode: ProjectSessionPresentationMode): void;
   chatSidebarVisible(): boolean;
   toggleChatSidebar(): void;
   showChatSidebar(): void;
@@ -176,14 +177,14 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   }
 
   private activate() {
-    this.props.setIdeMode(true);
+    this.props.setPresentationMode("vscode");
     if (!this.visible) this.props.enterProjectSidebarMode();
     this.visible = true;
   }
 
   /** Restores the selected session's IDE presentation without changing its preference. */
   async restore() {
-    if (!this.props.ideMode()) return;
+    if (this.props.presentationMode() !== "vscode") return;
     this.activate();
     await this.open();
   }
@@ -361,7 +362,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
 
   /** Explicitly returns the selected session to Agent presentation. */
   hide() {
-    this.props.setIdeMode(false);
+    this.props.setPresentationMode("normal");
     this.suspend();
   }
 

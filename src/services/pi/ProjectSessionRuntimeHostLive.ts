@@ -10,7 +10,11 @@ import * as artifactWorkflows from "../../domain/artifacts/artifactWorkflows";
 import { Electron } from "../electron/Electron";
 import { ArtifactStorage } from "../storage/ArtifactStorage";
 import { ReviewStorage } from "../storage/ReviewStorage";
+import type { DrawBoardStorage } from "../storage/DrawBoardStorage";
+import * as drawBoards from "../../domain/draw/drawBoards";
+import { WorkspaceFileExport } from "../filesystem/WorkspaceFileExport";
 import { SessionFamilyStorage } from "../storage/SessionFamilyStorage";
+import type { SessionArchiveStorage } from "../storage/SessionArchiveStorage";
 import { RendererRequestCoordinator } from "../renderer-requests/RendererRequestCoordinator";
 import { ProjectSessionIntegrationHost } from "./ProjectSessionIntegrationHost";
 import { PiModels } from "./PiModels";
@@ -48,12 +52,15 @@ export const makeProjectSessionRuntimeHostLive = (
   never,
   | ArtifactProjection
   | ArtifactStorage
+  | DrawBoardStorage
   | Electron
   | PiModels
   | RenderedWidgetCapture
   | RendererRequestCoordinator
   | ReviewStorage
+  | SessionArchiveStorage
   | SessionFamilyStorage
+  | WorkspaceFileExport
 > =>
   Layer.effect(
     ProjectSessionRuntimeHost,
@@ -66,12 +73,17 @@ export const makeProjectSessionRuntimeHostLive = (
       const rendererRequests = yield* RendererRequestCoordinator;
       const models = yield* PiModels;
       const widgetCapture = yield* RenderedWidgetCapture;
+      const workspaceFileExport = yield* WorkspaceFileExport;
       const adapterContext = yield* Effect.context<
         | ArtifactProjection
         | ArtifactStorage
+        | DrawBoardStorage
         | PiModels
         | RenderedWidgetCapture
         | RendererRequestCoordinator
+        | SessionArchiveStorage
+        | SessionFamilyStorage
+        | WorkspaceFileExport
       >();
       const runAdapter = Effect.runPromiseWith(adapterContext);
       const provideArtifactServices = <A, E>(
@@ -128,6 +140,20 @@ export const makeProjectSessionRuntimeHostLive = (
         },
       );
       const sessions = new Map<string, SessionIntegration>();
+      const requestDraw = (
+        sessionId: string,
+        invocation: Parameters<typeof rendererRequests.requestDrawControl>[1],
+        signal: AbortSignal,
+      ) =>
+        rendererRequests.requestDrawControl(sessionId, invocation, signal).pipe(
+          Effect.catch((error) =>
+            Effect.succeed({
+              ok: false as const,
+              code: "SESSION_NOT_VISIBLE" as const,
+              message: `${error.message}. Open this Project Session in a Cake window, then retry.`,
+            }),
+          ),
+        );
 
       const disposeHost = (sessionId: string) => {
         const integration = sessions.get(sessionId);
@@ -165,6 +191,27 @@ export const makeProjectSessionRuntimeHostLive = (
             runAdapter(rendererRequests.requestArtifact(sessionId, record, signal)),
           requestApplicationControl: (invocation, signal) =>
             runAdapter(rendererRequests.requestProjectControl(sessionId, invocation, signal)),
+          drawControl: {
+            list: (signal) => runAdapter(drawBoards.list({ sessionId }), { signal }),
+            create: (title, signal) =>
+              runAdapter(drawBoards.create({ sessionId, title }), { signal }),
+            open: async (boardId, signal) => {
+              await runAdapter(drawBoards.read({ sessionId, boardId }), { signal });
+              return runAdapter(requestDraw(sessionId, { _tag: "Open", boardId }, signal), {
+                signal,
+              });
+            },
+            request: (invocation, signal) =>
+              runAdapter(
+                requestDraw(sessionId, invocation, signal),
+                invocation._tag === "Apply" ? undefined : { signal },
+              ),
+            exportFile: (path, content, signal) =>
+              runAdapter(workspaceFileExport.write({ workingDirectory, path, content }, signal), {
+                signal,
+              }),
+            canMutate: () => true,
+          },
           runReviewedWidget: generateReviewedWidget,
           captureWidget: (targetSessionId, widget, signal) =>
             runAdapter(widgetCapture.capture(targetSessionId, widget, signal), { signal }),

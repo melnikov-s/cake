@@ -21,8 +21,11 @@ import { WorktreeStore, type WorktreeStoreProps } from "./WorktreeStore";
 import { StagedSessionCommandStore } from "./StagedSessionCommandStore";
 import { SessionAssistantStore } from "./SessionAssistantStore";
 import { ClientContext } from "./context/ClientContext";
+import { DrawStore } from "./DrawStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { SessionActivity } from "../lib/session-activity";
+
+export type ProjectSessionPresentationMode = "normal" | "vscode" | "draw";
 
 export interface SessionTarget {
   workspacePath: string;
@@ -66,9 +69,9 @@ export interface ProjectSessionStoreProps extends SessionTarget {
 /** Owns the view and interaction workflow for one project Pi session. */
 export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   /** Session-local presentation preference restored when this session is selected. */
-  @snapshot ideMode = false;
-  @snapshot ideChatSidebarVisible = true;
-  @snapshot ideChatSidebarWidth = 420;
+  @snapshot presentationMode: ProjectSessionPresentationMode = "normal";
+  @snapshot workspaceChatSidebarVisible = true;
+  @snapshot workspaceChatSidebarWidth = 420;
   private artifactRequestActive = false;
   private readSettledTurnRevision = 0;
   private pendingSideChatThreadId: string | undefined;
@@ -90,24 +93,25 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     );
   }
 
-  enterIde() {
-    this.ideMode = true;
+  showPresentation(mode: ProjectSessionPresentationMode) {
+    this.presentationMode = mode;
   }
 
-  leaveIde() {
-    this.ideMode = false;
+  toggleWorkspaceChatSidebar() {
+    this.workspaceChatSidebarVisible = !this.workspaceChatSidebarVisible;
   }
 
-  toggleIdeChatSidebar() {
-    this.ideChatSidebarVisible = !this.ideChatSidebarVisible;
+  showWorkspaceChatSidebar() {
+    this.workspaceChatSidebarVisible = true;
   }
 
-  showIdeChatSidebar() {
-    this.ideChatSidebarVisible = true;
+  setWorkspaceChatSidebarWidth(width: number) {
+    this.workspaceChatSidebarWidth = width;
   }
 
-  setIdeChatSidebarWidth(width: number) {
-    this.ideChatSidebarWidth = width;
+  @child
+  get drawStore(): DrawStore {
+    return createStore(DrawStore, { sessionId: this.sessionId });
   }
 
   get model() {

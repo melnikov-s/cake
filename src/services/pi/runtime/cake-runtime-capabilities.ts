@@ -38,6 +38,7 @@ import {
 } from "./cake-artifact-operations";
 import { createCakeModelOperations } from "./cake-model-operations";
 import { createCakeVscodeOperations } from "./cake-vscode-operations";
+import { createCakeDrawOperations } from "./cake-draw-operations";
 import { createCakeWorktreeOperations } from "./cake-worktree-operations";
 import {
   CakeOperationRegistry,
@@ -277,7 +278,9 @@ export function createAgentControlOperations(
   ];
 }
 
-function createCakeToolDefinition(definitions: readonly CakeOperationDefinition[]): ToolDefinition {
+export function createCakeToolDefinition(
+  definitions: readonly CakeOperationDefinition[],
+): ToolDefinition {
   const registry = new CakeOperationRegistry(definitions);
   return {
     name: "cake",
@@ -300,7 +303,7 @@ function createCakeToolDefinition(definitions: readonly CakeOperationDefinition[
         onUpdate: update,
         runtime,
       });
-      return { content: [{ type: "text", text: result.text }], details: result.details };
+      return { content: result.content, details: result.details };
     },
   };
 }
@@ -1360,6 +1363,15 @@ export async function createCakeRuntimeCapabilities(input: {
     return operationApi.current.resolveModelSelection(selection);
   };
   const globalControl = options.globalControl;
+  const configuredDrawControl = options.drawControl;
+  const drawControl = configuredDrawControl
+    ? {
+        ...configuredDrawControl,
+        canMutate: () =>
+          configuredDrawControl.canMutate() &&
+          !(options.currentSessionControl?.resolved() ?? false),
+      }
+    : undefined;
   const detectedWorktree = globalControl ? undefined : await detectGitWorktree(options.cwd);
   const detectedWorktreePrompt = detectedWorktree
     ? worktreeSystemPrompt(detectedWorktree)
@@ -1400,6 +1412,7 @@ export async function createCakeRuntimeCapabilities(input: {
                     ...(options.vscodeControl
                       ? createCakeVscodeOperations(options.vscodeControl)
                       : []),
+                    ...(drawControl ? createCakeDrawOperations(drawControl) : []),
                     ...(options.worktreeLandingControl
                       ? createCakeWorktreeOperations(options.worktreeLandingControl)
                       : []),
@@ -1473,6 +1486,7 @@ export async function createCakeRuntimeCapabilities(input: {
                     ...(options.vscodeControl
                       ? createCakeVscodeOperations(options.vscodeControl)
                       : []),
+                    ...(drawControl ? createCakeDrawOperations(drawControl) : []),
                     ...(options.worktreeLandingControl
                       ? createCakeWorktreeOperations(options.worktreeLandingControl)
                       : []),

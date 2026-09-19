@@ -17,6 +17,8 @@ describe("Client", () => {
       "windowState",
       "models",
       "modelPresets",
+      "draw",
+      "drawControl",
       "scheduledMessages",
       "projectWorkflow",
       "projectSessions",

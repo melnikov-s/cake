@@ -100,6 +100,7 @@ export type ProjectSessionRuntimeIntegrations = Pick<
   | "requestUi"
   | "emitExtensionUiIntent"
   | "reviewContextPath"
+  | "drawControl"
 > & {
   readonly requestApplicationControl: (
     invocation: ProjectSessionControlInvocation,
@@ -127,6 +128,7 @@ export interface ProjectSessionIntegrationHostOptions {
     invocation: ProjectSessionControlInvocation,
     signal: AbortSignal,
   ) => Promise<JsonValue>;
+  readonly drawControl?: CakeRuntimeOptions["drawControl"];
   readonly runWidgetGeneration?: typeof runInlineWidgetGeneration;
   readonly runWidgetRepair?: typeof runInlineWidgetRepair;
   readonly runWidgetVisualReview?: typeof runInlineWidgetVisualReview;
@@ -182,6 +184,7 @@ export class ProjectSessionIntegrationHost {
   private readonly requestUiFromRenderer: ProjectSessionIntegrationHostOptions["requestUi"];
   private readonly requestArtifactFromRenderer: ProjectSessionIntegrationHostOptions["requestArtifact"];
   private readonly requestApplicationControlFromRenderer: ProjectSessionIntegrationHostOptions["requestApplicationControl"];
+  private readonly drawControl: CakeRuntimeOptions["drawControl"];
   private readonly runWidgetGeneration: typeof runInlineWidgetGeneration;
   private readonly runWidgetRepair: typeof runInlineWidgetRepair;
   private readonly runWidgetVisualReview: typeof runInlineWidgetVisualReview;
@@ -211,6 +214,7 @@ export class ProjectSessionIntegrationHost {
     this.requestUiFromRenderer = options.requestUi;
     this.requestArtifactFromRenderer = options.requestArtifact;
     this.requestApplicationControlFromRenderer = options.requestApplicationControl;
+    this.drawControl = options.drawControl;
     this.runWidgetGeneration = options.runWidgetGeneration ?? runInlineWidgetGeneration;
     this.runWidgetRepair = options.runWidgetRepair ?? runInlineWidgetRepair;
     this.runWidgetVisualReview = options.runWidgetVisualReview ?? runInlineWidgetVisualReview;
@@ -273,6 +277,7 @@ export class ProjectSessionIntegrationHost {
         this.requestApplicationControlFromRenderer(invocation, signal),
       emitExtensionUiIntent: (intent) =>
         this.emit({ type: "extension-ui-intent", sessionId, intent }),
+      drawControl: this.drawControl,
       persistArtifact: (artifact) => this.execute(this.persistArtifact(artifact, sessionId)),
       requestArtifact: (record, signal) => this.requestArtifactFromRenderer(record, signal),
       generateInlineWidget: (input) => this.execute(this.generateInlineWidget(input), input.signal),

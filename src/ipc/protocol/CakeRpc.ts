@@ -2,6 +2,8 @@ import { ApplicationRpc } from "./ApplicationRpc";
 import { ArtifactRpc } from "./ArtifactRpc";
 import { CakeChatRpc } from "./CakeChatRpc";
 import { DiscussionRpc } from "./DiscussionRpc";
+import { DrawRpc } from "./DrawRpc";
+import { DrawControlRpc } from "./DrawControlRpc";
 import { ElectronRpc } from "./ElectronRpc";
 import { FoundationRpc } from "./FoundationRpc";
 import { InlineWidgetRpc } from "./InlineWidgetRpc";
@@ -23,6 +25,8 @@ export const CakeRpc = ApplicationRpc.merge(
   ArtifactRpc,
   CakeChatRpc,
   DiscussionRpc,
+  DrawRpc,
+  DrawControlRpc,
   ElectronRpc,
   FoundationRpc,
   InlineWidgetRpc,

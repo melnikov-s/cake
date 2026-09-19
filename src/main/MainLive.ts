@@ -14,6 +14,7 @@ import { WorktreeLandingCompletionLive } from "../layers/WorktreeLandingCompleti
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { makeElectronLive } from "../services/electron/ElectronLive";
 import { makeWorkspaceFilesLive } from "../services/filesystem/WorkspaceFilesLive";
+import { WorkspaceFileExportLive } from "../services/filesystem/WorkspaceFileExport";
 import { makeGitLive } from "../services/git/GitLive";
 import { makePiAgentResourcesLive } from "../services/pi/live/PiAgentResourcesLive";
 import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
@@ -27,6 +28,7 @@ import { RendererRequestCoordinatorLive } from "../services/renderer-requests/Re
 import { ScheduledMessages } from "../services/scheduled-messages/ScheduledMessages";
 import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import { makeArtifactStorageLive } from "../services/storage/ArtifactStorageLive";
+import { makeDrawBoardStorageLive } from "../services/storage/DrawBoardStorageLive";
 import { ArtifactGarbageCollectorLive } from "../services/artifacts/ArtifactGarbageCollectorLive";
 import { makeArtifactProjectionLive } from "../services/artifacts/ArtifactProjectionLive";
 import { makeApplicationStorageLive } from "../services/storage/ApplicationStorage";
@@ -90,6 +92,7 @@ export const makeMainLive = (options: MainLiveOptions) => {
     makeSessionFamilyStorageLive(paths.sessionFamilies),
     makeSessionArchiveStorageLive(paths.resolvedProjectMetadata),
     makeArtifactStorageLive(paths.artifacts),
+    makeDrawBoardStorageLive(paths.drawBoards),
     makeReviewStorageLive(paths.reviews, paths.piReviewSessions, (record) =>
       Effect.tryPromise(() => loadReviewSessionProjection(record, paths.piReviewSessions)),
     ),
@@ -128,6 +131,7 @@ export const makeMainLive = (options: MainLiveOptions) => {
     NativeFoundationLive,
     Layer.mergeAll(
       makeTerminalLive(),
+      WorkspaceFileExportLive,
       makeVsCodeServerLive({
         root: join(options.userData, "vscode-editor"),
         companionManifest: options.companionManifest,

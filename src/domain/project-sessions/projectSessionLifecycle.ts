@@ -1,6 +1,7 @@
 import { Effect, Stream } from "effect";
 import * as artifacts from "../artifacts/artifacts";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
+import * as drawBoards from "../draw/drawBoards";
 import * as projectSessionLocations from "./projectSessionLocations";
 import { resolutionNamespace } from "./projectSessionResolution";
 import * as reviews from "../reviews/reviews";
@@ -388,6 +389,7 @@ export const deleteResolved = Effect.fn("ProjectSessions.deleteResolved")(functi
   const garbageCollector = yield* ArtifactGarbageCollector;
   yield* Effect.gen(function* () {
     yield* artifacts.deleteSession(entry.workingDirectory, sessionId).pipe(asError(operation));
+    yield* drawBoards.deleteSession(sessionId).pipe(asError(operation));
     yield* reviews.deleteSession(entry.workingDirectory, sessionId).pipe(asError(operation));
     yield* (yield* ProjectAccess).forgetSessionLocation(sessionId).pipe(asError(operation));
     yield* forgetProjectSessions([sessionId]).pipe(asError(operation));
@@ -424,6 +426,7 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
     sessionId: string,
   ) {
     yield* artifacts.deleteSession(workingDirectory, sessionId).pipe(asError(operation));
+    yield* drawBoards.deleteSession(sessionId).pipe(asError(operation));
     yield* reviews.deleteSession(workingDirectory, sessionId).pipe(asError(operation));
     forgotten.add(sessionId);
     yield* catalogs.publish({ _tag: "ProjectSessionRemoved", sessionId }).pipe(asError(operation));

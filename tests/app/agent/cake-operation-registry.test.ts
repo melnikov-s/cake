@@ -2,9 +2,15 @@ import { Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import {
   CakeOperationRegistry,
+  MAX_CAKE_OPERATION_IMAGE_BYTES,
+  cakeOperationImageResult,
   cakeToolDescription,
   cakeToolEnvelopeSchema,
+  type CakeOperationDefinition,
+  type CakeOperationImageContent,
+  type CakeOperationImageResult,
 } from "../../../src/services/pi/runtime/cake-operation-registry";
+import { createCakeToolDefinition } from "../../../src/services/pi/runtime/cake-runtime-capabilities";
 
 function context() {
   return {
@@ -37,6 +43,26 @@ function registry(execute = vi.fn(async () => ({ status: "ok" }))) {
   ]);
 }
 
+function imageOperation(
+  execute: CakeOperationDefinition<unknown, CakeOperationImageResult>["execute"],
+): CakeOperationDefinition<unknown, CakeOperationImageResult> {
+  return {
+    command: "context.image",
+    topic: "context",
+    summary: "Return an image.",
+    inputSchema: Schema.Struct({}),
+    examples: [{}],
+    result: "Image metadata and native content.",
+    execute,
+  };
+}
+
+const tinyPng: CakeOperationImageContent = {
+  type: "image",
+  data: "aW1hZ2U=",
+  mimeType: "image/png",
+};
+
 describe("Cake operation registry", () => {
   it("keeps the model-visible envelope and description compact", () => {
     const schema = Schema.toStandardJSONSchemaV1(cakeToolEnvelopeSchema)[
@@ -54,7 +80,7 @@ describe("Cake operation registry", () => {
 
   it("advertises topic discovery before prose without eagerly disclosing operations", () => {
     expect(cakeToolDescription).toContain(
-      "app, sessions, context, models, interview, artifacts, widgets, vscode, subagents, notifications, and worktrees",
+      "app, sessions, context, models, interview, artifacts, widgets, vscode, draw, subagents, notifications, and worktrees",
     );
     expect(cakeToolDescription).toContain("Before defaulting to prose");
     expect(cakeToolDescription).toContain("even when unsure");
@@ -125,5 +151,102 @@ describe("Cake operation registry", () => {
       registry(execute).invoke({ command: "context.compact", input: { extra: true } }, context()),
     ).rejects.toThrow();
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("returns bounded native image content without copying bytes into details", async () => {
+    const available = new CakeOperationRegistry([
+      imageOperation(async () =>
+        cakeOperationImageResult({ boardId: "board-1", width: 640, height: 480 }, [tinyPng]),
+      ),
+    ]);
+
+    const result = await available.invoke({ command: "context.image" }, context());
+
+    expect(result.content).toEqual([
+      {
+        type: "text",
+        text: JSON.stringify({ boardId: "board-1", width: 640, height: 480 }, null, 2),
+      },
+      tinyPng,
+    ]);
+    expect(result.details).toEqual({
+      protocol: "cake.operation/v1",
+      command: "context.image",
+      result: { boardId: "board-1", width: 640, height: 480 },
+    });
+    expect(JSON.stringify(result.details)).not.toContain(tinyPng.data);
+  });
+
+  it("keeps a bounded image when oversized metadata is truncated", async () => {
+    const available = new CakeOperationRegistry([
+      imageOperation(async () =>
+        cakeOperationImageResult({ description: "x".repeat(1_100_000) }, [tinyPng]),
+      ),
+    ]);
+
+    const result = await available.invoke({ command: "context.image" }, context());
+
+    expect(result.content.at(-1)).toEqual(tinyPng);
+    expect(result.details).toMatchObject({ result: { truncated: true } });
+    expect(JSON.stringify(result.details)).not.toContain(tinyPng.data);
+  });
+
+  it.each([
+    {
+      name: "unsupported MIME type",
+      images: [{ ...tinyPng, mimeType: "image/svg+xml" }] as unknown as CakeOperationImageContent[],
+      message: /mimeType/,
+    },
+    {
+      name: "malformed base64",
+      images: [{ ...tinyPng, data: "not base64" }],
+      message: /data/,
+    },
+    {
+      name: "an empty image list",
+      images: [],
+      message: /require an image/,
+    },
+    {
+      name: "too many images",
+      images: Array.from({ length: 5 }, () => tinyPng),
+      message: /at most 4 images/,
+    },
+    {
+      name: "too many decoded bytes",
+      images: Array.from({ length: 4 }, () => ({
+        ...tinyPng,
+        data: Buffer.alloc(MAX_CAKE_OPERATION_IMAGE_BYTES / 4 + 1).toString("base64"),
+      })),
+      message: /byte limit/,
+    },
+  ])("rejects $name before content reaches Pi", async ({ images, message }) => {
+    const available = new CakeOperationRegistry([
+      imageOperation(async () => cakeOperationImageResult({ boardId: "board-1" }, images)),
+    ]);
+
+    await expect(available.invoke({ command: "context.image" }, context())).rejects.toThrow(
+      message,
+    );
+  });
+
+  it("forwards registry-native image content through the Pi tool definition", async () => {
+    const tool = createCakeToolDefinition([
+      imageOperation(async () => cakeOperationImageResult({ boardId: "board-1" }, [tinyPng])),
+    ]);
+
+    const result = await tool.execute(
+      "call-1",
+      { command: "context.image" },
+      new AbortController().signal,
+      undefined,
+      {} as never,
+    );
+
+    expect(result.content).toEqual([
+      { type: "text", text: JSON.stringify({ boardId: "board-1" }, null, 2) },
+      tinyPng,
+    ]);
+    expect(JSON.stringify(result.details)).not.toContain(tinyPng.data);
   });
 });

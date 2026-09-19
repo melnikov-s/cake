@@ -43,6 +43,9 @@ export default defineConfig({
     plugins: [react(), tailwindcss()],
     worker: { format: "es" },
     build: {
+      // tldraw loads translation assets with fetch(), so emit even small JSON files instead of
+      // data URLs that Cake's intentionally narrow connect-src policy rejects.
+      assetsInlineLimit: 0,
       rollupOptions: {
         input: {
           index: resolve(import.meta.dirname, "src/renderer/index.html"),

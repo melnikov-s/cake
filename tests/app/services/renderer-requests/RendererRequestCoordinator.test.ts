@@ -164,6 +164,115 @@ describe("RendererRequestCoordinator", () => {
     }),
   );
 
+  it.effect("targets, correlates, and cancels Draw requests", () =>
+    Effect.gen(function* () {
+      const { coordinator, events } = yield* makeFixture;
+      yield* coordinator.registerProjectSession("project-1", "/projects/cake");
+      yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-1" }, 35);
+
+      const completed = yield* coordinator
+        .requestDrawControl(
+          "project-1",
+          { _tag: "Read", scope: "viewport" },
+          new AbortController().signal,
+        )
+        .pipe(Effect.forkChild);
+      const event = yield* Queue.take(events);
+      assert.equal(event.type, "draw-control-requested");
+      expect(event.sessionId).toBe("project-1");
+
+      const wrongRenderer = yield* coordinator
+        .respondDrawControl(36, "project-1", event.drawRequestId, {
+          ok: false,
+          code: "DRAW_MODE_REQUIRED",
+          message: "Enter Draw",
+        })
+        .pipe(Effect.exit);
+      expect(Exit.isFailure(wrongRenderer)).toBe(true);
+
+      const wrongSession = yield* coordinator
+        .respondDrawControl(35, "project-2", event.drawRequestId, {
+          ok: false,
+          code: "DRAW_MODE_REQUIRED",
+          message: "Enter Draw",
+        })
+        .pipe(Effect.exit);
+      expect(Exit.isFailure(wrongSession)).toBe(true);
+
+      yield* coordinator.respondDrawControl(35, "project-1", event.drawRequestId, {
+        ok: false,
+        code: "DRAW_MODE_REQUIRED",
+        message: "Enter Draw",
+      });
+      expect(yield* Fiber.join(completed)).toEqual({
+        ok: false,
+        code: "DRAW_MODE_REQUIRED",
+        message: "Enter Draw",
+      });
+
+      const controller = new AbortController();
+      const cancelled = yield* coordinator
+        .requestDrawControl("project-1", { _tag: "Enter" }, controller.signal)
+        .pipe(Effect.forkChild);
+      yield* Queue.take(events);
+      controller.abort();
+      expect(yield* Fiber.join(cancelled)).toEqual({
+        ok: false,
+        code: "REQUEST_CANCELLED",
+        message: "The Draw request was cancelled.",
+      });
+    }),
+  );
+
+  it.effect("cancels before Draw dispatch but awaits Apply after dispatch", () =>
+    Effect.gen(function* () {
+      const { coordinator, events } = yield* makeFixture;
+      yield* coordinator.registerProjectSession("project-1", "/projects/cake");
+      yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-1" }, 37);
+
+      const alreadyAborted = new AbortController();
+      alreadyAborted.abort();
+      expect(
+        yield* coordinator.requestDrawControl(
+          "project-1",
+          { _tag: "Apply", operations: [{ type: "select", ids: ["shape:one"] }] },
+          alreadyAborted.signal,
+        ),
+      ).toEqual({
+        ok: false,
+        code: "REQUEST_CANCELLED",
+        message: "The Draw request was cancelled.",
+      });
+      expect(yield* Queue.size(events)).toBe(0);
+
+      const controller = new AbortController();
+      const applying = yield* coordinator
+        .requestDrawControl(
+          "project-1",
+          { _tag: "Apply", operations: [{ type: "select", ids: ["shape:one"] }] },
+          controller.signal,
+        )
+        .pipe(Effect.forkChild);
+      const event = yield* Queue.take(events);
+      assert.equal(event.type, "draw-control-requested");
+      controller.abort();
+      expect(applying.pollUnsafe()).toBeUndefined();
+
+      yield* coordinator.respondDrawControl(37, "project-1", event.drawRequestId, {
+        ok: true,
+        kind: "applied",
+        boardId: "00000000-0000-4000-8000-000000000001",
+        receipt: { createdIds: [], updatedIds: ["shape:one"], deletedIds: [] },
+      });
+      expect(yield* Fiber.join(applying)).toEqual({
+        ok: true,
+        kind: "applied",
+        boardId: "00000000-0000-4000-8000-000000000001",
+        receipt: { createdIds: [], updatedIds: ["shape:one"], deletedIds: [] },
+      });
+    }),
+  );
+
   it.effect("cleans pending requests and bindings on connection and session release", () =>
     Effect.gen(function* () {
       const { coordinator, events } = yield* makeFixture;

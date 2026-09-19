@@ -5,7 +5,7 @@ import { EmbeddedEditorStore } from "../../../../src/renderer/stores/EmbeddedEdi
 import type { Client } from "../../../../src/renderer/client/Client";
 import { mountWithClient } from "../mount-with-client";
 function createHarness(annotations?: EditorAnnotationSnapshot) {
-  let ideMode = false;
+  let presentationMode: "normal" | "vscode" | "draw" = "normal";
   let chatSidebarVisible = true;
   let chatSidebarWidth = 420;
   const client = {
@@ -34,9 +34,9 @@ function createHarness(annotations?: EditorAnnotationSnapshot) {
   const { root, subject: store } = mountWithClient(
     createStore(EmbeddedEditorStore, {
       projectPath: () => "/tmp/project",
-      ideMode: () => ideMode,
-      setIdeMode: (active) => {
-        ideMode = active;
+      presentationMode: () => presentationMode,
+      setPresentationMode: (mode) => {
+        presentationMode = mode;
       },
       chatSidebarVisible: () => chatSidebarVisible,
       toggleChatSidebar: () => {

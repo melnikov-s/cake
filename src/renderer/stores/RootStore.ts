@@ -38,12 +38,56 @@ import type { RootProjection } from "../models/RootProjection";
 import { formatHotkey } from "../lib/hotkeys";
 import { UiHintModeStore } from "./UiHintModeStore";
 import { ArtifactLibraryStore } from "./ArtifactLibraryStore";
+import type {
+  DrawControl,
+  DrawControlInvocation,
+  DrawControlResponse,
+} from "../../domain/draw/draw-control";
 
 export class RootStore extends Store<{
   client: Client;
   projection: RootProjection;
   flushWindowState(): Promise<void>;
 }> {
+  private readonly drawControls = new Map<string, DrawControl>();
+
+  registerDrawControl(control: DrawControl) {
+    this.drawControls.set(control.sessionId, control);
+    return () => {
+      if (this.drawControls.get(control.sessionId) === control)
+        this.drawControls.delete(control.sessionId);
+    };
+  }
+
+  async invokeDrawControl(
+    sessionId: string,
+    invocation: DrawControlInvocation,
+    signal?: AbortSignal,
+  ): Promise<DrawControlResponse> {
+    let active = this.appShellStore.activeConversation;
+    if (
+      (active?.kind !== "project-session" || active.sessionId !== sessionId) &&
+      (invocation._tag === "Enter" || invocation._tag === "Open")
+    ) {
+      await this.openSession(sessionId);
+      active = this.appShellStore.activeConversation;
+    }
+    if (active?.kind !== "project-session" || active.sessionId !== sessionId)
+      return {
+        ok: false,
+        code: "SESSION_NOT_VISIBLE",
+        message: "Open this Project Session in the invoking Cake window, then retry.",
+      };
+    const control = this.drawControls.get(sessionId);
+    if (!control)
+      return {
+        ok: false,
+        code: "DRAW_MODE_REQUIRED",
+        message: "Enter Cake Draw for this Project Session, then retry.",
+      };
+    return control.invoke(invocation, signal);
+  }
+
   get projectCatalogModel() {
     return this.props.projection.projects;
   }
@@ -1079,6 +1123,7 @@ export class RootStore extends Store<{
       leaveIdeSidebarMode: () => this.sidebarStore.leaveIdeMode(),
       projectSidebarWidth: () => this.sidebarStore.width,
       paneNumber: (sessionId) => this.sessionLayoutStore.paneNumber(sessionId),
+      registerDrawControl: (control) => this.registerDrawControl(control),
     });
   }
 

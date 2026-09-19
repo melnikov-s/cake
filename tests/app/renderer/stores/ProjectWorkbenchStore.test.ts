@@ -1,6 +1,7 @@
 import { createStore, mount, toSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { workingDirectoryEditorLocation } from "../../../../src/ipc/editor-location";
+import type { DrawControl } from "../../../../src/domain/draw/draw-control";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { Session } from "../../../../src/renderer/models/Session";
 import type { ExtensionUiStore } from "../../../../src/renderer/stores/ExtensionUiStore";
@@ -23,6 +24,7 @@ function mountWorkbench(
     onWorktreeSessionsResolved?(sessionIds: readonly string[], projectPath: string): Promise<void>;
     openSessionById?(sessionId: string): Promise<void>;
     reviews?: Partial<ReviewsStore>;
+    registerDrawControl?(control: DrawControl): () => void;
   },
 ) {
   let activeSessionId = initialActiveSessionId;
@@ -61,6 +63,7 @@ function mountWorkbench(
       enterIdeSidebarMode: vi.fn(),
       leaveIdeSidebarMode: vi.fn(),
       projectSidebarWidth: () => 292,
+      registerDrawControl: workflow?.registerDrawControl ?? (() => () => undefined),
     }),
     client,
   );
@@ -69,9 +72,16 @@ function mountWorkbench(
 
 function loadedSessionStub(model: { sessionFile: string }, workspacePath = "/project") {
   return {
+    sessionId: "session-1",
     workspacePath,
     model,
-    ideMode: false,
+    presentationMode: "normal" as const,
+    workspaceChatSidebarVisible: true,
+    workspaceChatSidebarWidth: 420,
+    showPresentation: vi.fn(),
+    toggleWorkspaceChatSidebar: vi.fn(),
+    showWorkspaceChatSidebar: vi.fn(),
+    setWorkspaceChatSidebarWidth: vi.fn(),
     conversationSessionStore: {
       composerStore: {
         draftStore: {
@@ -147,7 +157,7 @@ describe("ProjectWorkbenchStore", () => {
       subject: store,
       operations,
     } = mountWorkbench(
-      {} as SessionRegistryStore,
+      { findSession: () => undefined } as unknown as SessionRegistryStore,
       {
         resolvedWorktrees: vi.fn(() => [{ worktreePath: "/stale-renderer-choice" }]),
       } as unknown as SessionCatalogStore,
@@ -183,7 +193,7 @@ describe("ProjectWorkbenchStore", () => {
       subject: store,
       operations,
     } = mountWorkbench(
-      {} as SessionRegistryStore,
+      { findSession: () => undefined } as unknown as SessionRegistryStore,
       { sessions: [] } as unknown as SessionCatalogStore,
       { projectSessions: { resolveWorkingDirectory } } as unknown as Client,
       "session-1",
@@ -225,7 +235,7 @@ describe("ProjectWorkbenchStore", () => {
       operations,
       selectSession,
     } = mountWorkbench(
-      {} as SessionRegistryStore,
+      { findSession: () => undefined } as unknown as SessionRegistryStore,
       { sessions: [] } as unknown as SessionCatalogStore,
       {
         projectSessions: { resolveWorkingDirectory: vi.fn(() => resolution) },
@@ -260,7 +270,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
     const session = {
       workspacePath: "/project",
       model: { sessionId: "session-1", sessionFile: "/sessions/session-1.jsonl" },
-      ideMode: false,
+      presentationMode: "normal" as const,
       markRead: vi.fn(),
     };
     const registry = {
@@ -646,6 +656,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
       createDraft: vi.fn(async () => undefined),
     };
     const registry = {
+      findSession: () => undefined,
       pendingSessions,
       removeSession: vi.fn(),
     } as unknown as SessionRegistryStore;
@@ -679,6 +690,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
       materialize: vi.fn(),
     };
     const registry = {
+      findSession: () => undefined,
       pendingSessions,
       removeSession: vi.fn(),
     } as unknown as SessionRegistryStore;
@@ -756,8 +768,10 @@ describe("ProjectWorkbenchStore startup selection", () => {
     const session = {
       workspacePath: "/project",
       model: { sessionId: "session-1", sessionFile: "/sessions/session-1.jsonl" },
-      ideMode: true,
-      showIdeChatSidebar: vi.fn(),
+      presentationMode: "vscode" as const,
+      workspaceChatSidebarVisible: true,
+      workspaceChatSidebarWidth: 420,
+      showWorkspaceChatSidebar: vi.fn(),
       conversationSessionStore: { composerStore: { draftStore } },
       markRead: vi.fn(),
     };
@@ -819,7 +833,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
       contextAfter: "}",
       diff: "",
     });
-    expect(session.showIdeChatSidebar).toHaveBeenCalledTimes(1);
+    expect(session.showWorkspaceChatSidebar).toHaveBeenCalledTimes(1);
     expect(draftStore.addSourceAttachment).not.toHaveBeenCalled();
 
     store.receive({
@@ -838,7 +852,123 @@ describe("ProjectWorkbenchStore startup selection", () => {
       selectedText: "const answer =\n  calculate();",
       comment: "Why is this here?",
     });
-    expect(session.showIdeChatSidebar).toHaveBeenCalledTimes(2);
+    expect(session.showWorkspaceChatSidebar).toHaveBeenCalledTimes(2);
+
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
+  it("keeps Draw open when its working document cannot be flushed", async () => {
+    const flush = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("disk full"))
+      .mockResolvedValue(undefined);
+    const showPresentation = vi.fn();
+    const requestFocus = vi.fn();
+    const session = {
+      sessionId: "session-1",
+      workspacePath: "/project",
+      model: { sessionId: "session-1", sessionFile: "/session.jsonl" },
+      presentationMode: "draw" as const,
+      drawStore: { flush },
+      showPresentation,
+      conversationSessionStore: {
+        composerStore: {
+          draftStore: { setEditorContextAttachment: vi.fn(), requestFocus },
+        },
+      },
+      markRead: vi.fn(),
+    };
+    const registry = {
+      findSession: vi.fn(() => session),
+      pendingSessions: { isTemporary: vi.fn(() => false) },
+    } as unknown as SessionRegistryStore;
+    const {
+      root,
+      subject: store,
+      operations,
+    } = mountWorkbench(registry, {} as SessionCatalogStore, {} as Client, "session-1");
+
+    await store.backToAgent();
+    expect(showPresentation).not.toHaveBeenCalled();
+    expect(requestFocus).not.toHaveBeenCalled();
+
+    await store.backToAgent();
+    expect(flush).toHaveBeenCalledTimes(2);
+    expect(showPresentation).toHaveBeenCalledWith("normal");
+    expect(requestFocus).toHaveBeenCalledOnce();
+
+    root[Symbol.dispose]();
+    operations[Symbol.dispose]();
+  });
+
+  it("registers loaded sessions and returns Apply only after the Draw Store flush completes", async () => {
+    let finishApply!: () => void;
+    const applyFinished = new Promise<void>((resolve) => {
+      finishApply = resolve;
+    });
+    const apply = vi.fn(async () => {
+      await applyFinished;
+      return { createdIds: ["shape:agent"], updatedIds: [], deletedIds: [] };
+    });
+    const board = {
+      id: "11111111-1111-4111-8111-111111111111",
+      sessionId: "session-1",
+      title: "Board 1",
+      revision: 1,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const session = {
+      ...loadedSessionStub({ sessionFile: "/session.jsonl" }),
+      presentationMode: "draw" as const,
+      drawStore: { activeBoard: board, apply },
+    };
+    const registry = {
+      sessions: [session],
+      findSession: vi.fn(() => session),
+      pendingSessions: { isTemporary: vi.fn(() => false) },
+    } as unknown as SessionRegistryStore;
+    let control: DrawControl | undefined;
+    const { root, operations } = mountWorkbench(
+      registry,
+      { find: () => undefined } as unknown as SessionCatalogStore,
+      {} as Client,
+      "session-1",
+      undefined,
+      {
+        registerDrawControl: (next) => {
+          control = next;
+          return () => {
+            control = undefined;
+          };
+        },
+      },
+    );
+
+    expect(control?.sessionId).toBe("session-1");
+    const response = control!.invoke({
+      _tag: "Apply",
+      operations: [
+        {
+          type: "create",
+          shape: { id: "agent", type: "geo", x: 0, y: 0, width: 100, height: 80 },
+        },
+      ],
+    });
+    let settled = false;
+    void response.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finishApply();
+    await expect(response).resolves.toEqual({
+      ok: true,
+      kind: "applied",
+      boardId: board.id,
+      receipt: { createdIds: ["shape:agent"], updatedIds: [], deletedIds: [] },
+    });
 
     root[Symbol.dispose]();
     operations[Symbol.dispose]();
@@ -847,7 +977,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
   it("does not open editing surfaces for a resolved session", async () => {
     const session = {
       ...loadedSessionStub({ sessionFile: "/session.jsonl" }),
-      ideMode: true,
+      presentationMode: "vscode" as const,
     };
     const registry = {
       findSession: vi.fn(() => session),

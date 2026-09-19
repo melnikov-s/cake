@@ -49,6 +49,7 @@ import {
   ArtifactStorage,
   ArtifactStorageError,
 } from "../../../src/services/storage/ArtifactStorage";
+import { DrawBoardStorage } from "../../../src/services/storage/DrawBoardStorage";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import {
   SessionArchiveStorage,
@@ -239,6 +240,7 @@ const makeLayer = (
     onRemoveFamilyProject?(projectPath: string): void;
     familyRemovalError?: boolean;
     onRemoveArtifactTarget?(target: ArtifactLinkTarget): void;
+    onDeleteDrawBoards?(sessionId: string): void;
     artifactRemovalFails?(target: ArtifactLinkTarget): boolean;
     onArtifactGarbageCollection?(): void;
     initialResolvedSessionIds?: ReadonlyArray<string>;
@@ -529,6 +531,9 @@ const makeLayer = (
               }),
             )
           : Effect.sync(() => hooks.onRemoveArtifactTarget?.(target)),
+    }),
+    Layer.mock(DrawBoardStorage, {
+      deleteSession: (sessionId) => Effect.sync(() => hooks.onDeleteDrawBoards?.(sessionId)),
     }),
     Layer.mock(ReviewStorage, {
       agentSessionDirectory: () => "/reviews/agent",
@@ -2027,6 +2032,23 @@ describe("Project Sessions domain", () => {
     );
   });
 
+  it.effect("deletes boards for the permanently deleted resolved session", () => {
+    const deletedBoardSessionIds: string[] = [];
+    return projectSessionLifecycle.deleteResolved("session-1").pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          assert.deepEqual(deletedBoardSessionIds, ["session-1"]);
+        }),
+      ),
+      Effect.provide(
+        makeLayer(defaultApplicationState(), {
+          resolvedOnDisk: true,
+          onDeleteDrawBoards: (sessionId) => deletedBoardSessionIds.push(sessionId),
+        }),
+      ),
+    );
+  });
+
   it.effect("preserves family artifact links when family metadata deletion fails", () => {
     const removedArtifactTargets: ArtifactLinkTarget[] = [];
     let garbageCollections = 0;
@@ -2065,6 +2087,7 @@ describe("Project Sessions domain", () => {
           assert.deepEqual(lifecycleOrder, [
             "session-authority:session-1",
             "session-link:session-1",
+            "draw:session-1",
             "gc",
             "family-authority",
             "family-link:family-1",
@@ -2089,6 +2112,7 @@ describe("Project Sessions domain", () => {
                 ? `session-link:${target.sessionId}`
                 : `family-link:${target.familyId}`,
             ),
+          onDeleteDrawBoards: (sessionId) => lifecycleOrder.push(`draw:${sessionId}`),
           onRemoveFamilyProject: () => lifecycleOrder.push("family-authority"),
           onArtifactGarbageCollection: () => lifecycleOrder.push("gc"),
         }),

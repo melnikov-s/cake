@@ -23,6 +23,14 @@ surfaces can opt into `boundary="nearest-ancestor"`; positioning then flips and
 clamps within the closest ancestor marked with `data-popover-boundary` instead
 of allowing the native surface to cover part of the portal.
 
+## Workspace and chat shell
+
+`WorkspaceChatLayout` is the shared product layout for immersive session modes.
+It composes the project sidebar, a primary workspace, the existing authoritative
+Chat drawer, and an optional terminal dock with persistent Store-owned widths.
+VS Code and Cake Draw supply their own workspace and chat header content rather
+than rebuilding resize behavior or a parallel conversation surface.
+
 ## Moving navigation backgrounds
 
 Wrap the scrolling **content** in `NavigationHighlight`. Mark each row with

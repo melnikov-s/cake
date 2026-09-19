@@ -25,6 +25,7 @@ import {
   WorktreeLandingSnapshot,
 } from "../domain/worktrees/worktree-landing-data";
 import { WorktreeRecord } from "../domain/worktrees/managed-worktree-data";
+import { DrawControlRequest } from "../domain/draw/draw-control";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
@@ -117,6 +118,9 @@ const cakeEventSchemas = {
   "project-session-control-requested": ProjectSessionControlRequest.pipe(
     Schema.fieldsAssign({ type: Schema.Literal("project-session-control-requested") }),
   ),
+  "draw-control-requested": DrawControlRequest.pipe(
+    Schema.fieldsAssign({ type: Schema.Literal("draw-control-requested") }),
+  ),
   "terminal-data": Schema.Struct({
     type: Schema.Literal("terminal-data"),
     terminalId: uuid,
@@ -194,6 +198,7 @@ export const applicationEventSchema = Schema.Union([
   cakeEventSchemas.notification,
   cakeEventSchemas["extension-ui-intent"],
   cakeEventSchemas["project-session-control-requested"],
+  cakeEventSchemas["draw-control-requested"],
   cakeEventSchemas["application-hotkey-input"],
 ]);
 
@@ -244,6 +249,7 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["notification"],
   cakeEventSchemas["extension-ui-intent"],
   cakeEventSchemas["project-session-control-requested"],
+  cakeEventSchemas["draw-control-requested"],
   cakeEventSchemas["terminal-data"],
   cakeEventSchemas["terminal-exited"],
   cakeEventSchemas["terminal-toggle-requested"],

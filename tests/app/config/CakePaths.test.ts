@@ -17,6 +17,7 @@ describe("resolveCakePaths", () => {
       sessionFamilies: "/Users/fixture/.cake/state/session-families.json",
       resolvedProjectMetadata: "/Users/fixture/.cake/state/resolved-project-metadata",
       artifacts: "/Users/fixture/.cake/state/artifacts",
+      drawBoards: "/Users/fixture/.cake/state/draw-boards",
       reviews: "/Users/fixture/.cake/state/reviews",
       worktrees: "/Users/fixture/.cake/state/worktrees.json",
       cache: "/Users/fixture/.cake/cache",

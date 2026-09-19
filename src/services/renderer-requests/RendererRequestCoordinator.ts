@@ -4,6 +4,7 @@ import type { ProjectSessionControlInvocation } from "../../domain/project-sessi
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { CakeEvent, cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
 import type { JsonValue } from "../../ipc/json-contract";
+import { DrawControlResponse, type DrawControlInvocation } from "../../domain/draw/draw-control";
 import { Electron } from "../electron/Electron";
 
 interface RendererUiRequest {
@@ -52,6 +53,13 @@ type PendingRequest =
       readonly connectionId: number;
       readonly name: string;
       readonly completion: Deferred.Deferred<JsonValue | undefined>;
+    }
+  | {
+      readonly _tag: "DrawControl";
+      readonly sessionId: string;
+      readonly connectionId: number;
+      readonly invocationTag: DrawControlInvocation["_tag"];
+      readonly completion: Deferred.Deferred<JsonValue | undefined>;
     };
 
 class RendererRequestCoordinatorError extends Schema.TaggedError<RendererRequestCoordinatorError>()(
@@ -92,6 +100,11 @@ export interface RendererRequestCoordinatorService {
     invocation: { readonly name: string; readonly arguments: JsonValue },
     signal: AbortSignal,
   ) => Effect.Effect<JsonValue, RendererRequestCoordinatorError>;
+  readonly requestDrawControl: (
+    sessionId: string,
+    invocation: DrawControlInvocation,
+    signal: AbortSignal,
+  ) => Effect.Effect<DrawControlResponse, RendererRequestCoordinatorError>;
   readonly cakeChatControlRequests: (
     connectionId?: number,
   ) => Stream.Stream<CakeChatControlRequest>;
@@ -115,6 +128,12 @@ export interface RendererRequestCoordinatorService {
     connectionId: number,
     controlRequestId: string,
     result: JsonValue,
+  ) => Effect.Effect<void, RendererRequestCoordinatorError>;
+  readonly respondDrawControl: (
+    connectionId: number,
+    sessionId: string,
+    drawRequestId: string,
+    response: DrawControlResponse,
   ) => Effect.Effect<void, RendererRequestCoordinatorError>;
   readonly releaseSession: (target: SessionTarget) => Effect.Effect<void>;
   readonly releaseWorkingDirectory: (workingDirectory: string) => Effect.Effect<void>;
@@ -140,6 +159,19 @@ const cancellationValue = (pending: PendingRequest, stopped: boolean): JsonValue
         ? "The Project Session stopped."
         : "The Project Session request was cancelled.",
     };
+  if (pending._tag === "DrawControl")
+    return pending.invocationTag === "Apply"
+      ? {
+          ok: false,
+          code: "APPLY_OUTCOME_UNKNOWN",
+          message:
+            "The renderer disconnected after Draw apply was dispatched; inspect the board before retrying.",
+        }
+      : {
+          ok: false,
+          code: "REQUEST_CANCELLED",
+          message: stopped ? "The Project Session stopped." : "The Draw request was cancelled.",
+        };
   return stopped
     ? { ok: false, error: "Cake Chat stopped." }
     : { ok: false, name: pending.name, error: "The Cake Chat request was cancelled." };
@@ -436,6 +468,57 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       },
     );
 
+    const requestDrawControl = Effect.fn("RendererRequestCoordinator.requestDrawControl")(
+      function* (sessionId: string, invocation: DrawControlInvocation, signal: AbortSignal) {
+        if (signal.aborted)
+          return DrawControlResponse.make({
+            ok: false,
+            code: "REQUEST_CANCELLED",
+            message: "The Draw request was cancelled.",
+          });
+        const dispatch = Effect.gen(function* () {
+          const connectionId = yield* Effect.try({
+            try: () => requireBinding({ _tag: "ProjectSession", sessionId }),
+            catch: (cause) =>
+              cause instanceof RendererRequestCoordinatorError
+                ? cause
+                : coordinatorError("requestDrawControl", String(cause)),
+          });
+          const drawRequestId = crypto.randomUUID();
+          const completion = yield* Deferred.make<JsonValue | undefined>();
+          const entry: PendingRequest = {
+            _tag: "DrawControl",
+            sessionId,
+            connectionId,
+            invocationTag: invocation._tag,
+            completion,
+          };
+          pending.set(drawRequestId, entry);
+          yield* publishProjectEvent(connectionId, {
+            type: "draw-control-requested",
+            sessionId,
+            drawRequestId,
+            invocation,
+          }).pipe(Effect.tapError(() => Effect.sync(() => pending.delete(drawRequestId))));
+          const result = (yield* awaitPending(
+            drawRequestId,
+            entry,
+            invocation._tag === "Apply" ? undefined : signal,
+          )) ?? {
+            ok: false,
+            code: "REQUEST_CANCELLED",
+            message: "The Draw request was cancelled.",
+          };
+          return yield* Schema.decodeUnknownEffect(DrawControlResponse)(result).pipe(
+            Effect.mapError((cause) => coordinatorError("requestDrawControl", String(cause))),
+          );
+        });
+        // Once an Apply reaches the renderer, its atomic edit + durable flush must settle.
+        // Interruption may abandon the caller's result, but cannot truthfully report rollback.
+        return yield* invocation._tag === "Apply" ? Effect.uninterruptible(dispatch) : dispatch;
+      },
+    );
+
     const respondUi = Effect.fn("RendererRequestCoordinator.respondUi")(function* (
       connectionId: number,
       sessionId: string,
@@ -532,6 +615,31 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       },
     );
 
+    const respondDrawControl = Effect.fn("RendererRequestCoordinator.respondDrawControl")(
+      function* (
+        connectionId: number,
+        sessionId: string,
+        drawRequestId: string,
+        response: DrawControlResponse,
+      ) {
+        const request = yield* Effect.try({
+          try: () =>
+            validateResponse(
+              "respondDrawControl",
+              drawRequestId,
+              "DrawControl",
+              connectionId,
+              sessionId,
+            ),
+          catch: (cause) =>
+            cause instanceof RendererRequestCoordinatorError
+              ? cause
+              : coordinatorError("respondDrawControl", String(cause)),
+        });
+        if (request) complete(drawRequestId, response);
+      },
+    );
+
     const releaseSession = Effect.fn("RendererRequestCoordinator.releaseSession")(
       (target: SessionTarget) =>
         Effect.sync(() => {
@@ -592,6 +700,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       requestArtifact,
       requestProjectControl,
       requestCakeChatControl,
+      requestDrawControl,
       cakeChatControlRequests: (connectionId) =>
         Stream.fromPubSub(cakeChatRequests).pipe(
           Stream.filter(
@@ -608,6 +717,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       respondArtifact,
       respondProjectControl,
       respondCakeChatControl,
+      respondDrawControl,
       releaseSession,
       releaseWorkingDirectory,
       releaseConnection,

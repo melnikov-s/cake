@@ -86,6 +86,18 @@ import type {
   CakeChatUpdate,
 } from "../../domain/cake-chats/cake-chat-data";
 import type {
+  DrawBoardCreateInput,
+  DrawBoardDocument,
+  DrawBoardError,
+  DrawBoardListInput,
+  DrawBoardMetadata,
+  DrawBoardRenameInput,
+  DrawBoardSaveInput,
+  DrawBoardTarget,
+} from "../../domain/draw/draw-board-data";
+import type { DrawControlResponse } from "../../domain/draw/draw-control";
+import type { DrawControlRpcError } from "../protocol/DrawControlRpc";
+import type {
   DiscussionSessionError,
   DiscussionSessionStartInput,
   DiscussionSessionTarget,
@@ -388,6 +400,33 @@ export interface CakeIpcClientService {
       target: DiscussionSessionTarget & { readonly resolved: boolean },
     ) => Effect.Effect<DiscussionThread, DiscussionSessionError | TransportError>;
   };
+  readonly draw: {
+    readonly list: (
+      input: DrawBoardListInput,
+    ) => Effect.Effect<ReadonlyArray<DrawBoardMetadata>, DrawBoardError | TransportError>;
+    readonly create: (
+      input: DrawBoardCreateInput,
+    ) => Effect.Effect<DrawBoardMetadata, DrawBoardError | TransportError>;
+    readonly read: (
+      input: DrawBoardTarget,
+    ) => Effect.Effect<DrawBoardDocument, DrawBoardError | TransportError>;
+    readonly save: (
+      input: DrawBoardSaveInput,
+    ) => Effect.Effect<DrawBoardMetadata, DrawBoardError | TransportError>;
+    readonly rename: (
+      input: DrawBoardRenameInput,
+    ) => Effect.Effect<DrawBoardMetadata, DrawBoardError | TransportError>;
+    readonly delete: (
+      input: DrawBoardTarget,
+    ) => Effect.Effect<void, DrawBoardError | TransportError>;
+  };
+  readonly drawControl: {
+    readonly respond: (input: {
+      readonly sessionId: string;
+      readonly drawRequestId: string;
+      readonly response: DrawControlResponse;
+    }) => Effect.Effect<void, DrawControlRpcError | TransportError>;
+  };
   readonly scheduledMessages: {
     readonly observe: (
       targetSessionId: string,
@@ -635,6 +674,7 @@ export interface CakeIpcClientService {
         | "notification"
         | "extension-ui-intent"
         | "project-session-control-requested"
+        | "draw-control-requested"
         | "application-hotkey-input"
         | "renderer-events-ready"
       >,
@@ -874,6 +914,19 @@ export const CakeIpcClientLive = Layer.effect(
         )((input) => client("discussionSessions.ensureSessionAssistant", input)),
         setResolved: Effect.fn("CakeIpcClient.discussionSessions.setResolved")((target) =>
           client("discussionSessions.setResolved", target),
+        ),
+      },
+      draw: {
+        list: Effect.fn("CakeIpcClient.draw.list")((input) => client("draw.list", input)),
+        create: Effect.fn("CakeIpcClient.draw.create")((input) => client("draw.create", input)),
+        read: Effect.fn("CakeIpcClient.draw.read")((input) => client("draw.read", input)),
+        save: Effect.fn("CakeIpcClient.draw.save")((input) => client("draw.save", input)),
+        rename: Effect.fn("CakeIpcClient.draw.rename")((input) => client("draw.rename", input)),
+        delete: Effect.fn("CakeIpcClient.draw.delete")((input) => client("draw.delete", input)),
+      },
+      drawControl: {
+        respond: Effect.fn("CakeIpcClient.drawControl.respond")((input) =>
+          client("drawControl.respond", input),
         ),
       },
       scheduledMessages: {

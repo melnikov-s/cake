@@ -42,6 +42,7 @@ import type { ArtifactProjectionMetadata } from "../../artifacts/ArtifactProject
 import type { ResolvedAgentArtifact } from "./cake-artifact-operations";
 import type { VscodeControl } from "./cake-vscode-operations";
 import type { WorktreeLandingControl } from "./cake-worktree-operations";
+import type { CakeDrawControl } from "./cake-draw-operations";
 import { assertSessionPath } from "./session-path";
 import { cakeWorkspaceSessionDirectory, findSessionFile } from "./session-discovery";
 import {
@@ -215,6 +216,7 @@ export interface CakeRuntimeOptions {
     ): Promise<PiPendingMessages>;
   };
   vscodeControl?: VscodeControl;
+  drawControl?: CakeDrawControl;
   worktreeLandingControl?: WorktreeLandingControl;
   globalControl?: {
     tools: readonly GlobalControlTool[];

@@ -20,6 +20,7 @@ import { WindowStatePersistence } from "./persistence/WindowStatePersistence";
 import "katex/dist/katex.min.css";
 import "streamdown/styles.css";
 import "@xterm/xterm/css/xterm.css";
+import "tldraw/tldraw.css";
 import "./styles.css";
 
 const root = createRoot(document.getElementById("root")!);

@@ -2,12 +2,19 @@ import { toStoreEvent } from "../events/StoreEvent";
 import { cakeNativeHotkeyInputEventName } from "../lib/hotkeys";
 import type { Runtime } from "../runtime";
 import type { RootStore } from "../stores/RootStore";
+import { handleDrawControlRequest } from "./draw-control-events";
 
 /** Routes window-focused application events to their Store owners. */
 export const observeApplicationEvents = (runtime: Runtime, root: RootStore) =>
   runtime.observe(
     (client) => client.events.application(),
     (event) => {
+      if (event.type === "draw-control-requested") {
+        void handleDrawControlRequest(root, event).catch((error) =>
+          root.projectWorkbenchStore.setError(error, "Cake Draw control response"),
+        );
+        return;
+      }
       if (event.type === "application-hotkey-input") {
         window.dispatchEvent(
           new CustomEvent(cakeNativeHotkeyInputEventName, { detail: event, cancelable: true }),

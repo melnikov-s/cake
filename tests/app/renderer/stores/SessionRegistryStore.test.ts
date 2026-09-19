@@ -194,15 +194,15 @@ describe("SessionRegistryStore materialization", () => {
 
     const session = registry.observationRetention.sessions[0]!;
     const otherSession = registry.pendingSessions.prepare("/project", "session-2");
-    session.enterIde();
-    session.toggleIdeChatSidebar();
-    session.setIdeChatSidebarWidth(512);
-    expect(session.ideMode).toBe(true);
-    expect(session.ideChatSidebarVisible).toBe(false);
-    expect(session.ideChatSidebarWidth).toBe(512);
-    expect(otherSession.ideMode).toBe(false);
-    expect(otherSession.ideChatSidebarVisible).toBe(true);
-    expect(otherSession.ideChatSidebarWidth).toBe(420);
+    session.showPresentation("vscode");
+    session.toggleWorkspaceChatSidebar();
+    session.setWorkspaceChatSidebarWidth(512);
+    expect(session.presentationMode).toBe("vscode");
+    expect(session.workspaceChatSidebarVisible).toBe(false);
+    expect(session.workspaceChatSidebarWidth).toBe(512);
+    expect(otherSession.presentationMode).toBe("normal");
+    expect(otherSession.workspaceChatSidebarVisible).toBe(true);
+    expect(otherSession.workspaceChatSidebarWidth).toBe(420);
 
     session.model.streaming = true;
     expect(session.activity).toBe("running");

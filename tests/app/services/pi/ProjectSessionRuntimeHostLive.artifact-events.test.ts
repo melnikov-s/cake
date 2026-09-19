@@ -9,6 +9,7 @@ import { ArtifactLineageId } from "../../../../src/domain/artifacts/artifact-lin
 import type { CakeArtifactV1 } from "../../../../src/ipc/artifact-contract";
 import type { CakeEvent } from "../../../../src/ipc/cake-rpc-contract";
 import { makeArtifactProjectionLive } from "../../../../src/services/artifacts/ArtifactProjectionLive";
+import { WorkspaceFileExport } from "../../../../src/services/filesystem/WorkspaceFileExport";
 import { Electron } from "../../../../src/services/electron/Electron";
 import { PiModels } from "../../../../src/services/pi/PiModels";
 import type { ProjectSessionRuntimeIntegrations } from "../../../../src/services/pi/ProjectSessionIntegrationHost";
@@ -17,6 +18,8 @@ import { makeProjectSessionRuntimeHostLive } from "../../../../src/services/pi/P
 import { RendererRequestCoordinator } from "../../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ArtifactStorage } from "../../../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../../../src/services/storage/ArtifactStorageLive";
+import { makeDrawBoardStorageLive } from "../../../../src/services/storage/DrawBoardStorageLive";
+import { makeSessionArchiveStorageLive } from "../../../../src/services/storage/SessionArchiveStorageLive";
 import { ReviewStorage } from "../../../../src/services/storage/ReviewStorage";
 import {
   makeSessionFamilyStorageLive,
@@ -65,7 +68,17 @@ const makeHarness = async () => {
   const events: CakeEvent[] = [];
   const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
   const dependencies = Layer.mergeAll(
+    Layer.succeed(
+      WorkspaceFileExport,
+      WorkspaceFileExport.of({
+        write: (input) => Effect.succeed({ path: input.path, bytes: input.content.byteLength }),
+      }),
+    ),
     makeArtifactStorageLive(join(root, "artifacts")).pipe(Layer.provide(platform)),
+    makeDrawBoardStorageLive(join(root, "draw-boards")).pipe(Layer.provide(platform)),
+    makeSessionArchiveStorageLive(join(root, "resolved-project-metadata")).pipe(
+      Layer.provide(platform),
+    ),
     makeSessionFamilyStorageLive(join(root, "session-families.json")).pipe(Layer.provide(platform)),
     makeArtifactProjectionLive(join(root, "projection-cache")).pipe(Layer.provide(platform)),
     Layer.mock(Electron, {

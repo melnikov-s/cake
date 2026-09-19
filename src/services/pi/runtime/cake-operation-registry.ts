@@ -7,8 +7,13 @@ import {
 } from "../../../ipc/json-contract";
 
 const CAKE_OPERATION_PROTOCOL = "cake.operation/v1" as const;
+const MAX_CAKE_OPERATION_RESULT_BYTES = 1_048_576;
+export const MAX_CAKE_OPERATION_IMAGE_BYTES = 8_000_000;
+const MAX_CAKE_OPERATION_IMAGES = 4;
+const MAX_CAKE_OPERATION_IMAGE_BASE64_LENGTH = Math.ceil(MAX_CAKE_OPERATION_IMAGE_BYTES / 3) * 4;
+
 export const cakeToolDescription =
-  'Cake capabilities are part of the response and are progressively disclosed by topic: app, sessions, context, models, interview, artifacts, widgets, vscode, subagents, notifications, and worktrees. Before defaulting to prose, consider whether the request may imply a Cake interaction. If a topic seems potentially relevant—even when unsure—request it to discover its current operations, exact schemas, and examples, then use it when it better fulfills the request. Users do not need to name the tool explicitly. Call with {} for the topic index; request a topic with {"command":"<topic>"}, not in input. Artifacts are durable linked records; use artifacts.list or artifacts.search to discover them and artifacts.resolve-reference for an exact readable path. Artifact content is not automatically in context.';
+  'Cake capabilities are part of the response and are progressively disclosed by topic: app, sessions, context, models, interview, artifacts, widgets, vscode, draw, subagents, notifications, and worktrees. Before defaulting to prose, consider whether the request may imply a Cake interaction. If a topic seems potentially relevant—even when unsure—request it to discover its current operations, exact schemas, and examples, then use it when it better fulfills the request. Users do not need to name the tool explicitly. Call with {} for the topic index; request a topic with {"command":"<topic>"}, not in input. Artifacts are durable linked records; use artifacts.list or artifacts.search to discover them and artifacts.resolve-reference for an exact readable path. Artifact content is not automatically in context.';
 
 const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
   description: "Exact topic or operation command. Omit for the help index.",
@@ -34,7 +39,35 @@ interface CakeOperationExample {
   description?: string;
 }
 
-export interface CakeOperationDefinition<Input = unknown, Output = JsonValue> {
+export interface CakeOperationImageContent {
+  readonly type: "image";
+  readonly data: string;
+  readonly mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+}
+
+export interface CakeOperationImageResult {
+  readonly _tag: "CakeOperationImageResult";
+  /** JSON metadata shown as text and retained in tool details. Image bytes stay in content only. */
+  readonly metadata: JsonValue;
+  readonly images: ReadonlyArray<CakeOperationImageContent>;
+}
+
+export type CakeOperationResult = JsonValue | CakeOperationImageResult;
+export type CakeOperationContent =
+  | { readonly type: "text"; readonly text: string }
+  | CakeOperationImageContent;
+
+export function cakeOperationImageResult(
+  metadata: JsonValue,
+  images: ReadonlyArray<CakeOperationImageContent>,
+): CakeOperationImageResult {
+  return { _tag: "CakeOperationImageResult", metadata, images };
+}
+
+export interface CakeOperationDefinition<
+  Input = unknown,
+  Output extends CakeOperationResult = CakeOperationResult,
+> {
   command: string;
   topic: string;
   summary: string;
@@ -47,6 +80,15 @@ export interface CakeOperationDefinition<Input = unknown, Output = JsonValue> {
   limitations?: readonly string[];
   execute(input: Input, context: CakeOperationExecutionContext): Promise<Output>;
 }
+
+const cakeOperationImageSchema = Schema.Struct({
+  type: Schema.Literal("image"),
+  data: Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(MAX_CAKE_OPERATION_IMAGE_BASE64_LENGTH),
+  ),
+  mimeType: Schema.Literals(["image/png", "image/jpeg", "image/webp", "image/gif"]),
+});
 
 interface CakeTopicDefinition {
   name: string;
@@ -73,6 +115,7 @@ const cakeTopics = [
     summary:
       "Give code tours and walkthroughs, navigate and review source, or debug in embedded VS Code.",
   },
+  { name: "draw", summary: "Open, inspect, render, and explicitly edit Cake Draw boards." },
   { name: "subagents", summary: "Delegate explicitly requested work." },
   { name: "notifications", summary: "Notify the user." },
   { name: "worktrees", summary: "Complete an active worktree landing workflow." },
@@ -197,46 +240,99 @@ export class CakeOperationRegistry {
   async invoke(
     envelopeInput: unknown,
     context: CakeOperationExecutionContext,
-  ): Promise<{ text: string; details: JsonValue }> {
+  ): Promise<{ text: string; content: CakeOperationContent[]; details: JsonValue }> {
     const envelope = Schema.decodeUnknownSync(cakeToolEnvelopeSchema)(envelopeInput);
     const command = envelope.command ?? "help";
-    if (command === "help") {
-      const text = this.help();
-      return { text, details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: text } };
-    }
+    if (command === "help") return helpResult(command, this.help());
     const topicHelp = this.topicHelp(command);
-    if (topicHelp !== undefined) {
-      return {
-        text: topicHelp,
-        details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: topicHelp },
-      };
-    }
+    if (topicHelp !== undefined) return helpResult(command, topicHelp);
     const operation = this.operations.get(command);
-    if (!operation) {
-      const text = this.unknown(command);
-      return { text, details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: text } };
-    }
+    if (!operation) return helpResult(command, this.unknown(command));
     const input = Schema.decodeUnknownSync(operation.inputSchema, { onExcessProperty: "error" })(
       envelope.input ?? {},
     );
+    const executionResult = await operation.execute(input, context);
+    const richResult = isCakeOperationImageResult(executionResult);
     const result = Schema.decodeUnknownSync(jsonValueSchema)(
-      await operation.execute(input, context),
+      richResult ? executionResult.metadata : executionResult,
     );
+    const images = richResult ? decodeImages(executionResult.images) : [];
     const serialized = JSON.stringify(result);
     const byteLength = new TextEncoder().encode(serialized).byteLength;
     const boundedResult: JsonValue =
-      byteLength > 1_048_576
+      byteLength > MAX_CAKE_OPERATION_RESULT_BYTES
         ? {
             truncated: true,
             byteLength,
             preview: formatCakeResult(result),
           }
         : result;
+    const text = formatCakeResult(result);
     return {
-      text: formatCakeResult(result),
+      text,
+      content: [{ type: "text", text }, ...images],
       details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: boundedResult },
     };
   }
+}
+
+function helpResult(command: string, text: string) {
+  return {
+    text,
+    content: [{ type: "text" as const, text }],
+    details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: text },
+  };
+}
+
+function isCakeOperationImageResult(value: CakeOperationResult): value is CakeOperationImageResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    "_tag" in value &&
+    value._tag === "CakeOperationImageResult"
+  );
+}
+
+function decodeImages(images: ReadonlyArray<CakeOperationImageContent>) {
+  if (images.length === 0) throw new Error("Cake image operation results require an image");
+  if (images.length > MAX_CAKE_OPERATION_IMAGES)
+    throw new Error(`Cake operation results support at most ${MAX_CAKE_OPERATION_IMAGES} images`);
+  const decoded = images.map((image) => {
+    const parsed = Schema.decodeUnknownSync(cakeOperationImageSchema, {
+      onExcessProperty: "error",
+    })(image);
+    if (!isBase64(parsed.data)) throw new Error("Cake operation result image data is not base64");
+    return parsed;
+  });
+  const totalBytes = decoded.reduce((total, image) => total + base64ByteLength(image.data), 0);
+  if (totalBytes > MAX_CAKE_OPERATION_IMAGE_BYTES)
+    throw new Error(
+      `Cake operation result images exceed the ${MAX_CAKE_OPERATION_IMAGE_BYTES}-byte limit`,
+    );
+  return decoded;
+}
+
+function isBase64(value: string) {
+  if (value.length % 4 !== 0) return false;
+  const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+  const contentLength = value.length - padding;
+  for (let index = 0; index < contentLength; index += 1) {
+    const code = value.charCodeAt(index);
+    const valid =
+      (code >= 65 && code <= 90) ||
+      (code >= 97 && code <= 122) ||
+      (code >= 48 && code <= 57) ||
+      code === 43 ||
+      code === 47;
+    if (!valid) return false;
+  }
+  return true;
+}
+
+function base64ByteLength(value: string) {
+  const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+  return (value.length / 4) * 3 - padding;
 }
 
 function formatCakeResult(value: JsonValue, limit = 24_000) {

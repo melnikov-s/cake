@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { observer, StoreProvider, useStore } from "r-state-tree/react";
 import {
   Confirmation,
@@ -24,12 +31,14 @@ import {
   TerminalIcon,
   TreeIcon,
   VsCodeIcon,
+  WhiteboardIcon,
 } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
 import { SessionAssistant } from "@/components/session-assistant";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { UiHintMode } from "@/components/ui/ui-hint-mode";
 import { IdeWorkspace } from "@/components/ide-workspace";
+import { DrawWorkspace } from "@/components/draw-workspace";
 import { SettingsPage } from "@/components/settings-page";
 import { ToastHost } from "@/components/toast-host";
 import { WorktreePill } from "@/components/worktree-pill";
@@ -500,6 +509,15 @@ export const App = observer(function App() {
         <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
         <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
         <IconButton
+          tooltip="Open Cake Draw"
+          onClick={() => {
+            focusPane();
+            void store.openDraw();
+          }}
+        >
+          <WhiteboardIcon />
+        </IconButton>
+        <IconButton
           data-cake-hint-key="v"
           tooltip="Open VS Code"
           onClick={() => {
@@ -643,7 +661,82 @@ export const App = observer(function App() {
     };
   };
 
-  if (store.embeddedEditorStore.visible && session && projectTranscriptBehavior)
+  const workspaceConversationAccessory =
+    session && projectTranscriptBehavior
+      ? (children: ReactNode) => (
+          <ArtifactWorkspaceLayout
+            session={session}
+            inlineWidgets={root.inlineWidgetStore}
+            onOpenSourceLocation={projectTranscriptBehavior.openSourceLocation}
+            onOpenLibrary={(lineageId) => root.showArtifactLibrary(session.sessionId, lineageId)}
+          >
+            {children}
+          </ArtifactWorkspaceLayout>
+        )
+      : undefined;
+  const workspaceComposerContent =
+    session && projectTranscriptBehavior ? (
+      <BlockingArtifactRequest
+        session={session}
+        inlineWidgets={root.inlineWidgetStore}
+        onOpenSourceLocation={projectTranscriptBehavior.openSourceLocation}
+      />
+    ) : undefined;
+
+  if (
+    session?.presentationMode === "draw" &&
+    !store.activeSessionResolved &&
+    projectTranscriptBehavior
+  )
+    return (
+      <>
+        <StoreProvider key={session.sessionId} store={session}>
+          <DrawWorkspace
+            draw={session.drawStore}
+            onBack={() => void store.backToAgent()}
+            projectChat={session.conversationSessionStore.chatStore}
+            sideChat={session.conversationSessionStore.sideChatStore}
+            projectSidebar={projectSidebar}
+            projectSidebarVisible={!sidebarCollapsed}
+            projectSidebarWidth={displayedSidebarWidth}
+            onProjectSidebarWidthChange={setSidebarWidth}
+            headerActions={
+              <>
+                <SideChatsMenu store={session} />
+                {artifactControl(session)}
+              </>
+            }
+            conversationAccessory={workspaceConversationAccessory}
+            projectComposerHeader={projectComposerHeader}
+            projectComposerContent={workspaceComposerContent}
+            projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
+            sessionTitle={store.sessionTitle}
+            terminalDock={
+              terminal.docked ? (
+                <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
+              ) : undefined
+            }
+            transcriptBehavior={projectTranscriptBehavior}
+            chatSidebarVisible={session.workspaceChatSidebarVisible}
+            chatSidebarWidth={session.workspaceChatSidebarWidth}
+            onChatSidebarWidthChange={(width) => session.setWorkspaceChatSidebarWidth(width)}
+          />
+        </StoreProvider>
+        {!terminal.docked && (
+          <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
+        )}
+        <SessionContinuationDialog store={store.sessionContinuationStore} />
+        <TreeNavigationDialog store={store.commandPaneStore} />
+        <UiHintMode store={root.uiHintModeStore} />
+      </>
+    );
+
+  if (
+    session?.presentationMode === "vscode" &&
+    !store.activeSessionResolved &&
+    store.embeddedEditorStore.visible &&
+    projectTranscriptBehavior
+  )
     return (
       <>
         <StoreProvider key={session.sessionId} store={session}>
@@ -662,26 +755,9 @@ export const App = observer(function App() {
                 {artifactControl(session)}
               </>
             }
-            conversationAccessory={(children) => (
-              <ArtifactWorkspaceLayout
-                session={session}
-                inlineWidgets={root.inlineWidgetStore}
-                onOpenSourceLocation={projectTranscriptBehavior.openSourceLocation}
-                onOpenLibrary={(lineageId) =>
-                  root.showArtifactLibrary(session.sessionId, lineageId)
-                }
-              >
-                {children}
-              </ArtifactWorkspaceLayout>
-            )}
+            conversationAccessory={workspaceConversationAccessory}
             projectComposerHeader={projectComposerHeader}
-            projectComposerContent={
-              <BlockingArtifactRequest
-                session={session}
-                inlineWidgets={root.inlineWidgetStore}
-                onOpenSourceLocation={projectTranscriptBehavior.openSourceLocation}
-              />
-            }
+            projectComposerContent={workspaceComposerContent}
             projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
             sessionTitle={store.sessionTitle}
             terminalDock={

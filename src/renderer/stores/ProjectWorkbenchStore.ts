@@ -28,6 +28,11 @@ import { WorktreeCreationStore, type WorktreeDraftChoice } from "./WorktreeCreat
 import { ProjectOpenStore, type ProjectOpenResult } from "./ProjectOpenStore";
 import type { WorkingDirectoryRetirementWorkflow } from "./WorkingDirectoryRetirementStore";
 import type { SessionLabel } from "../../domain/application/application-data";
+import type {
+  DrawControl,
+  DrawControlInvocation,
+  DrawControlResponse,
+} from "../../domain/draw/draw-control";
 
 export interface ProjectWorkbenchStoreProps {
   retirement: WorkingDirectoryRetirementWorkflow;
@@ -55,11 +60,27 @@ export interface ProjectWorkbenchStoreProps {
   leaveIdeSidebarMode(): void;
   projectSidebarWidth(): number;
   paneNumber?(sessionId: string): number | undefined;
+  registerDrawControl(control: DrawControl): () => void;
 }
 
 /** Coordinates accepted Project opens with Project Session and workbench presentation. */
 export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   readonly process = "renderer" as const;
+
+  constructor(props: ProjectWorkbenchStore["props"]) {
+    super(props);
+    this.effect(() => {
+      const unregister = (this.sessionRegistry.sessions ?? []).map((session) =>
+        this.props.registerDrawControl({
+          sessionId: session.sessionId,
+          invoke: (invocation, signal) => this.invokeDrawControl(invocation, signal),
+        }),
+      );
+      return () => {
+        for (const dispose of unregister) dispose();
+      };
+    });
+  }
 
   get client() {
     return ClientContext.consume(this)!;
@@ -97,16 +118,13 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   get embeddedEditorStore(): EmbeddedEditorStore {
     return createStore(EmbeddedEditorStore, {
       projectPath: () => this.projectOpenStore.projectPath,
-      ideMode: () => this.activeSession?.ideMode ?? false,
-      setIdeMode: (active) => {
-        if (active) this.activeSession?.enterIde();
-        else this.activeSession?.leaveIde();
-      },
-      chatSidebarVisible: () => this.activeSession?.ideChatSidebarVisible ?? true,
-      toggleChatSidebar: () => this.activeSession?.toggleIdeChatSidebar(),
-      showChatSidebar: () => this.activeSession?.showIdeChatSidebar(),
-      chatSidebarWidth: () => this.activeSession?.ideChatSidebarWidth ?? 420,
-      setChatSidebarWidth: (width) => this.activeSession?.setIdeChatSidebarWidth(width),
+      presentationMode: () => this.activeSession?.presentationMode ?? "normal",
+      setPresentationMode: (mode) => this.activeSession?.showPresentation(mode),
+      chatSidebarVisible: () => this.activeSession?.workspaceChatSidebarVisible ?? true,
+      toggleChatSidebar: () => this.activeSession?.toggleWorkspaceChatSidebar(),
+      showChatSidebar: () => this.activeSession?.showWorkspaceChatSidebar(),
+      chatSidebarWidth: () => this.activeSession?.workspaceChatSidebarWidth ?? 420,
+      setChatSidebarWidth: (width) => this.activeSession?.setWorkspaceChatSidebarWidth(width),
       annotations: () => {
         const sessionId = this.activeSessionId;
         if (!sessionId) return undefined;
@@ -515,21 +533,39 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.activeSession?.conversationSessionStore.composerStore.draftStore.setEditorContextAttachment(
       undefined,
     );
+    if (this.activeSession?.presentationMode === "draw")
+      void this.activeSession.drawStore.flush().catch(() => undefined);
     this.embeddedEditorStore.suspend();
   }
 
-  /** Explicitly returns the active session to its Agent presentation. */
-  backToAgent() {
-    this.activeSession?.conversationSessionStore.composerStore.draftStore.setEditorContextAttachment(
+  private async flushDrawBeforeLeaving() {
+    const session = this.activeSession;
+    if (session?.presentationMode !== "draw") return true;
+    try {
+      await session.drawStore.flush();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Explicitly returns the active session to its normal conversation presentation. */
+  async backToAgent() {
+    const session = this.activeSession;
+    if (!(await this.flushDrawBeforeLeaving())) return;
+    session?.conversationSessionStore.composerStore.draftStore.setEditorContextAttachment(
       undefined,
     );
-    this.embeddedEditorStore.hide();
-    this.activeSession?.conversationSessionStore.composerStore.draftStore.requestFocus();
+    this.embeddedEditorStore.suspend();
+    session?.showPresentation("normal");
+    session?.conversationSessionStore.composerStore.draftStore.requestFocus();
   }
 
   restoreSessionPresentation() {
-    if (!this.activeSessionResolved && this.activeSession?.ideMode)
-      void this.embeddedEditorStore.restore();
+    if (this.activeSessionResolved || !this.activeSession) return;
+    if (this.activeSession.presentationMode === "vscode") void this.embeddedEditorStore.restore();
+    else if (this.activeSession.presentationMode === "draw")
+      void this.activeSession.drawStore.initialize();
   }
 
   private showTemporarySession(
@@ -688,6 +724,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   async openWorkspaceChanges() {
     if (this.activeSessionResolved || !this.activeSession || !this.projectOpenStore.projectPath)
       return;
+    if (!(await this.flushDrawBeforeLeaving())) return;
     this.commandPaneStore.dismiss();
     this.reviews.clearActiveThread();
     await this.embeddedEditorStore.showSourceControl();
@@ -725,15 +762,122 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   async openIde() {
     if (this.activeSessionResolved || !this.activeSession || !this.projectOpenStore.projectPath)
       return;
+    if (!(await this.flushDrawBeforeLeaving())) return;
     this.commandPaneStore.dismiss();
     this.reviews.clearActiveThread();
     await this.embeddedEditorStore.show();
   }
 
+  async openDraw() {
+    if (this.activeSessionResolved || !this.activeSession || !this.projectOpenStore.projectPath)
+      return;
+    this.commandPaneStore.dismiss();
+    this.reviews.clearActiveThread();
+    this.embeddedEditorStore.suspend();
+    this.activeSession.showPresentation("draw");
+    await this.activeSession.drawStore.initialize();
+  }
+
+  private async invokeDrawControl(
+    invocation: DrawControlInvocation,
+    signal?: AbortSignal,
+  ): Promise<DrawControlResponse> {
+    const cancelled = (): DrawControlResponse => ({
+      ok: false,
+      code: "REQUEST_CANCELLED",
+      message: "The Draw request was cancelled.",
+    });
+    if (signal?.aborted) return cancelled();
+    if (this.activeSessionResolved)
+      return {
+        ok: false,
+        code: "SESSION_RESOLVED",
+        message: "Resolved Project Sessions cannot change a whiteboard.",
+      };
+    if (invocation._tag === "Enter") {
+      await this.openDraw();
+      if (signal?.aborted) return cancelled();
+      const board = this.activeSession?.drawStore.activeBoard;
+      return board
+        ? { ok: true, kind: "entered", board }
+        : { ok: false, code: "BOARD_NOT_OPEN", message: "No whiteboard is open." };
+    }
+    if (invocation._tag === "Open") {
+      await this.openDraw();
+      if (signal?.aborted) return cancelled();
+      const draw = this.activeSession?.drawStore;
+      if (!draw?.boards.some((board) => board.id === invocation.boardId))
+        return {
+          ok: false,
+          code: "BOARD_NOT_OPEN",
+          message: "That whiteboard does not exist in this Project Session.",
+        };
+      await draw.selectBoard(invocation.boardId);
+      const board = draw.activeBoard;
+      return board
+        ? { ok: true, kind: "opened", board }
+        : { ok: false, code: "BOARD_NOT_OPEN", message: "That whiteboard is not open." };
+    }
+    const session = this.activeSession;
+    if (!session || session.presentationMode !== "draw")
+      return {
+        ok: false,
+        code: "DRAW_MODE_REQUIRED",
+        message: "Enter Cake Draw for this Project Session, then retry.",
+      };
+    const draw = session.drawStore;
+    const requestedBoardId = invocation.boardId;
+    if (!draw.activeBoard || (requestedBoardId && requestedBoardId !== draw.activeBoard.id))
+      return {
+        ok: false,
+        code: "BOARD_NOT_OPEN",
+        message: "Open the requested whiteboard before using it.",
+      };
+    try {
+      switch (invocation._tag) {
+        case "Read":
+          return {
+            ok: true,
+            kind: "read",
+            boardId: draw.activeBoard.id,
+            scene: await draw.read(invocation.scope),
+          };
+        case "Render":
+          return {
+            ok: true,
+            kind: "rendered",
+            boardId: draw.activeBoard.id,
+            render: await draw.render({
+              scope: invocation.scope,
+              format: invocation.format,
+              background: invocation.background,
+              scale: invocation.scale,
+            }),
+          };
+        case "Apply": {
+          const receipt = await draw.apply(invocation.operations);
+          if (signal?.aborted)
+            return {
+              ok: false,
+              code: "APPLY_OUTCOME_UNKNOWN",
+              message: "The request was cancelled while the Draw batch was being saved.",
+            };
+          return { ok: true, kind: "applied", boardId: draw.activeBoard.id, receipt };
+        }
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        code: "INVALID_REQUEST",
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   /** Toggles the active Project Session between Agent and IDE presentation. */
   async toggleIde() {
     if (this.embeddedEditorStore.visible) {
-      this.backToAgent();
+      await this.backToAgent();
       return;
     }
     await this.openIde();
@@ -742,6 +886,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   async openFileInIde(location: EditorLocation) {
     if (this.activeSessionResolved || !this.activeSession || !this.projectOpenStore.projectPath)
       return;
+    if (!(await this.flushDrawBeforeLeaving())) return;
     this.commandPaneStore.dismiss();
     await this.embeddedEditorStore.show(location);
   }
