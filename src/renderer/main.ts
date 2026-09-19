@@ -17,9 +17,7 @@ import { installStaleAssetRecovery } from "./lib/stale-asset-recovery";
 import { mountRootStore } from "./bootstrap/mount-root-store";
 import { storeSnapshotSchema } from "./persistence/StoreSnapshot";
 import { WindowStatePersistence } from "./persistence/WindowStatePersistence";
-import "katex/dist/katex.min.css";
 import "streamdown/styles.css";
-import "@xterm/xterm/css/xterm.css";
 import "./styles.css";
 
 const root = createRoot(document.getElementById("root")!);

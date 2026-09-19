@@ -1,8 +1,6 @@
-import { createContext, useContext, useDeferredValue, useMemo } from "react";
+import { createContext, lazy, Suspense, useContext, useDeferredValue, useMemo } from "react";
 import type { ComponentProps, ReactNode } from "react";
 import type { Code, Root, RootContent } from "mdast";
-import { math } from "@streamdown/math";
-import { createMermaidPlugin } from "@streamdown/mermaid";
 import remarkParse from "remark-parse";
 import {
   parseMarkdownIntoBlocks,
@@ -229,11 +227,8 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
   );
 }
 
-const mermaid = createMermaidPlugin({ config: { securityLevel: "strict" } });
 const configuredPlugins = {
   code: syntaxHighlighter,
-  math,
-  mermaid,
   renderers: [
     {
       component: MarkdownCodeBlock,
@@ -346,7 +341,7 @@ function markChangingFence(markdown: string, mutableCode: boolean) {
   return `${markedOpening}${finalFence.linePrefix}${streamingCodeMarker}\n${markdown.slice(finalFence.contentStart)}`;
 }
 
-type MarkdownProps = Omit<
+export type MarkdownProps = Omit<
   StreamdownProps,
   | "children"
   | "components"
@@ -367,17 +362,83 @@ type MarkdownProps = Omit<
   onOpenSourceLocation?(location: SourceLocation): void;
 };
 
-export function Markdown({
+type RichMarkdownPlugins = Partial<
+  Pick<NonNullable<StreamdownProps["plugins"]>, "math" | "mermaid">
+>;
+
+const MathMarkdown = lazy(async () => {
+  const [{ math }] = await Promise.all([
+    import("@streamdown/math"),
+    import("katex/dist/katex.min.css"),
+  ]);
+  return {
+    default: (props: MarkdownProps) => <MarkdownRenderer {...props} richPlugins={{ math }} />,
+  };
+});
+
+const MermaidMarkdown = lazy(async () => {
+  const { createMermaidPlugin } = await import("@streamdown/mermaid");
+  const mermaid = createMermaidPlugin({ config: { securityLevel: "strict" } });
+  return {
+    default: (props: MarkdownProps) => <MarkdownRenderer {...props} richPlugins={{ mermaid }} />,
+  };
+});
+
+const MathAndMermaidMarkdown = lazy(async () => {
+  const [{ math }, { createMermaidPlugin }] = await Promise.all([
+    import("@streamdown/math"),
+    import("@streamdown/mermaid"),
+    import("katex/dist/katex.min.css"),
+  ]);
+  const richPlugins: RichMarkdownPlugins = {
+    math,
+    mermaid: createMermaidPlugin({ config: { securityLevel: "strict" } }),
+  };
+  return {
+    default: (props: MarkdownProps) => <MarkdownRenderer {...props} richPlugins={richPlugins} />,
+  };
+});
+
+function richMarkdownFeatures(source: string, normalizeLatexDelimiters = true) {
+  return {
+    math: /\$\$/.test(source) || (normalizeLatexDelimiters && /\\\(|\\\[/.test(source)),
+    mermaid: /(?:^|\n)[^\n]*(?:`{3,}|~{3,})\s*mermaid\b/i.test(source),
+  };
+}
+
+export function Markdown(props: MarkdownProps) {
+  const features = richMarkdownFeatures(props.children, props.normalizeLatexDelimiters);
+  const RichMarkdown = features.math
+    ? features.mermaid
+      ? MathAndMermaidMarkdown
+      : MathMarkdown
+    : features.mermaid
+      ? MermaidMarkdown
+      : undefined;
+  if (!RichMarkdown) return <MarkdownRenderer {...props} />;
+  return (
+    <Suspense fallback={<MarkdownRenderer {...props} />}>
+      <RichMarkdown {...props} />
+    </Suspense>
+  );
+}
+
+function MarkdownRenderer({
   children,
   className,
   streaming = false,
   mutableCode = false,
   normalizeLatexDelimiters = true,
   onOpenSourceLocation,
+  richPlugins,
   ...props
-}: MarkdownProps) {
+}: MarkdownProps & { richPlugins?: RichMarkdownPlugins }) {
   const colorTheme = useResolvedColorTheme();
   const linkActions = useContext(MarkdownLinkContext);
+  const plugins = useMemo(
+    () => (richPlugins ? { ...configuredPlugins, ...richPlugins } : configuredPlugins),
+    [richPlugins],
+  );
   const mermaidOptions = useMemo<NonNullable<StreamdownProps["mermaid"]>>(
     () => ({
       config: {
@@ -452,7 +513,7 @@ export function Markdown({
       mermaid={mermaidOptions}
       mode="streaming"
       parseMarkdownIntoBlocksFn={parseMarkdownIntoBlocks}
-      plugins={configuredPlugins}
+      plugins={plugins}
       skipHtml
     >
       {renderedSource}

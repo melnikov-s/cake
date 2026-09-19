@@ -23,7 +23,9 @@ test("stacks a Mermaid diagram's fullscreen view above a fullscreen reader", asy
     "  B --> C[Renderer]",
     "```",
     "",
-    "Each stage builds on the previous one.",
+    "Each stage builds on the previous one. The surrounding response is intentionally long enough to offer Cake's response reader so the diagram can be verified inside both transcript and fullscreen surfaces. ".repeat(
+      4,
+    ),
   ].join("\n");
   await Promise.all([
     mkdir(userData, { recursive: true }),

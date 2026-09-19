@@ -1,4 +1,4 @@
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToReadableStream, renderToStaticMarkup } from "react-dom/server";
 import { createStore, mount } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import {
@@ -32,12 +32,15 @@ describe("Cake-owned conversation components", () => {
     expect(html).toContain("<pre");
   });
 
-  it("renders math and recognizes Mermaid diagrams through the shared Markdown path", () => {
-    const html = renderToStaticMarkup(
-      <Markdown>{"$$\\nE = mc^2\\n$$\\n\\n```mermaid\\ngraph LR\\n  A --> B\\n```"}</Markdown>,
+  it("loads math and Mermaid rendering through the shared Markdown path", async () => {
+    const stream = await renderToReadableStream(
+      <Markdown>{"$$\nE = mc^2\n$$\n\n```mermaid\ngraph LR\n  A --> B\n```"}</Markdown>,
     );
+    await stream.allReady;
+    const html = await new Response(stream).text();
+
     expect(html).toContain("katex");
-    expect(html).toContain("graph LR");
+    expect(html).toContain('data-streamdown="mermaid-block"');
   });
 
   it("renders Cake reasoning, tool, and composer props without AI SDK types", () => {

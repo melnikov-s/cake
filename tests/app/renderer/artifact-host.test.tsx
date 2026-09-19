@@ -3,6 +3,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore } from "r-state-tree";
+import mermaid from "mermaid";
 
 vi.mock("mermaid", () => ({
   default: { initialize: vi.fn(), render: vi.fn(async () => ({ svg: "<svg role='img'></svg>" })) },
@@ -43,6 +44,35 @@ describe("ArtifactHost", () => {
     widgetRoot = undefined;
     widgets = undefined;
     container.remove();
+  });
+
+  it("loads Mermaid only when rendering a diagram artifact", async () => {
+    const artifact = record({
+      protocol: "cake.artifact/v1",
+      id: "diagram",
+      sessionId: "session",
+      revision: 1,
+      kind: "diagram",
+      payload: { source: "graph LR\nA --> B" },
+      fallback: { markdown: "A diagram" },
+      interaction: { mode: "present" },
+    });
+
+    act(() => root.render(<ArtifactHost record={artifact} />));
+    expect(container.textContent).toContain("Rendering diagram");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(mermaid.render).toHaveBeenCalledOnce();
+    expect(container.querySelector("iframe")).not.toBeNull();
+    expect(mermaid.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ securityLevel: "strict" }),
+    );
+    expect(mermaid.render).toHaveBeenCalledWith(
+      expect.stringContaining("cake-diagram-diagram"),
+      "graph LR\nA --> B",
+    );
   });
 
   it("sorts and filters table rows", () => {

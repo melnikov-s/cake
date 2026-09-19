@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useId, useState, type CSSProperties } from "react";
 import { observer } from "r-state-tree/react";
 import {
   Confirmation,
@@ -18,12 +18,16 @@ import {
   PlusIcon,
   TerminalIcon,
 } from "@/components/ui/icons";
+import { LoadingState } from "@/components/ui/loading-state";
 import { ResizeHandle } from "@/components/ui/resize-handle";
-import { TerminalView } from "@/components/ui/terminal-view";
 import { formatHotkey } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import type { TerminalStore } from "../stores/TerminalStore";
 import type { WorkingDirectoryRetirementStore } from "../stores/WorkingDirectoryRetirementStore";
+
+const TerminalView = lazy(() =>
+  import("@/components/ui/terminal-view").then((module) => ({ default: module.TerminalView })),
+);
 
 export const QuakeTerminal = observer(function QuakeTerminal({
   store,
@@ -157,14 +161,22 @@ export const QuakeTerminal = observer(function QuakeTerminal({
                 aria-hidden={!isActive}
               >
                 {entry.terminalId || entry.opening ? (
-                  <TerminalView
-                    active={isActive && store.open}
-                    onData={(data) => store.write(entry.key, data)}
-                    onNewTab={() => void store.newTab()}
-                    newTabHotkey={store.newTabHotkey}
-                    onResize={(cols, rows) => store.resize(entry.key, cols, rows)}
-                    subscribe={(listener) => store.subscribeData(entry.key, listener)}
-                  />
+                  <Suspense
+                    fallback={
+                      <div className="grid h-full place-items-center">
+                        <LoadingState label="Opening terminal" />
+                      </div>
+                    }
+                  >
+                    <TerminalView
+                      active={isActive && store.open}
+                      onData={(data) => store.write(entry.key, data)}
+                      onNewTab={() => void store.newTab()}
+                      newTabHotkey={store.newTabHotkey}
+                      onResize={(cols, rows) => store.resize(entry.key, cols, rows)}
+                      subscribe={(listener) => store.subscribeData(entry.key, listener)}
+                    />
+                  </Suspense>
                 ) : entry.error ? (
                   <div className="grid h-full place-items-center content-center gap-3 text-sm text-muted-foreground">
                     <span>{entry.error}</span>

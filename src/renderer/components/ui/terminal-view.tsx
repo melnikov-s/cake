@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
+import "@xterm/xterm/css/xterm.css";
 import { hotkeyFromKeyboardEvent } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 
@@ -37,8 +38,8 @@ export function TerminalView({
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal>(null);
   const fitRef = useRef<FitAddon>(null);
-  const callbacksRef = useRef({ onData, onNewTab, newTabHotkey, onResize, subscribe });
-  callbacksRef.current = { onData, onNewTab, newTabHotkey, onResize, subscribe };
+  const callbacksRef = useRef({ active, onData, onNewTab, newTabHotkey, onResize, subscribe });
+  callbacksRef.current = { active, onData, onNewTab, newTabHotkey, onResize, subscribe };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -86,7 +87,7 @@ export function TerminalView({
     const unsubscribe = callbacksRef.current.subscribe((data) => terminal.write(data));
     requestAnimationFrame(() => {
       fitTerminal();
-      terminal.focus();
+      if (callbacksRef.current.active) terminal.focus();
     });
     return () => {
       unsubscribe();

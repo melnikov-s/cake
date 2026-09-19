@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import mermaid from "mermaid";
 import { Callout } from "@/components/ui/callout";
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
 import { useResolvedColorTheme } from "../lib/resolved-color-theme";
@@ -16,18 +15,21 @@ export function DiagramArtifact({
     let active = true;
     setSvg(undefined);
     setError(undefined);
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: "strict",
-      theme: colorTheme === "dark" ? "dark" : "neutral",
-    });
-    void mermaid
-      .render(
-        `cake-diagram-${artifact.id.replace(/[^A-Za-z0-9]/g, "-")}-${artifact.revision}`,
-        artifact.payload.source,
-      )
+    void import("mermaid")
+      .then(({ default: mermaid }) => {
+        if (!active) return undefined;
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "strict",
+          theme: colorTheme === "dark" ? "dark" : "neutral",
+        });
+        return mermaid.render(
+          `cake-diagram-${artifact.id.replace(/[^A-Za-z0-9]/g, "-")}-${artifact.revision}`,
+          artifact.payload.source,
+        );
+      })
       .then((result) => {
-        if (active) setSvg(result.svg);
+        if (active && result) setSvg(result.svg);
       })
       .catch((reason) => {
         if (active) setError(reason instanceof Error ? reason.message : String(reason));

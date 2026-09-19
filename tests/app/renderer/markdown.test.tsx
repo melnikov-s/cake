@@ -116,14 +116,17 @@ describe("Markdown", () => {
     expect(streamdownProps.plugins?.renderers).toHaveLength(1);
   });
 
-  it("does not inject markers into unsupported, unlabelled, Mermaid, or indented literal code", () => {
+  it("does not inject markers into unsupported, unlabelled, Mermaid, or indented literal code", async () => {
     for (const source of [
       "```text\nhello",
       "```\nhello",
       "```mermaid\ngraph TD",
       "- item\n\n      ```ts\n      const literal = true;",
     ]) {
-      act(() => root.render(<Markdown streaming>{source}</Markdown>));
+      await act(async () => {
+        root.render(<Markdown streaming>{source}</Markdown>);
+        if (source.includes("mermaid")) await import("@streamdown/mermaid");
+      });
       expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(source);
     }
   });
@@ -153,10 +156,24 @@ describe("Markdown", () => {
 
     await act(async () => {
       document.documentElement.dataset.theme = "dark";
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await import("@streamdown/mermaid");
     });
 
+    const plugins = vi.mocked(Streamdown).mock.calls.at(-1)![0].plugins;
     expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].mermaid?.config?.theme).toBe("dark");
+    expect(plugins?.mermaid).toBeDefined();
+    expect(plugins?.math).toBeUndefined();
+  });
+
+  it("loads math without loading the Mermaid plugin", async () => {
+    await act(async () => {
+      root.render(<Markdown>{"$$\nE = mc^2\n$$"}</Markdown>);
+      await Promise.all([import("@streamdown/math"), import("katex/dist/katex.min.css")]);
+    });
+
+    const plugins = vi.mocked(Streamdown).mock.calls.at(-1)![0].plugins;
+    expect(plugins?.math).toBeDefined();
+    expect(plugins?.mermaid).toBeUndefined();
   });
 
   it("creates a safe highlighted fence even when source contains backticks", () => {
@@ -165,7 +182,7 @@ describe("Markdown", () => {
     );
   });
 
-  it("normalizes LaTeX math delimiters without changing code", () => {
+  it("normalizes LaTeX math delimiters without changing code", async () => {
     const source = [
       "Inline \\(x + y\\).",
       "",
@@ -180,7 +197,10 @@ describe("Markdown", () => {
       "````",
     ].join("\n");
 
-    act(() => root.render(<Markdown>{source}</Markdown>));
+    await act(async () => {
+      root.render(<Markdown>{source}</Markdown>);
+      await import("@streamdown/math");
+    });
 
     expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
       [
