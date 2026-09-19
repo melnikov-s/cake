@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { build, type Message, type Plugin } from "esbuild";
 
 export type InlineWidgetLanguage = "html" | "react";
-export type InlineWidgetCapability = "display" | "request";
+export type InlineWidgetCapability = "display" | "request" | "session-plugin";
 
 export interface CompiledInlineWidgetDocument {
   document: string;
@@ -95,6 +95,42 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
   addEventListener("error", (event) => send("error", event.error?.stack || event.message || "Widget runtime error"));
   addEventListener("unhandledrejection", (event) => send("error", event.reason?.stack || String(event.reason || "Unhandled widget rejection")));
   ${capability === "request" ? `globalThis.cakeRequest = Object.freeze({ submit: (value) => send("submit", value), cancel: () => send("cancel", true) });` : ""}
+  ${
+    capability === "session-plugin"
+      ? `
+  const listeners = new Set();
+  const pending = new Map();
+  let requestId = 0;
+  let snapshot = Object.freeze({ hasContext: false, pluginState: null, sharedState: Object.freeze({}) });
+  const publish = (next) => { snapshot = Object.freeze(next); for (const listener of listeners) listener(); };
+  addEventListener("message", (event) => {
+    const message = event.data;
+    if (!message || message.source !== "cake-session-plugin-host" || message.token !== token) return;
+    if (message.type === "context") publish({ hasContext: true, pluginState: message.value.pluginState, sharedState: Object.freeze(message.value.sharedState || {}) });
+    if (message.type === "call-result") {
+      const operation = pending.get(message.value.id);
+      if (!operation) return;
+      pending.delete(message.value.id);
+      if (message.value.ok) operation.resolve(message.value.result);
+      else operation.reject(new Error(message.value.error || "Cake operation failed"));
+    }
+  });
+  globalThis.__cakePluginBridge = Object.freeze({
+    cake: Object.freeze({
+      call(command, input = {}) {
+        return new Promise((resolve, reject) => {
+          const id = String(++requestId);
+          pending.set(id, { resolve, reject });
+          send("plugin-call", { id, command, input });
+        });
+      },
+      session: Object.freeze({ sendMessage: (text) => globalThis.__cakePluginBridge.cake.call("session.prompt", { text }) }),
+    }),
+    getSnapshot: () => snapshot,
+    subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+  });`
+      : ""
+  }
   addEventListener("DOMContentLoaded", () => {
     const startedAt = performance.now();
     let changedAt = startedAt;
@@ -150,17 +186,44 @@ function widgetModulePlugin(source: string): WidgetModulePlugin {
           path: "widget.tsx",
           namespace: "cake-widget",
         }));
+        builder.onResolve({ filter: /^@cake\/plugin-sdk$/ }, () => ({
+          path: "plugin-sdk.ts",
+          namespace: "cake-plugin-sdk",
+        }));
+        builder.onLoad({ filter: /.*/, namespace: "cake-plugin-sdk" }, () => ({
+          loader: "ts",
+          contents: `
+import { useCallback, useSyncExternalStore } from "react";
+const bridge = globalThis.__cakePluginBridge;
+if (!bridge) throw new Error("@cake/plugin-sdk is only available in Session Plugins");
+export function useCake() { return bridge.cake; }
+function useSnapshot() { return useSyncExternalStore(bridge.subscribe, bridge.getSnapshot, bridge.getSnapshot); }
+export function usePluginState(initialState = null) {
+  const snapshot = useSnapshot();
+  const value = snapshot.hasContext ? snapshot.pluginState : initialState;
+  const setValue = useCallback((next) => { const current = bridge.getSnapshot(); return bridge.cake.call("plugins.set-state", { state: typeof next === "function" ? next(current.hasContext ? current.pluginState : initialState) : next }); }, [initialState]);
+  return [value, setValue];
+}
+export function useSharedState(key, initialState = null) {
+  const snapshot = useSnapshot();
+  const value = Object.prototype.hasOwnProperty.call(snapshot.sharedState, key) ? snapshot.sharedState[key] : initialState;
+  const setValue = useCallback((next) => { const current = bridge.getSnapshot(); const previous = Object.prototype.hasOwnProperty.call(current.sharedState, key) ? current.sharedState[key] : initialState; return bridge.cake.call("plugins.set-shared-state", { key, value: typeof next === "function" ? next(previous) : next }); }, [initialState, key]);
+  return [value, setValue];
+}
+`,
+          resolveDir: cakeModuleResolveDirectory,
+        }));
         builder.onLoad({ filter: /.*/, namespace: "cake-widget" }, () => ({
           contents: source,
           loader: "tsx",
           resolveDir: process.cwd(),
         }));
         builder.onResolve({ filter: /.*/, namespace: "cake-widget" }, (args) => {
-          if (!inlineWidgetSharedModules.has(args.path)) {
+          if (!inlineWidgetSharedModules.has(args.path) && args.path !== "@cake/plugin-sdk") {
             return {
               errors: [
                 {
-                  text: `Inline React widgets may import ${approvedImportsDescription} only; received ${JSON.stringify(args.path)}`,
+                  text: `Inline React widgets may import ${approvedImportsDescription}${args.path === "@cake/plugin-sdk" ? "" : ", or @cake/plugin-sdk in Session Plugins"} only; received ${JSON.stringify(args.path)}`,
                 },
               ],
             };
@@ -208,6 +271,8 @@ const host = document.getElementById("cake-widget-root");
 if (typeof Widget !== "function") throw new Error("A cake-react widget must default-export one React component");
 createRoot(host).render(React.createElement(Widget, ${capability === "request" ? "globalThis.cakeRequest" : "undefined"}));
 `;
+  if (capability !== "session-plugin" && source.includes("@cake/plugin-sdk"))
+    throw new Error("@cake/plugin-sdk is available only to Session Plugins");
   const widgetModules = widgetModulePlugin(source);
   const result = await build({
     stdin: {

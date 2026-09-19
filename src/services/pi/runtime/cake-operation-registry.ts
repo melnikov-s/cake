@@ -13,7 +13,7 @@ const MAX_CAKE_OPERATION_IMAGES = 4;
 const MAX_CAKE_OPERATION_IMAGE_BASE64_LENGTH = Math.ceil(MAX_CAKE_OPERATION_IMAGE_BYTES / 3) * 4;
 
 export const cakeToolDescription =
-  'Cake capabilities are part of the response and are progressively disclosed by topic: app, sessions, context, models, interview, artifacts, widgets, vscode, browser, draw, subagents, notifications, and worktrees. Before defaulting to prose, consider whether the request may imply a Cake interaction. If a topic seems potentially relevant—even when unsure—request it to discover its current operations, exact schemas, and examples, then use it when it better fulfills the request. Users do not need to name the tool explicitly. Call with {} for the topic index; request a topic with {"command":"<topic>"}, not in input. Artifacts are durable linked records; use artifacts.list or artifacts.search to discover them and artifacts.resolve-reference for an exact readable path. Artifact content is not automatically in context.';
+  'Cake capabilities are part of the response and are progressively disclosed by topic: app, sessions, context, models, interview, artifacts, widgets, plugins, vscode, browser, draw, subagents, notifications, and worktrees. Before defaulting to prose, consider whether the request may imply a Cake interaction. If a topic seems potentially relevant—even when unsure—request it to discover its current operations, exact schemas, and examples, then use it when it better fulfills the request. Users do not need to name the tool explicitly. Call with {} for the topic index; request a topic with {"command":"<topic>"}, not in input. Artifacts are durable linked records; use artifacts.list or artifacts.search to discover them and artifacts.resolve-reference for an exact readable path. Artifact content is not automatically in context.';
 
 const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
   description: "Exact topic or operation command. Omit for the help index.",
@@ -110,6 +110,10 @@ const cakeTopics = [
     summary: "List, search, resolve, create, revise, restore, link, and unlink artifacts.",
   },
   { name: "widgets", summary: "Create interactive or highly visual presentations." },
+  {
+    name: "plugins",
+    summary: "Create and manage durable UI controls attached to the current session.",
+  },
   {
     name: "vscode",
     summary:

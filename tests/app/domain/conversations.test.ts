@@ -63,6 +63,7 @@ const makeHandle = (deliveries: string[], isStreaming: () => boolean): PiSession
   notifySubagentCompletion: () => Effect.void,
   reload: () => Effect.void,
   publishSessionChanged: () => Effect.void,
+  callCakeOperation: () => Effect.succeed(null),
   dispatchExtensionCompanionAction: () => Effect.void,
 });
 

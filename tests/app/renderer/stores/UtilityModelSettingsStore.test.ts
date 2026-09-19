@@ -11,6 +11,8 @@ const applicationState = (utilityModel?: UtilityModel): ApplicationState => ({
   unreadSessionIds: [],
   trustedProjectPaths: [],
   fastModeSessionIds: [],
+  sessionPlugins: [],
+  sessionPluginSharedState: [],
   modelPresets: [],
   utilityModel,
 });

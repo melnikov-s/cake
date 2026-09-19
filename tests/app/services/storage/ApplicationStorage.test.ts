@@ -155,7 +155,7 @@ describe("ApplicationStorage", () => {
   );
 
   it.effect("loads a current version envelope", () =>
-    withStorage({ [documentPath]: JSON.stringify({ version: 3, data: current }) }, (storage) =>
+    withStorage({ [documentPath]: JSON.stringify({ version: 4, data: current }) }, (storage) =>
       Effect.gen(function* () {
         const loaded = yield* storage.load();
         assert.strictEqual(loaded.source, "current");
@@ -168,7 +168,7 @@ describe("ApplicationStorage", () => {
     withStorage(
       {
         [documentPath]: JSON.stringify({
-          version: 3,
+          version: 4,
           data: {
             ...current,
             projects: [
@@ -207,7 +207,7 @@ describe("ApplicationStorage", () => {
             const persistedText = controls.files.get(documentPath);
             assert.ok(persistedText);
             const persisted = JSON.parse(persistedText);
-            assert.strictEqual(persisted.version, 3);
+            assert.strictEqual(persisted.version, 4);
             assert.ok(!("schemaVersion" in persisted.data));
           }),
         );
@@ -267,10 +267,10 @@ describe("ApplicationStorage", () => {
         ["{", ApplicationMalformedDocumentError],
         [JSON.stringify({ nope: true }), ApplicationMalformedDocumentError],
         [
-          JSON.stringify({ version: 3, data: { ...current, projects: "invalid" } }),
+          JSON.stringify({ version: 4, data: { ...current, projects: "invalid" } }),
           ApplicationDecodeError,
         ],
-        [JSON.stringify({ version: 4, data: current }), ApplicationUnsupportedVersionError],
+        [JSON.stringify({ version: 5, data: current }), ApplicationUnsupportedVersionError],
         [
           JSON.stringify({ version: 0, data: { schemaVersion: 1, projects: "invalid" } }),
           ApplicationMigrationError,

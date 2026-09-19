@@ -63,6 +63,24 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.application.getState()),
           options,
         ),
+      setSessionPluginState: (input, options) =>
+        run(
+          "application.setSessionPluginState",
+          withClient((client) => client.application.setSessionPluginState(input)),
+          options,
+        ),
+      setSessionPluginSharedState: (input, options) =>
+        run(
+          "application.setSessionPluginSharedState",
+          withClient((client) => client.application.setSessionPluginSharedState(input)),
+          options,
+        ),
+      deleteSessionPlugin: (input, options) =>
+        run(
+          "application.deleteSessionPlugin",
+          withClient((client) => client.application.deleteSessionPlugin(input)),
+          options,
+        ),
     },
     windowState: {
       load: (options) =>
@@ -306,6 +324,12 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
         run(
           "projectSessions.dispatchExtensionCompanionAction",
           withClient((client) => client.projectSessions.dispatchExtensionCompanionAction(input)),
+          options,
+        ),
+      callCakeOperation: (input, options) =>
+        run(
+          "projectSessions.callCakeOperation",
+          withClient((client) => client.projectSessions.callCakeOperation(input)),
           options,
         ),
       toolCompact: (input, options) =>

@@ -2,6 +2,7 @@ import { Context, Effect, Layer, type Schema, type Stream } from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 import type { RpcClientError } from "effect/unstable/rpc";
 import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
+import type { SessionPluginMutationError } from "../protocol/ApplicationRpc";
 import type { ArtifactError } from "../../domain/artifacts/artifact-data";
 import type { ArtifactNotFound, ArtifactNotLinked } from "../../domain/artifacts/artifactWorkflows";
 import type {
@@ -30,6 +31,7 @@ import type { PiSettingsError } from "../../services/pi/PiSettings";
 import type { SessionFamilyStorageError } from "../../services/storage/SessionFamilyStorage";
 import type { ElectronError } from "../../services/electron/Electron";
 import type { InlineWidgetError } from "../../services/widgets/InlineWidgets";
+import type { JsonObject, JsonValue } from "../json-contract";
 import type { TerminalError } from "../../services/terminal/Terminal";
 import type {
   ResolvedManagedWorktreeCleanupPlan,
@@ -199,6 +201,20 @@ export interface CakeIpcClientService {
       AgentAvailabilitySnapshot,
       TransportError
     >;
+    readonly setSessionPluginState: (input: {
+      readonly sessionId: string;
+      readonly pluginId: string;
+      readonly state: Schema.Schema.Type<typeof Schema.Json>;
+    }) => Effect.Effect<void, SessionPluginMutationError | TransportError>;
+    readonly setSessionPluginSharedState: (input: {
+      readonly sessionId: string;
+      readonly key: string;
+      readonly value: Schema.Schema.Type<typeof Schema.Json>;
+    }) => Effect.Effect<void, SessionPluginMutationError | TransportError>;
+    readonly deleteSessionPlugin: (input: {
+      readonly sessionId: string;
+      readonly pluginId: string;
+    }) => Effect.Effect<void, SessionPluginMutationError | TransportError>;
   };
   readonly windowState: {
     readonly load: () => Effect.Effect<
@@ -474,6 +490,9 @@ export interface CakeIpcClientService {
     readonly dispatchExtensionCompanionAction: (
       input: ProjectSessionCompanionActionInput,
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
+    readonly callCakeOperation: (
+      input: ProjectSessionTarget & { readonly command: string; readonly input: JsonObject },
+    ) => Effect.Effect<JsonValue, ProjectSessionError | TransportError>;
     readonly toolCompact: (
       input: ProjectSessionTarget & {
         readonly entryId: string;
@@ -768,6 +787,15 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         observeState: () => client("application.observeState", undefined),
         observeAgentAvailability: () => client("application.observeAgentAvailability", undefined),
+        setSessionPluginState: Effect.fn("CakeIpcClient.application.setSessionPluginState")(
+          (input) => client("application.setSessionPluginState", input),
+        ),
+        setSessionPluginSharedState: Effect.fn(
+          "CakeIpcClient.application.setSessionPluginSharedState",
+        )((input) => client("application.setSessionPluginSharedState", input)),
+        deleteSessionPlugin: Effect.fn("CakeIpcClient.application.deleteSessionPlugin")((input) =>
+          client("application.deleteSessionPlugin", input),
+        ),
       },
       windowState: {
         load: Effect.fn("CakeIpcClient.windowState.load")(() =>
@@ -987,6 +1015,9 @@ export const CakeIpcClientLive = Layer.effect(
         dispatchExtensionCompanionAction: Effect.fn(
           "CakeIpcClient.projectSessions.dispatchExtensionCompanionAction",
         )((input) => client("projectSessions.dispatchExtensionCompanionAction", input)),
+        callCakeOperation: Effect.fn("CakeIpcClient.projectSessions.callCakeOperation")((input) =>
+          client("projectSessions.callCakeOperation", input),
+        ),
         toolCompact: Effect.fn("CakeIpcClient.projectSessions.toolCompact")((input) =>
           client("projectSessions.toolCompact", input),
         ),

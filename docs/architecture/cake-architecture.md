@@ -58,6 +58,7 @@ Every durable concept has one authority.
 | Reviews and inline discussions                                                | Cake workflow services, with Pi sidecar-session references where relevant              | Persist anchors and workflow metadata without copying Pi transcripts                           |
 | Substantial, reusable artifacts                                               | Cake global artifact-lineage repository plus explicit session/family links             | Persist immutable revisions; project linked lineages into session accessory panels             |
 | Blocking structured requests                                                  | `cake.request/v1` plus the active Pi tool call                                         | Render one inline interaction and return one validated value                                   |
+| Session Plugins                                                               | Cake application metadata, keyed by Cake Session and plugin ID                         | Persist generated source and JSON state; mount sandboxed controls in semantic session slots    |
 
 Do not introduce a second transcript database, reconstruct Pi state into a
 competing domain model, or mutate Pi JSONL with ad hoc file operations. A session
@@ -537,8 +538,15 @@ The window Store hierarchy mirrors the product surfaces:
   autosaves and user pointer edits, then flushes the final scene before reporting success.
   Excalidraw owns the editable shape graph; Cake does not duplicate it in renderer Models. Main owns
   saved board documents and session association. Boards autosave independently
-  of artifact publication, and switching presentation does not create another conversation. Full
-  artifacts are explicit substantial or reusable deliverables, not a presentation selected from syntax: ordinary Markdown, including
+  of artifact publication, and switching presentation does not create another conversation. Session
+  Plugins are a separate durable session-bound UI concept: generated React runs in the opaque-origin
+  widget sandbox, mounts in the existing `composer.above` semantic slot, and stacks with installed
+  extension companions. `SessionPluginStore` projects their Cake-owned application metadata.
+  Plugin-private and named session-shared JSON state survive remounts and restarts, while ordinary
+  React state remains mount-local. The sandbox's token-bound Plugin SDK routes `useCake()` calls
+  through the owning Project Session's actual Cake operation registry and exposes focused
+  `usePluginState()` and `useSharedState(key)` hooks; it does not expose Node, Electron, parent DOM,
+  credentials, or direct network access. Full artifacts are explicit substantial or reusable deliverables, not a presentation selected from syntax: ordinary Markdown, including
   Mermaid and small tables, stays inline. Artifact identity is a global Cake-owned lineage, while sessions and Session Families receive
   explicit follow-latest or exact-revision links. Links do not copy payloads, confer ownership, or add Pi transcript entries. A session
   effectively linked through either scope may publish the next immutable full snapshot with latest-revision compare-and-swap. Architecture diagrams default to native editable Draw boards through

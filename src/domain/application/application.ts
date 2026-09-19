@@ -8,6 +8,7 @@ import {
   type ProjectWorkflow,
   type SessionLabelMutation,
   type ProjectWorkflowSessionDetails,
+  type SessionPlugin,
   type UtilityModel,
   validateSessionLabelName,
 } from "./application-data";
@@ -398,6 +399,73 @@ export const setSessionUnread = Effect.fn("Application.setSessionUnread")(functi
   }));
 });
 
+export const upsertSessionPlugin = Effect.fn("Application.upsertSessionPlugin")(function* (
+  plugin: SessionPlugin,
+) {
+  return yield* update((current) => {
+    const existing = current.sessionPlugins.findIndex(
+      (candidate) => candidate.sessionId === plugin.sessionId && candidate.id === plugin.id,
+    );
+    return {
+      ...current,
+      sessionPlugins:
+        existing < 0
+          ? [...current.sessionPlugins, plugin]
+          : current.sessionPlugins.map((candidate, index) =>
+              index === existing ? { ...plugin, createdAt: candidate.createdAt } : candidate,
+            ),
+    };
+  });
+});
+
+export const setSessionPluginState = Effect.fn("Application.setSessionPluginState")(function* (
+  sessionId: string,
+  pluginId: string,
+  state: typeof Schema.Json.Type,
+) {
+  const updatedAt = DateTime.formatIso(yield* DateTime.now);
+  return yield* update((current) => ({
+    ...current,
+    sessionPlugins: current.sessionPlugins.map((plugin) =>
+      plugin.sessionId === sessionId && plugin.id === pluginId
+        ? { ...plugin, state, updatedAt }
+        : plugin,
+    ),
+  }));
+});
+
+export const deleteSessionPlugin = Effect.fn("Application.deleteSessionPlugin")(function* (
+  sessionId: string,
+  pluginId: string,
+) {
+  return yield* update((current) => ({
+    ...current,
+    sessionPlugins: current.sessionPlugins.filter(
+      (plugin) => plugin.sessionId !== sessionId || plugin.id !== pluginId,
+    ),
+  }));
+});
+
+export const setSessionPluginSharedState = Effect.fn("Application.setSessionPluginSharedState")(
+  function* (sessionId: string, key: string, value: typeof Schema.Json.Type) {
+    return yield* update((current) => {
+      const existing = current.sessionPluginSharedState.findIndex(
+        (entry) => entry.sessionId === sessionId && entry.key === key,
+      );
+      const entry = { sessionId, key, value };
+      return {
+        ...current,
+        sessionPluginSharedState:
+          existing < 0
+            ? [...current.sessionPluginSharedState, entry]
+            : current.sessionPluginSharedState.map((candidate, index) =>
+                index === existing ? entry : candidate,
+              ),
+      };
+    });
+  },
+);
+
 export const forgetProjectSessions = Effect.fn("Application.forgetProjectSessions")(function* (
   sessionIds: ReadonlyArray<string>,
 ) {
@@ -406,6 +474,10 @@ export const forgetProjectSessions = Effect.fn("Application.forgetProjectSession
     ...current,
     unreadSessionIds: current.unreadSessionIds.filter((id) => !forgotten.has(id)),
     fastModeSessionIds: current.fastModeSessionIds.filter((id) => !forgotten.has(id)),
+    sessionPlugins: current.sessionPlugins.filter((plugin) => !forgotten.has(plugin.sessionId)),
+    sessionPluginSharedState: current.sessionPluginSharedState.filter(
+      (entry) => !forgotten.has(entry.sessionId),
+    ),
     projects: current.projects.map((project) =>
       project.workflow
         ? {

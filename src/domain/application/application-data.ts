@@ -25,6 +25,29 @@ export const ModelPreset = Schema.Struct({
   fastMode: Schema.Boolean,
 });
 
+/** Durable generated UI mounted into a semantic slot for one Cake Session. */
+export const SessionPlugin = Schema.Struct({
+  sessionId: nonEmptyBoundedString(256),
+  id: nonEmptyBoundedString(256),
+  title: nonEmptyBoundedString(512),
+  slot: Schema.Literal("composer.above"),
+  source: nonEmptyBoundedString(1_048_576),
+  state: Schema.Json,
+  generationSessionId: Schema.optionalKey(nonEmptyBoundedString(256)),
+  createdAt: nonEmptyBoundedString(64),
+  updatedAt: nonEmptyBoundedString(64),
+});
+export interface SessionPlugin extends Schema.Schema.Type<typeof SessionPlugin> {}
+
+export const SessionPluginSharedState = Schema.Struct({
+  sessionId: nonEmptyBoundedString(256),
+  key: nonEmptyBoundedString(256),
+  value: Schema.Json,
+});
+export interface SessionPluginSharedState extends Schema.Schema.Type<
+  typeof SessionPluginSharedState
+> {}
+
 const IsoTimestamp = Schema.String.check(
   Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/),
 );
@@ -194,6 +217,8 @@ const RendererApplicationFields = {
   vscodeServerPath: Schema.optionalKey(boundedString(4_096)),
   modelPresets: boundedArray(ModelPreset, 100),
   defaultModelPresetId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+  sessionPlugins: boundedArray(SessionPlugin, 500),
+  sessionPluginSharedState: boundedArray(SessionPluginSharedState, 2_000),
 };
 
 const CurrentApplicationState = Schema.Struct(RendererApplicationFields).check(
@@ -219,7 +244,13 @@ const CurrentApplicationState = Schema.Struct(RendererApplicationFields).check(
             )
           );
         }) &&
-        (state.defaultModelPresetId === undefined || presetIds.includes(state.defaultModelPresetId))
+        (state.defaultModelPresetId === undefined ||
+          presetIds.includes(state.defaultModelPresetId)) &&
+        new Set(state.sessionPlugins.map((plugin) => `${plugin.sessionId}\u0000${plugin.id}`))
+          .size === state.sessionPlugins.length &&
+        new Set(
+          state.sessionPluginSharedState.map((entry) => `${entry.sessionId}\u0000${entry.key}`),
+        ).size === state.sessionPluginSharedState.length
       );
     },
     {
@@ -257,4 +288,6 @@ export const defaultApplicationState = (): ApplicationState => ({
   trustedProjectPaths: [],
   fastModeSessionIds: [],
   modelPresets: [],
+  sessionPlugins: [],
+  sessionPluginSharedState: [],
 });

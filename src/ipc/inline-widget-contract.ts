@@ -1,7 +1,11 @@
 import { Schema } from "effect";
 
 export const inlineWidgetLanguageSchema = Schema.Literals(["html", "react"]);
-export const inlineWidgetCapabilitySchema = Schema.Literals(["display", "request"]);
+export const inlineWidgetCapabilitySchema = Schema.Literals([
+  "display",
+  "request",
+  "session-plugin",
+]);
 export const inlineWidgetSourceSchema = Schema.String.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(1_048_576),

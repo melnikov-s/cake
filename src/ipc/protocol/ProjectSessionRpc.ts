@@ -12,6 +12,7 @@ import {
   ProjectSessionUpdate,
   WorkingDirectoryResolutionResult,
 } from "../../domain/project-sessions/project-session-data";
+import { jsonObjectSchema, jsonValueSchema } from "../json-contract";
 import { SESSION_TITLE_MAX_LENGTH } from "../session-contract";
 
 export const ProjectSessionRpc = RpcGroup.make(
@@ -57,6 +58,15 @@ export const ProjectSessionRpc = RpcGroup.make(
   }),
   Rpc.make("projectSessions.dispatchExtensionCompanionAction", {
     payload: ProjectSessionCompanionActionInput,
+    error: ProjectSessionError,
+  }),
+  Rpc.make("projectSessions.callCakeOperation", {
+    payload: {
+      ...ProjectSessionTarget.fields,
+      command: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+      input: jsonObjectSchema,
+    },
+    success: jsonValueSchema,
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.toolCompact", {

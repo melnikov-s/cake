@@ -43,6 +43,7 @@ import type { ResolvedAgentArtifact } from "./cake-artifact-operations";
 import type { VscodeControl } from "./cake-vscode-operations";
 import type { BrowserControl } from "./cake-browser-operations";
 import type { WorktreeLandingControl } from "./cake-worktree-operations";
+import type { SessionPluginControl } from "./cake-session-plugin-operations";
 import type { CakeDrawControl } from "./cake-draw-operations";
 import type { ProjectSessionPresentationMode } from "../../../domain/project-sessions/project-session-presentation";
 import { assertSessionPath } from "./session-path";
@@ -121,6 +122,7 @@ export interface CakeRuntimeOptions {
   generateInlineWidget?(
     input: InlineWidgetGenerationRequest,
   ): Promise<InlineWidgetGenerationResult>;
+  sessionPluginControl?: Omit<SessionPluginControl, "generate">;
   reviseInlineWidget?(input: InlineWidgetRevisionRequest): Promise<InlineWidgetGenerationResult>;
   resolveArtifact?(reference: string): Promise<ResolvedAgentArtifact>;
   hasLinkedArtifacts?(): Promise<boolean>;
@@ -320,6 +322,7 @@ export interface CakeRuntime {
   syncFastMode?(): Promise<void>;
   setPiSetting(update: PiSettingUpdate): Promise<void>;
   reload?(): Promise<void>;
+  callCakeOperation?(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
   dispatchExtensionCompanionAction?(id: string, action: string, value: JsonValue): Promise<void>;
   refreshModels?(): Promise<void>;
   login(provider: string, authType: "api_key" | "oauth"): Promise<void>;
@@ -814,6 +817,27 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     syncFastMode: configuration.syncFastMode,
     setPiSetting: configuration.setPiSetting,
     reload: resources.requestReload,
+    async callCakeOperation(command, input, signal) {
+      if (disposed) throw new Error("The Cake runtime has been disposed");
+      const registry = capabilities.operationRegistry.current;
+      if (!registry) throw new Error("Cake operations are unavailable");
+      const result = await registry.invoke(
+        { command, input },
+        {
+          signal,
+          toolCallId: `session-plugin:${crypto.randomUUID()}`,
+          runtime: session,
+        },
+      );
+      if (
+        typeof result.details === "object" &&
+        result.details !== null &&
+        !Array.isArray(result.details) &&
+        "result" in result.details
+      )
+        return result.details.result;
+      return result.details;
+    },
     dispatchExtensionCompanionAction: resources.dispatchCompanionAction,
     refreshModels: configuration.refreshModels,
     login: configuration.login,

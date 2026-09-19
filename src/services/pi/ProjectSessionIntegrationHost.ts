@@ -365,6 +365,7 @@ export class ProjectSessionIntegrationHost {
       brief: input.brief,
       data: input.data,
       fallback: input.fallback,
+      surface: input.surface ?? "widget",
     });
     return this.reviewWidget(input, context, () =>
       this.runWidgetGeneration({
@@ -416,7 +417,13 @@ export class ProjectSessionIntegrationHost {
       requireVisionModel: (model) => fromPromise(() => this.requireVisionModel(model)),
       generate: () => fromPromise(() => generate()),
       compile: (source) =>
-        fromPromise(() => this.compileWidget("react", source, "display")).pipe(
+        fromPromise(() =>
+          this.compileWidget(
+            "react",
+            source,
+            input.surface === "session-plugin" ? "session-plugin" : "display",
+          ),
+        ).pipe(
           Effect.map((compiled) => {
             const widget = publishInlineWidget(compiled);
             return {
@@ -432,7 +439,7 @@ export class ProjectSessionIntegrationHost {
             agentDir: this.agentDir,
             sessionDir: this.widgetSessionDir,
             language: "react",
-            capability: "display",
+            capability: input.surface === "session-plugin" ? "session-plugin" : "display",
             source,
             context,
             diagnostic,

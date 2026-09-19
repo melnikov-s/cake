@@ -19,7 +19,7 @@ import type {
   PiQueuedMessages,
 } from "./conversation-data";
 import type { ArtifactPointer } from "../../ipc/artifact-contract";
-import { jsonValueSchema } from "../../ipc/json-contract";
+import { jsonValueSchema, type JsonObject, type JsonValue } from "../../ipc/json-contract";
 import type {
   Attachment,
   ChatConfiguration,
@@ -210,6 +210,10 @@ export interface PiSessionHandle {
   ) => Effect.Effect<void, PiSessionError>;
   readonly reload: () => Effect.Effect<void, PiSessionError>;
   readonly publishSessionChanged: () => Effect.Effect<void, PiSessionError>;
+  readonly callCakeOperation: (
+    command: string,
+    input: JsonObject,
+  ) => Effect.Effect<JsonValue, PiSessionError>;
   readonly dispatchExtensionCompanionAction: (
     id: string,
     action: string,
@@ -389,6 +393,11 @@ const validateProfile = Effect.fn("PiSessions.validateProfile")(function* (
 
 const runtimeOperation = <A>(operation: string, evaluate: () => Promise<A>) =>
   Effect.tryPromise({ try: evaluate, catch: (cause) => cause }).pipe(sessionError(operation));
+
+const cancellableRuntimeOperation = <A>(
+  operation: string,
+  evaluate: (signal: AbortSignal) => Promise<A>,
+) => Effect.tryPromise({ try: evaluate, catch: (cause) => cause }).pipe(sessionError(operation));
 
 export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
   Layer.effect(
@@ -843,6 +852,20 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             (key.options.onSessionChanged ?? Effect.void).pipe(
               sessionError("publishSessionChanged"),
             ),
+          callCakeOperation: (command, input) =>
+            shared.runtime.callCakeOperation
+              ? cancellableRuntimeOperation(
+                  "callCakeOperation",
+                  (signal) =>
+                    shared.runtime.callCakeOperation?.(command, input, signal) ??
+                    Promise.reject(new Error("Cake operations are unavailable")),
+                )
+              : Effect.fail(
+                  new PiSessionError({
+                    operation: "callCakeOperation",
+                    message: "Cake operations are unavailable",
+                  }),
+                ),
           dispatchExtensionCompanionAction: (id, action, value) =>
             shared.runtime.dispatchExtensionCompanionAction
               ? call(

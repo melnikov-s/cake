@@ -142,6 +142,8 @@ function mountStore(initial?: Projection, models?: ModelOption[]) {
     unreadSessionIds: [],
     trustedProjectPaths: [],
     fastModeSessionIds: [],
+    sessionPlugins: [],
+    sessionPluginSharedState: [],
     modelPresets: initial?.presets ?? [],
     defaultModelPresetId: initial?.defaultPresetId,
   } satisfies ApplicationState);
@@ -182,6 +184,8 @@ describe("ModelPresetSettingsStore", () => {
       unreadSessionIds: [],
       trustedProjectPaths: [],
       fastModeSessionIds: [],
+      sessionPlugins: [],
+      sessionPluginSharedState: [],
       modelPresets: [replacement],
       defaultModelPresetId: replacement.id,
     });
@@ -335,6 +339,8 @@ describe("ModelPresetSettingsStore", () => {
       unreadSessionIds: [],
       trustedProjectPaths: [],
       fastModeSessionIds: [],
+      sessionPlugins: [],
+      sessionPluginSharedState: [],
       utilityModel: { provider: "openai", modelId: "utility", thinkingLevel: "off" },
       modelPresets: [first, second],
     });
@@ -361,6 +367,8 @@ describe("ModelPresetSettingsStore", () => {
       unreadSessionIds: [],
       trustedProjectPaths: [],
       fastModeSessionIds: [],
+      sessionPlugins: [],
+      sessionPluginSharedState: [],
       modelPresets: [external],
     });
     expect(store.presets[0]?.name).toBe("Local edit");

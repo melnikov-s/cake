@@ -63,6 +63,8 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
   },
   "projectSessions.dispatchExtensionCompanionAction": (input) =>
     projectSessionOperations.dispatchExtensionCompanionAction(input),
+  "projectSessions.callCakeOperation": ({ command, input, ...target }) =>
+    projectSessionOperations.callCakeOperation(target, command, input),
   "projectSessions.toolCompact": ({ entryId, prompt, ...target }) => {
     const input: Parameters<typeof projectSessionContinuations.toolCompact>[0] = {
       target,

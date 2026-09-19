@@ -43,4 +43,22 @@ describe("inline widget service", () => {
     expect(html.document).toContain("globalThis.cakeRequest");
     expect(html.document).toContain('send("submit", value)');
   });
+
+  it("bundles the Cake Plugin SDK only for Session Plugins", async () => {
+    const source = `
+      import { useCake, usePluginState, useSharedState } from "@cake/plugin-sdk";
+      export default function Tour() {
+        const cake = useCake();
+        const [state] = usePluginState({ current: 1 });
+        const [shared] = useSharedState("tour", { total: 3 });
+        return <button onClick={() => cake.session.sendMessage("Next")}>{state.current} / {shared.total}</button>;
+      }
+    `;
+    const compiled = await compileInlineWidget("react", source, "session-plugin");
+    expect(compiled.document).toContain("__cakePluginBridge");
+    expect(compiled.document).toContain("plugin-call");
+    await expect(compileInlineWidget("react", source, "display")).rejects.toThrow(
+      "available only to Session Plugins",
+    );
+  });
 });

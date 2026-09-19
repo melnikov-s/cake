@@ -332,3 +332,19 @@ here.
 Executable code loaded by Pi and bound to a Pi Session Runtime. Its executable
 lifecycle belongs to `PiSessions`; discovery and diagnostics belong to
 `PiAgentResources`.
+
+### Session Plugin
+
+A generated React control surface durably bound to one Cake Session and mounted
+in a named semantic slot whenever that session is shown. Its definition,
+generated source, private JSON state, and session-shared named JSON state survive
+turns, unmounting, window closure, and application restart. Ordinary React state
+such as `useState` belongs only to one mounted iframe and resets on unmount.
+
+Session Plugins execute in Cake's opaque-origin widget sandbox. The host-bound
+`useCake()` capability invokes the owning session's actual Cake operation
+registry; `usePluginState()` addresses the current plugin's durable private
+state; and `useSharedState(key)` addresses durable named state shared only among
+plugins in the same session. Session Plugin data is removed on explicit plugin
+deletion or permanent deletion of the owning Cake Session, not on resolution or
+runtime release.

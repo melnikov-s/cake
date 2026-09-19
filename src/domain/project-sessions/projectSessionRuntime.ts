@@ -3,8 +3,11 @@ import * as projectSessionLocations from "./projectSessionLocations";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
 import { Effect, Option, Schema, Schedule } from "effect";
 import {
+  deleteSessionPlugin,
   setProjectSessionLabelsIfUnlabelled,
   setSessionFastMode,
+  setSessionPluginState,
+  upsertSessionPlugin,
 } from "../application/application";
 import {
   crossSessionContextSnapshot,
@@ -302,6 +305,13 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           );
       },
       modelPresets,
+      sessionPluginControl: {
+        sessionId,
+        present: (plugin) => run(upsertSessionPlugin(plugin)).then(() => undefined),
+        setState: (pluginId, state) =>
+          run(setSessionPluginState(sessionId, pluginId, state)).then(() => undefined),
+        delete: (pluginId) => run(deleteSessionPlugin(sessionId, pluginId)).then(() => undefined),
+      },
       fastMode: {
         get: () => application.snapshot().fastModeSessionIds.includes(sessionId),
         set: (enabled) => run(setSessionFastMode(sessionId, enabled)).then(() => undefined),

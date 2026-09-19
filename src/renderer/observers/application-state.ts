@@ -5,7 +5,10 @@ import type { RootStore } from "../stores/RootStore";
 export const observeApplicationState = (runtime: Runtime, root: RootStore) =>
   runtime.observe(
     (client) => client.application.observeState(),
-    (projection) => root.settingsStore.applyApplicationState(projection.revision, projection.state),
+    (projection) => {
+      root.settingsStore.applyApplicationState(projection.revision, projection.state);
+      root.sessionPluginStore.applyApplicationState(projection.revision, projection.state);
+    },
     {
       reportFailure: (error) =>
         root.projectWorkbenchStore.setError(error, "Application state observation"),

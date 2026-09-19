@@ -2,8 +2,10 @@ import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "eff
 import {
   ApplicationState,
   ModelPreset,
+  ProjectRecord,
   ProjectSettings,
   ProjectWorkflowSessionDetails,
+  SessionLabel,
   SessionLabelColor,
   UtilityModel,
   defaultApplicationState,
@@ -11,7 +13,7 @@ import {
 } from "../../domain/application/application-data";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const APPLICATION_DOCUMENT_VERSION = 3;
+const APPLICATION_DOCUMENT_VERSION = 4;
 export const APPLICATION_DOCUMENT_NAME = "application.json";
 
 class ApplicationReadError extends Schema.TaggedError<ApplicationReadError>()(
@@ -141,6 +143,19 @@ const ApplicationStateV2 = Schema.Struct({
 });
 type ApplicationStateV2 = typeof ApplicationStateV2.Type;
 
+const ApplicationStateV3 = Schema.Struct({
+  projects: Schema.Array(ProjectRecord),
+  globalSessionLabels: Schema.Array(SessionLabel),
+  unreadSessionIds: Schema.Array(Schema.String),
+  trustedProjectPaths: Schema.Array(Schema.String),
+  fastModeSessionIds: Schema.Array(Schema.String),
+  utilityModel: Schema.optionalKey(UtilityModel),
+  vscodeServerPath: Schema.optionalKey(Schema.String),
+  modelPresets: Schema.Array(ModelPreset),
+  defaultModelPresetId: Schema.optionalKey(Schema.String),
+});
+type ApplicationStateV3 = typeof ApplicationStateV3.Type;
+
 const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
 
@@ -240,6 +255,11 @@ const migrateVersionTwo = Effect.fn("ApplicationStorage.migrateVersionTwo")((
   );
   return Effect.succeed({ ...rest, projects, globalSessionLabels });
 });
+
+const migrateVersionThree = Effect.fn("ApplicationStorage.migrateVersionThree")(
+  (state: ApplicationStateV3) =>
+    Effect.succeed({ ...state, sessionPlugins: [], sessionPluginSharedState: [] }),
+);
 
 const writeError = (stage: AtomicFileStage, cause: unknown) =>
   new ApplicationWriteError({ stage, message: messageOf(cause) });
@@ -350,6 +370,17 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
               ),
             );
             data = yield* migrateVersionTwo(previous);
+          } else if (version === 3) {
+            const previous = yield* Schema.decodeUnknownEffect(ApplicationStateV3)(data).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ApplicationMigrationError({
+                    fromVersion: 3,
+                    message: cause.message,
+                  }),
+              ),
+            );
+            data = yield* migrateVersionThree(previous);
           } else
             return yield* new ApplicationMigrationError({
               fromVersion: version,

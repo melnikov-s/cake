@@ -4,7 +4,7 @@ import { decodeArtifactLineageId } from "../../domain/artifacts/artifact-lineage
 import { defaultProjectSettings } from "../../domain/application/application-data";
 import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
 import { crossSessionContextSnapshot } from "../../domain/conversations/cross-session-coordination";
-import type { JsonValue } from "../../ipc/json-contract";
+import type { JsonObject, JsonValue } from "../../ipc/json-contract";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import type { Client } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
@@ -21,6 +21,7 @@ import type { AgentControlSource, AppControlHost } from "../app-control/AppContr
 import { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { AppShellStore } from "./AppShellStore";
 import { InlineWidgetStore } from "./InlineWidgetStore";
+import { SessionPluginStore } from "./SessionPluginStore";
 import { SessionCatalogStore } from "./SessionCatalogStore";
 import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { ApplicationControlStore } from "./ApplicationControlStore";
@@ -108,6 +109,11 @@ export class RootStore extends Store<{
   @child
   get inlineWidgetStore(): InlineWidgetStore {
     return createStore(InlineWidgetStore);
+  }
+
+  @child
+  get sessionPluginStore(): SessionPluginStore {
+    return createStore(SessionPluginStore);
   }
 
   @child
@@ -1144,6 +1150,54 @@ export class RootStore extends Store<{
       reportCakeChatError: (error, context) =>
         this.cakeChatCollectionStore.reportError(error, context),
     });
+  }
+
+  async invokeSessionPluginOperation(
+    sessionId: string,
+    pluginId: string,
+    command: string,
+    input: JsonObject,
+  ): Promise<JsonValue> {
+    if (command === "session.prompt") {
+      const text = String(input.text ?? "").trim();
+      if (!text) throw new Error("session.prompt requires non-empty text");
+      await this.prepareProjectSessionChat(sessionId);
+      await this.client.sessionChats.prompt(
+        {
+          sessionId,
+          text,
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+        },
+        { signal: this.signal },
+      );
+      return { accepted: true };
+    }
+    if (command === "plugins.set-state") {
+      if (!("state" in input)) throw new Error("plugins.set-state requires state");
+      await this.sessionPluginStore.setPluginState(sessionId, pluginId, input.state);
+      return { updated: true };
+    }
+    if (command === "plugins.set-shared-state") {
+      const key = String(input.key ?? "").trim();
+      if (!key || !("value" in input))
+        throw new Error("plugins.set-shared-state requires key and value");
+      await this.sessionPluginStore.setSharedState(sessionId, key, input.value);
+      return { updated: true };
+    }
+    if (command === "plugins.delete") {
+      await this.sessionPluginStore.delete(sessionId, pluginId);
+      return { deleted: true };
+    }
+    return this.client.projectSessions.callCakeOperation(
+      {
+        sessionId,
+        workingDirectory: this.requireProjectSessionWorkingDirectory(sessionId),
+        command,
+        input,
+      },
+      { signal: this.signal },
+    );
   }
 
   private applicationControlHost(): AppControlHost {

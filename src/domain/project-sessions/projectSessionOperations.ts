@@ -1,4 +1,5 @@
 import { Effect, Schedule, Stream } from "effect";
+import type { JsonObject } from "../../ipc/json-contract";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
 import { getState, setProjectSessionLabels, trustProject } from "../application/application";
 import {
@@ -363,6 +364,15 @@ export const navigate = Effect.fn("ProjectSessions.navigate")(function* (
   yield* useConversation(acquireExistingTarget(target), (handle) =>
     handle.navigate(entryId, options),
   ).pipe(asError("navigate"));
+});
+
+export const callCakeOperation = Effect.fn("ProjectSessions.callCakeOperation")(function* (
+  target: ProjectSessionTarget,
+  command: string,
+  input: JsonObject,
+) {
+  const handle = yield* acquireExistingTarget(target);
+  return yield* handle.callCakeOperation(command, input).pipe(asError("callCakeOperation"));
 });
 
 export const dispatchExtensionCompanionAction = Effect.fn(

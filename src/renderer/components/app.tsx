@@ -50,6 +50,7 @@ import { SideChatsMenu } from "@/components/side-chats-menu";
 import { Sidebar } from "@/components/sidebar";
 import { ErrorNotice } from "@/components/error-notice";
 import { ExtensionCompanionSlot } from "@/components/extension-companion-slot";
+import { SessionPluginSlot } from "@/components/session-plugin-slot";
 import { SessionContinuationDialog } from "@/components/session-continuation-dialog";
 import { TreeNavigationDialog } from "@/components/tree-navigation-dialog";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
@@ -409,9 +410,21 @@ export const App = observer(function App() {
       }
     />
   );
+  const projectSessionPlugins = (paneSession: NonNullable<typeof session>) => (
+    <SessionPluginSlot
+      sessionId={paneSession.sessionId}
+      slot="composer.above"
+      plugins={root.sessionPluginStore}
+      inlineWidgets={root.inlineWidgetStore}
+      call={(pluginId, command, input) =>
+        root.invokeSessionPluginOperation(paneSession.sessionId, pluginId, command, input)
+      }
+    />
+  );
   const projectComposerHeader = session ? (
     <>
       {projectExtensionCompanions(session)}
+      {projectSessionPlugins(session)}
       <WorktreePill
         creation={store.worktreeCreationStore}
         actions={session.worktreeStore}
@@ -638,6 +651,7 @@ export const App = observer(function App() {
       composerHeader: (
         <>
           {projectExtensionCompanions(paneSession)}
+          {projectSessionPlugins(paneSession)}
           <WorktreePill
             creation={store.worktreeCreationStore}
             actions={paneSession.worktreeStore}

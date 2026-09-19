@@ -137,6 +137,72 @@ export default function ExpandingWidget() {
     await expect(
       expandingFrame.getByRole("button", { name: "Reachable late control" }),
     ).toBeVisible();
+
+    const plugin = await callRpcHarness<{
+      widget: { token: string; url: string };
+    }>(harness, "invokeNative", {
+      type: "compile-inline-widget",
+      language: "react",
+      capability: "session-plugin",
+      source: `import { useCake, usePluginState } from "@cake/plugin-sdk";
+export default function TourPlugin() {
+  const cake = useCake();
+  const [state] = usePluginState({ current: 0 });
+  return <button onClick={() => cake.session.sendMessage("Next")}>Next from {state.current}</button>;
+}`,
+    });
+    await page.evaluate(({ url, token }) => {
+      const frame = document.querySelector<HTMLIFrameElement>('iframe[title="CSP React widget"]');
+      if (!frame) throw new Error("Widget frame is unavailable");
+      const receive = (event: MessageEvent) => {
+        if (event.source !== frame.contentWindow) return;
+        // SAFETY: This fixed smoke fixture checks the source and capability token before use.
+        const data = event.data as {
+          source?: string;
+          token?: string;
+          type?: string;
+          value?: { id?: string; command?: string; input?: unknown };
+        };
+        if (data.source !== "cake-inline-widget" || data.token !== token) return;
+        if (data.type === "ready")
+          frame.contentWindow?.postMessage(
+            {
+              source: "cake-session-plugin-host",
+              token,
+              type: "context",
+              value: { pluginState: { current: 2 }, sharedState: {} },
+            },
+            "*",
+          );
+        if (data.type === "plugin-call" && data.value?.id) {
+          Object.assign(window, { __cakePluginSmokeCall: data.value });
+          frame.contentWindow?.postMessage(
+            {
+              source: "cake-session-plugin-host",
+              token,
+              type: "call-result",
+              value: { id: data.value.id, ok: true, result: { accepted: true } },
+            },
+            "*",
+          );
+        }
+      };
+      window.addEventListener("message", receive);
+      frame.src = url;
+    }, plugin.widget);
+    const pluginFrame = iframe.contentFrame();
+    await expect(pluginFrame.getByRole("button", { name: "Next from 2" })).toBeVisible();
+    await pluginFrame.getByRole("button", { name: "Next from 2" }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            Reflect.get(window, "__cakePluginSmokeCall") as
+              | { command?: string; input?: { text?: string } }
+              | undefined,
+        ),
+      )
+      .toMatchObject({ command: "session.prompt", input: { text: "Next" } });
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

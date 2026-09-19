@@ -3,6 +3,7 @@ import { it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { describe } from "vitest";
 import {
+  deleteSessionPlugin,
   forgetProjectSessions,
   mutateGlobalSessionLabels,
   mutateProjectWorkflow,
@@ -12,6 +13,8 @@ import {
   setProjectSessionLabels,
   setProjectSessionLabelsIfUnlabelled,
   setSessionFastMode,
+  setSessionPluginSharedState,
+  setSessionPluginState,
   setSessionUnread,
   setUtilityModel,
   setVscodeServerPath,
@@ -19,6 +22,7 @@ import {
   trustProject,
   revokeProjectTrust,
   upsertProject,
+  upsertSessionPlugin,
 } from "../../../src/domain/application/application";
 import {
   defaultApplicationState,
@@ -61,6 +65,33 @@ describe("Application domain", () => {
     assert.equal(SESSION_LABEL_COLORS.length, 32);
     assert.equal(new Set(SESSION_LABEL_COLORS).size, 32);
   });
+
+  it.effect("persists private and shared Session Plugin state and cleans it with the session", () =>
+    run(
+      Effect.gen(function* () {
+        const timestamp = "2026-01-01T00:00:00.000Z";
+        yield* upsertSessionPlugin({
+          sessionId: "session-1",
+          id: "tour",
+          title: "Tour",
+          slot: "composer.above",
+          source: "export default function Tour() { return null }",
+          state: { current: 1 },
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        });
+        yield* setSessionPluginState("session-1", "tour", { current: 2 });
+        yield* setSessionPluginSharedState("session-1", "tour-progress", { total: 4 });
+        const deleted = yield* deleteSessionPlugin("session-1", "missing");
+        assert.deepEqual(deleted.sessionPlugins[0]?.state, { current: 2 });
+        assert.deepEqual(deleted.sessionPluginSharedState[0]?.value, { total: 4 });
+
+        const forgotten = yield* forgetProjectSessions(["session-1"]);
+        assert.deepEqual(forgotten.sessionPlugins, []);
+        assert.deepEqual(forgotten.sessionPluginSharedState, []);
+      }),
+    ),
+  );
 
   it.effect("creates, touches, renames, and removes Projects with trust revocation", () =>
     run(

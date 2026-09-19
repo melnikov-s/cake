@@ -7,6 +7,7 @@ export interface InlineWidgetGenerationRequest {
   readonly brief: string;
   readonly data?: unknown;
   readonly fallback: string;
+  readonly surface?: "widget" | "session-plugin";
   readonly model?: { readonly provider: string; readonly id: string };
   readonly signal?: AbortSignal;
 }
