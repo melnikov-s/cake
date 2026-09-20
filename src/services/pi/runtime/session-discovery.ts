@@ -13,11 +13,8 @@ import {
   type PiSessionPreview,
   type PiSessionSummary,
 } from "../../../ipc/session-contract";
-import {
-  projectArtifactPointers,
-  projectDurableArtifactLineageIds,
-  projectSessionEntries,
-} from "./session-projection";
+import { projectConversationDisplay } from "./conversation-display-projection";
+import { projectArtifactPointers, projectDurableArtifactLineageIds } from "./session-projection";
 import { sessionTitleFromFile } from "./session-title";
 import {
   findSessionFileMetadataById,
@@ -276,7 +273,7 @@ export async function loadWorkspacePiSessionPreview(
     workspacePath: cwd,
     sessionId,
     sessionFile: target,
-    parts: projectSessionEntries(branch),
+    parts: projectConversationDisplay(manager),
     ...(model ? { currentModel: model } : undefined),
   };
 }
