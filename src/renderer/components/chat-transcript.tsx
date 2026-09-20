@@ -110,6 +110,10 @@ export const ChatTranscript = observer(function ChatTranscript({
     [scrollRef, virtualized],
   );
   const parts = store.parts;
+  // Read disclosure state in this observer's render. VirtualizedConversation invokes
+  // itemContent from its own render, outside this component's reactive tracking.
+  const changedFilesOpen = store.transcriptInteraction.changedFilesOpen;
+  const loadingStartedAt = store.transcriptInteraction.loadingStartedAt;
   const visibleParts = store.hideThinking
     ? parts.filter((part) => part.kind !== "reasoning")
     : parts;
@@ -324,8 +328,8 @@ export const ChatTranscript = observer(function ChatTranscript({
       errorFollowsUser={errorNoticeFollowsUser(items, index)}
       parts={parts}
       behavior={transcriptBehavior}
-      changedFilesOpen={store.transcriptInteraction.changedFilesOpen}
-      loadingStartedAt={store.transcriptInteraction.loadingStartedAt}
+      changedFilesOpen={changedFilesOpen}
+      loadingStartedAt={loadingStartedAt}
     />
   );
   return (
@@ -339,9 +343,7 @@ export const ChatTranscript = observer(function ChatTranscript({
           {visibleParts.length === 0 ? (
             <Conversation className="px-6 pt-[42px] pb-[210px] max-[620px]:px-4">
               {empty}
-              {showAssistantLoading && (
-                <LoadingState startedAt={store.transcriptInteraction.loadingStartedAt} />
-              )}
+              {showAssistantLoading && <LoadingState startedAt={loadingStartedAt} />}
               {footer}
               {error?.message && (
                 <ErrorNotice

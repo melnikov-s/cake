@@ -714,7 +714,7 @@ describe("Transcript scrolling", () => {
     expect(log.querySelector(':scope > summary span[class*="bg-success"]')).not.toBeNull();
   });
 
-  it("summarizes changed files at the conversation end and collapses the list", () => {
+  it("immediately expands changed files in a virtualized conversation", () => {
     const parts: UiPart[] = [
       {
         id: "tool-edit-1",
@@ -759,7 +759,6 @@ describe("Transcript scrolling", () => {
           sessionId="session-1"
           isStreaming={false}
           behavior={{ workspacePath: "/workspace", openSourceLocation }}
-          virtualized={false}
         />,
       ),
     );
