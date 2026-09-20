@@ -124,7 +124,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
       data-navigation-active={selected}
       data-family-role={isFamilyChild ? "child" : isFamilyParent ? "parent" : "root"}
       className={cn(
-        "session-item group relative grid min-h-11 w-full items-center rounded-md py-1 text-[13px] select-none transition-colors duration-200 ease-out motion-reduce:transition-none",
+        "session-item group relative grid min-h-11 w-full items-center rounded-md text-[13px] select-none transition-colors duration-200 ease-out motion-reduce:transition-none",
         focusMode && "min-h-14 text-sm [&_[data-slot=avatar]]:size-7 [&_svg]:size-5",
         avatarsEnabled
           ? isFamilyChild
@@ -225,8 +225,8 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           ref={navigationRef}
           motionFeedback
           className={cn(
-            "session-row col-start-2 bg-transparent hover:bg-transparent",
-            focusMode && "py-2 text-sm",
+            "session-row col-start-2 h-full bg-transparent py-0 hover:bg-transparent [&>button]:h-full",
+            focusMode && "text-sm",
           )}
           active={selected}
           onClick={() => onOpen(session.sessionId)}
