@@ -7,6 +7,8 @@ import type { JsonObject } from "../../../ipc/json-contract";
 import {
   DRAW_APPLY_MAX_OPERATIONS,
   type DrawControlResponse,
+  DrawDiagramInput,
+  DrawMaxRenderSize,
   DrawOperation,
   DrawReadScope,
   type DrawControlInvocation,
@@ -121,15 +123,18 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
     summary: definition.summary,
     guidance: [
       "Cake Draw commands always target the calling Project Session and never accept a sessionId.",
-      "enter and open explicitly foreground Cake Draw. read, render, mermaid, and apply never switch the user's board or mode; follow their recovery code when Draw is not visible.",
-      "User drawing never triggers an agent turn. Every agent canvas change requires an explicit draw.mermaid or draw.apply call.",
-      "Prefer draw.mermaid for architecture, flow, sequence, class, state, and entity-relationship diagrams. It produces native editable Excalidraw elements without manual placement. Use plain-text labels; write multiline labels with \\n or a plain <br>, <br/>, or <br /> break, not other HTML markup.",
+      "enter and open explicitly foreground Cake Draw. read, render, diagram, mermaid, and apply never switch the user's board or mode; follow their recovery code when Draw is not visible.",
+      "User drawing never triggers an agent turn. Every agent canvas change requires an explicit Draw mutation.",
+      "Prefer draw.diagram for technical architecture and flow diagrams. It declaratively upserts or replaces one stable named region, lays out editable native shapes, routes bound connectors, fits text, validates quality, and can return a fitted preview in one operation.",
+      "Use draw.mermaid for Mermaid-specific sequence, class, state, and entity-relationship syntax. Give it an id and replace:true for one-step named-region revision. Use plain-text labels; write multiline labels with \\n or a plain <br>, <br/>, or <br /> break, not other HTML markup.",
       "Give flowcharts an explicit direction (usually LR for pipelines or TB for hierarchies), keep labels concise, and avoid duplicate edges between the same nodes when one labeled edge communicates the relationship. Cake uses linear Mermaid routes and separates coincident parallel connectors after conversion; use draw.read and draw.apply for further cleanup.",
-      "Use draw.apply for freeform drawings, small targeted edits, post-Mermaid cleanup, or diagram types Mermaid cannot express. Mermaid-imported shapes have the same shape: IDs returned by draw.read and support the applicable update, style, move, arrange, lock, select, and delete operations. enter and open return the visible viewport, selection, shape bounds, and compact style summaries for manual placement and editing.",
+      "All public shape IDs use the canonical shape:<id> form. draw.read, semantic mappings, and every mutation accept and return that same form.",
+      "Use draw.apply for freeform drawings and small targeted edits. Named diagram elements include diagramId, semanticId, and diagramRole in draw.read and can be selected, replaced, or deleted as a unit through their named operation.",
       "Edit existing shapes without replacing them: update changes position, size, endpoints, rotation, text, opacity, rectangle/ellipse/diamond geometry, or a Cake sourceLink while preserving the shape ID; style applies colors, fill, stroke, opacity, roundness, typography/alignment, or arrowheads to one or more IDs.",
       "A create or update sourceLink uses a Working Directory-relative path and optional zero-based source range. Activating it opens that exact location in Cake's embedded VS Code editor. Set update sourceLink to null to remove it.",
       "New agent-generated diagrams use a deterministic layer order automatically: subgraph/frame backgrounds, then connectors behind nodes, then node shapes and readable labels. This applies to draw.mermaid and draw.apply creation batches, including standalone lines/arrows and connect operations, so do not emit redundant send-to-back cleanup operations.",
-      "Selection and arrangement operations include select (an empty IDs list clears selection), zoom-to, move, align, distribute, four explicit layer-order operations, set-locked, and delete. Explicit layer operations remain available when the requested composition intentionally overrides the creation default. Use read scope selection to inspect the current selection.",
+      "Selection and arrangement operations include select (an empty IDs list clears selection), zoom-to, move, align, distribute, four explicit layer-order operations, set-locked, delete, and delete-diagram for removing one named region atomically. zoom-to and generated diagrams fit every requested shape plus labels with viewport padding. Use read scope selection to inspect the current selection.",
+      "Every agent mutation creates a bounded window-lifetime checkpoint. Use draw.undo immediately with its checkpointId (or omit it for the latest); checkpoints are not a second persisted board history and reset when the board is reloaded.",
       `Keep each draw.apply to one visible stage of at most ${DRAW_APPLY_MAX_OPERATIONS} operations (for example, one region, then connections, then cleanup). Use another apply for the next stage so the user sees steady progress.`,
       "draw.apply is presented on the canvas operation by operation, then persisted once; order node creation before connections so the user can follow the construction. Use draw.read or draw.render between major stages when visual feedback could improve accuracy.",
     ],
@@ -202,10 +207,11 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
             Schema.isLessThanOrEqualTo(4),
           ),
         ),
+        maxSize: Schema.optionalKey(DrawMaxRenderSize),
       }),
-      example: { scope: "viewport", scale: 1 },
+      example: { scope: "viewport", scale: 1, maxSize: { width: 1600, height: 1200 } },
       result:
-        "A real PNG image block plus concise dimensions and board metadata; no base64 is retained in details.",
+        "A real PNG image block fitted within maxSize plus concise dimensions and board metadata; no base64 is retained in details.",
       execute: async (input, signal) => {
         const response = requireSuccess(
           await control.request({ _tag: "Render", ...input, format: "png" }, signal),
@@ -298,18 +304,122 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
       },
     }),
     operation({
+      command: "draw.clear",
+      summary: "Clear every shape from the open board as one checkpointed transaction.",
+      schema: Schema.Struct({ boardId: optionalBoardId }),
+      example: {},
+      result: "The board ID, deleted canonical shape IDs, and checkpoint ID for one-step undo.",
+      execute: async (input, signal) => {
+        requireMutable(control);
+        const response = requireSuccess(await control.request({ _tag: "Clear", ...input }, signal));
+        if (response.kind !== "cleared")
+          throw new Error("INVALID_REQUEST: Unexpected Draw response");
+        return {
+          boardId: response.boardId,
+          checkpointId: response.checkpointId,
+          receipt: response.receipt,
+        };
+      },
+    }),
+    operation({
+      command: "draw.undo",
+      summary: "Restore the board snapshot before an agent-generated mutation.",
+      schema: Schema.Struct({
+        boardId: optionalBoardId,
+        checkpointId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+      }),
+      example: {},
+      result: "The restored board ID and consumed checkpoint ID.",
+      limitations: [
+        "Agent checkpoints are bounded to the mounted board's renderer lifetime and reset on board reload; ordinary Excalidraw history remains available to the user.",
+      ],
+      execute: async (input, signal) => {
+        requireMutable(control);
+        const response = requireSuccess(await control.request({ _tag: "Undo", ...input }, signal));
+        if (response.kind !== "undone")
+          throw new Error("INVALID_REQUEST: Unexpected Draw response");
+        return {
+          boardId: response.boardId,
+          checkpointId: response.checkpointId,
+          receipt: response.receipt,
+        };
+      },
+    }),
+    operation({
+      command: "draw.diagram",
+      summary: "Declaratively create or revise one named native technical diagram.",
+      schema: Schema.Struct({ boardId: optionalBoardId, diagram: DrawDiagramInput }),
+      example: {
+        diagram: {
+          id: "cake-session-model",
+          mode: "upsert",
+          direction: "top-to-bottom",
+          nodes: [
+            { id: "renderer", label: "Sandboxed Renderer" },
+            { id: "main", label: "Electron Main" },
+            { id: "storage", label: "Board Storage" },
+          ],
+          edges: [
+            { id: "rpc", from: "renderer", to: "main", label: "validated RPC" },
+            { id: "persist", from: "main", to: "storage", label: "snapshot" },
+          ],
+          maxRenderSize: { width: 1600, height: 1200 },
+          validate: ["overlaps", "clipping", "dangling-edges", "crossing-edges"],
+          preview: true,
+        },
+      },
+      result:
+        "The stable diagram ID, checkpoint, semantic shape mappings, requested diagnostics, and optional fitted PNG preview.",
+      limitations: [
+        "mode upsert creates or atomically replaces the named region; mode replace requires that region to exist. Unrelated board artwork is preserved.",
+        "Layout supports bounded directed node/group graphs. Cycles remain editable but may receive a crossing warning; use concise stable semantic IDs.",
+        "Nodes and groups persist as editable native shapes, and edges remain bound to their endpoints when nodes move.",
+      ],
+      execute: async (input, signal) => {
+        requireMutable(control);
+        const response = requireSuccess(
+          await control.request({ _tag: "Diagram", ...input }, signal),
+        );
+        if (response.kind !== "diagram")
+          throw new Error("INVALID_REQUEST: Unexpected Draw response");
+        const result = {
+          boardId: response.boardId,
+          diagramId: response.diagramId,
+          checkpointId: response.checkpointId,
+          mappings: response.mappings,
+          diagnostics: response.diagnostics,
+          ...(response.preview
+            ? { preview: { width: response.preview.width, height: response.preview.height } }
+            : null),
+        };
+        if (!response.preview) return result;
+        if (response.preview.format !== "png" || response.preview.mediaType !== "image/png")
+          throw new Error("INVALID_REQUEST: Cake Draw returned a non-PNG preview");
+        const { data } = decodeDrawPng(response.preview.data);
+        return cakeOperationImageResult(result, [{ type: "image", mimeType: "image/png", data }]);
+      },
+    }),
+    operation({
       command: "draw.mermaid",
       summary: "Convert Mermaid source into native editable Excalidraw elements on the open board.",
       schema: Schema.Struct({
         boardId: optionalBoardId,
         diagram: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(50_000)),
+        id: Schema.optionalKey(
+          Schema.String.check(
+            Schema.isMinLength(1),
+            Schema.isMaxLength(128),
+            Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]*$/),
+          ),
+        ),
+        replace: Schema.optionalKey(Schema.Boolean),
       }),
       example: {
         diagram:
           'flowchart LR\n  Request["HTTP Request\\nvalidated"] --> Service["API Service"]\n  Service -->|query| Database[(Database)]',
       },
       result:
-        "The open board ID and number of native Excalidraw elements created and durably saved.",
+        "The board ID, checkpoint, native element count, stable diagram ID, and semantic-to-shape mappings.",
       limitations: [
         "The Mermaid source must be valid and is limited to 50,000 characters.",
         "Native editable conversion supports flowchart, sequenceDiagram, classDiagram, stateDiagram, and erDiagram. Diagram kinds that the converter can only render as an image are rejected.",
@@ -325,7 +435,10 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
           throw new Error("INVALID_REQUEST: Unexpected Draw response");
         return {
           boardId: response.boardId,
+          checkpointId: response.checkpointId,
+          ...(response.diagramId ? { diagramId: response.diagramId } : null),
           elementCount: response.elementCount,
+          mappings: response.mappings,
         };
       },
     }),
@@ -345,7 +458,7 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
           {
             type: "create",
             shape: {
-              id: "idea",
+              id: "shape:idea",
               type: "geo",
               x: 80,
               y: 80,
@@ -361,18 +474,18 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
           {
             type: "create-relative",
             shape: {
-              id: "result",
+              id: "shape:result",
               type: "geo",
               width: 240,
               height: 120,
               text: "Result",
-              placement: { relativeTo: "idea", side: "right", gap: 100 },
+              placement: { relativeTo: "shape:idea", side: "right", gap: 100 },
             },
           },
-          { type: "connect", fromId: "idea", toId: "result" },
+          { type: "connect", fromId: "shape:idea", toId: "shape:result", routing: "orthogonal" },
           {
             type: "style",
-            ids: ["idea", "result"],
+            ids: ["shape:idea", "shape:result"],
             style: {
               strokeColor: "blue",
               backgroundColor: "light-blue",
@@ -380,7 +493,7 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
               roundness: "round",
             },
           },
-          { type: "update", id: "result", width: 280, height: 140, geo: "ellipse" },
+          { type: "update", id: "shape:result", width: 280, height: 140, geo: "ellipse" },
         ],
       },
       result:
@@ -388,14 +501,18 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
       limitations: [
         "Geometry conversion is intentionally limited to rectangle, ellipse, and diamond. Linear shapes resize through endX/endY; free-draw point editing is not exposed.",
         "Fill/background/roundness apply only to rectangle, ellipse, and diamond; typography applies only to text or labeled shapes; arrowheads apply only to lines and arrows.",
-        "The semantic agent protocol exposes only validated Cake source links, not arbitrary hyperlinks, raw Excalidraw patches, clipboard actions, image import, freehand creation, grouping, or undo/redo.",
+        "The semantic agent protocol exposes only validated Cake source links, not arbitrary hyperlinks, raw Excalidraw patches, clipboard actions, image import, or freehand creation. Named diagram grouping and checkpoint undo use their focused operations.",
       ],
       execute: async (input, signal) => {
         requireMutable(control);
         const response = requireSuccess(await control.request({ _tag: "Apply", ...input }, signal));
         if (response.kind !== "applied")
           throw new Error("INVALID_REQUEST: Unexpected Draw response");
-        return { boardId: response.boardId, receipt: response.receipt };
+        return {
+          boardId: response.boardId,
+          checkpointId: response.checkpointId,
+          receipt: response.receipt,
+        };
       },
     }),
   ];

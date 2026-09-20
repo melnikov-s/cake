@@ -18,6 +18,14 @@ interface DrawShapeConnection {
   readonly shapeId: string;
 }
 
+type DrawDiagramRole = "node" | "group" | "edge";
+
+export interface DrawSemanticShapeMapping {
+  readonly semanticId: string;
+  readonly shapeId: string;
+  readonly role: DrawDiagramRole;
+}
+
 type DrawFill = "none" | "semi" | "solid" | "pattern";
 type DrawGeoType = "rectangle" | "ellipse" | "diamond";
 type DrawFontFamily = "hand-drawn" | "sans-serif" | "monospace";
@@ -50,6 +58,9 @@ export interface DrawShapeSummary {
   readonly style: DrawShapeStyle;
   readonly connections?: readonly DrawShapeConnection[];
   readonly sourceLink?: DrawSourceLink;
+  readonly diagramId?: string;
+  readonly semanticId?: string;
+  readonly diagramRole?: DrawDiagramRole;
 }
 
 interface DrawReadInput {
@@ -173,6 +184,9 @@ export type DrawOperation =
       readonly fromId: string;
       readonly toId: string;
       readonly text?: string;
+      readonly fromPort?: "top" | "right" | "bottom" | "left" | "auto";
+      readonly toPort?: "top" | "right" | "bottom" | "left" | "auto";
+      readonly routing?: "straight" | "orthogonal";
     }
   | {
       readonly type: "update";
@@ -192,6 +206,7 @@ export type DrawOperation =
     }
   | { readonly type: "style"; readonly ids: readonly string[]; readonly style: DrawStyleUpdate }
   | { readonly type: "delete"; readonly ids: readonly string[] }
+  | { readonly type: "delete-diagram"; readonly id: string }
   | {
       readonly type: "move";
       readonly ids: readonly string[];
@@ -238,7 +253,65 @@ export interface DrawApplyReceipt {
 }
 
 export interface DrawMermaidReceipt {
+  readonly diagramId?: string;
   readonly elementCount: number;
+  readonly mappings: readonly DrawSemanticShapeMapping[];
+}
+
+export type DrawValidationCheck =
+  | "overlaps"
+  | "clipping"
+  | "dangling-edges"
+  | "excessive-whitespace"
+  | "crossing-edges";
+
+export interface DrawDiagnostic {
+  readonly check: DrawValidationCheck;
+  readonly severity: "info" | "warning" | "error";
+  readonly message: string;
+  readonly semanticIds: readonly string[];
+}
+
+export interface DrawDiagramNode {
+  readonly id: string;
+  readonly label: string;
+  readonly groupId?: string;
+  readonly kind?: "rectangle" | "ellipse" | "diamond";
+  readonly width?: number;
+  readonly height?: number;
+  readonly sourceLink?: DrawSourceLink;
+}
+
+interface DrawDiagramGroup {
+  readonly id: string;
+  readonly label: string;
+}
+
+export interface DrawDiagramEdge {
+  readonly id: string;
+  readonly from: string;
+  readonly to: string;
+  readonly label?: string;
+  readonly fromPort?: "top" | "right" | "bottom" | "left" | "auto";
+  readonly toPort?: "top" | "right" | "bottom" | "left" | "auto";
+  readonly routing?: "straight" | "orthogonal";
+}
+
+export interface DrawDiagramInput {
+  readonly id: string;
+  readonly mode: "replace" | "upsert";
+  readonly direction: "left-to-right" | "top-to-bottom";
+  readonly nodes: readonly DrawDiagramNode[];
+  readonly groups?: readonly DrawDiagramGroup[];
+  readonly edges?: readonly DrawDiagramEdge[];
+  readonly validate?: readonly DrawValidationCheck[];
+}
+
+export interface DrawDiagramReceipt {
+  readonly diagramId: string;
+  readonly checkpointId: string;
+  readonly mappings: readonly DrawSemanticShapeMapping[];
+  readonly diagnostics: readonly DrawDiagnostic[];
 }
 
 export interface DrawRenderInput {
@@ -246,6 +319,7 @@ export interface DrawRenderInput {
   readonly format: "svg" | "png";
   readonly background?: boolean;
   readonly scale?: number;
+  readonly maxSize?: { readonly width: number; readonly height: number };
 }
 
 export interface DrawRender {
@@ -267,5 +341,10 @@ export interface DrawEditorController {
   exportDocument(): string;
   apply(input: DrawApplyInput): DrawApplyReceipt;
   applyAnimated(input: DrawApplyInput, options?: DrawPlaybackOptions): Promise<DrawApplyReceipt>;
-  insertMermaid(diagram: string): Promise<DrawMermaidReceipt>;
+  insertMermaid(
+    diagram: string,
+    options?: { readonly id?: string; readonly replace?: boolean },
+  ): Promise<DrawMermaidReceipt>;
+  diagram(input: DrawDiagramInput): DrawDiagramReceipt;
+  clear(): DrawApplyReceipt;
 }

@@ -129,13 +129,60 @@ describe("DrawEditorAdapter", () => {
     expect(harness.elements().map(({ type }) => type)).toEqual(["arrow", "rectangle", "rectangle"]);
     expect(harness.api.scrollToContent).toHaveBeenCalledWith(harness.elements(), {
       animate: true,
-      fitToContent: true,
+      fitToViewport: true,
+      viewportZoomFactor: 0.85,
     });
     const [minX, minY, maxX, maxY] = await import("@excalidraw/excalidraw").then(
       ({ getCommonBounds }) => getCommonBounds(harness.elements()),
     );
     expect((minX + maxX) / 2).toBeCloseTo(400);
     expect((minY + maxY) / 2).toBeCloseTo(300);
+  });
+
+  it("atomically replaces a named Mermaid region with stable semantic mappings", async () => {
+    const first = await adapter.insertMermaid("flowchart LR\n  A --> B", {
+      id: "runtime-flow",
+      replace: true,
+    });
+    expect(first.diagramId).toBe("runtime-flow");
+    expect(first.mappings).toEqual([
+      { semanticId: "mermaid-a", shapeId: "shape:runtime-flow--node--mermaid-a", role: "node" },
+      { semanticId: "mermaid-b", shapeId: "shape:runtime-flow--node--mermaid-b", role: "node" },
+      {
+        semanticId: "mermaid-edge",
+        shapeId: "shape:runtime-flow--edge--mermaid-edge",
+        role: "edge",
+      },
+    ]);
+    expect(
+      adapter
+        .read({ scope: "selection" })
+        .shapes.every(({ diagramId }) => diagramId === "runtime-flow"),
+    ).toBe(true);
+
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValueOnce({
+      elements: [
+        {
+          id: "mermaid-c",
+          type: "rectangle",
+          x: 0,
+          y: 0,
+          width: 160,
+          height: 80,
+          label: { text: "Replacement" },
+        },
+      ],
+    } as never);
+    const replacement = await adapter.insertMermaid("flowchart LR\n  C", {
+      id: "runtime-flow",
+      replace: true,
+    });
+    expect(replacement.mappings).toEqual([
+      { semanticId: "mermaid-c", shapeId: "shape:runtime-flow--node--mermaid-c", role: "node" },
+    ]);
+    expect(adapter.read({ scope: "page" }).shapes.map(({ semanticId }) => semanticId)).toEqual([
+      "mermaid-c",
+    ]);
   });
 
   it("orders Mermaid backgrounds, connectors, nodes, and their bound labels", async () => {
@@ -488,6 +535,203 @@ describe("DrawEditorAdapter", () => {
     expect(harness.elements()).toHaveLength(0);
   });
 
+  it("declaratively upserts and replaces one selectable native diagram region", () => {
+    const first = adapter.diagram({
+      id: "session-model",
+      mode: "upsert",
+      direction: "left-to-right",
+      groups: [{ id: "runtime", label: "Runtime boundary with a deliberately long title" }],
+      nodes: [
+        {
+          id: "renderer",
+          label: "Sandboxed Renderer with a long label that must wrap without clipping",
+          groupId: "runtime",
+          width: 180,
+        },
+        { id: "main", label: "Electron Main\nvalidated authority", groupId: "runtime" },
+      ],
+      edges: [
+        {
+          id: "rpc",
+          from: "renderer",
+          to: "main",
+          label: "validated request with a long connector label",
+          fromPort: "right",
+          toPort: "left",
+          routing: "orthogonal",
+        },
+      ],
+      validate: ["overlaps", "clipping", "dangling-edges", "crossing-edges"],
+    });
+
+    expect(first.mappings).toEqual([
+      { semanticId: "runtime", shapeId: "shape:session-model--group--runtime", role: "group" },
+      { semanticId: "renderer", shapeId: "shape:session-model--node--renderer", role: "node" },
+      { semanticId: "main", shapeId: "shape:session-model--node--main", role: "node" },
+      { semanticId: "rpc", shapeId: "shape:session-model--edge--rpc", role: "edge" },
+    ]);
+    expect(first.diagnostics).toEqual([]);
+    const scene = adapter.read({ scope: "selection" });
+    expect(scene.shapes).toHaveLength(4);
+    expect(scene.shapes.every(({ diagramId }) => diagramId === "session-model")).toBe(true);
+    const group = harness
+      .elements()
+      .find(({ id }) => id === "shape:session-model--group--runtime")!;
+    const groupLabel = harness
+      .elements()
+      .find((element) => element.type === "text" && element.containerId === group.id) as Extract<
+      ExcalidrawElement,
+      { type: "text" }
+    >;
+    expect(group.width).toBeGreaterThan(groupLabel.width);
+    expect(group.height).toBeGreaterThan(groupLabel.height);
+    const renderer = harness
+      .elements()
+      .find(({ id }) => id === "shape:session-model--node--renderer")!;
+    const rendererLabel = harness
+      .elements()
+      .find((element) => element.type === "text" && element.containerId === renderer.id) as Extract<
+      ExcalidrawElement,
+      { type: "text" }
+    >;
+    expect(rendererLabel.text).toContain("\n");
+    expect(rendererLabel.width).toBeLessThanOrEqual(renderer.width - 48);
+    expect(renderer.height).toBeGreaterThan(rendererLabel.height);
+    const edge = harness
+      .elements()
+      .find(
+        (element): element is Extract<ExcalidrawElement, { type: "arrow" }> =>
+          element.id === "shape:session-model--edge--rpc" && element.type === "arrow",
+      )!;
+    expect(edge.points).toHaveLength(4);
+    const edgeLabel = harness
+      .elements()
+      .find((element) => element.type === "text" && element.containerId === edge.id) as Extract<
+      ExcalidrawElement,
+      { type: "text" }
+    >;
+    expect(edgeLabel.width).toBeLessThanOrEqual(360);
+    expect(harness.api.scrollToContent).toHaveBeenLastCalledWith(
+      expect.arrayContaining([expect.objectContaining({ id: renderer.id })]),
+      { animate: true, fitToViewport: true, viewportZoomFactor: 0.85 },
+    );
+
+    const replacement = adapter.diagram({
+      id: "session-model",
+      mode: "replace",
+      direction: "top-to-bottom",
+      nodes: [
+        { id: "renderer", label: "Renderer revised" },
+        { id: "storage", label: "Durable board storage" },
+      ],
+      edges: [{ id: "persist", from: "renderer", to: "storage" }],
+      validate: ["overlaps", "clipping"],
+    });
+    expect(replacement.mappings.map(({ shapeId }) => shapeId)).toEqual([
+      "shape:session-model--node--renderer",
+      "shape:session-model--node--storage",
+      "shape:session-model--edge--persist",
+    ]);
+    expect(adapter.read({ scope: "page" }).shapes.map(({ semanticId }) => semanticId)).toEqual(
+      expect.arrayContaining(["renderer", "storage", "persist"]),
+    );
+    expect(
+      adapter.read({ scope: "page" }).shapes.some(({ semanticId }) => semanticId === "main"),
+    ).toBe(false);
+
+    const deletion = adapter.apply({
+      operations: [{ type: "delete-diagram", id: "session-model" }],
+    });
+    expect(deletion.deletedIds).toEqual([
+      "shape:session-model--edge--persist",
+      "shape:session-model--node--renderer",
+      "shape:session-model--node--storage",
+    ]);
+    expect(adapter.read({ scope: "page" }).shapes).toEqual([]);
+  });
+
+  it("reflows fixed and auto-sized generated text after edits and typography changes", () => {
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: {
+            id: "shape:narrow",
+            type: "geo",
+            x: 0,
+            y: 0,
+            width: 140,
+            height: 50,
+            text: "A long fixed-width label that must wrap onto several lines",
+          },
+        },
+        {
+          type: "create",
+          shape: {
+            id: "shape:standalone",
+            type: "text",
+            x: 250,
+            y: 0,
+            text: "Standalone generated text with deterministic bounded auto sizing ".repeat(8),
+          },
+        },
+        {
+          type: "create",
+          shape: {
+            id: "shape:note",
+            type: "note",
+            x: 900,
+            y: 0,
+            text: "A generated note with enough content to require deterministic wrapping and vertical growth ".repeat(
+              4,
+            ),
+          },
+        },
+      ],
+    });
+    adapter.apply({
+      operations: [
+        {
+          type: "style",
+          ids: ["shape:narrow", "shape:standalone"],
+          style: { fontSize: 36, fontFamily: "monospace" },
+        },
+        {
+          type: "update",
+          id: "shape:narrow",
+          text: "Updated\nmultiline label with a much larger font",
+        },
+      ],
+    });
+
+    const narrow = harness.elements().find(({ id }) => id === "shape:narrow")!;
+    const narrowLabel = harness
+      .elements()
+      .find((element) => element.type === "text" && element.containerId === narrow.id) as Extract<
+      ExcalidrawElement,
+      { type: "text" }
+    >;
+    expect(narrowLabel.text).toContain("\n");
+    expect(narrowLabel.width).toBeLessThanOrEqual(narrow.width - 48);
+    expect(narrow.height).toBeGreaterThanOrEqual(narrowLabel.height + 32);
+    const standalone = harness.elements().find(({ id }) => id === "shape:standalone") as Extract<
+      ExcalidrawElement,
+      { type: "text" }
+    >;
+    expect(standalone.width).toBeLessThanOrEqual(600);
+    expect(standalone.height).toBeGreaterThan(standalone.fontSize);
+    const note = harness.elements().find(({ id }) => id === "shape:note")!;
+    const noteLabel = harness
+      .elements()
+      .find((element) => element.type === "text" && element.containerId === note.id) as Extract<
+      ExcalidrawElement,
+      { type: "text" }
+    >;
+    expect(noteLabel.text).toContain("\n");
+    expect(noteLabel.width).toBeLessThan(note.width);
+    expect(note.height).toBeGreaterThan(200);
+  });
+
   it("creates native shapes and a bound arrow", () => {
     const receipt = adapter.apply({
       operations: [
@@ -535,6 +779,54 @@ describe("DrawEditorAdapter", () => {
           element.id === "shape:link" && element.type === "arrow",
       );
     expect(after?.points.at(-1)?.[0]).toBeGreaterThan(before?.points.at(-1)?.[0] ?? 0);
+  });
+
+  it("routes orthogonal connectors around intervening nodes and preserves ports after moves", () => {
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: { id: "left", type: "geo", x: 0, y: 100, width: 100, height: 80 },
+        },
+        {
+          type: "create",
+          shape: { id: "blocker", type: "geo", x: 180, y: 80, width: 120, height: 120 },
+        },
+        {
+          type: "create",
+          shape: { id: "right", type: "geo", x: 400, y: 100, width: 100, height: 80 },
+        },
+        {
+          type: "connect",
+          id: "route",
+          fromId: "left",
+          toId: "right",
+          fromPort: "right",
+          toPort: "left",
+          routing: "orthogonal",
+        },
+      ],
+    });
+    const before = harness
+      .elements()
+      .find(
+        (element): element is Extract<ExcalidrawElement, { type: "arrow" }> =>
+          element.id === "shape:route" && element.type === "arrow",
+      )!;
+    expect(before.points).toHaveLength(4);
+    expect(Math.min(...before.points.map(([, y]) => before.y + y))).toBeLessThan(80);
+    expect(before.x).toBe(100);
+
+    adapter.apply({ operations: [{ type: "move", ids: ["right"], deltaX: 100, deltaY: 80 }] });
+    const after = harness
+      .elements()
+      .find(
+        (element): element is Extract<ExcalidrawElement, { type: "arrow" }> =>
+          element.id === "shape:route" && element.type === "arrow",
+      )!;
+    expect(after.points.at(-1)?.[0]).toBeGreaterThan(before.points.at(-1)?.[0] ?? 0);
+    expect(after.startBinding?.elementId).toBe("shape:left");
+    expect(after.endBinding?.elementId).toBe("shape:right");
   });
 
   it("plays operations progressively and resolves relative positions", async () => {
@@ -809,7 +1101,7 @@ describe("DrawEditorAdapter", () => {
       x: 80,
       y: 100,
       width: 280,
-      height: 140,
+      height: expect.any(Number),
       strokeColor: "#1971c2",
       backgroundColor: "#4dabf7",
       fillStyle: "solid",
@@ -822,7 +1114,7 @@ describe("DrawEditorAdapter", () => {
     expect(summary).toMatchObject({
       id: "shape:card",
       type: "ellipse",
-      bounds: { x: 80, y: 100, width: 280, height: 140 },
+      bounds: { x: 80, y: 100, width: 280, height: expect.any(Number) },
       text: "Still the same shape",
       style: {
         strokeColor: "#1971c2",
@@ -840,6 +1132,7 @@ describe("DrawEditorAdapter", () => {
         locked: false,
       },
     });
+    expect(summary?.bounds?.height).toBeGreaterThanOrEqual(140);
   });
 
   it("applies selection, movement, shared style, layer, and locking workflows", () => {
@@ -1055,6 +1348,35 @@ describe("DrawEditorAdapter", () => {
         operations: [{ type: "style", ids: ["plain"], style: {} }],
       }),
     ).toThrow("style must change at least one property");
+  });
+
+  it("automatically downscales page renders to the requested maximum size", async () => {
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: {
+            id: "shape:wide",
+            type: "geo",
+            x: 0,
+            y: 0,
+            width: 8_000,
+            height: 4_000,
+          },
+        },
+      ],
+    });
+
+    const render = await adapter.render({
+      scope: "page",
+      format: "svg",
+      scale: 2,
+      maxSize: { width: 800, height: 600 },
+    });
+    expect(render.width).toBeLessThanOrEqual(800);
+    expect(render.height).toBeLessThanOrEqual(600);
+    expect(render.data).toContain(`width="${render.width}"`);
+    expect(render.data).toContain(`height="${render.height}"`);
   });
 
   it("reads selection and viewport scopes and marks truncated text", () => {

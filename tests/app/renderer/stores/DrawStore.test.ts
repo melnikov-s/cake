@@ -73,6 +73,7 @@ function adapterHarness(snapshot: DrawDocumentSnapshot = emptyDocument) {
   }));
   const insertMermaid = vi.fn<DrawEditorAdapter["insertMermaid"]>(async () => ({
     elementCount: 4,
+    mappings: [],
   }));
   const adapter = {
     snapshotDocument: () => snapshot,
@@ -240,6 +241,35 @@ describe("DrawStore", () => {
     expect(editor.apply).toHaveBeenCalledOnce();
   });
 
+  it("creates one agent checkpoint and restores it through undo", async () => {
+    const { subject, save } = mountDrawStore();
+    await subject.initialize();
+    const editor = adapterHarness();
+    subject.attachEditor(editor.adapter);
+
+    await subject.apply([{ type: "select", ids: [] }]);
+    const checkpointId = subject.lastCheckpointId;
+    expect(checkpointId).toMatch(/^[0-9a-f-]{36}$/u);
+
+    await expect(subject.undo(checkpointId)).resolves.toMatchObject({ checkpointId });
+    expect(editor.adapter.loadDocument).toHaveBeenCalledWith(emptyDocument);
+    expect(subject.lastCheckpointId).toBeUndefined();
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
+  it("rolls an unsuccessful agent transaction back before reporting failure", async () => {
+    const { subject, save } = mountDrawStore();
+    await subject.initialize();
+    const editor = adapterHarness();
+    editor.apply.mockRejectedValueOnce(new Error("layout failed"));
+    subject.attachEditor(editor.adapter);
+
+    await expect(subject.apply([{ type: "select", ids: [] }])).rejects.toThrow("layout failed");
+    expect(editor.adapter.loadDocument).toHaveBeenCalledWith(emptyDocument);
+    expect(subject.lastCheckpointId).toBeUndefined();
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it("converts Mermaid and persists the resulting native scene", async () => {
     const { subject, save } = mountDrawStore();
     await subject.initialize();
@@ -248,9 +278,10 @@ describe("DrawStore", () => {
 
     await expect(subject.insertMermaid("flowchart LR\nA --> B")).resolves.toEqual({
       elementCount: 4,
+      mappings: [],
     });
 
-    expect(editor.insertMermaid).toHaveBeenCalledWith("flowchart LR\nA --> B");
+    expect(editor.insertMermaid).toHaveBeenCalledWith("flowchart LR\nA --> B", undefined);
     expect(save).toHaveBeenCalledOnce();
     expect(subject.agentDrawing).toBe(false);
   });

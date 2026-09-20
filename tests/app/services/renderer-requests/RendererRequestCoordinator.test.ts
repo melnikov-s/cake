@@ -269,6 +269,7 @@ describe("RendererRequestCoordinator", () => {
         ok: true,
         kind: "applied",
         boardId: "00000000-0000-4000-8000-000000000001",
+        checkpointId: "00000000-0000-4000-8000-000000000099",
         receipt: { createdIds: [], updatedIds: ["shape:one"], deletedIds: [] },
         scene,
       });
@@ -276,6 +277,7 @@ describe("RendererRequestCoordinator", () => {
         ok: true,
         kind: "applied",
         boardId: "00000000-0000-4000-8000-000000000001",
+        checkpointId: "00000000-0000-4000-8000-000000000099",
         receipt: { createdIds: [], updatedIds: ["shape:one"], deletedIds: [] },
         scene,
       });

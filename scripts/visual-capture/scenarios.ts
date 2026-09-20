@@ -332,7 +332,7 @@ const requestExplanationScenario: VisualCaptureScenario = {
 
 const drawMermaidArchitectureScenario: VisualCaptureScenario = {
   name: "draw-mermaid-architecture",
-  description: "Native editable architecture diagram imported from Mermaid into Cake Draw",
+  description: "Native editable architecture diagram authored declaratively in Cake Draw",
   states: ["default"],
   async seed(paths, theme) {
     const sessionId = "visual-draw-mermaid-architecture";
@@ -418,14 +418,25 @@ const drawMermaidArchitectureScenario: VisualCaptureScenario = {
       sessionId: "visual-draw-mermaid-architecture",
       drawRequestId: "00000000-0000-4000-8000-000000000099",
       invocation: {
-        _tag: "Mermaid",
-        diagram: [
-          "flowchart LR",
-          '  Renderer["Sandboxed Renderer<br/>Models + Stores"] -->|typed RPC| Main["Electron Main<br/>Cake services"]',
-          '  Main --> Pi["Pi Runtime<br/>agent loop + transcript"]',
-          '  Main --> Storage[("Cake state<br/>boards + metadata")]',
-          "  Pi -->|validated events| Renderer",
-        ].join("\n"),
+        _tag: "Diagram",
+        diagram: {
+          id: "cake-desktop-architecture",
+          mode: "upsert",
+          direction: "top-to-bottom",
+          nodes: [
+            { id: "renderer", label: "Sandboxed Renderer\nModels + Stores" },
+            { id: "main", label: "Electron Main\nCake services" },
+            { id: "pi", label: "Pi Runtime\nagent loop + transcript" },
+            { id: "storage", label: "Cake state\nboards + metadata", kind: "ellipse" },
+          ],
+          edges: [
+            { id: "rpc", from: "renderer", to: "main", label: "typed RPC" },
+            { id: "runtime", from: "main", to: "pi" },
+            { id: "persistence", from: "main", to: "storage" },
+            { id: "events", from: "pi", to: "renderer", label: "validated events" },
+          ],
+          validate: ["overlaps", "clipping", "dangling-edges", "crossing-edges"],
+        },
       },
     };
     await application.evaluate((_electron, input) => {
@@ -441,7 +452,7 @@ const drawMermaidArchitectureScenario: VisualCaptureScenario = {
       await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled({ timeout: 20_000 });
     } catch (cause) {
       const body = (await page.locator("body").innerText()).replaceAll(/\s+/g, " ").slice(0, 2_000);
-      throw new Error(`Mermaid insertion did not complete. Visible Cake UI: ${body}`, {
+      throw new Error(`Declarative diagram insertion did not complete. Visible Cake UI: ${body}`, {
         cause,
       });
     }

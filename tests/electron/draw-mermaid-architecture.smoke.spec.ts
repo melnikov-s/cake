@@ -6,7 +6,7 @@ import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenario
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("imports Mermaid as readable native shapes with intact agent IDs in Electron", async () => {
+test("authors a readable declarative native diagram with semantic IDs in Electron", async () => {
   const root = await mkdtemp(join(tmpdir(), "cake-draw-mermaid-"));
   const paths = {
     cakeHome: join(root, "cake-home"),
@@ -45,20 +45,52 @@ test("imports Mermaid as readable native shapes with intact agent IDs in Electro
       id: string;
       type: string;
       text?: string;
+      originalText?: string;
       containerId?: string | null;
       frameId?: string | null;
       boundElements?: Array<{ id: string }> | null;
       startBinding?: { elementId: string } | null;
       endBinding?: { elementId: string } | null;
+      customData?: {
+        cakeDiagram?: { diagramId: string; semanticId: string; role: string };
+        cakeConnector?: { routing: string };
+      };
+      points?: ReadonlyArray<readonly [number, number]>;
     }>;
     const ids = new Set(elements.map(({ id }) => id));
 
     expect(elements.length).toBeGreaterThan(4);
-    expect(elements.every(({ id }) => /^shape:[A-Za-z0-9_-]+$/.test(id))).toBe(true);
+    expect(
+      elements
+        .filter((element) => !(element.type === "text" && element.containerId))
+        .every(({ id }) => /^shape:[A-Za-z0-9_-]+$/.test(id)),
+    ).toBe(true);
     expect(elements.every(({ type }) => type !== "image")).toBe(true);
-    expect(elements.map(({ text }) => text).filter(Boolean)).toContain(
+    expect(elements.map(({ originalText }) => originalText).filter(Boolean)).toContain(
       "Sandboxed Renderer\nModels + Stores",
     );
+    const semanticRoots = elements.filter(
+      (element) => !(element.type === "text" && element.containerId),
+    );
+    expect(
+      semanticRoots.every(
+        (element) => element.customData?.cakeDiagram?.diagramId === "cake-desktop-architecture",
+      ),
+    ).toBe(true);
+    expect(
+      new Set(semanticRoots.map((element) => element.customData?.cakeDiagram?.semanticId)),
+    ).toEqual(
+      new Set(["renderer", "main", "pi", "storage", "rpc", "runtime", "persistence", "events"]),
+    );
+    expect(
+      semanticRoots
+        .filter(({ type }) => type === "arrow")
+        .every(
+          (element) =>
+            element.customData?.cakeConnector?.routing === "orthogonal" &&
+            (element.points?.length ?? 0) >= 4,
+        ),
+    ).toBe(true);
     const connectorIndexes = elements.flatMap((element, index) =>
       element.type === "line" || element.type === "arrow" ? [index] : [],
     );

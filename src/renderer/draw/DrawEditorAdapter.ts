@@ -1,5 +1,6 @@
 /* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is Cake's drawing-domain entity. */
 import { parseMermaidToExcalidraw } from "@excalidraw/mermaid-to-excalidraw";
+import { Option, Schema } from "effect";
 import {
   CaptureUpdateAction,
   FONT_FAMILY,
@@ -30,6 +31,8 @@ import { formatDrawSourceLink, parseDrawSourceLink } from "../../domain/draw/dra
 import type {
   DrawArrowhead,
   DrawCreateShape,
+  DrawDiagramInput,
+  DrawDiagramReceipt,
   DrawDocumentSnapshot,
   DrawEditorController,
   DrawMermaidReceipt,
@@ -41,6 +44,7 @@ import type {
   DrawShapeSummary,
   DrawStyleUpdate,
 } from "../../domain/draw/draw-editor";
+import { diagramShapeId, layoutDrawDiagram } from "./DrawDiagramLayout";
 
 export interface DrawEditorAdapter extends DrawEditorController {
   loadDocument(snapshot: DrawDocumentSnapshot): void;
@@ -112,6 +116,9 @@ interface PreparedConnectOperation {
   readonly fromId: string;
   readonly toId: string;
   readonly text?: string;
+  readonly fromPort?: "top" | "right" | "bottom" | "left" | "auto";
+  readonly toPort?: "top" | "right" | "bottom" | "left" | "auto";
+  readonly routing?: "straight" | "orthogonal";
 }
 
 type PreparedOperation =
@@ -218,6 +225,50 @@ function visibleElements(elements: readonly ExcalidrawElement[]) {
   return elements.filter(
     (element) => !element.isDeleted && !(element.type === "text" && element.containerId),
   );
+}
+
+interface CakeDiagramElementData {
+  readonly diagramId: string;
+  readonly semanticId: string;
+  readonly role: "node" | "group" | "edge";
+}
+
+interface CakeConnectorData {
+  readonly fromPort: "top" | "right" | "bottom" | "left" | "auto";
+  readonly toPort: "top" | "right" | "bottom" | "left" | "auto";
+  readonly routing: "straight" | "orthogonal";
+}
+
+const CakeDiagramElementDataSchema = Schema.Struct({
+  diagramId: Schema.String,
+  semanticId: Schema.String,
+  role: Schema.Literals(["node", "group", "edge"]),
+});
+const CakeConnectorDataSchema = Schema.Struct({
+  fromPort: Schema.Literals(["top", "right", "bottom", "left", "auto"]),
+  toPort: Schema.Literals(["top", "right", "bottom", "left", "auto"]),
+  routing: Schema.Literals(["straight", "orthogonal"]),
+});
+
+function diagramData(element: ExcalidrawElement): CakeDiagramElementData | undefined {
+  return Option.getOrUndefined(
+    Schema.decodeUnknownOption(CakeDiagramElementDataSchema)(element.customData?.cakeDiagram),
+  );
+}
+
+function connectorData(element: ExcalidrawElement): CakeConnectorData | undefined {
+  return Option.getOrUndefined(
+    Schema.decodeUnknownOption(CakeConnectorDataSchema)(element.customData?.cakeConnector),
+  );
+}
+
+function withDiagramData(
+  element: ExcalidrawElement,
+  data: CakeDiagramElementData,
+): ExcalidrawElement {
+  return newElementWith(element, {
+    customData: { ...element.customData, cakeDiagram: data },
+  });
 }
 
 function boundsOf(element: ExcalidrawElement, elements: readonly ExcalidrawElement[]) {
@@ -518,6 +569,15 @@ function prepareOperations(
         prepared.push(operation);
         break;
       }
+      case "delete-diagram": {
+        const ids = visibleElements(sceneElements)
+          .filter((element) => diagramData(element)?.diagramId === operation.id)
+          .map(({ id }) => id);
+        if (ids.length === 0) throw new Error(`Named diagram not found: ${operation.id}`);
+        for (const id of ids) known.delete(id);
+        prepared.push(operation);
+        break;
+      }
       case "move": {
         const ids = uniqueTargetIds(operation.ids, "move");
         requireTargetCount(ids, "move", 1);
@@ -668,7 +728,19 @@ function createElements(shape: DrawCreateShape, id: string): OrderedExcalidrawEl
                   : shape.fill === "pattern"
                     ? "cross-hatch"
                     : "hachure",
-              ...(shape.text ? { label: { text: shape.text } } : null),
+              ...(shape.text
+                ? {
+                    label: {
+                      text: shape.text,
+                      strokeColor:
+                        shape.fill &&
+                        shape.fill !== "none" &&
+                        color(shape.color) === colorPalette.get("black")
+                          ? colorPalette.get("white")
+                          : colorPalette.get("black"),
+                    },
+                  }
+                : null),
             },
           ],
           { regenerateIds: false },
@@ -689,7 +761,7 @@ function createElements(shape: DrawCreateShape, id: string): OrderedExcalidrawEl
               strokeColor: color(shape.color, colorPalette.get("yellow")!),
               backgroundColor: color(shape.color, colorPalette.get("yellow")!),
               fillStyle: "solid",
-              label: { text: shape.text },
+              label: { text: shape.text, strokeColor: colorPalette.get("black") },
             },
           ],
           { regenerateIds: false },
@@ -716,7 +788,9 @@ function createElements(shape: DrawCreateShape, id: string): OrderedExcalidrawEl
                 [0, 0],
                 [shape.endX - shape.x, shape.endY - shape.y],
               ],
-              ...(shape.text ? { label: { text: shape.text } } : null),
+              ...(shape.text
+                ? { label: { text: shape.text, strokeColor: colorPalette.get("black") } }
+                : null),
             },
           ],
           { regenerateIds: false },
@@ -730,6 +804,104 @@ function center(element: ExcalidrawElement, elements: readonly ExcalidrawElement
   return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
 }
 
+function automaticPort(
+  from: ExcalidrawElement,
+  to: ExcalidrawElement,
+  elements: readonly ExcalidrawElement[],
+) {
+  const source = center(from, elements);
+  const target = center(to, elements);
+  if (Math.abs(target.x - source.x) >= Math.abs(target.y - source.y))
+    return target.x >= source.x ? ("right" as const) : ("left" as const);
+  return target.y >= source.y ? ("bottom" as const) : ("top" as const);
+}
+
+function attachmentPoint(
+  element: ExcalidrawElement,
+  side: CakeConnectorData["fromPort"],
+  toward: ExcalidrawElement,
+  elements: readonly ExcalidrawElement[],
+) {
+  const bounds = boundsOf(element, elements);
+  const resolved = side === "auto" ? automaticPort(element, toward, elements) : side;
+  if (resolved === "top") return { x: bounds.x + bounds.width / 2, y: bounds.y };
+  if (resolved === "right") return { x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 };
+  if (resolved === "bottom") return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height };
+  return { x: bounds.x, y: bounds.y + bounds.height / 2 };
+}
+
+function segmentHitsBounds(
+  start: { readonly x: number; readonly y: number },
+  end: { readonly x: number; readonly y: number },
+  bounds: ElementBounds,
+) {
+  const margin = 12;
+  const left = bounds.x - margin;
+  const right = bounds.x + bounds.width + margin;
+  const top = bounds.y - margin;
+  const bottom = bounds.y + bounds.height + margin;
+  if (start.x === end.x)
+    return (
+      start.x > left &&
+      start.x < right &&
+      Math.max(start.y, end.y) > top &&
+      Math.min(start.y, end.y) < bottom
+    );
+  if (start.y === end.y)
+    return (
+      start.y > top &&
+      start.y < bottom &&
+      Math.max(start.x, end.x) > left &&
+      Math.min(start.x, end.x) < right
+    );
+  return false;
+}
+
+function connectorPoints(
+  start: { readonly x: number; readonly y: number },
+  end: { readonly x: number; readonly y: number },
+  routing: CakeConnectorData["routing"],
+  obstacles: readonly ElementBounds[] = [],
+) {
+  if (routing === "straight")
+    return [
+      [0, 0],
+      [end.x - start.x, end.y - start.y],
+    ] as const;
+  const horizontal = [
+    start,
+    { x: (start.x + end.x) / 2, y: start.y },
+    { x: (start.x + end.x) / 2, y: end.y },
+    end,
+  ];
+  const vertical = [
+    start,
+    { x: start.x, y: (start.y + end.y) / 2 },
+    { x: end.x, y: (start.y + end.y) / 2 },
+    end,
+  ];
+  const collisions = (points: readonly { readonly x: number; readonly y: number }[]) =>
+    points
+      .slice(1)
+      .reduce(
+        (count, point, index) =>
+          count +
+          obstacles.filter((bounds) => segmentHitsBounds(points[index]!, point, bounds)).length,
+        0,
+      );
+  let route = collisions(horizontal) <= collisions(vertical) ? horizontal : vertical;
+  if (collisions(route) > 0) {
+    if (Math.abs(end.y - start.y) >= Math.abs(end.x - start.x)) {
+      const detourX = Math.min(start.x, end.x, ...obstacles.map(({ x }) => x)) - 180;
+      route = [start, { x: detourX, y: start.y }, { x: detourX, y: end.y }, end];
+    } else {
+      const detourY = Math.min(start.y, end.y, ...obstacles.map(({ y }) => y)) - 80;
+      route = [start, { x: start.x, y: detourY }, { x: end.x, y: detourY }, end];
+    }
+  }
+  return route.map(({ x, y }) => [x - start.x, y - start.y] as const);
+}
+
 function connectElements(
   elements: readonly ExcalidrawElement[],
   operation: PreparedConnectOperation,
@@ -738,8 +910,18 @@ function connectElements(
   const from = byId.get(operation.fromId);
   const to = byId.get(operation.toId);
   if (!from || !to) throw new Error("Connection target disappeared");
-  const start = center(from, elements);
-  const end = center(to, elements);
+  const connector: CakeConnectorData = {
+    fromPort: operation.fromPort ?? "auto",
+    toPort: operation.toPort ?? "auto",
+    routing: operation.routing ?? "orthogonal",
+  };
+  const start = attachmentPoint(from, connector.fromPort, to, elements);
+  const end = attachmentPoint(to, connector.toPort, from, elements);
+  const obstacles = visibleElements(elements)
+    .filter((element) => element.id !== from.id && element.id !== to.id)
+    .filter((element) => element.type !== "arrow" && element.type !== "line")
+    .filter((element) => diagramData(element)?.role !== "group")
+    .map((element) => boundsOf(element, elements));
   const created = convertToExcalidrawElements(
     [
       {
@@ -747,13 +929,12 @@ function connectElements(
         type: "arrow",
         x: start.x,
         y: start.y,
-        points: [
-          [0, 0],
-          [end.x - start.x, end.y - start.y],
-        ],
+        points: [...connectorPoints(start, end, connector.routing, obstacles)],
         startBinding: { elementId: operation.fromId, focus: 0, gap: 1 },
         endBinding: { elementId: operation.toId, focus: 0, gap: 1 },
-        ...(operation.text ? { label: { text: operation.text } } : null),
+        ...(operation.text
+          ? { label: { text: operation.text, strokeColor: colorPalette.get("black") } }
+          : null),
       },
     ],
     { regenerateIds: false },
@@ -763,6 +944,7 @@ function connectElements(
   const boundArrow = newElementWith(arrow, {
     startBinding: { elementId: operation.fromId, focus: 0, gap: 1 },
     endBinding: { elementId: operation.toId, focus: 0, gap: 1 },
+    customData: { ...arrow.customData, cakeConnector: connector },
   });
   const createdWithBindings = created.map((element) =>
     element.id === operation.id ? boundArrow : element,
@@ -803,15 +985,24 @@ function updateConnections(elements: readonly ExcalidrawElement[]) {
     const from = byId.get(element.startBinding.elementId);
     const to = byId.get(element.endBinding.elementId);
     if (!from || !to) return element;
-    const start = center(from, elements);
-    const end = center(to, elements);
+    const connector = connectorData(element) ?? {
+      fromPort: "auto" as const,
+      toPort: "auto" as const,
+      routing: "straight" as const,
+    };
+    const start = attachmentPoint(from, connector.fromPort, to, elements);
+    const end = attachmentPoint(to, connector.toPort, from, elements);
+    const obstacles = visibleElements(elements)
+      .filter((candidate) => candidate.id !== from.id && candidate.id !== to.id)
+      .filter((candidate) => candidate.type !== "arrow" && candidate.type !== "line")
+      .filter((candidate) => diagramData(candidate)?.role !== "group")
+      .map((candidate) => boundsOf(candidate, elements));
     return newElementWith(element, {
       x: start.x,
       y: start.y,
-      points: [
-        [0, 0],
-        [end.x - start.x, end.y - start.y],
-      ],
+      points: [...connectorPoints(start, end, connector.routing, obstacles)],
+      width: Math.abs(end.x - start.x),
+      height: Math.abs(end.y - start.y),
     });
   });
 }
@@ -1301,7 +1492,10 @@ function summaryFor(
   elements: readonly ExcalidrawElement[],
 ): ShapeSummaryResult {
   const label = boundLabel(element, elements);
-  const fullText = element.type === "text" ? element.text : (label?.text ?? "");
+  const fullText =
+    element.type === "text"
+      ? element.originalText || element.text
+      : label?.originalText || label?.text || "";
   const bounds = boundsOf(element, elements);
   const connections =
     element.type === "arrow"
@@ -1315,6 +1509,7 @@ function summaryFor(
         ]
       : undefined;
   const sourceLink = element.link ? parseDrawSourceLink(element.link) : undefined;
+  const diagram = diagramData(element);
   return {
     summary: {
       id: element.id,
@@ -1324,6 +1519,13 @@ function summaryFor(
       style: summaryStyle(element, label),
       ...(connections?.length ? { connections } : null),
       ...(sourceLink ? { sourceLink } : null),
+      ...(diagram
+        ? {
+            diagramId: diagram.diagramId,
+            semanticId: diagram.semanticId,
+            diagramRole: diagram.role,
+          }
+        : null),
     },
     textTruncated: fullText.length > MAX_SUMMARY_TEXT_LENGTH,
   };
@@ -1436,6 +1638,19 @@ function applyPreparedOperations(
         if (highlightActive) selectedElementIds = {};
         break;
       }
+      case "delete-diagram": {
+        const deletedIds = visibleElements(elements)
+          .filter((element) => diagramData(element)?.diagramId === operation.id)
+          .map(({ id }) => id);
+        elements = elements.map((element) =>
+          diagramData(element)?.diagramId === operation.id
+            ? newElementWith(element, { isDeleted: true })
+            : element,
+        );
+        receipt.deletedIds.push(...deletedIds);
+        if (highlightActive) selectedElementIds = {};
+        break;
+      }
       case "move": {
         const ids = new Set(operation.ids.map(shapeId));
         elements = moveRelated(elements, ids, operation.deltaX, operation.deltaY);
@@ -1496,7 +1711,9 @@ function applyPreparedOperations(
         break;
     }
   }
+  elements = fitGeneratedText(elements);
   elements = updateConnections(elements);
+  elements = fitGeneratedText(elements);
   api.updateScene({
     elements,
     ...(selectedElementIds ? { appState: { selectedElementIds } } : null),
@@ -1505,8 +1722,12 @@ function applyPreparedOperations(
   if (zoomIds) {
     const ids = new Set(zoomIds);
     api.scrollToContent(
-      elements.filter((element) => ids.has(element.id)),
-      { animate: true, fitToContent: true },
+      elements.filter(
+        (element) =>
+          ids.has(element.id) ||
+          (element.type === "text" && !!element.containerId && ids.has(element.containerId)),
+      ),
+      { animate: true, fitToViewport: true, viewportZoomFactor: 0.85 },
     );
   } else if (highlightActive && selectedElementIds) {
     const activeIds = Object.keys(selectedElementIds);
@@ -1560,30 +1781,54 @@ function normalizeMermaidSkeletonLabels(
   });
 }
 
+function semanticMermaidId(value: string, used: Set<string>) {
+  const base = value.replace(/[^A-Za-z0-9_-]/gu, "_").replace(/^[_-]+/u, "") || "item";
+  let candidate = base.slice(0, 96);
+  let suffix = 2;
+  while (used.has(candidate)) candidate = `${base.slice(0, 88)}_${suffix++}`;
+  used.add(candidate);
+  return candidate;
+}
+
 function remapMermaidElementIds(
   elements: readonly ExcalidrawElement[],
   reservedIds: ReadonlySet<string>,
+  diagramId?: string,
 ) {
   const usedIds = new Set(reservedIds);
+  const semanticIds = new Set<string>();
+  const roots = visibleElements(elements);
+  const rootSemantics = new Map(
+    roots.map((element) => [element.id, semanticMermaidId(element.id, semanticIds)]),
+  );
   const idMap = new Map<string, string>();
   for (const element of elements) {
-    let id = generatedShapeId();
+    const semantic = rootSemantics.get(element.id);
+    let id =
+      diagramId && semantic
+        ? diagramShapeId(
+            diagramId,
+            element.type === "arrow" || element.type === "line" ? "edge" : "node",
+            semantic,
+          )
+        : generatedShapeId();
     while (usedIds.has(id)) id = generatedShapeId();
     usedIds.add(id);
     idMap.set(element.id, id);
   }
   const remap = (id: string | null) => (id === null ? null : (idMap.get(id) ?? id));
-  return elements.map((element): ExcalidrawElement => {
+  const remapped = elements.map((element): ExcalidrawElement => {
     const common = {
       id: idMap.get(element.id)!,
       frameId: remap(element.frameId),
       boundElements:
         element.boundElements?.map((binding) => ({ ...binding, id: remap(binding.id)! })) ?? null,
     };
+    let next: ExcalidrawElement;
     if (element.type === "text")
-      return { ...element, ...common, containerId: remap(element.containerId) };
-    if (element.type === "line" || element.type === "arrow")
-      return {
+      next = { ...element, ...common, containerId: remap(element.containerId) };
+    else if (element.type === "line" || element.type === "arrow")
+      next = {
         ...element,
         ...common,
         startBinding: element.startBinding
@@ -1593,46 +1838,222 @@ function remapMermaidElementIds(
           ? { ...element.endBinding, elementId: remap(element.endBinding.elementId)! }
           : null,
       };
-    return { ...element, ...common };
+    else next = { ...element, ...common };
+    if (!diagramId) return next;
+    const rootId =
+      element.type === "text" && element.containerId ? element.containerId : element.id;
+    const semantic = rootSemantics.get(rootId);
+    if (!semantic) return next;
+    return withDiagramData(next, {
+      diagramId,
+      semanticId: semantic,
+      role:
+        elementMap(elements).get(rootId)?.type === "arrow" ||
+        elementMap(elements).get(rootId)?.type === "line"
+          ? "edge"
+          : "node",
+    });
   });
+  return {
+    elements: remapped,
+    mappings: roots.map((element) => ({
+      semanticId: rootSemantics.get(element.id)!,
+      shapeId: idMap.get(element.id)!,
+      role:
+        element.type === "arrow" || element.type === "line" ? ("edge" as const) : ("node" as const),
+    })),
+  };
 }
 
-function fitMermaidLabels(elements: readonly ExcalidrawElement[]) {
-  let fitted = [...elements];
-  const labels = fitted.filter(
-    (element): element is ExcalidrawTextElement => element.type === "text" && !!element.containerId,
+function fontCss(element: ExcalidrawTextElement) {
+  const family =
+    element.fontFamily === FONT_FAMILY.Cascadia
+      ? "Cascadia, monospace"
+      : element.fontFamily === FONT_FAMILY.Helvetica
+        ? "Helvetica, Arial, sans-serif"
+        : "Excalifont, Virgil, sans-serif";
+  return `${element.fontSize}px ${family}`;
+}
+
+function measuredLineWidth(value: string, element: ExcalidrawTextElement) {
+  const context = document.createElement("canvas").getContext("2d");
+  if (context) {
+    context.font = fontCss(element);
+    const measured = context.measureText(value || " ").width;
+    if (Number.isFinite(measured) && measured > 0) return measured;
+  }
+  const familyFactor = element.fontFamily === FONT_FAMILY.Cascadia ? 0.62 : 0.58;
+  return Math.max(
+    element.fontSize * familyFactor,
+    Array.from(value).length * element.fontSize * familyFactor,
   );
-  for (const label of labels) {
-    const container = elementMap(fitted).get(label.containerId!);
-    if (
-      !container ||
-      (container.type !== "rectangle" &&
-        container.type !== "ellipse" &&
-        container.type !== "diamond")
-    )
+}
+
+function wrapMeasuredText(value: string, maximumWidth: number, element: ExcalidrawTextElement) {
+  const output: string[] = [];
+  const pushToken = (token: string) => {
+    if (measuredLineWidth(token, element) <= maximumWidth) {
+      output.push(token);
+      return;
+    }
+    let line = "";
+    for (const character of Array.from(token)) {
+      if (line && measuredLineWidth(line + character, element) > maximumWidth) {
+        output.push(line);
+        line = character;
+      } else line += character;
+    }
+    output.push(line);
+  };
+  for (const sourceLine of value.split("\n")) {
+    const words = sourceLine.split(/\s+/u).filter(Boolean);
+    if (words.length === 0) {
+      output.push("");
       continue;
-    const scale = container.type === "ellipse" ? Math.SQRT2 : container.type === "diamond" ? 2 : 1;
-    const width = Math.max(
-      container.width,
-      (label.width + MERMAID_LABEL_HORIZONTAL_PADDING) * scale,
+    }
+    let line = "";
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (line && measuredLineWidth(candidate, element) > maximumWidth) {
+        pushToken(line);
+        line = word;
+      } else line = candidate;
+    }
+    pushToken(line);
+  }
+  return output.join("\n");
+}
+
+/** Fits every generated text kind before geometry, routing, selection fitting, or rendering. */
+function fitGeneratedText(elements: readonly ExcalidrawElement[]) {
+  let fitted = [...elements];
+  const textElements = fitted.filter(
+    (element): element is ExcalidrawTextElement => element.type === "text" && !element.isDeleted,
+  );
+  for (const original of textElements) {
+    const current = elementMap(fitted).get(original.id);
+    if (!current || current.type !== "text") continue;
+    const container = current.containerId ? elementMap(fitted).get(current.containerId) : undefined;
+    const sourceText = current.originalText || current.text;
+    const fixedContainer =
+      container && container.type !== "arrow" && container.type !== "line" ? container : undefined;
+    const autoContainer = fixedContainer?.customData?.cakeAutoSizeText === true;
+    const linearContainer = container?.type === "arrow" || container?.type === "line";
+    const maximumWidth = fixedContainer
+      ? autoContainer
+        ? 600
+        : Math.max(40, fixedContainer.width - MERMAID_LABEL_HORIZONTAL_PADDING * 2)
+      : linearContainer
+        ? 360
+        : current.autoResize === false
+          ? Math.max(40, current.width)
+          : 600;
+    const wrapped = wrapMeasuredText(sourceText, maximumWidth, current);
+    const lines = wrapped.split("\n");
+    const lineHeight = current.lineHeight || 1.25;
+    const measuredWidth = Math.ceil(
+      Math.max(...lines.map((line) => measuredLineWidth(line, current))),
     );
-    const height = Math.max(
-      container.height,
-      (label.height + MERMAID_LABEL_VERTICAL_PADDING) * scale,
-    );
-    const x = container.x - (width - container.width) / 2;
-    const y = container.y - (height - container.height) / 2;
-    fitted = fitted.map((element) => {
-      if (element.id === container.id) return newElementWith(container, { x, y, width, height });
-      if (element.id === label.id)
-        return newElementWith(label, {
-          x: x + (width - label.width) / 2,
-          y: y + (height - label.height) / 2,
-        });
-      return element;
+    const measuredHeight = Math.ceil(Math.max(1, lines.length) * current.fontSize * lineHeight);
+    let nextText = newElementWith(current, {
+      text: wrapped,
+      originalText: sourceText,
+      width: Math.max(1, Math.min(maximumWidth, measuredWidth)),
+      height: measuredHeight,
+      autoResize: !fixedContainer && current.autoResize !== false,
     });
+    fitted = fitted.map((element) => (element.id === current.id ? nextText : element));
+    if (fixedContainer) {
+      const scale =
+        fixedContainer.type === "ellipse" ? Math.SQRT2 : fixedContainer.type === "diamond" ? 2 : 1;
+      const requiredHeight = (measuredHeight + MERMAID_LABEL_VERTICAL_PADDING * 2) * scale;
+      const requiredWidth = (measuredWidth + MERMAID_LABEL_HORIZONTAL_PADDING * 2) * scale;
+      const autoWidth = autoContainer || diagramData(fixedContainer)?.role === "group";
+      const width = autoWidth
+        ? Math.max(fixedContainer.width, requiredWidth)
+        : fixedContainer.width;
+      const height = Math.max(fixedContainer.height, requiredHeight);
+      const resized = newElementWith(fixedContainer, { width, height });
+      nextText = newElementWith(nextText, {
+        x: resized.x + (width - nextText.width) / 2,
+        y: resized.y + (height - nextText.height) / 2,
+      });
+      fitted = fitted.map((element) =>
+        element.id === resized.id ? resized : element.id === nextText.id ? nextText : element,
+      );
+    } else if (container && (container.type === "arrow" || container.type === "line")) {
+      const points = container.points;
+      let segment = {
+        start: points[0] ?? [0, 0],
+        end: points.at(-1) ?? points[0] ?? [0, 0],
+        length: 0,
+      };
+      for (let index = 1; index < points.length; index += 1) {
+        const start = points[index - 1]!;
+        const end = points[index]!;
+        const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
+        if (length > segment.length) segment = { start, end, length };
+      }
+      const vertical =
+        Math.abs(segment.end[1] - segment.start[1]) > Math.abs(segment.end[0] - segment.start[0]);
+      const centerX = container.x + (segment.start[0] + segment.end[0]) / 2;
+      const centerY = container.y + (segment.start[1] + segment.end[1]) / 2;
+      nextText = newElementWith(nextText, {
+        x: vertical ? centerX - nextText.width - 12 : centerX - nextText.width / 2,
+        y: vertical ? centerY - nextText.height / 2 : centerY - nextText.height - 8,
+      });
+      fitted = fitted.map((element) => (element.id === nextText.id ? nextText : element));
+    }
   }
   return fitted;
+}
+
+function constrainMermaidContainers(elements: readonly ExcalidrawElement[]) {
+  const backgrounds = diagramBackgroundIds(
+    elements,
+    new Set(elements.filter((element) => !element.isDeleted).map(({ id }) => id)),
+  );
+  let constrained = [...elements];
+  for (const id of backgrounds) {
+    const container = elementMap(constrained).get(id);
+    if (!container) continue;
+    const groupIds = new Set(container.groupIds);
+    const children = constrained.filter(
+      (element) =>
+        element.id !== id &&
+        !(element.type === "text" && element.containerId === id) &&
+        (element.frameId === id || element.groupIds.some((groupId) => groupIds.has(groupId))),
+    );
+    if (children.length === 0) continue;
+    const [minX, minY, maxX, maxY] = getCommonBounds(children);
+    const expected = {
+      x: minX - 36,
+      y: minY - 64,
+      width: maxX - minX + 72,
+      height: maxY - minY + 100,
+    };
+    const currentArea = Math.max(1, container.width * container.height);
+    const expectedArea = Math.max(1, expected.width * expected.height);
+    if (currentArea <= expectedArea * 3) continue;
+    constrained = constrained.map((element) =>
+      element.id === id ? newElementWith(container, expected) : element,
+    );
+  }
+  return constrained;
+}
+
+function assertUsableMermaidGeometry(elements: readonly ExcalidrawElement[]) {
+  const backgrounds = diagramBackgroundIds(elements, new Set(elements.map(({ id }) => id)));
+  for (const id of backgrounds) {
+    const container = elementMap(elements).get(id);
+    if (!container) continue;
+    const shortSide = Math.max(1, Math.min(container.width, container.height));
+    const longSide = Math.max(container.width, container.height);
+    if (longSide / shortSide > 20 || container.width * container.height > 100_000_000)
+      throw new Error(
+        "Mermaid subgraph layout is excessively sparse, usually because of cross-subgraph edges; use draw.diagram or simplify the subgraph boundaries",
+      );
+  }
 }
 
 function absoluteArrowPoints(element: Extract<ExcalidrawElement, { type: "arrow" }>) {
@@ -1787,6 +2208,7 @@ function collisionAwareMermaidDelta(
 async function insertMermaid(
   api: ExcalidrawImperativeAPI,
   diagram: string,
+  options: { readonly id?: string; readonly replace?: boolean } = {},
 ): Promise<DrawMermaidReceipt> {
   const normalizedDiagram = normalizeMermaidSource(diagram);
   const { elements: parsedSkeletons, files } = await parseMermaidToExcalidraw(normalizedDiagram, {
@@ -1804,27 +2226,71 @@ async function insertMermaid(
     );
 
   const skeletons = normalizeMermaidSkeletonLabels(parsedSkeletons);
-  const converted = convertToExcalidrawElements(skeletons, { regenerateIds: true });
-  const existing = api.getSceneElementsIncludingDeleted();
+  const converted = convertToExcalidrawElements(skeletons, { regenerateIds: false });
+  const allExisting = api.getSceneElementsIncludingDeleted();
+  const existingRegion = options.id
+    ? allExisting.filter((element) => diagramData(element)?.diagramId === options.id)
+    : [];
+  if (existingRegion.length > 0 && !options.replace)
+    throw new Error(
+      `Named diagram ${options.id} already exists; set replace to true to replace it atomically`,
+    );
+  const existing = options.id
+    ? allExisting.filter((element) => diagramData(element)?.diagramId !== options.id)
+    : allExisting;
   const reservedIds = new Set(existing.map((element) => element.id));
-  const created = spreadOverlappingMermaidConnectors(
-    fitMermaidLabels(remapMermaidElementIds(converted, reservedIds)),
+  const remapped = remapMermaidElementIds(converted, reservedIds, options.id);
+  const autoSized = remapped.elements.map((element) =>
+    element.type === "text" || element.type === "arrow" || element.type === "line"
+      ? element
+      : newElementWith(element, {
+          customData: { ...element.customData, cakeAutoSizeText: true },
+        }),
   );
+  let created = spreadOverlappingMermaidConnectors(
+    fitGeneratedText(constrainMermaidContainers(autoSized)),
+  );
+  assertUsableMermaidGeometry(created);
+  if (options.id) {
+    const backgrounds = diagramBackgroundIds(created, new Set(created.map(({ id }) => id)));
+    created = created.map((element) => {
+      const data = diagramData(element);
+      if (
+        !data ||
+        !backgrounds.has(
+          element.type === "text" && element.containerId ? element.containerId : element.id,
+        )
+      )
+        return element;
+      return withDiagramData(element, { ...data, role: "group" });
+    });
+  }
   const appState = api.getAppState();
   const viewportStart = viewportCoordsToSceneCoords({ clientX: 0, clientY: 0 }, appState);
   const viewportEnd = viewportCoordsToSceneCoords(
     { clientX: appState.width, clientY: appState.height },
     appState,
   );
-  const delta = collisionAwareMermaidDelta(created, existing, {
-    x: (viewportStart.x + viewportEnd.x) / 2,
-    y: (viewportStart.y + viewportEnd.y) / 2,
-  });
+  const replacementCenter =
+    existingRegion.length > 0
+      ? (() => {
+          const [minX, minY, maxX, maxY] = getCommonBounds(existingRegion);
+          return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+        })()
+      : undefined;
+  const delta = collisionAwareMermaidDelta(
+    created,
+    existing,
+    replacementCenter ?? {
+      x: (viewportStart.x + viewportEnd.x) / 2,
+      y: (viewportStart.y + viewportEnd.y) / 2,
+    },
+  );
   const positioned = created.map((element) =>
     newElementWith(element, { x: element.x + delta.x, y: element.y + delta.y }),
   );
   const ordered = normalizeCreatedDiagramOrder(
-    [...api.getSceneElementsIncludingDeleted(), ...positioned],
+    [...existing, ...positioned],
     new Set(positioned.map(({ id }) => id)),
   );
   const selectedElementIds = Object.fromEntries(
@@ -1839,10 +2305,201 @@ async function insertMermaid(
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
   });
   api.scrollToContent(
-    ordered.filter((element) => selectedElementIds[element.id]),
-    { animate: true, fitToContent: true },
+    ordered.filter(
+      (element) =>
+        selectedElementIds[element.id] ||
+        (element.type === "text" &&
+          !!element.containerId &&
+          selectedElementIds[element.containerId]),
+    ),
+    { animate: true, fitToViewport: true, viewportZoomFactor: 0.85 },
   );
-  return { elementCount: positioned.length };
+  return {
+    diagramId: options.id,
+    elementCount: positioned.length,
+    mappings: remapped.mappings.map((mapping) => {
+      const element = positioned.find(({ id }) => id === mapping.shapeId);
+      return {
+        ...mapping,
+        role: element ? (diagramData(element)?.role ?? mapping.role) : mapping.role,
+      };
+    }),
+  };
+}
+
+function createDeclarativeDiagram(
+  api: ExcalidrawImperativeAPI,
+  input: DrawDiagramInput,
+): DrawDiagramReceipt {
+  const layout = layoutDrawDiagram(input);
+  const allExisting = api.getSceneElementsIncludingDeleted();
+  const oldRegion = allExisting.filter((element) => diagramData(element)?.diagramId === input.id);
+  if (input.mode === "replace" && oldRegion.length === 0)
+    throw new Error(`Named diagram ${input.id} does not exist; use upsert for initial creation`);
+  const existing = allExisting.filter((element) => diagramData(element)?.diagramId !== input.id);
+  const roots = [...layout.groups, ...layout.nodes];
+  const [layoutMinX, layoutMinY, layoutMaxX, layoutMaxY] = [
+    Math.min(...roots.map(({ x }) => x)),
+    Math.min(...roots.map(({ y }) => y)),
+    Math.max(...roots.map(({ x, width }) => x + width)),
+    Math.max(...roots.map(({ y, height }) => y + height)),
+  ];
+  const appState = api.getAppState();
+  const viewportStart = viewportCoordsToSceneCoords({ clientX: 0, clientY: 0 }, appState);
+  const viewportEnd = viewportCoordsToSceneCoords(
+    { clientX: appState.width, clientY: appState.height },
+    appState,
+  );
+  const desiredCenter =
+    oldRegion.length > 0
+      ? (() => {
+          const [minX, minY, maxX, maxY] = getCommonBounds(oldRegion);
+          return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+        })()
+      : {
+          x: (viewportStart.x + viewportEnd.x) / 2,
+          y: (viewportStart.y + viewportEnd.y) / 2,
+        };
+  const diagramWidth = layoutMaxX - layoutMinX;
+  const diagramHeight = layoutMaxY - layoutMinY;
+  const occupied = visibleElements(existing).map((element) => boundsOf(element, existing));
+  let target = {
+    x: desiredCenter.x - diagramWidth / 2,
+    y: desiredCenter.y - diagramHeight / 2,
+    width: diagramWidth,
+    height: diagramHeight,
+  };
+  if (occupied.some((bounds) => boundsOverlap(target, bounds, MERMAID_INSERTION_GAP))) {
+    const rightEdge = Math.max(...occupied.map((bounds) => bounds.x + bounds.width));
+    target = { ...target, x: rightEdge + MERMAID_INSERTION_GAP };
+  }
+  const delta = { x: target.x - layoutMinX, y: target.y - layoutMinY };
+  let created: ExcalidrawElement[] = [];
+  const mappings: Array<DrawDiagramReceipt["mappings"][number]> = [];
+  const addShape = (semanticId: string, role: "node" | "group", shape: DrawCreateShape) => {
+    const id = diagramShapeId(input.id, role, semanticId);
+    const block = createElements(shape, id).map((element) =>
+      withDiagramData(element, { diagramId: input.id, semanticId, role }),
+    );
+    created.push(...block);
+    mappings.push({ semanticId, shapeId: id, role });
+  };
+  for (const group of layout.groups)
+    addShape(group.id, "group", {
+      id: diagramShapeId(input.id, "group", group.id),
+      type: "geo",
+      x: group.x + delta.x,
+      y: group.y + delta.y,
+      width: group.width,
+      height: group.height,
+      text: group.label,
+      color: "grey",
+      fill: "none",
+    });
+  for (const node of layout.nodes)
+    addShape(node.id, "node", {
+      id: diagramShapeId(input.id, "node", node.id),
+      type: "geo",
+      x: node.x + delta.x,
+      y: node.y + delta.y,
+      width: node.width,
+      height: node.height,
+      text: node.label,
+      geo: node.kind,
+      color: "light-blue",
+      fill: "solid",
+      sourceLink: node.sourceLink,
+    });
+  created = fitGeneratedText(created);
+  for (const group of layout.groups) {
+    const groupId = diagramShapeId(input.id, "group", group.id);
+    const container = elementMap(created).get(groupId);
+    const childElements = layout.nodes
+      .filter(({ groupId: nodeGroupId }) => nodeGroupId === group.id)
+      .flatMap((node) => {
+        const element = elementMap(created).get(diagramShapeId(input.id, "node", node.id));
+        return element ? [element] : [];
+      });
+    if (!container || childElements.length === 0) continue;
+    const childBounds = childElements.map((element) => boundsOf(element, created));
+    const minX = Math.min(...childBounds.map(({ x }) => x));
+    const minY = Math.min(...childBounds.map(({ y }) => y));
+    const maxX = Math.max(...childBounds.map(({ x, width }) => x + width));
+    const maxY = Math.max(...childBounds.map(({ y, height }) => y + height));
+    created = created.map((element) =>
+      element.id === groupId
+        ? newElementWith(container, {
+            x: minX - 42,
+            y: minY - 82,
+            width: maxX - minX + 84,
+            height: maxY - minY + 124,
+          })
+        : element,
+    );
+  }
+  created = fitGeneratedText(created);
+  for (const edge of layout.edges) {
+    const id = diagramShapeId(input.id, "edge", edge.id);
+    const previousIds = new Set(created.map(({ id: previousId }) => previousId));
+    const next = connectElements(created, {
+      type: "connect",
+      id,
+      fromId: diagramShapeId(input.id, "node", edge.from),
+      toId: diagramShapeId(input.id, "node", edge.to),
+      text: edge.label,
+      fromPort: edge.fromPort,
+      toPort: edge.toPort,
+      routing: edge.routing ?? "orthogonal",
+    });
+    created = next.map((element) =>
+      previousIds.has(element.id)
+        ? element
+        : withDiagramData(element, { diagramId: input.id, semanticId: edge.id, role: "edge" }),
+    );
+    mappings.push({ semanticId: edge.id, shapeId: id, role: "edge" });
+  }
+  created = fitGeneratedText(updateConnections(created));
+  const diagramIds = new Set(created.map(({ id }) => id));
+  const ordered = normalizeCreatedDiagramOrder([...existing, ...created], diagramIds);
+  const selectedElementIds = Object.fromEntries(
+    created
+      .filter((element) => !(element.type === "text" && element.containerId))
+      .map((element) => [element.id, true as const]),
+  );
+  api.updateScene({
+    elements: ordered,
+    appState: { selectedElementIds },
+    captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+  });
+  api.scrollToContent(created, {
+    animate: true,
+    fitToViewport: true,
+    viewportZoomFactor: 0.85,
+  });
+  const diagnostics = [...layout.diagnostics];
+  if ((input.validate ?? []).includes("clipping")) {
+    const clipped = created.filter(
+      (element) =>
+        element.type === "text" &&
+        (element.width <= 0 || element.height <= 0 || element.text.length === 0),
+    );
+    if (clipped.length > 0)
+      diagnostics.push({
+        check: "clipping",
+        severity: "error",
+        message: "One or more generated labels could not be fitted.",
+        semanticIds: clipped.flatMap((element) => {
+          const data = diagramData(element);
+          return data ? [data.semanticId] : [];
+        }),
+      });
+  }
+  return {
+    diagramId: input.id,
+    checkpointId: crypto.randomUUID(),
+    mappings,
+    diagnostics,
+  };
 }
 
 function playbackDelay(milliseconds: number, signal?: AbortSignal) {
@@ -1903,7 +2560,7 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
           summaryTextTruncated,
       };
     },
-    async render({ scope, format, background = true, scale = 1 }) {
+    async render({ scope, format, background = true, scale = 1, maxSize }) {
       const allElements = nonDeleted(api);
       const ids = new Set(idsForScope(api, allElements, scope));
       const elements = allElements.filter(
@@ -1915,10 +2572,17 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
       if (!Number.isFinite(scale) || scale <= 0 || scale > MAX_RENDER_SCALE)
         throw new Error(`scale must be between 0 and ${MAX_RENDER_SCALE}`);
       const [minX, minY, maxX, maxY] = getCommonBounds(elements);
-      const width = Math.ceil((maxX - minX + 20) * scale);
-      const height = Math.ceil((maxY - minY + 20) * scale);
-      if (width > MAX_RENDER_DIMENSION || height > MAX_RENDER_DIMENSION)
-        throw new Error(`Rendered ${format.toUpperCase()} is too large`);
+      const sourceWidth = maxX - minX + 20;
+      const sourceHeight = maxY - minY + 20;
+      const maximumWidth = Math.min(MAX_RENDER_DIMENSION, maxSize?.width ?? MAX_RENDER_DIMENSION);
+      const maximumHeight = Math.min(MAX_RENDER_DIMENSION, maxSize?.height ?? MAX_RENDER_DIMENSION);
+      const effectiveScale = Math.min(
+        scale,
+        maximumWidth / sourceWidth,
+        maximumHeight / sourceHeight,
+      );
+      const width = Math.max(1, Math.ceil(sourceWidth * effectiveScale));
+      const height = Math.max(1, Math.ceil(sourceHeight * effectiveScale));
       const appState = {
         exportBackground: background,
         exportWithDarkMode: false,
@@ -1932,6 +2596,8 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
           exportPadding: 10,
           exportingFrame: null,
         });
+        svg.setAttribute("width", String(width));
+        svg.setAttribute("height", String(height));
         const data = new XMLSerializer().serializeToString(svg);
         if (new TextEncoder().encode(data).byteLength > MAX_RENDER_BYTES)
           throw new Error("Rendered SVG is too large");
@@ -1944,9 +2610,9 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
         mimeType: "image/png",
         exportPadding: 10,
         getDimensions: (sourceWidth: number, sourceHeight: number) => ({
-          width: sourceWidth * scale,
-          height: sourceHeight * scale,
-          scale,
+          width: sourceWidth * effectiveScale,
+          height: sourceHeight * effectiveScale,
+          scale: effectiveScale,
         }),
       });
       if (blob.size > MAX_RENDER_BYTES) throw new Error("Rendered PNG is too large");
@@ -1998,8 +2664,30 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
       });
       return receipt;
     },
-    insertMermaid(diagram) {
-      return insertMermaid(api, diagram);
+    insertMermaid(diagram, options) {
+      return insertMermaid(api, diagram, options);
+    },
+    diagram(input) {
+      return createDeclarativeDiagram(api, input);
+    },
+    clear() {
+      const roots = visibleElements(nonDeleted(api));
+      const deletedIds = roots.map(({ id }) => id);
+      const ids = new Set(deletedIds);
+      const elements = api
+        .getSceneElementsIncludingDeleted()
+        .map((element) =>
+          ids.has(element.id) ||
+          (element.type === "text" && !!element.containerId && ids.has(element.containerId))
+            ? newElementWith(element, { isDeleted: true })
+            : element,
+        );
+      api.updateScene({
+        elements,
+        appState: { selectedElementIds: {} },
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+      return { createdIds: [], updatedIds: [], deletedIds };
     },
     loadDocument(snapshot) {
       const restored = restoreDrawDocument(snapshot);

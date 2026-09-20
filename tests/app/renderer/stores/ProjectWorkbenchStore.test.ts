@@ -975,7 +975,12 @@ describe("ProjectWorkbenchStore startup selection", () => {
     const session = {
       ...loadedSessionStub({ sessionFile: "/session.jsonl" }),
       presentationMode: "draw" as const,
-      drawStore: { activeBoard: board, apply, read: vi.fn(async () => scene) },
+      drawStore: {
+        activeBoard: board,
+        apply,
+        read: vi.fn(async () => scene),
+        lastCheckpointId: "00000000-0000-4000-8000-000000000099",
+      },
     };
     const registry = {
       sessions: [session],
@@ -1020,6 +1025,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
       ok: true,
       kind: "applied",
       boardId: board.id,
+      checkpointId: "00000000-0000-4000-8000-000000000099",
       receipt: { createdIds: ["shape:agent"], updatedIds: [], deletedIds: [] },
       scene,
     });

@@ -26,6 +26,8 @@ const scene = {
   truncated: false,
 };
 
+const checkpointId = "00000000-0000-4000-8000-000000000099";
+
 const board = {
   id: "00000000-0000-4000-8000-000000000001",
   sessionId: "caller-session",
@@ -80,6 +82,7 @@ function control(overrides: Partial<CakeDrawControl> = {}): CakeDrawControl {
           ok: true,
           kind: "applied",
           boardId: board.id,
+          checkpointId,
           receipt: { createdIds: ["shape:one"], updatedIds: [], deletedIds: [] },
           scene,
         };
@@ -88,7 +91,42 @@ function control(overrides: Partial<CakeDrawControl> = {}): CakeDrawControl {
           ok: true,
           kind: "mermaid",
           boardId: board.id,
+          checkpointId,
           elementCount: 5,
+          mappings: [],
+          scene,
+        };
+      if (invocation._tag === "Diagram")
+        return {
+          ok: true,
+          kind: "diagram",
+          boardId: board.id,
+          checkpointId,
+          diagramId: invocation.diagram.id,
+          mappings: [
+            {
+              semanticId: "renderer",
+              shapeId: "shape:session-model--node--renderer",
+              role: "node",
+            },
+          ],
+          diagnostics: [],
+          preview: {
+            format: "png",
+            mediaType: "image/png",
+            width: 800,
+            height: 600,
+            data: `data:image/png;base64,${tinyPng}`,
+          },
+          scene,
+        };
+      if (invocation._tag === "Clear" || invocation._tag === "Undo")
+        return {
+          ok: true,
+          kind: invocation._tag === "Clear" ? "cleared" : "undone",
+          boardId: board.id,
+          checkpointId,
+          receipt: { createdIds: [], updatedIds: [], deletedIds: ["shape:one"] },
           scene,
         };
       return {
@@ -114,11 +152,11 @@ describe("Cake Draw operations", () => {
     expect(help.text).toContain("draw.apply");
     expect(help.text).toContain("draw.export");
     expect(help.text).toContain("draw.mermaid");
-    expect(help.text).toContain("Prefer draw.mermaid for architecture");
+    expect(help.text).toContain("Prefer draw.diagram for technical architecture");
     expect(help.text).toContain("plain <br>, <br/>, or <br />");
     expect(help.text).toContain("explicit direction");
     expect(help.text).toContain("linear Mermaid routes");
-    expect(help.text).toContain("Mermaid-imported shapes have the same shape: IDs");
+    expect(help.text).toContain("canonical shape:<id> form");
     expect(help.text).toContain("nearest collision-free position");
     expect(help.text).toContain("only render as an image are rejected");
     expect(help.text).toContain("one visible stage of at most 8 operations");
@@ -187,6 +225,59 @@ describe("Cake Draw operations", () => {
     expect(JSON.stringify(applyResult.details)).not.toContain('"scene"');
   });
 
+  it("creates a declarative diagram with semantic mappings, diagnostics, and a fitted preview", async () => {
+    const fake = control();
+    const registry = new CakeOperationRegistry(createCakeDrawOperations(fake));
+    const diagram = {
+      id: "session-model",
+      mode: "upsert" as const,
+      direction: "top-to-bottom" as const,
+      nodes: [{ id: "renderer", label: "Renderer" }],
+      maxRenderSize: { width: 800, height: 600 },
+      validate: ["overlaps" as const, "clipping" as const],
+      preview: true,
+    };
+
+    const result = await registry.invoke(
+      { command: "draw.diagram", input: { diagram } },
+      context(),
+    );
+
+    expect(fake.request).toHaveBeenCalledWith(
+      { _tag: "Diagram", diagram },
+      expect.any(AbortSignal),
+    );
+    expect(result.content).toContainEqual({ type: "image", mimeType: "image/png", data: tinyPng });
+    expect(result.details).toMatchObject({
+      result: {
+        boardId: board.id,
+        diagramId: "session-model",
+        checkpointId,
+        mappings: [
+          { semanticId: "renderer", shapeId: "shape:session-model--node--renderer", role: "node" },
+        ],
+        diagnostics: [],
+        preview: { width: 800, height: 600 },
+      },
+    });
+    expect(JSON.stringify(result.details)).not.toContain(tinyPng);
+  });
+
+  it("clears and undoes the board through checkpointed transactions", async () => {
+    const fake = control();
+    const registry = new CakeOperationRegistry(createCakeDrawOperations(fake));
+
+    await registry.invoke({ command: "draw.clear", input: {} }, context());
+    await registry.invoke({ command: "draw.undo", input: { checkpointId } }, context());
+
+    expect(fake.request).toHaveBeenNthCalledWith(1, { _tag: "Clear" }, expect.any(AbortSignal));
+    expect(fake.request).toHaveBeenNthCalledWith(
+      2,
+      { _tag: "Undo", checkpointId },
+      expect.any(AbortSignal),
+    );
+  });
+
   it("converts Mermaid through one explicit renderer request", async () => {
     const fake = control();
     const registry = new CakeOperationRegistry(createCakeDrawOperations(fake));
@@ -202,7 +293,7 @@ describe("Cake Draw operations", () => {
       expect.any(AbortSignal),
     );
     expect(result.details).toMatchObject({
-      result: { boardId: board.id, elementCount: 5 },
+      result: { boardId: board.id, checkpointId, elementCount: 5, mappings: [] },
     });
     expect(JSON.stringify(result.details)).not.toContain(diagram);
   });
@@ -233,6 +324,7 @@ describe("Cake Draw operations", () => {
       { type: "move" as const, ids: ["shape:card"], deltaX: 40, deltaY: -20 },
       { type: "select" as const, ids: ["shape:card"] },
       { type: "set-locked" as const, ids: ["shape:card"], locked: true },
+      { type: "delete-diagram" as const, id: "obsolete-region" },
       {
         type: "update" as const,
         id: "shape:card",
@@ -249,6 +341,18 @@ describe("Cake Draw operations", () => {
       { _tag: "Apply", operations },
       expect.any(AbortSignal),
     );
+  });
+
+  it("rejects non-canonical shape IDs at the tool boundary", async () => {
+    const fake = control();
+    const registry = new CakeOperationRegistry(createCakeDrawOperations(fake));
+    await expect(
+      registry.invoke(
+        { command: "draw.apply", input: { operations: [{ type: "select", ids: ["card"] }] } },
+        context(),
+      ),
+    ).rejects.toThrow();
+    expect(fake.request).not.toHaveBeenCalled();
   });
 
   it("rejects invalid resize and empty style inputs at the tool boundary", async () => {

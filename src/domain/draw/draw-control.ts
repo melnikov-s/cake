@@ -10,7 +10,17 @@ const coordinate = Schema.Number.check(
   Schema.isFinite(),
   Schema.isBetween({ minimum: -1_000_000, maximum: 1_000_000 }),
 );
-const shapeId = boundedString(262);
+const semanticId = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(128),
+  Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]*$/),
+);
+const diagramId = semanticId;
+const shapeId = Schema.String.check(
+  Schema.isMinLength(7),
+  Schema.isMaxLength(262),
+  Schema.isPattern(/^shape:[A-Za-z0-9_-]{1,256}$/),
+);
 const shapeIds = Schema.Array(shapeId).check(Schema.isMaxLength(500));
 const nonEmptyShapeIds = shapeIds.check(Schema.isMinLength(1));
 const atLeastTwoShapeIds = shapeIds.check(Schema.isMinLength(2));
@@ -35,6 +45,19 @@ const optionalSourceLink = { sourceLink: Schema.optionalKey(DrawSourceLink) };
 
 export const DrawReadScope = Schema.Literals(["selection", "viewport", "page"]);
 export type DrawReadScope = typeof DrawReadScope.Type;
+
+export const DrawMaxRenderSize = Schema.Struct({
+  width: Schema.Number.check(
+    Schema.isFinite(),
+    Schema.isGreaterThan(0),
+    Schema.isLessThanOrEqualTo(4_096),
+  ),
+  height: Schema.Number.check(
+    Schema.isFinite(),
+    Schema.isGreaterThan(0),
+    Schema.isLessThanOrEqualTo(4_096),
+  ),
+});
 
 const DrawBounds = Schema.Struct({
   x: coordinate,
@@ -84,6 +107,9 @@ const DrawShapeSummary = Schema.Struct({
     ),
   ),
   sourceLink: Schema.optionalKey(DrawSourceLink),
+  diagramId: Schema.optionalKey(diagramId),
+  semanticId: Schema.optionalKey(semanticId),
+  diagramRole: Schema.optionalKey(Schema.Literals(["node", "group", "edge"])),
 });
 
 const DrawScene = Schema.Struct({
@@ -237,6 +263,7 @@ export const DrawOperation = Schema.Union([
   ),
   Schema.Struct({ type: Schema.Literal("style"), ids: nonEmptyShapeIds, style: DrawStyleUpdate }),
   Schema.Struct({ type: Schema.Literal("delete"), ids: nonEmptyShapeIds }),
+  Schema.Struct({ type: Schema.Literal("delete-diagram"), id: diagramId }),
   Schema.Struct({
     type: Schema.Literal("move"),
     ids: nonEmptyShapeIds,
@@ -277,11 +304,72 @@ export const DrawOperation = Schema.Union([
     fromId: shapeId,
     toId: shapeId,
     text: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
+    fromPort: Schema.optionalKey(Schema.Literals(["top", "right", "bottom", "left", "auto"])),
+    toPort: Schema.optionalKey(Schema.Literals(["top", "right", "bottom", "left", "auto"])),
+    routing: Schema.optionalKey(Schema.Literals(["straight", "orthogonal"])),
   }),
 ]);
 export type DrawOperation = typeof DrawOperation.Type;
 
 export const DRAW_APPLY_MAX_OPERATIONS = 8;
+
+const DrawSemanticShapeMapping = Schema.Struct({
+  semanticId,
+  shapeId,
+  role: Schema.Literals(["node", "group", "edge"]),
+});
+
+const DrawValidationCheck = Schema.Literals([
+  "overlaps",
+  "clipping",
+  "dangling-edges",
+  "excessive-whitespace",
+  "crossing-edges",
+]);
+
+const DrawDiagnostic = Schema.Struct({
+  check: DrawValidationCheck,
+  severity: Schema.Literals(["info", "warning", "error"]),
+  message: boundedString(1_024),
+  semanticIds: Schema.Array(semanticId).check(Schema.isMaxLength(50)),
+});
+
+const DrawDiagramNode = Schema.Struct({
+  id: semanticId,
+  label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_000)),
+  groupId: Schema.optionalKey(semanticId),
+  kind: Schema.optionalKey(Schema.Literals(["rectangle", "ellipse", "diamond"])),
+  width: Schema.optionalKey(positiveDimension.check(Schema.isLessThanOrEqualTo(2_000))),
+  height: Schema.optionalKey(positiveDimension.check(Schema.isLessThanOrEqualTo(2_000))),
+  sourceLink: Schema.optionalKey(DrawSourceLink),
+});
+
+const DrawDiagramGroup = Schema.Struct({
+  id: semanticId,
+  label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_000)),
+});
+
+const DrawDiagramEdge = Schema.Struct({
+  id: semanticId,
+  from: semanticId,
+  to: semanticId,
+  label: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2_000))),
+  fromPort: Schema.optionalKey(Schema.Literals(["top", "right", "bottom", "left", "auto"])),
+  toPort: Schema.optionalKey(Schema.Literals(["top", "right", "bottom", "left", "auto"])),
+  routing: Schema.optionalKey(Schema.Literals(["straight", "orthogonal"])),
+});
+
+export const DrawDiagramInput = Schema.Struct({
+  id: diagramId,
+  mode: Schema.Literals(["replace", "upsert"]),
+  direction: Schema.Literals(["left-to-right", "top-to-bottom"]),
+  nodes: Schema.Array(DrawDiagramNode).check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+  groups: Schema.optionalKey(Schema.Array(DrawDiagramGroup).check(Schema.isMaxLength(50))),
+  edges: Schema.optionalKey(Schema.Array(DrawDiagramEdge).check(Schema.isMaxLength(500))),
+  maxRenderSize: Schema.optionalKey(DrawMaxRenderSize),
+  validate: Schema.optionalKey(Schema.Array(DrawValidationCheck).check(Schema.isMaxLength(5))),
+  preview: Schema.optionalKey(Schema.Boolean),
+});
 
 const DrawApplyReceipt = Schema.Struct({
   createdIds: shapeIds,
@@ -323,7 +411,14 @@ export const DrawControlInvocation = Schema.TaggedUnion({
         Schema.isLessThanOrEqualTo(4),
       ),
     ),
+    maxSize: Schema.optionalKey(DrawMaxRenderSize),
   },
+  Clear: { boardId: Schema.optionalKey(DrawBoardId) },
+  Undo: {
+    boardId: Schema.optionalKey(DrawBoardId),
+    checkpointId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+  },
+  Diagram: { boardId: Schema.optionalKey(DrawBoardId), diagram: DrawDiagramInput },
   ExportDocument: { boardId: Schema.optionalKey(DrawBoardId) },
   Apply: {
     boardId: Schema.optionalKey(DrawBoardId),
@@ -335,6 +430,8 @@ export const DrawControlInvocation = Schema.TaggedUnion({
   Mermaid: {
     boardId: Schema.optionalKey(DrawBoardId),
     diagram: mermaidDiagram,
+    id: Schema.optionalKey(diagramId),
+    replace: Schema.optionalKey(Schema.Boolean),
   },
 });
 export type DrawControlInvocation = typeof DrawControlInvocation.Type;
@@ -390,6 +487,7 @@ export const DrawControlResponse = Schema.Union([
     ok: Schema.Literal(true),
     kind: Schema.Literal("applied"),
     boardId: DrawBoardId,
+    checkpointId: Schema.String.check(Schema.isUUID(4)),
     receipt: DrawApplyReceipt,
     scene: DrawScene,
   }),
@@ -397,7 +495,29 @@ export const DrawControlResponse = Schema.Union([
     ok: Schema.Literal(true),
     kind: Schema.Literal("mermaid"),
     boardId: DrawBoardId,
+    checkpointId: Schema.String.check(Schema.isUUID(4)),
+    diagramId: Schema.optionalKey(diagramId),
     elementCount: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+    mappings: Schema.Array(DrawSemanticShapeMapping).check(Schema.isMaxLength(1_000)),
+    scene: DrawScene,
+  }),
+  Schema.Struct({
+    ok: Schema.Literal(true),
+    kind: Schema.Literals(["cleared", "undone"]),
+    boardId: DrawBoardId,
+    checkpointId: Schema.String.check(Schema.isUUID(4)),
+    receipt: DrawApplyReceipt,
+    scene: DrawScene,
+  }),
+  Schema.Struct({
+    ok: Schema.Literal(true),
+    kind: Schema.Literal("diagram"),
+    boardId: DrawBoardId,
+    checkpointId: Schema.String.check(Schema.isUUID(4)),
+    diagramId,
+    mappings: Schema.Array(DrawSemanticShapeMapping).check(Schema.isMaxLength(1_000)),
+    diagnostics: Schema.Array(DrawDiagnostic).check(Schema.isMaxLength(100)),
+    preview: Schema.optionalKey(DrawRender),
     scene: DrawScene,
   }),
 ]);

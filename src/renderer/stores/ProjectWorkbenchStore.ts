@@ -918,6 +918,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
               format: invocation.format,
               background: invocation.background,
               scale: invocation.scale,
+              maxSize: invocation.maxSize,
             }),
           };
         case "ExportDocument":
@@ -929,6 +930,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
           };
         case "Apply": {
           const receipt = await draw.apply(invocation.operations);
+          const checkpointId = draw.lastCheckpointId;
+          if (!checkpointId) throw new Error("Cake Draw did not create an agent checkpoint");
           if (signal?.aborted)
             return {
               ok: false,
@@ -939,12 +942,64 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
             ok: true,
             kind: "applied",
             boardId: draw.activeBoard.id,
+            checkpointId,
             receipt,
             scene: await draw.read("page"),
           };
         }
+        case "Clear": {
+          const receipt = await draw.clear();
+          const checkpointId = draw.lastCheckpointId;
+          if (!checkpointId) throw new Error("Cake Draw did not create an agent checkpoint");
+          return {
+            ok: true,
+            kind: "cleared",
+            boardId: draw.activeBoard.id,
+            checkpointId,
+            receipt,
+            scene: await draw.read("page"),
+          };
+        }
+        case "Undo": {
+          const result = await draw.undo(invocation.checkpointId);
+          return {
+            ok: true,
+            kind: "undone",
+            boardId: draw.activeBoard.id,
+            checkpointId: result.checkpointId,
+            receipt: result.receipt,
+            scene: await draw.read("page"),
+          };
+        }
+        case "Diagram": {
+          const receipt = await draw.diagram(invocation.diagram);
+          const preview = invocation.diagram.preview
+            ? await draw.render({
+                scope: "selection",
+                format: "png",
+                background: true,
+                maxSize: invocation.diagram.maxRenderSize,
+              })
+            : undefined;
+          return {
+            ok: true,
+            kind: "diagram",
+            boardId: draw.activeBoard.id,
+            checkpointId: receipt.checkpointId,
+            diagramId: receipt.diagramId,
+            mappings: receipt.mappings,
+            diagnostics: receipt.diagnostics,
+            preview,
+            scene: await draw.read("page"),
+          };
+        }
         case "Mermaid": {
-          const receipt = await draw.insertMermaid(invocation.diagram);
+          const receipt = await draw.insertMermaid(invocation.diagram, {
+            id: invocation.id,
+            replace: invocation.replace,
+          });
+          const checkpointId = draw.lastCheckpointId;
+          if (!checkpointId) throw new Error("Cake Draw did not create an agent checkpoint");
           if (signal?.aborted)
             return {
               ok: false,
@@ -955,7 +1010,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
             ok: true,
             kind: "mermaid",
             boardId: draw.activeBoard.id,
+            checkpointId,
+            diagramId: receipt.diagramId,
             elementCount: receipt.elementCount,
+            mappings: receipt.mappings,
             scene: await draw.read("page"),
           };
         }

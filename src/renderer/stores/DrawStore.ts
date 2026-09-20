@@ -2,6 +2,8 @@ import { Store, observable, snapshot } from "r-state-tree";
 import type { DrawBoardMetadata } from "../../domain/draw/draw-board-data";
 import type {
   DrawApplyReceipt,
+  DrawDiagramInput,
+  DrawDiagramReceipt,
   DrawDocumentSnapshot,
   DrawMermaidReceipt,
   DrawOperation,
@@ -48,6 +50,9 @@ export class DrawStore extends Store<DrawStoreProps> {
     | undefined;
   private detachDocumentListener: (() => void) | undefined;
   private suppressDocumentChanges = false;
+  private readonly checkpoints = new Map<string, DrawDocumentSnapshot>();
+  private checkpointOrder: string[] = [];
+  lastCheckpointId: string | undefined;
   private readonly readyWaiters = new Set<(adapter: DrawEditorAdapter) => void>();
 
   get client() {
@@ -205,13 +210,10 @@ export class DrawStore extends Store<DrawStoreProps> {
           { stepDelayMs: 160, maxDurationMs: 3_500, signal: this.signal },
         );
       } catch (error) {
-        this.suppressDocumentChanges = false;
-        if (JSON.stringify(adapter.snapshotDocument()) !== beforePlayback) {
-          this.documentChanged();
-          await this.flush();
-        }
+        adapter.loadDocument(JSON.parse(beforePlayback));
         throw error;
       }
+      this.rememberCheckpoint(JSON.parse(beforePlayback));
       this.suppressDocumentChanges = false;
       this.documentChanged();
       await this.flush();
@@ -222,18 +224,90 @@ export class DrawStore extends Store<DrawStoreProps> {
     }
   }
 
-  async insertMermaid(diagram: string): Promise<DrawMermaidReceipt> {
+  async insertMermaid(
+    diagram: string,
+    options?: { readonly id?: string; readonly replace?: boolean },
+  ): Promise<DrawMermaidReceipt> {
     if (this.agentDrawing) throw new Error("Cake Draw is already presenting an agent edit");
     this.clearError();
     const adapter = await this.waitUntilReady();
+    const before = adapter.snapshotDocument();
     this.agentDrawing = true;
     this.suppressDocumentChanges = true;
     try {
-      const receipt = await adapter.insertMermaid(diagram);
+      const receipt = await adapter.insertMermaid(diagram, options);
+      this.rememberCheckpoint(before);
       this.suppressDocumentChanges = false;
       this.documentChanged();
       await this.flush();
       return receipt;
+    } finally {
+      this.suppressDocumentChanges = false;
+      this.agentDrawing = false;
+    }
+  }
+
+  async diagram(input: DrawDiagramInput): Promise<DrawDiagramReceipt> {
+    if (this.agentDrawing) throw new Error("Cake Draw is already presenting an agent edit");
+    this.clearError();
+    const adapter = await this.waitUntilReady();
+    const before = adapter.snapshotDocument();
+    this.agentDrawing = true;
+    this.suppressDocumentChanges = true;
+    try {
+      const receipt = adapter.diagram(input);
+      this.rememberCheckpoint(before, receipt.checkpointId);
+      this.suppressDocumentChanges = false;
+      this.documentChanged();
+      await this.flush();
+      return receipt;
+    } catch (error) {
+      adapter.loadDocument(before);
+      throw error;
+    } finally {
+      this.suppressDocumentChanges = false;
+      this.agentDrawing = false;
+    }
+  }
+
+  async clear(): Promise<DrawApplyReceipt> {
+    if (this.agentDrawing) throw new Error("Cake Draw is already presenting an agent edit");
+    const adapter = await this.waitUntilReady();
+    const before = adapter.snapshotDocument();
+    this.agentDrawing = true;
+    try {
+      const receipt = adapter.clear();
+      this.rememberCheckpoint(before);
+      this.documentChanged();
+      await this.flush();
+      return receipt;
+    } finally {
+      this.agentDrawing = false;
+    }
+  }
+
+  async undo(checkpointId?: string): Promise<{ checkpointId: string; receipt: DrawApplyReceipt }> {
+    if (this.agentDrawing) throw new Error("Cake Draw is already presenting an agent edit");
+    const target = checkpointId ?? this.checkpointOrder.at(-1);
+    if (!target) throw new Error("There is no agent Draw checkpoint to undo");
+    const snapshot = this.checkpoints.get(target);
+    if (!snapshot) throw new Error(`Draw checkpoint is no longer available: ${target}`);
+    const adapter = await this.waitUntilReady();
+    this.agentDrawing = true;
+    this.suppressDocumentChanges = true;
+    try {
+      adapter.loadDocument(snapshot);
+      this.suppressDocumentChanges = false;
+      const targetIndex = this.checkpointOrder.indexOf(target);
+      for (const id of this.checkpointOrder.slice(targetIndex)) this.checkpoints.delete(id);
+      this.checkpointOrder = this.checkpointOrder.slice(0, targetIndex);
+      this.lastCheckpointId = this.checkpointOrder.at(-1);
+      this.documentChanged();
+      await this.flush();
+      return {
+        checkpointId: target,
+        receipt: { createdIds: [], updatedIds: [], deletedIds: [] },
+      };
     } finally {
       this.suppressDocumentChanges = false;
       this.agentDrawing = false;
@@ -259,11 +333,28 @@ export class DrawStore extends Store<DrawStoreProps> {
       );
   }
 
+  private rememberCheckpoint(
+    snapshot: DrawDocumentSnapshot,
+    checkpointId: string = crypto.randomUUID(),
+  ) {
+    this.checkpoints.set(checkpointId, snapshot);
+    this.checkpointOrder.push(checkpointId);
+    while (this.checkpointOrder.length > 10) {
+      const expired = this.checkpointOrder.shift();
+      if (expired) this.checkpoints.delete(expired);
+    }
+    this.lastCheckpointId = checkpointId;
+    return checkpointId;
+  }
+
   private async loadBoard(boardId: string) {
     const revision = ++this.loadRevision;
     this.loading = true;
     this.documentLoaded = false;
     this.documentSnapshot = null;
+    this.checkpoints.clear();
+    this.checkpointOrder = [];
+    this.lastCheckpointId = undefined;
     this.activeBoardId = boardId;
     try {
       const result = await this.client.read(
