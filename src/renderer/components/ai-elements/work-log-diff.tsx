@@ -3,6 +3,7 @@ import type { UiPart } from "../../../ipc/session-contract";
 import type { SourceLocation } from "../../../ipc/source-location";
 import { workLogChangeChunks } from "../../../utils/turn-diff";
 import { toWorkspaceRelativePath } from "../../../utils/workspace-relative-path";
+import { useBufferedWorkLogChanges } from "../../lib/use-buffered-work-log-changes";
 import { DiffView } from "./diff-view";
 
 export const WorkLogDiff = memo(function WorkLogDiff({
@@ -21,7 +22,8 @@ export const WorkLogDiff = memo(function WorkLogDiff({
   headerClassName?: string;
 }) {
   const changes = workLogChangeChunks(parts);
-  if (changes.length === 0)
+  const displayedChanges = useBufferedWorkLogChanges(changes);
+  if (displayedChanges.length === 0)
     return streaming ? (
       <div className="p-3 font-mono text-[11px] text-muted-foreground" role="status">
         Waiting for file changes…
@@ -33,7 +35,7 @@ export const WorkLogDiff = memo(function WorkLogDiff({
       className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)]"
       aria-label="Streaming file diff"
     >
-      {changes.map((change) => (
+      {displayedChanges.map((change) => (
         <div className="contents" data-part-id={change.id} key={change.id}>
           <DiffView
             diff={change.diff}

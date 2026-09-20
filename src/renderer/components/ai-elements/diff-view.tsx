@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../../ipc/source-location";
 import { CopyFilePathButton } from "@/components/copy-file-path-button";
@@ -69,7 +69,7 @@ function diffStats(diff: string) {
   };
 }
 
-export function DiffView({
+export const DiffView = memo(function DiffView({
   diff,
   filePath,
   label = "Changes",
@@ -211,4 +211,4 @@ export function DiffView({
       </div>
     </section>
   );
-}
+});
