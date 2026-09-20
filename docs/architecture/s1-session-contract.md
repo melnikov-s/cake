@@ -47,33 +47,7 @@ target, preview, error, and persistence concepts remain `PiSession*` values.
 | Subagent ownership and activity                                            | Cake subagent coordinator        | Parent Cake Session-owned; process/runtime lifetime and bounded concurrency                            |
 | Artifact lineage and payload                                               | Cake artifact repository         | Globally durable; Project Sessions and Session Families hold links, never ownership or copied payloads |
 | Session Family membership                                                  | Cake Session Family storage      | Durable relation among independent Project Sessions; root owns family lifecycle                        |
-| `ProjectSessionProjection`                                                 | Main/domain assembly             | Fresh on-demand overview; no independent persistence, stream, relationship catalog, or write authority |
 | Renderer Models and Stores                                                 | Renderer window                  | Focused validated projections plus UI/workflow state; Models/Stores do not define the aggregate        |
-
-## Main-owned on-demand overview
-
-`ProjectSessionProjection` is an Effect Schema owned by
-`src/domain/project-sessions`. Main assembles it as an optional current overview
-containing the Project Session identity, Project and Working Directory
-references, lifecycle, and exactly one
-`primaryConversation: ConversationReference`. It never embeds the Conversation
-or duplicates Discussion, Subagent, review, artifact-link, or Session Family
-catalogs.
-
-The `projectSessions.readProjection` Effect RPC success Schema validates this
-overview across the main-to-renderer boundary. It is a fresh query, not a live
-renderer synchronization source. An already-known Project Session target starts
-its independent Conversation subscription immediately. Focused authorities
-populate their own Models, and `ProjectSessionStore` coordinates their Stores
-without owning or re-exporting the payloads.
-
-| Projection field      | Authority and owner                                                           | Lifetime / persistence                                            | Concurrency policy                                                |
-| --------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `identity`            | Cake Project Session routing identity                                         | Durable focused routing metadata; projection lifetime in renderer | Identity collisions reject the projection                         |
-| `project`             | Cake Project registry                                                         | Durable Project record; referenced by projection                  | Project mutations serialize in the Project authority              |
-| `workingDirectory`    | Cake routing plus Managed Worktree reference; Git owns checkout facts         | Durable routing/worktree metadata; no copied filesystem state     | Managed Worktree operations use their repository/worktree queues  |
-| `lifecycle`           | Project Session lifecycle / family-root authority                             | Durable active/archive placement and unread metadata              | Lifecycle transitions serialize under standalone/family authority |
-| `primaryConversation` | Project Session-to-Conversation relation; transcript remains Pi-authoritative | Overview-read lifetime; bounded identity reference only           | Relation is fixed for the materialized Project Session            |
 
 ## Conversation observation
 
@@ -89,11 +63,11 @@ updates the stable renderer `Conversation` Model and contains no Project,
 Working Directory, lifecycle, Discussion, Subagent, scheduled-message, review,
 artifact, family, or Cake-control payload.
 
-A known Project Session target starts Conversation observation without first
-reading `ProjectSessionProjection`. Focused Discussion, Subagent,
-scheduled-message, review, artifact, family, and catalog sources update only
-their own Models. None of those updates triggers an overview reread or replaces
-the Conversation projection.
+A known Project Session target starts Conversation observation directly.
+Focused Discussion, Subagent, scheduled-message, review, artifact, family,
+lifecycle, Project, and catalog sources update only their own Models. None of
+those updates rebuilds a Project Session-shaped payload or replaces the
+Conversation projection.
 
 ## Relationship language
 
@@ -124,8 +98,7 @@ import Effect, RPC contracts, main domain modules, or `CakeSessionRuntimes`.
 
 ## Verification boundary
 
-Focused integration tests cover the fresh overview read, Effect Schema
-round-tripping across its main-to-renderer RPC
-contract, Pi JSONL reopen, complete active-branch Conversation projection,
-snapshot/event ordering, renderer hydration, stale-identity rejection,
-cancellation, and the Electron RPC boundary. Provider-backed calls remain opt-in.
+Focused integration tests cover Pi JSONL reopen, complete active-branch
+Conversation projection, snapshot/event ordering, renderer hydration,
+stale-identity rejection, cancellation, and the Electron RPC boundary.
+Provider-backed calls remain opt-in.

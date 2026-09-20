@@ -7,7 +7,6 @@ import {
   ProjectSessionCatalogQuery,
   ProjectSessionCompanionActionInput,
   ProjectSessionPreview,
-  ProjectSessionProjection,
   ProjectSessionStartInput,
   ProjectSessionTarget,
   WorkingDirectoryResolutionResult,
@@ -25,11 +24,6 @@ export const ProjectSessionRpc = RpcGroup.make(
   Rpc.make("projectSessions.inspect", {
     payload: ProjectSessionTarget,
     success: ProjectSessionPreview,
-    error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.readProjection", {
-    payload: ProjectSessionTarget,
-    success: ProjectSessionProjection,
     error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.start", {

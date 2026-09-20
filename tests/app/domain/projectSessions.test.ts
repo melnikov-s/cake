@@ -2730,34 +2730,6 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("reads a fresh Project Session overview without embedding its transcript", () =>
-    Effect.gen(function* () {
-      const projection = yield* projectSessionOperations.readProjection({
-        sessionId: "session-1",
-        workingDirectory: "/project",
-      });
-
-      assert.deepEqual(projection.identity, {
-        _tag: "ProjectSession",
-        sessionId: "session-1",
-        projectPath: "/project",
-        workingDirectory: "/project",
-      });
-      assert.deepEqual(projection.project, { path: "/project", name: "Project" });
-      assert.deepEqual(projection.workingDirectory, { path: "/project" });
-      assert.deepEqual(projection.lifecycle, { resolved: false, unread: true });
-      assert.deepEqual(projection.primaryConversation, { sessionId: "session-1" });
-      assert.equal("parts" in projection.primaryConversation, false);
-    }).pipe(
-      Effect.provide(
-        makeLayer({
-          ...defaultApplicationState(),
-          unreadSessionIds: ["session-1"],
-        }),
-      ),
-    ),
-  );
-
   it.effect("previews a resolved session without restoring or constructing its runtime", () => {
     let runtimeConstructions = 0;
     let inspections = 0;

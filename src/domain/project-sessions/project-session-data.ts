@@ -3,8 +3,6 @@ import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
 import { ThinkingLevel } from "../../services/pi/model-data";
 import { ManagedWorktreeContext } from "../worktrees/managed-worktree-data";
 import {
-  CakeSessionIdentity,
-  ConversationReference,
   SessionChatConfiguration,
   SessionChatPromptInput,
 } from "../conversations/conversation-data";
@@ -69,40 +67,6 @@ export const ProjectSessionPreview = Schema.Struct({
   managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
 });
 export interface ProjectSessionPreview extends Schema.Schema.Type<typeof ProjectSessionPreview> {}
-
-const ProjectReference = Schema.Struct({
-  path: boundedPath,
-  name: Schema.String,
-});
-
-export const WorkingDirectoryReference = Schema.Struct({
-  path: boundedPath,
-  worktreeName: Schema.optionalKey(Schema.String),
-  managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
-});
-export interface WorkingDirectoryReference extends Schema.Schema.Type<
-  typeof WorkingDirectoryReference
-> {}
-
-const ProjectSessionLifecycleProjection = Schema.Struct({
-  resolved: Schema.Boolean,
-  unread: Schema.Boolean,
-});
-
-/**
- * Current on-demand overview for one Project Session. Focused relationship
- * authorities are intentionally not duplicated into this header projection.
- */
-export const ProjectSessionProjection = Schema.Struct({
-  identity: CakeSessionIdentity.cases.ProjectSession,
-  project: ProjectReference,
-  workingDirectory: WorkingDirectoryReference,
-  lifecycle: ProjectSessionLifecycleProjection,
-  primaryConversation: ConversationReference,
-});
-export interface ProjectSessionProjection extends Schema.Schema.Type<
-  typeof ProjectSessionProjection
-> {}
 
 export const ProjectSessionControlInvocation = Schema.TaggedUnion({
   InvokeAppControl: {

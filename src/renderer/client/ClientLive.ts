@@ -296,12 +296,6 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.projectSessions.inspect(target)),
           options,
         ),
-      readProjection: (target, options) =>
-        run(
-          "projectSessions.readProjection",
-          withClient((client) => client.projectSessions.readProjection(target)),
-          options,
-        ),
       start: (input, options) =>
         run(
           "projectSessions.start",

@@ -335,6 +335,9 @@ export const createModelObserver = (
         controls,
         (client) => client.cakeChats.observeControls(target),
         (update: CakeChatControlUpdate) => applyCakeChatControlUpdate(controls, update),
+        {
+          clear: () => applyCakeChatControlUpdate(controls, { _tag: "Snapshot", requests: [] }),
+        },
       );
     }
 
@@ -432,6 +435,7 @@ export const createModelObserver = (
             model: source.projection.discussionConversation(
               thread.sidecarSessionId!,
               thread.workingDirectory,
+              thread.parentSessionId,
             ),
           };
           if (isSessionAssistantThread(thread))

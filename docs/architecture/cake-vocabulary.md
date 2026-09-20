@@ -65,8 +65,8 @@ type Update<Snapshot, Event> =
 
 A purpose-built, validated, derived representation assembled from one or more
 authorities for a consumer. A Projection may itself be delivered as a Snapshot
-and then updated by Events. Project Session overviews and renderer Models are
-projections; they are not additional authorities.
+and then updated by Events. Focused Project Session-related views and renderer
+Models are projections; they are not additional authorities.
 
 ### Revision
 
@@ -122,14 +122,11 @@ Session Family membership. Those authorities remain focused: the aggregate
 projection joins bounded references and summaries rather than copying Pi
 transcripts, artifact payloads, Git state, or review storage into a god object.
 
-The main/domain layer assembles `ProjectSessionProjection` only as a fresh,
-on-demand overview/header read. It identifies the primary Conversation by a
-bounded `ConversationReference`; it never embeds `ConversationSnapshot` or
-copies relationship catalogs. A renderer that already knows the Project
-Session target subscribes directly through `conversations.observe` without
-waiting for that optional overview. Review, Discussion, subagent, artifact,
-Session Family, and scheduled-message payloads remain in focused authorities
-and renderer Models. The renderer consumes these projections but does not
+A renderer that knows the Project Session target subscribes directly through
+`conversations.observe`. Project, lifecycle, Review, Discussion, subagent,
+artifact, Session Family, and scheduled-message facts remain in focused
+authorities and renderer Models instead of being copied into a Project
+Session-shaped payload. The renderer consumes these projections but does not
 define Project Session ownership.
 
 ### Cake Chat Session

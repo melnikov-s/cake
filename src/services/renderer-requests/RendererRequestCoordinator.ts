@@ -454,33 +454,37 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
               ? cause
               : coordinatorError("requestCakeChatControl", String(cause)),
         });
-        const controlRequestId = crypto.randomUUID();
-        const completion = yield* Deferred.make<JsonValue | undefined>();
-        const entry: PendingRequest = {
-          _tag: "CakeChatControl",
-          sessionId,
-          connectionId,
-          name: invocation.name,
-          invocation,
-          completion,
-        };
-        pending.set(controlRequestId, entry);
-        yield* SubscriptionRef.update(cakeChatRequests, (requests) => [
-          ...requests,
-          {
-            _tag: "ControlRequested" as const,
-            sessionId,
-            controlRequestId,
-            invocation,
-            connectionId,
-          },
-        ]);
-        return (
-          (yield* awaitPending(controlRequestId, entry, signal)) ?? {
-            ok: false,
-            name: invocation.name,
-            error: "The Cake Chat request was cancelled.",
-          }
+        return yield* Effect.uninterruptibleMask((restore) =>
+          Effect.gen(function* () {
+            const controlRequestId = crypto.randomUUID();
+            const completion = yield* Deferred.make<JsonValue | undefined>();
+            const entry: PendingRequest = {
+              _tag: "CakeChatControl",
+              sessionId,
+              connectionId,
+              name: invocation.name,
+              invocation,
+              completion,
+            };
+            pending.set(controlRequestId, entry);
+            yield* SubscriptionRef.update(cakeChatRequests, (requests) => [
+              ...requests,
+              {
+                _tag: "ControlRequested" as const,
+                sessionId,
+                controlRequestId,
+                invocation,
+                connectionId,
+              },
+            ]);
+            return (
+              (yield* restore(awaitPending(controlRequestId, entry, signal))) ?? {
+                ok: false,
+                name: invocation.name,
+                error: "The Cake Chat request was cancelled.",
+              }
+            );
+          }),
         );
       },
     );

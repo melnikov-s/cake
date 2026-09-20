@@ -63,12 +63,10 @@ Every durable concept has one authority.
 
 Do not introduce a second transcript database, reconstruct Pi state into a
 competing domain model, or mutate Pi JSONL with ad hoc file operations. Main
-assembles each validated `ProjectSessionProjection` on demand as a bounded
-overview of Project, Working Directory, lifecycle, and primary Conversation
-identity. Its `primaryConversation` is a `ConversationReference`, never an
-embedded transcript snapshot. Focused Discussion, Subagent, review, artifact,
-and Session Family authorities are queried or observed independently rather
-than copied into this optional overview. A session
+keeps Project, Working Directory, lifecycle, Conversation, Discussion,
+Subagent, review, artifact, and Session Family facts in their focused
+authorities. The renderer joins only the projections needed by the active
+surface instead of assembling a shadow Project Session payload. A session
 cannot be archived while its Pi turn is active. When the calling agent requests
 its own resolution during that turn, the runtime records the intent and applies
 it at the settled-turn boundary, after the final transcript snapshot is emitted.
@@ -558,11 +556,10 @@ The window Store hierarchy mirrors the product surfaces:
 - Each `ProjectSessionStore` coordinates independently owned Conversation,
   Discussion/review, subagent, scheduled-message, and artifact projections needed
   by the current surface. It owns none of those child payloads and does not
-  re-export their APIs. `ProjectSessionProjection` remains a Schema-validated
-  on-demand overview query, not a renderer synchronization prerequisite. An
-  already-known Project Session target starts `conversations.observe` directly;
-  focused relationship authorities update only their own Models. Conversation
-  updates never rebuild an overview or replace transcript identity. The Store
+  re-export their APIs. An already-known Project Session target starts
+  `conversations.observe` directly; focused relationship authorities update
+  only their own Models. Conversation updates never rebuild a Project Session
+  payload or replace transcript identity. The Store
   owns that session's activity,
   remembered `normal`/`vscode`/`draw`
   presentation preference and shared workspace chat-drawer geometry, managed-worktree status and

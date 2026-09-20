@@ -447,13 +447,11 @@ type ConversationUpdate =
 ```
 
 A Project Session's known target is sufficient to start the independent
-`conversations.observe` subscription for its primary Conversation. The optional
-`ProjectSessionProjection` is a fresh on-demand overview carrying a bounded
-`ConversationReference`, not a transcript snapshot or relationship catalogs.
-Discussion, subagent, scheduled-message, artifact, review, and Session Family
-authorities are read or observed only by the focused surfaces that need them.
-Conversation and focused-authority updates never rebuild that overview or
-replace Conversation Model identity.
+`conversations.observe` subscription for its primary Conversation. Discussion,
+subagent, scheduled-message, artifact, review, lifecycle, Project, and Session
+Family authorities are read or observed only by the focused surfaces that need
+them. Conversation and focused-authority updates never rebuild a Project
+Session-shaped payload or replace Conversation Model identity.
 
 Conversation Events cover messages and the broader runtime lifecycle: turn
 state, message parts, tool execution, model selection, usage, compaction,
@@ -471,7 +469,6 @@ RPC Stream into Model snapshots and applies them.
 ```text
 Known Project Session target → conversations.observe
 Pi → CakeSessionRuntime → Conversation snapshot/event projection
-Optional ProjectSessionProjection → on-demand overview/header only
   → Model observer → renderer Conversation Model → Stores/React
 
 Focused review / subagent / artifact / family / schedule authorities

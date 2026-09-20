@@ -128,6 +128,34 @@ describe("RendererRequestCoordinator", () => {
     }),
   );
 
+  it.effect("removes a published Cake Chat control when its request fiber is interrupted", () =>
+    Effect.gen(function* () {
+      const { coordinator } = yield* makeFixture;
+      yield* coordinator.bind({ _tag: "CakeChatSession", sessionId: "chat-1" }, 23);
+      const published = yield* coordinator.cakeChatControlSnapshots(23).pipe(
+        Stream.filter((requests) => requests.length > 0),
+        Stream.runHead,
+        Effect.forkChild({ startImmediately: true }),
+      );
+      const request = yield* coordinator
+        .requestCakeChatControl(
+          "chat-1",
+          { name: "projects.open", arguments: {} },
+          new AbortController().signal,
+        )
+        .pipe(Effect.forkChild({ startImmediately: true }));
+
+      const snapshot = yield* Fiber.join(published);
+      assert.equal(snapshot._tag, "Some");
+      expect(snapshot.value).toHaveLength(1);
+      yield* Fiber.interrupt(request);
+
+      const current = yield* coordinator.cakeChatControlSnapshots(23).pipe(Stream.runHead);
+      assert.equal(current._tag, "Some");
+      expect(current.value).toEqual([]);
+    }),
+  );
+
   it.effect("rejects wrong renderer and session responses without settling the request", () =>
     Effect.gen(function* () {
       const { coordinator, events } = yield* makeFixture;

@@ -1,7 +1,7 @@
 import { Effect, Schedule, Stream } from "effect";
 import type { JsonObject } from "../../ipc/json-contract";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
-import { getState, setProjectSessionLabels, trustProject } from "../application/application";
+import { setProjectSessionLabels, trustProject } from "../application/application";
 import {
   TurnId,
   acquire as acquireConversation,
@@ -25,7 +25,6 @@ import {
 } from "./project-session-data";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
-import { assemble as assembleProjectSessionProjection } from "./projectSessionProjection";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import {
   archiveLocation,
@@ -122,10 +121,9 @@ const restoreIfResolved = Effect.fn("ProjectSessions.restoreIfResolved")(functio
 const isSessionResolvedAt = Effect.fn("ProjectSessions.isSessionResolvedAt")(function* (
   target: ProjectSessionTarget,
   location: ProjectSessionLocation,
-  operation: "observe" | "readProjection" = "observe",
 ) {
   const namespace = yield* resolutionNamespace(target.sessionId, archiveLocation(location)).pipe(
-    asError(operation),
+    asError("observe"),
   );
   if (namespace) return namespace === "resolved";
   const sessions = yield* CakeSessionRuntimes;
@@ -138,7 +136,7 @@ const isSessionResolvedAt = Effect.fn("ProjectSessions.isSessionResolvedAt")(fun
   // It accounts for that missing-file case, but never overrides root resolution.
   if (activeRuntime) return false;
   return yield* new ProjectSessionError({
-    operation,
+    operation: "observe",
     message: "That session is no longer available",
   });
 });
@@ -147,23 +145,6 @@ const isSessionResolved = Effect.fn("ProjectSessions.isSessionResolved")(functio
   target: ProjectSessionTarget,
 ) {
   return yield* isSessionResolvedAt(target, yield* findLocation(target));
-});
-
-/** Fresh on-demand overview read; it is not coupled to Conversation observation. */
-export const readProjection = Effect.fn("ProjectSessions.readProjection")(function* (
-  target: ProjectSessionTarget,
-) {
-  const location = yield* findLocation(target);
-  const [resolved, state] = yield* Effect.all(
-    [isSessionResolvedAt(target, location, "readProjection"), getState()] as const,
-    { concurrency: "unbounded" },
-  );
-  return yield* assembleProjectSessionProjection({
-    sessionId: target.sessionId,
-    location,
-    resolved,
-    unread: !resolved && state.unreadSessionIds.includes(target.sessionId),
-  }).pipe(asError("readProjection"));
 });
 
 export const observeConversation = Effect.fn("ProjectSessions.observeConversation")(function* (

@@ -60,9 +60,6 @@ export const CakeSessionIdentity = Schema.TaggedUnion({
 export type CakeSessionIdentity = Schema.Schema.Type<typeof CakeSessionIdentity>;
 
 /** Bounded identity reference to the Conversation belonging to one Cake Session. */
-export const ConversationReference = Schema.Struct({ sessionId: boundedId });
-export interface ConversationReference extends Schema.Schema.Type<typeof ConversationReference> {}
-
 export const ConversationSnapshot = Schema.Struct({
   sessionId: boundedId,
   sessionFile: Schema.String,

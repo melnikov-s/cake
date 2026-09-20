@@ -36,7 +36,6 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
   "projectSessions.observeCatalog": (query) =>
     Stream.unwrap(projectSessionMetadata.observeCatalog(query)),
   "projectSessions.inspect": (target) => projectSessionMetadata.inspect(target),
-  "projectSessions.readProjection": (target) => projectSessionOperations.readProjection(target),
   "projectSessions.start": (input) =>
     withConnection((connectionId) =>
       activateWorkingDirectory(connectionId, input.workingDirectory).pipe(

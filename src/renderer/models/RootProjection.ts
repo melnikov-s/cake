@@ -1,4 +1,4 @@
-import { Model, child, observable } from "r-state-tree";
+import { Model, child, observable, transient } from "r-state-tree";
 import { LlmModel } from "./LlmModel";
 import { ArtifactCatalog } from "./ArtifactCatalog";
 import { Resource } from "./Resource";
@@ -33,15 +33,25 @@ export class RootProjection extends Model {
     [],
   );
   @child(CakeChatControls) cakeChatControls: CakeChatControls[] = observable([]);
+  @transient private readonly discussionConversationParents = new Map<string, string>();
 
   removeProjectSessionProjections(
     sessionId: string,
     options: { readonly retainDiscussionCatalog?: boolean } = {},
   ) {
+    const sidecarSessionIds = options.retainDiscussionCatalog
+      ? []
+      : [...this.discussionConversationParents].flatMap(([sidecarSessionId, parentSessionId]) =>
+          parentSessionId === sessionId ? [sidecarSessionId] : [],
+        );
     removeBySessionId(this.projectConversations, sessionId);
     removeBySessionId(this.subagentCatalogs, sessionId);
     removeBySessionId(this.scheduledMessageCatalogs, sessionId);
     if (!options.retainDiscussionCatalog) removeBySessionId(this.discussionCatalogs, sessionId);
+    for (const sidecarSessionId of sidecarSessionIds) {
+      removeBySessionId(this.discussionConversations, sidecarSessionId);
+      this.discussionConversationParents.delete(sidecarSessionId);
+    }
   }
 
   discussionCatalog(sessionId: string) {
@@ -106,8 +116,12 @@ export class RootProjection extends Model {
     removeBySessionId(this.cakeChatControls, sessionId);
   }
 
-  discussionConversation(sessionId: string, _workingDirectory: string) {
+  discussionConversation(sessionId: string, _workingDirectory: string, parentSessionId?: string) {
     void _workingDirectory;
+    const registeredParent = this.discussionConversationParents.get(sessionId);
+    if (registeredParent && parentSessionId && registeredParent !== parentSessionId)
+      throw new Error(`Discussion Conversation parent identity collision: ${sessionId}`);
+    if (parentSessionId) this.discussionConversationParents.set(sessionId, parentSessionId);
     const existing = this.findDiscussionConversation(sessionId);
     if (existing) return existing;
     const session = Conversation.create({ sessionId });

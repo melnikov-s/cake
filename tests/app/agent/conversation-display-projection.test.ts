@@ -2,6 +2,7 @@ import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import { SessionManager, type FileEntry } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
+import { forkDisplayProvenanceEntryType } from "../../../src/services/pi/runtime/fork-display-provenance";
 import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
 import {
   toolCompactEntryType,
@@ -167,6 +168,41 @@ describe("Conversation display projection after tool compaction", () => {
       "notice",
       "text",
     ]);
+  });
+
+  it.each([
+    { label: "malformed", data: { version: 1, groups: "invalid" } },
+    {
+      label: "oversized",
+      data: {
+        version: 1,
+        groups: [
+          {
+            precedingPartId: null,
+            parts: [
+              {
+                id: "x".repeat(513),
+                kind: "tool",
+                name: "read",
+                input: "a",
+                output: "untrusted hidden output",
+                state: "success",
+                origin: "compacted",
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ])("falls back to the active branch for $label fork-display provenance", ({ data }) => {
+    const session = SessionManager.inMemory("/project");
+    session.appendMessage({ role: "user", content: "active only", timestamp: 1 });
+    session.appendCustomEntry(forkDisplayProvenanceEntryType, data);
+
+    const parts = projectConversationDisplay(session);
+    expect(parts).toHaveLength(1);
+    expect(parts[0]).toMatchObject({ kind: "text", text: "active only" });
+    expect(JSON.stringify(parts)).not.toContain("untrusted hidden output");
   });
 
   it("falls back safely when provenance cycles or exceeds the depth bound", () => {

@@ -80,6 +80,7 @@ export function applyDiscussionSessionUpdate(
       update.snapshot.identity.sessionId !== sessionId
     )
       throw new Error(`Discussion Session identity collision: ${sessionId}`);
+    assertConversationSnapshotIdentity(model, update.snapshot.conversation);
     batch(() => {
       applyConversationSnapshot(model, update.snapshot.conversation, false);
       model.observedSnapshotRevision += 1;

@@ -72,13 +72,6 @@ const discussionSnapshot = (sessionId: string, output: string): DiscussionSessio
   },
 });
 
-const emptyDiscussions = (sessionId: string): DiscussionCatalogUpdate => ({
-  _tag: "Snapshot",
-  revision: 1,
-  parentSessionId: sessionId,
-  threads: [],
-});
-
 function baseInput(projection: RootProjection, sessionId = "project-1") {
   return {
     projects: projection.projects,
@@ -112,12 +105,8 @@ function baseClient(overrides: object = {}) {
 describe("Project Session composition observer", () => {
   it("starts the Conversation from the known target without waiting for aggregate side authorities", async () => {
     const updates = await Effect.runPromise(Queue.unbounded<ConversationUpdate>());
-    const aggregateReads = vi.fn(() => Effect.never);
     const observes = vi.fn(() => Stream.fromQueue(updates));
-    const client = baseClient({
-      projectSessions: { readProjection: aggregateReads },
-      conversations: { observe: observes },
-    });
+    const client = baseClient({ conversations: { observe: observes } });
     const projection = RootProjection.create();
     const observer = createModelObserver(runtimeFor(client));
 
@@ -128,65 +117,6 @@ describe("Project Session composition observer", () => {
       await vi.waitFor(() =>
         expect(projection.projectConversation("project-1", "/project").sessionFile).not.toBe(""),
       );
-      expect(aggregateReads).not.toHaveBeenCalled();
-    } finally {
-      observer.stop();
-      projection[Symbol.dispose]();
-    }
-  });
-
-  it("does not reread the on-demand overview for Discussion snapshots or membership changes", async () => {
-    const discussions = await Effect.runPromise(Queue.unbounded<DiscussionCatalogUpdate>());
-    const aggregateReads = vi.fn(() => Effect.never);
-    const client = baseClient({
-      projectSessions: { readProjection: aggregateReads },
-      discussionSessions: {
-        observeCatalog: () => Stream.fromQueue(discussions),
-        observe: () => Stream.never,
-      },
-    });
-    const projection = RootProjection.create();
-    const observer = createModelObserver(runtimeFor(client));
-
-    try {
-      observer.sync(baseInput(projection));
-      await Effect.runPromise(Queue.offer(discussions, emptyDiscussions("project-1")));
-      await Effect.runPromise(
-        Queue.offer(discussions, {
-          _tag: "Event",
-          revision: 2,
-          parentSessionId: "project-1",
-          event: {
-            _tag: "Replaced",
-            threads: [
-              {
-                id: "thread-1",
-                parentSessionId: "project-1",
-                workingDirectory: "/project",
-                sidecarSessionId: "sidecar-1",
-                anchor: {
-                  path: "session:project-1",
-                  view: "session",
-                  start: { diffLine: 0 },
-                  end: { diffLine: 0 },
-                  selectedText: "",
-                  contextBefore: "",
-                  contextAfter: "",
-                  diff: "",
-                },
-                parts: [],
-                status: "open",
-                createdAt: "now",
-                updatedAt: "now",
-              },
-            ],
-          },
-        }),
-      );
-      await vi.waitFor(() =>
-        expect(projection.discussionCatalog("project-1").threads).toHaveLength(1),
-      );
-      expect(aggregateReads).not.toHaveBeenCalled();
     } finally {
       observer.stop();
       projection[Symbol.dispose]();
@@ -320,6 +250,7 @@ describe("Discussion sidecar retention", () => {
   it("unloads sidecar payload with parent observation demand and rehydrates without a reactive cycle", async () => {
     const parentId = "project-1";
     const sidecarId = "sidecar-1";
+    const loadedIds: string[] = observable([parentId]);
     const observedIds: string[] = observable([parentId]);
     const catalogUpdates = await Effect.runPromise(Queue.unbounded<DiscussionCatalogUpdate>());
     const sidecarObservations: Queue.Queue<DiscussionSessionUpdate>[] = [];
@@ -364,7 +295,8 @@ describe("Discussion sidecar retention", () => {
     observer.observe({
       projection,
       projectSessionCatalogQueries: () => [],
-      loadedProjectSessions: () => [{ sessionId: parentId, workingDirectory: "/project" }],
+      loadedProjectSessions: () =>
+        loadedIds.map((sessionId) => ({ sessionId, workingDirectory: "/project" })),
       projectSessionTargets: () =>
         observedIds.map((sessionId) => ({ sessionId, workingDirectory: "/project" })),
       cakeChatTargets: () => [],
@@ -432,6 +364,57 @@ describe("Discussion sidecar retention", () => {
           expect.objectContaining({ output: "fresh sidecar" }),
         ),
       );
+
+      // A true unload first removes Store/observation demand, then releases the
+      // parent's focused Models, including sidecar identity.
+      retainedSessions.splice(0, 1);
+      observedIds.splice(0, 1);
+      await vi.waitFor(() => expect(reviews.discussionSessions).toHaveLength(0));
+      loadedIds.splice(0, 1);
+      await vi.waitFor(() =>
+        expect(projection.findDiscussionConversation(sidecarId)).toBeUndefined(),
+      );
+      expect(projection.discussionCatalogs).toHaveLength(0);
+
+      loadedIds.push(parentId);
+      observedIds.push(parentId);
+      await vi.waitFor(() => expect(projection.discussionCatalogs).toHaveLength(1));
+      const reloadedCatalog = projection.discussionCatalog(parentId);
+      expect(reloadedCatalog).not.toBe(catalog);
+      retainedSessions.push({ props: { discussionCatalog: reloadedCatalog } });
+      await Effect.runPromise(
+        Queue.offer(catalogUpdates, {
+          _tag: "Snapshot",
+          revision: 1,
+          parentSessionId: parentId,
+          threads: [
+            {
+              id: "thread-1",
+              parentSessionId: parentId,
+              workingDirectory: "/project",
+              sidecarSessionId: sidecarId,
+              anchor: {
+                path: `session:${parentId}`,
+                view: "session",
+                start: { diffLine: 0 },
+                end: { diffLine: 0 },
+                selectedText: "",
+                contextBefore: "",
+                contextAfter: "",
+                diff: "",
+              },
+              parts: [],
+              status: "open",
+              createdAt: "now",
+              updatedAt: "later",
+            },
+          ],
+        }),
+      );
+      await vi.waitFor(() => expect(sidecarObservations).toHaveLength(3));
+      const reloadedSidecar = projection.findDiscussionConversation(sidecarId);
+      expect(reloadedSidecar).not.toBe(sidecarModel);
+      expect(reloadedSidecar?.parts).toEqual([]);
     } finally {
       observer.stop();
       reviews[Symbol.dispose]();
@@ -442,12 +425,16 @@ describe("Discussion sidecar retention", () => {
 });
 
 describe("Cake Chat composition observer", () => {
-  it("replaces the focused control projection from current-first snapshots", async () => {
+  it("clears stopped controls and replays only current pending requests on re-entry", async () => {
     const controls = await Effect.runPromise(Queue.unbounded<CakeChatControlUpdate>());
+    let currentRequests: CakeChatControlUpdate["requests"] = [];
     const client = baseClient({
       cakeChats: {
         observeCatalog: () => Stream.never,
-        observeControls: () => Stream.fromQueue(controls),
+        observeControls: () =>
+          Stream.make({ _tag: "Snapshot" as const, requests: currentRequests }).pipe(
+            Stream.concat(Stream.fromQueue(controls)),
+          ),
       },
     });
     const projection = RootProjection.create();
@@ -473,10 +460,63 @@ describe("Cake Chat composition observer", () => {
       controlRequestId: crypto.randomUUID(),
       invocation: { name: "app.showSettings", arguments: {} },
     };
-    await Effect.runPromise(Queue.offer(controls, { _tag: "Snapshot", requests: [request] }));
+    currentRequests = [request];
+    await Effect.runPromise(Queue.offer(controls, { _tag: "Snapshot", requests: currentRequests }));
     await vi.waitFor(() => expect(controlModel.requests).toEqual([request]));
-    await Effect.runPromise(Queue.offer(controls, { _tag: "Snapshot", requests: [] }));
+
+    observer.sync({
+      projects: projection.projects,
+      sessionCatalog: projection.sessionCatalog,
+      cakeChatCatalog: projection.cakeChatCatalog,
+      projectSessions: [],
+      cakeChats: [],
+    });
+    expect(controlModel.requests).toEqual([]);
+
+    // The stopped stream misses settlement; its next current-first snapshot repairs state.
+    currentRequests = [];
+    observer.sync({
+      projects: projection.projects,
+      sessionCatalog: projection.sessionCatalog,
+      cakeChatCatalog: projection.cakeChatCatalog,
+      projectSessions: [],
+      cakeChats: [
+        {
+          target: { sessionId: "cake-chat-1", tools: [] },
+          conversation: projection.cakeChatConversation("cake-chat-1"),
+          controls: controlModel,
+        },
+      ],
+    });
     await vi.waitFor(() => expect(controlModel.requests).toEqual([]));
+
+    const stillPending = { ...request, controlRequestId: crypto.randomUUID() };
+    currentRequests = [stillPending];
+    await Effect.runPromise(Queue.offer(controls, { _tag: "Snapshot", requests: currentRequests }));
+    await vi.waitFor(() => expect(controlModel.requests).toEqual([stillPending]));
+    observer.sync({
+      projects: projection.projects,
+      sessionCatalog: projection.sessionCatalog,
+      cakeChatCatalog: projection.cakeChatCatalog,
+      projectSessions: [],
+      cakeChats: [],
+    });
+    expect(controlModel.requests).toEqual([]);
+    observer.sync({
+      projects: projection.projects,
+      sessionCatalog: projection.sessionCatalog,
+      cakeChatCatalog: projection.cakeChatCatalog,
+      projectSessions: [],
+      cakeChats: [
+        {
+          target: { sessionId: "cake-chat-1", tools: [] },
+          conversation: projection.cakeChatConversation("cake-chat-1"),
+          controls: controlModel,
+        },
+      ],
+    });
+    await vi.waitFor(() => expect(controlModel.requests).toEqual([stillPending]));
+    expect(controlModel.requests).toHaveLength(1);
 
     observer.stop();
     projection[Symbol.dispose]();

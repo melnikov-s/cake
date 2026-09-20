@@ -5,6 +5,7 @@ import { Conversation } from "../../../../src/renderer/models/Conversation";
 import {
   applyConversationSnapshot,
   applyConversationUpdate,
+  applyDiscussionSessionUpdate,
 } from "../../../../src/renderer/reducers/ConversationReducer";
 
 const snapshot = (parts: ConversationSnapshot["parts"] = []): ConversationSnapshot => ({
@@ -74,6 +75,29 @@ describe("ConversationReducer", () => {
       model[Symbol.dispose]();
     },
   );
+
+  it("rejects an initial Discussion snapshot whose inner Conversation identity disagrees", () => {
+    const model = Conversation.create({ sessionId: "session" });
+    applyConversationUpdate(model, { _tag: "Snapshot", revision: 1, snapshot: snapshot() });
+    const before = toSnapshot(model);
+
+    expect(() =>
+      applyDiscussionSessionUpdate(model, "session", {
+        _tag: "Snapshot",
+        revision: 2,
+        snapshot: {
+          identity: {
+            _tag: "DiscussionSession",
+            sessionId: "session",
+            parentSessionId: "parent",
+          },
+          conversation: { ...snapshot(), sessionId: "other", sessionFile: "/other.jsonl" },
+        },
+      }),
+    ).toThrow("Conversation snapshot identity collision: session");
+    expect(toSnapshot(model)).toEqual(before);
+    model[Symbol.dispose]();
+  });
 
   it("preserves compacted historical work-log parts in durable snapshots", () => {
     const model = Conversation.create({ sessionId: "session" });
