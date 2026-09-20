@@ -3,8 +3,9 @@ import type { UiPart } from "../../ipc/session-contract";
 
 const ANTHROPIC_SHORT_TTL_MS = 5 * 60 * 1_000;
 const ANTHROPIC_LONG_TTL_MS = 60 * 60 * 1_000;
-const OPENAI_LIKELY_WARM_MS = 5 * 60 * 1_000;
-const OPENAI_LIKELY_COLD_MS = 10 * 60 * 1_000;
+const OPENAI_THIRTY_MINUTE_TTL_MS = 30 * 60 * 1_000;
+const OPENAI_IN_MEMORY_LIKELY_WARM_MS = 5 * 60 * 1_000;
+const OPENAI_IN_MEMORY_LIKELY_COLD_MS = 10 * 60 * 1_000;
 const OPENAI_MIN_CACHEABLE_TOKENS = 1_024;
 
 type PromptCacheResponse = NonNullable<Extract<UiPart, { kind: "text" }>["response"]>;
@@ -60,27 +61,45 @@ export class PromptCacheStore extends Store<{
     }
 
     if (model.provider === "openai" || model.provider === "openai-codex") {
-      // OpenAI currently has both 30-minute and 24-hour long-retention modes.
-      // Model identity alone does not reliably distinguish them.
-      if (response.retention === "long") return undefined;
       if (response.inputTokens + response.cacheReadTokens < OPENAI_MIN_CACHEABLE_TOKENS)
         return undefined;
       const elapsedMs = this.now - response.requestedAt;
-      if (elapsedMs < OPENAI_LIKELY_WARM_MS) {
-        const remainingMs = OPENAI_LIKELY_WARM_MS - elapsedMs;
+
+      // GPT-5.6+ has a documented minimum 30-minute lifetime. GPT-5.5 uses
+      // extended retention exclusively and is typically retained for 30 minutes.
+      if (usesOpenAiThirtyMinuteCache(model.modelId)) {
+        const remainingMs = OPENAI_THIRTY_MINUTE_TTL_MS - elapsedMs;
+        if (remainingMs <= 0)
+          return {
+            state: "likely-cold",
+            label: "Cache likely expired",
+            detail: "OpenAI’s 30-minute prompt-cache window has elapsed.",
+          };
+        return {
+          state: "likely-warm",
+          label: `Cache estimated ${formatRemaining(remainingMs)}`,
+          detail: "Likely cached. OpenAI’s 30-minute cache window refreshes on use.",
+          remainingMs,
+        };
+      }
+
+      // Earlier models can use either short in-memory or 24-hour retention.
+      if (response.retention === "long") return undefined;
+      if (elapsedMs < OPENAI_IN_MEMORY_LIKELY_WARM_MS) {
+        const remainingMs = OPENAI_IN_MEMORY_LIKELY_WARM_MS - elapsedMs;
         return {
           state: "likely-warm",
           label: `Cache estimated ${formatRemaining(remainingMs)}`,
           detail:
-            "Likely cached. OpenAI generally retains prompts for at least 5 minutes of inactivity.",
+            "Likely cached. OpenAI generally retains in-memory prompts for at least 5 minutes of inactivity.",
           remainingMs,
         };
       }
-      if (elapsedMs < OPENAI_LIKELY_COLD_MS)
+      if (elapsedMs < OPENAI_IN_MEMORY_LIKELY_COLD_MS)
         return {
           state: "uncertain",
           label: "Cache uncertain",
-          detail: "OpenAI commonly evicts prompts after 5–10 minutes of inactivity.",
+          detail: "OpenAI commonly evicts in-memory prompts after 5–10 minutes of inactivity.",
         };
       return {
         state: "likely-cold",
@@ -131,6 +150,14 @@ export class PromptCacheStore extends Store<{
     clearInterval(this.tickInterval);
     this.tickInterval = undefined;
   }
+}
+
+function usesOpenAiThirtyMinuteCache(modelId: string) {
+  const version = /^gpt-(\d+)(?:\.(\d+))?(?:-|$)/.exec(modelId);
+  if (!version) return false;
+  const major = Number(version[1]);
+  const minor = Number(version[2] ?? 0);
+  return major > 5 || (major === 5 && minor >= 5);
 }
 
 function formatRemaining(milliseconds: number) {

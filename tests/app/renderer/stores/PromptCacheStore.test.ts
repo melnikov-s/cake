@@ -79,13 +79,35 @@ describe("PromptCacheStore", () => {
     store[Symbol.dispose]();
   });
 
-  it("uses OpenAI's documented 5–10 minute uncertainty window", () => {
+  it("counts down OpenAI's 30-minute window for GPT-5.6 and later", () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     const store = createPromptCacheStore(
-      [responsePart("openai", "gpt", NOW - 6 * 60_000, { input: 12_000 })],
+      [responsePart("openai-codex", "gpt-5.6-sol", NOW - 6 * 60_000, { input: 12_000 })],
+      "openai-codex",
+      "gpt-5.6-sol",
+    );
+
+    expect(store.prediction).toMatchObject({
+      state: "likely-warm",
+      label: "Cache estimated 24:00",
+    });
+
+    vi.advanceTimersByTime(24 * 60_000);
+    expect(store.prediction).toMatchObject({
+      state: "likely-cold",
+      label: "Cache likely expired",
+    });
+    store[Symbol.dispose]();
+  });
+
+  it("uses OpenAI's documented 5–10 minute uncertainty window for earlier models", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const store = createPromptCacheStore(
+      [responsePart("openai", "gpt-5.4", NOW - 6 * 60_000, { input: 12_000 })],
       "openai",
-      "gpt",
+      "gpt-5.4",
     );
 
     expect(store.prediction).toMatchObject({ state: "uncertain", label: "Cache uncertain" });
