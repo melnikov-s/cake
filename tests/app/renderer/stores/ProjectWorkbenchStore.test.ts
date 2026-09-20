@@ -134,6 +134,7 @@ describe("ProjectWorkbenchStore", () => {
       baseWorktreePath: undefined,
       worktreeName: "fix-worktree-naming",
       firstUserMessage: "Fix the draft workflow",
+      backgroundSetup: true,
     });
     expect(relocate).toHaveBeenCalledWith("draft-1", record.worktreePath);
 

@@ -366,6 +366,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                       projectPath: location.projectPath,
                       baseWorktreePath: location.workingDirectory,
                       worktreeName,
+                      backgroundSetup: true,
                     })
                     .pipe(
                       Effect.map((record) => ({

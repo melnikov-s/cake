@@ -16,6 +16,14 @@ const worktree: WorktreeRecord = {
   createdAt: "2026-01-01T00:00:00.000Z",
 };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  return {
+    promise: new Promise<T>((complete) => (resolve = complete)),
+    resolve,
+  };
+}
+
 describe("WorktreeCreationStore", () => {
   it("uses a saved draft's session name for its new worktree", async () => {
     const create = vi.fn(async () => worktree);
@@ -54,9 +62,52 @@ describe("WorktreeCreationStore", () => {
         baseWorktreePath: undefined,
         worktreeName: "planned-work",
         firstUserMessage: "Implement the planned work",
+        backgroundSetup: true,
       });
       expect(notePendingManagedWorktree).toHaveBeenCalledWith(worktree);
       expect(relocateTemporarySession).toHaveBeenCalledWith("draft-1", worktree.worktreePath);
+    } finally {
+      mounted.root[Symbol.dispose]();
+      operations[Symbol.dispose]();
+    }
+  });
+
+  it("prepares different sessions concurrently", async () => {
+    const first = deferred<WorktreeRecord>();
+    const second = deferred<WorktreeRecord>();
+    const create = vi
+      .fn<() => Promise<WorktreeRecord>>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const operations = mount(createStore(SessionOperationCoordinatorStore));
+    const mounted = mountWithClient(
+      createStore(WorktreeCreationStore, {
+        operations,
+        catalog: {
+          managedWorktree: vi.fn(),
+          notePendingManagedWorktree: vi.fn(),
+        } as unknown as SessionCatalogStore,
+        relocateTemporarySession: vi.fn(),
+        reportError: vi.fn(),
+      }),
+      { managedWorktrees: { create } } as unknown as Client,
+    );
+
+    try {
+      mounted.subject.select("session-1", { kind: "new" });
+      mounted.subject.select("session-2", { kind: "new" });
+      const preparingFirst = mounted.subject.prepare("session-1", "/project", "First");
+      const preparingSecond = mounted.subject.prepare("session-2", "/project", "Second");
+
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(mounted.subject.isPreparing("session-1")).toBe(true);
+      expect(mounted.subject.isPreparing("session-2")).toBe(true);
+
+      first.resolve(worktree);
+      second.resolve({ ...worktree, worktreePath: "/.project-worktrees/second" });
+      await expect(Promise.all([preparingFirst, preparingSecond])).resolves.toEqual([true, true]);
+      expect(mounted.subject.isPreparing("session-1")).toBe(false);
+      expect(mounted.subject.isPreparing("session-2")).toBe(false);
     } finally {
       mounted.root[Symbol.dispose]();
       operations[Symbol.dispose]();

@@ -53,6 +53,19 @@ function fixture() {
 }
 
 describe("ProjectPendingSessionsStore", () => {
+  it("releases a staged session while it submits and restores it after cancellation", () => {
+    const { store } = fixture();
+    store.prepareStaged("/project", "session-1");
+
+    store.projectSubmission("session-1", "Start work");
+    expect(store.isStaged("session-1")).toBe(false);
+
+    store.cancelSubmission("session-1");
+    expect(store.isStaged("session-1")).toBe(true);
+
+    store[Symbol.dispose]();
+  });
+
   it("owns staged, saved-draft, relocated, and materialized transitions", async () => {
     const { sessions, store, persistNow } = fixture();
     const session = store.prepareStaged("/project", "draft-1");

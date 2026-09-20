@@ -388,6 +388,7 @@ export class RootStore extends Store<{
     const managedWorktree = input.worktreeName
       ? await this.projectWorkbenchStore.worktreeCreationStore.create(input.workspacePath, {
           name: input.worktreeName,
+          backgroundSetup: true,
         })
       : undefined;
     const workspacePath = managedWorktree?.worktreePath ?? input.workspacePath;

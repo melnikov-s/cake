@@ -62,12 +62,13 @@ function actionStore({
 
 const candidates = vi.fn(() => []);
 const select = vi.fn();
+let preparingStartedAt: number | undefined;
 const creation = {
   choice: () => ({ kind: "current" }),
   select,
   candidates,
-  preparingSessionId: undefined,
-  preparingStartedAt: undefined,
+  isPreparing: () => preparingStartedAt !== undefined,
+  preparingStartedAt: () => preparingStartedAt,
 } as unknown as WorktreeCreationStore;
 
 describe("WorktreePill", () => {
@@ -77,8 +78,7 @@ describe("WorktreePill", () => {
   beforeEach(() => {
     candidates.mockClear();
     select.mockClear();
-    creation.preparingSessionId = undefined;
-    creation.preparingStartedAt = undefined;
+    preparingStartedAt = undefined;
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -121,8 +121,7 @@ describe("WorktreePill", () => {
   }
 
   it("shows explicit checkout preparation progress", () => {
-    creation.preparingSessionId = "session";
-    creation.preparingStartedAt = Date.now();
+    preparingStartedAt = Date.now();
     render(actionStore({ aheadCount: 0, dirtyCount: 0 }), undefined, "new-session");
 
     expect(container.textContent).toContain("Creating worktree and running setup commands");

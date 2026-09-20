@@ -27,15 +27,22 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
   }
 
   private readonly choicesBySession: Record<string, WorktreeDraftChoice> = observable({});
-  preparingSessionId: string | undefined;
-  preparingStartedAt: number | undefined;
+  private readonly preparingStartedAtBySession: Record<string, number> = observable({});
+
+  isPreparing(sessionId: string) {
+    return this.preparingStartedAtBySession[sessionId] !== undefined;
+  }
+
+  preparingStartedAt(sessionId: string) {
+    return this.preparingStartedAtBySession[sessionId];
+  }
 
   choice(sessionId: string): WorktreeDraftChoice {
     return this.choicesBySession[sessionId] ?? { kind: "current" };
   }
 
   select(sessionId: string, choice: WorktreeDraftChoice) {
-    if (this.preparingSessionId === sessionId) return;
+    if (this.isPreparing(sessionId)) return;
     this.choicesBySession[sessionId] = choice;
   }
 
@@ -97,9 +104,8 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
     const choice = this.choice(sessionId);
     if (choice.kind === "current") return true;
     if (choice.kind === "draft") return false;
-    if (this.preparingSessionId) return false;
-    this.preparingSessionId = sessionId;
-    this.preparingStartedAt = Date.now();
+    if (this.isPreparing(sessionId)) return false;
+    this.preparingStartedAtBySession[sessionId] = Date.now();
     const operationId = this.props.operations.start("project-workbench");
     try {
       let workspacePath: string;
@@ -119,6 +125,7 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
           baseWorktreePath: choice.baseWorktreePath,
           worktreeName: sessionName?.trim() ? suggestedWorktreeName(sessionName) : undefined,
           firstUserMessage: firstUserMessage.trim() || undefined,
+          backgroundSetup: true,
         });
         if (this.signal.aborted) return false;
         this.props.catalog.notePendingManagedWorktree(record);
@@ -132,10 +139,7 @@ export class WorktreeCreationStore extends Store<WorktreeCreationStoreProps> {
       if (!this.signal.aborted) this.props.reportError(error);
       return false;
     } finally {
-      if (!this.signal.aborted) {
-        this.preparingSessionId = undefined;
-        this.preparingStartedAt = undefined;
-      }
+      if (!this.signal.aborted) delete this.preparingStartedAtBySession[sessionId];
       this.props.operations.finish(operationId);
     }
   }

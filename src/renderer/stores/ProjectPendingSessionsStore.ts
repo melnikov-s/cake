@@ -162,6 +162,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     if (!this.temporarySessionIds.includes(sessionId) || !this.props.session(sessionId)) return;
     const title = text.trim().slice(0, SESSION_TITLE_MAX_LENGTH) || "New chat";
     addUnique(this.submittingSessionIds, sessionId);
+    removeValue(this.stagedSessionIds, sessionId);
     const conversation = this.ensureConversation(sessionId);
     conversation.setFallbackTitle(title);
     conversation.messageCount = Math.max(1, conversation.messageCount);
@@ -169,6 +170,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
 
   cancelSubmission(sessionId: string) {
     removeValue(this.submittingSessionIds, sessionId);
+    if (this.temporarySessionIds.includes(sessionId)) addUnique(this.stagedSessionIds, sessionId);
   }
 
   isStaged(sessionId: string) {

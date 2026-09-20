@@ -72,7 +72,7 @@ export const WorktreePill = observer(function WorktreePill({
   // Session-start choices are the only surface that needs the full worktree candidate list.
   const candidates = configurationMode ? creation.candidates(projectPath) : [];
   const status = actions.status;
-  const busy = actions.isBusy || creation.preparingSessionId === sessionId;
+  const busy = actions.isBusy || creation.isPreparing(sessionId);
 
   const choose = (next: Parameters<WorktreeCreationStore["select"]>[1]) => {
     creation.select(sessionId, next);
@@ -111,12 +111,12 @@ export const WorktreePill = observer(function WorktreePill({
         data-slot="worktree-pill"
         className="@container/worktree mx-4 -mb-5 flex min-w-0 flex-wrap items-center gap-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8 text-xs"
       >
-        {creation.preparingSessionId === sessionId && (
+        {creation.isPreparing(sessionId) && (
           <div className="mb-1 w-full" data-testid="worktree-creation-progress">
             <LoadingState
               label="Creating worktree and running setup commands"
               variant="Dots"
-              startedAt={creation.preparingStartedAt}
+              startedAt={creation.preparingStartedAt(sessionId)}
             />
           </div>
         )}

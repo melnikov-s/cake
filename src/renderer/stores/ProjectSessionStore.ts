@@ -376,9 +376,15 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     if (!pending) return false;
     this.props.pendingSessions.projectSubmission(input.sessionId, input.text);
     try {
-      if (!(await this.props.prepareNewSession(input.text))) return false;
+      if (!(await this.props.prepareNewSession(input.text))) {
+        this.props.pendingSessions.cancelSubmission(input.sessionId);
+        return false;
+      }
       const newSession = this.props.newSessionRequest();
-      if (!newSession) return false;
+      if (!newSession) {
+        this.props.pendingSessions.cancelSubmission(input.sessionId);
+        return false;
+      }
       const pendingLabelIds =
         this.props.pendingSessions.conversation(input.sessionId)?.labelIds ?? [];
       const startInput: ProjectSessionStartInput = {
