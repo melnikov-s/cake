@@ -11,6 +11,7 @@ import type {
   ProjectCatalogUpdate,
   SessionCatalogUpdate,
 } from "../../domain/application/catalog-data";
+import { SessionChatError } from "../../domain/conversations/conversation-data";
 import type {
   DiscussionSessionTarget,
   DiscussionSessionUpdate,
@@ -26,7 +27,6 @@ import type {
   ProjectSessionTarget,
   ProjectSessionProjection,
 } from "../../domain/project-sessions/project-session-data";
-import { ProjectSessionError } from "../../domain/project-sessions/project-session-data";
 import type { SubagentUpdate } from "../../domain/subagents/subagent-data";
 import type { ScheduledMessageUpdate } from "../../domain/scheduled-messages/scheduled-message-data";
 import type { ManagedWorktreeCatalogUpdate } from "../../domain/worktrees/managed-worktree-data";
@@ -142,8 +142,8 @@ export const createModelObserver = (
 
   const unavailable = (key: string, error: unknown) =>
     key.startsWith("conversation:") &&
-    Schema.is(ProjectSessionError)(error) &&
-    error.operation === "observe" &&
+    Schema.is(SessionChatError)(error) &&
+    error.operation === "observeProjectSession" &&
     error.message === "That session is no longer available";
 
   const stop = (key: string, clear = true) => {
@@ -289,7 +289,10 @@ export const createModelObserver = (
       observe(
         `project-session-projection:${target.sessionId}:${catalogKey}:${discussions.relationshipRevision}:${subagents.relationshipRevision}:${aggregate.invalidationRevision}`,
         aggregate,
-        (client) => Stream.fromEffect(client.projectSessions.readProjection(target)),
+        (client) =>
+          Stream.fromEffect(client.projectSessions.readProjection(target)).pipe(
+            Stream.concat(Stream.never),
+          ),
         (projection: ProjectSessionProjection) =>
           applyProjectSessionProjection(aggregate, projection),
       );
@@ -375,25 +378,37 @@ export const createModelObserver = (
     if (stopObservingSource)
       throw new Error("Renderer Model observation already has a Model source");
     stopObservingSource = reactiveEffect(() => {
+      const stagedProjectSessionTargets = source.stagedProjectSessionTargets?.() ?? [];
+      const stagedIds = new Set(stagedProjectSessionTargets.map(({ sessionId }) => sessionId));
       const loadedProjectSessions = source.loadedProjectSessions?.();
       if (loadedProjectSessions) {
         const loadedIds = new Set(loadedProjectSessions.map(({ sessionId }) => sessionId));
         for (const target of loadedProjectSessions)
           source.projection.projectConversation(target.sessionId, target.workingDirectory);
-        for (const sessionId of source.projection.projectConversations.map(
-          ({ sessionId }) => sessionId,
-        ))
-          if (!loadedIds.has(sessionId)) source.projection.removeProjectConversation(sessionId);
+        const projectionIds = new Set([
+          ...source.projection.projectConversations.map(({ sessionId }) => sessionId),
+          ...source.projection.projectSessions.map(({ sessionId }) => sessionId),
+          ...source.projection.discussionCatalogs.map(({ sessionId }) => sessionId),
+          ...source.projection.subagentCatalogs.map(({ sessionId }) => sessionId),
+          ...source.projection.scheduledMessageCatalogs.map(({ sessionId }) => sessionId),
+        ]);
+        for (const sessionId of projectionIds)
+          if (!loadedIds.has(sessionId))
+            source.projection.removeProjectSessionProjections(sessionId, {
+              retainDiscussionCatalog: stagedIds.has(sessionId),
+            });
       }
       const loadedCakeChatIds = source.loadedCakeChatIds?.();
       if (loadedCakeChatIds) {
         const loadedIds = new Set(loadedCakeChatIds);
         for (const sessionId of loadedCakeChatIds)
           source.projection.cakeChatConversation(sessionId);
-        for (const sessionId of source.projection.cakeChatConversations.map(
-          ({ sessionId }) => sessionId,
-        ))
-          if (!loadedIds.has(sessionId)) source.projection.removeCakeChatConversation(sessionId);
+        const projectionIds = new Set([
+          ...source.projection.cakeChatConversations.map(({ sessionId }) => sessionId),
+          ...source.projection.cakeChatControls.map(({ sessionId }) => sessionId),
+        ]);
+        for (const sessionId of projectionIds)
+          if (!loadedIds.has(sessionId)) source.projection.removeCakeChatProjections(sessionId);
       }
       const projectSessions = source.projectSessionTargets().map((target) => ({
         target,
@@ -410,7 +425,7 @@ export const createModelObserver = (
         ),
       }));
       const observedIds = new Set(projectSessions.map(({ target }) => target.sessionId));
-      const discussionCatalogs = (source.stagedProjectSessionTargets?.() ?? [])
+      const discussionCatalogs = stagedProjectSessionTargets
         .filter((target) => !observedIds.has(target.sessionId))
         .map((target) => ({
           target,

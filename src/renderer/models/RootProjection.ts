@@ -49,6 +49,17 @@ export class RootProjection extends Model {
     return model;
   }
 
+  removeProjectSessionProjections(
+    sessionId: string,
+    options: { readonly retainDiscussionCatalog?: boolean } = {},
+  ) {
+    removeBySessionId(this.projectConversations, sessionId);
+    removeBySessionId(this.projectSessions, sessionId);
+    removeBySessionId(this.subagentCatalogs, sessionId);
+    removeBySessionId(this.scheduledMessageCatalogs, sessionId);
+    if (!options.retainDiscussionCatalog) removeBySessionId(this.discussionCatalogs, sessionId);
+  }
+
   discussionCatalog(sessionId: string) {
     let model = this.discussionCatalogs.find((item) => item.sessionId === sessionId);
     if (!model) {
@@ -98,11 +109,6 @@ export class RootProjection extends Model {
     return this.projectConversations.find((session) => session.sessionId === sessionId);
   }
 
-  removeProjectConversation(sessionId: string) {
-    const index = this.projectConversations.findIndex((session) => session.sessionId === sessionId);
-    if (index >= 0) this.projectConversations.splice(index, 1);
-  }
-
   cakeChatConversation(sessionId: string) {
     const existing = this.cakeChatConversations.find((session) => session.sessionId === sessionId);
     if (existing) return existing;
@@ -111,11 +117,9 @@ export class RootProjection extends Model {
     return session;
   }
 
-  removeCakeChatConversation(sessionId: string) {
-    const index = this.cakeChatConversations.findIndex(
-      (session) => session.sessionId === sessionId,
-    );
-    if (index >= 0) this.cakeChatConversations.splice(index, 1);
+  removeCakeChatProjections(sessionId: string) {
+    removeBySessionId(this.cakeChatConversations, sessionId);
+    removeBySessionId(this.cakeChatControls, sessionId);
   }
 
   discussionConversation(sessionId: string, _workingDirectory: string) {
@@ -132,9 +136,14 @@ export class RootProjection extends Model {
   }
 
   removeDiscussionConversation(sessionId: string) {
-    const index = this.discussionConversations.findIndex(
-      (session) => session.sessionId === sessionId,
-    );
-    if (index >= 0) this.discussionConversations.splice(index, 1);
+    removeBySessionId(this.discussionConversations, sessionId);
   }
 }
+
+const removeBySessionId = <Value extends { readonly sessionId: string }>(
+  values: Value[],
+  sessionId: string,
+) => {
+  const index = values.findIndex((value) => value.sessionId === sessionId);
+  if (index >= 0) values.splice(index, 1);
+};
