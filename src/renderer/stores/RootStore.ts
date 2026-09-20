@@ -789,6 +789,11 @@ export class RootStore extends Store<{
       reviews: () => this.reviewsStore,
       sessionModel: (sessionId, workingDirectory) =>
         this.props.projection.projectConversation(sessionId, workingDirectory),
+      projectSessionModel: (sessionId) => this.props.projection.projectSession(sessionId),
+      discussionCatalog: (sessionId) => this.props.projection.discussionCatalog(sessionId),
+      subagentCatalog: (sessionId) => this.props.projection.subagentCatalog(sessionId),
+      scheduledMessageCatalog: (sessionId) =>
+        this.props.projection.scheduledMessageCatalog(sessionId),
       artifactModel: this.props.projection.artifacts,
       canSubmit: (sessionId) => this.projectWorkbenchStore.canSubmitSession(sessionId),
       isActive: (sessionId) =>
@@ -1100,6 +1105,7 @@ export class RootStore extends Store<{
     return createStore(CakeChatCollectionStore, {
       catalog: this.cakeChatCatalogModel,
       sessionModel: (sessionId) => this.props.projection.cakeChatConversation(sessionId),
+      controlsModel: (sessionId) => this.props.projection.controlsForCakeChat(sessionId),
       tools: () => this.applicationControlStore.tools(),
       modelPresets: () => this.settingsStore.modelPresets.presets,
       defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,
@@ -1126,7 +1132,7 @@ export class RootStore extends Store<{
       operations: this.sessionOperationCoordinator,
       cakeChatRequests: () =>
         this.cakeChatCollectionStore.registry.sessions.flatMap(
-          (session) => session.model.controlRequests,
+          (session) => session.props.controls.requests,
         ),
       projectContext: (sessionId) => {
         const catalogSession = this.sessionCatalogStore.find(sessionId);

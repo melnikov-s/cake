@@ -2,7 +2,7 @@ import { createStore, mount } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { MessageCommentsStore } from "../../../../src/renderer/stores/MessageCommentsStore";
 import type { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
-import type { Conversation } from "../../../../src/renderer/models/Conversation";
+import { DiscussionCatalog } from "../../../../src/renderer/models/DiscussionCatalog";
 
 const selection = {
   messageId: "assistant-1",
@@ -24,10 +24,10 @@ describe("MessageCommentsStore", () => {
       errorDetails: undefined,
       threadStreaming: () => false,
     } as unknown as ReviewsStore;
-    const sessionModel = { reviewThreads: [] } as unknown as Conversation;
+    const catalog = DiscussionCatalog.create({ sessionId: "parent-1" });
     const store = mount(
       createStore(MessageCommentsStore, {
-        sessionModel: () => sessionModel,
+        catalog: () => catalog,
         reviews: () => reviews,
         context: () => ({ sessionId: "parent-1" }),
       }),

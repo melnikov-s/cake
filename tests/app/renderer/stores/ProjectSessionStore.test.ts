@@ -37,6 +37,10 @@ describe("ProjectSessionStore", () => {
         workspacePath: "/project",
         sessionId: "resolved-session",
         model,
+        projectSession: models.projectSession(model.sessionId),
+        discussionCatalog: models.discussionCatalog(model.sessionId),
+        subagentCatalog: models.subagentCatalog(model.sessionId),
+        scheduledMessageCatalog: models.scheduledMessageCatalog(model.sessionId),
         artifactModel: models.artifacts,
         pendingSessions,
         operations,
@@ -127,6 +131,10 @@ describe("ProjectSessionStore", () => {
         workspacePath: "/project",
         sessionId: "session-1",
         model,
+        projectSession: models.projectSession(model.sessionId),
+        discussionCatalog: models.discussionCatalog(model.sessionId),
+        subagentCatalog: models.subagentCatalog(model.sessionId),
+        scheduledMessageCatalog: models.scheduledMessageCatalog(model.sessionId),
         artifactModel: models.artifacts,
         pendingSessions,
         operations,
@@ -163,7 +171,7 @@ describe("ProjectSessionStore", () => {
     );
     expect(session.conversationSessionStore.sideChatStore.target).toBeUndefined();
 
-    model.reviewThreads.push(
+    models.discussionCatalog(model.sessionId).threads.push(
       ReviewThread.create({
         id: "thread-1",
         workingDirectory: "/project",
@@ -222,7 +230,8 @@ describe("ProjectSessionStore", () => {
       // Like the real Store, a thread has a chat only once its sidecar is live.
       chatStore: (threadId: string) =>
         threadId === "thread-1" &&
-        model.reviewThreads.find((thread) => thread.id === threadId)?.sidecarSessionId
+        models.discussionCatalog(model.sessionId).threads.find((thread) => thread.id === threadId)
+          ?.sidecarSessionId
           ? threadChat
           : undefined,
     } as unknown as ReviewsStore;
@@ -237,6 +246,10 @@ describe("ProjectSessionStore", () => {
         workspacePath: "/project",
         sessionId: "session-1",
         model,
+        projectSession: models.projectSession(model.sessionId),
+        discussionCatalog: models.discussionCatalog(model.sessionId),
+        subagentCatalog: models.subagentCatalog(model.sessionId),
+        scheduledMessageCatalog: models.scheduledMessageCatalog(model.sessionId),
         artifactModel: models.artifacts,
         pendingSessions,
         operations,
@@ -315,7 +328,7 @@ describe("ProjectSessionStore", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
-    model.reviewThreads.push(thread);
+    models.discussionCatalog(model.sessionId).threads.push(thread);
     expect(sideChat.target?.chatStore).toBe(comments.draftChatStore);
 
     thread.sidecarSessionId = "sidecar-1";

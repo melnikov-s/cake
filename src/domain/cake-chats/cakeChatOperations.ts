@@ -10,21 +10,13 @@ import type { CakeChatRuntimeConfiguration } from "./cakeChatRuntime";
 import {
   acquire as acquireConversation,
   deliverWhenAvailable,
-  observe as observeConversation,
+  observe as observeConversationUpdates,
   projectAttachments,
   projectPreviewSnapshot,
-  projectSnapshot,
   TurnId,
   use as useConversation,
 } from "../conversations/conversations";
-import {
-  CakeChatError,
-  type CakeChatEvent,
-  type CakeChatStartInput,
-  type CakeChatSnapshot,
-  type CakeChatTarget,
-  type CakeChatUpdate,
-} from "./cake-chat-data";
+import { CakeChatError, type CakeChatStartInput, type CakeChatTarget } from "./cake-chat-data";
 import { asError, inspect, publishCatalogChange, sessionNamespace } from "./cakeChatMetadata";
 
 export const acquireTarget = Effect.fn("CakeChats.acquireTarget")(function* (
@@ -53,21 +45,15 @@ export const open = Effect.fn("CakeChats.open")(function* (
 ) {
   const location = configuration.location;
   if ((yield* sessionNamespace(target.sessionId, location)) === "resolved") {
-    const preview = yield* inspect(target.sessionId, location);
-    return projectPreviewSnapshot({ ...preview, workspacePath: location.workingDirectory });
+    yield* inspect(target.sessionId, location);
+    return;
   }
-  const handle = yield* acquireTarget(target, false, configuration);
-  return projectSnapshot(yield* handle.snapshot().pipe(asError("open")));
+  yield* acquireTarget(target, false, configuration);
 });
 
-type UnrevisionedCakeChatUpdate =
-  | { readonly _tag: "Snapshot"; readonly snapshot: CakeChatSnapshot }
-  | { readonly _tag: "Event"; readonly sessionId: string; readonly event: CakeChatEvent };
-
-export const observe = Effect.fn("CakeChats.observe")(function* (
+export const observeConversation = Effect.fn("CakeChats.observeConversation")(function* (
   target: CakeChatTarget,
   configuration: CakeChatRuntimeConfiguration,
-  connectionId?: number,
 ) {
   const catalogs = yield* SessionCatalogChanges;
   const initialResolved = Stream.fromEffect(
@@ -91,48 +77,14 @@ export const observe = Effect.fn("CakeChats.observe")(function* (
     Stream.switchMap((resolved) =>
       resolved
         ? Stream.fromEffect(
-            Effect.gen(function* () {
-              const preview = yield* inspect(target.sessionId, configuration.location);
-              const location = configuration.location;
-              return {
-                _tag: "Snapshot",
-                snapshot: {
-                  identity: { _tag: "CakeChatSession", sessionId: target.sessionId },
-                  resolved: true,
-                  conversation: projectPreviewSnapshot({
-                    ...preview,
-                    workspacePath: location.workingDirectory,
-                  }),
-                },
-              } satisfies UnrevisionedCakeChatUpdate;
-            }),
-          )
+            inspect(target.sessionId, configuration.location).pipe(
+              Effect.map(projectPreviewSnapshot),
+            ),
+          ).pipe(Stream.map((snapshot) => ({ _tag: "Snapshot" as const, revision: 0, snapshot })))
         : Stream.unwrap(
-            Effect.gen(function* () {
-              const rendererRequests = yield* RendererRequestCoordinator;
-              const handle = yield* acquireTarget(target, false, configuration);
-              const conversation = observeConversation(handle).pipe(
-                Stream.map((update): UnrevisionedCakeChatUpdate => {
-                  if (update._tag === "Event")
-                    return { _tag: "Event", sessionId: target.sessionId, event: update.event };
-                  const snapshot: CakeChatSnapshot = {
-                    identity: { _tag: "CakeChatSession", sessionId: target.sessionId },
-                    resolved: false,
-                    conversation: update.snapshot,
-                  };
-                  return { _tag: "Snapshot", snapshot };
-                }),
-              );
-              const controls = rendererRequests.cakeChatControlRequests(connectionId).pipe(
-                Stream.filter((request) => request.sessionId === target.sessionId),
-                Stream.map((event): UnrevisionedCakeChatUpdate => ({
-                  _tag: "Event",
-                  sessionId: target.sessionId,
-                  event,
-                })),
-              );
-              return conversation.pipe(Stream.merge(controls));
-            }),
+            acquireTarget(target, false, configuration).pipe(
+              Effect.map((handle) => observeConversationUpdates(handle)),
+            ),
           ),
     ),
     Stream.tap((update) =>
@@ -148,19 +100,28 @@ export const observe = Effect.fn("CakeChats.observe")(function* (
       () => 0,
       (revision, update) => {
         const nextRevision = revision + 1;
-        const revised: CakeChatUpdate =
-          update._tag === "Snapshot"
-            ? { _tag: "Snapshot", revision: nextRevision, snapshot: update.snapshot }
-            : {
-                _tag: "Event",
-                revision: nextRevision,
-                sessionId: update.sessionId,
-                event: update.event,
-              };
-        return [nextRevision, [revised]] as const;
+        return [nextRevision, [{ ...update, revision: nextRevision }]] as const;
       },
     ),
-    Stream.mapError((error) => new CakeChatError({ operation: "observe", message: String(error) })),
+    Stream.mapError(
+      (error) => new CakeChatError({ operation: "observeConversation", message: String(error) }),
+    ),
+  );
+});
+
+/** Cake controls are application workflow, observed independently from the Conversation. */
+export const observeControls = Effect.fn("CakeChats.observeControls")(function* (
+  target: CakeChatTarget,
+  connectionId?: number,
+) {
+  const rendererRequests = yield* RendererRequestCoordinator;
+  return Stream.succeed({ _tag: "Snapshot" as const, requests: [] }).pipe(
+    Stream.concat(
+      rendererRequests.cakeChatControlRequests(connectionId).pipe(
+        Stream.filter((request) => request.sessionId === target.sessionId),
+        Stream.map((request) => ({ _tag: "Requested" as const, request })),
+      ),
+    ),
   );
 });
 

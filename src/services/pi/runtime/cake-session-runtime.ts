@@ -50,7 +50,6 @@ import { assertSessionPath } from "./session-path";
 import { cakeWorkspaceSessionDirectory, findSessionFile } from "./session-discovery";
 import {
   formatUnknown,
-  projectArtifactPointers,
   reviewRunEntrySchema,
   reviewRunEntryType,
   reviewRunPart,
@@ -144,7 +143,6 @@ export interface CakeSessionRuntimeOptions {
     revision: number;
     title?: string;
   }): Promise<CakeArtifactV1>;
-  listArtifacts?(pointers: ArtifactPointer[]): Promise<ArtifactRecord[]>;
   openExternal?(url: string): Promise<void>;
   reviewContextPath?(sessionId: string): string;
   utilityModel?(): UtilityModel | undefined;
@@ -480,7 +478,7 @@ export async function createCakeSessionRuntime(
   async function makeSnapshot(
     onCaptured?: (snapshot: ConversationSnapshot) => void,
   ): Promise<ConversationSnapshot> {
-    const [sessionFile, models, artifacts] = await Promise.all([
+    const [sessionFile, models] = await Promise.all([
       options.auxiliary
         ? Promise.resolve(undefined)
         : findSessionFile(
@@ -490,10 +488,6 @@ export async function createCakeSessionRuntime(
             Boolean(options.globalControl),
           ),
       options.auxiliary ? Promise.resolve([]) : configuration.modelOptions(),
-      options.auxiliary
-        ? Promise.resolve([])
-        : (options.listArtifacts?.(projectArtifactPointers(session.sessionManager)) ??
-          Promise.resolve([])),
     ]);
 
     const snapshot = projectCakeSessionRuntimeSnapshot({
@@ -504,7 +498,6 @@ export async function createCakeSessionRuntime(
       session,
       settingsManager,
       models,
-      artifacts,
       queuedParts: projection.queuedParts(),
       transientParts: [
         ...(session.isCompacting ? [activeCompactionNotice()] : []),

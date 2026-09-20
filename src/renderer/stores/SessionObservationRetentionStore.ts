@@ -101,7 +101,7 @@ function isRunning(session: ProjectSessionStore) {
   return (
     session.model.streaming ||
     session.model.activeTurnIds.length > 0 ||
-    session.model.backgroundWorkActive
+    session.subagentActivityStore.activeRuns.length > 0
   );
 }
 

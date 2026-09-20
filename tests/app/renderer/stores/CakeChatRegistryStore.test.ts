@@ -13,6 +13,7 @@ const createCollection = () => {
     createStore(CakeChatCollectionStore, {
       catalog,
       sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
+      controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
       tools: () => [],
     }),
     {} as Client,

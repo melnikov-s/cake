@@ -10,7 +10,6 @@ import {
   ProjectSessionProjection,
   ProjectSessionStartInput,
   ProjectSessionTarget,
-  ProjectSessionUpdate,
   WorkingDirectoryResolutionResult,
 } from "../../domain/project-sessions/project-session-data";
 import { jsonObjectSchema, jsonValueSchema } from "../json-contract";
@@ -41,12 +40,6 @@ export const ProjectSessionRpc = RpcGroup.make(
   Rpc.make("projectSessions.open", {
     payload: ProjectSessionTarget,
     error: ProjectSessionError,
-  }),
-  Rpc.make("projectSessions.observe", {
-    payload: ProjectSessionTarget,
-    success: ProjectSessionUpdate,
-    error: ProjectSessionError,
-    stream: true,
   }),
   Rpc.make("projectSessions.getChangelog", {
     payload: ProjectSessionTarget,

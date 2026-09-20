@@ -66,21 +66,21 @@
           ]
         },
         {
-          "claim": "createCakeSessionRuntime adapts Pi createAgentSession and events; ProjectSessions.observe and conversations.observe feed createModelObserver and applyProjectSessionUpdate on return.",
+          "claim": "createCakeSessionRuntime adapts Pi createAgentSession and events; the conversations.observe RPC feeds createModelObserver and applyConversationUpdate independently from the Project Session aggregate.",
           "sources": [
             {
               "path": "src/services/pi/runtime/cake-session-runtime.ts",
               "symbol": "createCakeSessionRuntime"
             },
             {
-              "path": "src/domain/project-sessions/projectSessionOperations.ts",
-              "symbol": "observe"
+              "path": "src/ipc/server/ConversationHandlers.ts",
+              "symbol": "makeConversationHandlers"
             },
             { "path": "src/domain/conversations/conversations.ts", "symbol": "observe" },
             { "path": "src/renderer/observers/models.ts", "symbol": "createModelObserver" },
             {
               "path": "src/renderer/reducers/ConversationReducer.ts",
-              "symbol": "applyProjectSessionUpdate"
+              "symbol": "applyConversationUpdate"
             }
           ]
         }

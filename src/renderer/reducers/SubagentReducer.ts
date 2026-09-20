@@ -5,16 +5,17 @@ import type {
   SubagentUpdate,
 } from "../../domain/subagents/subagent-data";
 import { conversationSnapshotSchema, uiPartSchema } from "../../ipc/session-contract";
-import type { Conversation } from "../models/Conversation";
+import type { SubagentCatalog } from "../models/SubagentCatalog";
 import { SubagentActivity } from "../models/SubagentActivity";
 
 export function applySubagentUpdate(
-  model: Conversation,
+  model: SubagentCatalog,
   sessionId: string,
   update: SubagentUpdate,
 ) {
   if (update.parentSessionId !== sessionId)
     throw new Error(`Subagent parent identity collision: ${sessionId}`);
+  const before = relationshipSignature(model);
   batch(() => {
     if (update._tag === "Snapshot") {
       assertUnique(
@@ -22,34 +23,38 @@ export function applySubagentUpdate(
         "Subagent handle ID",
       );
       const retained = new Set<string>(update.activities.map((activity) => activity.handleId));
-      for (let index = model.subagentActivities.length - 1; index >= 0; index -= 1)
-        if (!retained.has(model.subagentActivities[index]!.handleId))
-          model.subagentActivities.splice(index, 1);
+      for (let index = model.activities.length - 1; index >= 0; index -= 1)
+        if (!retained.has(model.activities[index]!.handleId)) model.activities.splice(index, 1);
       for (const activity of update.activities) upsertSubagentActivity(model, activity);
-      for (let index = model.releasedSubagentHandleIds.length - 1; index >= 0; index -= 1)
-        if (retained.has(model.releasedSubagentHandleIds[index]!))
-          model.releasedSubagentHandleIds.splice(index, 1);
-      model.backgroundWorkActive = update.backgroundActive;
+      for (let index = model.releasedHandleIds.length - 1; index >= 0; index -= 1)
+        if (retained.has(model.releasedHandleIds[index]!)) model.releasedHandleIds.splice(index, 1);
+      model.backgroundActive = update.backgroundActive;
     } else if (update._tag === "Activity") {
       upsertSubagentActivity(model, update.activity);
-      const releasedIndex = model.releasedSubagentHandleIds.indexOf(update.activity.handleId);
-      if (releasedIndex >= 0) model.releasedSubagentHandleIds.splice(releasedIndex, 1);
+      const releasedIndex = model.releasedHandleIds.indexOf(update.activity.handleId);
+      if (releasedIndex >= 0) model.releasedHandleIds.splice(releasedIndex, 1);
     } else if (update._tag === "Removed") {
-      const index = model.subagentActivities.findIndex(
-        (activity) => activity.handleId === update.handleId,
-      );
-      if (index >= 0) model.subagentActivities.splice(index, 1);
-      if (!model.releasedSubagentHandleIds.includes(update.handleId))
-        model.releasedSubagentHandleIds.push(update.handleId);
-    } else model.backgroundWorkActive = update.active;
+      const index = model.activities.findIndex((activity) => activity.handleId === update.handleId);
+      if (index >= 0) model.activities.splice(index, 1);
+      if (!model.releasedHandleIds.includes(update.handleId))
+        model.releasedHandleIds.push(update.handleId);
+    } else model.backgroundActive = update.active;
+    if (relationshipSignature(model) !== before) model.relationshipRevision += 1;
   });
 }
 
-function upsertSubagentActivity(model: Conversation, activity: SubagentActivityValue) {
-  let target = model.subagentActivities.find((item) => item.handleId === activity.handleId);
+function relationshipSignature(model: SubagentCatalog) {
+  return model.activities
+    .map(({ handleId, status, task }) => `${handleId}\u0000${status}\u0000${task}`)
+    .sort()
+    .join("\u0001");
+}
+
+function upsertSubagentActivity(model: SubagentCatalog, activity: SubagentActivityValue) {
+  let target = model.activities.find((item) => item.handleId === activity.handleId);
   if (!target) {
     target = SubagentActivity.create({ handleId: activity.handleId });
-    model.subagentActivities.push(target);
+    model.activities.push(target);
   }
   target.parentSessionId = activity.parentSessionId;
   target.anchorPartId = activity.anchorPartId;

@@ -124,15 +124,22 @@ transcripts, artifact payloads, Git state, or review storage into a god object.
 
 The main/domain layer assembles the validated `ProjectSessionProjection` as a
 fresh, on-demand aggregate read. It identifies the primary Conversation by a
-bounded `ConversationReference`; it never embeds `ConversationSnapshot`. This
-aggregate read is distinct from the focused Project Session Conversation
-observation used by chat surfaces. The renderer may consume the projection but
-does not define Project Session ownership.
+bounded `ConversationReference`; it never embeds `ConversationSnapshot`. The
+renderer applies this aggregate before independently subscribing through
+`conversations.observe`. Review, Discussion, subagent, artifact, Session Family,
+and scheduled-message payloads remain in focused authorities and renderer
+Models. Relationship membership changes invalidate the aggregate read without
+replacing the Conversation; Conversation updates never invalidate the aggregate.
+The renderer consumes the projection but does not define Project Session
+ownership.
 
 ### Cake Chat Session
 
-An application-level Cake Session with one Conversation and curated Cake
-controls. It remains separate from Project Session catalogs.
+An application-level Cake Session with one independently observed Conversation
+and a focused curated Cake-control request projection. Its renderer Store does
+not use a Project Session-shaped snapshot and carries no Project, Working
+Directory, review, subagent, artifact, Session Family, or schedule state. It
+remains separate from Project Session catalogs.
 
 ### Discussion Session
 

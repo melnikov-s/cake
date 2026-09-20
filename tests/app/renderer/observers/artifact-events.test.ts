@@ -78,7 +78,6 @@ const runtimeFor = (client: CakeIpcClientService): Runtime => {
 describe("observeArtifactEvents", () => {
   it("patches the loaded Session projection directly", async () => {
     const projection = RootProjection.create();
-    const session = projection.projectConversation("session", "/project");
     const client = {
       events: {
         artifacts: () =>
@@ -100,7 +99,7 @@ describe("observeArtifactEvents", () => {
     } as unknown as RootStore;
     const cancel = observeArtifactEvents(runtimeFor(client), projection, root);
 
-    await vi.waitFor(() => expect(session.artifacts[0]?.value).toEqual(record));
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
     expect(refresh).toHaveBeenNthCalledWith(1, "artifact");
     expect(refresh).toHaveBeenNthCalledWith(2, "shared");
     cancel();

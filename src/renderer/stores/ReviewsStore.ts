@@ -58,7 +58,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   }
 
   threadsForSession(sessionId: string) {
-    return this.props.sessionRegistry.findModel(sessionId)?.reviewThreads ?? [];
+    return this.props.sessionRegistry.findSession(sessionId)?.props.discussionCatalog.threads ?? [];
   }
 
   codeThreadsForSession(sessionId: string) {
@@ -85,12 +85,12 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
   }
   private get liveThreads(): ReviewThread[] {
     return this.props.sessionRegistry.sessions.flatMap((session) =>
-      session.model.reviewThreads.filter(hasSidecarConversation),
+      session.props.discussionCatalog.threads.filter(hasSidecarConversation),
     );
   }
   private thread(threadId: string) {
     return this.props.sessionRegistry.sessions
-      .flatMap((session) => session.model.reviewThreads)
+      .flatMap((session) => session.props.discussionCatalog.threads)
       .find((thread) => thread.id === threadId);
   }
 

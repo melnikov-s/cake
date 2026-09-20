@@ -31,13 +31,14 @@ export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration
       withConnection((connectionId) =>
         bindRenderer(connectionId, target.sessionId).pipe(
           Effect.andThen(cakeChatOperations.open(target, configuration)),
+          Effect.asVoid,
         ),
       ),
-    "cakeChats.observe": (target) =>
+    "cakeChats.observeControls": (target) =>
       Stream.unwrap(
         withConnection((connectionId) =>
           bindRenderer(connectionId, target.sessionId).pipe(
-            Effect.andThen(cakeChatOperations.observe(target, configuration, connectionId)),
+            Effect.andThen(cakeChatOperations.observeControls(target, connectionId)),
           ),
         ),
       ),

@@ -3,12 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../../src/ipc/session-contract";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { ClientContext } from "../../../../src/renderer/stores/context/ClientContext";
-import { Conversation } from "../../../../src/renderer/models/Conversation";
+import { SubagentCatalog } from "../../../../src/renderer/models/SubagentCatalog";
 import { SubagentActivityStore } from "../../../../src/renderer/stores/SubagentActivityStore";
 
 class HarnessStore extends Store<{
   client: Client;
-  model: Conversation;
+  model: SubagentCatalog;
   parts(): readonly UiPart[];
 }> {
   [ClientContext.provide]() {
@@ -24,7 +24,7 @@ class HarnessStore extends Store<{
   }
 }
 
-function harness(model: Conversation, parts: () => readonly UiPart[] = () => []) {
+function harness(model: SubagentCatalog, parts: () => readonly UiPart[] = () => []) {
   const prompt = vi.fn(async () => undefined);
   const steer = vi.fn(async () => undefined);
   const abort = vi.fn(async () => undefined);
@@ -66,9 +66,9 @@ const activity = (handleId: string) => ({
 describe("SubagentActivityStore", () => {
   it("reads synchronized activity Models and backs them with shared ChatStore", async () => {
     const handleId = crypto.randomUUID();
-    const model = Conversation.create({
+    const model = SubagentCatalog.create({
       sessionId: "parent",
-      subagentActivities: [activity(handleId)],
+      activities: [activity(handleId)],
     });
     const fixture = harness(model);
 
@@ -86,7 +86,7 @@ describe("SubagentActivityStore", () => {
       { signal: fixture.store.signal },
     );
 
-    applySnapshot(model.subagentActivities[0]!, {
+    applySnapshot(model.activities[0]!, {
       status: "complete",
       streaming: false,
     });
@@ -97,7 +97,7 @@ describe("SubagentActivityStore", () => {
       { signal: fixture.store.signal },
     );
 
-    applySnapshot(model, { releasedSubagentHandleIds: [handleId] });
+    applySnapshot(model, { releasedHandleIds: [handleId] });
     expect(chat.composerVisible).toBe(false);
     expect(chat.parts).toEqual([expect.objectContaining({ text: "Inspecting now" })]);
     fixture.root[Symbol.dispose]();
@@ -139,7 +139,7 @@ describe("SubagentActivityStore", () => {
         state: "success",
       },
     ];
-    const model = Conversation.create({ sessionId: "parent" });
+    const model = SubagentCatalog.create({ sessionId: "parent" });
     const fixture = harness(model, () => parts);
 
     const chat = fixture.store.chatStore(handleId)!;

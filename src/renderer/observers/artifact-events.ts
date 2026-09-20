@@ -1,6 +1,6 @@
+import { batch } from "r-state-tree";
 import { toStoreEvent } from "../events/StoreEvent";
 import type { RootProjection } from "../models/RootProjection";
-import { applyArtifactUpdate } from "../reducers/ArtifactReducer";
 import type { Runtime } from "../runtime";
 import type { RootStore } from "../stores/RootStore";
 
@@ -22,11 +22,16 @@ export const observeArtifactEvents = (
           // reconnect/remount starts with that same authoritative current query.
           for (const sessionStore of root.sessionRegistry.sessions)
             sessionStore.sessionArtifactsStore.receive(lineageId);
+          batch(() => {
+            const affected =
+              event.type === "artifact-updated"
+                ? [projection.findProjectSession(event.record.artifact.sessionId)].filter(
+                    (model) => model !== undefined,
+                  )
+                : projection.projectSessions;
+            for (const aggregate of affected) aggregate.invalidationRevision += 1;
+          });
           void root.artifactLibraryStore.load();
-          if (event.type === "artifact-updated") {
-            const session = projection.findProjectConversation(event.record.artifact.sessionId);
-            if (session) applyArtifactUpdate(session, event.record);
-          }
           return;
         }
         const storeEvent = toStoreEvent(event);

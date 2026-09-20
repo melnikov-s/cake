@@ -70,11 +70,10 @@ import type {
   ProjectSessionProjection,
   ProjectSessionStartInput,
   ProjectSessionTarget,
-  ProjectSessionUpdate,
   WorkingDirectoryResolutionResult,
 } from "../../domain/project-sessions/project-session-data";
 import type {
-  ConversationSnapshot,
+  ConversationUpdate,
   QueuedConversationMessages,
   SessionChatConfiguration,
   SessionChatError,
@@ -88,8 +87,9 @@ import type {
   CakeChatPreview,
   CakeChatStartInput,
   CakeChatTarget,
-  CakeChatUpdate,
+  CakeChatControlUpdate,
 } from "../../domain/cake-chats/cake-chat-data";
+import type { ConversationObservationTarget } from "../protocol/ConversationRpc";
 import type {
   DrawBoardCreateInput,
   DrawBoardDocument,
@@ -294,6 +294,11 @@ export interface CakeIpcClientService {
     ) => Effect.Effect<ModelPresetProjection, ModelPresetMutationError>;
     readonly resolve: (id: string) => Effect.Effect<ModelSelection, ModelPresetResolutionError>;
   };
+  readonly conversations: {
+    readonly observe: (
+      target: ConversationObservationTarget,
+    ) => Stream.Stream<ConversationUpdate, SessionChatError | TransportError>;
+  };
   readonly sessionChats: {
     readonly prompt: (
       input: SessionChatPromptInput,
@@ -363,12 +368,10 @@ export interface CakeIpcClientService {
     readonly inspect: (
       sessionId: string,
     ) => Effect.Effect<CakeChatPreview, CakeChatError | TransportError>;
-    readonly open: (
+    readonly open: (target: CakeChatTarget) => Effect.Effect<void, CakeChatError | TransportError>;
+    readonly observeControls: (
       target: CakeChatTarget,
-    ) => Effect.Effect<ConversationSnapshot, CakeChatError | TransportError>;
-    readonly observe: (
-      target: CakeChatTarget,
-    ) => Stream.Stream<CakeChatUpdate, CakeChatError | TransportError>;
+    ) => Stream.Stream<CakeChatControlUpdate, CakeChatError | TransportError>;
     readonly start: (
       input: CakeChatStartInput,
     ) => Effect.Effect<TurnId, CakeChatError | TransportError>;
@@ -478,9 +481,6 @@ export interface CakeIpcClientService {
     readonly open: (
       target: ProjectSessionTarget,
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly observe: (
-      target: ProjectSessionTarget,
-    ) => Stream.Stream<ProjectSessionUpdate, ProjectSessionError | TransportError>;
     readonly getChangelog: (
       target: ProjectSessionTarget,
     ) => Effect.Effect<string, ProjectSessionError | TransportError>;
@@ -866,6 +866,9 @@ export const CakeIpcClientLive = Layer.effect(
           client("modelPresets.resolve", { id }),
         ),
       },
+      conversations: {
+        observe: (target) => client("conversations.observe", target),
+      },
       sessionChats: {
         prompt: Effect.fn("CakeIpcClient.sessionChats.prompt")((input) =>
           client("sessionChats.prompt", input),
@@ -933,7 +936,7 @@ export const CakeIpcClientLive = Layer.effect(
         open: Effect.fn("CakeIpcClient.cakeChats.open")((target) =>
           client("cakeChats.open", target),
         ),
-        observe: (target) => client("cakeChats.observe", target),
+        observeControls: (target) => client("cakeChats.observeControls", target),
         start: Effect.fn("CakeIpcClient.cakeChats.start")((input) =>
           client("cakeChats.start", input),
         ),
@@ -1012,7 +1015,6 @@ export const CakeIpcClientLive = Layer.effect(
         open: Effect.fn("CakeIpcClient.projectSessions.open")((target) =>
           client("projectSessions.open", target),
         ),
-        observe: (target) => client("projectSessions.observe", target),
         getChangelog: Effect.fn("CakeIpcClient.projectSessions.getChangelog")((target) =>
           client("projectSessions.getChangelog", target),
         ),

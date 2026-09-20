@@ -2214,7 +2214,6 @@ describe("S1 Pi runtime", () => {
     expect(auxiliary.models).toEqual([]);
     expect(auxiliary.commands).toEqual([]);
     expect(auxiliary.tree).toEqual([]);
-    expect(auxiliary.artifacts).toEqual([]);
   });
 
   it("isolates a subagent prompt and tools from Cake and project context", async () => {

@@ -35,12 +35,10 @@ export const projectQueuedMessages = (queued: PiQueuedMessages): QueuedConversat
 });
 
 export const projectPreviewSnapshot = (preview: {
-  readonly workspacePath: string;
   readonly sessionId: string;
   readonly sessionFile: string;
   readonly parts: ReadonlyArray<unknown>;
 }): ConversationSnapshot => ({
-  workingDirectory: preview.workspacePath,
   sessionId: preview.sessionId,
   sessionFile: preview.sessionFile,
   parts: preview.parts.map(toJsonValue),
@@ -55,9 +53,8 @@ export const projectPreviewSnapshot = (preview: {
   tree: [],
 });
 
-export const projectSnapshot = (snapshot: RuntimeConversationSnapshot): ConversationSnapshot => {
+const projectSnapshot = (snapshot: RuntimeConversationSnapshot): ConversationSnapshot => {
   const projected: ConversationSnapshot = {
-    workingDirectory: snapshot.workspacePath,
     sessionId: snapshot.sessionId,
     sessionFile: snapshot.sessionFile,
     parts: snapshot.parts.map(toJsonValue),
@@ -82,8 +79,6 @@ export const projectSnapshot = (snapshot: RuntimeConversationSnapshot): Conversa
     Object.assign(projected, { piSettings: toJsonValue(snapshot.piSettings) });
   if (snapshot.usage !== undefined)
     Object.assign(projected, { usage: toJsonValue(snapshot.usage) });
-  if (snapshot.artifacts !== undefined)
-    Object.assign(projected, { artifacts: snapshot.artifacts.map(toJsonValue) });
   return projected;
 };
 

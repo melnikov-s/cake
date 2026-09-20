@@ -6,10 +6,10 @@ import {
   CakeChatPreview,
   CakeChatStartInput,
   CakeChatTarget,
-  CakeChatUpdate,
+  CakeChatControlUpdate,
 } from "../../domain/cake-chats/cake-chat-data";
 import { CakeChatCatalogUpdate } from "../../domain/application/catalog-data";
-import { ConversationSnapshot, TurnId } from "../../domain/conversations/conversation-data";
+import { TurnId } from "../../domain/conversations/conversation-data";
 import { SESSION_TITLE_MAX_LENGTH } from "../session-contract";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 
@@ -27,12 +27,11 @@ export const CakeChatRpc = RpcGroup.make(
   }),
   Rpc.make("cakeChats.open", {
     payload: CakeChatTarget,
-    success: ConversationSnapshot,
     error: CakeChatError,
   }),
-  Rpc.make("cakeChats.observe", {
+  Rpc.make("cakeChats.observeControls", {
     payload: CakeChatTarget,
-    success: CakeChatUpdate,
+    success: CakeChatControlUpdate,
     error: CakeChatError,
     stream: true,
   }),

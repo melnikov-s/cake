@@ -55,7 +55,6 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
         ),
       ),
     ),
-  "projectSessions.observe": (target) => Stream.unwrap(projectSessionOperations.observe(target)),
   "projectSessions.getChangelog": (target) => projectSessionOperations.getChangelog(target),
   "projectSessions.navigate": ({ entryId, summarize, customInstructions, ...target }) => {
     const options = { summarize };

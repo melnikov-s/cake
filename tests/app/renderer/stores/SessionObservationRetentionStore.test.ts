@@ -9,8 +9,8 @@ function session(sessionId: string, running = false) {
     model: {
       streaming: running,
       activeTurnIds: [],
-      backgroundWorkActive: false,
     },
+    subagentActivityStore: { activeRuns: [] },
   } as unknown as ProjectSessionStore;
 }
 

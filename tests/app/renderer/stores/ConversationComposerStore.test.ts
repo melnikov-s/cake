@@ -139,7 +139,6 @@ describe("ConversationComposerStore", () => {
   it("preserves explicit attachments while tool compacting", async () => {
     const model = Conversation.create({
       sessionId: "session-1",
-      workingDirectory: "/project",
       parts: [
         {
           id: "assistant-part",
@@ -178,7 +177,6 @@ describe("ConversationComposerStore", () => {
   it("allows tool compaction while VS Code contributes automatic source context", async () => {
     const model = Conversation.create({
       sessionId: "session-1",
-      workingDirectory: "/project",
       parts: [
         {
           id: "assistant-part",
@@ -217,7 +215,7 @@ describe("ConversationComposerStore", () => {
   it("creates a side chat from /sidechat without sending to the parent session", async () => {
     const createSideChat = vi.fn(async () => true);
     const client = { projectSessions: {} } as unknown as Client;
-    const model = Conversation.create({ sessionId: "session-1", workingDirectory: "/project" });
+    const model = Conversation.create({ sessionId: "session-1" });
     const root = mount(
       createStore(HarnessStore, { client, model, existing: true, createSideChat }),
     );
@@ -234,7 +232,7 @@ describe("ConversationComposerStore", () => {
   it("reports usage when /sidechat has no prompt", async () => {
     const createSideChat = vi.fn(async () => true);
     const client = { projectSessions: {} } as unknown as Client;
-    const model = Conversation.create({ sessionId: "session-1", workingDirectory: "/project" });
+    const model = Conversation.create({ sessionId: "session-1" });
     const root = mount(
       createStore(HarnessStore, { client, model, existing: true, createSideChat }),
     );
@@ -257,7 +255,7 @@ describe("ConversationComposerStore", () => {
         }),
     );
     const client = { sessionChats: { prompt } } as unknown as Client;
-    const model = Conversation.create({ sessionId: "session-1", workingDirectory: "/project" });
+    const model = Conversation.create({ sessionId: "session-1" });
     const root = mount(createStore(HarnessStore, { client, model, existing: true }));
     root.composer.draftStore.setText("First message");
     const sentImage = {
@@ -290,7 +288,7 @@ describe("ConversationComposerStore", () => {
   });
 
   it("keeps streaming project input in the local editable queue when configured", async () => {
-    const model = Conversation.create({ sessionId: "session-1", workingDirectory: "/project" });
+    const model = Conversation.create({ sessionId: "session-1" });
     const followUp = vi.fn(async () => "turn-2");
     const client = { sessionChats: { followUp } } as unknown as Client;
     const root = mount(
@@ -311,7 +309,7 @@ describe("ConversationComposerStore", () => {
   });
 
   it("returns a cancelled local steer to its queue position", async () => {
-    const model = Conversation.create({ sessionId: "session-1", workingDirectory: "/project" });
+    const model = Conversation.create({ sessionId: "session-1" });
     const steer = vi.fn(async () => "turn-2");
     const clearQueue = vi.fn(async () => ({ steering: ["First message"], followUp: [] }));
     const client = { sessionChats: { steer, clearQueue } } as unknown as Client;
@@ -349,7 +347,7 @@ describe("ConversationComposerStore", () => {
   });
 
   it("reconciles the first optimistic message when its canonical part completes in place", async () => {
-    const model = Conversation.create({ sessionId: "session-1", workingDirectory: "/project" });
+    const model = Conversation.create({ sessionId: "session-1" });
     const start = vi.fn(async () => "turn-1");
     const client = { projectSessions: { start } } as unknown as Client;
     const root = mount(createStore(HarnessStore, { client, model }));
@@ -375,7 +373,7 @@ describe("ConversationComposerStore", () => {
   it("delivers annotations from its draft Store and clears them after submission", async () => {
     const prompt = vi.fn(async () => "turn-1");
     const client = { sessionChats: { prompt } } as unknown as Client;
-    const model = Conversation.create({ sessionId: "session-1", workingDirectory: "/project" });
+    const model = Conversation.create({ sessionId: "session-1" });
     const root = mount(createStore(HarnessStore, { client, model, existing: true }));
     root.composer.draftStore.setText("First message");
 

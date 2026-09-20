@@ -552,12 +552,16 @@ The window Store hierarchy mirrors the product surfaces:
   Pi remains the transcript authority once the session starts. The Working
   Directory remains routing/storage context for the Pi runtime, not part of
   session identity. Cake Chat never enters this registry.
-- Each `ProjectSessionStore` composes the focused renderer Conversation,
-  catalog, review, subagent, scheduled-message, and artifact projections needed
-  by the current surface. It does not define the Project Session aggregate or
-  infer domain ownership. `ProjectSessionProjection` remains a separate,
-  Schema-validated on-demand main read rather than being flattened into the
-  renderer `Conversation` Model. The Store owns that session's activity,
+- Each `ProjectSessionStore` coordinates one renderer `ProjectSession` aggregate
+  Model with independently owned Conversation, Discussion/review, subagent,
+  scheduled-message, and artifact projections needed by the current surface. It
+  owns none of those child payloads and does not re-export their APIs.
+  `ProjectSessionProjection` is a Schema-validated on-demand main read. Opening
+  first applies that aggregate, then its `primaryConversation` reference starts
+  `conversations.observe`; relationship authorities update their focused Models
+  and invalidate the aggregate only when bounded membership changes. Conversation
+  updates never rebuild the aggregate or replace transcript identity. The Store
+  owns that session's activity,
   remembered `normal`/`vscode`/`draw`
   presentation preference and shared workspace chat-drawer geometry, managed-worktree status and
   action presentation, artifact accessory-panel workflow, and message comments. Its focused
@@ -599,7 +603,10 @@ The window Store hierarchy mirrors the product surfaces:
   execute. Pi remains transcript and runtime authority; persisted renderer draft state remains in the aggregate's focused child Stores;
   and operation concurrency remains with the delivery, configuration, and shared operation-coordinator owners. Kind-specific parents
   supply only cohesive creation, restoration, catalog, Project, or Cake-control context rather than forwarding conversation APIs.
-  Secondary chats continue to compose `ChatStore` directly.
+  `CakeChatSessionStore` separately composes its Cake Chat identity/lifecycle,
+  focused Cake-control request projection, and shared Conversation Store; it has
+  no Project, Working Directory, review, subagent, artifact, family, or schedule
+  projection. Secondary chats continue to compose `ChatStore` directly.
   `ConversationComposerStore` coordinates focused children: `ComposerDraftStore` owns the persisted coherent unsent draft and focus requests,
   `PromptQueueStore` owns transient editable follow-ups and settled-turn draining, `ConversationDeliveryStore` owns optimistic
   projection and operation-correlated delivery recovery, and `PendingSessionDraftStore` owns only the transient saved-draft editing,

@@ -1,21 +1,15 @@
 import { Model, child, computed, id, modelRef, observable, transient } from "r-state-tree";
 import type { ConversationSnapshot, ThinkingLevel, UiPart } from "../../ipc/session-contract";
-import type { CakeChatControlRequest } from "../../domain/cake-chats/cake-chat-data";
-import { Artifact } from "./Artifact";
 import { CompatibilityResource } from "./CompatibilityResource";
 import { Message } from "./Message";
 import { LlmModel } from "./LlmModel";
 import { ModelOption } from "./ModelOption";
-import { ReviewThread } from "./ReviewThread";
 import { ResourceDiagnostic } from "./ResourceDiagnostic";
 import { SessionTreeEntry } from "./SessionTreeEntry";
-import { SubagentActivity } from "./SubagentActivity";
-import { ScheduledMessage } from "./ScheduledMessage";
 import { ExtensionUi } from "./ExtensionUi";
 
 /** Renderer projection of transcript and live Conversation display/runtime state. */
 export class Conversation extends Model {
-  workingDirectory = "";
   @id sessionId = "";
   sessionFile = "";
   /** Window-local marker for an active, complete Conversation snapshot. */
@@ -45,14 +39,7 @@ export class Conversation extends Model {
   @child(CompatibilityResource) resources: CompatibilityResource[] = observable([]);
   @child(ResourceDiagnostic) resourceDiagnostics: ResourceDiagnostic[] = observable([]);
   @child(SessionTreeEntry) tree: SessionTreeEntry[] = observable([]);
-  @child(Artifact) artifacts: Artifact[] = observable([]);
-  @child(ReviewThread) reviewThreads: ReviewThread[] = observable([]);
-  @child(SubagentActivity) subagentActivities: SubagentActivity[] = observable([]);
-  @child(ScheduledMessage) scheduledMessages: ScheduledMessage[] = observable([]);
-  releasedSubagentHandleIds: string[] = observable([]);
-  backgroundWorkActive = false;
   @child(ExtensionUi) extensionUi = ExtensionUi.create();
-  controlRequests: CakeChatControlRequest[] = observable([]);
 
   get loaded() {
     return Boolean(this.sessionId);

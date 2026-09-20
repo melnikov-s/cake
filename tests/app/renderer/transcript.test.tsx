@@ -1367,7 +1367,7 @@ describe("Transcript scrolling", () => {
     const comments: MessageCommentsStore = mount(
       createStore(MessageCommentsStore, {
         client: { createReviewThread: vi.fn() } as never,
-        sessionModel: () => undefined,
+        catalog: () => undefined,
         reviews: () => ({ configuration: undefined }) as never,
         context: () => ({ workspacePath: "/project", sessionId: "session-1" }),
       }),

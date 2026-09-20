@@ -25,7 +25,6 @@ const defaultIntegrations: ProjectSessionRuntimeIntegrations = {
   generateInlineWidget: async () => {
     throw new Error("Unexpected widget generation");
   },
-  listArtifacts: async () => [],
 };
 
 export const makeProjectSessionRuntimeMechanismTestLayer = (

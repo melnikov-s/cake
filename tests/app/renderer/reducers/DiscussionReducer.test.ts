@@ -2,14 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { DiscussionThread } from "../../../../src/domain/discussion-sessions/discussion-session-data";
 import type { ConversationSnapshot } from "../../../../src/domain/conversations/conversation-data";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
+import { DiscussionCatalog } from "../../../../src/renderer/models/DiscussionCatalog";
 import { Conversation } from "../../../../src/renderer/models/Conversation";
 import { applyDiscussionSessionUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
 import { applyDiscussionCatalogUpdate } from "../../../../src/renderer/reducers/DiscussionReducer";
 
 const thread = (id: string): DiscussionThread => ({
   id,
-  parentSessionId: "session",
   workingDirectory: "/project",
+  parentSessionId: "session",
   anchor: {
     path: "file.ts",
     start: { diffLine: 0 },
@@ -26,7 +27,6 @@ const thread = (id: string): DiscussionThread => ({
 });
 
 const conversation = (sessionId: string): ConversationSnapshot => ({
-  workingDirectory: "/project",
   sessionId,
   sessionFile: `/reviews/${sessionId}.jsonl`,
   parts: [],
@@ -44,23 +44,16 @@ const conversation = (sessionId: string): ConversationSnapshot => ({
 
 describe("DiscussionReducer", () => {
   it("reconciles threads in order without reapplying unrelated session state", () => {
-    const session = Conversation.create({
-      sessionId: "session",
-      usage: {
-        tokens: { input: 1, output: 0, cacheRead: 0, cacheWrite: 0, total: 1 },
-        cost: 0,
-      },
-    });
+    const session = DiscussionCatalog.create({ sessionId: "session" });
     applyDiscussionCatalogUpdate(session, "session", {
       _tag: "Snapshot",
       revision: 1,
       parentSessionId: "session",
       threads: [thread("one"), thread("two")],
     });
-    const retained = session.reviewThreads[1]!;
+    const retained = session.threads[1]!;
     const part = retained.parts[0];
-    const usage = session.usage;
-    const threads = session.reviewThreads;
+    const threads = session.threads;
     applyDiscussionCatalogUpdate(session, "session", {
       _tag: "Event",
       revision: 2,
@@ -70,18 +63,17 @@ describe("DiscussionReducer", () => {
         threads: [thread("three"), { ...thread("two"), status: "resolved" }],
       },
     });
-    expect(session.reviewThreads).toBe(threads);
-    expect(session.reviewThreads.map((item) => item.id)).toEqual(["three", "two"]);
-    expect(session.reviewThreads[1]).toBe(retained);
+    expect(session.threads).toBe(threads);
+    expect(session.threads.map((item) => item.id)).toEqual(["three", "two"]);
+    expect(session.threads[1]).toBe(retained);
     expect(retained.parts[0]).toBe(part);
     expect(retained.status).toBe("resolved");
-    expect(session.usage).toBe(usage);
     session[Symbol.dispose]();
   });
 
   it("keeps the live sidecar conversation apart from catalog metadata refreshes", () => {
     const projection = RootProjection.create({});
-    const parent = projection.projectConversation("session", "/project");
+    const parent = projection.discussionCatalog("session");
     const sidecar = projection.discussionConversation("sidecar-one", "/project");
     const linked: DiscussionThread = {
       ...thread("one"),
@@ -96,7 +88,7 @@ describe("DiscussionReducer", () => {
       parentSessionId: "session",
       threads: [linked],
     });
-    const retained = parent.reviewThreads[0]!;
+    const retained = parent.threads[0]!;
     expect(retained.sidecarSessionId).toBe("sidecar-one");
 
     applyDiscussionSessionUpdate(sidecar, "sidecar-one", {
@@ -161,7 +153,7 @@ describe("DiscussionReducer", () => {
       },
     });
 
-    expect(parent.reviewThreads[0]).toBe(retained);
+    expect(parent.threads[0]).toBe(retained);
     expect(retained.updatedAt).toBe("2026-01-02");
     expect(retained.status).toBe("resolved");
     expect(retained.uiParts).toEqual([]);
@@ -198,7 +190,7 @@ describe("DiscussionReducer", () => {
   });
 
   it("validates every catalog row before mutating the collection", () => {
-    const session = Conversation.create({ sessionId: "session" });
+    const session = DiscussionCatalog.create({ sessionId: "session" });
     expect(() =>
       applyDiscussionCatalogUpdate(session, "session", {
         _tag: "Snapshot",
@@ -207,7 +199,7 @@ describe("DiscussionReducer", () => {
         threads: [thread("valid"), { ...thread("invalid"), parts: [{ kind: "nonsense" }] }],
       }),
     ).toThrow();
-    expect(session.reviewThreads).toHaveLength(0);
+    expect(session.threads).toHaveLength(0);
     session[Symbol.dispose]();
   });
 });

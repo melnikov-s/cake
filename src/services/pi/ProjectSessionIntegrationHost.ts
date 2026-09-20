@@ -94,7 +94,6 @@ export type ProjectSessionRuntimeIntegrations = Pick<
   | "linkArtifact"
   | "unlinkArtifact"
   | "importArtifactFile"
-  | "listArtifacts"
   | "persistArtifact"
   | "requestArtifact"
   | "requestUi"
@@ -302,26 +301,6 @@ export class ProjectSessionIntegrationHost {
       reviewContextPath: reviewContextPath
         ? (activeSessionId) => reviewContextPath(this.workspacePath, activeSessionId)
         : undefined,
-      listArtifacts: (pointers) => {
-        const repository = this.artifactRepository;
-        const workingDirectory = this.workspacePath;
-        return this.execute(
-          Effect.gen(function* () {
-            // Catalog links are authoritative for visibility. Pointers are retained only
-            // for exact transcript provenance and fork reachability.
-            void pointers;
-            const indexed = yield* repository.listSession(workingDirectory, sessionId);
-            const records = new Map<string, ArtifactRecord>();
-            for (const record of indexed) {
-              if (!record) continue;
-              const current = records.get(record.artifact.id);
-              if (!current || record.artifact.revision > current.artifact.revision)
-                records.set(record.artifact.id, record);
-            }
-            return [...records.values()];
-          }),
-        );
-      },
     };
   }
 

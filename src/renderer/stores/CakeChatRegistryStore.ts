@@ -3,6 +3,7 @@ import type { CakeChatTarget } from "../../domain/cake-chats/cake-chat-data";
 import type { ModelPreset } from "../../ipc/session-contract";
 import type { Conversation } from "../models/Conversation";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
+import type { CakeChatControls } from "../models/CakeChatControls";
 import type { CakeChatManagementStore } from "./CakeChatManagementStore";
 import type { CakeChatPendingSessionsStore, CakeControlTool } from "./CakeChatPendingSessionsStore";
 import { CakeChatSessionStore } from "./CakeChatSessionStore";
@@ -10,6 +11,7 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 
 export interface CakeChatRegistryStoreProps {
   sessionModel(sessionId: string): Conversation;
+  controlsModel(sessionId: string): CakeChatControls;
   tools(): ReadonlyArray<CakeControlTool>;
   pendingSessions(): CakeChatPendingSessionsStore;
   management(): CakeChatManagementStore;
@@ -32,6 +34,7 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
         key: sessionId,
         sessionId,
         model: this.props.sessionModel(sessionId),
+        controls: this.props.controlsModel(sessionId),
         target: () => this.target(sessionId),
         pendingSessions: this.props.pendingSessions(),
         management: this.props.management(),
@@ -86,5 +89,5 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
 }
 
 function isRunning(model: Conversation) {
-  return model.streaming || model.activeTurnIds.length > 0 || model.backgroundWorkActive;
+  return model.streaming || model.activeTurnIds.length > 0;
 }

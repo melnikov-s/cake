@@ -2,6 +2,10 @@ import { Store, child, computed, createStore, snapshot } from "r-state-tree";
 import { isSessionAssistantThread } from "../../domain/discussion-sessions/discussion-session-data";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { Conversation } from "../models/Conversation";
+import type { ProjectSession } from "../models/ProjectSession";
+import type { DiscussionCatalog } from "../models/DiscussionCatalog";
+import type { SubagentCatalog } from "../models/SubagentCatalog";
+import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import type { CakeControlTool } from "../../domain/cake-chats/cake-chat-data";
 import type { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore";
@@ -36,6 +40,10 @@ export interface SessionTarget {
 
 export interface ProjectSessionStoreProps extends SessionTarget {
   model: Conversation;
+  projectSession: ProjectSession;
+  discussionCatalog: DiscussionCatalog;
+  subagentCatalog: SubagentCatalog;
+  scheduledMessageCatalog: ScheduledMessageCatalog;
   artifactModel: ArtifactCatalog;
   pendingSessions: ProjectPendingSessionsStore;
   operations: SessionOperationCoordinatorStore;
@@ -135,14 +143,14 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return ClientContext.consume(this)!;
   }
   get workspacePath() {
-    return this.props.workspacePath;
+    return this.props.projectSession.workingDirectory || this.props.workspacePath;
   }
   get sessionId() {
     return this.props.sessionId;
   }
   @computed
   get sideChatThreads() {
-    return this.model.reviewThreads
+    return this.props.discussionCatalog.threads
       .filter(
         (thread) =>
           thread.status === "open" &&
@@ -164,7 +172,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       sessionId: this.sessionId,
       workspacePath: this.workspacePath,
       staged: () => this.props.pendingSessions.isTemporary(this.sessionId),
-      thread: () => this.model.reviewThreads.find(isSessionAssistantThread),
+      thread: () => this.props.discussionCatalog.threads.find(isSessionAssistantThread),
       stagedMessages: () =>
         this.canonicalParts.flatMap((part) => {
           if (part.kind === "text" && !part.draft) return [{ role: part.role, text: part.text }];
@@ -260,7 +268,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   get subagentActivityStore(): SubagentActivityStore {
     return createStore(SubagentActivityStore, {
       sessionId: this.sessionId,
-      model: this.model,
+      model: this.props.subagentCatalog,
       parts: () => this.canonicalParts,
     });
   }
@@ -304,6 +312,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       canSubmit: this.props.canSubmit,
       startSession: (input) => this.startSession(input),
       ensureSessionActive: this.props.ensureSessionActive,
+      backgroundActive: () => this.props.subagentCatalog.backgroundActive,
       composer: {
         projectPath: () => this.workspacePath,
         presentationMode: () => this.presentationMode,
@@ -346,7 +355,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         placeholder: () =>
           this.isStreaming
             ? "Add the next instruction…"
-            : `Ask Cake to work in ${this.props.projectName()}…`,
+            : `Ask Cake to work in ${this.props.projectSession.projectName || this.props.projectName()}…`,
         inputLabel: () => "Message",
         sessionCreationChoice: this.props.sessionCreationChoice,
         draftActivationCandidates: this.props.draftActivationCandidates,
@@ -357,7 +366,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           this.conversationSessionStore.composerStore.draftStore.suggestFiles(prefix),
         rewordWorkingDirectory: () => this.workspacePath,
         scheduledMessages: {
-          messages: () => this.model.scheduledMessages,
+          messages: () => this.props.scheduledMessageCatalog.messages,
           cancel: (id) => this.client.scheduledMessages.cancel(id, { signal: this.signal }),
         },
         fallbackError: () => ({
@@ -449,7 +458,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   @child
   get messageCommentsStore(): MessageCommentsStore {
     return createStore(MessageCommentsStore, {
-      sessionModel: () => this.model,
+      catalog: () => this.props.discussionCatalog,
       reviews: this.props.reviews,
       context: () => ({ sessionId: this.sessionId }),
       onThreadCreated: (threadId) => {

@@ -4,7 +4,6 @@ import type {
   SlashCommandInfo,
 } from "@earendil-works/pi-coding-agent";
 import { Option, Schema } from "effect";
-import type { ArtifactRecord } from "../../../ipc/artifact-contract";
 import type {
   CompatibilityCatalog,
   ExtensionUiState,
@@ -27,7 +26,6 @@ export interface CakeSessionRuntimeSnapshotInput {
   readonly session: AgentSession;
   readonly settingsManager: SettingsManager;
   readonly models: ModelOption[];
-  readonly artifacts: ArtifactRecord[];
   readonly queuedParts: readonly UiPart[];
   readonly transientParts: readonly UiPart[];
   readonly fastMode: boolean;
@@ -90,6 +88,5 @@ export function projectCakeSessionRuntimeSnapshot(
       companions: input.extensionUi.companions?.map((companion) => ({ ...companion })) ?? [],
     },
     tree: input.auxiliary ? [] : projectTree(session.sessionManager),
-    artifacts: input.artifacts,
   };
 }

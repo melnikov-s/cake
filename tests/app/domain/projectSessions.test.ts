@@ -32,10 +32,7 @@ import type {
   CakeSessionRuntime,
   CakeSessionRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-session-runtime";
-import type {
-  ProjectSessionLocation,
-  ProjectSessionUpdate,
-} from "../../../src/domain/project-sessions/project-session-data";
+import type { ProjectSessionLocation } from "../../../src/domain/project-sessions/project-session-data";
 import { Electron } from "../../../src/services/electron/Electron";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
@@ -70,6 +67,7 @@ import {
   type SessionCatalogChange,
 } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import type { ConversationSnapshot, PiSessionSummary } from "../../../src/ipc/session-contract";
+import type { ConversationUpdate } from "../../../src/domain/conversations/conversation-data";
 import type { WorktreeRecord } from "../../../src/domain/worktrees/managed-worktree-data";
 
 const snapshot: ConversationSnapshot = {
@@ -84,6 +82,15 @@ const snapshot: ConversationSnapshot = {
       text: "Hello",
       status: "complete",
       renderAs: undefined,
+    },
+    {
+      id: "compacted-tool",
+      kind: "tool",
+      name: "read",
+      input: "README.md",
+      output: "historical result",
+      state: "success",
+      origin: "compacted",
     },
   ],
   models: [],
@@ -449,7 +456,6 @@ const makeLayer = (
             generateInlineWidget: async () => {
               throw new Error("Unexpected widget generation");
             },
-            listArtifacts: async () => [],
           };
         }),
       releaseSession: () => Effect.void,
@@ -808,23 +814,25 @@ describe("Project Sessions domain", () => {
         };
         assertFamily(false);
         assert.equal(model.find("grandchild")?.familyParentSessionId, "child");
-        const childUpdates = yield* Queue.unbounded<ProjectSessionUpdate>();
-        const childStream = yield* projectSessionOperations.observe({ sessionId: "grandchild" });
+        const childUpdates = yield* Queue.unbounded<ConversationUpdate>();
+        const childStream = yield* projectSessionOperations.observeConversation({
+          sessionId: "grandchild",
+        });
         yield* childStream.pipe(
           Stream.runForEach((update) => Queue.offer(childUpdates, update)),
           Effect.forkScoped,
         );
         const childInitial = yield* Queue.take(childUpdates);
         assert.equal(childInitial._tag, "Snapshot");
-        if (childInitial._tag === "Snapshot") assert.equal(childInitial.snapshot.resolved, false);
+        if (childInitial._tag === "Snapshot")
+          assert.equal(childInitial.snapshot.sessionId, "grandchild");
 
         yield* projectSessionLifecycle.resolve({ sessionId: "parent" });
         yield* Queue.take(received);
         yield* Queue.take(received);
         assertFamily(true);
         const childResolved = yield* Queue.take(childUpdates);
-        assert.equal(childResolved._tag, "LifecycleChanged");
-        if (childResolved._tag === "LifecycleChanged") assert.equal(childResolved.resolved, true);
+        assert.equal(childResolved._tag, "Snapshot");
         assert.deepEqual(archived, ["parent"]);
         for (const id of nestedFamilyIds)
           assert.equal((yield* projectSessionMetadata.inspect({ sessionId: id })).resolved, true);
@@ -859,7 +867,8 @@ describe("Project Sessions domain", () => {
         assertFamily(false);
         const childRestored = yield* Queue.take(childUpdates);
         assert.equal(childRestored._tag, "Snapshot");
-        if (childRestored._tag === "Snapshot") assert.equal(childRestored.snapshot.resolved, false);
+        if (childRestored._tag === "Snapshot")
+          assert.equal(childRestored.snapshot.sessionId, "grandchild");
         assert.deepEqual(restored, ["parent"]);
         for (const id of nestedFamilyIds)
           assert.equal((yield* projectSessionMetadata.inspect({ sessionId: id })).resolved, false);
@@ -989,10 +998,13 @@ describe("Project Sessions domain", () => {
           }
           // Opening a physically active descendant of an archived root stays read-only.
           if (rootResolved) {
-            const updates = yield* projectSessionOperations.observe({ sessionId: "grandchild" });
+            const updates = yield* projectSessionOperations.observeConversation({
+              sessionId: "grandchild",
+            });
             const [initial] = yield* updates.pipe(Stream.take(1), Stream.runCollect);
             assert.equal(initial?._tag, "Snapshot");
-            if (initial?._tag === "Snapshot") assert.equal(initial.snapshot.resolved, true);
+            if (initial?._tag === "Snapshot")
+              assert.equal(initial.snapshot.sessionId, "grandchild");
           }
         }).pipe(
           Effect.provide(
@@ -2335,7 +2347,9 @@ describe("Project Sessions domain", () => {
 
   it.effect("emits a Cake snapshot and returns an accepted Turn ID", () =>
     Effect.gen(function* () {
-      const stream = yield* projectSessionOperations.observe({ sessionId: "session-1" });
+      const stream = yield* projectSessionOperations.observeConversation({
+        sessionId: "session-1",
+      });
       const initial = yield* stream.pipe(Stream.take(1), Stream.runCollect);
       assert.equal(initial[0]?._tag, "Snapshot");
       yield* projectSessionOperations.acquireTarget(
@@ -2363,35 +2377,63 @@ describe("Project Sessions domain", () => {
   );
 
   it.effect(
-    "releases an active runtime and emits only a lightweight lifecycle update when resolved",
+    "preserves compacted work logs across active, resolved, and reopened Conversation observation",
     () => {
       let inspections = 0;
       let disposals = 0;
       return Effect.gen(function* () {
-        const updates = yield* projectSessionOperations.observe({ sessionId: "session-1" });
+        const updates = yield* projectSessionOperations.observeConversation({
+          sessionId: "session-1",
+        });
         const initialReady = yield* Deferred.make<void>();
+        const resolvedReady = yield* Deferred.make<void>();
         const fiber = yield* updates.pipe(
           Stream.tap((update) =>
-            update.revision === 1 ? Deferred.succeed(initialReady, undefined) : Effect.void,
+            update.revision === 1
+              ? Deferred.succeed(initialReady, undefined)
+              : update.revision === 2
+                ? Deferred.succeed(resolvedReady, undefined)
+                : Effect.void,
           ),
-          Stream.take(2),
+          Stream.take(3),
           Stream.runCollect,
           Effect.forkChild,
         );
         yield* Deferred.await(initialReady);
 
         yield* projectSessionLifecycle.resolve({ sessionId: "session-1" });
+        yield* Deferred.await(resolvedReady);
+        yield* projectSessionLifecycle.restore({ sessionId: "session-1" });
 
         const observed = Array.from(yield* Fiber.join(fiber));
         assert.equal(observed[0]?._tag, "Snapshot");
-        assert.deepEqual(observed[1], {
-          _tag: "LifecycleChanged",
-          revision: 2,
-          sessionId: "session-1",
-          resolved: true,
-        });
-        assert.equal(inspections, 0);
-        assert.equal(disposals, 1);
+        assert.equal(observed[1]?._tag, "Snapshot");
+        assert.equal(observed[2]?._tag, "Snapshot");
+        for (const update of observed) {
+          if (update._tag !== "Snapshot") continue;
+          assert.deepEqual(update.snapshot.parts[1], {
+            id: "compacted-tool",
+            kind: "tool",
+            name: "read",
+            input: "README.md",
+            output: "historical result",
+            state: "success",
+            origin: "compacted",
+          });
+        }
+        if (observed[1]?._tag === "Snapshot") {
+          assert.equal(observed[1].revision, 2);
+          assert.equal(observed[1].snapshot.sessionId, "session-1");
+          assert.deepEqual(observed[1].snapshot.parts[0], {
+            id: "user-message",
+            kind: "text",
+            role: "user",
+            text: "Hello",
+            status: "complete",
+          });
+        }
+        assert.equal(inspections, 1);
+        assert.equal(disposals, 2);
       }).pipe(
         Effect.provide(
           makeLayer(undefined, {
@@ -2429,7 +2471,7 @@ describe("Project Sessions domain", () => {
         onCreateRuntime: () => runtimeConstructions++,
       });
       yield* Effect.gen(function* () {
-        const updates = yield* projectSessionOperations.observe({
+        const updates = yield* projectSessionOperations.observeConversation({
           sessionId: "session-1",
           workingDirectory: "/worktree",
         });
@@ -2626,7 +2668,7 @@ describe("Project Sessions domain", () => {
         renderUserMessageAsMarkdown: false,
       });
 
-      const updates = yield* projectSessionOperations.observe({
+      const updates = yield* projectSessionOperations.observeConversation({
         sessionId: "session-1",
         workingDirectory: "/project",
       });
@@ -2643,7 +2685,7 @@ describe("Project Sessions domain", () => {
   it.effect("never materializes a new Pi Session through observation", () => {
     const creationModes: boolean[] = [];
     return Effect.gen(function* () {
-      const stream = yield* projectSessionOperations.observe({
+      const stream = yield* projectSessionOperations.observeConversation({
         sessionId: "session-1",
         workingDirectory: "/project",
       });
@@ -2725,12 +2767,14 @@ describe("Project Sessions domain", () => {
       assert.equal(runtimeConstructions, 0);
       assert.equal(restores, 0);
 
-      const updates = yield* projectSessionOperations.observe({ sessionId: "session-1" });
+      const updates = yield* projectSessionOperations.observeConversation({
+        sessionId: "session-1",
+      });
       const preview = Array.from(yield* updates.pipe(Stream.take(1), Stream.runCollect));
       assert.equal(preview[0]?._tag, "Snapshot");
       const first = preview[0];
       if (first?._tag === "Snapshot")
-        assert.deepEqual(first.snapshot.conversation.parts[0], {
+        assert.deepEqual(first.snapshot.parts[0], {
           id: "user-message",
           kind: "text",
           role: "user",

@@ -460,7 +460,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
     const opened = new Promise<void>((resolve) => {
       finishOpen = resolve;
     });
-    const model = Conversation.create({ sessionId: "forked", workingDirectory: "/worktree" });
+    const model = Conversation.create({ sessionId: "forked" });
     const session = loadedSessionStub(model, "/worktree");
     const registry = {
       findSession: (sessionId: string) => (sessionId === "forked" ? session : undefined),
@@ -494,7 +494,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
   });
 
   it("opens the runtime for a selected identity-only fork", async () => {
-    const model = Conversation.create({ sessionId: "forked", workingDirectory: "/worktree" });
+    const model = Conversation.create({ sessionId: "forked" });
     const session = loadedSessionStub(model, "/worktree");
     const open = vi.fn(async () => {
       model.sessionFile = "/sessions/forked.jsonl";
@@ -531,7 +531,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
   });
 
   it("keeps the source session visible while a continuation snapshot hydrates", async () => {
-    const model = Conversation.create({ sessionId: "continuation", workingDirectory: "/project" });
+    const model = Conversation.create({ sessionId: "continuation" });
     const session = loadedSessionStub(model);
     const registry = {
       findSession: (sessionId: string) => (sessionId === "continuation" ? session : undefined),

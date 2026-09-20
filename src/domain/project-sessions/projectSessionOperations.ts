@@ -6,7 +6,7 @@ import {
   TurnId,
   acquire as acquireConversation,
   deliverWhenAvailable,
-  observe as observeConversation,
+  observe as observeConversationUpdates,
   projectAttachments,
   projectPreviewSnapshot,
   use as useConversation,
@@ -20,10 +20,8 @@ import {
   ProjectSessionError,
   type ProjectSessionCompanionActionInput,
   type ProjectSessionPromptInput,
-  type ProjectSessionSnapshot,
   type ProjectSessionStartInput,
   type ProjectSessionTarget,
-  type ProjectSessionUpdate,
 } from "./project-session-data";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
@@ -168,13 +166,13 @@ export const readProjection = Effect.fn("ProjectSessions.readProjection")(functi
   }).pipe(asError("readProjection"));
 });
 
-export const observe = Effect.fn("ProjectSessions.observe")(function* (
+export const observeConversation = Effect.fn("ProjectSessions.observeConversation")(function* (
   target: ProjectSessionTarget,
 ) {
   const catalogs = yield* SessionCatalogChanges;
   const family = yield* (yield* SessionFamilyStorage)
     .familyForMember(target.sessionId)
-    .pipe(asError("observe"));
+    .pipe(asError("observeConversation"));
   const authoritySessionId = family?.parentSessionId ?? target.sessionId;
   const resolvedStates = catalogs
     .initialThenChanges(
@@ -195,58 +193,20 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
       ),
       Stream.filter((resolved): resolved is boolean => resolved !== undefined),
     );
-  const updates = resolvedStates.pipe(
+  return resolvedStates.pipe(
     Stream.changes,
-    Stream.mapAccum(
-      () => true,
-      (initial, resolved) => [false, [{ initial, resolved }]] as const,
-    ),
-    Stream.switchMap(({ initial, resolved }) =>
+    Stream.switchMap((resolved) =>
       resolved
-        ? initial
-          ? Stream.fromEffect(
-              Effect.gen(function* () {
-                const preview = yield* inspect(target);
-                const snapshot: ProjectSessionSnapshot = {
-                  identity: {
-                    _tag: "ProjectSession",
-                    sessionId: target.sessionId,
-                    projectPath: preview.projectPath,
-                    workingDirectory: preview.workingDirectory,
-                  },
-                  projectName: (yield* findLocation(target)).projectName,
-                  resolved: true,
-                  unread: false,
-                  conversation: projectPreviewSnapshot({
-                    ...preview,
-                    workspacePath: preview.workingDirectory,
-                  }),
-                };
-                if (preview.managedWorktree !== undefined)
-                  Object.assign(snapshot, { managedWorktree: preview.managedWorktree });
-                return { _tag: "Snapshot", revision: 0, snapshot } satisfies ProjectSessionUpdate;
-              }),
-            )
-          : Stream.succeed({
-              _tag: "LifecycleChanged",
-              revision: 0,
-              sessionId: target.sessionId,
-              resolved: true,
-            } satisfies ProjectSessionUpdate)
+        ? Stream.fromEffect(
+            inspect(target).pipe(Effect.map((preview) => projectPreviewSnapshot(preview))),
+          ).pipe(Stream.map((snapshot) => ({ _tag: "Snapshot" as const, revision: 0, snapshot })))
         : Stream.unwrap(
             Effect.gen(function* () {
               const location = yield* findLocation(target);
-              const state = yield* getState();
-              const identity = {
-                _tag: "ProjectSession" as const,
-                sessionId: target.sessionId,
-                projectPath: location.projectPath,
-                workingDirectory: location.workingDirectory,
-              };
               const live = Stream.unwrap(
                 acquireTarget(location, target.sessionId, false).pipe(
                   Effect.map((handle) =>
-                    observeConversation(handle).pipe(
+                    observeConversationUpdates(handle).pipe(
                       Stream.tap((update) =>
                         update._tag === "Event" && update.event._tag === "TurnSettled"
                           ? catalogs.publish({
@@ -258,52 +218,18 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
                             })
                           : Effect.void,
                       ),
-                      Stream.map((update): ProjectSessionUpdate => {
-                        if (update._tag === "Event")
-                          return {
-                            _tag: "Event",
-                            revision: update.revision,
-                            sessionId: target.sessionId,
-                            event: update.event,
-                          };
-                        const snapshot: ProjectSessionSnapshot = {
-                          identity,
-                          projectName: location.projectName,
-                          resolved: false,
-                          unread: state.unreadSessionIds.includes(target.sessionId),
-                          conversation: update.snapshot,
-                        };
-                        if (location.managedWorktree !== undefined)
-                          Object.assign(snapshot, { managedWorktree: location.managedWorktree });
-                        return { _tag: "Snapshot", revision: update.revision, snapshot };
-                      }),
                     ),
                   ),
                 ),
               );
               const worktrees = yield* ManagedWorktrees;
               if (!(yield* worktrees.hasDeferredSetup(location.workingDirectory))) return live;
-
-              // A continuation can be displayed from its durable transcript while checkout
-              // setup runs. Runtime acquisition above remains gated until setup completes.
               const preview = yield* inspect(target);
-              const snapshot: ProjectSessionSnapshot = {
-                identity,
-                projectName: location.projectName,
-                resolved: false,
-                unread: state.unreadSessionIds.includes(target.sessionId),
-                conversation: projectPreviewSnapshot({
-                  ...preview,
-                  workspacePath: preview.workingDirectory,
-                }),
-              };
-              if (location.managedWorktree !== undefined)
-                Object.assign(snapshot, { managedWorktree: location.managedWorktree });
               return Stream.succeed({
-                _tag: "Snapshot",
+                _tag: "Snapshot" as const,
                 revision: 0,
-                snapshot,
-              } satisfies ProjectSessionUpdate).pipe(Stream.concat(live));
+                snapshot: projectPreviewSnapshot(preview),
+              }).pipe(Stream.concat(live));
             }),
           ),
     ),
@@ -311,7 +237,7 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
       error instanceof ProjectSessionError
         ? error
         : new ProjectSessionError({
-            operation: "observe",
+            operation: "observeConversation",
             message: error instanceof Error ? error.message : String(error),
           }),
     ),
@@ -319,12 +245,10 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
       () => 0,
       (revision, update) => {
         const nextRevision = revision + 1;
-        const revised: ProjectSessionUpdate = { ...update, revision: nextRevision };
-        return [nextRevision, [revised]] as const;
+        return [nextRevision, [{ ...update, revision: nextRevision }]] as const;
       },
     ),
   );
-  return updates;
 });
 
 /** Delivers an unattended message now, queueing it as a follow-up when the target is busy. */

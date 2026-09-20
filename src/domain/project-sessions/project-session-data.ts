@@ -6,9 +6,7 @@ import { SubagentHandleId, SubagentStatus } from "../subagents/subagent-data";
 import { ManagedWorktreeContext } from "../worktrees/managed-worktree-data";
 import {
   CakeSessionIdentity,
-  ConversationEvent,
   ConversationReference,
-  ConversationSnapshot,
   SessionChatConfiguration,
   SessionChatPromptInput,
 } from "../conversations/conversation-data";
@@ -73,18 +71,6 @@ export const ProjectSessionPreview = Schema.Struct({
   managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
 });
 export interface ProjectSessionPreview extends Schema.Schema.Type<typeof ProjectSessionPreview> {}
-
-/** Purpose-built observation surface for a Project Session's primary Conversation. */
-export const ProjectSessionSnapshot = Schema.Struct({
-  identity: CakeSessionIdentity.cases.ProjectSession,
-  projectName: Schema.String,
-  resolved: Schema.Boolean,
-  unread: Schema.Boolean,
-  worktreeName: Schema.optionalKey(Schema.String),
-  managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
-  conversation: ConversationSnapshot,
-});
-export interface ProjectSessionSnapshot extends Schema.Schema.Type<typeof ProjectSessionSnapshot> {}
 
 const ProjectReference = Schema.Struct({
   path: boundedPath,
@@ -153,13 +139,6 @@ export const ProjectSessionProjection = Schema.Struct({
 export interface ProjectSessionProjection extends Schema.Schema.Type<
   typeof ProjectSessionProjection
 > {}
-
-export const ProjectSessionUpdate = Schema.TaggedUnion({
-  Snapshot: { revision: Schema.Int, snapshot: ProjectSessionSnapshot },
-  Event: { revision: Schema.Int, sessionId: boundedId, event: ConversationEvent },
-  LifecycleChanged: { revision: Schema.Int, sessionId: boundedId, resolved: Schema.Boolean },
-});
-export type ProjectSessionUpdate = Schema.Schema.Type<typeof ProjectSessionUpdate>;
 
 export const ProjectSessionControlInvocation = Schema.TaggedUnion({
   InvokeAppControl: {

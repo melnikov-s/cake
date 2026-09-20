@@ -40,9 +40,8 @@ it("memoizes projected transcript parts until a message changes", () => {
 });
 
 it("hydrates a complete authoritative conversation snapshot", () => {
-  const model = Conversation.create({ sessionId: "s", workingDirectory: "/p" });
+  const model = Conversation.create({ sessionId: "s" });
   const snapshot: ConversationSnapshot = {
-    workingDirectory: "/p",
     sessionId: "s",
     sessionFile: "/f",
     parts: [],
@@ -55,7 +54,6 @@ it("hydrates a complete authoritative conversation snapshot", () => {
     compatibility: { resources: [], diagnostics: [] },
     extensionUi: { statuses: [] },
     tree: [],
-    artifacts: [],
   };
   applyConversationSnapshot(model, snapshot);
   expect(model.sessionFile).toBe("/f");
@@ -107,7 +105,6 @@ it("keeps Pi tree navigation identifiers distinct from renderer identity", () =>
   const session = Conversation.create({ sessionId: "session" });
   applyConversationSnapshot(session, {
     sessionId: "session",
-    workingDirectory: "/project",
     sessionFile: "/session.jsonl",
     parts: [],
     models: [],

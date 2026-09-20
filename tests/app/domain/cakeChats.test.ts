@@ -306,25 +306,14 @@ describe("Cake Chats domain", () => {
     }).pipe(Effect.provide(fixture.layer));
   });
 
-  it.effect("previews a resolved Cake Chat without restoring or constructing its runtime", () => {
+  it.effect("opens a resolved Cake Chat without restoring or constructing its runtime", () => {
     const fixture = makeLayer(defaultApplicationState(), { resolvedOnDisk: true });
     return Effect.gen(function* () {
-      const opened = yield* cakeChatOperations.open(
-        { sessionId: "cake-chat-1", tools: [] },
-        configuration,
-      );
-      assert.equal(opened.sessionId, "cake-chat-1");
-      assert.deepEqual(opened.parts[0], {
-        id: "user-message",
-        kind: "text",
-        role: "user",
-        text: "Hello",
-        status: "complete",
-      });
+      yield* cakeChatOperations.open({ sessionId: "cake-chat-1", tools: [] }, configuration);
       assert.equal(fixture.created(), 0);
       assert.equal(fixture.restored(), 0);
 
-      const updates = yield* cakeChatOperations.observe(
+      const updates = yield* cakeChatOperations.observeConversation(
         { sessionId: "cake-chat-1", tools: [] },
         configuration,
       );

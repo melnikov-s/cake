@@ -16,6 +16,7 @@ describe("CakeChatCollectionStore", () => {
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
+        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
         tools: () => [],
       }),
       {} as Client,
@@ -67,6 +68,7 @@ describe("CakeChatCollectionStore", () => {
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
+        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
         tools: () => [],
       }),
       { cakeChats: { restore }, sessionChats: { prompt, setModel } } as unknown as Client,
@@ -112,6 +114,7 @@ describe("CakeChatCollectionStore", () => {
         createStore(CakeChatCollectionStore, {
           catalog,
           sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
+          controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
           tools: () => [],
         }),
         {} as Client,
@@ -142,6 +145,7 @@ describe("CakeChatCollectionStore", () => {
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
+        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
         tools: () => [],
       }),
       (operation === "rename"
@@ -182,6 +186,7 @@ describe("CakeChatCollectionStore", () => {
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
+        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
         tools: () => [],
       }),
       { cakeChats: { start: prompt } } as unknown as Client,
@@ -212,6 +217,7 @@ describe("CakeChatCollectionStore", () => {
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
+        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
         tools: () => [],
       }),
       { cakeChats: { start: prompt } } as unknown as Client,
@@ -258,6 +264,7 @@ describe("CakeChatCollectionStore", () => {
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
+        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
         tools: () => [],
       }),
       {} as Client,
@@ -286,6 +293,7 @@ describe("CakeChatCollectionStore", () => {
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
+        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
         tools: () => [],
       }),
       {} as Client,
@@ -310,6 +318,7 @@ describe("CakeChatCollectionStore", () => {
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
+        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
         tools: () => [],
       }),
       { cakeChats: { rename } } as unknown as Client,
@@ -339,6 +348,7 @@ describe("CakeChatCollectionStore", () => {
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
+        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
         tools: () => [],
       }),
       { cakeChats: { deleteResolved } } as unknown as Client,
@@ -365,6 +375,7 @@ describe("CakeChatCollectionStore", () => {
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
+        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
         tools: () => [],
       }),
       { cakeChats: { start: prompt } } as unknown as Client,
@@ -425,6 +436,7 @@ describe("CakeChatCollectionStore", () => {
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
+        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
         tools: () => [],
       }),
       { cakeChats: { open } } as unknown as Client,
@@ -456,6 +468,7 @@ describe("CakeChatCollectionStore", () => {
       createStore(CakeChatCollectionStore, {
         catalog,
         sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
+        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
         tools: () => [],
       }),
       { cakeChats: { start }, sessionChats: { prompt } } as unknown as Client,

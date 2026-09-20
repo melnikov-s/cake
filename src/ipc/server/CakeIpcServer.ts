@@ -8,6 +8,7 @@ import { artifactHandlers } from "./ArtifactHandlers";
 import { browserHandlers } from "./BrowserHandlers";
 import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeChatRuntime";
 import { makeCakeChatHandlers } from "./CakeChatHandlers";
+import { makeConversationHandlers } from "./ConversationHandlers";
 import { discussionHandlers } from "./DiscussionHandlers";
 import { drawHandlers } from "./DrawHandlers";
 import { drawControlHandlers } from "./DrawControlHandlers";
@@ -35,6 +36,7 @@ export const makeCakeIpcServerLive = (
     ...artifactHandlers,
     ...browserHandlers,
     ...makeCakeChatHandlers(cakeChatConfiguration),
+    ...makeConversationHandlers(cakeChatConfiguration),
     ...discussionHandlers,
     ...drawHandlers,
     ...drawControlHandlers,

@@ -29,6 +29,10 @@ function registryFixture(
       catalog,
       sessionModel: (sessionId, workingDirectory) =>
         models.projectConversation(sessionId, workingDirectory),
+      projectSessionModel: (sessionId) => models.projectSession(sessionId),
+      discussionCatalog: (sessionId) => models.discussionCatalog(sessionId),
+      subagentCatalog: (sessionId) => models.subagentCatalog(sessionId),
+      scheduledMessageCatalog: (sessionId) => models.scheduledMessageCatalog(sessionId),
       artifactModel: models.artifacts,
       operations,
       reviews: () => {

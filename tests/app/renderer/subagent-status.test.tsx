@@ -5,7 +5,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { applySnapshot, createStore, mount } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { Conversation } from "../../../src/renderer/models/Conversation";
+import { SubagentCatalog } from "../../../src/renderer/models/SubagentCatalog";
 import { SideChatContext } from "../../../src/renderer/components/side-chat-context";
 import { SubagentStatus } from "../../../src/renderer/components/subagent-status";
 import { SideChatStore } from "../../../src/renderer/stores/SideChatStore";
@@ -18,13 +18,13 @@ describe("SubagentStatus", () => {
   let root: Root;
   let store: SubagentActivityStore;
   let sideChat: SideChatStore;
-  let model: Conversation;
+  let model: SubagentCatalog;
 
   beforeEach(() => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    model = Conversation.create({ sessionId: "parent" });
+    model = SubagentCatalog.create({ sessionId: "parent" });
     sideChat = mount(createStore(SideChatStore, {}));
     store = mount(
       createStore(SubagentActivityStore, {
@@ -47,7 +47,7 @@ describe("SubagentStatus", () => {
     const handleId = crypto.randomUUID();
     act(() => {
       applySnapshot(model, {
-        subagentActivities: [
+        activities: [
           {
             parentSessionId: "parent",
             anchorPartId: "spawn",
@@ -100,7 +100,7 @@ describe("SubagentStatus", () => {
     expect(sideChat.target?.chatStore.parts[0]?.id).toBe("child-read");
 
     act(() => {
-      applySnapshot(model, { releasedSubagentHandleIds: [handleId] });
+      applySnapshot(model, { releasedHandleIds: [handleId] });
     });
     expect(container.querySelector('button[aria-label="1 subagents running"]')).toBeNull();
     expect(sideChat.target?.chatStore.parts[0]?.id).toBe("child-read");

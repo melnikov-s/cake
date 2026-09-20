@@ -68,6 +68,8 @@ export interface ConversationSessionStoreProps {
   model: Conversation;
   operations: SessionOperationCoordinatorStore;
   canSubmit(): boolean;
+  /** Kind-specific background work that should keep Stop available. */
+  backgroundActive?(): boolean;
   /** Creates the kind-specific runtime profile for a not-yet-materialized session. */
   startSession?(input: ComposerDeliveryInput): Promise<boolean>;
   /** Restores and assembles an existing runtime before a shared conversation command. */
@@ -222,7 +224,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       submitting: () =>
         this.composerStore.deliveryStore.activeOperations.length > 0 ||
         this.model.activeTurnIds.length > 0,
-      stoppable: () => this.model.backgroundWorkActive,
+      stoppable: () => this.props.backgroundActive?.() ?? false,
       configuration: () => this.configurationStore,
       commands: capabilities.commands,
       placeholder: capabilities.placeholder,
@@ -414,7 +416,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
   }
 
   private async abort() {
-    if (!this.streaming && !this.model.backgroundWorkActive) return;
+    if (!this.streaming && !(this.props.backgroundActive?.() ?? false)) return;
     try {
       await this.client.sessionChats.abort({ sessionId: this.sessionId }, { signal: this.signal });
     } catch (error) {

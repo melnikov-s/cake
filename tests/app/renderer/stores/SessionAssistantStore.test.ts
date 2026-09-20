@@ -60,9 +60,7 @@ class AssistantHarnessStore extends Store<{
       staged: this.props.staged,
       stagedMessages: () => [{ role: "user", text: "Draft the plan" }],
       thread: () =>
-        this.props.projection
-          .findProjectConversation("parent-1")
-          ?.reviewThreads.find(isSessionAssistantThread),
+        this.props.projection.discussionCatalog("parent-1").threads.find(isSessionAssistantThread),
       tools: () => [tool],
       discussionSession: (threadId) => this.reviews.discussionSession(threadId),
     });
@@ -94,7 +92,6 @@ const conversation = (
   sessionId: string,
   overrides: Partial<ConversationSnapshot> = {},
 ): ConversationSnapshot => ({
-  workingDirectory: "/project",
   sessionId,
   sessionFile: `/reviews/${sessionId}.jsonl`,
   parts: [],
@@ -114,8 +111,9 @@ function fixture(options: { threadListed: boolean; staged?: boolean }, client: o
   const projection = RootProjection.create({});
   const parent = projection.projectConversation("parent-1", "/project");
   applyConversationSnapshot(parent, conversation("parent-1"));
+  const discussionCatalog = projection.discussionCatalog("parent-1");
   const listThread = (thread: DiscussionThread) =>
-    applyDiscussionCatalogUpdate(parent, "parent-1", {
+    applyDiscussionCatalogUpdate(discussionCatalog, "parent-1", {
       _tag: "Snapshot",
       revision: 1,
       parentSessionId: "parent-1",
@@ -141,10 +139,11 @@ function fixture(options: { threadListed: boolean; staged?: boolean }, client: o
     listThread(assistantThread);
     observeSidecar();
   }
+  const parentSession = { model: parent, props: { discussionCatalog } };
   const sessionRegistry = {
-    sessions: [{ model: parent }],
+    sessions: [parentSession],
     findModel: (sessionId: string) => (sessionId === "parent-1" ? parent : undefined),
-    findSession: () => undefined,
+    findSession: (sessionId: string) => (sessionId === "parent-1" ? parentSession : undefined),
   } as unknown as SessionRegistryStore;
   const operations = mount(createStore(SessionOperationCoordinatorStore));
   const mounted = mountWithClient(

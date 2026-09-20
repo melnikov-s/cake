@@ -4,7 +4,6 @@ import {
   UtilityModel as UtilityModelSchema,
   type ProjectRecord as ProjectRecordType,
 } from "../domain/application/application-data";
-import { artifactRecordSchema } from "./artifact-contract";
 import { CrossSessionMessageMetadata } from "../domain/conversations/cross-session-coordination";
 import { ScheduledMessageOrigin } from "../domain/scheduled-messages/scheduled-message-envelope";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
@@ -559,7 +558,6 @@ export const conversationSnapshotSchema = Schema.Struct({
   compatibility: defaultKey(compatibilityCatalogSchema, { resources: [], diagnostics: [] }),
   extensionUi: defaultKey(extensionUiStateSchema, { statuses: [] }),
   tree: defaultKey(ipcProjectionArray(sessionTreeEntrySchema, 50_000), []),
-  artifacts: Schema.optional(ipcProjectionArray(artifactRecordSchema, 10_000)),
 });
 
 export const applicationStateSchema = RendererApplicationState;

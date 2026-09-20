@@ -61,15 +61,15 @@ to follow without implying that the renderer talks to Pi directly.
   `src/services/pi/CakeSessionRuntimes.ts#makeCakeSessionRuntimesLayer`,
   `src/services/pi/CakeSessionRuntimes.ts#CakeSessionHandle.prompt`.
 - `createCakeSessionRuntime` creates the Cake adapter around Pi's
-  `createAgentSession` and subscribes to Pi events. On the return path,
-  `ProjectSessions.observe` uses `conversations.observe`; the renderer model
-  observer applies the resulting snapshots/events with
-  `applyProjectSessionUpdate`.
+  `createAgentSession` and subscribes to Pi events. On the return path, the
+  validated `conversations.observe` RPC selects the owning Cake Session profile;
+  the renderer model observer applies `ConversationUpdate` values with
+  `applyConversationUpdate`, independently from the Project Session aggregate.
   Sources: `src/services/pi/runtime/cake-session-runtime.ts#createCakeSessionRuntime`,
-  `src/domain/project-sessions/projectSessionOperations.ts#observe`,
+  `src/ipc/server/ConversationHandlers.ts#makeConversationHandlers`,
   `src/domain/conversations/conversations.ts#observe`,
   `src/renderer/observers/models.ts#createModelObserver`,
-  `src/renderer/reducers/ConversationReducer.ts#applyProjectSessionUpdate`.
+  `src/renderer/reducers/ConversationReducer.ts#applyConversationUpdate`.
 
 **Relationships that must remain true**
 

@@ -86,7 +86,6 @@ describe("Project Session runtime worktree controls", () => {
       generateInlineWidget: async () => {
         throw new Error("Unexpected widget generation");
       },
-      listArtifacts: async () => [],
     };
     const environment = Layer.mergeAll(
       makeProjectSessionRuntimeMechanismTestLayer(integrations),

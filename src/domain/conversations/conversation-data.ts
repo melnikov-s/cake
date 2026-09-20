@@ -64,7 +64,6 @@ export const ConversationReference = Schema.Struct({ sessionId: boundedId });
 export interface ConversationReference extends Schema.Schema.Type<typeof ConversationReference> {}
 
 export const ConversationSnapshot = Schema.Struct({
-  workingDirectory: Schema.String,
   sessionId: boundedId,
   sessionFile: Schema.String,
   sessionListed: Schema.optionalKey(Schema.Boolean),
@@ -83,7 +82,6 @@ export const ConversationSnapshot = Schema.Struct({
   compatibility: Schema.Json,
   extensionUi: Schema.Json,
   tree: Schema.Array(Schema.Json),
-  artifacts: Schema.optionalKey(Schema.Array(Schema.Json)),
 });
 export interface ConversationSnapshot extends Schema.Schema.Type<typeof ConversationSnapshot> {}
 

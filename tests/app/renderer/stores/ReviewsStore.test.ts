@@ -93,7 +93,6 @@ const conversation = (
   sessionId: string,
   overrides: Partial<ConversationSnapshot> = {},
 ): ConversationSnapshot => ({
-  workingDirectory: "/project",
   sessionId,
   sessionFile: `/reviews/${sessionId}.jsonl`,
   parts: [],
@@ -138,7 +137,8 @@ function fixture(
       thinkingLevel: "high",
     }),
   );
-  applyDiscussionCatalogUpdate(parent, "parent-1", {
+  const discussionCatalog = projection.discussionCatalog("parent-1");
+  applyDiscussionCatalogUpdate(discussionCatalog, "parent-1", {
     _tag: "Snapshot",
     revision: 1,
     parentSessionId: "parent-1",
@@ -177,10 +177,11 @@ function fixture(
       },
     });
   }
+  const parentSession = { model: parent, props: { discussionCatalog } };
   const sessionRegistry = {
-    sessions: [{ model: parent }],
+    sessions: [parentSession],
     findModel: (sessionId: string) => (sessionId === "parent-1" ? parent : undefined),
-    findSession: () => undefined,
+    findSession: (sessionId: string) => (sessionId === "parent-1" ? parentSession : undefined),
   } as unknown as SessionRegistryStore;
   const operations = mount(createStore(SessionOperationCoordinatorStore));
   const mounted = mountWithClient(
@@ -191,6 +192,7 @@ function fixture(
     ...mounted,
     reviews: mounted.subject.reviews,
     parent,
+    discussionCatalog,
     sidecar: (threadId: string) => sidecars.get(threadId)!,
     dispose() {
       mounted.root[Symbol.dispose]();
@@ -473,7 +475,10 @@ describe("ReviewsStore", () => {
   });
 
   it("drops a thread's conversation Store when its sidecar leaves the catalog", () => {
-    const { reviews, parent, dispose } = fixture([{ id: "thread-1" }, { id: "thread-2" }], {});
+    const { reviews, discussionCatalog, dispose } = fixture(
+      [{ id: "thread-1" }, { id: "thread-2" }],
+      {},
+    );
     const first = reviews.discussionSession("thread-1")!;
     expect(reviews.discussionSessions.map((session) => session.threadId)).toEqual([
       "thread-1",
@@ -481,7 +486,7 @@ describe("ReviewsStore", () => {
     ]);
     expect(reviews.threadStreaming("thread-1")).toBe(false);
 
-    applyDiscussionCatalogUpdate(parent, "parent-1", {
+    applyDiscussionCatalogUpdate(discussionCatalog, "parent-1", {
       _tag: "Event",
       revision: 2,
       parentSessionId: "parent-1",

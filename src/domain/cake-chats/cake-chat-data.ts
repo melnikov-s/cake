@@ -1,9 +1,6 @@
 import { Schema } from "effect";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
 import {
-  CakeSessionIdentity,
-  ConversationEvent,
-  ConversationSnapshot,
   SessionChatConfiguration,
   SessionChatPromptInput,
 } from "../conversations/conversation-data";
@@ -57,13 +54,6 @@ export const CakeChatPreview = Schema.Struct({
 });
 export interface CakeChatPreview extends Schema.Schema.Type<typeof CakeChatPreview> {}
 
-export const CakeChatSnapshot = Schema.Struct({
-  identity: CakeSessionIdentity,
-  resolved: Schema.Boolean,
-  conversation: ConversationSnapshot,
-});
-export interface CakeChatSnapshot extends Schema.Schema.Type<typeof CakeChatSnapshot> {}
-
 export const CakeChatControlRequest = Schema.TaggedStruct("ControlRequested", {
   sessionId: boundedId,
   controlRequestId: Schema.String.check(Schema.isUUID(4)),
@@ -74,14 +64,11 @@ export const CakeChatControlRequest = Schema.TaggedStruct("ControlRequested", {
 });
 export interface CakeChatControlRequest extends Schema.Schema.Type<typeof CakeChatControlRequest> {}
 
-export const CakeChatEvent = Schema.Union([ConversationEvent, CakeChatControlRequest]);
-export type CakeChatEvent = Schema.Schema.Type<typeof CakeChatEvent>;
-
-export const CakeChatUpdate = Schema.TaggedUnion({
-  Snapshot: { revision: Schema.Int, snapshot: CakeChatSnapshot },
-  Event: { revision: Schema.Int, sessionId: boundedId, event: CakeChatEvent },
+export const CakeChatControlUpdate = Schema.TaggedUnion({
+  Snapshot: { requests: Schema.Array(CakeChatControlRequest) },
+  Requested: { request: CakeChatControlRequest },
 });
-export type CakeChatUpdate = Schema.Schema.Type<typeof CakeChatUpdate>;
+export type CakeChatControlUpdate = Schema.Schema.Type<typeof CakeChatControlUpdate>;
 
 export const CakeChatTarget = Schema.Struct({
   sessionId: boundedId,

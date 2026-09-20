@@ -76,7 +76,10 @@ describe("observeApplicationState", () => {
       },
     } as unknown as CakeIpcClientService;
     const harness = mount(createStore(HarnessStore));
-    const root = { settingsStore: harness.settings } as unknown as RootStore;
+    const root = {
+      settingsStore: harness.settings,
+      projectWorkbenchStore: { setError: () => undefined },
+    } as unknown as RootStore;
 
     const cancel = observeApplicationState(runtimeFor(client), root);
 

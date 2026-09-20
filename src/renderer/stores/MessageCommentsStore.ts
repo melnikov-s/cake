@@ -1,13 +1,13 @@
 import { Store, child, createStore } from "r-state-tree";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { Annotation } from "../../ipc/session-contract";
-import type { Conversation } from "../models/Conversation";
+import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import type { ReviewsStore } from "./ReviewsStore";
 import { ChatStore } from "./ChatStore";
 import { AnnotationDraftStore } from "./AnnotationDraftStore";
 
 export interface MessageCommentsStoreProps {
-  sessionModel(sessionId: string): Conversation | undefined;
+  catalog(sessionId: string): DiscussionCatalog | undefined;
   reviews(): ReviewsStore;
   context(): { sessionId: string } | undefined;
   /** The selection draft became a Discussion Session; its chat can take over. */
@@ -35,8 +35,8 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
     if (!context) return [];
     return (
       this.props
-        .sessionModel(context.sessionId)
-        ?.reviewThreads.filter((thread) => thread.anchor.view === "message") ?? []
+        .catalog(context.sessionId)
+        ?.threads.filter((thread) => thread.anchor.view === "message") ?? []
     );
   }
 

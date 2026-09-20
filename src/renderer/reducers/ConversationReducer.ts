@@ -1,12 +1,11 @@
 import { Schema } from "effect";
 import { applySnapshot, batch, toSnapshot, type Snapshot } from "r-state-tree";
-import type { CakeChatUpdate } from "../../domain/cake-chats/cake-chat-data";
 import type {
   ConversationEvent,
   ConversationSnapshot,
+  ConversationUpdate,
 } from "../../domain/conversations/conversation-data";
 import type { DiscussionSessionUpdate } from "../../domain/discussion-sessions/discussion-session-data";
-import type { ProjectSessionUpdate } from "../../domain/project-sessions/project-session-data";
 import {
   extensionUiEventSchema,
   sessionUsageSchema,
@@ -16,37 +15,25 @@ import {
 } from "../../ipc/session-contract";
 import { projectionId } from "../../utils/projection-id";
 import { modelOptionKey } from "../../utils/model-option-key";
-import { artifactSnapshot } from "./ArtifactReducer";
 import type { Conversation } from "../models/Conversation";
 import { applyConversationCatalog } from "./ConversationCatalogReducer";
 import { applyPartUpdate, messageSnapshots, removePart } from "./SessionPartReducer";
 
-export function applyProjectSessionUpdate(
-  model: Conversation,
-  sessionId: string,
-  update: ProjectSessionUpdate,
-) {
+export function applyConversationUpdate(model: Conversation, update: ConversationUpdate) {
   if (update._tag === "Snapshot") {
-    if (
-      update.snapshot.identity._tag !== "ProjectSession" ||
-      update.snapshot.identity.sessionId !== sessionId
-    )
-      throw new Error(`Project Session identity collision: ${sessionId}`);
     batch(() => {
-      applyConversationSnapshot(model, update.snapshot.conversation, false);
-      if (!update.snapshot.resolved) model.observedSnapshotRevision += 1;
+      applyConversationSnapshot(model, update.snapshot, false);
+      model.observedSnapshotRevision += 1;
     });
     return;
   }
-  if (update.sessionId !== sessionId)
-    throw new Error(`Project Session event identity collision: ${sessionId}`);
-  if (update._tag === "Event") applyConversationEvent(model, update.event);
+  if (update.event._tag !== "SnapshotUpdated" && update.event.sessionId !== model.sessionId)
+    throw new Error(`Conversation event identity collision: ${model.sessionId}`);
+  applyConversationEvent(model, update.event);
 }
 
 export function unloadConversationProjection(model: Conversation) {
   batch(() => {
-    // Apply only reset values so eviction does not first clone the potentially
-    // large transcript that it is trying to release.
     applySnapshot(model, {
       sessionFile: "",
       parts: [],
@@ -65,49 +52,12 @@ export function unloadConversationProjection(model: Conversation) {
       resources: [],
       resourceDiagnostics: [],
       tree: [],
-      artifacts: [],
-      reviewThreads: [],
-      subagentActivities: [],
-      scheduledMessages: [],
-      releasedSubagentHandleIds: [],
-      backgroundWorkActive: false,
       extensionUi: { statuses: [], compatibilityDiagnostics: [] },
-      controlRequests: [],
     });
     model.observedSnapshotRevision = 0;
     model.settledTurnRevision = 0;
     model.settledTurns.splice(0);
   });
-}
-
-export function applyCakeChatUpdate(
-  model: Conversation,
-  sessionId: string,
-  update: CakeChatUpdate,
-) {
-  if (update._tag === "Snapshot") {
-    if (
-      update.snapshot.identity._tag !== "CakeChatSession" ||
-      update.snapshot.identity.sessionId !== sessionId
-    )
-      throw new Error(`Cake Chat identity collision: ${sessionId}`);
-    batch(() => {
-      applyConversationSnapshot(model, update.snapshot.conversation, false);
-      if (!update.snapshot.resolved) model.observedSnapshotRevision += 1;
-    });
-    return;
-  }
-  if (update.sessionId !== sessionId)
-    throw new Error(`Cake Chat event identity collision: ${sessionId}`);
-  const event = update.event;
-  if (event._tag === "ControlRequested") {
-    if (
-      !model.controlRequests.some((request) => request.controlRequestId === event.controlRequestId)
-    )
-      model.controlRequests.push(event);
-    return;
-  }
-  applyConversationEvent(model, event);
 }
 
 /** Applies one Discussion Session sidecar observation to its own `Conversation` Model. */
@@ -141,7 +91,7 @@ export function applyConversationSnapshot(
   const current = toSnapshot(model);
   const parsed = Schema.decodeUnknownSync(conversationSnapshotSchema)({
     ...conversation,
-    workspacePath: conversation.workingDirectory,
+    workspacePath: "",
   });
   const authoritative = conversationSnapshot(parsed);
   batch(() => {
@@ -149,12 +99,6 @@ export function applyConversationSnapshot(
     applySnapshot(model, {
       ...authoritative,
       activeTurnIds: preserveActiveTurns ? current.activeTurnIds : [],
-      reviewThreads: current.reviewThreads,
-      subagentActivities: current.subagentActivities,
-      scheduledMessages: current.scheduledMessages,
-      releasedSubagentHandleIds: current.releasedSubagentHandleIds,
-      backgroundWorkActive: current.backgroundWorkActive,
-      controlRequests: current.controlRequests,
       extensionUi: {
         ...authoritative.extensionUi,
         compatibilityDiagnostics: current.extensionUi?.compatibilityDiagnostics ?? [],
@@ -224,7 +168,6 @@ function applyExtensionUiEvent(
 
 function conversationSnapshot(parsed: RuntimeConversationSnapshot): Snapshot<Conversation> {
   return {
-    workingDirectory: parsed.workspacePath,
     sessionId: parsed.sessionId,
     sessionFile: parsed.sessionFile,
     parts: messageSnapshots(parsed.parts, parsed.sessionId),
@@ -267,7 +210,6 @@ function conversationSnapshot(parsed: RuntimeConversationSnapshot): Snapshot<Con
       parentPiId: parentId,
       id: projectionId(parsed.sessionId, id),
     })),
-    artifacts: (parsed.artifacts ?? []).map(artifactSnapshot),
     extensionUi: {
       title: parsed.extensionUi.title,
       statuses: parsed.extensionUi.statuses.map((status) => ({ ...status })),

@@ -9,10 +9,12 @@ import type { CakeChatManagementStore } from "./CakeChatManagementStore";
 import type { CakeChatPendingSessionsStore } from "./CakeChatPendingSessionsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { CakeChatTarget } from "../../domain/cake-chats/cake-chat-data";
+import type { CakeChatControls } from "../models/CakeChatControls";
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
   model: Conversation;
+  controls: CakeChatControls;
   target(): CakeChatTarget;
   pendingSessions: CakeChatPendingSessionsStore;
   management: CakeChatManagementStore;

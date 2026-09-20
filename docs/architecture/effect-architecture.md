@@ -444,16 +444,17 @@ type ConversationUpdate =
     };
 ```
 
-A Project Session chat observation keeps that primary Conversation path focused.
-Its initial `ProjectSessionSnapshot` carries the `ConversationSnapshot` plus only
-the small Project Session routing/lifecycle surface needed to interpret the
-observation; subsequent events are Conversation events. It does not assemble the
-Project Session aggregate or query review, subagent, artifact, or family
-authorities when a Conversation snapshot arrives.
+Opening a Project Session first reads its fresh on-demand
+`ProjectSessionProjection`. The aggregate carries a bounded
+`ConversationReference`, not a transcript snapshot. Once that reference is
+validated, the renderer starts the independent `conversations.observe`
+subscription for the primary Conversation. Discussion, subagent,
+scheduled-message, artifact, review, and Session Family authorities are read or
+observed only by the focused surfaces that need them. A Conversation update
+never rebuilds the aggregate. A focused relationship change invalidates and
+re-reads the bounded aggregate without replacing the Conversation Model or its
+transcript identity.
 
-`ProjectSessionProjection` is instead a fresh on-demand aggregate read assembled
-in main. It carries a bounded `ConversationReference`, not a transcript snapshot.
-Focused streams independently update the renderer projections they own.
 Conversation Events cover messages and the broader runtime lifecycle: turn
 state, message parts, tool execution, model selection, usage, compaction,
 commands, extension UI, and failures.
@@ -468,11 +469,13 @@ into Cake Session updates before RPC. The renderer Model observer maps the
 RPC Stream into Model snapshots and applies them.
 
 ```text
+Focused Cake authorities → on-demand ProjectSessionProjection
+  → primary ConversationReference → conversations.observe
 Pi → CakeSessionRuntime → Conversation snapshot/event projection
-   → focused Project Session Conversation RPC Stream → Model observer
-   → renderer Conversation Model → Stores/React
+  → Model observer → renderer Conversation Model → Stores/React
 
-Focused Cake authorities → on-demand ProjectSessionProjection (bounded references only)
+Focused review / subagent / artifact / family / schedule authorities
+  → their own Models and Stores (never through Conversation)
 ```
 
 Terminal output, filesystem observation, and other live sources follow the same Scope and Stream principles but define their own event

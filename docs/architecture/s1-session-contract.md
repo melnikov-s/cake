@@ -67,11 +67,13 @@ contains:
 
 The `projectSessions.readProjection` Effect RPC success Schema validates this
 projection across the main-to-renderer boundary. It is a fresh on-demand read;
-there is intentionally no broad aggregate observation stream while no surface
-needs one. Current `ProjectSessionStore` composition continues to consume the
-focused Conversation, catalog, review, subagent, scheduled-message, and artifact
-projections it actually uses. It neither consumes nor invents a parallel copy of
-the aggregate.
+there is intentionally no broad aggregate observation stream. Opening a Project
+Session reads the aggregate once, applies it to the focused renderer
+`ProjectSession` Model, and follows its `primaryConversation` reference through
+the independent Conversation subscription. Relationship and lifecycle changes
+invalidate that aggregate read without introducing an aggregate event stream.
+`ProjectSessionStore` coordinates the focused child Stores but owns none of their
+payloads.
 
 | Projection field                       | Authority and owner                                                           | Lifetime / persistence                                            | Concurrency policy                                                   |
 | -------------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------- |
@@ -93,17 +95,17 @@ SDK event objects stop below `src/services/pi`; Cake maps them before domain or
 RPC code sees them. Reconnect obtains a new authoritative snapshot. Cake never
 tails Pi JSONL or persists a duplicate transcript/event log.
 
-A Project Session Conversation observation initially carries a purpose-built
-`ProjectSessionSnapshot`: the `ConversationSnapshot` plus only the existing
-identity and lifecycle metadata needed by that observation. Conversation events
-then update the same focused renderer `Conversation` Model. It never assembles
-`ProjectSessionProjection` or copies relationship arrays into that Model.
-Focused Discussion, Subagent, scheduled-message, review, artifact, family, and
-catalog streams remain separate and update only their own projections.
+The validated `conversations.observe` RPC carries only `ConversationUpdate`:
+one `ConversationSnapshot` followed by ordered `ConversationEvent` values. It
+updates the stable renderer `Conversation` Model and contains no Project,
+Working Directory, lifecycle, Discussion, Subagent, scheduled-message, review,
+artifact, family, or Cake-control payload.
 
-`ProjectSessionProjection` is read on demand and independently of Conversation
-updates, so relationship references cannot become stale merely because no new
-Conversation snapshot arrived.
+`ProjectSessionProjection` is read before Conversation observation and then
+re-read independently when lifecycle or bounded relationship membership changes.
+Focused Discussion, Subagent, scheduled-message, review, artifact, family, and
+catalog sources update only their own Models. Neither update direction replaces
+the other projection.
 
 ## Relationship language
 

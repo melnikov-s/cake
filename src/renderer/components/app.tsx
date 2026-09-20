@@ -297,7 +297,7 @@ export const App = observer(function App() {
             root.showTranscriptSelectionContextMenu(input),
       inlineWidgets: root.inlineWidgetStore,
       artifacts: {
-        records: paneSession.model.artifacts.map((artifact) => artifact.value),
+        records: paneSession.sessionArtifactsStore.records,
         interaction: paneSession.artifactInteractionStore,
         openArtifact: (artifactId: string) =>
           paneSession.sessionArtifactsStore.openArtifact(artifactId),

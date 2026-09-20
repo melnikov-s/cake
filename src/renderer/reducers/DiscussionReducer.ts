@@ -4,7 +4,7 @@ import type { DiscussionCatalogUpdate } from "../../domain/application/catalog-d
 import type { DiscussionThread } from "../../domain/discussion-sessions/discussion-session-data";
 import { uiPartSchema } from "../../ipc/session-contract";
 import { ReviewThread } from "../models/ReviewThread";
-import type { Conversation } from "../models/Conversation";
+import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import { messageSnapshots } from "./SessionPartReducer";
 
 /**
@@ -13,7 +13,7 @@ import { messageSnapshots } from "./SessionPartReducer";
  * separately observed `Conversation` Model.
  */
 export function applyDiscussionCatalogUpdate(
-  model: Conversation,
+  model: DiscussionCatalog,
   sessionId: string,
   update: DiscussionCatalogUpdate,
 ) {
@@ -28,15 +28,16 @@ export function applyDiscussionCatalogUpdate(
   const snapshots = threads.map(discussionSnapshot);
   const retained = new Set(snapshots.map((thread) => thread.id));
   batch(() => {
-    for (let index = model.reviewThreads.length - 1; index >= 0; index -= 1)
-      if (!retained.has(model.reviewThreads[index]!.id)) model.reviewThreads.splice(index, 1);
+    for (let index = model.threads.length - 1; index >= 0; index -= 1)
+      if (!retained.has(model.threads[index]!.id)) model.threads.splice(index, 1);
     for (const snapshot of snapshots) {
-      const existing = model.reviewThreads.find((thread) => thread.id === snapshot.id);
+      const existing = model.threads.find((thread) => thread.id === snapshot.id);
       if (existing) applySnapshot(existing, snapshot);
-      else model.reviewThreads.push(ReviewThread.create(snapshot));
+      else model.threads.push(ReviewThread.create(snapshot));
     }
     const order = new Map(snapshots.map((thread, index) => [thread.id, index]));
-    model.reviewThreads.sort((left, right) => order.get(left.id)! - order.get(right.id)!);
+    model.threads.sort((left, right) => order.get(left.id)! - order.get(right.id)!);
+    model.relationshipRevision += 1;
   });
 }
 

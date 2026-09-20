@@ -1,5 +1,5 @@
 import { Store, child, createStore } from "r-state-tree";
-import type { Conversation } from "../models/Conversation";
+import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { UiPart } from "../../ipc/session-contract";
 import { toolOperationName } from "../../utils/cake-tool";
 import {
@@ -16,7 +16,7 @@ type ToolPart = Extract<UiPart, { kind: "tool" }>;
 /** Owns live and historical subagent chats belonging to one parent session. */
 export class SubagentActivityStore extends Store<{
   sessionId: string;
-  model: Conversation;
+  model: SubagentCatalog;
   parts(): readonly UiPart[];
 }> {
   get client() {
@@ -27,7 +27,7 @@ export class SubagentActivityStore extends Store<{
     const runs = new Map(
       historicalSubagentRuns(this.props.parts()).map((run) => [run.key, run] as const),
     );
-    for (const activity of this.props.model.subagentActivities) {
+    for (const activity of this.props.model.activities) {
       runs.set(activity.handleId, {
         key: activity.handleId,
         anchorPartId: activity.anchorPartId,
@@ -42,7 +42,7 @@ export class SubagentActivityStore extends Store<{
         parts: activity.parts,
         usage: activity.usage,
         error: activity.error,
-        released: this.props.model.releasedSubagentHandleIds.includes(activity.handleId),
+        released: this.props.model.releasedHandleIds.includes(activity.handleId),
       });
     }
     return [...runs.values()];
