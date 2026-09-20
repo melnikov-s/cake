@@ -1,7 +1,5 @@
-import { Option, Predicate, Schema } from "effect";
 import { useEffect, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
-import { jsonObjectSchema, jsonValueSchema } from "../../../ipc/json-contract";
 import type { ToolOutputContent, UiPart } from "../../../ipc/session-contract";
 import type { SourceLocation } from "../../../ipc/source-location";
 import type { ChatStore } from "../../stores/ChatStore";
@@ -19,57 +17,10 @@ import { SubagentTool } from "./subagent-tool";
 import type { SubagentActivityStore } from "../../stores/SubagentActivityStore";
 import { ImagePreview } from "@/components/image-preview";
 import { CopyFilePathButton } from "@/components/copy-file-path-button";
-
-function parseJson(value: string) {
-  try {
-    return Schema.decodeUnknownSync(jsonValueSchema)(JSON.parse(value));
-  } catch {
-    return undefined;
-  }
-}
-
-function oneLine(value: string) {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-function toolPath(part: Extract<UiPart, { kind: "tool" }>) {
-  if (part.filePath) return part.filePath;
-  const parsed = parseJson(part.input);
-  const structuredResult = Schema.decodeUnknownOption(jsonObjectSchema)(parsed);
-  if (Option.isNone(structuredResult)) return undefined;
-  return ["path", "file_path"].map((key) => structuredResult.value[key]).find(Predicate.isString);
-}
-
-function toolTitle(
-  part: Extract<UiPart, { kind: "tool" }>,
-  concise = false,
-  workspacePath?: string,
-) {
-  const operationName = toolOperationName(part);
-  const filePath = toolPath(part);
-  const displayPath = filePath ? toWorkspaceRelativePath(filePath, workspacePath) : undefined;
-  if (concise && filePath) return operationName;
-  if (operationName === "edit" && displayPath) return `edit ${displayPath}`;
-
-  const parsed = parseJson(part.input);
-  const structuredResult = Schema.decodeUnknownOption(jsonObjectSchema)(parsed);
-  const structured = Option.isSome(structuredResult) ? structuredResult.value : undefined;
-  const detail =
-    operationName === "bash"
-      ? part.input
-      : (displayPath ??
-        (part.name === "cake"
-          ? undefined
-          : ["command", "query", "pattern", "url"]
-              .map((key) => structured?.[key])
-              .find(Predicate.isString)) ??
-        (Predicate.isString(parsed) ? parsed : parsed === undefined ? part.input : ""));
-  const summary = oneLine(detail);
-  return summary ? `${operationName} ${summary}` : operationName;
-}
+import { parseToolInput, toolDisplayTitle, toolPath } from "@/lib/tool-presentation";
 
 function toolCode(value: string, className: string, streaming: boolean) {
-  const parsed = parseJson(value);
+  const parsed = parseToolInput(value);
   const source = parsed === undefined ? value : JSON.stringify(parsed, null, 2);
   const language = parsed === undefined ? "text" : "json";
   return (
@@ -221,7 +172,7 @@ export function Tool({
   const filePath = location?.path;
   const displayPath = filePath ? toWorkspaceRelativePath(filePath, workspacePath) : undefined;
   const path = onOpenSourceLocation ? displayPath : undefined;
-  const title = toolTitle(part, Boolean(path), workspacePath);
+  const title = toolDisplayTitle(part, Boolean(path), workspacePath);
   const read = part.name === "read";
   const bash = part.name === "bash" && part.input ? part.input : undefined;
   const hasDetails = Boolean(

@@ -846,6 +846,36 @@ describe("Transcript scrolling", () => {
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("shows the latest action while a work log is collapsed", () => {
+    const readPart: UiPart = {
+      id: "tool-read",
+      kind: "tool",
+      name: "read",
+      input: JSON.stringify({ path: "README.md" }),
+      state: "success",
+    };
+    const bashPart: UiPart = {
+      id: "tool-bash",
+      kind: "tool",
+      name: "bash",
+      input: "pnpm test",
+      state: "running",
+    };
+
+    act(() =>
+      root.render(
+        <TestTranscript sessionId="session-1" store={storeWith([readPart, bashPart], true)} />,
+      ),
+    );
+
+    const summary = container.querySelector<HTMLElement>('[data-slot="activity-group"] > summary')!;
+    expect(summary.textContent).toContain("bash pnpm test");
+    expect(summary.textContent).not.toContain("read README.md");
+
+    act(() => summary.click());
+    expect(summary.textContent).toContain("2 tool calls");
+  });
+
   it("switches an expanded work log between auto, diff, and log view modes", () => {
     const editPart: UiPart = {
       id: "tool-edit",
@@ -996,13 +1026,11 @@ describe("Transcript scrolling", () => {
         <TestTranscript sessionId="session-1" store={storeWith([spawn, firstPoll, wait])} />,
       ),
     );
-    expect(
-      container.querySelector('[data-slot="activity-group"] > summary')?.textContent,
-    ).toContain("1 tool call");
+    const summary = container.querySelector<HTMLElement>('[data-slot="activity-group"] > summary')!;
+    expect(summary.textContent).toContain("subagents.wait");
 
-    act(() =>
-      container.querySelector<HTMLElement>('[data-slot="activity-group"] > summary')!.click(),
-    );
+    act(() => summary.click());
+    expect(summary.textContent).toContain("1 tool call");
     expect(container.textContent).toContain("openai-codex/gpt-5.6-sol");
     expect(container.textContent).toContain("Tell a joke");
     expect(container.textContent).toContain("Background · 2 waits");

@@ -5,6 +5,7 @@ import { VirtualizedConversation } from "@/components/ai-elements/conversation";
 import { WorkLogDiff } from "@/components/ai-elements/work-log-diff";
 import { StatusDot } from "@/components/ui/status-dot";
 import { WorkLogActivityTrigger } from "@/components/work-log-activity-trigger";
+import { toolDisplayTitle } from "@/lib/tool-presentation";
 import type { UiPart } from "../../ipc/session-contract";
 import { combineSubagentWorkLogParts } from "../lib/subagent-work-log";
 import type { CanonicalTranscriptBehavior } from "./chat-message";
@@ -107,6 +108,15 @@ export const ActivityGroup = observer(function ActivityGroup({
     tools === 0
       ? "Reasoning"
       : `${tools} tool ${tools === 1 ? "call" : "calls"}${reasoningHasContent ? " · reasoning" : ""}`;
+  const latestPart = parts.at(-1);
+  const latestAction =
+    latestPart?.kind === "tool"
+      ? toolDisplayTitle(latestPart, false, behavior.workspacePath)
+      : latestPart?.kind === "reasoning"
+        ? latestPart.status === "streaming"
+          ? "Thinking…"
+          : "Reasoning"
+        : label;
   const firstPartId = parts[0]?.id;
   const lastPartId = parts.at(-1)?.id;
   const live = behavior.store.liveWorkPossible;
@@ -158,8 +168,10 @@ export const ActivityGroup = observer(function ActivityGroup({
         }}
       >
         <StatusDot status={activityIsRunning ? "running" : "complete"} />
-        <span>Work log</span>
-        <small className="ml-1.5 font-normal text-muted-foreground">{label}</small>
+        <span className="shrink-0">Work log</span>
+        <small className="ml-1.5 min-w-0 truncate font-normal text-muted-foreground">
+          {open ? label : latestAction}
+        </small>
       </summary>
       {open &&
         (showDiff ? (
