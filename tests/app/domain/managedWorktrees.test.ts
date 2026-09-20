@@ -7,7 +7,7 @@ import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
 } from "../../../src/domain/application/application-data";
-import { PiSessions } from "../../../src/services/pi/PiSessions";
+import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import {
@@ -130,7 +130,7 @@ const makeLayer = (options: {
           })),
         ),
     }),
-    Layer.mock(PiSessions, {
+    Layer.mock(CakeSessionRuntimes, {
       catalog: ({ workingDirectory }) => {
         const checks = (catalogChecks.get(workingDirectory) ?? 0) + 1;
         catalogChecks.set(workingDirectory, checks);

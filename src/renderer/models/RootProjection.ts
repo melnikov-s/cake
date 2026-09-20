@@ -4,7 +4,7 @@ import { ArtifactCatalog } from "./ArtifactCatalog";
 import { Resource } from "./Resource";
 import { CakeChatCatalog } from "./CakeChatCatalog";
 import { ProjectCatalog } from "./ProjectCatalog";
-import { Session } from "./Session";
+import { CakeSession } from "./CakeSession";
 import { SessionCatalog } from "./SessionCatalog";
 import { WorktreeCatalog } from "./WorktreeCatalog";
 import { WorktreeOperationCatalog } from "./WorktreeOperationCatalog";
@@ -19,15 +19,15 @@ export class RootProjection extends Model {
   @child(WorktreeOperationCatalog) worktreeOperations = WorktreeOperationCatalog.create();
   @child(CakeChatCatalog) cakeChatCatalog = CakeChatCatalog.create();
   @child(ArtifactCatalog) artifacts = ArtifactCatalog.create();
-  @child(Session) projectSessions: Session[] = observable([]);
-  @child(Session) cakeChats: Session[] = observable([]);
+  @child(CakeSession) projectSessions: CakeSession[] = observable([]);
+  @child(CakeSession) cakeChats: CakeSession[] = observable([]);
   /** Live Discussion Session sidecars, keyed by their own Pi Session ID. */
-  @child(Session) discussionSessions: Session[] = observable([]);
+  @child(CakeSession) discussionSessions: CakeSession[] = observable([]);
 
   projectSession(sessionId: string, workingDirectory: string) {
     const existing = this.findProjectSession(sessionId);
     if (existing) return existing;
-    const session = Session.create({ sessionId, workingDirectory });
+    const session = CakeSession.create({ sessionId, workingDirectory });
     this.projectSessions.push(session);
     return session;
   }
@@ -44,7 +44,7 @@ export class RootProjection extends Model {
   cakeChat(sessionId: string) {
     const existing = this.cakeChats.find((session) => session.sessionId === sessionId);
     if (existing) return existing;
-    const session = Session.create({ sessionId });
+    const session = CakeSession.create({ sessionId });
     this.cakeChats.push(session);
     return session;
   }
@@ -57,7 +57,7 @@ export class RootProjection extends Model {
   discussionSession(sessionId: string, workingDirectory: string) {
     const existing = this.findDiscussionSession(sessionId);
     if (existing) return existing;
-    const session = Session.create({ sessionId, workingDirectory });
+    const session = CakeSession.create({ sessionId, workingDirectory });
     this.discussionSessions.push(session);
     return session;
   }

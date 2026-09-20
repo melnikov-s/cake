@@ -1,5 +1,5 @@
 import { Context, type Effect, Schema, type Stream } from "effect";
-import type { SessionSummary } from "../../ipc/session-contract";
+import type { PiSessionSummary } from "../../ipc/session-contract";
 
 export const SessionArchiveLocation = Schema.Struct({
   cwd: Schema.String,
@@ -66,11 +66,11 @@ export class SessionArchiveStorage extends Context.Service<
     ) => Effect.Effect<"active" | "resolved" | undefined, SessionArchiveStorageError>;
     readonly resolved: (
       location: SessionArchiveLocation,
-    ) => Stream.Stream<SessionSummary, SessionArchiveStorageError>;
+    ) => Stream.Stream<PiSessionSummary, SessionArchiveStorageError>;
     readonly resolvedEntry: (
       sessionId: string,
       location: SessionArchiveLocation,
-    ) => Effect.Effect<SessionSummary | undefined, SessionArchiveStorageError>;
+    ) => Effect.Effect<PiSessionSummary | undefined, SessionArchiveStorageError>;
     readonly resolveProject: (
       sessionId: string,
       location: SessionArchiveLocation,

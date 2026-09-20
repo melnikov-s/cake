@@ -1,6 +1,6 @@
 import { Store, child, createStore, effect as reactiveEffect } from "r-state-tree";
-import type { Session } from "../models/Session";
-import type { ModelPreset, SessionSnapshot, UiPart } from "../../ipc/session-contract";
+import type { CakeSession } from "../models/CakeSession";
+import type { ModelPreset, ConversationSnapshot, UiPart } from "../../ipc/session-contract";
 import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import type { StoreEvent } from "../events/StoreEvent";
 import {
@@ -46,7 +46,7 @@ type ConfigurationCapabilities = Omit<
 >;
 
 interface ConversationChatCapabilities {
-  commands(): SessionSnapshot["commands"];
+  commands(): ConversationSnapshot["commands"];
   placeholder(): string;
   inputLabel(): string;
   /** Kind-specific context shown ahead of the transcript, such as a Discussion anchor. */
@@ -65,7 +65,7 @@ interface ConversationChatCapabilities {
 
 export interface ConversationSessionStoreProps {
   sessionId: string;
-  model: Session;
+  model: CakeSession;
   operations: SessionOperationCoordinatorStore;
   canSubmit(): boolean;
   /** Creates the kind-specific runtime profile for a not-yet-materialized session. */

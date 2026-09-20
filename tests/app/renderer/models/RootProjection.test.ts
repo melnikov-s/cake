@@ -128,10 +128,14 @@ describe("RootProjection", () => {
           projectPath: "/project",
           workingDirectory: "/project",
         },
-        projectName: "Project",
-        resolved: false,
-        unread: false,
-        conversation: snapshot,
+        project: { path: "/project", name: "Project" },
+        workingDirectory: { path: "/project" },
+        lifecycle: { resolved: false, unread: false },
+        primaryConversation: snapshot,
+        discussionSessions: [],
+        subagentSessions: [],
+        reviewThreads: [],
+        artifactLinks: [],
       },
     });
     expect(sessions[0]!.modelOptions[0]).toBe(option);

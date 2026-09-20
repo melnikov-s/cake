@@ -63,7 +63,7 @@ const provideArtifactServices = <A, E>(
   );
 
 const makeHarness = async () => {
-  const root = await mkdtemp(join(tmpdir(), "cake-runtime-artifact-events-"));
+  const root = await mkdtemp(join(tmpdir(), "cake-session-runtime-artifact-events-"));
   roots.push(root);
   const events: CakeEvent[] = [];
   const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);

@@ -13,7 +13,7 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect";
-import type { SessionSnapshot, UtilityModel } from "../../ipc/session-contract";
+import type { ConversationSnapshot, UtilityModel } from "../../ipc/session-contract";
 import { getState } from "../application/application";
 import {
   ParallelSubagentInput,
@@ -30,9 +30,9 @@ import {
 } from "./subagent-data";
 import {
   PiSessionError,
-  PiSessions,
-  type PiSessionAcquireOptions,
-} from "../../services/pi/PiSessions";
+  CakeSessionRuntimes,
+  type CakeSessionRuntimeAcquireOptions,
+} from "../../services/pi/CakeSessionRuntimes";
 import { subagentSystemPrompt } from "../../services/pi/runtime/subagent-system-prompt";
 import {
   SubagentCoordinator,
@@ -58,7 +58,7 @@ const SUBAGENT_TOOLS = ["read", "bash", "edit", "write"] as const;
 export interface SubagentParentRuntime {
   readonly parentSessionId: string;
   readonly workingDirectory: string;
-  readonly options: PiSessionAcquireOptions;
+  readonly options: CakeSessionRuntimeAcquireOptions;
 }
 
 const messageOf = (cause: unknown): string =>
@@ -79,7 +79,7 @@ const asError = (operation: string) =>
 
 const jsonValue = <A>(value: A): Schema.Schema.Type<typeof Schema.Json> =>
   Schema.decodeUnknownSync(Schema.Json)(JSON.parse(JSON.stringify(value)));
-const projectParts = (parts: SessionSnapshot["parts"]) => parts.slice(-10_000).map(jsonValue);
+const projectParts = (parts: ConversationSnapshot["parts"]) => parts.slice(-10_000).map(jsonValue);
 const boundedError = (message: string) => message.slice(0, 16_384);
 
 const normalizeTask = Effect.fn("Subagents.normalizeTask")(function* (input: SubagentTaskInput) {
@@ -100,7 +100,7 @@ const normalizeTask = Effect.fn("Subagents.normalizeTask")(function* (input: Sub
 
 const systemPrompt = (task: SubagentTask) => subagentSystemPrompt(task.instructions);
 
-const fallbackReason = (snapshot: SessionSnapshot, provider: string, modelId: string) => {
+const fallbackReason = (snapshot: ConversationSnapshot, provider: string, modelId: string) => {
   const model = snapshot.models.find((item) => item.provider === provider && item.id === modelId);
   if (!model) return "unknown-model" as const;
   if (!model.authenticated) return "not-authenticated" as const;
@@ -109,7 +109,7 @@ const fallbackReason = (snapshot: SessionSnapshot, provider: string, modelId: st
 
 const resolveModel = (
   preference: AgentModelPreference,
-  snapshot: SessionSnapshot,
+  snapshot: ConversationSnapshot,
   utility: UtilityModel | undefined,
 ): ResolvedAgentModel => {
   const fallbacks: Array<ResolvedAgentModel["fallbacks"][number]> = [];
@@ -190,7 +190,7 @@ const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
   parent: SubagentParentRuntime,
 ) {
   const tasks = yield* Effect.forEach(inputs, normalizeTask);
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const coordinator = yield* SubagentCoordinator;
   const application = yield* getState();
   const current = yield* SubscriptionRef.get(coordinator.state);
@@ -281,7 +281,7 @@ const requireHandle = Effect.fn("Subagents.requireHandle")(function* (
 
 const snapshotResult = (
   handle: SubagentHandleState,
-  snapshot: SessionSnapshot,
+  snapshot: ConversationSnapshot,
   status: SubagentResult["status"],
   error?: string,
 ): SubagentResult => {
@@ -535,7 +535,7 @@ const executeInitial = Effect.fn("Subagents.executeInitial")(function* (
     Effect.gen(function* () {
       yield* mutateHandle(handleId, (current) => ({ ...current, status: "running" }));
       const current = yield* requireHandleById(handleId);
-      const sessions = yield* PiSessions;
+      const sessions = yield* CakeSessionRuntimes;
       const piHandle = yield* sessions
         .acquire(current.runtimeOptions)
         .pipe(Effect.provideService(Scope.Scope, current.scope), asError("start"));
@@ -595,7 +595,7 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
 ) {
   const coordinator = yield* SubagentCoordinator;
   const environment = yield* SubagentEnvironment;
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const location = yield* environment
     .location(prepared.parent.workingDirectory)
     .pipe(asError("start"));
@@ -606,7 +606,7 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
     const parentHandle = yield* sessions
       .acquire(prepared.parent.options)
       .pipe(Effect.provideService(Scope.Scope, scope), asError("start"));
-    const runtimeOptions: PiSessionAcquireOptions = {
+    const runtimeOptions: CakeSessionRuntimeAcquireOptions = {
       profile: { _tag: "SubagentSession" },
       runtime: {
         cwd: location.workingDirectory,

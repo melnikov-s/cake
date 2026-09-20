@@ -7,10 +7,10 @@ import { jsonObjectSchema } from "../../ipc/json-contract";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 import {
   PiSessionError,
-  PiSessions,
-  type PiSessionAcquireOptions,
-  type PiSessionHandle,
-} from "../../services/pi/PiSessions";
+  CakeSessionRuntimes,
+  type CakeSessionRuntimeAcquireOptions,
+  type CakeSessionHandle,
+} from "../../services/pi/CakeSessionRuntimes";
 import { sessionAssistantSystemPrompt } from "../../services/pi/runtime/session-assistant";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { ApplicationState } from "../../services/storage/ApplicationState";
@@ -26,7 +26,7 @@ import {
 } from "../conversations/conversations";
 import {
   DiscussionSessionError,
-  type DiscussionSessionSnapshot,
+  type DiscussionSessionProjection,
   type DiscussionSessionStartInput,
   type DiscussionSessionTarget,
   type DiscussionSessionUpdate,
@@ -91,7 +91,7 @@ const projectThread = (
 const parentHandle = Effect.fn("DiscussionSessions.parentHandle")(function* (
   target: DiscussionSessionTarget,
 ) {
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const locations = yield* projectSessionLocations.locations().pipe(asError("parentContext"));
   const location = locations.find(
     (candidate) => candidate.workingDirectory === target.workingDirectory,
@@ -136,12 +136,12 @@ type RefreshServices = Effect.Services<ReturnType<typeof refreshParentContext>>;
 interface SidecarConfiguration {
   readonly systemPrompt: string;
   readonly tools: ReadonlyArray<string>;
-  readonly sessionControl?: PiSessionAcquireOptions["runtime"]["sessionControl"];
+  readonly sessionControl?: CakeSessionRuntimeAcquireOptions["runtime"]["sessionControl"];
   /** Applied on every acquisition so the sidecar follows this model. */
   readonly model?: {
     readonly provider: string;
     readonly modelId: string;
-    readonly thinkingLevel: Parameters<PiSessionHandle["setThinkingLevel"]>[0];
+    readonly thinkingLevel: Parameters<CakeSessionHandle["setThinkingLevel"]>[0];
   };
 }
 
@@ -150,7 +150,7 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
   configuration: SidecarConfiguration,
 ) {
   const environment = yield* DiscussionSessionEnvironment;
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const services = yield* Effect.context<RefreshServices>();
   const location = yield* environment.location(record).pipe(asError("acquire"));
   const sidecarSessionId = record.sidecarSessionId ?? crypto.randomUUID();
@@ -351,7 +351,7 @@ export const list = Effect.fn("DiscussionSessions.list")(function* (input: {
   readonly parentSessionId: string;
 }) {
   const environment = yield* DiscussionSessionEnvironment;
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const records = yield* environment
     .list(input.workingDirectory, input.parentSessionId)
     .pipe(asError("list"));
@@ -431,7 +431,7 @@ export const observe = Effect.fn("DiscussionSessions.observe")(function* (
     Stream.map((update): DiscussionSessionUpdate => {
       if (update._tag === "Event")
         return { _tag: "Event", revision: update.revision, sessionId, event: update.event };
-      const snapshot: DiscussionSessionSnapshot = {
+      const snapshot: DiscussionSessionProjection = {
         identity: {
           _tag: "DiscussionSession",
           sessionId: update.snapshot.sessionId,

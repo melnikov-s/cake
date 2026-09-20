@@ -1,7 +1,7 @@
 import { Store, batch, child, createStore, observable, snapshot, updateStore } from "r-state-tree";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import type { CakeControlTool } from "../../domain/cake-chats/cake-chat-data";
-import type { Session } from "../models/Session";
+import type { CakeSession } from "../models/CakeSession";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore";
@@ -16,7 +16,7 @@ import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeC
 
 export interface SessionRegistryStoreProps {
   catalog?: SessionCatalogStore;
-  sessionModel(sessionId: string, workingDirectory: string): Session;
+  sessionModel(sessionId: string, workingDirectory: string): CakeSession;
   artifactModel: ArtifactCatalog;
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;

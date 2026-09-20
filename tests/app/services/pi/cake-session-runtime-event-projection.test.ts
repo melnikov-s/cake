@@ -1,9 +1,9 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import {
-  createCakeRuntimeEventProjection,
+  createCakeSessionRuntimeEventProjection,
   type RuntimeProjectionEvent,
-} from "../../../../src/services/pi/runtime/cake-runtime-event-projection";
+} from "../../../../src/services/pi/runtime/cake-session-runtime-event-projection";
 import { projectQueuedMessages } from "../../../../src/services/pi/runtime/session-projection";
 
 describe("Cake runtime streaming projection", () => {
@@ -107,7 +107,7 @@ describe("Cake runtime queued-part projection", () => {
       getSteeringMessages: () => steering,
       getFollowUpMessages: () => followUp,
     } as AgentSession;
-    const projection = createCakeRuntimeEventProjection({
+    const projection = createCakeSessionRuntimeEventProjection({
       session,
       sessionId: "session-1",
       emit: (event) => events.push(event),

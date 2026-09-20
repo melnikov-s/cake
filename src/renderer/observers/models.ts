@@ -37,7 +37,7 @@ import type { RootStore } from "../stores/RootStore";
 import type { CakeChatCatalog } from "../models/CakeChatCatalog";
 import type { ProjectCatalog } from "../models/ProjectCatalog";
 import type { RootProjection } from "../models/RootProjection";
-import type { Session } from "../models/Session";
+import type { CakeSession } from "../models/CakeSession";
 import type { SessionCatalog } from "../models/SessionCatalog";
 import type { WorktreeCatalog } from "../models/WorktreeCatalog";
 import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
@@ -98,13 +98,13 @@ type ModelInput = {
   readonly projectSessionCatalogQueries?: ReadonlyArray<ProjectSessionCatalogQuery>;
   readonly cakeChatCatalog: CakeChatCatalog;
   readonly cakeChatCatalogQueries?: ReadonlyArray<CakeChatCatalogQuery>;
-  readonly projectSessions: ReadonlyArray<{ target: ProjectSessionTarget; model: Session }>;
+  readonly projectSessions: ReadonlyArray<{ target: ProjectSessionTarget; model: CakeSession }>;
   /** Parents observed for their Discussion catalog only. */
-  readonly discussionCatalogs?: ReadonlyArray<{ target: ProjectSessionTarget; model: Session }>;
-  readonly cakeChats: ReadonlyArray<{ target: CakeChatTarget; model: Session }>;
+  readonly discussionCatalogs?: ReadonlyArray<{ target: ProjectSessionTarget; model: CakeSession }>;
+  readonly cakeChats: ReadonlyArray<{ target: CakeChatTarget; model: CakeSession }>;
   readonly discussionSessions?: ReadonlyArray<{
     thread: ReviewThread;
-    model: Session;
+    model: CakeSession;
     tools?: ReadonlyArray<CakeControlTool>;
   }>;
 };
@@ -159,16 +159,20 @@ export const createModelObserver = (
     observations.set(key, { model, stop: cancel, ...options });
   };
 
-  const assertSessionIdentity = (model: Session, sessionId: string, workingDirectory?: string) => {
+  const assertSessionIdentity = (
+    model: CakeSession,
+    sessionId: string,
+    workingDirectory?: string,
+  ) => {
     if (model.sessionId !== sessionId)
-      throw new Error(`Session Model identity collision: ${sessionId}`);
+      throw new Error(`Cake Session Model identity collision: ${sessionId}`);
     if (
       model.sessionFile &&
       workingDirectory &&
       model.workingDirectory &&
       model.workingDirectory !== workingDirectory
     )
-      throw new Error(`Session Model Working Directory collision: ${sessionId}`);
+      throw new Error(`Cake Session Model Working Directory collision: ${sessionId}`);
   };
 
   const sync = (input: ModelInput) => {
@@ -184,7 +188,7 @@ export const createModelObserver = (
       observeModelStream(key, model, stream, apply, options);
     };
 
-    const observeDiscussionCatalog = (target: ProjectSessionTarget, model: Session) =>
+    const observeDiscussionCatalog = (target: ProjectSessionTarget, model: CakeSession) =>
       observe(
         `discussion-catalog:${target.sessionId}`,
         model,

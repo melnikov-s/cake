@@ -79,16 +79,16 @@ export interface DiscussionSessionTarget extends Schema.Schema.Type<
 > {}
 
 /** Live sidecar conversation; the parent's Discussion catalog owns thread metadata. */
-export const DiscussionSessionSnapshot = Schema.Struct({
+export const DiscussionSessionProjection = Schema.Struct({
   identity: CakeSessionIdentity,
   conversation: ConversationSnapshot,
 });
-export interface DiscussionSessionSnapshot extends Schema.Schema.Type<
-  typeof DiscussionSessionSnapshot
+export interface DiscussionSessionProjection extends Schema.Schema.Type<
+  typeof DiscussionSessionProjection
 > {}
 
 export const DiscussionSessionUpdate = Schema.TaggedUnion({
-  Snapshot: { revision: Schema.Int, snapshot: DiscussionSessionSnapshot },
+  Snapshot: { revision: Schema.Int, snapshot: DiscussionSessionProjection },
   Event: { revision: Schema.Int, sessionId: boundedId, event: ConversationEvent },
 });
 export type DiscussionSessionUpdate = Schema.Schema.Type<typeof DiscussionSessionUpdate>;

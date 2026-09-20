@@ -24,11 +24,11 @@ import {
   type FastModeModel,
 } from "../fast-mode";
 import { projectModelCatalog } from "../live/PiModelsLive";
-import type { CakeRuntimeOptions } from "./cake-runtime";
+import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
 import type { RuntimeUiRequest } from "./runtime-ui-request";
 import { applyRuntimePiSetting } from "./settings-translation";
 
-export interface CakeRuntimeConfigurationState {
+export interface CakeSessionRuntimeConfigurationState {
   readonly fastModeExtension: InlineExtension;
   enabledFastMode(): boolean;
   attachModel(model: FastModeModel | undefined): void;
@@ -36,9 +36,9 @@ export interface CakeRuntimeConfigurationState {
   syncFastMode(): Promise<void>;
 }
 
-export function createCakeRuntimeConfigurationState(
-  fastModeControl: CakeRuntimeOptions["fastMode"],
-): CakeRuntimeConfigurationState {
+export function createCakeSessionRuntimeConfigurationState(
+  fastModeControl: CakeSessionRuntimeOptions["fastMode"],
+): CakeSessionRuntimeConfigurationState {
   let fastMode = fastModeControl?.get() ?? false;
   let currentModel: FastModeModel | undefined;
   const enabledFastMode = () => fastMode && supportsFastMode(currentModel);
@@ -66,7 +66,7 @@ export function createCakeRuntimeConfigurationState(
   };
 }
 
-export interface CakeRuntimeConfiguration {
+export interface CakeSessionRuntimeConfiguration {
   modelOptions(): Promise<ModelOption[]>;
   currentModelSelection(): ExplicitCakeModelSelection | undefined;
   resolveModelSelection(selection: CakeModelSelection | undefined): ExplicitCakeModelSelection;
@@ -82,18 +82,18 @@ export interface CakeRuntimeConfiguration {
   setOperationModel(selection: CakeModelSelection): Promise<ExplicitCakeModelSelection>;
 }
 
-export function createCakeRuntimeConfiguration(input: {
-  options: CakeRuntimeOptions;
+export function createCakeSessionRuntimeConfiguration(input: {
+  options: CakeSessionRuntimeOptions;
   modelRuntime: ModelRuntime;
   settingsManager: SettingsManager;
   session: AgentSession;
-  state: CakeRuntimeConfigurationState;
+  state: CakeSessionRuntimeConfigurationState;
   requestUi(request: RuntimeUiRequest): Promise<string | undefined>;
   emitSnapshot(): Promise<void>;
   emitAuthNotice(tone: "info" | "error", title: string, detail: string): void;
   cancelResponseRetries(): void;
   reportAgentAction(action: "set-model", detail: string): Promise<void>;
-}): CakeRuntimeConfiguration {
+}): CakeSessionRuntimeConfiguration {
   const {
     options,
     modelRuntime,

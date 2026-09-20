@@ -24,23 +24,23 @@ import type {
   Attachment,
   ChatConfiguration,
   PiSettingUpdate,
-  SessionPreview,
-  SessionSnapshot,
-  SessionSummary,
+  PiSessionPreview,
+  ConversationSnapshot,
+  PiSessionSummary,
   ThinkingLevel,
 } from "../../ipc/session-contract";
 import {
-  createCakeRuntime,
-  type CakeRuntime,
-  type CakeRuntimeEvent,
-  type CakeRuntimeOptions,
-} from "./runtime/cake-runtime";
+  createCakeSessionRuntime,
+  type CakeSessionRuntime,
+  type CakeSessionRuntimeEvent,
+  type CakeSessionRuntimeOptions,
+} from "./runtime/cake-session-runtime";
 import { TurnCanceledError } from "./runtime/RuntimeTurnCompletion";
 import {
   loadDurableArtifactReferences,
   loadPiChangelog,
-  loadWorkspaceSessionSummary,
-  loadWorkspaceSessionPreview,
+  loadWorkspacePiSessionSummary,
+  loadWorkspacePiSessionPreview,
   streamWorkspaceSessionIds,
   streamWorkspaceSessions,
 } from "./runtime/session-discovery";
@@ -76,8 +76,8 @@ export class PiSessionError extends Schema.TaggedError<PiSessionError>()("PiSess
 }) {}
 
 export type PiSessionEvent =
-  | Exclude<CakeRuntimeEvent, { readonly type: "snapshot" }>
-  | { readonly type: "snapshot-updated"; readonly snapshot: SessionSnapshot }
+  | Exclude<CakeSessionRuntimeEvent, { readonly type: "snapshot" }>
+  | { readonly type: "snapshot-updated"; readonly snapshot: ConversationSnapshot }
   | {
       readonly type: "turn-accepted";
       readonly sessionId: string;
@@ -93,16 +93,16 @@ export type PiSessionEvent =
     };
 
 export type PiSessionUpdate =
-  | { readonly _tag: "Snapshot"; readonly snapshot: SessionSnapshot }
+  | { readonly _tag: "Snapshot"; readonly snapshot: ConversationSnapshot }
   | { readonly _tag: "Event"; readonly event: PiSessionEvent };
 
 /**
  * Runtime construction is a Pi adapter concern. The semantic profile is
  * mandatory so callers cannot assemble Pi extension/tool policy ad hoc.
  */
-export interface PiSessionAcquireOptions {
+export interface CakeSessionRuntimeAcquireOptions {
   readonly profile: Schema.Schema.Type<typeof PiSessionCapabilityProfile>;
-  readonly runtime: Omit<CakeRuntimeOptions, "onEvent">;
+  readonly runtime: Omit<CakeSessionRuntimeOptions, "onEvent">;
   /** Finalizes Cake-owned integrations when the final shared runtime lease is released. */
   readonly onRelease?: Effect.Effect<void, unknown>;
   readonly admitTurn?: (
@@ -122,10 +122,10 @@ export interface PiSessionAcquireOptions {
   readonly onSessionChanged?: Effect.Effect<void, unknown>;
 }
 
-export interface PiSessionHandle {
-  readonly profile: PiSessionAcquireOptions["profile"]["_tag"];
+export interface CakeSessionHandle {
+  readonly profile: CakeSessionRuntimeAcquireOptions["profile"]["_tag"];
   readonly updates: Stream.Stream<PiSessionUpdate, PiSessionError>;
-  readonly snapshot: () => Effect.Effect<SessionSnapshot, PiSessionError>;
+  readonly snapshot: () => Effect.Effect<ConversationSnapshot, PiSessionError>;
   readonly prompt: (
     text: string,
     attachments?: ReadonlyArray<Attachment>,
@@ -221,21 +221,25 @@ export interface PiSessionHandle {
   ) => Effect.Effect<void, PiSessionError>;
 }
 
-export interface PiSessionRuntimeStatus {
+export interface CakeSessionRuntimeStatus {
   readonly streaming: boolean;
   readonly pending: boolean;
   readonly persisted: boolean;
 }
 
-export interface PiSessionsAdapter {
+export interface CakeSessionRuntimesAdapter {
   readonly sessionIds: (query: PiSessionQuery) => Stream.Stream<string, unknown>;
-  readonly catalog: (query: PiSessionQuery) => Stream.Stream<SessionSummary, unknown>;
+  readonly catalog: (query: PiSessionQuery) => Stream.Stream<PiSessionSummary, unknown>;
   readonly catalogEntry: (
     query: PiSessionQuery,
     sessionId: string,
-  ) => Effect.Effect<SessionSummary | undefined, unknown>;
-  readonly inspect: (target: PiSessionTarget) => Effect.Effect<SessionPreview | undefined, unknown>;
-  readonly createRuntime: (options: CakeRuntimeOptions) => Effect.Effect<CakeRuntime, unknown>;
+  ) => Effect.Effect<PiSessionSummary | undefined, unknown>;
+  readonly inspect: (
+    target: PiSessionTarget,
+  ) => Effect.Effect<PiSessionPreview | undefined, unknown>;
+  readonly createRuntime: (
+    options: CakeSessionRuntimeOptions,
+  ) => Effect.Effect<CakeSessionRuntime, unknown>;
   readonly changelog: () => Effect.Effect<string, unknown>;
   readonly durableArtifactReferences?: (
     sessionRoots: ReadonlyArray<string>,
@@ -245,30 +249,30 @@ export interface PiSessionsAdapter {
   >;
 }
 
-export class PiSessions extends Context.Service<
-  PiSessions,
+export class CakeSessionRuntimes extends Context.Service<
+  CakeSessionRuntimes,
   {
     readonly sessionIds: (query: PiSessionQuery) => Stream.Stream<string, PiSessionError>;
-    readonly catalog: (query: PiSessionQuery) => Stream.Stream<SessionSummary, PiSessionError>;
+    readonly catalog: (query: PiSessionQuery) => Stream.Stream<PiSessionSummary, PiSessionError>;
     readonly catalogEntry: (
       query: PiSessionQuery,
       sessionId: string,
-    ) => Effect.Effect<SessionSummary | undefined, PiSessionError>;
-    readonly inspect: (target: PiSessionTarget) => Effect.Effect<SessionPreview, PiSessionError>;
+    ) => Effect.Effect<PiSessionSummary | undefined, PiSessionError>;
+    readonly inspect: (target: PiSessionTarget) => Effect.Effect<PiSessionPreview, PiSessionError>;
     readonly acquire: (
-      options: PiSessionAcquireOptions,
-    ) => Effect.Effect<PiSessionHandle, PiSessionError, Scope.Scope>;
+      options: CakeSessionRuntimeAcquireOptions,
+    ) => Effect.Effect<CakeSessionHandle, PiSessionError, Scope.Scope>;
     readonly acquireCurrent: (
       target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
-    ) => Effect.Effect<PiSessionHandle, PiSessionError, Scope.Scope>;
+    ) => Effect.Effect<CakeSessionHandle, PiSessionError, Scope.Scope>;
     /** Acquires an assembled primary-session runtime by its globally unique Pi Session ID. */
     readonly acquireSession: (
       sessionId: string,
-    ) => Effect.Effect<PiSessionHandle, PiSessionError, Scope.Scope>;
+    ) => Effect.Effect<CakeSessionHandle, PiSessionError, Scope.Scope>;
     /** Reads an already-acquired runtime without constructing or retaining one. */
     readonly currentStatus: (
       target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
-    ) => Effect.Effect<PiSessionRuntimeStatus | undefined>;
+    ) => Effect.Effect<CakeSessionRuntimeStatus | undefined>;
     readonly currentTurnIds: (
       target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
     ) => Effect.Effect<ReadonlyArray<string>>;
@@ -289,14 +293,14 @@ export class PiSessions extends Context.Service<
       PiSessionError
     >;
   }
->()("cake/services/pi/PiSessions") {}
+>()("cake/services/pi/CakeSessionRuntimes") {}
 
 interface SharedRuntime {
   readonly fingerprint: string;
   readonly workingDirectory: string;
   readonly sessionDirectory: string;
-  readonly profile: PiSessionAcquireOptions["profile"]["_tag"];
-  readonly runtime: CakeRuntime;
+  readonly profile: CakeSessionRuntimeAcquireOptions["profile"]["_tag"];
+  readonly runtime: CakeSessionRuntime;
   readonly events: PubSub.PubSub<PiSessionEvent>;
   readonly activeTurns: Ref.Ref<ReadonlyMap<string, "prompt" | "steer" | "follow-up">>;
   readonly settledInputIds: Set<string>;
@@ -306,7 +310,7 @@ class RuntimeKey implements Equal.Equal {
   readonly fingerprint: string;
   constructor(
     readonly target: string,
-    readonly options: PiSessionAcquireOptions,
+    readonly options: CakeSessionRuntimeAcquireOptions,
   ) {
     this.fingerprint = runtimeFingerprint(options);
   }
@@ -327,14 +331,14 @@ const sessionError = (operation: string) =>
 const sessionErrorValue = (operation: string) => (cause: unknown) =>
   new PiSessionError({ operation, message: messageOf(cause) });
 
-const runtimeTarget = (options: PiSessionAcquireOptions): string => {
+const runtimeTarget = (options: CakeSessionRuntimeAcquireOptions): string => {
   const runtime = options.runtime;
   const identity =
     runtime.sessionId ?? runtime.sessionFile ?? (runtime.newSession ? "new" : "recent");
   return `${runtime.cwd}\u0000${runtime.sessionDir}\u0000${identity}`;
 };
 
-const runtimeFingerprint = (options: PiSessionAcquireOptions): string => {
+const runtimeFingerprint = (options: CakeSessionRuntimeAcquireOptions): string => {
   const runtime = options.runtime;
   return JSON.stringify({
     profile: options.profile,
@@ -360,8 +364,8 @@ const runtimeFingerprint = (options: PiSessionAcquireOptions): string => {
   });
 };
 
-const validateProfile = Effect.fn("PiSessions.validateProfile")(function* (
-  options: PiSessionAcquireOptions,
+const validateProfile = Effect.fn("CakeSessionRuntimes.validateProfile")(function* (
+  options: CakeSessionRuntimeAcquireOptions,
 ) {
   const decoded = yield* Schema.decodeUnknownEffect(PiSessionCapabilityProfile)(
     options.profile,
@@ -399,16 +403,16 @@ const cancellableRuntimeOperation = <A>(
   evaluate: (signal: AbortSignal) => Promise<A>,
 ) => Effect.tryPromise({ try: evaluate, catch: (cause) => cause }).pipe(sessionError(operation));
 
-export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
+export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter) =>
   Layer.effect(
-    PiSessions,
+    CakeSessionRuntimes,
     Effect.gen(function* () {
       const layerScope = yield* Effect.scope;
       // RcMap remains the sole resource owner. This set is only a process-local projection used
       // to fan explicit refresh intents to currently acquired runtimes; it never acquires or
       // retains a runtime.
       const activeRuntimes = new Set<SharedRuntime>();
-      const acquiredOptions = new Map<string, PiSessionAcquireOptions>();
+      const acquiredOptions = new Map<string, CakeSessionRuntimeAcquireOptions>();
       // RcMap is the process-local keyed resource owner. Each acquire retains a
       // reference in its caller Scope; the final release disposes the one Pi
       // runtime. Equal/Hash intentionally key only by Pi Session target, while
@@ -422,7 +426,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
                 ReadonlyMap<string, "prompt" | "steer" | "follow-up">
               >(new Map());
               const settledInputIds = new Set<string>();
-              let currentRuntime: CakeRuntime | undefined = undefined;
+              let currentRuntime: CakeSessionRuntime | undefined = undefined;
               const runtime = yield* adapter.createRuntime({
                 ...key.options.runtime,
                 onEvent(event) {
@@ -497,7 +501,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           ),
         );
 
-      const inspect = Effect.fn("PiSessions.inspect")(function* (target: PiSessionTarget) {
+      const inspect = Effect.fn("CakeSessionRuntimes.inspect")(function* (target: PiSessionTarget) {
         const decoded = yield* Schema.decodeUnknownEffect(PiSessionTarget)(target).pipe(
           sessionError("inspect"),
         );
@@ -509,7 +513,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         });
       });
 
-      const catalogEntry = Effect.fn("PiSessions.catalogEntry")(function* (
+      const catalogEntry = Effect.fn("CakeSessionRuntimes.catalogEntry")(function* (
         query: PiSessionQuery,
         sessionId: string,
       ) {
@@ -519,7 +523,9 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         return yield* adapter.catalogEntry(decoded, sessionId).pipe(sessionError("catalogEntry"));
       });
 
-      const acquire = Effect.fn("PiSessions.acquire")(function* (options: PiSessionAcquireOptions) {
+      const acquire = Effect.fn("CakeSessionRuntimes.acquire")(function* (
+        options: CakeSessionRuntimeAcquireOptions,
+      ) {
         yield* validateProfile(options);
         const key = new RuntimeKey(runtimeTarget(options), options);
         const ownerScope = yield* Effect.scope;
@@ -551,8 +557,10 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           }),
         );
 
-        const call = <A>(operation: string, evaluate: (runtime: CakeRuntime) => Promise<A>) =>
-          runtimeOperation(operation, () => evaluate(shared.runtime));
+        const call = <A>(
+          operation: string,
+          evaluate: (runtime: CakeSessionRuntime) => Promise<A>,
+        ) => runtimeOperation(operation, () => evaluate(shared.runtime));
         const updates = Stream.unwrap(
           Effect.gen(function* () {
             // Subscribe before reading the snapshot. Runtime events produced
@@ -571,7 +579,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           }),
         );
 
-        const startTurn = Effect.fn("PiSessions.startTurn")(function* (
+        const startTurn = Effect.fn("CakeSessionRuntimes.startTurn")(function* (
           delivery: "prompt" | "steer" | "follow-up",
           text: string,
           attachments: ReadonlyArray<Attachment>,
@@ -584,7 +592,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             Effect.provideService(Scope.Scope, turnScope),
             sessionError(delivery),
           );
-          const settle = Effect.fn("PiSessions.settleTurn")(function* (
+          const settle = Effect.fn("CakeSessionRuntimes.settleTurn")(function* (
             outcome: "complete" | "failed" | "aborted",
             message?: string,
           ) {
@@ -660,7 +668,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           return turnId;
         });
 
-        const claimAbortedTurns = Effect.fn("PiSessions.claimAbortedTurns")(function* (
+        const claimAbortedTurns = Effect.fn("CakeSessionRuntimes.claimAbortedTurns")(function* (
           turnIds: ReadonlyArray<string>,
         ) {
           return yield* Ref.modify(shared.activeTurns, (turns) => {
@@ -671,7 +679,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           });
         });
 
-        const settleAbortedTurns = Effect.fn("PiSessions.settleAbortedTurns")(function* (
+        const settleAbortedTurns = Effect.fn("CakeSessionRuntimes.settleAbortedTurns")(function* (
           turnIds: ReadonlyArray<string>,
         ) {
           yield* Effect.forEach(
@@ -762,7 +770,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
             call("setUserMessageMarkdown", (runtime) =>
               runtime.setUserMessageMarkdown(entryId, renderAsMarkdown),
             ),
-          abort: Effect.fn("PiSessions.abort")(function* () {
+          abort: Effect.fn("CakeSessionRuntimes.abort")(function* () {
             const claimed = yield* claimAbortedTurns(shared.runtime.executingTurnIds?.() ?? []);
             yield* call("abort", (runtime) => runtime.abort());
             yield* settleAbortedTurns(claimed);
@@ -880,10 +888,10 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
                     message: "Extension companions are unavailable",
                   }),
                 ),
-        } satisfies PiSessionHandle;
+        } satisfies CakeSessionHandle;
       });
 
-      const currentTurnIds = Effect.fn("PiSessions.currentTurnIds")(function* (
+      const currentTurnIds = Effect.fn("CakeSessionRuntimes.currentTurnIds")(function* (
         target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
       ) {
         const shared = [...activeRuntimes].find(
@@ -895,7 +903,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         return shared ? [...(yield* Ref.get(shared.activeTurns)).keys()] : [];
       });
 
-      const executingTurnIds = Effect.fn("PiSessions.executingTurnIds")(function* (
+      const executingTurnIds = Effect.fn("CakeSessionRuntimes.executingTurnIds")(function* (
         target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
       ) {
         const shared = [...activeRuntimes].find(
@@ -907,7 +915,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         return yield* Effect.sync(() => shared?.runtime.executingTurnIds?.() ?? []);
       });
 
-      const refreshModels = Effect.fn("PiSessions.refreshModels")(function* () {
+      const refreshModels = Effect.fn("CakeSessionRuntimes.refreshModels")(function* () {
         yield* Effect.forEach(
           activeRuntimes,
           (shared) => {
@@ -919,7 +927,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           { concurrency: "unbounded", discard: true },
         );
       });
-      const reloadShared = Effect.fn("PiSessions.reloadShared")(function* (
+      const reloadShared = Effect.fn("CakeSessionRuntimes.reloadShared")(function* (
         operation: string,
         selected: ReadonlyArray<SharedRuntime>,
       ) {
@@ -934,24 +942,26 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
           { concurrency: "unbounded", discard: true },
         );
       });
-      const reloadWorkingDirectory = Effect.fn("PiSessions.reloadWorkingDirectory")(function* (
-        workingDirectory: string,
-      ) {
-        yield* reloadShared(
-          "reloadWorkingDirectory",
-          [...activeRuntimes].filter((shared) => shared.workingDirectory === workingDirectory),
-        );
-      });
-      const reloadAll = Effect.fn("PiSessions.reloadAll")(function* () {
+      const reloadWorkingDirectory = Effect.fn("CakeSessionRuntimes.reloadWorkingDirectory")(
+        function* (workingDirectory: string) {
+          yield* reloadShared(
+            "reloadWorkingDirectory",
+            [...activeRuntimes].filter((shared) => shared.workingDirectory === workingDirectory),
+          );
+        },
+      );
+      const reloadAll = Effect.fn("CakeSessionRuntimes.reloadAll")(function* () {
         yield* reloadShared("reloadAll", [...activeRuntimes]);
       });
-      const reloadCakeChatContext = Effect.fn("PiSessions.reloadCakeChatContext")(function* () {
-        yield* reloadShared(
-          "reloadCakeChatContext",
-          [...activeRuntimes].filter((shared) => shared.profile === "CakeChatSession"),
-        );
-      });
-      const durableArtifactReferences = Effect.fn("PiSessions.durableArtifactReferences")(
+      const reloadCakeChatContext = Effect.fn("CakeSessionRuntimes.reloadCakeChatContext")(
+        function* () {
+          yield* reloadShared(
+            "reloadCakeChatContext",
+            [...activeRuntimes].filter((shared) => shared.profile === "CakeChatSession"),
+          );
+        },
+      );
+      const durableArtifactReferences = Effect.fn("CakeSessionRuntimes.durableArtifactReferences")(
         function* (sessionRoots: ReadonlyArray<string>) {
           if (!adapter.durableArtifactReferences)
             return yield* new PiSessionError({
@@ -964,7 +974,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         },
       );
 
-      const acquireCurrent = Effect.fn("PiSessions.acquireCurrent")(function* (
+      const acquireCurrent = Effect.fn("CakeSessionRuntimes.acquireCurrent")(function* (
         target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
       ) {
         const key = `${target.workingDirectory}\u0000${target.sessionDirectory}\u0000${target.sessionId}`;
@@ -977,7 +987,9 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         return yield* acquire(options);
       });
 
-      const acquireSession = Effect.fn("PiSessions.acquireSession")(function* (sessionId: string) {
+      const acquireSession = Effect.fn("CakeSessionRuntimes.acquireSession")(function* (
+        sessionId: string,
+      ) {
         const matches = [...acquiredOptions.values()].filter(
           (options) => options.runtime.sessionId === sessionId,
         );
@@ -995,7 +1007,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         return yield* acquire(options);
       });
 
-      const currentStatus = Effect.fn("PiSessions.currentStatus")(function* (
+      const currentStatus = Effect.fn("CakeSessionRuntimes.currentStatus")(function* (
         target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
       ) {
         const shared = [...activeRuntimes].find(
@@ -1019,7 +1031,7 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
         };
       });
 
-      return PiSessions.of({
+      return CakeSessionRuntimes.of({
         sessionIds,
         catalog,
         catalogEntry,
@@ -1039,8 +1051,8 @@ export const makePiSessionsLayer = (adapter: PiSessionsAdapter) =>
     }),
   );
 
-export const makePiSessionsLive = (): Layer.Layer<PiSessions> =>
-  makePiSessionsLayer({
+export const makeCakeSessionRuntimesLive = (): Layer.Layer<CakeSessionRuntimes> =>
+  makeCakeSessionRuntimesLayer({
     sessionIds: (query) =>
       streamWorkspaceSessionIds(query.workingDirectory, query.sessionDirectory, {
         direct: query.direct,
@@ -1052,7 +1064,7 @@ export const makePiSessionsLive = (): Layer.Layer<PiSessions> =>
     catalogEntry: (query, sessionId) =>
       Effect.tryPromise({
         try: () =>
-          loadWorkspaceSessionSummary(query.workingDirectory, sessionId, query.sessionDirectory, {
+          loadWorkspacePiSessionSummary(query.workingDirectory, sessionId, query.sessionDirectory, {
             direct: query.direct,
           }),
         catch: (cause) => cause,
@@ -1060,7 +1072,7 @@ export const makePiSessionsLive = (): Layer.Layer<PiSessions> =>
     inspect: (target) =>
       Effect.tryPromise({
         try: () =>
-          loadWorkspaceSessionPreview(
+          loadWorkspacePiSessionPreview(
             target.workingDirectory,
             target.sessionId,
             target.sessionDirectory,
@@ -1070,7 +1082,7 @@ export const makePiSessionsLive = (): Layer.Layer<PiSessions> =>
         catch: (cause) => cause,
       }),
     createRuntime: (options) =>
-      Effect.tryPromise({ try: () => createCakeRuntime(options), catch: (cause) => cause }),
+      Effect.tryPromise({ try: () => createCakeSessionRuntime(options), catch: (cause) => cause }),
     changelog: () => Effect.sync(loadPiChangelog),
     durableArtifactReferences: (sessionRoots) =>
       Effect.tryPromise({

@@ -10,7 +10,10 @@ import {
   SubscriptionRef,
 } from "effect";
 import type { Deferred, Schema } from "effect";
-import type { PiSessionAcquireOptions, PiSessionHandle } from "../pi/PiSessions";
+import type {
+  CakeSessionRuntimeAcquireOptions,
+  CakeSessionHandle,
+} from "../pi/CakeSessionRuntimes";
 import type {
   ResolvedAgentModel,
   SubagentActivity,
@@ -33,9 +36,9 @@ export interface SubagentHandleState {
   readonly notifyOnCompletion: boolean;
   readonly scope: Scope.Closeable;
   readonly completion: Deferred.Deferred<SubagentResult, SubagentError>;
-  readonly runtimeOptions: PiSessionAcquireOptions;
-  readonly parentPiHandle: PiSessionHandle;
-  readonly piHandle?: PiSessionHandle;
+  readonly runtimeOptions: CakeSessionRuntimeAcquireOptions;
+  readonly parentPiHandle: CakeSessionHandle;
+  readonly piHandle?: CakeSessionHandle;
   readonly privateSessionId?: string;
   readonly status: SubagentStatus;
   readonly activityRevision: number;

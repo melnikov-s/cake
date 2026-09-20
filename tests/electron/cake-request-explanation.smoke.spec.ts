@@ -62,7 +62,7 @@ for (const theme of ["light", "dark"] as const) {
       await frame.getByRole("button", { name: "04 Run" }).click();
       await expect(frame.getByRole("heading", { name: "Pi runs the agent." })).toBeVisible();
       await expect(frame.locator(".pi")).toHaveClass(/active/);
-      await expect(frame.getByText("src/services/pi/PiSessions.ts:596–598")).toBeVisible();
+      await expect(frame.getByText("src/services/pi/CakeSessionRuntimes.ts:596–598")).toBeVisible();
       await frame.getByRole("button", { name: "05 Project" }).click();
       await expect(frame.getByText("UP / updates")).toBeVisible();
       await expect(
@@ -84,7 +84,9 @@ for (const theme of ["light", "dark"] as const) {
       await fullFrame.getByRole("button", { name: "04 Run" }).click();
       await expect(fullFrame.getByRole("heading", { name: "Pi runs the agent." })).toBeVisible();
       await fullFrame.getByRole("button", { name: "Inspect evidence" }).click();
-      await expect(fullFrame.getByText("src/services/pi/PiSessions.ts:596–598")).toBeVisible();
+      await expect(
+        fullFrame.getByText("src/services/pi/CakeSessionRuntimes.ts:596–598"),
+      ).toBeVisible();
       const overflow = await fullFrame
         .locator("body")
         .evaluate((body) => body.scrollWidth > body.clientWidth);

@@ -1,6 +1,6 @@
 import { Effect, Layer } from "effect";
 import type { ApplicationState } from "../services/storage/ApplicationState";
-import type { PiSessions } from "../services/pi/PiSessions";
+import type { CakeSessionRuntimes } from "../services/pi/CakeSessionRuntimes";
 import type { SubagentCoordinator } from "../services/subagents/SubagentCoordinator";
 import type { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
 import type { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
@@ -14,7 +14,7 @@ import { WorktreeLandingCompletion } from "../services/worktrees/WorktreeLanding
 
 type Dependencies =
   | ApplicationState
-  | PiSessions
+  | CakeSessionRuntimes
   | SubagentCoordinator
   | SessionArchiveStorage
   | SessionCatalogChanges

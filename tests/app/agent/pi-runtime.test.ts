@@ -6,12 +6,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  createCakeRuntime,
+  createCakeSessionRuntime,
   piRuntimeVersion,
   projectSessionCreateInputSchema,
-  type CakeRuntime,
-  type CakeRuntimeEvent,
-} from "../../../src/services/pi/runtime/cake-runtime";
+  type CakeSessionRuntime,
+  type CakeSessionRuntimeEvent,
+} from "../../../src/services/pi/runtime/cake-session-runtime";
 import {
   createFoundationRuntime,
   type FoundationRuntime,
@@ -20,7 +20,7 @@ import {
   cakeWorkspaceSessionDirectory,
   inspectWorkspace,
   loadPiChangelog,
-  loadWorkspaceSessionPreview,
+  loadWorkspacePiSessionPreview,
   streamWorkspaceSessions,
   suggestProjectFiles,
 } from "../../../src/services/pi/runtime/session-discovery";
@@ -38,14 +38,14 @@ import {
 import { loadReviewSessionProjection } from "../../../src/services/pi/runtime/sidecar-runtime";
 import { SessionManager, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
-  sessionSnapshotSchema,
+  conversationSnapshotSchema,
   type ExtensionUiIntent,
-  type SessionSnapshot,
+  type ConversationSnapshot,
 } from "../../../src/ipc/session-contract";
 import { listAppControlTools } from "../../../src/renderer/app-control/AppControlBridge";
 
 const temporaryDirectories: string[] = [];
-const runtimes: Array<FoundationRuntime | CakeRuntime> = [];
+const runtimes: Array<FoundationRuntime | CakeSessionRuntime> = [];
 const zeroUsage = {
   input: 0,
   output: 0,
@@ -84,7 +84,7 @@ function maximumObjectDepth(value: unknown) {
 describe("Pi 0.85.1 foundation contract", () => {
   it("enables the Cake gateway for project sessions", async () => {
     const directory = await createTemporaryDirectory();
-    const runtime = await createCakeRuntime({
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
@@ -175,7 +175,7 @@ describe("Pi 0.85.1 foundation contract", () => {
     let hasLinkedArtifacts = false;
     const listArtifactMetadata = vi.fn(async () => []);
     try {
-      const runtime = await createCakeRuntime({
+      const runtime = await createCakeSessionRuntime({
         cwd: directory,
         agentDir,
         sessionDir: join(directory, "sessions"),
@@ -340,7 +340,7 @@ describe("Pi 0.85.1 foundation contract", () => {
       workspacePath: "/projects/.cake-worktrees/investigate-rendering",
     }));
     try {
-      const runtime = await createCakeRuntime({
+      const runtime = await createCakeSessionRuntime({
         cwd: directory,
         agentDir,
         sessionDir: join(directory, "sessions"),
@@ -381,8 +381,8 @@ describe("Pi 0.85.1 foundation contract", () => {
 
   it("executes ! and !! commands without starting a model turn", async () => {
     const directory = await createTemporaryDirectory();
-    const events: CakeRuntimeEvent[] = [];
-    const runtime = await createCakeRuntime({
+    const events: CakeSessionRuntimeEvent[] = [];
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
@@ -477,7 +477,7 @@ describe("Pi 0.85.1 foundation contract", () => {
       })}); }\n`,
     );
     let prompt: Promise<void> | undefined;
-    const events: CakeRuntimeEvent[] = [];
+    const events: CakeSessionRuntimeEvent[] = [];
     const generateTitle = vi.fn(async ({ firstUserMessage }: { firstUserMessage: string }) => {
       return firstUserMessage === "Investigate session naming" ? "Generated title" : "Unexpected";
     });
@@ -487,7 +487,7 @@ describe("Pi 0.85.1 foundation contract", () => {
     const autoLabelSession = vi.fn(async () => undefined);
     const sessionDir = join(directory, "sessions");
     try {
-      const runtime = await createCakeRuntime({
+      const runtime = await createCakeSessionRuntime({
         cwd: directory,
         agentDir,
         sessionDir,
@@ -673,7 +673,7 @@ describe("Pi 0.85.1 foundation contract", () => {
     const setResolved = vi.fn(async () => undefined);
     let prompt: Promise<void> | undefined;
     try {
-      const runtime = await createCakeRuntime({
+      const runtime = await createCakeSessionRuntime({
         cwd: directory,
         agentDir,
         sessionDir: join(directory, "sessions"),
@@ -792,7 +792,7 @@ describe("Pi 0.85.1 foundation contract", () => {
     const forkSession = vi.fn(async () => ({ ok: true, sessionId: "forked" }));
     let prompt: Promise<void> | undefined;
     try {
-      const runtime = await createCakeRuntime({
+      const runtime = await createCakeSessionRuntime({
         cwd: directory,
         agentDir,
         sessionDir: join(directory, "sessions"),
@@ -856,8 +856,8 @@ describe("Pi 0.85.1 foundation contract", () => {
         ],
       })}); }\n`,
     );
-    const snapshots: SessionSnapshot[] = [];
-    const runtime = await createCakeRuntime({
+    const snapshots: ConversationSnapshot[] = [];
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
@@ -1751,7 +1751,7 @@ describe("Pi 0.85.1 foundation contract", () => {
 
     expect(parts).toEqual([expect.objectContaining({ kind: "tool", artifactId: undefined })]);
     expect(() =>
-      Schema.decodeUnknownSync(sessionSnapshotSchema)({
+      Schema.decodeUnknownSync(conversationSnapshotSchema)({
         workspacePath: "/workspace",
         sessionId: "session-1",
         sessionFile: "/session.jsonl",
@@ -2057,7 +2057,7 @@ describe("S1 Pi runtime", () => {
         });
       }`,
     );
-    const runtime = await createCakeRuntime({
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir,
       sessionDir: join(directory, "sessions"),
@@ -2143,7 +2143,7 @@ describe("S1 Pi runtime", () => {
     );
 
     try {
-      const runtime = await createCakeRuntime({
+      const runtime = await createCakeSessionRuntime({
         cwd: directory,
         agentDir,
         sessionDir: join(directory, "sessions"),
@@ -2168,7 +2168,7 @@ describe("S1 Pi runtime", () => {
 
   it("exposes delegation as hidden subagents rather than session construction", async () => {
     const directory = await createTemporaryDirectory();
-    const runtime = await createCakeRuntime({
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
@@ -2197,7 +2197,7 @@ describe("S1 Pi runtime", () => {
 
   it("keeps auxiliary runtime snapshots limited to turn execution data", async () => {
     const directory = await createTemporaryDirectory();
-    const runtime = await createCakeRuntime({
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
@@ -2220,7 +2220,7 @@ describe("S1 Pi runtime", () => {
   it("isolates a subagent prompt and tools from Cake and project context", async () => {
     const directory = await createTemporaryDirectory();
     await writeFile(join(directory, "AGENTS.md"), "PROJECT INSTRUCTIONS MUST NOT LOAD");
-    const runtime = await createCakeRuntime({
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
@@ -2251,7 +2251,7 @@ describe("S1 Pi runtime", () => {
       join(agentDirectory, "skills", "private-skill", "SKILL.md"),
       "---\nname: private-skill\ndescription: MUST NOT LOAD\n---\n",
     );
-    const runtime = await createCakeRuntime({
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir: agentDirectory,
       sessionDir: join(directory, "global-chat-sessions"),
@@ -2277,7 +2277,7 @@ describe("S1 Pi runtime", () => {
   it("opens the OpenAI Codex browser login URL", async () => {
     const directory = await createTemporaryDirectory();
     const openExternal = vi.fn(async () => undefined);
-    const runtime = await createCakeRuntime({
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir: join(directory, "agent"),
       sessionDir: join(directory, "sessions"),
@@ -2302,7 +2302,7 @@ describe("S1 Pi runtime", () => {
     const previousKey = process.env.OPENAI_API_KEY;
     process.env.OPENAI_API_KEY = "test-openai-key";
     try {
-      const runtime = await createCakeRuntime({
+      const runtime = await createCakeSessionRuntime({
         cwd: directory,
         agentDir: join(directory, "agent"),
         sessionDir: join(directory, "sessions"),
@@ -2340,7 +2340,7 @@ describe("S1 Pi runtime", () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");
     const onEvent = vi.fn();
-    const runtime = await createCakeRuntime({
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir,
       sessionDir: join(directory, "sessions"),
@@ -2394,7 +2394,7 @@ describe("S1 Pi runtime", () => {
       join(agentDir, "extensions", "slow.ts"),
       `export default async function () { await new Promise((resolve) => setTimeout(resolve, 400)); };\n`,
     );
-    const runtime = await createCakeRuntime({
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir,
       sessionDir: join(agentDir, "sessions"),
@@ -2498,7 +2498,7 @@ describe("S1 Pi runtime", () => {
     );
 
     try {
-      const source = await createCakeRuntime({
+      const source = await createCakeSessionRuntime({
         cwd: directory,
         agentDir,
         sessionDir,
@@ -2516,7 +2516,7 @@ describe("S1 Pi runtime", () => {
       const forkPoint = (await source.snapshot()).tree.at(-1)?.id;
       if (!forkPoint) throw new Error("Expected a fork point");
       const fork = await source.fork(forkPoint, "Forked");
-      const forked = await createCakeRuntime({
+      const forked = await createCakeSessionRuntime({
         cwd: directory,
         agentDir,
         sessionDir,
@@ -2569,7 +2569,7 @@ describe("S1 Pi runtime", () => {
     const sourceSessionId = source.getSessionId();
     const sourceSessionFile = source.getSessionFile()!;
 
-    const runtime = await createCakeRuntime({
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir,
       sessionDir,
@@ -2665,7 +2665,7 @@ describe("S1 Pi runtime", () => {
       stopReason: "stop",
       timestamp: Date.now(),
     });
-    const runtime = await createCakeRuntime({
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir,
       sessionDir,
@@ -2700,7 +2700,7 @@ describe("S1 Pi runtime", () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");
     const sessionDir = join(directory, "sessions");
-    const first = await createCakeRuntime({
+    const first = await createCakeSessionRuntime({
       cwd: directory,
       agentDir,
       sessionDir,
@@ -2948,7 +2948,7 @@ describe("S1 Pi runtime", () => {
         .join("\n") + "\n",
     );
 
-    const preview = await loadWorkspaceSessionPreview(directory, first.sessionId, sessionDir);
+    const preview = await loadWorkspacePiSessionPreview(directory, first.sessionId, sessionDir);
     expect(preview?.parts.some((part) => part.kind === "text" && part.text === "Hi")).toBe(true);
     expect(preview?.parts.some((part) => part.kind === "tool" && part.name === "read")).toBe(true);
     expect(preview?.parts).toContainEqual(
@@ -2985,7 +2985,7 @@ describe("S1 Pi runtime", () => {
     );
 
     const titles = new Map<string, string>();
-    const second = await createCakeRuntime({
+    const second = await createCakeSessionRuntime({
       cwd: directory,
       agentDir,
       sessionDir,
@@ -3046,7 +3046,7 @@ describe("S1 Pi runtime", () => {
     ).toBe("First session (1)");
 
     const requestedSessionId = crypto.randomUUID();
-    const isolated = await createCakeRuntime({
+    const isolated = await createCakeSessionRuntime({
       cwd: directory,
       agentDir,
       sessionDir,
@@ -3085,7 +3085,7 @@ describe("S1 Pi runtime", () => {
     await mkdir(workspaceSessionDir, { recursive: true });
     await writeFile(sessionFile, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
 
-    const runtime = await createCakeRuntime({
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir,
       sessionDir,
@@ -3126,7 +3126,7 @@ describe("S3 Pi ecosystem compatibility", () => {
     const previousHome = process.env.HOME;
     process.env.HOME = standaloneHome;
     try {
-      const runtime = await createCakeRuntime({
+      const runtime = await createCakeSessionRuntime({
         cwd: directory,
         agentDir,
         sessionDir: join(agentDir, "sessions"),
@@ -3210,7 +3210,7 @@ export default function (pi) {
     const events: Array<{ type: string; event?: { kind: string } }> = [];
     const requests: string[] = [];
     const intents: ExtensionUiIntent[] = [];
-    const runtime = await createCakeRuntime({
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir,
       sessionDir: join(directory, "sessions"),
@@ -3225,7 +3225,7 @@ export default function (pi) {
     runtimes.push(runtime);
 
     const firstSnapshot = await runtime.snapshot();
-    expect(() => Schema.decodeUnknownSync(sessionSnapshotSchema)(firstSnapshot)).not.toThrow();
+    expect(() => Schema.decodeUnknownSync(conversationSnapshotSchema)(firstSnapshot)).not.toThrow();
     expect(firstSnapshot.usage).toMatchObject({
       tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
       cost: 0,
@@ -3300,7 +3300,7 @@ export default function (pi) {
       join(directory, ".pi", "settings.json"),
       JSON.stringify({ packages: [subagentPath] }),
     );
-    const runtime = await createCakeRuntime({
+    const runtime = await createCakeSessionRuntime({
       cwd: directory,
       agentDir,
       sessionDir: join(directory, "sessions"),

@@ -27,15 +27,15 @@ import {
   loadExtensionCompanions,
 } from "./extension-companions";
 
-interface CakeRuntimeExtensionUiState {
+interface CakeSessionRuntimeExtensionUiState {
   statuses: Array<{ key: string; text: string }>;
   companions: ExtensionCompanion[];
   title?: string;
 }
 
-export interface CakeRuntimeResourceLifecycle {
+export interface CakeSessionRuntimeResourceLifecycle {
   readonly compatibility: CompatibilityCatalog;
-  readonly extensionUi: CakeRuntimeExtensionUiState;
+  readonly extensionUi: CakeSessionRuntimeExtensionUiState;
   readonly reloadPending: () => boolean;
   readonly commandCatalog: () => SlashCommandInfo[];
   readonly requestReload: () => Promise<void>;
@@ -44,7 +44,7 @@ export interface CakeRuntimeResourceLifecycle {
   readonly dispose: () => void;
 }
 
-export async function loadCakeRuntimeResourceLoader(input: {
+export async function loadCakeSessionRuntimeResourceLoader(input: {
   readonly makeResourceLoader: () => ResourceLoader;
   readonly trusted: boolean;
 }): Promise<ReloadableResourceLoader> {
@@ -53,7 +53,7 @@ export async function loadCakeRuntimeResourceLoader(input: {
   return resourceLoader;
 }
 
-export async function createCakeRuntimeResourceLifecycle(input: {
+export async function createCakeSessionRuntimeResourceLifecycle(input: {
   readonly resourceLoader: ReloadableResourceLoader;
   readonly settingsManager: SettingsManager;
   readonly eventBus: EventBus;
@@ -67,7 +67,7 @@ export async function createCakeRuntimeResourceLifecycle(input: {
   readonly emitPart: (part: UiPart) => void;
   readonly removePart: (partId: string) => void;
   readonly emitSnapshot: () => Promise<void>;
-}): Promise<CakeRuntimeResourceLifecycle> {
+}): Promise<CakeSessionRuntimeResourceLifecycle> {
   const { resourceLoader } = input;
   const initialCatalog = compatibilityCatalog(
     resourceLoader,
@@ -87,7 +87,7 @@ export async function createCakeRuntimeResourceLifecycle(input: {
     resources: [...initialCatalog.resources],
     diagnostics,
   };
-  const extensionUi: CakeRuntimeExtensionUiState = {
+  const extensionUi: CakeSessionRuntimeExtensionUiState = {
     statuses: [],
     companions: loadedCompanions.companions.map((companion) => ({ ...companion })),
   };

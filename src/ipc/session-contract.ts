@@ -533,7 +533,7 @@ export const extensionUiIntentSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("editor-text"), ...extensionEditorTextSchema.fields }),
 ]);
 
-export const sessionSnapshotSchema = Schema.Struct({
+export const conversationSnapshotSchema = Schema.Struct({
   workspacePath: stringMax(4_096),
   sessionId: stringRange(1, 256),
   sessionFile: stringMax(4_096),
@@ -582,15 +582,15 @@ export interface ChatConfiguration {
 }
 export type PiSettings = typeof piSettingsSchema.Type;
 export type PiSettingUpdate = typeof piSettingUpdateSchema.Type;
-export type SessionSnapshot = typeof sessionSnapshotSchema.Type;
-export interface SessionPreview {
+export type ConversationSnapshot = typeof conversationSnapshotSchema.Type;
+export interface PiSessionPreview {
   readonly workspacePath: string;
   readonly sessionId: string;
   readonly sessionFile: string;
   readonly parts: ReadonlyArray<UiPart>;
   readonly currentModel?: { readonly provider: string; readonly modelId: string };
 }
-export interface SessionSummary {
+export interface PiSessionSummary {
   readonly id: string;
   readonly title: string;
   readonly created: string;

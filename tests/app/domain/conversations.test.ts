@@ -8,11 +8,14 @@ import {
   projectQueuedMessages,
 } from "../../../src/domain/conversations/conversations";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
-import { PiSessions, type PiSessionHandle } from "../../../src/services/pi/PiSessions";
+import {
+  CakeSessionRuntimes,
+  type CakeSessionHandle,
+} from "../../../src/services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
-import type { SessionSnapshot } from "../../../src/ipc/session-contract";
+import type { ConversationSnapshot } from "../../../src/ipc/session-contract";
 
-const snapshot = (streaming: boolean): SessionSnapshot => ({
+const snapshot = (streaming: boolean): ConversationSnapshot => ({
   workspacePath: "/project",
   sessionId: "session-1",
   sessionFile: "/sessions/session-1.jsonl",
@@ -28,7 +31,7 @@ const snapshot = (streaming: boolean): SessionSnapshot => ({
   tree: [],
 });
 
-const makeHandle = (deliveries: string[], isStreaming: () => boolean): PiSessionHandle => ({
+const makeHandle = (deliveries: string[], isStreaming: () => boolean): CakeSessionHandle => ({
   profile: "ProjectSession",
   updates: Stream.empty,
   snapshot: () => Effect.succeed(snapshot(isStreaming())),
@@ -125,7 +128,7 @@ describe("conversation domain", () => {
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
-          Layer.mock(PiSessions, { acquireSession: () => Effect.succeed(handle) }),
+          Layer.mock(CakeSessionRuntimes, { acquireSession: () => Effect.succeed(handle) }),
           Layer.mock(RendererRequestCoordinator, {
             bind: (target, connectionId) =>
               Effect.sync(() => bindings.push({ target, connectionId })),
@@ -151,7 +154,7 @@ describe("conversation domain", () => {
       ),
       Effect.provide(
         Layer.mergeAll(
-          Layer.mock(PiSessions, { acquireSession: () => Effect.succeed(handle) }),
+          Layer.mock(CakeSessionRuntimes, { acquireSession: () => Effect.succeed(handle) }),
           Layer.mock(RendererRequestCoordinator, {
             bind: (target, connectionId) =>
               Effect.sync(() => bindings.push({ target, connectionId })),

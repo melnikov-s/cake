@@ -37,7 +37,7 @@ import type {
   ApplicationState,
   FileSuggestion,
   ModelOption,
-  SessionSnapshot,
+  ConversationSnapshot,
   UtilityModel,
 } from "../../ipc/session-contract";
 import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
@@ -204,7 +204,7 @@ interface WorkspaceCommands {
   loadStagedSlashCommands(
     path: string,
     options?: ClientCommandOptions,
-  ): Promise<SessionSnapshot["commands"]>;
+  ): Promise<ConversationSnapshot["commands"]>;
   registerProject(
     path: string,
     name: string,

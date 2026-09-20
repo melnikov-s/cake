@@ -1,13 +1,13 @@
 import { Store, child, createStore } from "r-state-tree";
 import type { ReviewAnchor } from "../../ipc/review-contract";
 import type { Annotation } from "../../ipc/session-contract";
-import type { Session } from "../models/Session";
+import type { CakeSession } from "../models/CakeSession";
 import type { ReviewsStore } from "./ReviewsStore";
 import { ChatStore } from "./ChatStore";
 import { AnnotationDraftStore } from "./AnnotationDraftStore";
 
 export interface MessageCommentsStoreProps {
-  sessionModel(sessionId: string): Session | undefined;
+  sessionModel(sessionId: string): CakeSession | undefined;
   reviews(): ReviewsStore;
   context(): { sessionId: string } | undefined;
   /** The selection draft became a Discussion Session; its chat can take over. */

@@ -10,7 +10,7 @@ import {
 import { registerAgentDirectoryExtensionProviders } from "./extension-providers";
 import { canonicalPathIsInsideRoot } from "./workspace-paths";
 import type {
-  SessionSnapshot,
+  ConversationSnapshot,
   ThinkingLevel,
   ToolOutputContent,
   UiPart,
@@ -59,7 +59,7 @@ export interface IsolatedSessionOptions {
   onEvent?(
     event:
       | { type: "part-updated"; part: UiPart }
-      | { type: "usage-updated"; usage: NonNullable<SessionSnapshot["usage"]> },
+      | { type: "usage-updated"; usage: NonNullable<ConversationSnapshot["usage"]> },
   ): void;
 }
 
@@ -69,12 +69,12 @@ export interface IsolatedSessionResult {
   sessionFile: string | undefined;
   response: string;
   error?: string;
-  usage?: SessionSnapshot["usage"];
+  usage?: ConversationSnapshot["usage"];
 }
 
 function sessionUsage(
   session: Pick<AgentSession, "getSessionStats">,
-): NonNullable<SessionSnapshot["usage"]> {
+): NonNullable<ConversationSnapshot["usage"]> {
   const stats = session.getSessionStats();
   return {
     tokens: stats.tokens,

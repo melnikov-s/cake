@@ -24,14 +24,14 @@ import {
   type ApplicationState as ApplicationStateValue,
 } from "../../../src/domain/application/application-data";
 import {
-  makePiSessionsLayer,
-  PiSessions,
-  type PiSessionsAdapter,
-} from "../../../src/services/pi/PiSessions";
+  makeCakeSessionRuntimesLayer,
+  CakeSessionRuntimes,
+  type CakeSessionRuntimesAdapter,
+} from "../../../src/services/pi/CakeSessionRuntimes";
 import type {
-  CakeRuntime,
-  CakeRuntimeOptions,
-} from "../../../src/services/pi/runtime/cake-runtime";
+  CakeSessionRuntime,
+  CakeSessionRuntimeOptions,
+} from "../../../src/services/pi/runtime/cake-session-runtime";
 import type {
   ProjectSessionLocation,
   ProjectSessionUpdate,
@@ -69,10 +69,10 @@ import {
   SessionCatalogChanges,
   type SessionCatalogChange,
 } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import type { SessionSnapshot, SessionSummary } from "../../../src/ipc/session-contract";
+import type { ConversationSnapshot, PiSessionSummary } from "../../../src/ipc/session-contract";
 import type { WorktreeRecord } from "../../../src/domain/worktrees/managed-worktree-data";
 
-const snapshot: SessionSnapshot = {
+const snapshot: ConversationSnapshot = {
   workspacePath: "/project",
   sessionId: "session-1",
   sessionFile: "/sessions/session-1.jsonl",
@@ -98,7 +98,7 @@ const snapshot: SessionSnapshot = {
 };
 
 const fakeRuntime = (
-  options: CakeRuntimeOptions,
+  options: CakeSessionRuntimeOptions,
   prompt: () => Promise<void> = async () => undefined,
   onToolCompact?: () => void,
   onForkTitle?: (title: string) => void,
@@ -106,7 +106,7 @@ const fakeRuntime = (
   onOperation?: (operation: string) => void,
   forkArtifactPointers: ReadonlyArray<ArtifactPointer> = [],
   onDispose?: () => void,
-): CakeRuntime => ({
+): CakeSessionRuntime => ({
   sessionId: options.sessionId ?? snapshot.sessionId,
   sessionFile: `/sessions/${options.sessionId ?? snapshot.sessionId}.jsonl`,
   streaming: false,
@@ -200,10 +200,10 @@ const makeLayer = (
     onSessionIds?(): void;
     onCatalogChange?(change: SessionCatalogChange): void;
     sessionIds?(workingDirectory: string): Stream.Stream<string, unknown>;
-    catalog?(workingDirectory: string): Stream.Stream<SessionSummary, unknown>;
+    catalog?(workingDirectory: string): Stream.Stream<PiSessionSummary, unknown>;
     resolvedCatalog?(
       workingDirectory: string,
-    ): Stream.Stream<SessionSummary, SessionArchiveStorageError>;
+    ): Stream.Stream<PiSessionSummary, SessionArchiveStorageError>;
     catalogModifiedAt?(): string;
     catalogTitle?(): string;
     onRename?(name: string): void;
@@ -311,7 +311,7 @@ const makeLayer = (
       });
     }),
   );
-  const adapter: PiSessionsAdapter = {
+  const adapter: CakeSessionRuntimesAdapter = {
     sessionIds: (query) => {
       hooks.onSessionIds?.();
       if (hooks.sessionIds) return hooks.sessionIds(query.workingDirectory);
@@ -423,7 +423,7 @@ const makeLayer = (
             )
           : Effect.sync(() => hooks.onRemoveFamilyProject?.(projectPath)),
     }),
-    makePiSessionsLayer(adapter),
+    makeCakeSessionRuntimesLayer(adapter),
     SubagentCoordinatorLive,
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: "/agent",
@@ -487,6 +487,7 @@ const makeLayer = (
       request: () => Effect.sync(() => hooks.onArtifactGarbageCollection?.()),
     }),
     Layer.mock(ArtifactStorage, {
+      catalog: () => Effect.succeed({ lineages: [], links: [] }),
       read: (lineageId, artifactRevision) =>
         Effect.sync(() => {
           const pointer = hooks.forkArtifactPointers?.find(
@@ -543,6 +544,7 @@ const makeLayer = (
       agentSessionDirectory: () => "/reviews/agent",
       reviewContextPath: () => "/reviews/context.md",
       discussionParentContextPath: () => "/reviews/discussion.md",
+      listDiscussionRecords: () => Effect.succeed([]),
       deleteSession: () => Effect.void,
     }),
     Layer.succeed(
@@ -768,7 +770,7 @@ const nestedFamily = {
   ],
 };
 const nestedFamilyIds = ["parent", "child", "grandchild"];
-const sessionSummary = (id: string): SessionSummary => ({
+const sessionSummary = (id: string): PiSessionSummary => ({
   id,
   title: id,
   created: "2026-01-01T00:00:00.000Z",
@@ -814,7 +816,8 @@ describe("Project Sessions domain", () => {
         );
         const childInitial = yield* Queue.take(childUpdates);
         assert.equal(childInitial._tag, "Snapshot");
-        if (childInitial._tag === "Snapshot") assert.equal(childInitial.snapshot.resolved, false);
+        if (childInitial._tag === "Snapshot")
+          assert.equal(childInitial.snapshot.lifecycle.resolved, false);
 
         yield* projectSessionLifecycle.resolve({ sessionId: "parent" });
         yield* Queue.take(received);
@@ -857,7 +860,8 @@ describe("Project Sessions domain", () => {
         assertFamily(false);
         const childRestored = yield* Queue.take(childUpdates);
         assert.equal(childRestored._tag, "Snapshot");
-        if (childRestored._tag === "Snapshot") assert.equal(childRestored.snapshot.resolved, false);
+        if (childRestored._tag === "Snapshot")
+          assert.equal(childRestored.snapshot.lifecycle.resolved, false);
         assert.deepEqual(restored, ["parent"]);
         for (const id of nestedFamilyIds)
           assert.equal((yield* projectSessionMetadata.inspect({ sessionId: id })).resolved, false);
@@ -893,13 +897,13 @@ describe("Project Sessions domain", () => {
 
   it.effect("checks descendant activity before changing the root authority", () =>
     Effect.gen(function* () {
-      const sessions = yield* PiSessions;
+      const sessions = yield* CakeSessionRuntimes;
       for (const status of [
         { streaming: true, pending: false, persisted: true },
         { streaming: false, pending: true, persisted: true },
       ]) {
         const failure = yield* projectSessionLifecycle.resolve({ sessionId: "parent" }).pipe(
-          Effect.provideService(PiSessions, {
+          Effect.provideService(CakeSessionRuntimes, {
             ...sessions,
             currentStatus: (target) =>
               Effect.succeed(target.sessionId === "grandchild" ? status : undefined),
@@ -990,7 +994,8 @@ describe("Project Sessions domain", () => {
             const updates = yield* projectSessionOperations.observe({ sessionId: "grandchild" });
             const [initial] = yield* updates.pipe(Stream.take(1), Stream.runCollect);
             assert.equal(initial?._tag, "Snapshot");
-            if (initial?._tag === "Snapshot") assert.equal(initial.snapshot.resolved, true);
+            if (initial?._tag === "Snapshot")
+              assert.equal(initial.snapshot.lifecycle.resolved, true);
           }
         }).pipe(
           Effect.provide(
@@ -1235,7 +1240,7 @@ describe("Project Sessions domain", () => {
     Effect.gen(function* () {
       const releaseWorktree = yield* Deferred.make<void>();
       const rootScanned = yield* Deferred.make<void>();
-      const session = (id: string): SessionSummary => ({
+      const session = (id: string): PiSessionSummary => ({
         id,
         title: id,
         created: "2026-01-01T00:00:00.000Z",
@@ -1307,7 +1312,7 @@ describe("Project Sessions domain", () => {
   );
 
   it.effect("publishes the complete active catalog in one initial snapshot", () => {
-    const sessions = Array.from({ length: 150 }, (_, index): SessionSummary => ({
+    const sessions = Array.from({ length: 150 }, (_, index): PiSessionSummary => ({
       id: `session-${index}`,
       title: `Session ${index}`,
       created: "2026-01-01T00:00:00.000Z",
@@ -1420,7 +1425,7 @@ describe("Project Sessions domain", () => {
     },
   );
 
-  it.effect("streams Project and Working Directory metadata above PiSessions", () =>
+  it.effect("streams Project and Working Directory metadata above CakeSessionRuntimes", () =>
     Effect.gen(function* () {
       const updates = yield* projectSessionMetadata.observeCatalog({
         projectPath: "/project",
@@ -1509,7 +1514,7 @@ describe("Project Sessions domain", () => {
     let forkTitle: string | undefined;
     const activeCatalogs: string[] = [];
     const resolvedCatalogs: string[] = [];
-    const catalogEntry = (id: string, title: string): SessionSummary => ({
+    const catalogEntry = (id: string, title: string): PiSessionSummary => ({
       id,
       title,
       created: "2026-01-01T00:00:00.000Z",
@@ -1866,7 +1871,7 @@ describe("Project Sessions domain", () => {
         },
       ],
     };
-    const session = (id: string): SessionSummary => ({
+    const session = (id: string): PiSessionSummary => ({
       id,
       title: id,
       created: "2026-01-01T00:00:00.000Z",
@@ -2700,7 +2705,7 @@ describe("Project Sessions domain", () => {
       assert.equal(preview[0]?._tag, "Snapshot");
       const first = preview[0];
       if (first?._tag === "Snapshot")
-        assert.deepEqual(first.snapshot.conversation.parts[0], {
+        assert.deepEqual(first.snapshot.primaryConversation.parts[0], {
           id: "user-message",
           kind: "text",
           role: "user",

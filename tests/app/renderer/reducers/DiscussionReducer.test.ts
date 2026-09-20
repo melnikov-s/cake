@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DiscussionThread } from "../../../../src/domain/discussion-sessions/discussion-session-data";
 import type { ConversationSnapshot } from "../../../../src/domain/conversations/conversation-data";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
-import { Session } from "../../../../src/renderer/models/Session";
+import { CakeSession } from "../../../../src/renderer/models/CakeSession";
 import { applyDiscussionSessionUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
 import { applyDiscussionCatalogUpdate } from "../../../../src/renderer/reducers/DiscussionReducer";
 
@@ -44,7 +44,7 @@ const conversation = (sessionId: string): ConversationSnapshot => ({
 
 describe("DiscussionReducer", () => {
   it("reconciles threads in order without reapplying unrelated session state", () => {
-    const session = Session.create({
+    const session = CakeSession.create({
       sessionId: "session",
       usage: {
         tokens: { input: 1, output: 0, cacheRead: 0, cacheWrite: 0, total: 1 },
@@ -174,7 +174,7 @@ describe("DiscussionReducer", () => {
   });
 
   it("rejects sidecar updates addressed to another conversation", () => {
-    const sidecar = Session.create({ sessionId: "sidecar-one" });
+    const sidecar = CakeSession.create({ sessionId: "sidecar-one" });
     expect(() =>
       applyDiscussionSessionUpdate(sidecar, "sidecar-one", {
         _tag: "Snapshot",
@@ -198,7 +198,7 @@ describe("DiscussionReducer", () => {
   });
 
   it("validates every catalog row before mutating the collection", () => {
-    const session = Session.create({ sessionId: "session" });
+    const session = CakeSession.create({ sessionId: "session" });
     expect(() =>
       applyDiscussionCatalogUpdate(session, "session", {
         _tag: "Snapshot",

@@ -52,17 +52,26 @@
           ]
         },
         {
-          "claim": "conversations.deliver dispatches to a scoped PiSessionHandle and PiSessions.startTurn eventually calls the live runtime prompt.",
+          "claim": "conversations.deliver dispatches to a scoped CakeSessionHandle and CakeSessionRuntimes.startTurn eventually calls the live runtime prompt.",
           "sources": [
             { "path": "src/domain/conversations/conversations.ts", "symbol": "deliver" },
-            { "path": "src/services/pi/PiSessions.ts", "symbol": "makePiSessionsLayer" },
-            { "path": "src/services/pi/PiSessions.ts", "symbol": "PiSessionHandle.prompt" }
+            {
+              "path": "src/services/pi/CakeSessionRuntimes.ts",
+              "symbol": "makeCakeSessionRuntimesLayer"
+            },
+            {
+              "path": "src/services/pi/CakeSessionRuntimes.ts",
+              "symbol": "CakeSessionHandle.prompt"
+            }
           ]
         },
         {
-          "claim": "createCakeRuntime adapts Pi createAgentSession and events; ProjectSessions.observe and conversations.observe feed createModelObserver and applyProjectSessionUpdate on return.",
+          "claim": "createCakeSessionRuntime adapts Pi createAgentSession and events; ProjectSessions.observe and conversations.observe feed createModelObserver and applyProjectSessionUpdate on return.",
           "sources": [
-            { "path": "src/services/pi/runtime/cake-runtime.ts", "symbol": "createCakeRuntime" },
+            {
+              "path": "src/services/pi/runtime/cake-session-runtime.ts",
+              "symbol": "createCakeSessionRuntime"
+            },
             {
               "path": "src/domain/project-sessions/projectSessionOperations.ts",
               "symbol": "observe"

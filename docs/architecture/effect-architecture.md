@@ -59,7 +59,7 @@ Effects and Streams and own resources through Scope where necessary.
 
 Primary Services are:
 
-- `PiSessions`, `PiModels`, and `PiAgentResources`;
+- `CakeSessionRuntimes`, `PiModels`, and `PiAgentResources`;
 - `Git`;
 - Effect Platform `FileSystem`, `Path`, `HttpClient`, and command execution;
 - focused typed storage Services;
@@ -321,21 +321,27 @@ abort command.
 Pi is one external subsystem provided by `PiLive`, but it is not one god
 service. Cake exposes only the Pi capabilities it actually uses.
 
-### `PiSessions`
+### `CakeSessionRuntimes`
 
-`PiSessions` owns Pi session discovery and scoped live runtime access:
+`CakeSessionRuntimes` is the Pi adapter service for discovery plus keyed, scoped
+Cake Session Runtime access. The rename from `PiSessions` is deliberate: its
+acquired resource is not a raw Pi service object. Each `CakeSessionRuntime`
+wraps exactly one Pi Session Runtime for exactly one Cake Session, applies that
+Cake Session kind's capability profile and hooks, and returns a scoped
+`CakeSessionHandle`. Genuine Pi-owned discovery inputs, errors, and snapshots
+remain `PiSession*` values where they describe Pi authority:
 
 ```ts
-interface PiSessions {
+interface CakeSessionRuntimes {
   readonly sessionIds: (query: PiSessionQuery) => Stream.Stream<string, PiSessionError>;
 
   readonly catalog: (query: PiSessionQuery) => Stream.Stream<PiSessionSummary, PiSessionError>;
 
-  readonly inspect: (target: PiSessionTarget) => Effect.Effect<PiSessionSnapshot, PiSessionError>;
+  readonly inspect: (target: PiSessionTarget) => Effect.Effect<PiSessionPreview, PiSessionError>;
 
   readonly acquire: (
-    options: PiSessionOptions,
-  ) => Effect.Effect<PiSessionHandle, PiSessionError, Scope.Scope>;
+    options: CakeSessionRuntimeAcquireOptions,
+  ) => Effect.Effect<CakeSessionHandle, PiSessionError, Scope.Scope>;
 }
 ```
 
@@ -352,9 +358,10 @@ Streams project this derived state; renderer Models are window-lifetime read pro
 independent child lifecycle authorities. Root transitions and turn admission share the family
 lock. There is no persisted member-resolution synchronization journal.
 
-A `PiSessionHandle` exposes an observation Stream and operations such as
+A `CakeSessionHandle` is the scoped capability for its Cake Session Runtime. It
+exposes a purpose-built Conversation observation Stream and operations such as
 prompt, steer, follow-up, abort, execute command, set model, compact, fork, and
-reload. Runtime acquisition is keyed and scoped: concurrent consumers of one
+reload. The Handle is not the Cake Session's identity or persistence record. Runtime acquisition is keyed and scoped: concurrent consumers of one
 session share one process-local runtime, and the final release disposes it.
 Conflicting runtime-defining options never silently reconfigure an acquired
 runtime.
@@ -372,7 +379,7 @@ The Pi adapter translates that profile into tools, extension policy,
 permissions, and supported extension UI. Callers do not manually assemble Pi
 internals.
 
-Pi Extension execution is session-bound and belongs to `PiSessions`. There is
+Pi Extension execution is session-bound and belongs to `CakeSessionRuntimes`. There is
 no separate public `PiExtensions` service.
 
 ### `PiModels`
@@ -385,7 +392,7 @@ no separate public `PiExtensions` service.
 - bounded, non-session completion through Pi's model runtime.
 
 It accepts concrete Model Selections and knows nothing about Cake Model Preset
-names. Conversational execution always goes through `PiSessions`.
+names. Conversational execution always goes through `CakeSessionRuntimes`.
 
 ### `PiAgentResources`
 
@@ -420,24 +427,28 @@ Pi session history reconstructed through Pi from JSONL
 Cake never tails or writes Pi JSONL directly. It never persists a second
 transcript or a duplicate durable event log.
 
-A session observation begins with one coherent snapshot and continues with
+A Conversation observation begins with one coherent snapshot and continues with
 ordered typed events without a subscription gap:
 
 ```ts
-type CakeSessionUpdate =
+type ConversationUpdate =
   | {
       readonly _tag: "Snapshot";
-      readonly revision: CakeSessionRevision;
-      readonly snapshot: CakeSessionSnapshot;
+      readonly revision: number;
+      readonly snapshot: ConversationSnapshot;
     }
   | {
       readonly _tag: "Event";
-      readonly revision: CakeSessionRevision;
-      readonly event: CakeSessionEvent;
+      readonly revision: number;
+      readonly event: ConversationEvent;
     };
 ```
 
-Events cover messages and the broader runtime lifecycle: turn state, message
+A Project Session observation wraps that primary Conversation in a validated
+`ProjectSessionProjection` assembled in main from focused authorities. Subsequent
+focused streams may update related renderer projections without turning the
+aggregate into a second event database. Conversation Events cover messages and
+the broader runtime lifecycle: turn state, message
 parts, tool execution, model selection, usage, compaction, commands, extension
 UI, and failures.
 
@@ -451,7 +462,7 @@ into Cake Session updates before RPC. The renderer Model observer maps the
 RPC Stream into Model snapshots and applies them.
 
 ```text
-Pi → PiSessions Stream → Cake domain projection → RPC Stream
+Pi → CakeSessionRuntime → Conversation projection → Project Session aggregate/RPC Stream
    → Model observer → snapshot hydration / event reduction
    → reactive r-state-tree Models → Stores/React
 ```

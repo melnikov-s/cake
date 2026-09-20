@@ -10,7 +10,7 @@ import { Reasoning } from "../../../../../src/renderer/components/ai-elements/re
 import { ShellCommand } from "../../../../../src/renderer/components/ai-elements/shell-command";
 import { Tool } from "../../../../../src/renderer/components/ai-elements/tool";
 import { WorkLogDiff } from "../../../../../src/renderer/components/ai-elements/work-log-diff";
-import { Session } from "../../../../../src/renderer/models/Session";
+import { CakeSession } from "../../../../../src/renderer/models/CakeSession";
 import { SubagentActivityStore } from "../../../../../src/renderer/stores/SubagentActivityStore";
 
 describe("Cake-owned conversation components", () => {
@@ -524,7 +524,7 @@ describe("Cake-owned conversation components", () => {
 
   it("renders first-class live activity without a subagent wait call", () => {
     const handleId = crypto.randomUUID();
-    const model = Session.create({
+    const model = CakeSession.create({
       sessionId: "parent",
       subagentActivities: [
         {

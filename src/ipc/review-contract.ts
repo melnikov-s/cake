@@ -2,7 +2,7 @@ import { Schema } from "effect";
 import {
   sessionUsageSchema,
   uiPartSchema,
-  type SessionSnapshot,
+  type ConversationSnapshot,
   type UiPart,
 } from "./session-contract";
 
@@ -82,7 +82,7 @@ export type ReviewThreadRecord = typeof reviewThreadRecordSchema.Type;
 export type ReviewThread = typeof reviewThreadSchema.Type;
 export interface ReviewSessionProjection {
   readonly parts: ReadonlyArray<UiPart>;
-  readonly usage?: SessionSnapshot["usage"];
+  readonly usage?: ConversationSnapshot["usage"];
 }
 export function projectReviewThread(
   record: ReviewThreadRecord,

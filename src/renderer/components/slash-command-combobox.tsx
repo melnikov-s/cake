@@ -9,11 +9,11 @@ import {
   type KeyboardEvent,
 } from "react";
 import { flushSync } from "react-dom";
-import type { FileSuggestion, SessionSnapshot } from "../../ipc/session-contract";
+import type { FileSuggestion, ConversationSnapshot } from "../../ipc/session-contract";
 import { ComposerInput } from "./ai-elements/composer";
 import { NavItem } from "./ui/nav-item";
 
-type SlashCommand = SessionSnapshot["commands"][number];
+type SlashCommand = ConversationSnapshot["commands"][number];
 
 interface SlashCommandComboboxProps extends Omit<
   ComponentProps<typeof ComposerInput>,

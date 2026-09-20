@@ -9,7 +9,10 @@ import { SessionCatalogChanges } from "../../../src/services/session-catalogs/Se
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
-import { makePiSessionsLayer, PiSessions } from "../../../src/services/pi/PiSessions";
+import {
+  makeCakeSessionRuntimesLayer,
+  CakeSessionRuntimes,
+} from "../../../src/services/pi/CakeSessionRuntimes";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { fakeRuntime } from "../helpers/piRuntimeFixture";
@@ -64,7 +67,7 @@ const environment = (disposed: Deferred.Deferred<void>) =>
       records: () => Effect.succeed([]),
       proposeSquashMessage: () => Effect.void,
     }),
-    makePiSessionsLayer({
+    makeCakeSessionRuntimesLayer({
       sessionIds: () => Stream.empty,
       catalog: () => Stream.empty,
       catalogEntry: () => Effect.succeed(undefined),
@@ -88,7 +91,7 @@ it.effect("settles an informational message received by a family root without a 
       yield* Effect.scoped(
         Effect.gen(function* () {
           const options = yield* acquireOptions({ location, sessionId: "root", newSession: false });
-          const handle = yield* (yield* PiSessions).acquire(options);
+          const handle = yield* (yield* CakeSessionRuntimes).acquire(options);
           yield* handle.prompt(message(false));
         }),
       );
@@ -110,7 +113,7 @@ it.effect("retains a completed root request that expected a response", () =>
       yield* Effect.scoped(
         Effect.gen(function* () {
           const options = yield* acquireOptions({ location, sessionId: "root", newSession: false });
-          const handle = yield* (yield* PiSessions).acquire(options);
+          const handle = yield* (yield* CakeSessionRuntimes).acquire(options);
           yield* handle.prompt(message(true));
         }),
       );
@@ -149,7 +152,7 @@ it.effect("settles family work in a root runtime acquired before promotion", () 
       yield* Effect.scoped(
         Effect.gen(function* () {
           const options = yield* acquireOptions({ location, sessionId: "root", newSession: false });
-          const handle = yield* (yield* PiSessions).acquire(options);
+          const handle = yield* (yield* CakeSessionRuntimes).acquire(options);
 
           yield* handle.prompt("Untracked standalone work");
           yield* addFamily();

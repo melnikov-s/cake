@@ -16,7 +16,7 @@ import type {
   PiSettingUpdate,
   ExtensionUiEvent,
   ExtensionUiIntent,
-  SessionSnapshot,
+  ConversationSnapshot,
   SessionUsage,
   ThinkingLevel,
   UiPart,
@@ -61,20 +61,23 @@ import {
 } from "./session-projection";
 import {
   activeCompactionNotice,
-  createCakeRuntimeEventProjection,
-} from "./cake-runtime-event-projection";
-import { projectCakeRuntimeSnapshot } from "./cake-runtime-snapshot";
-import { createCakeRuntimeTurnController } from "./cake-runtime-turn-controller";
-import { createCakeRuntimeRecovery } from "./cake-runtime-recovery";
-import { createCakeRuntimeResourceLifecycle } from "./cake-runtime-resources";
+  createCakeSessionRuntimeEventProjection,
+} from "./cake-session-runtime-event-projection";
+import { projectCakeSessionRuntimeSnapshot } from "./cake-session-runtime-snapshot";
+import { createCakeSessionRuntimeTurnController } from "./cake-session-runtime-turn-controller";
+import { createCakeSessionRuntimeRecovery } from "./cake-session-runtime-recovery";
+import { createCakeSessionRuntimeResourceLifecycle } from "./cake-session-runtime-resources";
 import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
-import { createCakeRuntimeCapabilities, type GlobalControlTool } from "./cake-runtime-capabilities";
+import {
+  createCakeSessionRuntimeCapabilities,
+  type GlobalControlTool,
+} from "./cake-session-runtime-capabilities";
 import { createPromptCacheLineage } from "./prompt-cache-lineage";
 import {
-  createCakeRuntimeConfiguration,
-  createCakeRuntimeConfigurationState,
-} from "./cake-runtime-configuration";
-import { createCakeRuntimeContinuations } from "./cake-runtime-continuations";
+  createCakeSessionRuntimeConfiguration,
+  createCakeSessionRuntimeConfigurationState,
+} from "./cake-session-runtime-configuration";
+import { createCakeSessionRuntimeContinuations } from "./cake-session-runtime-continuations";
 import type { RuntimeUiRequest } from "./runtime-ui-request";
 import type {
   InlineWidgetGenerationRequest,
@@ -87,19 +90,19 @@ export {
   createAgentControlOperations,
   createGlobalControlOperations,
   projectSessionCreateInputSchema,
-} from "./cake-runtime-capabilities";
+} from "./cake-session-runtime-capabilities";
 
 export const piRuntimeVersion = "0.85.1" as const;
 
-export type CakeRuntimeEvent =
-  | { type: "snapshot"; requestId?: string; snapshot: SessionSnapshot }
+export type CakeSessionRuntimeEvent =
+  | { type: "snapshot"; requestId?: string; snapshot: ConversationSnapshot }
   | { type: "part-updated"; sessionId: string; part: UiPart }
   | { type: "part-removed"; sessionId: string; partId: string }
   | { type: "streaming"; sessionId: string; streaming: boolean }
   | { type: "usage-updated"; sessionId: string; usage: SessionUsage }
   | { type: "extension-ui"; sessionId: string; event: ExtensionUiEvent };
 
-export interface CakeRuntimeOptions {
+export interface CakeSessionRuntimeOptions {
   cwd: string;
   trusted: boolean;
   agentDir: string;
@@ -272,18 +275,18 @@ export interface CakeRuntimeOptions {
     abort(handleId: string, parentSessionId: string): Promise<JsonValue>;
     close(handleId: string, parentSessionId: string): Promise<JsonValue>;
   };
-  onEvent(event: CakeRuntimeEvent): void;
+  onEvent(event: CakeSessionRuntimeEvent): void;
 }
 
-export interface CakeRuntime {
+export interface CakeSessionRuntime {
   readonly sessionId: string;
   readonly sessionFile: string;
-  /** Returns Pi's live turn state without assembling a SessionSnapshot. */
+  /** Returns Pi's live turn state without assembling a ConversationSnapshot. */
   readonly streaming: boolean;
   executingTurnIds?(): ReadonlyArray<string>;
   getReviewParentContext?(): ReviewParentContext;
   recordReviewRun(run: ReviewRunEntry): void;
-  snapshot(): Promise<SessionSnapshot>;
+  snapshot(): Promise<ConversationSnapshot>;
   notifySubagentCompletion?(result: JsonValue): Promise<void>;
   prompt(
     text: string,
@@ -344,7 +347,9 @@ export interface CakeRuntime {
   dispose(): void | Promise<void>;
 }
 
-export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<CakeRuntime> {
+export async function createCakeSessionRuntime(
+  options: CakeSessionRuntimeOptions,
+): Promise<CakeSessionRuntime> {
   const agentDir = options.agentDir;
   const settingsManager = SettingsManager.create(options.cwd, agentDir, {
     projectTrusted: options.trusted,
@@ -354,9 +359,9 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     modelsPath: `${agentDir}/models.json`,
     modelsStorePath: `${agentDir}/models-cache.json`,
   });
-  const configurationState = createCakeRuntimeConfigurationState(options.fastMode);
+  const configurationState = createCakeSessionRuntimeConfigurationState(options.fastMode);
   const promptCacheLineage = createPromptCacheLineage();
-  const capabilities = await createCakeRuntimeCapabilities({
+  const capabilities = await createCakeSessionRuntimeCapabilities({
     options,
     agentDir,
     settingsManager,
@@ -426,14 +431,14 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     options.onEvent({ type: "part-updated", sessionId: cakeSessionId, part });
   const removePart = (partId: string) =>
     options.onEvent({ type: "part-removed", sessionId: cakeSessionId, partId });
-  const recovery = createCakeRuntimeRecovery({
+  const recovery = createCakeSessionRuntimeRecovery({
     session,
     retryEnabled: () => settingsManager.getRetryEnabled(),
     isDisposed: () => disposed,
     emitPart,
     removePart,
   });
-  const resources = await createCakeRuntimeResourceLifecycle({
+  const resources = await createCakeSessionRuntimeResourceLifecycle({
     resourceLoader: capabilities.resourceLoader,
     settingsManager,
     eventBus: capabilities.eventBus,
@@ -451,14 +456,14 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   });
 
   let compactionQueuedMessages: () => readonly string[] = () => [];
-  const projection = createCakeRuntimeEventProjection({
+  const projection = createCakeSessionRuntimeEventProjection({
     session,
     sessionId: cakeSessionId,
     emit: options.onEvent,
     compactionQueuedMessages: () => compactionQueuedMessages(),
     isDisposed: () => disposed,
   });
-  const configuration = createCakeRuntimeConfiguration({
+  const configuration = createCakeSessionRuntimeConfiguration({
     options,
     modelRuntime,
     settingsManager,
@@ -473,8 +478,8 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   });
 
   async function makeSnapshot(
-    onCaptured?: (snapshot: SessionSnapshot) => void,
-  ): Promise<SessionSnapshot> {
+    onCaptured?: (snapshot: ConversationSnapshot) => void,
+  ): Promise<ConversationSnapshot> {
     const [sessionFile, models, artifacts] = await Promise.all([
       options.auxiliary
         ? Promise.resolve(undefined)
@@ -491,7 +496,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
           Promise.resolve([])),
     ]);
 
-    const snapshot = projectCakeRuntimeSnapshot({
+    const snapshot = projectCakeSessionRuntimeSnapshot({
       workspacePath: options.cwd,
       sessionId: cakeSessionId,
       sessionListed: sessionFile !== undefined,
@@ -533,7 +538,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
     void emitSnapshot().catch(() => undefined);
   }
 
-  const turnController = createCakeRuntimeTurnController({
+  const turnController = createCakeSessionRuntimeTurnController({
     session,
     isDisposed: () => disposed,
     beforeIdleTurn: async () => {
@@ -550,7 +555,7 @@ export async function createCakeRuntime(options: CakeRuntimeOptions): Promise<Ca
   });
   compactionQueuedMessages = turnController.compactionQueuedMessages;
 
-  const continuations = createCakeRuntimeContinuations({
+  const continuations = createCakeSessionRuntimeContinuations({
     options,
     session,
     sessionId: cakeSessionId,

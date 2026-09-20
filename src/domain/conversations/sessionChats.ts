@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import * as subagents from "../subagents/subagents";
 import type { ChatConfiguration, PiSettingUpdate } from "../../ipc/session-contract";
-import { PiSessions, type PiSessionHandle } from "../../services/pi/PiSessions";
+import { CakeSessionRuntimes, type CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { encodeCrossSessionMessage } from "./cross-session-coordination";
 import {
@@ -41,7 +41,7 @@ const asError =
 
 /** Acquires the Pi runtime profile already assembled by the owning session collection. */
 const acquire = Effect.fn("SessionChats.acquire")(function* (sessionId: string) {
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   return yield* sessions.acquireSession(sessionId).pipe(asError("acquire"));
 });
 
@@ -201,7 +201,7 @@ export const setModel = Effect.fn("SessionChats.setModel")(function* (
 
 export const setThinkingLevel = Effect.fn("SessionChats.setThinkingLevel")(function* (
   target: SessionChatTarget,
-  level: Parameters<PiSessionHandle["setThinkingLevel"]>[0],
+  level: Parameters<CakeSessionHandle["setThinkingLevel"]>[0],
 ) {
   yield* setConversationThinkingLevel(acquire(target.sessionId), level).pipe(
     asError("setThinkingLevel"),

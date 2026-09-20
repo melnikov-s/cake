@@ -5,7 +5,7 @@ import * as cakeChatLifecycle from "./cakeChatLifecycle";
 import type { CakeChatLocation } from "./cakeChatLocations";
 import { makeSubagentControl } from "../subagents/subagentControl";
 import { jsonObjectSchema } from "../../ipc/json-contract";
-import type { PiSessions } from "../../services/pi/PiSessions";
+import type { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import type { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { RendererRequestCoordinator as RendererRequests } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
@@ -13,7 +13,7 @@ import type { SubagentCoordinator } from "../../services/subagents/SubagentCoord
 import type { SubagentEnvironment } from "../../services/subagents/SubagentEnvironment";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import type { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
-import type { PiSessionAcquireOptions } from "../../services/pi/PiSessions";
+import type { CakeSessionRuntimeAcquireOptions } from "../../services/pi/CakeSessionRuntimes";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 
 export interface CakeChatRuntimeConfiguration {
@@ -36,7 +36,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   const rendererRequests = yield* RendererRequests;
   const context = yield* Effect.context<
     | ApplicationState
-    | PiSessions
+    | CakeSessionRuntimes
     | RendererRequestCoordinator
     | SessionArchiveStorage
     | SessionCatalogChanges
@@ -55,7 +55,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     };
   };
   const getRuntimeOptions = () => runtimeOptions;
-  const runtimeOptions: PiSessionAcquireOptions = {
+  const runtimeOptions: CakeSessionRuntimeAcquireOptions = {
     profile: { _tag: "CakeChatSession" },
     onSessionChanged: catalogs.publish({
       _tag: "CakeChatSessionChanged",

@@ -10,7 +10,7 @@ import {
   type CakeOperationImageContent,
   type CakeOperationImageResult,
 } from "../../../src/services/pi/runtime/cake-operation-registry";
-import { createCakeToolDefinition } from "../../../src/services/pi/runtime/cake-runtime-capabilities";
+import { createCakeToolDefinition } from "../../../src/services/pi/runtime/cake-session-runtime-capabilities";
 
 function context() {
   return {

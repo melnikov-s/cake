@@ -10,7 +10,7 @@ import {
 import { defaultProjectSettings } from "../application/application-data";
 import { getState, revokeProjectTrust, trustProject } from "../application/application";
 import { generateWorktreeName, utilityModelSelection } from "../utility-work/utilityWork";
-import { PiSessions } from "../../services/pi/PiSessions";
+import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import {
@@ -213,7 +213,7 @@ const activeSessionInWorkingDirectory = Effect.fn(
       return true;
   }
   const familyIds = new Set(families.flatMap(familyMemberIds));
-  return yield* (yield* PiSessions).catalog({ workingDirectory, sessionDirectory }).pipe(
+  return yield* (yield* CakeSessionRuntimes).catalog({ workingDirectory, sessionDirectory }).pipe(
     Stream.filter((session) => !familyIds.has(session.id)),
     Stream.runHead,
     Effect.map(Option.isSome),

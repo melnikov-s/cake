@@ -24,7 +24,7 @@ import { ProjectCatalog } from "../../../../src/renderer/models/ProjectCatalog";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { CakeChatCatalog } from "../../../../src/renderer/models/CakeChatCatalog";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
-import { Session } from "../../../../src/renderer/models/Session";
+import { CakeSession } from "../../../../src/renderer/models/CakeSession";
 import { WorktreeCatalog } from "../../../../src/renderer/models/WorktreeCatalog";
 
 function runtimeFor(client: CakeIpcClientService): Runtime {
@@ -194,7 +194,7 @@ describe("createModelObserver", () => {
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
-    const session = Session.create({ sessionId: "session", workingDirectory: "/project" });
+    const session = CakeSession.create({ sessionId: "session", workingDirectory: "/project" });
     const observer = observerFor(client);
 
     observer.sync({
@@ -232,7 +232,7 @@ describe("createModelObserver", () => {
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
-    const session = Session.create({
+    const session = CakeSession.create({
       sessionId: "session",
       workingDirectory: "/project",
       sessionFile: "/sessions/session.jsonl",
@@ -348,10 +348,14 @@ describe("createModelObserver", () => {
             projectPath: "/cake",
             workingDirectory: "/cake",
           },
-          projectName: "Cake",
-          resolved: false,
-          unread: false,
-          conversation,
+          project: { path: "/cake", name: "Cake" },
+          workingDirectory: { path: "/cake" },
+          lifecycle: { resolved: false, unread: false },
+          primaryConversation: conversation,
+          discussionSessions: [],
+          subagentSessions: [],
+          reviewThreads: [],
+          artifactLinks: [],
         },
       },
       {
@@ -378,7 +382,7 @@ describe("createModelObserver", () => {
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
-    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    const session = CakeSession.create({ sessionId: "session", workingDirectory: "/cake" });
     const observer = observerFor(client);
 
     observer.sync({
@@ -438,7 +442,7 @@ describe("createModelObserver", () => {
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
-    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    const session = CakeSession.create({ sessionId: "session", workingDirectory: "/cake" });
     const observer = observerFor(client);
 
     observer.sync({
@@ -461,10 +465,14 @@ describe("createModelObserver", () => {
             projectPath: "/cake",
             workingDirectory: "/cake",
           },
-          projectName: "Cake",
-          resolved: false,
-          unread: false,
-          conversation,
+          project: { path: "/cake", name: "Cake" },
+          workingDirectory: { path: "/cake" },
+          lifecycle: { resolved: false, unread: false },
+          primaryConversation: conversation,
+          discussionSessions: [],
+          subagentSessions: [],
+          reviewThreads: [],
+          artifactLinks: [],
         },
       }),
     );
@@ -772,7 +780,7 @@ describe("createModelObserver", () => {
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
-    const session = Session.create({ sessionId: "archived", workingDirectory: "/cake" });
+    const session = CakeSession.create({ sessionId: "archived", workingDirectory: "/cake" });
     const observer = observerFor(client);
 
     try {
@@ -824,10 +832,10 @@ describe("createModelObserver", () => {
           projectPath: "/cake",
           workingDirectory: "/cake",
         },
-        projectName: "Cake",
-        resolved: false,
-        unread: false,
-        conversation: {
+        project: { path: "/cake", name: "Cake" },
+        workingDirectory: { path: "/cake" },
+        lifecycle: { resolved: false, unread: false },
+        primaryConversation: {
           workingDirectory: "/cake",
           sessionId: "session",
           sessionFile: "/cake/session.jsonl",
@@ -850,6 +858,10 @@ describe("createModelObserver", () => {
           extensionUi: { statuses: [] },
           tree: [],
         },
+        discussionSessions: [],
+        subagentSessions: [],
+        reviewThreads: [],
+        artifactLinks: [],
       },
     };
     const client = {
@@ -869,7 +881,7 @@ describe("createModelObserver", () => {
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
-    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    const session = CakeSession.create({ sessionId: "session", workingDirectory: "/cake" });
     const observer = observerFor(client);
 
     try {

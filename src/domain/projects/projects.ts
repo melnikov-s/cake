@@ -3,7 +3,7 @@ import type { WebContents } from "electron";
 import { Effect, Stream } from "effect";
 import type { cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
 import { Electron } from "../../services/electron/Electron";
-import { PiSessions } from "../../services/pi/PiSessions";
+import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { PiAgentResources } from "../../services/pi/PiAgentResources";
 import { AgentAvailability } from "../../services/pi/AgentAvailability";
 import { ProjectSessionRuntimeHost } from "../../services/pi/ProjectSessionRuntimeHost";
@@ -513,7 +513,7 @@ export const restartPi = Effect.fn("Projects.restartPi")(function* (
 ) {
   yield* requireAllowed(request.path);
   const availability = yield* AgentAvailability;
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   yield* availability.setWorkingDirectory(request.path, { state: "reloading" });
   yield* mapProjectError(
     "restartPi",

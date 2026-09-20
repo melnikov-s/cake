@@ -1,7 +1,10 @@
 import { Schema, type Effect } from "effect";
 import { jsonValueSchema } from "../../ipc/json-contract";
-import type { PiSessionAcquireOptions, PiSessions } from "../../services/pi/PiSessions";
-import type { CakeRuntimeOptions } from "../../services/pi/runtime/cake-runtime";
+import type {
+  CakeSessionRuntimeAcquireOptions,
+  CakeSessionRuntimes,
+} from "../../services/pi/CakeSessionRuntimes";
+import type { CakeSessionRuntimeOptions } from "../../services/pi/runtime/cake-session-runtime";
 import type { SubagentCoordinator } from "../../services/subagents/SubagentCoordinator";
 import type { SubagentEnvironment } from "../../services/subagents/SubagentEnvironment";
 import type { ApplicationState } from "../../services/storage/ApplicationState";
@@ -9,7 +12,7 @@ import * as subagents from "./subagents";
 
 type SubagentControlRequirements =
   | ApplicationState
-  | PiSessions
+  | CakeSessionRuntimes
   | SubagentCoordinator
   | SubagentEnvironment;
 
@@ -24,9 +27,9 @@ export interface SubagentControlOptions {
 export const makeSubagentControl =
   ({ runEffect }: SubagentControlOptions) =>
   (
-    options: () => PiSessionAcquireOptions,
+    options: () => CakeSessionRuntimeAcquireOptions,
     workingDirectory: string,
-  ): NonNullable<CakeRuntimeOptions["agentControl"]> => {
+  ): NonNullable<CakeSessionRuntimeOptions["agentControl"]> => {
     const parent = (parentSessionId: string): subagents.SubagentParentRuntime => ({
       parentSessionId,
       workingDirectory,

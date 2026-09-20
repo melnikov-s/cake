@@ -10,8 +10,8 @@ import { dirname, join, resolve } from "node:path";
 import { Effect, Stream } from "effect";
 import {
   type FileSuggestion,
-  type SessionPreview,
-  type SessionSummary,
+  type PiSessionPreview,
+  type PiSessionSummary,
 } from "../../../ipc/session-contract";
 import {
   projectArtifactPointers,
@@ -96,12 +96,12 @@ export function loadPiChangelog() {
 }
 
 /** Loads cheap metadata for one active session without opening its transcript body. */
-export async function loadWorkspaceSessionSummary(
+export async function loadWorkspacePiSessionSummary(
   cwd: string,
   sessionId: string,
   sessionDir: string,
   options: StreamWorkspaceSessionsOptions = {},
-): Promise<SessionSummary | undefined> {
+): Promise<PiSessionSummary | undefined> {
   const item = await findSessionFileMetadataById(sessionId, {
     workingDirectory: cwd,
     root: sessionDir,
@@ -199,7 +199,7 @@ export function streamWorkspaceSessions(
   cwd: string,
   sessionDir: string,
   options: StreamWorkspaceSessionsOptions = {},
-): Stream.Stream<SessionSummary, unknown> {
+): Stream.Stream<PiSessionSummary, unknown> {
   return streamSessionFiles({
     workingDirectory: cwd,
     root: sessionDir,
@@ -236,13 +236,13 @@ export async function findSessionFile(
   });
 }
 
-export async function loadWorkspaceSessionPreview(
+export async function loadWorkspacePiSessionPreview(
   cwd: string,
   sessionId: string,
   sessionDir: string,
   resolvedSessionDir?: string,
   direct = false,
-): Promise<SessionPreview | undefined> {
+): Promise<PiSessionPreview | undefined> {
   const activeDirectory = direct
     ? resolve(sessionDir)
     : cakeWorkspaceSessionDirectory(cwd, sessionDir);

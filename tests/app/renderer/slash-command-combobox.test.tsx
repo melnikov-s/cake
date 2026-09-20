@@ -4,13 +4,13 @@
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionSnapshot } from "../../../src/ipc/session-contract";
+import type { ConversationSnapshot } from "../../../src/ipc/session-contract";
 import {
   findFileMention,
   SlashCommandCombobox,
 } from "../../../src/renderer/components/slash-command-combobox";
 
-type SlashCommand = SessionSnapshot["commands"][number];
+type SlashCommand = ConversationSnapshot["commands"][number];
 
 function command(name: string): SlashCommand {
   return {

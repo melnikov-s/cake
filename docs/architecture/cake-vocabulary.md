@@ -12,10 +12,38 @@ Cake ownership could be meant.
 The system that owns a fact and can reconstruct it after Cake restarts. Every
 durable fact has exactly one authority.
 
+### Identity
+
+A stable value that answers **which entity is this?** Identity survives runtime
+release and projection replacement. `PiSessionId`, Cake Session IDs, Project
+IDs, and artifact lineage IDs are identities. Identity is not a capability and
+does not imply that an entity is currently materialized.
+
+### Reference
+
+A bounded value that identifies another independently owned entity, optionally
+with routing or display metadata. A Reference does not transfer ownership and
+must not copy the referenced entity's authoritative payload. Project Session
+aggregate projections therefore carry Discussion Session, Subagent Session,
+review-thread, artifact-link, and Session Family references or summaries.
+
+### Handle
+
+A scoped capability for operating one live resource. A Handle is neither an
+identity nor persisted state. Releasing a Handle releases that capability lease;
+it does not delete the entity.
+
+### Runtime
+
+Live execution machinery with a resource lifetime. A Runtime may be acquired
+and released repeatedly for one durable identity. Runtime state is not a durable
+transcript unless its authority explicitly persists it.
+
 ### Snapshot
 
-A complete representation of current state at a point in an authoritative
-sequence. A snapshot is not necessarily persisted by Cake.
+A complete representation of current state at one point in an authoritative
+sequence. A Snapshot describes one observation boundary and is not necessarily
+persisted by Cake.
 
 ### Event
 
@@ -35,8 +63,10 @@ type Update<Snapshot, Event> =
 
 ### Projection
 
-A current, derived representation of authoritative state. Renderer Models are
-reactive projections; they are not additional authorities.
+A purpose-built, validated, derived representation assembled from one or more
+authorities for a consumer. A Projection may itself be delivered as a Snapshot
+and then updated by Events. Project Session aggregate projections and renderer
+Models are projections; they are not additional authorities.
 
 ### Revision
 
@@ -57,45 +87,67 @@ A live, scoped Pi resource operating on a Pi Session. It accepts prompts and
 other runtime operations and emits live events. Releasing it does not delete
 the Pi Session.
 
+### Conversation
+
+The transcript-bearing concept presented by Cake. Every materialized Cake
+Session has exactly one Conversation. Pi remains the durable authority for that
+Conversation's messages, tool history, branches, compaction, and transcript
+format. Cake projects purpose-built `ConversationSnapshot` and
+`ConversationEvent` values; raw Pi trees and messages never leave
+`src/services/pi`.
+
+A Conversation is not a Cake Session: it does not own Project routing,
+lifecycle, relationships, review threads, or artifact links. A staged, unsent
+chat is renderer state and is neither a Conversation nor a Cake Session.
+
 ### Cake Session
 
-Cake's semantic use of a Pi Session. `CakeSession` is the umbrella domain type:
+The abstract Cake domain entity for one conversational session:
 
 ```ts
 type CakeSession = ProjectSession | CakeChatSession | DiscussionSession | SubagentSession;
 ```
 
-Every materialized Cake Session is backed by a Pi Session, but Cake owns its
-kind-specific metadata and policy. A staged, unsent chat is renderer state and
-is not yet a Cake Session or Pi Session.
+Every materialized Cake Session has exactly one Conversation backed by exactly
+one Pi Session. Cake owns the kind-specific identity, metadata, relationships,
+and policy; Pi owns the durable Conversation transcript.
 
 ### Project Session
 
-A Cake Session associated with a Project and a Working Directory. This is the
-normal user-facing coding session.
+The top-level, Project-associated Cake Session aggregate root that users open
+from the sidebar. A Project Session **has one primary Conversation** and
+coordinates or references its Project, Working Directory, lifecycle,
+Discussion Sessions, Subagent Sessions, review threads, artifact links, and
+Session Family membership. Those authorities remain focused: the aggregate
+projection joins bounded references and summaries rather than copying Pi
+transcripts, artifact payloads, Git state, or review storage into a god object.
+
+The main/domain layer assembles the validated `ProjectSessionProjection`; the
+renderer consumes it and does not define Project Session ownership.
 
 ### Cake Chat Session
 
-An application-level Cake Session with curated Cake controls. It remains
-separate from Project Session catalogs.
+An application-level Cake Session with one Conversation and curated Cake
+controls. It remains separate from Project Session catalogs.
 
 ### Discussion Session
 
-A lightweight Cake Session associated with a parent Project Session. It may be
-session-level or anchored to an assistant message, review, or source location.
-Cake owns that scope and any anchor; Pi owns the sidecar transcript. It receives
-regenerated, read-only parent context and constrained capabilities.
+A lightweight Cake Session whose Conversation is anchored to a parent Project
+Session's primary Conversation at session, assistant-message, review, or source
+scope. Cake owns the anchor and regenerates read-only parent context; Pi owns
+the Discussion Session's transcript. **Side chat** is UI copy only; domain code
+uses **Discussion Session**.
 
 ### Subagent Session
 
-A private child Cake Session owned by another Cake Session. Cake owns its
-stable handle, fixed tool boundary, concurrency, retention, and visibility
+A private Cake Session **owned by a parent Cake Session**. Cake owns its stable
+parent-scoped handle, fixed tool boundary, concurrency, retention, and visibility
 policy. It is never a Project Session and does not expose its backing Pi Session
 identity to the renderer.
 
 ### Session Family
 
-A durable Cake-owned, recursively nested relationship among ordinary Project
+A durable Cake-owned, recursively nested relationship among independent Project
 Sessions. A Session Family has one root; every non-root member has exactly one
 immediate parent, and each parent's direct children retain stable creation order.
 Every member remains an independent Pi Session with its own transcript, runtime,
@@ -135,8 +187,8 @@ Markdown remains conversation content even when it contains Mermaid, a small tab
 or another richly rendered block.
 
 An Artifact is a global Cake-owned lineage of immutable full-snapshot revisions.
-A lineage is visible through explicit links to either a Cake Session or a Session
-Family; it is not owned by either target. A link follows the latest revision or
+A lineage is **linked to**, never owned by, either a Cake Session or a Session
+Family through explicit references. A link follows the latest revision or
 pins one exact revision, without copying payload bytes or appending a Pi entry.
 Any effectively linked session may publish the next revision with compare-and-swap
 against the latest revision. Cake owns bounded payloads and lineage metadata; Pi
@@ -150,11 +202,16 @@ validated user response or cancellation. A blocking request is not an Artifact
 and is never stored in the reusable artifact catalog, even when it reuses snapshot
 schemas, rendering, or sandbox infrastructure.
 
-### Session handle
+### Cake Session Runtime
 
-A scoped capability for one live session runtime. A handle is not identity or
-persistence; it is access to operations and an observation Stream for the
-lifetime of its Scope.
+Cake's scoped adapter around **exactly one Pi Session Runtime for exactly one
+Cake Session**. It attaches the Cake Session kind's capabilities, hooks, and
+projection policy without replacing Pi's execution machinery.
+
+### Cake Session Handle
+
+The scoped Handle for one Cake Session Runtime. It exposes Cake-owned operations
+and a Conversation observation Stream for the lifetime of its Effect Scope.
 
 ## Projects and filesystems
 
@@ -330,7 +387,7 @@ here.
 ### Pi Extension
 
 Executable code loaded by Pi and bound to a Pi Session Runtime. Its executable
-lifecycle belongs to `PiSessions`; discovery and diagnostics belong to
+lifecycle belongs to `CakeSessionRuntimes`; discovery and diagnostics belong to
 `PiAgentResources`.
 
 ### Session Plugin

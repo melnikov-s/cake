@@ -3,7 +3,10 @@ import * as projectSessionLocations from "../project-sessions/projectSessionLoca
 import { DateTime, Effect, Exit, Schedule } from "effect";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import { PiModels } from "../../services/pi/PiModels";
-import { PiSessions, type PiSessionAcquireOptions } from "../../services/pi/PiSessions";
+import {
+  CakeSessionRuntimes,
+  type CakeSessionRuntimeAcquireOptions,
+} from "../../services/pi/CakeSessionRuntimes";
 import type { ProjectSessionLocation } from "../project-sessions/project-session-data";
 import { resolutionNamespace } from "../project-sessions/projectSessionResolution";
 import {
@@ -104,13 +107,13 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
   runtimeOptions: (
     sessionId: string,
     childLocation: ProjectSessionLocation,
-  ) => Effect.Effect<PiSessionAcquireOptions, E, R>,
+  ) => Effect.Effect<CakeSessionRuntimeAcquireOptions, E, R>,
   createIsolatedLocation?: (worktreeName: string) => Effect.Effect<ProjectSessionLocation, E2, R2>,
   resolveLocation?: (workingDirectory: string) => Effect.Effect<ProjectSessionLocation, E3, R3>,
   discardIsolatedLocation?: (workingDirectory: string) => Effect.Effect<void, E4, R4>,
 ) {
   const storage = yield* SessionFamilyStorage;
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const models = yield* PiModels;
   const archive = yield* SessionArchiveStorage;
   const catalogs = yield* SessionCatalogChanges;
@@ -377,7 +380,7 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
     })) !== "active"
   )
     return;
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   yield* storage.withMemberLock(
     turn.senderSessionId,
     Effect.gen(function* () {

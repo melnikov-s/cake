@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ConversationSnapshot } from "../../../../src/domain/conversations/conversation-data";
 import type { ProjectSessionUpdate } from "../../../../src/domain/project-sessions/project-session-data";
-import { Session } from "../../../../src/renderer/models/Session";
+import { CakeSession } from "../../../../src/renderer/models/CakeSession";
 import { applyProjectSessionUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
 
 function conversation(
@@ -40,20 +40,44 @@ function snapshot(
         projectPath: "/cake",
         workingDirectory: "/cake",
       },
-      projectName: "Cake",
-      resolved,
-      unread: false,
-      conversation: conversation(extensionUi, parts),
+      project: { path: "/cake", name: "Cake" },
+      workingDirectory: { path: "/cake" },
+      lifecycle: { resolved, unread: false },
+      primaryConversation: conversation(extensionUi, parts),
+      discussionSessions: [
+        { threadId: "thread-1", sessionId: "discussion-1", status: "open", anchor: "message" },
+      ],
+      subagentSessions: [],
+      reviewThreads: [
+        {
+          threadId: "thread-1",
+          status: "open",
+          anchor: "message",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      artifactLinks: [],
+      family: {
+        familyId: "family-1",
+        rootProjectSessionId: "session",
+        childProjectSessionIds: ["child-1"],
+        depth: 0,
+      },
     },
   };
 }
 
 describe("ConversationReducer", () => {
   it("projects whether the observed transcript is resolved", () => {
-    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    const session = CakeSession.create({ sessionId: "session", workingDirectory: "/cake" });
 
     applyProjectSessionUpdate(session, "session", snapshot({ statuses: [] }, true));
     expect(session.resolved).toBe(true);
+    expect(session.unread).toBe(false);
+    expect(session.projectName).toBe("Cake");
+    expect(session.discussionSessionReferences[0]?.sessionId).toBe("discussion-1");
+    expect(session.reviewThreadReferences[0]?.threadId).toBe("thread-1");
+    expect(session.family?.childProjectSessionIds).toEqual(["child-1"]);
     expect(session.observedSnapshotRevision).toBe(1);
 
     applyProjectSessionUpdate(session, "session", snapshot({ statuses: [] }));
@@ -63,7 +87,7 @@ describe("ConversationReducer", () => {
   });
 
   it("marks a session resolved without replacing its rendered transcript", () => {
-    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    const session = CakeSession.create({ sessionId: "session", workingDirectory: "/cake" });
     applyProjectSessionUpdate(
       session,
       "session",
@@ -94,7 +118,7 @@ describe("ConversationReducer", () => {
   });
 
   it("hydrates current extension status and title from a snapshot", () => {
-    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    const session = CakeSession.create({ sessionId: "session", workingDirectory: "/cake" });
 
     applyProjectSessionUpdate(
       session,
@@ -111,7 +135,7 @@ describe("ConversationReducer", () => {
   });
 
   it("applies ordered companion state events to the declared surface", () => {
-    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    const session = CakeSession.create({ sessionId: "session", workingDirectory: "/cake" });
     applyProjectSessionUpdate(
       session,
       "session",
@@ -146,7 +170,7 @@ describe("ConversationReducer", () => {
   });
 
   it("applies ordered extension state events without a nested revision", () => {
-    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    const session = CakeSession.create({ sessionId: "session", workingDirectory: "/cake" });
     applyProjectSessionUpdate(session, "session", snapshot({ statuses: [] }));
     applyProjectSessionUpdate(session, "session", {
       _tag: "Event",
@@ -164,7 +188,7 @@ describe("ConversationReducer", () => {
   });
 
   it("keeps queued follow-ups out of the active loading state", () => {
-    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    const session = CakeSession.create({ sessionId: "session", workingDirectory: "/cake" });
     applyProjectSessionUpdate(session, "session", snapshot({ statuses: [] }));
 
     applyProjectSessionUpdate(session, "session", {
@@ -196,7 +220,7 @@ describe("ConversationReducer", () => {
   });
 
   it("applies usage updates without replacing the conversation snapshot", () => {
-    const session = Session.create({ sessionId: "session", workingDirectory: "/cake" });
+    const session = CakeSession.create({ sessionId: "session", workingDirectory: "/cake" });
     applyProjectSessionUpdate(session, "session", snapshot({ statuses: [] }));
     applyProjectSessionUpdate(session, "session", {
       _tag: "Event",

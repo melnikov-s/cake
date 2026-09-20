@@ -5,7 +5,7 @@ import { describe } from "vitest";
 import { createChild } from "../../../src/domain/session-families/sessionFamilies";
 import { parseCrossSessionMessage } from "../../../src/domain/conversations/cross-session-coordination";
 import { PiModels } from "../../../src/services/pi/PiModels";
-import { makePiSessionsLayer } from "../../../src/services/pi/PiSessions";
+import { makeCakeSessionRuntimesLayer } from "../../../src/services/pi/CakeSessionRuntimes";
 import {
   SessionFamilyStorage,
   familyMember,
@@ -68,7 +68,7 @@ describe("Session Family creation", () => {
             modelLayer,
             archiveLayer,
             SessionCatalogChanges.layer,
-            makePiSessionsLayer({
+            makeCakeSessionRuntimesLayer({
               sessionIds: () => Stream.empty,
               catalog: () => Stream.empty,
               catalogEntry: () => Effect.succeed(undefined),
@@ -99,7 +99,7 @@ describe("Session Family creation", () => {
           modelLayer,
           archiveLayer,
           SessionCatalogChanges.layer,
-          makePiSessionsLayer({
+          makeCakeSessionRuntimesLayer({
             sessionIds: () => Stream.empty,
             catalog: () => Stream.empty,
             catalogEntry: () => Effect.succeed(undefined),
@@ -175,7 +175,7 @@ describe("Session Family creation", () => {
           modelLayer,
           archiveLayer,
           SessionCatalogChanges.layer,
-          makePiSessionsLayer({
+          makeCakeSessionRuntimesLayer({
             sessionIds: () => Stream.empty,
             catalog: () => Stream.empty,
             catalogEntry: () => Effect.succeed(undefined),
@@ -198,7 +198,7 @@ describe("Session Family creation", () => {
       let launches = 0;
       let disposed = false;
       let initialMessage: string | undefined;
-      const pi = makePiSessionsLayer({
+      const pi = makeCakeSessionRuntimesLayer({
         sessionIds: () => Stream.empty,
         catalog: () => Stream.empty,
         catalogEntry: () => Effect.succeed(undefined),

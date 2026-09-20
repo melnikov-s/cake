@@ -5,11 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TURN_RECOVERY_NOTICE_PART_ID } from "../../src/services/pi/runtime/turn-recovery";
-import { createCakeRuntime, type CakeRuntime } from "../../src/services/pi/runtime/cake-runtime";
+import {
+  createCakeSessionRuntime,
+  type CakeSessionRuntime,
+} from "../../src/services/pi/runtime/cake-session-runtime";
 
 const temporaryDirectories: string[] = [];
 const servers: Server[] = [];
-const runtimes: CakeRuntime[] = [];
+const runtimes: CakeSessionRuntime[] = [];
 
 afterEach(async () => {
   for (const runtime of runtimes.splice(0)) runtime.dispose();
@@ -80,7 +83,7 @@ async function registerFixtureProvider(
 }
 
 async function createFixtureRuntime(directory: string, onEvent = vi.fn()) {
-  const runtime = await createCakeRuntime({
+  const runtime = await createCakeSessionRuntime({
     cwd: directory,
     agentDir: join(directory, "agent"),
     sessionDir: join(directory, "sessions"),

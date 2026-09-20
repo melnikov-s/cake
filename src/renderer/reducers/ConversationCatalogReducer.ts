@@ -1,13 +1,13 @@
-import type { SessionSnapshot } from "../../ipc/session-contract";
+import type { ConversationSnapshot } from "../../ipc/session-contract";
 import { batch } from "r-state-tree";
 import { modelOptionKey } from "../../utils/model-option-key";
 import { LlmModel } from "../models/LlmModel";
 import { Resource } from "../models/Resource";
 import { RootProjection } from "../models/RootProjection";
-import type { Session } from "../models/Session";
+import type { CakeSession } from "../models/CakeSession";
 
 /** Register shared identities before applying session-owned references. */
-export function applyConversationCatalog(session: Session, snapshot: SessionSnapshot) {
+export function applyConversationCatalog(session: CakeSession, snapshot: ConversationSnapshot) {
   if (!snapshot.model && !snapshot.models.length && !snapshot.compatibility.resources.length)
     return;
   const root = session.parent;

@@ -7,17 +7,17 @@ import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
 } from "../../../src/domain/application/application-data";
-import type { SessionSnapshot } from "../../../src/ipc/session-contract";
+import type { ConversationSnapshot } from "../../../src/ipc/session-contract";
 import {
-  makePiSessionsLayer,
-  type PiSessionAcquireOptions,
-  type PiSessions,
-  type PiSessionsAdapter,
-} from "../../../src/services/pi/PiSessions";
+  makeCakeSessionRuntimesLayer,
+  type CakeSessionRuntimeAcquireOptions,
+  type CakeSessionRuntimes,
+  type CakeSessionRuntimesAdapter,
+} from "../../../src/services/pi/CakeSessionRuntimes";
 import type {
-  CakeRuntime,
-  CakeRuntimeOptions,
-} from "../../../src/services/pi/runtime/cake-runtime";
+  CakeSessionRuntime,
+  CakeSessionRuntimeOptions,
+} from "../../../src/services/pi/runtime/cake-session-runtime";
 import { subagentSystemPrompt } from "../../../src/services/pi/runtime/subagent-system-prompt";
 import {
   SubagentCoordinator,
@@ -34,7 +34,7 @@ const applicationValue: ApplicationStateValue = {
   trustedProjectPaths: ["/project"],
 };
 
-const parentSnapshot: SessionSnapshot = {
+const parentSnapshot: ConversationSnapshot = {
   workspacePath: "/project",
   sessionId: "parent",
   sessionFile: "/sessions/parent.jsonl",
@@ -86,13 +86,13 @@ const applicationLayer = Layer.effect(
 
 interface Fixture {
   readonly layer: Layer.Layer<
-    ApplicationState | PiSessions | SubagentCoordinator | SubagentEnvironment
+    ApplicationState | CakeSessionRuntimes | SubagentCoordinator | SubagentEnvironment
   >;
-  readonly parentOptions: PiSessionAcquireOptions;
+  readonly parentOptions: CakeSessionRuntimeAcquireOptions;
   readonly childStarted: Queue.Queue<string>;
   readonly childGates: Ref.Ref<ReadonlyMap<string, Deferred.Deferred<void>>>;
   readonly constructions: Ref.Ref<number>;
-  readonly constructedOptions: Ref.Ref<ReadonlyArray<CakeRuntimeOptions>>;
+  readonly constructedOptions: Ref.Ref<ReadonlyArray<CakeSessionRuntimeOptions>>;
   readonly active: Ref.Ref<number>;
   readonly maximumActive: Ref.Ref<number>;
   readonly completions: Ref.Ref<ReadonlyArray<unknown>>;
@@ -102,16 +102,16 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
   const childStarted = yield* Queue.unbounded<string>();
   const childGates = yield* Ref.make<ReadonlyMap<string, Deferred.Deferred<void>>>(new Map());
   const constructions = yield* Ref.make(0);
-  const constructedOptions = yield* Ref.make<ReadonlyArray<CakeRuntimeOptions>>([]);
+  const constructedOptions = yield* Ref.make<ReadonlyArray<CakeSessionRuntimeOptions>>([]);
   const active = yield* Ref.make(0);
   const maximumActive = yield* Ref.make(0);
   const completions = yield* Ref.make<ReadonlyArray<unknown>>([]);
 
-  const runtime = (options: CakeRuntimeOptions): CakeRuntime => {
+  const runtime = (options: CakeSessionRuntimeOptions): CakeSessionRuntime => {
     const sessionId = options.sessionId ?? "parent";
     const isParent = sessionId.startsWith("parent");
     let streaming = false;
-    const snapshot = (): SessionSnapshot => ({
+    const snapshot = (): ConversationSnapshot => ({
       ...parentSnapshot,
       sessionId,
       sessionFile: `/sessions/${sessionId}.jsonl`,
@@ -188,7 +188,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
     };
   };
 
-  const adapter: PiSessionsAdapter = {
+  const adapter: CakeSessionRuntimesAdapter = {
     sessionIds: () => Stream.empty,
     catalog: () => Stream.empty,
     catalogEntry: () => Effect.succeed(undefined),
@@ -207,7 +207,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
   };
   const layer = Layer.mergeAll(
     applicationLayer,
-    makePiSessionsLayer(adapter),
+    makeCakeSessionRuntimesLayer(adapter),
     SubagentCoordinatorLive,
     makeSubagentEnvironmentLayer({
       location: (workingDirectory) =>

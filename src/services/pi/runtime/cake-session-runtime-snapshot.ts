@@ -10,7 +10,7 @@ import type {
   ExtensionUiState,
   ModelOption,
   PiSettings,
-  SessionSnapshot,
+  ConversationSnapshot,
   UiPart,
 } from "../../../ipc/session-contract";
 import { piBuiltinSlashCommands, slashCommandSchema } from "../../../ipc/session-contract";
@@ -18,7 +18,7 @@ import { supportsFastMode } from "../fast-mode";
 import { projectSessionEntries, projectTree } from "./session-projection";
 import { projectPiSettings } from "./settings-translation";
 
-export interface CakeRuntimeSnapshotInput {
+export interface CakeSessionRuntimeSnapshotInput {
   readonly workspacePath: string;
   readonly sessionId: string;
   readonly sessionListed: boolean;
@@ -32,14 +32,16 @@ export interface CakeRuntimeSnapshotInput {
   readonly fastMode: boolean;
   readonly commands: readonly SlashCommandInfo[];
   readonly slashCommands: readonly string[] | undefined;
-  readonly usage: SessionSnapshot["usage"];
+  readonly usage: ConversationSnapshot["usage"];
   readonly compatibility: CompatibilityCatalog;
   readonly extensionUi: ExtensionUiState;
   readonly diagnostics: readonly string[];
   readonly reloadPending: boolean;
 }
 
-export function projectCakeRuntimeSnapshot(input: CakeRuntimeSnapshotInput): SessionSnapshot {
+export function projectCakeSessionRuntimeSnapshot(
+  input: CakeSessionRuntimeSnapshotInput,
+): ConversationSnapshot {
   const { session, settingsManager } = input;
   const branchParts = projectSessionEntries(session.sessionManager.getBranch(), undefined, {
     live: session.isStreaming,

@@ -6,7 +6,7 @@ import * as workingDirectoryTerminals from "../domain/terminals/workingDirectory
 import { Electron } from "../services/electron/Electron";
 import { Browser } from "../services/browser/Browser";
 import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
-import type { PiSessions } from "../services/pi/PiSessions";
+import type { CakeSessionRuntimes } from "../services/pi/CakeSessionRuntimes";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { RewordingRequests } from "../services/projects/RewordingRequests";
 import { ApplicationState } from "../services/storage/ApplicationState";
@@ -36,7 +36,7 @@ export interface MainApplicationOptions {
 type MainApplicationServices =
   | ApplicationState
   | Electron
-  | PiSessions
+  | CakeSessionRuntimes
   | ProjectAccess
   | RendererRequestCoordinator
   | RewordingRequests

@@ -10,19 +10,19 @@ import type { ProjectSessionUpdate } from "../../domain/project-sessions/project
 import {
   extensionUiEventSchema,
   sessionUsageSchema,
-  sessionSnapshotSchema,
-  type SessionSnapshot,
+  conversationSnapshotSchema,
+  type ConversationSnapshot as RuntimeConversationSnapshot,
   uiPartSchema,
 } from "../../ipc/session-contract";
 import { projectionId } from "../../utils/projection-id";
 import { modelOptionKey } from "../../utils/model-option-key";
 import { artifactSnapshot } from "./ArtifactReducer";
-import type { Session } from "../models/Session";
+import type { CakeSession } from "../models/CakeSession";
 import { applyConversationCatalog } from "./ConversationCatalogReducer";
 import { applyPartUpdate, messageSnapshots, removePart } from "./SessionPartReducer";
 
 export function applyProjectSessionUpdate(
-  model: Session,
+  model: CakeSession,
   sessionId: string,
   update: ProjectSessionUpdate,
 ) {
@@ -33,8 +33,29 @@ export function applyProjectSessionUpdate(
     )
       throw new Error(`Project Session identity collision: ${sessionId}`);
     batch(() => {
-      applyConversationSnapshot(model, update.snapshot.conversation, false);
-      model.resolved = update.snapshot.resolved;
+      applyConversationSnapshot(model, update.snapshot.primaryConversation, false);
+      model.projectPath = update.snapshot.project.path;
+      model.projectName = update.snapshot.project.name;
+      model.workingDirectory = update.snapshot.workingDirectory.path;
+      model.resolved = update.snapshot.lifecycle.resolved;
+      model.unread = update.snapshot.lifecycle.unread;
+      model.discussionSessionReferences.splice(
+        0,
+        model.discussionSessionReferences.length,
+        ...update.snapshot.discussionSessions,
+      );
+      model.subagentSessionReferences.splice(
+        0,
+        model.subagentSessionReferences.length,
+        ...update.snapshot.subagentSessions,
+      );
+      model.reviewThreadReferences.splice(
+        0,
+        model.reviewThreadReferences.length,
+        ...update.snapshot.reviewThreads,
+      );
+      model.artifactLinks.splice(0, model.artifactLinks.length, ...update.snapshot.artifactLinks);
+      model.family = update.snapshot.family;
       model.observedSnapshotRevision += 1;
     });
     return;
@@ -48,12 +69,20 @@ export function applyProjectSessionUpdate(
   applyConversationEvent(model, update.event);
 }
 
-export function unloadConversationProjection(model: Session) {
+export function unloadConversationProjection(model: CakeSession) {
   batch(() => {
     // Apply only reset values so eviction does not first clone the potentially
     // large transcript that it is trying to release.
     applySnapshot(model, {
       sessionFile: "",
+      projectPath: "",
+      projectName: "",
+      discussionSessionReferences: [],
+      subagentSessionReferences: [],
+      reviewThreadReferences: [],
+      artifactLinks: [],
+      family: undefined,
+      unread: false,
       parts: [],
       model: undefined,
       fastMode: false,
@@ -85,7 +114,7 @@ export function unloadConversationProjection(model: Session) {
   });
 }
 
-export function applyCakeChatUpdate(model: Session, sessionId: string, update: CakeChatUpdate) {
+export function applyCakeChatUpdate(model: CakeSession, sessionId: string, update: CakeChatUpdate) {
   if (update._tag === "Snapshot") {
     if (
       update.snapshot.identity._tag !== "CakeChatSession" ||
@@ -112,9 +141,9 @@ export function applyCakeChatUpdate(model: Session, sessionId: string, update: C
   applyConversationEvent(model, event);
 }
 
-/** Applies one Discussion Session sidecar observation to its own `Session` Model. */
+/** Applies one Discussion Session sidecar observation to its own `CakeSession` Model. */
 export function applyDiscussionSessionUpdate(
-  model: Session,
+  model: CakeSession,
   sessionId: string,
   update: DiscussionSessionUpdate,
 ) {
@@ -136,20 +165,28 @@ export function applyDiscussionSessionUpdate(
 }
 
 export function applyConversationSnapshot(
-  model: Session,
+  model: CakeSession,
   conversation: ConversationSnapshot,
   preserveActiveTurns = false,
 ) {
   const current = toSnapshot(model);
-  const parsed = Schema.decodeUnknownSync(sessionSnapshotSchema)({
+  const parsed = Schema.decodeUnknownSync(conversationSnapshotSchema)({
     ...conversation,
     workspacePath: conversation.workingDirectory,
   });
-  const authoritative = sessionSnapshot(parsed);
+  const authoritative = conversationSnapshot(parsed);
   batch(() => {
     applyConversationCatalog(model, parsed);
     applySnapshot(model, {
       ...authoritative,
+      projectPath: current.projectPath,
+      projectName: current.projectName,
+      discussionSessionReferences: current.discussionSessionReferences,
+      subagentSessionReferences: current.subagentSessionReferences,
+      reviewThreadReferences: current.reviewThreadReferences,
+      artifactLinks: current.artifactLinks,
+      family: current.family,
+      unread: current.unread,
       activeTurnIds: preserveActiveTurns ? current.activeTurnIds : [],
       reviewThreads: current.reviewThreads,
       subagentActivities: current.subagentActivities,
@@ -165,7 +202,7 @@ export function applyConversationSnapshot(
   });
 }
 
-function applyConversationEvent(model: Session, event: ConversationEvent) {
+function applyConversationEvent(model: CakeSession, event: ConversationEvent) {
   if (event._tag === "SnapshotUpdated") {
     applyConversationSnapshot(model, event.snapshot, true);
     return;
@@ -199,7 +236,10 @@ function applyConversationEvent(model: Session, event: ConversationEvent) {
   });
 }
 
-function applyExtensionUiEvent(model: Session, event: typeof extensionUiEventSchema.Type): void {
+function applyExtensionUiEvent(
+  model: CakeSession,
+  event: typeof extensionUiEventSchema.Type,
+): void {
   const extensionUi = model.extensionUi;
   if (event.kind === "status") {
     const existing = extensionUi.statuses.findIndex((item) => item.key === event.key);
@@ -221,11 +261,19 @@ function applyExtensionUiEvent(model: Session, event: typeof extensionUiEventSch
     extensionUi.compatibilityDiagnostics.push(event.diagnostic);
 }
 
-function sessionSnapshot(parsed: SessionSnapshot): Snapshot<Session> {
+function conversationSnapshot(parsed: RuntimeConversationSnapshot): Snapshot<CakeSession> {
   return {
     workingDirectory: parsed.workspacePath,
     sessionId: parsed.sessionId,
     sessionFile: parsed.sessionFile,
+    projectPath: "",
+    projectName: "",
+    discussionSessionReferences: [],
+    subagentSessionReferences: [],
+    reviewThreadReferences: [],
+    artifactLinks: [],
+    family: undefined,
+    unread: false,
     parts: messageSnapshots(parsed.parts, parsed.sessionId),
     model: parsed.model ? { id: modelOptionKey(parsed.model) } : undefined,
     fastMode: parsed.fastMode ?? false,

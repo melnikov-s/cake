@@ -20,7 +20,7 @@ import { makeGitLive } from "../services/git/GitLive";
 import { makePiAgentResourcesLive } from "../services/pi/live/PiAgentResourcesLive";
 import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
 import { makePiSettingsLive } from "../services/pi/live/PiSettingsLive";
-import { makePiSessionsLive } from "../services/pi/PiSessions";
+import { makeCakeSessionRuntimesLive } from "../services/pi/CakeSessionRuntimes";
 import { makeProjectSessionRuntimeHostLive } from "../services/pi/ProjectSessionRuntimeHostLive";
 import { ProjectSessionConfiguration } from "../services/project-sessions/ProjectSessionConfiguration";
 import { makeProjectAccessLive } from "../services/projects/ProjectAccessLive";
@@ -106,7 +106,7 @@ export const makeMainLive = (options: MainLiveOptions) => {
     makePiModelsLive(paths.piAgent),
     makePiSettingsLive(paths.piAgent),
     makePiAgentResourcesLive(paths.piAgent),
-    makePiSessionsLive(),
+    makeCakeSessionRuntimesLive(),
     AgentAvailability.layer,
   );
 

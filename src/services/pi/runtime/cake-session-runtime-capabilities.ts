@@ -48,7 +48,7 @@ import {
   cakeToolEnvelopeSchema,
   type CakeOperationDefinition,
 } from "./cake-operation-registry";
-import { loadCakeRuntimeResourceLoader } from "./cake-runtime-resources";
+import { loadCakeSessionRuntimeResourceLoader } from "./cake-session-runtime-resources";
 import { detectGitWorktree, worktreeSystemPrompt } from "./worktree-system-prompt";
 import cakeChatPromptTemplate from "./prompts/cake-chat.md?raw";
 import commonPromptTemplate from "./prompts/common.md?raw";
@@ -62,7 +62,7 @@ import {
   type SubagentTaskInput,
 } from "./subagent-contract";
 import { formatUnknown } from "./session-projection";
-import type { CakeRuntimeOptions } from "./cake-runtime";
+import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
 import { PiPendingMessageReorder, type PiPendingMessages } from "../conversation-data";
 
 const commonPrompt = renderPromptTemplate(commonPromptTemplate);
@@ -101,7 +101,7 @@ export interface GlobalControlTool {
 }
 
 export function createGlobalControlOperations(
-  control: NonNullable<CakeRuntimeOptions["globalControl"]>,
+  control: NonNullable<CakeSessionRuntimeOptions["globalControl"]>,
   resolveModel: (selection: CakeModelSelection | undefined) => ExplicitCakeModelSelection,
 ): CakeOperationDefinition[] {
   return control.tools.map((tool) => ({
@@ -132,7 +132,7 @@ export function createGlobalControlOperations(
 }
 
 export function createAgentControlOperations(
-  control: NonNullable<CakeRuntimeOptions["agentControl"]>,
+  control: NonNullable<CakeSessionRuntimeOptions["agentControl"]>,
   parentSessionId: () => string | undefined,
   resolveModel: (selection: CakeModelSelection | undefined) => ExplicitCakeModelSelection,
 ): CakeOperationDefinition[] {
@@ -398,8 +398,8 @@ interface RuntimeIdentity {
   sessionId?: string;
 }
 
-export interface CakeRuntimeCapabilities {
-  readonly resourceLoader: Awaited<ReturnType<typeof loadCakeRuntimeResourceLoader>>;
+export interface CakeSessionRuntimeCapabilities {
+  readonly resourceLoader: Awaited<ReturnType<typeof loadCakeSessionRuntimeResourceLoader>>;
   readonly eventBus: EventBus;
   readonly operationApi: RuntimeOperationApiReference;
   readonly operationRegistry: RuntimeOperationRegistryReference;
@@ -411,13 +411,13 @@ export interface CakeRuntimeCapabilities {
   ): Promise<void>;
 }
 
-export async function createCakeRuntimeCapabilities(input: {
-  options: CakeRuntimeOptions;
+export async function createCakeSessionRuntimeCapabilities(input: {
+  options: CakeSessionRuntimeOptions;
   agentDir: string;
   settingsManager: SettingsManager;
   /** Cake-owned in-process extensions that shape provider requests. */
   requestExtensions: readonly InlineExtension[];
-}): Promise<CakeRuntimeCapabilities> {
+}): Promise<CakeSessionRuntimeCapabilities> {
   const { options, agentDir, settingsManager, requestExtensions } = input;
   const persistArtifact =
     options.persistArtifact ??
@@ -1408,7 +1408,7 @@ export async function createCakeRuntimeCapabilities(input: {
   const detectedWorktreePrompt = detectedWorktree
     ? worktreeSystemPrompt(detectedWorktree)
     : undefined;
-  const resourceLoader = await loadCakeRuntimeResourceLoader({
+  const resourceLoader = await loadCakeSessionRuntimeResourceLoader({
     trusted: options.trusted,
     makeResourceLoader: () =>
       new DefaultResourceLoader(

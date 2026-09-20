@@ -5,7 +5,7 @@ import { describe } from "vitest";
 import { defaultApplicationState } from "../../../src/domain/application/application-data";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import type { ProjectSessionControlInvocation } from "../../../src/domain/project-sessions/project-session-data";
-import { PiSessions } from "../../../src/services/pi/PiSessions";
+import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import type { ProjectSessionRuntimeIntegrations } from "../../../src/services/pi/ProjectSessionIntegrationHost";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
@@ -92,7 +92,7 @@ describe("Project Session runtime worktree controls", () => {
       makeProjectSessionRuntimeMechanismTestLayer(integrations),
       familyStorageHarness().layer,
       SessionCatalogChanges.layer,
-      Layer.mock(PiSessions, {}),
+      Layer.mock(CakeSessionRuntimes, {}),
       Layer.mock(SessionArchiveStorage, {
         locate: () => Effect.succeed("active" as const),
       }),

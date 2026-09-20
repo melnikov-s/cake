@@ -2,10 +2,13 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createCakeRuntime, type CakeRuntime } from "../../src/services/pi/runtime/cake-runtime";
+import {
+  createCakeSessionRuntime,
+  type CakeSessionRuntime,
+} from "../../src/services/pi/runtime/cake-session-runtime";
 
 const directories: string[] = [];
-const runtimes: CakeRuntime[] = [];
+const runtimes: CakeSessionRuntime[] = [];
 
 afterEach(async () => {
   for (const runtime of runtimes.splice(0)) await runtime.dispose();
@@ -54,7 +57,7 @@ async function createProject(extensionHome: "project" | "agent-directory" = "pro
 }
 
 async function openRuntime(directory: string, options: { auxiliary?: boolean } = {}) {
-  const runtime = await createCakeRuntime({
+  const runtime = await createCakeSessionRuntime({
     cwd: directory,
     agentDir: join(directory, "agent"),
     sessionDir: join(directory, "sessions"),

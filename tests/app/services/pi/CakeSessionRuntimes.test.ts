@@ -3,18 +3,18 @@ import { it } from "@effect/vitest";
 import { Context, Deferred, Effect, Exit, Fiber, Layer, Option, Ref, Scope, Stream } from "effect";
 import { describe } from "vitest";
 import {
-  makePiSessionsLayer,
-  PiSessions,
-  type PiSessionsAdapter,
-  type PiSessionAcquireOptions,
-} from "../../../../src/services/pi/PiSessions";
+  makeCakeSessionRuntimesLayer,
+  CakeSessionRuntimes,
+  type CakeSessionRuntimesAdapter,
+  type CakeSessionRuntimeAcquireOptions,
+} from "../../../../src/services/pi/CakeSessionRuntimes";
 import { TurnCanceledError } from "../../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import { options, fakeRuntime } from "../../helpers/piRuntimeFixture";
 
 const adapter = (
   acquisitions: Ref.Ref<number>,
   finalizations: Ref.Ref<number>,
-): PiSessionsAdapter => ({
+): CakeSessionRuntimesAdapter => ({
   sessionIds: () => Stream.empty,
   catalog: () => Stream.empty,
   catalogEntry: () => Effect.succeed(undefined),
@@ -30,7 +30,7 @@ const adapter = (
   changelog: () => Effect.succeed("# Changelog"),
 });
 
-describe("PiSessions", () => {
+describe("CakeSessionRuntimes", () => {
   it.effect("delivers one aborted settlement even when the prompt finishes afterward", () =>
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>();
@@ -38,7 +38,7 @@ describe("PiSessions", () => {
       const returned = yield* Deferred.make<void>();
       const outcomes: string[] = [];
       let executingTurnIds: string[] = [];
-      const layer = makePiSessionsLayer({
+      const layer = makeCakeSessionRuntimesLayer({
         sessionIds: () => Stream.empty,
         catalog: () => Stream.empty,
         catalogEntry: () => Effect.succeed(undefined),
@@ -63,7 +63,7 @@ describe("PiSessions", () => {
           }),
       });
       const context = yield* Layer.build(layer);
-      const sessions = Context.get(context, PiSessions);
+      const sessions = Context.get(context, CakeSessionRuntimes);
       const handle = yield* sessions.acquire({
         ...options(),
         onTurnSettled: (event) =>
@@ -83,7 +83,7 @@ describe("PiSessions", () => {
     Effect.gen(function* () {
       const outcomes: Array<{ text: string; outcome: string }> = [];
       const settledTwice = yield* Deferred.make<void>();
-      const layer = makePiSessionsLayer({
+      const layer = makeCakeSessionRuntimesLayer({
         sessionIds: () => Stream.empty,
         catalog: () => Stream.empty,
         catalogEntry: () => Effect.succeed(undefined),
@@ -103,7 +103,7 @@ describe("PiSessions", () => {
           }),
       });
       const context = yield* Layer.build(layer);
-      const sessions = Context.get(context, PiSessions);
+      const sessions = Context.get(context, CakeSessionRuntimes);
       const turnTexts = new Map<string, string>();
       const handle = yield* sessions.acquire({
         ...options(),
@@ -134,7 +134,7 @@ describe("PiSessions", () => {
       const release = yield* Deferred.make<void>();
       const settled = yield* Deferred.make<void>();
       const admissions: Array<{ turnId: string; text: string; delivery: string }> = [];
-      const layer = makePiSessionsLayer({
+      const layer = makeCakeSessionRuntimesLayer({
         sessionIds: () => Stream.empty,
         catalog: () => Stream.empty,
         catalogEntry: () => Effect.succeed(undefined),
@@ -153,7 +153,7 @@ describe("PiSessions", () => {
           }),
       });
       const context = yield* Layer.build(layer);
-      const sessions = Context.get(context, PiSessions);
+      const sessions = Context.get(context, CakeSessionRuntimes);
       const handle = yield* sessions.acquire({
         ...options(),
         admitTurn: (input, accept) =>
@@ -181,7 +181,7 @@ describe("PiSessions", () => {
       const release = yield* Deferred.make<void>();
       let executingIds: string[] = [];
       let settle = () => undefined;
-      const layer = makePiSessionsLayer({
+      const layer = makeCakeSessionRuntimesLayer({
         sessionIds: () => Stream.empty,
         catalog: () => Stream.empty,
         catalogEntry: () => Effect.succeed(undefined),
@@ -206,7 +206,7 @@ describe("PiSessions", () => {
         },
       });
       const context = yield* Layer.build(layer);
-      const sessions = Context.get(context, PiSessions);
+      const sessions = Context.get(context, CakeSessionRuntimes);
       const handle = yield* sessions.acquire(options());
       yield* handle.prompt("work");
       yield* Deferred.await(entered);
@@ -231,8 +231,10 @@ describe("PiSessions", () => {
     Effect.gen(function* () {
       const acquisitions = yield* Ref.make(0);
       const finalizations = yield* Ref.make(0);
-      const context = yield* Layer.build(makePiSessionsLayer(adapter(acquisitions, finalizations)));
-      const sessions = Context.get(context, PiSessions);
+      const context = yield* Layer.build(
+        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)),
+      );
+      const sessions = Context.get(context, CakeSessionRuntimes);
       const firstScope = yield* Scope.make();
       const secondScope = yield* Scope.make();
 
@@ -257,11 +259,13 @@ describe("PiSessions", () => {
       const acquisitions = yield* Ref.make(0);
       const finalizations = yield* Ref.make(0);
       const integrationFinalizations = yield* Ref.make(0);
-      const context = yield* Layer.build(makePiSessionsLayer(adapter(acquisitions, finalizations)));
-      const sessions = Context.get(context, PiSessions);
+      const context = yield* Layer.build(
+        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)),
+      );
+      const sessions = Context.get(context, CakeSessionRuntimes);
       const firstScope = yield* Scope.make();
       const secondScope = yield* Scope.make();
-      const acquireOptions: PiSessionAcquireOptions = {
+      const acquireOptions: CakeSessionRuntimeAcquireOptions = {
         ...options(),
         onRelease: Ref.update(integrationFinalizations, (count) => count + 1),
       };
@@ -280,8 +284,10 @@ describe("PiSessions", () => {
     Effect.gen(function* () {
       const acquisitions = yield* Ref.make(0);
       const finalizations = yield* Ref.make(0);
-      const context = yield* Layer.build(makePiSessionsLayer(adapter(acquisitions, finalizations)));
-      const sessions = Context.get(context, PiSessions);
+      const context = yield* Layer.build(
+        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)),
+      );
+      const sessions = Context.get(context, CakeSessionRuntimes);
       const owner = yield* Scope.make();
       const observer = yield* Scope.make();
       yield* sessions.acquire(options()).pipe(Effect.provideService(Scope.Scope, owner));
@@ -310,7 +316,7 @@ describe("PiSessions", () => {
       const requestedCreationModes: Array<boolean | undefined> = [];
       const base = adapter(acquisitions, finalizations);
       const context = yield* Layer.build(
-        makePiSessionsLayer({
+        makeCakeSessionRuntimesLayer({
           ...base,
           createRuntime: (runtimeOptions) => {
             requestedCreationModes.push(runtimeOptions.newSession);
@@ -318,7 +324,7 @@ describe("PiSessions", () => {
           },
         }),
       );
-      const sessions = Context.get(context, PiSessions);
+      const sessions = Context.get(context, CakeSessionRuntimes);
       const owner = yield* Scope.make();
       yield* sessions
         .acquire(options({ newSession: true }))
@@ -341,8 +347,10 @@ describe("PiSessions", () => {
     Effect.gen(function* () {
       const acquisitions = yield* Ref.make(0);
       const finalizations = yield* Ref.make(0);
-      const context = yield* Layer.build(makePiSessionsLayer(adapter(acquisitions, finalizations)));
-      const sessions = Context.get(context, PiSessions);
+      const context = yield* Layer.build(
+        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)),
+      );
+      const sessions = Context.get(context, CakeSessionRuntimes);
       const target = {
         workingDirectory: "/project",
         sessionDirectory: "/sessions",
@@ -370,7 +378,7 @@ describe("PiSessions", () => {
       const started = yield* Deferred.make<void>();
       const release = yield* Deferred.make<void>();
       const finalizations = yield* Ref.make(0);
-      const layer = makePiSessionsLayer({
+      const layer = makeCakeSessionRuntimesLayer({
         sessionIds: () => Stream.empty,
         catalog: () => Stream.empty,
         catalogEntry: () => Effect.succeed(undefined),
@@ -388,7 +396,7 @@ describe("PiSessions", () => {
         changelog: () => Effect.succeed("# Changelog"),
       });
       const context = yield* Layer.build(layer);
-      const sessions = Context.get(context, PiSessions);
+      const sessions = Context.get(context, CakeSessionRuntimes);
       const owner = yield* Scope.make();
       yield* sessions.acquire(options()).pipe(Effect.provideService(Scope.Scope, owner));
 
@@ -407,8 +415,10 @@ describe("PiSessions", () => {
     Effect.gen(function* () {
       const acquisitions = yield* Ref.make(0);
       const finalizations = yield* Ref.make(0);
-      const context = yield* Layer.build(makePiSessionsLayer(adapter(acquisitions, finalizations)));
-      const sessions = Context.get(context, PiSessions);
+      const context = yield* Layer.build(
+        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)),
+      );
+      const sessions = Context.get(context, CakeSessionRuntimes);
       const retained = yield* Scope.make();
       yield* sessions.acquire(options()).pipe(Effect.provideService(Scope.Scope, retained));
       const conflictScope = yield* Scope.make();
@@ -432,8 +442,10 @@ describe("PiSessions", () => {
     Effect.gen(function* () {
       const acquisitions = yield* Ref.make(0);
       const finalizations = yield* Ref.make(0);
-      const context = yield* Layer.build(makePiSessionsLayer(adapter(acquisitions, finalizations)));
-      const sessions = Context.get(context, PiSessions);
+      const context = yield* Layer.build(
+        makeCakeSessionRuntimesLayer(adapter(acquisitions, finalizations)),
+      );
+      const sessions = Context.get(context, CakeSessionRuntimes);
       const handle = yield* sessions.acquire(options());
       const fiber = yield* handle.updates.pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
       const updates = [...(yield* Fiber.join(fiber))];

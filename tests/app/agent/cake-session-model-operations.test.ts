@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveCakeModelSelection } from "../../../src/domain/model-presets/cake-model-selection";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
-import { createGlobalControlOperations } from "../../../src/services/pi/runtime/cake-runtime";
+import { createGlobalControlOperations } from "../../../src/services/pi/runtime/cake-session-runtime";
 
 const context = {
   signal: new AbortController().signal,

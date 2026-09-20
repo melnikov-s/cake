@@ -4,7 +4,7 @@ import type {
   Annotation,
   Attachment,
   FileSuggestion,
-  SessionSnapshot,
+  ConversationSnapshot,
   UiPart,
 } from "../../ipc/session-contract";
 import type { ChatConfigurationStore } from "./ChatConfigurationStore";
@@ -49,7 +49,7 @@ export interface ChatStoreProps {
   submitting(): boolean;
   stoppable?(): boolean;
   configuration(): ChatConfigurationStore | undefined;
-  commands(): SessionSnapshot["commands"];
+  commands(): ConversationSnapshot["commands"];
   placeholder(): string;
   inputLabel(): string;
   draft?(): string;
@@ -77,7 +77,7 @@ export interface ChatStoreProps {
   removeAnnotation?(id: string): void;
   suggestFiles?(prefix: string): Promise<ReadonlyArray<FileSuggestion>>;
   focusRequestRevision?(): number;
-  usage?(): SessionSnapshot["usage"];
+  usage?(): ConversationSnapshot["usage"];
   promptCacheModel?(): { provider: string; modelId: string } | undefined;
   queuedPrompts?(): readonly QueuedPrompt[];
   steerQueuedPrompt?(id: string): void | Promise<void>;

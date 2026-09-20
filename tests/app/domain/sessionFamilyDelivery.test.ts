@@ -4,7 +4,10 @@ import { Deferred, Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
 import { deliver, initialize } from "../../../src/domain/session-families/sessionFamilies";
 import { parseCrossSessionMessage } from "../../../src/domain/conversations/cross-session-coordination";
-import { makePiSessionsLayer, PiSessions } from "../../../src/services/pi/PiSessions";
+import {
+  makeCakeSessionRuntimesLayer,
+  CakeSessionRuntimes,
+} from "../../../src/services/pi/CakeSessionRuntimes";
 import { defaultApplicationState } from "../../../src/domain/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
@@ -82,7 +85,7 @@ describe("Session Family outcome delivery", () => {
           familyStorageHarness().layer,
           environment,
           Layer.mock(SessionArchiveStorage, {}),
-          Layer.mock(PiSessions, {}),
+          Layer.mock(CakeSessionRuntimes, {}),
         ),
       ),
     ),
@@ -112,7 +115,7 @@ describe("Session Family outcome delivery", () => {
           familyStorageHarness().layer,
           environment,
           Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
-          makePiSessionsLayer({
+          makeCakeSessionRuntimesLayer({
             sessionIds: () => Stream.empty,
             catalog: () => Stream.empty,
             catalogEntry: () => Effect.succeed(undefined),
@@ -148,7 +151,7 @@ describe("Session Family outcome delivery", () => {
           familyStorageHarness().layer,
           environment,
           Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
-          makePiSessionsLayer({
+          makeCakeSessionRuntimesLayer({
             sessionIds: () => Stream.empty,
             catalog: () => Stream.empty,
             catalogEntry: () => Effect.succeed(undefined),
@@ -200,7 +203,7 @@ describe("Session Family outcome delivery", () => {
       let unavailable = true;
       return Effect.gen(function* () {
         const received = yield* Deferred.make<void>();
-        const pi = makePiSessionsLayer({
+        const pi = makeCakeSessionRuntimesLayer({
           sessionIds: () => Stream.empty,
           catalog: () => Stream.empty,
           catalogEntry: () => Effect.succeed(undefined),
@@ -288,7 +291,7 @@ describe("Session Family outcome delivery", () => {
             familyStorageHarness().layer,
             environment,
             Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
-            makePiSessionsLayer({
+            makeCakeSessionRuntimesLayer({
               sessionIds: () => Stream.empty,
               catalog: () => Stream.empty,
               catalogEntry: () => Effect.succeed(undefined),
@@ -335,7 +338,7 @@ describe("Session Family outcome delivery", () => {
             familyStorageHarness().layer,
             environment,
             Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
-            makePiSessionsLayer({
+            makeCakeSessionRuntimesLayer({
               sessionIds: () => Stream.empty,
               catalog: () => Stream.empty,
               catalogEntry: () => Effect.succeed(undefined),
@@ -368,7 +371,7 @@ describe("Session Family outcome delivery", () => {
         Layer.mergeAll(
           familyStorageHarness().layer,
           environment,
-          Layer.mock(PiSessions, { currentStatus: () => Effect.succeed(undefined) }),
+          Layer.mock(CakeSessionRuntimes, { currentStatus: () => Effect.succeed(undefined) }),
           Layer.mock(SessionArchiveStorage, {
             locate: (id) => Effect.succeed(id === childId ? undefined : ("active" as const)),
           }),
@@ -390,7 +393,7 @@ describe("Session Family outcome delivery", () => {
           familyStorageHarness().layer,
           environment,
           Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("resolved" as const) }),
-          Layer.mock(PiSessions, {}),
+          Layer.mock(CakeSessionRuntimes, {}),
         ),
       ),
     ),

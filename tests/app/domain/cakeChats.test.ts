@@ -12,11 +12,14 @@ import {
   type ApplicationState as ApplicationStateValue,
 } from "../../../src/domain/application/application-data";
 import type { CakeChatRuntimeConfiguration } from "../../../src/domain/cake-chats/cakeChatRuntime";
-import { makePiSessionsLayer, type PiSessionsAdapter } from "../../../src/services/pi/PiSessions";
+import {
+  makeCakeSessionRuntimesLayer,
+  type CakeSessionRuntimesAdapter,
+} from "../../../src/services/pi/CakeSessionRuntimes";
 import type {
-  CakeRuntime,
-  CakeRuntimeOptions,
-} from "../../../src/services/pi/runtime/cake-runtime";
+  CakeSessionRuntime,
+  CakeSessionRuntimeOptions,
+} from "../../../src/services/pi/runtime/cake-session-runtime";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { Electron } from "../../../src/services/electron/Electron";
 import { RendererRequestCoordinatorLive } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
@@ -25,7 +28,7 @@ import { SubagentCoordinatorLive } from "../../../src/services/subagents/Subagen
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import type { SessionSnapshot } from "../../../src/ipc/session-contract";
+import type { ConversationSnapshot } from "../../../src/ipc/session-contract";
 
 const configuration: CakeChatRuntimeConfiguration = {
   location: {
@@ -36,7 +39,7 @@ const configuration: CakeChatRuntimeConfiguration = {
   agentDirectory: "/cake",
 };
 
-const snapshot: SessionSnapshot = {
+const snapshot: ConversationSnapshot = {
   workspacePath: "/home/user",
   sessionId: "cake-chat-1",
   sessionFile: "/cake/global/cake-chat-1.jsonl",
@@ -71,7 +74,7 @@ const makeLayer = (
   let archived = 0;
   let restored = 0;
   const toolCounts: number[] = [];
-  const acquiredRuntimeOptions: CakeRuntimeOptions[] = [];
+  const acquiredRuntimeOptions: CakeSessionRuntimeOptions[] = [];
   const operations: string[] = [];
   const terminal = Terminal.of({
     open: () => Effect.die("Unexpected terminal open"),
@@ -97,7 +100,7 @@ const makeLayer = (
         ),
       ),
   });
-  const runtime = (options: CakeRuntimeOptions): CakeRuntime => ({
+  const runtime = (options: CakeSessionRuntimeOptions): CakeSessionRuntime => ({
     sessionId: snapshot.sessionId,
     sessionFile: snapshot.sessionFile,
     streaming: false,
@@ -172,7 +175,7 @@ const makeLayer = (
     navigate: async () => undefined,
     dispose: () => undefined,
   });
-  const adapter: PiSessionsAdapter = {
+  const adapter: CakeSessionRuntimesAdapter = {
     sessionIds: () => Stream.empty,
     catalog: () => Stream.empty,
     catalogEntry: () => Effect.succeed(undefined),
@@ -203,7 +206,7 @@ const makeLayer = (
     layer: Layer.mergeAll(
       Layer.succeed(ApplicationState, application),
       SessionCatalogChanges.layer,
-      makePiSessionsLayer(adapter),
+      makeCakeSessionRuntimesLayer(adapter),
       Layer.succeed(
         SessionArchiveStorage,
         SessionArchiveStorage.of({

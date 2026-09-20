@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
 import { ArtifactProjection } from "../../services/artifacts/ArtifactProjection";
-import { PiSessions } from "../../services/pi/PiSessions";
+import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { SessionFamilyStorage, familyMemberIds } from "../../services/storage/SessionFamilyStorage";
@@ -24,7 +24,7 @@ interface ArtifactGarbageCollectionStats {
 export const collectGarbage = Effect.fn("Artifacts.collectGarbage")(function* () {
   const storage = yield* ArtifactStorage;
   const projection = yield* ArtifactProjection;
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const families = yield* SessionFamilyStorage;
   const configuration = yield* ProjectSessionConfiguration;
 

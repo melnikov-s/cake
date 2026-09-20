@@ -2,7 +2,7 @@ import { createStore, mount } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { MessageCommentsStore } from "../../../../src/renderer/stores/MessageCommentsStore";
 import type { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
-import type { Session } from "../../../../src/renderer/models/Session";
+import type { CakeSession } from "../../../../src/renderer/models/CakeSession";
 
 const selection = {
   messageId: "assistant-1",
@@ -24,7 +24,7 @@ describe("MessageCommentsStore", () => {
       errorDetails: undefined,
       threadStreaming: () => false,
     } as unknown as ReviewsStore;
-    const sessionModel = { reviewThreads: [] } as unknown as Session;
+    const sessionModel = { reviewThreads: [] } as unknown as CakeSession;
     const store = mount(
       createStore(MessageCommentsStore, {
         sessionModel: () => sessionModel,

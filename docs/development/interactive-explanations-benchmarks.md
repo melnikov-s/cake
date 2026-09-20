@@ -55,17 +55,17 @@ to follow without implying that the renderer talks to Pi directly.
   `src/ipc/server/SessionChatHandlers.ts#sessionChatHandlers`,
   `src/domain/conversations/sessionChats.ts#deliver`.
 - The shared domain `conversations.deliver` dispatches to a scoped
-  `PiSessionHandle`; `makePiSessionsLayer`'s `startTurn` eventually calls the
+  `CakeSessionHandle`; `makeCakeSessionRuntimesLayer`'s `startTurn` eventually calls the
   live runtime's `prompt`.
   Sources: `src/domain/conversations/conversations.ts#deliver`,
-  `src/services/pi/PiSessions.ts#makePiSessionsLayer`,
-  `src/services/pi/PiSessions.ts#PiSessionHandle.prompt`.
-- `createCakeRuntime` creates the Cake adapter around Pi's
+  `src/services/pi/CakeSessionRuntimes.ts#makeCakeSessionRuntimesLayer`,
+  `src/services/pi/CakeSessionRuntimes.ts#CakeSessionHandle.prompt`.
+- `createCakeSessionRuntime` creates the Cake adapter around Pi's
   `createAgentSession` and subscribes to Pi events. On the return path,
   `ProjectSessions.observe` uses `conversations.observe`; the renderer model
   observer applies the resulting snapshots/events with
   `applyProjectSessionUpdate`.
-  Sources: `src/services/pi/runtime/cake-runtime.ts#createCakeRuntime`,
+  Sources: `src/services/pi/runtime/cake-session-runtime.ts#createCakeSessionRuntime`,
   `src/domain/project-sessions/projectSessionOperations.ts#observe`,
   `src/domain/conversations/conversations.ts#observe`,
   `src/renderer/observers/models.ts#createModelObserver`,

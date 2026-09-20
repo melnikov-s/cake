@@ -1,6 +1,6 @@
 import { Effect, Stream, type Schema } from "effect";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
-import { PiSessions } from "../../services/pi/PiSessions";
+import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import * as cakeChatLifecycle from "./cakeChatLifecycle";
@@ -32,7 +32,7 @@ export const acquireTarget = Effect.fn("CakeChats.acquireTarget")(function* (
   newSession: boolean,
   configuration: CakeChatRuntimeConfiguration,
 ) {
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const options = yield* cakeChatRuntime
     .acquireOptions({ configuration, target, newSession })
     .pipe(asError("acquire"));

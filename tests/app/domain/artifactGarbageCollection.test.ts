@@ -9,7 +9,7 @@ import { collectGarbage } from "../../../src/domain/artifacts/artifactGarbageCol
 import { ArtifactLineageId } from "../../../src/domain/artifacts/artifact-lineage";
 import type { CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
 import { makeArtifactProjectionLive } from "../../../src/services/artifacts/ArtifactProjectionLive";
-import { PiSessionError, PiSessions } from "../../../src/services/pi/PiSessions";
+import { PiSessionError, CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactStorageLive";
@@ -46,7 +46,7 @@ const testLayer = async (options: {
     layer: Layer.mergeAll(
       makeArtifactStorageLive(join(root, "artifacts")).pipe(Layer.provide(platform)),
       makeArtifactProjectionLive(join(root, "cache")).pipe(Layer.provide(platform)),
-      Layer.mock(PiSessions, {
+      Layer.mock(CakeSessionRuntimes, {
         durableArtifactReferences: () =>
           options.pointerFailure
             ? Effect.fail(new PiSessionError({ operation: "scan", message: "uncertain" }))

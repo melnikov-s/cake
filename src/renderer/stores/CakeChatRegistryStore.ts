@@ -1,7 +1,7 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
 import type { CakeChatTarget } from "../../domain/cake-chats/cake-chat-data";
 import type { ModelPreset } from "../../ipc/session-contract";
-import type { Session } from "../models/Session";
+import type { CakeSession } from "../models/CakeSession";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { CakeChatManagementStore } from "./CakeChatManagementStore";
 import type { CakeChatPendingSessionsStore, CakeControlTool } from "./CakeChatPendingSessionsStore";
@@ -9,7 +9,7 @@ import { CakeChatSessionStore } from "./CakeChatSessionStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 export interface CakeChatRegistryStoreProps {
-  sessionModel(sessionId: string): Session;
+  sessionModel(sessionId: string): CakeSession;
   tools(): ReadonlyArray<CakeControlTool>;
   pendingSessions(): CakeChatPendingSessionsStore;
   management(): CakeChatManagementStore;
@@ -85,6 +85,6 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
   }
 }
 
-function isRunning(model: Session) {
+function isRunning(model: CakeSession) {
   return model.streaming || model.activeTurnIds.length > 0 || model.backgroundWorkActive;
 }

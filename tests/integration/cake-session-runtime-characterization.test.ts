@@ -6,15 +6,15 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
-  createCakeRuntime,
-  type CakeRuntime,
-  type CakeRuntimeEvent,
-} from "../../src/services/pi/runtime/cake-runtime";
+  createCakeSessionRuntime,
+  type CakeSessionRuntime,
+  type CakeSessionRuntimeEvent,
+} from "../../src/services/pi/runtime/cake-session-runtime";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 
 const temporaryDirectories: string[] = [];
 const servers: Server[] = [];
-const runtimes: CakeRuntime[] = [];
+const runtimes: CakeSessionRuntime[] = [];
 
 interface Deferred {
   readonly promise: Promise<void>;
@@ -47,7 +47,7 @@ function finishTextResponse(response: ServerResponse, text: string) {
 }
 
 async function createTemporaryDirectory() {
-  const path = await mkdtemp(join(tmpdir(), "cake-runtime-characterization-"));
+  const path = await mkdtemp(join(tmpdir(), "cake-session-runtime-characterization-"));
   temporaryDirectories.push(path);
   return path;
 }
@@ -94,10 +94,10 @@ async function registerFixtureProvider(
 
 async function createFixtureRuntime(
   directory: string,
-  events: CakeRuntimeEvent[],
+  events: CakeSessionRuntimeEvent[],
   options: { sessionFile?: string } = {},
 ) {
-  const runtime = await createCakeRuntime({
+  const runtime = await createCakeSessionRuntime({
     cwd: directory,
     agentDir: join(directory, "agent"),
     sessionDir: join(directory, "sessions"),
@@ -122,7 +122,7 @@ afterEach(async () => {
   );
 });
 
-describe("CakeRuntime characterization", () => {
+describe("CakeSessionRuntime characterization", () => {
   it("projects streaming text and a tool lifecycle before the settled snapshot", async () => {
     const directory = await createTemporaryDirectory();
     const finalResponseStarted = deferred();
@@ -154,7 +154,7 @@ describe("CakeRuntime characterization", () => {
         response.end("data: [DONE]\n\n");
       });
     });
-    const events: CakeRuntimeEvent[] = [];
+    const events: CakeSessionRuntimeEvent[] = [];
     const runtime = await createFixtureRuntime(directory, events);
 
     const prompt = runtime.prompt("Inspect with a tool", "prompt", []);
@@ -294,7 +294,7 @@ describe("CakeRuntime characterization", () => {
       stopReason: "stop",
       timestamp: Date.now(),
     });
-    const events: CakeRuntimeEvent[] = [];
+    const events: CakeSessionRuntimeEvent[] = [];
     const runtime = await createFixtureRuntime(directory, events, {
       sessionFile: manager.getSessionFile() ?? undefined,
     });
@@ -337,7 +337,7 @@ describe("CakeRuntime characterization", () => {
       response.writeHead(200, { "content-type": "text/event-stream" });
       response.write(sseChunk({ role: "assistant", content: "Still working" }));
     });
-    const events: CakeRuntimeEvent[] = [];
+    const events: CakeSessionRuntimeEvent[] = [];
     const runtime = await createFixtureRuntime(directory, events);
 
     const prompt = runtime.prompt("Keep working", "prompt", []);
@@ -369,7 +369,7 @@ describe("CakeRuntime characterization", () => {
         response.end("data: [DONE]\n\n");
       });
     });
-    const events: CakeRuntimeEvent[] = [];
+    const events: CakeSessionRuntimeEvent[] = [];
     const runtime = await createFixtureRuntime(directory, events);
 
     const prompt = runtime.prompt("Reload afterward", "prompt", []);

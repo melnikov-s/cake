@@ -1,12 +1,12 @@
 import { Effect, Stream } from "effect";
 import type {
-  PiSessionAcquireOptions,
+  CakeSessionRuntimeAcquireOptions,
   PiSessionError,
   PiSessionEvent,
-  PiSessionHandle,
-  PiSessions,
+  CakeSessionHandle,
+  CakeSessionRuntimes,
   PiSessionUpdate,
-} from "../../services/pi/PiSessions";
+} from "../../services/pi/CakeSessionRuntimes";
 import type { PiQueuedMessages } from "../../services/pi/conversation-data";
 import type { ProjectSessionPresentationMode } from "../project-sessions/project-session-presentation";
 import type {
@@ -14,7 +14,7 @@ import type {
   Attachment,
   ChatConfiguration,
   PiSettingUpdate,
-  SessionSnapshot,
+  ConversationSnapshot as RuntimeConversationSnapshot,
   ThinkingLevel,
 } from "../../ipc/session-contract";
 import { toJsonValue } from "../../utils/to-json-value";
@@ -55,7 +55,7 @@ export const projectPreviewSnapshot = (preview: {
   tree: [],
 });
 
-export const projectSnapshot = (snapshot: SessionSnapshot): ConversationSnapshot => {
+export const projectSnapshot = (snapshot: RuntimeConversationSnapshot): ConversationSnapshot => {
   const projected: ConversationSnapshot = {
     workingDirectory: snapshot.workspacePath,
     sessionId: snapshot.sessionId,
@@ -141,16 +141,16 @@ const projectUpdates = (updates: Stream.Stream<PiSessionUpdate, PiSessionError>)
   );
 
 export const acquire = Effect.fn("Conversations.acquire")(function* (
-  sessions: PiSessions["Service"],
-  options: PiSessionAcquireOptions,
+  sessions: CakeSessionRuntimes["Service"],
+  options: CakeSessionRuntimeAcquireOptions,
 ) {
   return yield* sessions.acquire(options);
 });
 
 /** Acquires one scoped Pi handle at the point a shared conversation operation uses it. */
 export const use = Effect.fn("Conversations.use")(function* <A, E, R, E2, R2>(
-  acquisition: Effect.Effect<PiSessionHandle, E, R>,
-  operation: (handle: PiSessionHandle) => Effect.Effect<A, E2, R2>,
+  acquisition: Effect.Effect<CakeSessionHandle, E, R>,
+  operation: (handle: CakeSessionHandle) => Effect.Effect<A, E2, R2>,
 ): Effect.fn.Return<A, E | E2, R | R2> {
   return yield* operation(yield* acquisition);
 });
@@ -158,7 +158,7 @@ export const use = Effect.fn("Conversations.use")(function* <A, E, R, E2, R2>(
 export type ConversationDelivery = "prompt" | "steer" | "follow-up";
 
 export const deliver = Effect.fn("Conversations.deliver")(function* <E, R>(
-  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  acquisition: Effect.Effect<CakeSessionHandle, E, R>,
   delivery: ConversationDelivery,
   text: string,
   attachments: ReadonlyArray<Attachment>,
@@ -182,7 +182,7 @@ export const deliverWhenAvailable = Effect.fn("Conversations.deliverWhenAvailabl
   E,
   R,
 >(
-  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  acquisition: Effect.Effect<CakeSessionHandle, E, R>,
   text: string,
   attachments: ReadonlyArray<Attachment>,
   renderUserMessageAsMarkdown: boolean,
@@ -201,20 +201,20 @@ export const deliverWhenAvailable = Effect.fn("Conversations.deliverWhenAvailabl
 });
 
 export const abort = Effect.fn("Conversations.abort")(function* <E, R>(
-  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  acquisition: Effect.Effect<CakeSessionHandle, E, R>,
 ) {
   yield* use(acquisition, (handle) => handle.abort());
 });
 
 export const compact = Effect.fn("Conversations.compact")(function* <E, R>(
-  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  acquisition: Effect.Effect<CakeSessionHandle, E, R>,
   instructions?: string,
 ) {
   yield* use(acquisition, (handle) => handle.compact(instructions));
 });
 
 export const editMessage = Effect.fn("Conversations.editMessage")(function* <E, R>(
-  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  acquisition: Effect.Effect<CakeSessionHandle, E, R>,
   entryId: string,
   text: string,
   attachments: ReadonlyArray<Attachment>,
@@ -227,14 +227,14 @@ export const editMessage = Effect.fn("Conversations.editMessage")(function* <E, 
 });
 
 export const applyConfiguration = Effect.fn("Conversations.applyConfiguration")(function* <E, R>(
-  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  acquisition: Effect.Effect<CakeSessionHandle, E, R>,
   configuration: ChatConfiguration,
 ) {
   yield* use(acquisition, (handle) => handle.applyConfiguration(configuration));
 });
 
 export const setModel = Effect.fn("Conversations.setModel")(function* <E, R>(
-  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  acquisition: Effect.Effect<CakeSessionHandle, E, R>,
   provider: string,
   modelId: string,
 ) {
@@ -242,28 +242,28 @@ export const setModel = Effect.fn("Conversations.setModel")(function* <E, R>(
 });
 
 export const setThinkingLevel = Effect.fn("Conversations.setThinkingLevel")(function* <E, R>(
-  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  acquisition: Effect.Effect<CakeSessionHandle, E, R>,
   level: ThinkingLevel,
 ) {
   yield* use(acquisition, (handle) => handle.setThinkingLevel(level));
 });
 
 export const setFastMode = Effect.fn("Conversations.setFastMode")(function* <E, R>(
-  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  acquisition: Effect.Effect<CakeSessionHandle, E, R>,
   enabled: boolean,
 ) {
   yield* use(acquisition, (handle) => handle.setFastMode(enabled));
 });
 
 export const setPiSetting = Effect.fn("Conversations.setPiSetting")(function* <E, R>(
-  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  acquisition: Effect.Effect<CakeSessionHandle, E, R>,
   update: PiSettingUpdate,
 ) {
   yield* use(acquisition, (handle) => handle.setPiSetting(update));
 });
 
 export const authenticate = Effect.fn("Conversations.authenticate")(function* <E, R>(
-  acquisition: Effect.Effect<PiSessionHandle, E, R>,
+  acquisition: Effect.Effect<CakeSessionHandle, E, R>,
   operation:
     | { readonly _tag: "Login"; readonly provider: string; readonly authType: "api_key" | "oauth" }
     | { readonly _tag: "Logout"; readonly provider: string },
@@ -333,4 +333,4 @@ export const projectAttachments = (values: ReadonlyArray<Attachment>): ReadonlyA
     }
   });
 
-export const observe = (handle: PiSessionHandle) => projectUpdates(handle.updates);
+export const observe = (handle: CakeSessionHandle) => projectUpdates(handle.updates);

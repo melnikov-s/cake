@@ -9,7 +9,7 @@ import { ProjectSessionError, type ProjectSessionTarget } from "./project-sessio
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
-import { PiSessions } from "../../services/pi/PiSessions";
+import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import {
   archiveLocation,
   asError,
@@ -85,7 +85,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
         destination = selectedDestination;
       }
 
-      const sessions = yield* PiSessions;
+      const sessions = yield* CakeSessionRuntimes;
       const archive = yield* SessionArchiveStorage;
       const titleLocations =
         destination.workingDirectory === source.workingDirectory ? [source] : [source, destination];

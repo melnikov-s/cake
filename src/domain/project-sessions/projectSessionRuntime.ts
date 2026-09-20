@@ -23,7 +23,10 @@ import {
 } from "../utility-work/utilityWork";
 import { Electron } from "../../services/electron/Electron";
 import type { PiModels } from "../../services/pi/PiModels";
-import { PiSessions, type PiSessionAcquireOptions } from "../../services/pi/PiSessions";
+import {
+  CakeSessionRuntimes,
+  type CakeSessionRuntimeAcquireOptions,
+} from "../../services/pi/CakeSessionRuntimes";
 import { ProjectSessionRuntimeHost } from "../../services/pi/ProjectSessionRuntimeHost";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 import childSessionFamilyPromptTemplate from "./prompts/child-session-family.md?raw";
@@ -90,7 +93,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const configuration = yield* ProjectSessionConfiguration;
   const electron = yield* Electron;
   const runtimeHost = yield* ProjectSessionRuntimeHost;
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const families = yield* SessionFamilyStorage;
   const catalogs = yield* SessionCatalogChanges;
   const browser = yield* Effect.serviceOption(Browser);
@@ -100,7 +103,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     | ApplicationState
     | Electron
     | PiModels
-    | PiSessions
+    | CakeSessionRuntimes
     | ProjectAccess
     | ProjectSessionConfiguration
     | ProjectSessionRuntimeHost
@@ -227,7 +230,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     return { sessionId: targetId, location: targetLocation };
   });
   const getRuntimeOptions = () => runtimeOptions;
-  const runtimeOptions: PiSessionAcquireOptions = {
+  const runtimeOptions: CakeSessionRuntimeAcquireOptions = {
     profile: { _tag: "ProjectSession" },
     onRelease: runtimeHost.releaseSession(sessionId),
     onSessionChanged: catalogs.publish({

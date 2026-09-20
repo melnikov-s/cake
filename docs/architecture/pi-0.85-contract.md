@@ -2,7 +2,7 @@
 
 Cake pins `@earendil-works/pi-coding-agent` 0.85.1. All ordinary application
 imports of Pi packages live beneath `src/services/pi`. `PiLive` provides
-`PiSessions`, `PiModels`, and `PiAgentResources`; Cake domain operations and RPC
+`CakeSessionRuntimes`, `PiModels`, and `PiAgentResources`; Cake domain operations and RPC
 never expose raw Pi objects.
 
 The deterministic adapter contract exercises these public APIs directly:
@@ -24,11 +24,11 @@ The deterministic adapter contract exercises these public APIs directly:
 The foundation test is provider-free and deterministic. It proves scoped
 session lifecycle, extension binding, interactive UI routing, and event
 normalization without credentials or model cost. Provider-backed streaming uses
-the same `PiSessions` implementation in production and remains opt-in in tests.
+the same `CakeSessionRuntimes` implementation in production and remains opt-in in tests.
 
 ## Service ownership
 
-- `PiSessions` owns list, inspect, keyed scoped runtime acquisition, session
+- `CakeSessionRuntimes` owns list, inspect, keyed scoped runtime acquisition, session
   operations, runtime commands, session-bound extensions, and observation.
 - `PiModels` owns catalog, authentication/availability projection, resolution,
   and bounded non-session completion through Pi's model runtime.
@@ -47,7 +47,7 @@ then emits live runtime events. Cake does not read or mutate JSONL directly.
 ## Special commands
 
 Pi's `/changelog` is an interactive-mode command rather than an
-`AgentSession.prompt()` command. `PiSessions` handles it as a local runtime
+`AgentSession.prompt()` command. `CakeSessionRuntimes` handles it as a local runtime
 command: it reads Pi's bundled `CHANGELOG.md` through public `getPackageDir()`,
 returns Markdown through the Cake-owned RPC projection, and never adds it to a
 Pi Session transcript or sends it to a model.

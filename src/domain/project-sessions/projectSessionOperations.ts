@@ -11,7 +11,7 @@ import {
   projectPreviewSnapshot,
   use as useConversation,
 } from "../conversations/conversations";
-import { PiSessions } from "../../services/pi/PiSessions";
+import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import type { ProjectSessionLocation } from "./project-session-data";
 import * as projectSessionLocations from "./projectSessionLocations";
 import { resolutionNamespace } from "./projectSessionResolution";
@@ -20,12 +20,12 @@ import {
   ProjectSessionError,
   type ProjectSessionCompanionActionInput,
   type ProjectSessionPromptInput,
-  type ProjectSessionSnapshot,
   type ProjectSessionStartInput,
   type ProjectSessionTarget,
   type ProjectSessionUpdate,
 } from "./project-session-data";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
+import { assemble as assembleProjectSessionProjection } from "./projectSessionProjection";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import {
@@ -43,7 +43,7 @@ export const acquireTarget = Effect.fn("ProjectSessions.acquireTarget")(function
   sessionId: string,
   newSession: boolean,
 ) {
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   yield* (yield* ManagedWorktrees).awaitSetup(location.workingDirectory).pipe(asError("acquire"));
   const options = yield* acquireOptions({ location, sessionId, newSession }).pipe(
     asError("acquire"),
@@ -128,7 +128,7 @@ const isSessionResolved = Effect.fn("ProjectSessions.isSessionResolved")(functio
     asError("observe"),
   );
   if (namespace) return namespace === "resolved";
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const activeRuntime = yield* sessions.currentStatus({
     workingDirectory: location.workingDirectory,
     sessionDirectory: location.sessionDirectory,
@@ -182,23 +182,17 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
           ? Stream.fromEffect(
               Effect.gen(function* () {
                 const preview = yield* inspect(target);
-                const snapshot: ProjectSessionSnapshot = {
-                  identity: {
-                    _tag: "ProjectSession",
-                    sessionId: target.sessionId,
-                    projectPath: preview.projectPath,
-                    workingDirectory: preview.workingDirectory,
-                  },
-                  projectName: (yield* findLocation(target)).projectName,
+                const location = yield* findLocation(target);
+                const snapshot = yield* assembleProjectSessionProjection({
+                  sessionId: target.sessionId,
+                  location,
                   resolved: true,
                   unread: false,
-                  conversation: projectPreviewSnapshot({
+                  primaryConversation: projectPreviewSnapshot({
                     ...preview,
                     workspacePath: preview.workingDirectory,
                   }),
-                };
-                if (preview.managedWorktree !== undefined)
-                  Object.assign(snapshot, { managedWorktree: preview.managedWorktree });
+                });
                 return { _tag: "Snapshot", revision: 0, snapshot } satisfies ProjectSessionUpdate;
               }),
             )
@@ -212,12 +206,6 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
             Effect.gen(function* () {
               const location = yield* findLocation(target);
               const state = yield* getState();
-              const identity = {
-                _tag: "ProjectSession" as const,
-                sessionId: target.sessionId,
-                projectPath: location.projectPath,
-                workingDirectory: location.workingDirectory,
-              };
               const live = Stream.unwrap(
                 acquireTarget(location, target.sessionId, false).pipe(
                   Effect.map((handle) =>
@@ -233,24 +221,27 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
                             })
                           : Effect.void,
                       ),
-                      Stream.map((update): ProjectSessionUpdate => {
+                      Stream.mapEffect((update) => {
                         if (update._tag === "Event")
-                          return {
+                          return Effect.succeed<ProjectSessionUpdate>({
                             _tag: "Event",
                             revision: update.revision,
                             sessionId: target.sessionId,
                             event: update.event,
-                          };
-                        const snapshot: ProjectSessionSnapshot = {
-                          identity,
-                          projectName: location.projectName,
+                          });
+                        return assembleProjectSessionProjection({
+                          sessionId: target.sessionId,
+                          location,
                           resolved: false,
                           unread: state.unreadSessionIds.includes(target.sessionId),
-                          conversation: update.snapshot,
-                        };
-                        if (location.managedWorktree !== undefined)
-                          Object.assign(snapshot, { managedWorktree: location.managedWorktree });
-                        return { _tag: "Snapshot", revision: update.revision, snapshot };
+                          primaryConversation: update.snapshot,
+                        }).pipe(
+                          Effect.map((snapshot) => ({
+                            _tag: "Snapshot" as const,
+                            revision: update.revision,
+                            snapshot,
+                          })),
+                        );
                       }),
                     ),
                   ),
@@ -262,18 +253,16 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
               // A continuation can be displayed from its durable transcript while checkout
               // setup runs. Runtime acquisition above remains gated until setup completes.
               const preview = yield* inspect(target);
-              const snapshot: ProjectSessionSnapshot = {
-                identity,
-                projectName: location.projectName,
+              const snapshot = yield* assembleProjectSessionProjection({
+                sessionId: target.sessionId,
+                location,
                 resolved: false,
                 unread: state.unreadSessionIds.includes(target.sessionId),
-                conversation: projectPreviewSnapshot({
+                primaryConversation: projectPreviewSnapshot({
                   ...preview,
                   workspacePath: preview.workingDirectory,
                 }),
-              };
-              if (location.managedWorktree !== undefined)
-                Object.assign(snapshot, { managedWorktree: location.managedWorktree });
+              });
               return Stream.succeed({
                 _tag: "Snapshot",
                 revision: 0,
@@ -331,7 +320,7 @@ export const awaitTurnSettled = Effect.fn("ProjectSessions.awaitTurnSettled")(fu
   turnId: TurnId,
 ) {
   const location = yield* findLocation(target);
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const pending = () =>
     sessions
       .currentTurnIds({

@@ -1,9 +1,9 @@
 import { Store, observable } from "r-state-tree";
-import { stagedSessionSlashCommands, type SessionSnapshot } from "../../ipc/session-contract";
+import { stagedSessionSlashCommands, type ConversationSnapshot } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 
-type SlashCommand = SessionSnapshot["commands"][number];
+type SlashCommand = ConversationSnapshot["commands"][number];
 
 /** Owns the finite, non-executable command preview for one unsent session. */
 export class StagedSessionCommandStore extends Store {
@@ -13,7 +13,7 @@ export class StagedSessionCommandStore extends Store {
   private loadRevision = 0;
   private loadController: AbortController | undefined;
 
-  get commands(): SessionSnapshot["commands"] {
+  get commands(): ConversationSnapshot["commands"] {
     return [...stagedSessionSlashCommands, ...this.resourceCommands];
   }
 

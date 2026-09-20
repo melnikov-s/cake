@@ -11,7 +11,7 @@ import {
   listSessionAssistantControlTools,
 } from "../../../src/renderer/app-control/AppControlBridge";
 import { Message } from "../../../src/renderer/models/Message";
-import { Session } from "../../../src/renderer/models/Session";
+import { CakeSession } from "../../../src/renderer/models/CakeSession";
 import { SessionCoordinationStore } from "../../../src/renderer/stores/SessionCoordinationStore";
 
 type AppControlHostOverrides = Partial<
@@ -1421,7 +1421,7 @@ describe("AppControlBridge", () => {
       queuedContent = encodeCrossSessionMessage(text, metadata);
       return "turn-b";
     });
-    const targetSession = Session.create({ sessionId: "session-b" });
+    const targetSession = CakeSession.create({ sessionId: "session-b" });
     const sessionCoordination = mount(
       createStore(SessionCoordinationStore, {
         sessionById: (sessionId) => (sessionId === "session-b" ? targetSession : undefined),

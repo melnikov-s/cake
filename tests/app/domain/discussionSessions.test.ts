@@ -8,19 +8,22 @@ import {
   makeDiscussionSessionEnvironmentLayer,
   type DiscussionSessionRecord,
 } from "../../../src/services/discussion-sessions/DiscussionSessionEnvironment";
-import { makePiSessionsLayer, type PiSessionsAdapter } from "../../../src/services/pi/PiSessions";
+import {
+  makeCakeSessionRuntimesLayer,
+  type CakeSessionRuntimesAdapter,
+} from "../../../src/services/pi/CakeSessionRuntimes";
 import type {
-  CakeRuntime,
-  CakeRuntimeOptions,
-} from "../../../src/services/pi/runtime/cake-runtime";
+  CakeSessionRuntime,
+  CakeSessionRuntimeOptions,
+} from "../../../src/services/pi/runtime/cake-session-runtime";
 import { makeProjectSessionRuntimeTestLayer } from "./projectSessionRuntimeTestLayer";
-import type { SessionSnapshot } from "../../../src/ipc/session-contract";
+import type { ConversationSnapshot } from "../../../src/ipc/session-contract";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { sessionAssistantThreadPath } from "../../../src/domain/discussion-sessions/discussion-session-data";
 import { defaultApplicationState } from "../../../src/domain/application/application-data";
 
-const makeSnapshot = (sessionId: string, sessionFile: string): SessionSnapshot => ({
+const makeSnapshot = (sessionId: string, sessionFile: string): ConversationSnapshot => ({
   workspacePath: "/project",
   sessionId,
   sessionFile,
@@ -78,15 +81,15 @@ const makeLayer = (options: { readonly assistant?: boolean } = {}) => {
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
-  const runtimeOptions: CakeRuntimeOptions[] = [];
+  const runtimeOptions: CakeSessionRuntimeOptions[] = [];
   const modelSelections: Array<{ provider: string; modelId: string }> = [];
   const controlInvocations: unknown[] = [];
   let stagedProjections = 0;
-  const prompts: Parameters<CakeRuntime["prompt"]>[] = [];
+  const prompts: Parameters<CakeSessionRuntime["prompt"]>[] = [];
   const queueOperations: string[] = [];
   let preparedContexts = 0;
   let parentIndexRefreshes = 0;
-  const runtime = (options: CakeRuntimeOptions): CakeRuntime => {
+  const runtime = (options: CakeSessionRuntimeOptions): CakeSessionRuntime => {
     const sessionId = options.sessionId ?? "generated";
     const sessionFile = options.auxiliary
       ? `/reviews/${sessionId}.jsonl`
@@ -146,7 +149,7 @@ const makeLayer = (options: { readonly assistant?: boolean } = {}) => {
       dispose: () => undefined,
     };
   };
-  const adapter: PiSessionsAdapter = {
+  const adapter: CakeSessionRuntimesAdapter = {
     sessionIds: () => Stream.empty,
     catalog: () => Stream.empty,
     catalogEntry: () => Effect.succeed(undefined),
@@ -202,7 +205,7 @@ const makeLayer = (options: { readonly assistant?: boolean } = {}) => {
   const projectRuntime = makeProjectSessionRuntimeTestLayer();
   return {
     layer: Layer.mergeAll(
-      makePiSessionsLayer(adapter),
+      makeCakeSessionRuntimesLayer(adapter),
       discussions,
       projectRuntime,
       Layer.mock(RendererRequestCoordinator, {

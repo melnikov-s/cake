@@ -1,7 +1,7 @@
 # S3 Pi ecosystem compatibility contract
 
 Cake loads extensions, tools, providers, commands, skills, prompt templates,
-and packages through Pi 0.85.1. `PiSessions`, `PiModels`, and
+and packages through Pi 0.85.1. `CakeSessionRuntimes`, `PiModels`, and
 `PiAgentResources` beneath `src/services/pi` are the only application Services
 that read Pi resource and extension types. They normalize discovery and runtime
 state into Cake-owned Effect Schemas before Effect RPC.
@@ -11,7 +11,7 @@ state into Cake-owned Effect Schemas before Effect RPC.
 | State                                                                 | Authority                          | Owner and lifetime                                                                              |
 | --------------------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Loaded skills, prompts, configured extension sources, and diagnostics | Pi resource loader/package manager | `PiAgentResources`; context-dependent snapshot, reloaded through Pi                             |
-| Runtime commands, tools, extension status, and title                  | Active Pi Extension runtime        | Scoped `PiSessions` handle and Cake Session projection                                          |
+| Runtime commands, tools, extension status, and title                  | Active Pi Extension runtime        | Scoped `CakeSessionHandle` and Cake Session projection                                          |
 | Notifications and compatibility warnings                              | Active Pi Extension runtime        | Focused renderer Store projection; never persisted                                              |
 | Dialog responses                                                      | User                               | Correlated RPC/runtime operation; interruption, timeout, or Scope disposal settles cancellation |
 | Companion manifest and module                                         | Installed Pi extension package     | Discovered and compiled by the scoped Pi runtime; never copied into Cake persistence            |
@@ -24,10 +24,11 @@ reconstructs it through Pi.
 
 ## Session-bound extensions
 
-There is no public `PiExtensions` Service. When `PiSessions.acquire` opens a
-runtime, it loads the applicable Pi Extensions according to the Cake Session's
-semantic capability profile, binds Cake's UI adapter, and exposes runtime
-commands and projected events through the session handle. Reload is an explicit
+There is no public `PiExtensions` Service. When `CakeSessionRuntimes.acquire`
+opens a `CakeSessionRuntime` around one Pi Session Runtime, it loads the
+applicable Pi Extensions according to the one Cake Session's semantic capability
+profile, binds Cake's UI adapter, and exposes runtime commands and projected
+events through the `CakeSessionHandle`. Reload is an explicit
 session operation.
 
 `PiAgentResources` reports configured sources and load diagnostics but does not
@@ -107,7 +108,7 @@ failure after recording it; they never report false success.
 
 Every update identifies its Pi Session. Renderer Stores reject stale targets
 and clear session-bound extension UI before replacement. Releasing a
-`PiSessionHandle` cancels pending dialogs and disposes its runtime when the
+`CakeSessionHandle` cancels pending dialogs and disposes its runtime when the
 final acquisition releases it.
 
 The compatibility suite loads a real local Pi package containing a skill,

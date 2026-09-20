@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
-import { createCakeToolDefinition } from "../../../src/services/pi/runtime/cake-runtime-capabilities";
+import { createCakeToolDefinition } from "../../../src/services/pi/runtime/cake-session-runtime-capabilities";
 import {
   createCakeDrawOperations,
   type CakeDrawControl,

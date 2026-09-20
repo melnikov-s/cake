@@ -23,7 +23,7 @@ interface TurnRecoveryHooks {
   readonly onAbort: () => void;
 }
 
-export interface CakeRuntimeTurnController {
+export interface CakeSessionRuntimeTurnController {
   readonly compactionQueuedMessages: () => readonly string[];
   readonly executingTurnIds: () => ReadonlyArray<string>;
   readonly prompt: (
@@ -64,7 +64,7 @@ export interface CakeRuntimeTurnController {
   readonly dispose: () => void;
 }
 
-export function createCakeRuntimeTurnController(input: {
+export function createCakeSessionRuntimeTurnController(input: {
   readonly session: AgentSession;
   readonly isDisposed: () => boolean;
   readonly beforeIdleTurn: () => Promise<void>;
@@ -80,7 +80,7 @@ export function createCakeRuntimeTurnController(input: {
   readonly emitPart: (part: UiPart) => void;
   readonly emitSnapshot: () => Promise<void>;
   readonly emitSnapshotInBackground: () => void;
-}): CakeRuntimeTurnController {
+}): CakeSessionRuntimeTurnController {
   const { session } = input;
   const turnCompletions = new RuntimeTurnCompletion();
   type QueueLane = "steering" | "follow-up";

@@ -64,7 +64,7 @@ export interface RuntimeEventProjection {
   readonly dispose: () => void;
 }
 
-export function createCakeRuntimeEventProjection(input: {
+export function createCakeSessionRuntimeEventProjection(input: {
   readonly session: AgentSession;
   readonly sessionId: string;
   readonly emit: (event: RuntimeProjectionEvent) => void;

@@ -68,9 +68,9 @@ infrastructure.
 - Renderer `Artifact` instances are disposable projections of validated
   repository records. Session snapshots hydrate current records; a focused
   artifact observer applies live repository updates from the existing native
-  event stream directly to loaded Session Models. Pending response ownership,
+  event stream directly to loaded Cake Session Models. Pending response ownership,
   cancellation, and routing remain in a focused renderer artifact workflow
-  Store and the main artifact domain operations above `PiSessions`.
+  Store and the main artifact domain operations above `CakeSessionRuntimes`.
 - The catalog records explicit links to a Cake Session or Session Family. A link
   either follows the lineage's latest revision or pins one exact revision. Family
   creation workflows automatically create a family link; standalone fork policy

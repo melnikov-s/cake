@@ -1,6 +1,6 @@
 import { Effect, Stream } from "effect";
-import type { SessionSummary } from "../../ipc/session-contract";
-import { PiSessions, type PiSessionError } from "../../services/pi/PiSessions";
+import type { PiSessionSummary } from "../../ipc/session-contract";
+import { CakeSessionRuntimes, type PiSessionError } from "../../services/pi/CakeSessionRuntimes";
 import type { CakeChatLocation } from "./cakeChatLocations";
 import { archiveLocation } from "./cakeChatLocations";
 import type { CakeChatCatalogUpdate } from "../application/catalog-data";
@@ -35,7 +35,7 @@ const errorValue = (operation: string, error: unknown) =>
     message: error instanceof Error ? error.message : String(error),
   });
 
-const summary = (item: SessionSummary, resolved: boolean): CakeChatSummary => {
+const summary = (item: PiSessionSummary, resolved: boolean): CakeChatSummary => {
   const projected: CakeChatSummary = {
     sessionId: item.id,
     title: item.title,
@@ -69,9 +69,9 @@ const catalogForState = Effect.fn("CakeChats.catalogForState")(function* (
   query: CakeChatCatalogQuery,
   location: CakeChatLocation,
 ) {
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const archive = yield* SessionArchiveStorage;
-  const source: Stream.Stream<SessionSummary, unknown> = query.resolved
+  const source: Stream.Stream<PiSessionSummary, unknown> = query.resolved
     ? archive.resolved({
         cwd: location.workingDirectory,
         activeRoot: location.sessionDirectory,
@@ -104,7 +104,7 @@ const catalogEventForChange = Effect.fn("CakeChats.catalogEventForChange")(funct
     };
   if (change._tag !== "CakeChatSessionChanged") return undefined;
   if (change.resolved !== query.resolved) return undefined;
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const archive = yield* SessionArchiveStorage;
   const item = change.resolved
     ? yield* archive.resolvedEntry(change.sessionId, {
@@ -201,7 +201,7 @@ export const inspect = Effect.fn("CakeChats.inspect")(function* (
   sessionId: string,
   location: CakeChatLocation,
 ) {
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const namespace = yield* sessionNamespace(sessionId, location);
   const preview = yield* sessions
     .inspect({

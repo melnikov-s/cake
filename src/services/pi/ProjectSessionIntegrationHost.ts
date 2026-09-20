@@ -27,7 +27,7 @@ import type {
   InlineWidgetGenerationResult,
   WidgetGenerationReviewDependencies,
 } from "../../domain/widgets/widgetGenerationReview";
-import type { CakeRuntimeOptions } from "./runtime/cake-runtime";
+import type { CakeSessionRuntimeOptions } from "./runtime/cake-session-runtime";
 import type { RuntimeUiRequest } from "./runtime/runtime-ui-request";
 import type { ImportWorkspaceFileInput } from "../artifacts/importWorkspaceFile";
 import type { ArtifactProjectionMetadata } from "../artifacts/ArtifactProjection";
@@ -83,7 +83,7 @@ interface ReviewRepositoryPort {
 }
 
 export type ProjectSessionRuntimeIntegrations = Pick<
-  CakeRuntimeOptions,
+  CakeSessionRuntimeOptions,
   | "generateInlineWidget"
   | "reviseInlineWidget"
   | "resolveArtifact"
@@ -110,7 +110,7 @@ export type ProjectSessionRuntimeIntegrations = Pick<
 
 /**
  * Cake-owned artifact, UI-request, review, and inline-widget integrations for
- * Pi Session runtimes. Pi runtime lifecycle belongs exclusively to PiSessions.
+ * Pi Session runtimes. Pi runtime lifecycle belongs exclusively to CakeSessionRuntimes.
  */
 export interface ProjectSessionIntegrationHostOptions {
   readonly workspacePath: string;
@@ -128,7 +128,7 @@ export interface ProjectSessionIntegrationHostOptions {
     invocation: ProjectSessionControlInvocation,
     signal: AbortSignal,
   ) => Promise<JsonValue>;
-  readonly drawControl?: CakeRuntimeOptions["drawControl"];
+  readonly drawControl?: CakeSessionRuntimeOptions["drawControl"];
   readonly runWidgetGeneration?: typeof runInlineWidgetGeneration;
   readonly runWidgetRepair?: typeof runInlineWidgetRepair;
   readonly runWidgetVisualReview?: typeof runInlineWidgetVisualReview;
@@ -166,7 +166,7 @@ export interface ProjectSessionIntegrationHostOptions {
   ) => Promise<VscodeActionResult<JsonValue>>;
   readonly isTrusted?: () => boolean;
   readonly utilityModel?: () => UtilityModel | undefined;
-  readonly generateSessionTitle?: NonNullable<CakeRuntimeOptions["generateSessionTitle"]>;
+  readonly generateSessionTitle?: NonNullable<CakeSessionRuntimeOptions["generateSessionTitle"]>;
   readonly modelPresets?: () => CakeModelPresetCatalog;
   readonly worktreeLanding?: WorktreeLandingCoordinator;
   readonly fastMode?: (sessionId: string) => boolean;
@@ -184,7 +184,7 @@ export class ProjectSessionIntegrationHost {
   private readonly requestUiFromRenderer: ProjectSessionIntegrationHostOptions["requestUi"];
   private readonly requestArtifactFromRenderer: ProjectSessionIntegrationHostOptions["requestArtifact"];
   private readonly requestApplicationControlFromRenderer: ProjectSessionIntegrationHostOptions["requestApplicationControl"];
-  private readonly drawControl: CakeRuntimeOptions["drawControl"];
+  private readonly drawControl: CakeSessionRuntimeOptions["drawControl"];
   private readonly runWidgetGeneration: typeof runInlineWidgetGeneration;
   private readonly runWidgetRepair: typeof runInlineWidgetRepair;
   private readonly runWidgetVisualReview: typeof runInlineWidgetVisualReview;

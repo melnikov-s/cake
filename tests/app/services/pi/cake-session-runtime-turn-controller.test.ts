@@ -1,6 +1,6 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
-import { createCakeRuntimeTurnController } from "../../../../src/services/pi/runtime/cake-runtime-turn-controller";
+import { createCakeSessionRuntimeTurnController } from "../../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
 import { encodeCrossSessionMessage } from "../../../../src/domain/conversations/cross-session-coordination";
 import { projectQueuedMessages } from "../../../../src/services/pi/runtime/session-projection";
 
@@ -33,7 +33,7 @@ function createFixture(overrides: Partial<AgentSession> = {}) {
     ...overrides,
   } as unknown as AgentSession;
   const syncQueuedParts = vi.fn();
-  const controller = createCakeRuntimeTurnController({
+  const controller = createCakeSessionRuntimeTurnController({
     session,
     isDisposed: () => false,
     beforeIdleTurn: async () => undefined,
@@ -49,11 +49,11 @@ function createFixture(overrides: Partial<AgentSession> = {}) {
   return { controller, session, syncQueuedParts };
 }
 
-describe("CakeRuntime turn controller", () => {
+describe("CakeSessionRuntime turn controller", () => {
   it("does not dispatch an accepted idle prompt after abort wins during preparation", async () => {
     const preparation = deferred();
     const { controller, session } = createFixture();
-    const preparedController = createCakeRuntimeTurnController({
+    const preparedController = createCakeSessionRuntimeTurnController({
       session,
       isDisposed: () => false,
       beforeIdleTurn: () => preparation.promise,

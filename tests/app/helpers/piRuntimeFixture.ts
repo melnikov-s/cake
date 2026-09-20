@@ -1,10 +1,10 @@
-import type { PiSessionAcquireOptions } from "../../../src/services/pi/PiSessions";
+import type { CakeSessionRuntimeAcquireOptions } from "../../../src/services/pi/CakeSessionRuntimes";
 import type {
-  CakeRuntime,
-  CakeRuntimeOptions,
-} from "../../../src/services/pi/runtime/cake-runtime";
-import type { SessionSnapshot } from "../../../src/ipc/session-contract";
-export const snapshot: SessionSnapshot = {
+  CakeSessionRuntime,
+  CakeSessionRuntimeOptions,
+} from "../../../src/services/pi/runtime/cake-session-runtime";
+import type { ConversationSnapshot } from "../../../src/ipc/session-contract";
+export const snapshot: ConversationSnapshot = {
   workspacePath: "/project",
   sessionId: "session-1",
   sessionFile: "/sessions/session-1.jsonl",
@@ -20,7 +20,7 @@ export const snapshot: SessionSnapshot = {
   tree: [],
 };
 
-export const options = (overrides: Partial<PiSessionAcquireOptions["runtime"]> = {}) =>
+export const options = (overrides: Partial<CakeSessionRuntimeAcquireOptions["runtime"]> = {}) =>
   ({
     profile: { _tag: "ProjectSession" },
     runtime: {
@@ -32,12 +32,12 @@ export const options = (overrides: Partial<PiSessionAcquireOptions["runtime"]> =
       requestUi: async () => undefined,
       ...overrides,
     },
-  }) satisfies PiSessionAcquireOptions;
+  }) satisfies CakeSessionRuntimeAcquireOptions;
 
 export function fakeRuntime(
-  runtimeOptions: CakeRuntimeOptions,
+  runtimeOptions: CakeSessionRuntimeOptions,
   onDispose: () => void | Promise<void>,
-): CakeRuntime {
+): CakeSessionRuntime {
   return {
     sessionId: snapshot.sessionId,
     sessionFile: snapshot.sessionFile,

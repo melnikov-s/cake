@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import type { ArtifactPointer } from "../../../ipc/artifact-contract";
 import type { JsonValue } from "../../../ipc/json-contract";
 import { SESSION_TITLE_MAX_LENGTH, type UtilityModel } from "../../../ipc/session-contract";
-import type { CakeRuntimeOptions } from "./cake-runtime";
+import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
 import { appendToolCompactedBranch } from "./session-tool-compaction";
 import { projectArtifactPointers, textFromContent } from "./session-projection";
 import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
@@ -17,7 +17,7 @@ interface PendingSessionFork {
   readonly destinationWorkingDirectory?: string;
 }
 
-export interface CakeRuntimeContinuations {
+export interface CakeSessionRuntimeContinuations {
   activeSessionTitle(): string;
   initializeSessionFromFirstMessage(currentUserMessage: string): Promise<void>;
   rename(name: string, reportAction?: boolean): Promise<string>;
@@ -36,8 +36,8 @@ export interface CakeRuntimeContinuations {
   dispose(): void;
 }
 
-export function createCakeRuntimeContinuations(input: {
-  options: CakeRuntimeOptions;
+export function createCakeSessionRuntimeContinuations(input: {
+  options: CakeSessionRuntimeOptions;
   session: AgentSession;
   sessionId: string;
   isDisposed(): boolean;
@@ -52,7 +52,7 @@ export function createCakeRuntimeContinuations(input: {
   drainReloads(): Promise<void> | undefined;
   handleSettledTurn(): Promise<void>;
   reportAgentAction(action: "rename" | "resolve" | "restore", detail?: string): Promise<void>;
-}): CakeRuntimeContinuations {
+}): CakeSessionRuntimeContinuations {
   const {
     options,
     session,

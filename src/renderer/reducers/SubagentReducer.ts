@@ -4,11 +4,11 @@ import type {
   SubagentActivity as SubagentActivityValue,
   SubagentUpdate,
 } from "../../domain/subagents/subagent-data";
-import { sessionSnapshotSchema, uiPartSchema } from "../../ipc/session-contract";
-import type { Session } from "../models/Session";
+import { conversationSnapshotSchema, uiPartSchema } from "../../ipc/session-contract";
+import type { CakeSession } from "../models/CakeSession";
 import { SubagentActivity } from "../models/SubagentActivity";
 
-export function applySubagentUpdate(model: Session, sessionId: string, update: SubagentUpdate) {
+export function applySubagentUpdate(model: CakeSession, sessionId: string, update: SubagentUpdate) {
   if (update.parentSessionId !== sessionId)
     throw new Error(`Subagent parent identity collision: ${sessionId}`);
   batch(() => {
@@ -41,7 +41,7 @@ export function applySubagentUpdate(model: Session, sessionId: string, update: S
   });
 }
 
-function upsertSubagentActivity(model: Session, activity: SubagentActivityValue) {
+function upsertSubagentActivity(model: CakeSession, activity: SubagentActivityValue) {
   let target = model.subagentActivities.find((item) => item.handleId === activity.handleId);
   if (!target) {
     target = SubagentActivity.create({ handleId: activity.handleId });
@@ -59,7 +59,7 @@ function upsertSubagentActivity(model: Session, activity: SubagentActivityValue)
   target.usage =
     activity.usage === undefined
       ? undefined
-      : Schema.decodeUnknownSync(sessionSnapshotSchema.fields.usage)(activity.usage);
+      : Schema.decodeUnknownSync(conversationSnapshotSchema.fields.usage)(activity.usage);
   target.error = activity.error;
 }
 

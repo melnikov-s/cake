@@ -1,10 +1,10 @@
 import { Effect } from "effect";
-import { PiSessions } from "../../services/pi/PiSessions";
+import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { PiSettings, PiSettingsError } from "../../services/pi/PiSettings";
 import { PiSettingsRpc } from "../protocol/PiSettingsRpc";
 
 const reloadSessions = (operation: string) =>
-  Effect.flatMap(PiSessions, (sessions) => sessions.reloadAll()).pipe(
+  Effect.flatMap(CakeSessionRuntimes, (sessions) => sessions.reloadAll()).pipe(
     Effect.mapError((error) => new PiSettingsError({ operation, message: error.message })),
   );
 

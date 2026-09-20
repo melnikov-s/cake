@@ -2,9 +2,9 @@ import { applySnapshot, batch } from "r-state-tree";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import { projectionId } from "../../utils/projection-id";
 import { Artifact } from "../models/Artifact";
-import type { Session } from "../models/Session";
+import type { CakeSession } from "../models/CakeSession";
 
-export function applyArtifactUpdate(session: Session, record: ArtifactRecord) {
+export function applyArtifactUpdate(session: CakeSession, record: ArtifactRecord) {
   batch(() => {
     const snapshot = artifactSnapshot(record);
     const existing = session.artifacts.find((artifact) => artifact.id === snapshot.id);

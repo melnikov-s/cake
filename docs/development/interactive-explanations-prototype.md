@@ -10,14 +10,14 @@ At normal artifact-panel width the composition is a compact vertical reading seq
 
 Paths and ranges refer to the prototype's repository checkout, not a future web/server design.
 
-| Claim                                                                                                                | Evidence                                                                                                      |
-| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| A typed renderer Client sends `sessionChats.prompt` through the generated RPC client                                 | `src/renderer/client/ClientLive.ts:273–279`                                                                   |
-| Preload exposes only frozen `cake.rpc` send/subscribe; raw Electron IPC stays private                                | `src/preload/preload.ts:5–19`                                                                                 |
-| Main binds the originating renderer connection before delivering the prompt                                          | `src/ipc/server/SessionChatHandlers.ts:6–20`                                                                  |
-| Pi service prompt enters its runtime turn operation                                                                  | `src/services/pi/PiSessions.ts:596–598` (see the preceding `startTurn` implementation for adapter delegation) |
-| Main embeds Pi; extensions share main privilege; renderer is sandboxed; shared schemas validate receiving boundaries | `docs/architecture/cake-architecture.md`, Process boundaries                                                  |
-| Window observers update projections, not a competing transcript authority                                            | `docs/architecture/cake-architecture.md:135–150`, and Ownership                                               |
+| Claim                                                                                                                | Evidence                                                                                                               |
+| -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| A typed renderer Client sends `sessionChats.prompt` through the generated RPC client                                 | `src/renderer/client/ClientLive.ts:273–279`                                                                            |
+| Preload exposes only frozen `cake.rpc` send/subscribe; raw Electron IPC stays private                                | `src/preload/preload.ts:5–19`                                                                                          |
+| Main binds the originating renderer connection before delivering the prompt                                          | `src/ipc/server/SessionChatHandlers.ts:6–20`                                                                           |
+| Pi service prompt enters its runtime turn operation                                                                  | `src/services/pi/CakeSessionRuntimes.ts:596–598` (see the preceding `startTurn` implementation for adapter delegation) |
+| Main embeds Pi; extensions share main privilege; renderer is sandboxed; shared schemas validate receiving boundaries | `docs/architecture/cake-architecture.md`, Process boundaries                                                           |
+| Window observers update projections, not a competing transcript authority                                            | `docs/architecture/cake-architecture.md:135–150`, and Ownership                                                        |
 
 The five stops are **interpretation**: a conceptual ordering. They omit queue policy, cancellation, tools, provider I/O, retries and individual event types. Preload is a boundary strip, not a third process. “Validated values” describes the receiving transport/RPC boundaries, not parsing in `preload.ts` itself. Pi ownership claims are architectural; the short implementation excerpts establish entry points, not the entire agent-loop implementation.
 

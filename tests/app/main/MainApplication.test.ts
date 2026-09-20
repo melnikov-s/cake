@@ -8,7 +8,7 @@ import type { ApplicationState as ApplicationStateValue } from "../../../src/dom
 import type { WorktreeRecord } from "../../../src/domain/worktrees/managed-worktree-data";
 import { MainApplication } from "../../../src/main/MainApplication";
 import { Electron, type ElectronWindowLifecycle } from "../../../src/services/electron/Electron";
-import { PiSessions } from "../../../src/services/pi/PiSessions";
+import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { RewordingRequests } from "../../../src/services/projects/RewordingRequests";
@@ -93,7 +93,7 @@ const testLayer = (input?: {
         Effect.sync(() => input?.releaseRendererConnection?.(ownerId)),
     }),
     Layer.mock(ManagedWorktrees, { records: () => Effect.succeed(input?.worktrees ?? []) }),
-    Layer.mock(PiSessions, {}),
+    Layer.mock(CakeSessionRuntimes, {}),
     Layer.mock(Terminal, {
       closeOwner: (ownerId) => Effect.sync(() => input?.closeTerminalOwner?.(ownerId)),
     }),

@@ -12,7 +12,10 @@ import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamil
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import { makePiSessionsLayer, PiSessions } from "../../../src/services/pi/PiSessions";
+import {
+  makeCakeSessionRuntimesLayer,
+  CakeSessionRuntimes,
+} from "../../../src/services/pi/CakeSessionRuntimes";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { fakeRuntime, snapshot } from "../helpers/piRuntimeFixture";
@@ -95,7 +98,7 @@ const piLayer = (
   received: Array<{ target: string; text: string }>,
   executingIds: () => ReadonlyArray<string>,
 ) =>
-  makePiSessionsLayer({
+  makeCakeSessionRuntimesLayer({
     sessionIds: () => Stream.empty,
     catalog: () => Stream.empty,
     catalogEntry: () => Effect.succeed(undefined),
@@ -130,7 +133,7 @@ it.effect("routes an automatic reply to the consumed request instead of later qu
     yield* Effect.gen(function* () {
       yield* initializeFamily;
       const options = yield* acquireOptions({ location, sessionId: "child", newSession: false });
-      const handle = yield* (yield* PiSessions).acquire(options);
+      const handle = yield* (yield* CakeSessionRuntimes).acquire(options);
       const activeTurnId = yield* handle.prompt(message("root", requestA, threadA, true));
       executing = [activeTurnId];
       yield* Queue.take(entered);
@@ -184,7 +187,7 @@ it.effect("one reply satisfies all consumed requests from the same sender", () =
     yield* Effect.gen(function* () {
       yield* initializeFamily;
       const options = yield* acquireOptions({ location, sessionId: "child", newSession: false });
-      const handle = yield* (yield* PiSessions).acquire(options);
+      const handle = yield* (yield* CakeSessionRuntimes).acquire(options);
       const initialTurnId = yield* handle.prompt(message("root", requestA, threadA, true));
       yield* Queue.take(entered);
       const refinementTurnId = yield* handle.followUp(message("root", requestB, threadB, true));
@@ -240,7 +243,7 @@ it.effect(
       yield* Effect.gen(function* () {
         yield* initializeFamily;
         const options = yield* acquireOptions({ location, sessionId: "child", newSession: false });
-        const handle = yield* (yield* PiSessions).acquire(options);
+        const handle = yield* (yield* CakeSessionRuntimes).acquire(options);
         const activeTurnId = yield* handle.prompt(message("root", requestA, threadA, true));
         executing = [activeTurnId];
         yield* Queue.take(entered);
@@ -306,7 +309,7 @@ it.effect("does not select a response request when no input is executing", () =>
     yield* Effect.gen(function* () {
       yield* initializeFamily;
       const options = yield* acquireOptions({ location, sessionId: "child", newSession: false });
-      const handle = yield* (yield* PiSessions).acquire(options);
+      const handle = yield* (yield* CakeSessionRuntimes).acquire(options);
       yield* handle.followUp(message("root", requestA, threadA, true));
       yield* Queue.take(entered);
 

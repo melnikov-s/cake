@@ -1,11 +1,11 @@
 import { Effect, Stream } from "effect";
-import { SESSION_TITLE_MAX_LENGTH, type SessionSummary } from "../../ipc/session-contract";
+import { SESSION_TITLE_MAX_LENGTH, type PiSessionSummary } from "../../ipc/session-contract";
 import { getState } from "../application/application";
 import type { ApplicationState } from "../application/application-data";
 import type { SessionCatalogUpdate } from "../application/catalog-data";
 import { toJsonValue } from "../../utils/to-json-value";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
-import { PiSessionError, PiSessions } from "../../services/pi/PiSessions";
+import { PiSessionError, CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import type { ProjectSessionLocation } from "./project-session-data";
 import * as projectSessionLocations from "./projectSessionLocations";
 import { resolutionNamespace } from "./projectSessionResolution";
@@ -57,7 +57,7 @@ export const asError = (operation: string) =>
   );
 
 const summary = (
-  item: SessionSummary,
+  item: PiSessionSummary,
   location: ProjectSessionLocation,
   resolved: boolean,
   unreadIds: ReadonlySet<string>,
@@ -235,7 +235,7 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
   }).pipe(asError("catalog"));
   const resolved = namespace === "resolved";
   const unread = new Set(state.unreadSessionIds);
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const locations = yield* projectSessionLocations
     .locations({ includeInactive: true })
     .pipe(asError("catalog"));
@@ -355,14 +355,14 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
       Stream.concat(familySummaries),
     );
   }
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const locations = yield* projectSessionLocations.locations().pipe(asError("list"));
   const locationCatalogs = Stream.fromIterable(
     locations.filter((location) => location.projectPath === query.projectPath),
   ).pipe(
     Stream.flatMap(
       (location) => {
-        const source: Stream.Stream<SessionSummary, unknown> = sessions.catalog({
+        const source: Stream.Stream<PiSessionSummary, unknown> = sessions.catalog({
           workingDirectory: location.workingDirectory,
           sessionDirectory: location.sessionDirectory,
         });
@@ -415,7 +415,7 @@ const catalogEventForSessionChange = Effect.fn("ProjectSessions.catalogEventForS
       (candidate) => candidate.workingDirectory === change.workingDirectory,
     );
     if (!location || location.projectPath !== query.projectPath) return undefined;
-    const sessions = yield* PiSessions;
+    const sessions = yield* CakeSessionRuntimes;
     const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
       storage.familyForMember(change.sessionId),
     ).pipe(asError("catalog"));
@@ -678,7 +678,7 @@ export const inspect = Effect.fn("ProjectSessions.inspect")(function* (
   target: ProjectSessionTarget,
 ) {
   const location = yield* findLocation(target);
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const namespace = yield* resolutionNamespace(target.sessionId, archiveLocation(location)).pipe(
     asError("inspect"),
   );
@@ -716,7 +716,7 @@ export const open = Effect.fn("ProjectSessions.open")(function* (target: Project
     .locate(target.sessionId, archiveLocation(location))
     .pipe(asError("open"));
   if (!namespace) {
-    const sessions = yield* PiSessions;
+    const sessions = yield* CakeSessionRuntimes;
     const activeRuntime = yield* sessions.currentStatus({
       sessionId: target.sessionId,
       workingDirectory: location.workingDirectory,

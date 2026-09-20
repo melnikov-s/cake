@@ -1,6 +1,8 @@
 import { Schema } from "effect";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
 import { ThinkingLevel } from "../../services/pi/model-data";
+import { ArtifactLink } from "../artifacts/artifact-lineage";
+import { SubagentHandleId, SubagentStatus } from "../subagents/subagent-data";
 import { ManagedWorktreeContext } from "../worktrees/managed-worktree-data";
 import {
   CakeSessionIdentity,
@@ -71,19 +73,84 @@ export const ProjectSessionPreview = Schema.Struct({
 });
 export interface ProjectSessionPreview extends Schema.Schema.Type<typeof ProjectSessionPreview> {}
 
-export const ProjectSessionSnapshot = Schema.Struct({
-  identity: CakeSessionIdentity,
-  projectName: Schema.String,
-  resolved: Schema.Boolean,
-  unread: Schema.Boolean,
+const ProjectReference = Schema.Struct({
+  path: boundedPath,
+  name: Schema.String,
+});
+
+export const WorkingDirectoryReference = Schema.Struct({
+  path: boundedPath,
   worktreeName: Schema.optionalKey(Schema.String),
   managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
-  conversation: ConversationSnapshot,
 });
-export interface ProjectSessionSnapshot extends Schema.Schema.Type<typeof ProjectSessionSnapshot> {}
+export interface WorkingDirectoryReference extends Schema.Schema.Type<
+  typeof WorkingDirectoryReference
+> {}
+
+const ProjectSessionLifecycleProjection = Schema.Struct({
+  resolved: Schema.Boolean,
+  unread: Schema.Boolean,
+});
+
+export const DiscussionSessionReference = Schema.Struct({
+  threadId: boundedId,
+  sessionId: boundedId,
+  status: Schema.Literals(["open", "resolved"]),
+  anchor: Schema.Literals(["file", "message", "session"]),
+});
+export interface DiscussionSessionReference extends Schema.Schema.Type<
+  typeof DiscussionSessionReference
+> {}
+
+export const ReviewThreadReference = Schema.Struct({
+  threadId: boundedId,
+  status: Schema.Literals(["open", "resolved"]),
+  anchor: Schema.Literals(["file", "message", "session"]),
+  updatedAt: Schema.String,
+});
+export interface ReviewThreadReference extends Schema.Schema.Type<typeof ReviewThreadReference> {}
+
+export const SubagentSessionReference = Schema.Struct({
+  handleId: SubagentHandleId,
+  status: SubagentStatus,
+  task: boundedText,
+});
+export interface SubagentSessionReference extends Schema.Schema.Type<
+  typeof SubagentSessionReference
+> {}
+
+export const SessionFamilyReference = Schema.Struct({
+  familyId: boundedId,
+  rootProjectSessionId: boundedId,
+  parentProjectSessionId: Schema.optionalKey(boundedId),
+  childProjectSessionIds: Schema.Array(boundedId),
+  depth: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+});
+export interface SessionFamilyReference extends Schema.Schema.Type<typeof SessionFamilyReference> {}
+
+/**
+ * Main-owned aggregate projection for one Project Session. It joins references
+ * from their focused authorities and embeds exactly one Pi-authoritative primary
+ * Conversation projection; it does not persist or copy related payloads.
+ */
+export const ProjectSessionProjection = Schema.Struct({
+  identity: CakeSessionIdentity.cases.ProjectSession,
+  project: ProjectReference,
+  workingDirectory: WorkingDirectoryReference,
+  lifecycle: ProjectSessionLifecycleProjection,
+  primaryConversation: ConversationSnapshot,
+  discussionSessions: Schema.Array(DiscussionSessionReference),
+  subagentSessions: Schema.Array(SubagentSessionReference),
+  reviewThreads: Schema.Array(ReviewThreadReference),
+  artifactLinks: Schema.Array(ArtifactLink),
+  family: Schema.optionalKey(SessionFamilyReference),
+});
+export interface ProjectSessionProjection extends Schema.Schema.Type<
+  typeof ProjectSessionProjection
+> {}
 
 export const ProjectSessionUpdate = Schema.TaggedUnion({
-  Snapshot: { revision: Schema.Int, snapshot: ProjectSessionSnapshot },
+  Snapshot: { revision: Schema.Int, snapshot: ProjectSessionProjection },
   Event: { revision: Schema.Int, sessionId: boundedId, event: ConversationEvent },
   LifecycleChanged: { revision: Schema.Int, sessionId: boundedId, resolved: Schema.Boolean },
 });

@@ -7,7 +7,7 @@ import { Message } from "./Message";
 
 /**
  * Cake-owned Discussion Session metadata from the parent's Discussion catalog.
- * The live sidecar conversation is a separate `Session` Model in
+ * The live sidecar conversation is a separate `CakeSession` Model in
  * `RootProjection.discussionSessions`, addressed by `sidecarSessionId`.
  */
 export class ReviewThread extends Model {

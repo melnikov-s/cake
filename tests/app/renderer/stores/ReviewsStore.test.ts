@@ -7,7 +7,7 @@ import {
 } from "../../../../src/domain/discussion-sessions/discussion-session-data";
 import type { ConversationSnapshot } from "../../../../src/domain/conversations/conversation-data";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
-import type { Session } from "../../../../src/renderer/models/Session";
+import type { CakeSession } from "../../../../src/renderer/models/CakeSession";
 import {
   applyConversationSnapshot,
   applyDiscussionSessionUpdate,
@@ -154,7 +154,7 @@ function fixture(
       updatedAt: "2026-01-01T00:00:00.000Z",
     })),
   });
-  const sidecars = new Map<string, Session>();
+  const sidecars = new Map<string, CakeSession>();
   for (const thread of threads) {
     const sidecar = projection.discussionSession(`sidecar-${thread.id}`, "/project");
     sidecars.set(thread.id, sidecar);

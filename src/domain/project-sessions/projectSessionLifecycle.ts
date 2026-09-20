@@ -29,7 +29,7 @@ import {
   publishCatalogStatus,
 } from "./projectSessionMetadata";
 import { ArtifactGarbageCollector } from "../../services/artifacts/ArtifactGarbageCollector";
-import { PiSessions } from "../../services/pi/PiSessions";
+import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
@@ -65,7 +65,7 @@ const assertResolvable = Effect.fn("ProjectSessions.assertResolvable")(function*
   sessionDirectory: string,
   operation: string,
 ) {
-  const status = yield* (yield* PiSessions)
+  const status = yield* (yield* CakeSessionRuntimes)
     .currentStatus({ sessionId, workingDirectory, sessionDirectory })
     .pipe(asError(operation));
   if (status?.streaming || status?.pending)
@@ -312,7 +312,7 @@ export const resolveWorkingDirectory = Effect.fn("ProjectSessions.resolveWorking
           ? `Cake could not find Working Directory ${workingDirectory}`
           : `Working Directory collision detected: ${workingDirectory}`,
       );
-    const activeSessionIds = yield* (yield* PiSessions)
+    const activeSessionIds = yield* (yield* CakeSessionRuntimes)
       .sessionIds({ workingDirectory, sessionDirectory: location.sessionDirectory })
       .pipe(
         Stream.runCollect,
@@ -405,7 +405,7 @@ export const deleteProjectSessions = Effect.fn("ProjectSessions.deleteProjectSes
 ) {
   const operation = "deleteProjectSessions";
   const archive = yield* SessionArchiveStorage;
-  const sessions = yield* PiSessions;
+  const sessions = yield* CakeSessionRuntimes;
   const catalogs = yield* SessionCatalogChanges;
   const access = yield* ProjectAccess;
   const configuration = yield* ProjectSessionConfiguration;

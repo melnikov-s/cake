@@ -1,6 +1,6 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { UiPart } from "../../../ipc/session-contract";
-import { projectRetryNotice } from "./cake-runtime-event-projection";
+import { projectRetryNotice } from "./cake-session-runtime-event-projection";
 import { ResponseRetryController } from "./response-retry";
 import {
   INTERRUPTED_TURN_NOTICE_PART_ID,
@@ -12,7 +12,7 @@ import {
   turnRecoveryPrompt,
 } from "./turn-recovery";
 
-export interface CakeRuntimeRecovery {
+export interface CakeSessionRuntimeRecovery {
   readonly transientParts: () => UiPart[];
   readonly withResponseRetries: <T>(operation: () => Promise<T>) => Promise<T>;
   readonly cancelResponseRetries: () => void;
@@ -23,13 +23,13 @@ export interface CakeRuntimeRecovery {
   readonly dispose: () => void;
 }
 
-export function createCakeRuntimeRecovery(input: {
+export function createCakeSessionRuntimeRecovery(input: {
   readonly session: AgentSession;
   readonly retryEnabled: () => boolean;
   readonly isDisposed: () => boolean;
   readonly emitPart: (part: UiPart) => void;
   readonly removePart: (partId: string) => void;
-}): CakeRuntimeRecovery {
+}): CakeSessionRuntimeRecovery {
   const { session } = input;
   let responseRetryTurnDepth = 0;
   let userAbortRequested = false;

@@ -24,8 +24,9 @@ sandboxed artifacts, and trusted user-authored React interfaces.
 
 Cake operates at two related levels:
 
-1. A Project Session is Cake's view and controller for one project-associated
-   Pi Session.
+1. A Project Session is Cake's top-level project-associated aggregate root. It
+   has one primary Conversation backed by one Pi Session and coordinates bounded
+   references to its separate related authorities.
 2. The Cake application is a view and controller for the user's collection of
    Projects and Cake Sessions.
 
@@ -44,7 +45,7 @@ Every durable concept has one authority.
 
 | Concern                                                                       | Authority                                                                              | Cake's role                                                                                    |
 | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Project Session transcripts, tool history, branching, compaction              | Pi Session files and `SessionManager`                                                  | Render validated snapshots and events in the GUI                                               |
+| Conversation transcripts, tool history, branching, compaction                 | Pi Session files and `SessionManager`                                                  | Render validated `ConversationSnapshot` and `ConversationEvent` values in the GUI              |
 | Models, providers, authentication, Pi settings and resources                  | Pi                                                                                     | Offer Cake controls through the Pi adapter                                                     |
 | Utility-model selection                                                       | Cake application preferences, referencing a Pi provider/model                          | Run only explicitly configured, bounded background completions through Pi's model runtime      |
 | Application-level Cake Chat transcripts                                       | Their dedicated Pi Sessions                                                            | Present them as Cake-wide meta-sessions and route curated controls                             |
@@ -61,7 +62,12 @@ Every durable concept has one authority.
 | Session Plugins                                                               | Cake application metadata, keyed by Cake Session and plugin ID                         | Persist generated source and JSON state; mount sandboxed controls in semantic session slots    |
 
 Do not introduce a second transcript database, reconstruct Pi state into a
-competing domain model, or mutate Pi JSONL with ad hoc file operations. A session
+competing domain model, or mutate Pi JSONL with ad hoc file operations. Main
+assembles each validated `ProjectSessionProjection` from the Project Session's
+primary Conversation and bounded references or summaries from Project,
+Working Directory, lifecycle, Discussion Session, Subagent Session, review,
+artifact-link, and Session Family authorities. The projection is an aggregate
+read contract, not a new persistence authority or payload-owning god object. A session
 cannot be archived while its Pi turn is active. When the calling agent requests
 its own resolution during that turn, the runtime records the intent and applies
 it at the settled-turn boundary, after the final transcript snapshot is emitted.
@@ -98,9 +104,9 @@ silently abort unrelated destination work; an already consumed or otherwise
 uncancellable late arrival remains visibly attributed to the closed exchange
 and never causes autonomous continuation.
 
-All side chats—session-level discussions, the composer-avatar session assistant,
-code reviews, and assistant-message discussions—run as independent lightweight
-Pi Sessions. Their parent scope and optional anchors belong to Cake; their replies
+All Discussion Sessions—shown as “side chats” in UI copy—including session-level
+discussions, the composer-avatar session assistant, code reviews, and
+assistant-message discussions, run as independent lightweight Pi Sessions. Their parent scope and optional anchors belong to Cake; their replies
 remain authoritative in the referenced Pi sidecar session. Before each reply,
 Cake regenerates a read-only Markdown projection of the parent session's current
 active branch. Ordinary discussions receive only their scope or anchor, nearby
@@ -110,7 +116,7 @@ are two presentations of that same durable transcript; it uses the configured
 utility model and adds only the validated Cake application-control gateway.
 Assistant, assistant-message, and code-anchored chats cannot modify project
 files. The code anchor changes the source material, not the sidecar's authority.
-In the renderer each sidecar is its own `Session` projection driven by the
+In the renderer each sidecar has its own Conversation projection driven by the
 shared conversation reducer and wrapped by the shared conversation Store; the
 parent's Discussion catalog carries only thread metadata and a persisted
 preview, so a catalog refresh can never disturb a live side chat.
@@ -128,8 +134,10 @@ Effect RPC over a narrow Electron transport.
 
 Main owns native windows, filesystem and application persistence, Pi Session
 Runtime lifecycle, privileged Services, Cake domain operations, and the Effect
-RPC server. Pi is embedded behind the focused `PiSessions`, `PiModels`, and
-`PiAgentResources` Services. Pi Extensions share main-process authority and
+RPC server. Pi is embedded behind the focused `CakeSessionRuntimes`, `PiModels`, and
+`PiAgentResources` Services. `CakeSessionRuntimes` acquires one Cake Session
+Runtime adapter around exactly one Pi Session Runtime and returns a scoped
+Cake Session Handle; genuine Pi discovery values remain explicitly Pi-named. Pi Extensions share main-process authority and
 must not be described as sandboxed.
 
 ### Preload
@@ -542,7 +550,9 @@ The window Store hierarchy mirrors the product surfaces:
   Pi remains the transcript authority once the session starts. The Working
   Directory remains routing/storage context for the Pi runtime, not part of
   session identity. Cake Chat never enters this registry.
-- Each `ProjectSessionStore` owns that session's activity, remembered `normal`/`vscode`/`draw`
+- Each `ProjectSessionStore` consumes the main-assembled, Schema-validated
+  `ProjectSessionProjection`; it does not define the aggregate or infer domain
+  ownership. It owns that session's activity, remembered `normal`/`vscode`/`draw`
   presentation preference and shared workspace chat-drawer geometry, managed-worktree status and
   action presentation, artifact accessory-panel workflow, and message comments. Its focused
   `DrawStore` child owns board navigation, the remembered active board, editor readiness, agent
@@ -652,7 +662,7 @@ The window Store hierarchy mirrors the product surfaces:
   its identity and draft may be restored from window state without implying that a transcript file
   exists. Each visible Cake Chat pane may hold its own pending conversation and retains an
   independent composer. Persisted Cake Chat sessions keep live runtimes as they are opened. The
-  window's renderer Model owner retains each projected `Session` independently of Store or React
+  window's renderer Model owner retains each projected `CakeSession` independently of Store or React
   lifetimes and disposes Models only after Model synchronization has stopped. Project and Cake Chat
   session Stores receive those Models rather than creating or disposing them. Cake Chat snapshots
   and deltas route through the registry, independently of project-session registry and workbench
@@ -694,7 +704,7 @@ flowchart TD
   PendingSessions --> ProjectPendingConversation["PendingConversationStore per pending Project identity"]
   Registry --> ObservationRetention["SessionObservationRetentionStore"]
   Registry --> Session["ProjectSessionStore (one per loaded target)"]
-  Session --> Model["Session"]
+  Session --> Model["CakeSession projection"]
   Session --> Conversation["ConversationSessionStore"]
   Conversation --> Composer["ConversationComposerStore"]
   Composer --> ComposerDraft["ComposerDraftStore"]

@@ -16,7 +16,7 @@ No real Electron reproduction or application test suite was run. This checkout h
 
 The exact visible text was found in the child transcript:
 
-- Child: `d4a93c70-0541-4547-9418-6c9f8a3e929f` (Review CakeRuntime recovery and resources).
+- Child: `d4a93c70-0541-4547-9418-6c9f8a3e929f` (Review CakeSessionRuntime recovery and resources).
 - Parent: `01a082da-62cc-7d64-a9ac-e7c43a7d50e4`.
 - Parent's last assistant message before this delivery: **2026-09-09T19:19:29.498Z**, `stopReason: "stop"`. It says the independent review was started.
 - Child's send: **2026-09-09T19:23:21.444Z**, almost four minutes later.
@@ -66,9 +66,9 @@ Line references below are for this investigation checkout; use symbol names afte
 
    Explicit `"queue"` bypasses the idle default. It calls `destination.followUp(encoded, [], false)`.
 
-2. **Acceptance is asynchronous, not proof of execution.** `src/services/pi/PiSessions.ts:484–553`, `startTurn`, allocates an input/turn ID, retains a runtime lease, records an active turn, publishes `turn-accepted`, and forks `runtime.prompt(...)`. The caller gets a turn ID before execution completes. The family route reports `"queued"` from the requested delivery mode; it does not verify consumption.
+2. **Acceptance is asynchronous, not proof of execution.** `src/services/pi/CakeSessionRuntimes.ts:484–553`, `startTurn`, allocates an input/turn ID, retains a runtime lease, records an active turn, publishes `turn-accepted`, and forks `runtime.prompt(...)`. The caller gets a turn ID before execution completes. The family route reports `"queued"` from the requested delivery mode; it does not verify consumption.
 
-3. **The runtime passes follow-ups directly to Pi.** `src/services/pi/runtime/cake-runtime.ts:2666–2670` unconditionally calls `session.followUp(content, images)` for `delivery === "follow-up"`. The neighboring prompt and steer paths have idle-start behavior; the follow-up path does not.
+3. **The runtime passes follow-ups directly to Pi.** `src/services/pi/runtime/cake-session-runtime.ts:2666–2670` unconditionally calls `session.followUp(content, images)` for `delivery === "follow-up"`. The neighboring prompt and steer paths have idle-start behavior; the follow-up path does not.
 
 4. **Pi correctly implements a queue primitive, not a wakeup primitive.** Installed `pi-coding-agent/dist/core/agent-session.js:1003–1044`, `followUp` / `_queueFollowUp`, records the pending text, emits `queue_update`, and calls `agent.followUp`. Installed `pi-agent-core/dist/agent.js:177`, `followUp`, only enqueues. It neither calls prompt nor starts an agent loop.
 
@@ -109,14 +109,14 @@ The added runtime regression, `starts an idle session when steering delivery arr
 **Branch caution:** the incident's review commit `055d663` is not descended from `8cfc8ad` (`git merge-base --is-ancestor 8cfc8ad 055d663` returns 1). At `055d663` the equivalent code is in:
 
 - `src/domain/projectSessionRuntime.ts`, family-message routing around lines 326–331.
-- `src/services/pi/runtime/cake-runtime-turn-controller.ts`, `prompt`, follow-up dispatch around line 230.
+- `src/services/pi/runtime/cake-session-runtime-turn-controller.ts`, `prompt`, follow-up dispatch around line 230.
 
 That version directly queues both steer and follow-up. This does not prove which source built the running Electron process, but it means the reviewed worktree cannot be assumed to include the previous fix. **Even with `8cfc8ad` installed, the explicit-queue defect remains.** Apply the eventual repair to the owner in the destination branch; do not reintroduce old monolithic code after the extraction.
 
 ## Other ways the same boundary can strand input
 
 - Omitted delivery: routing sees `snapshot.streaming=true` and selects queue; the destination settles before the forked runtime delivery executes. The unconditional follow-up branch can then enqueue into an idle runtime. This is a code-level race exposure, not needed to explain the observed incident.
-- `cancelSteering` in `cake-runtime.ts:2738` clears queues and re-adds their text via `session.followUp`, with no idle-start check. Review the intended demotion behavior when the run settles concurrently. This is secondary, not evidence the user canceled this message.
+- `cancelSteering` in `cake-session-runtime.ts:2738` clears queues and re-adds their text via `session.followUp`, with no idle-start check. Review the intended demotion behavior when the run settles concurrently. This is secondary, not evidence the user canceled this message.
 - `flushCompactionQueue` has separate direct queue calls. Audit multi-item delivery after an awaited first prompt and ensure an idle session is not left with later items queued. Treat this as a related test case, not the established cause here.
 
 ## Queue actions: distinguish rendering policy from layout
@@ -170,7 +170,7 @@ Use ordinary text and a deterministic fake provider/session boundary that retain
 
 ### Family workflow integration
 
-Retain the actual family route, PiSessions admission, runtime dispatch, and renderer projection; fake only external boundaries. Start an idle parent; send the child's encoded reply with explicit `delivery: "queue"` (the exact triggering case). Assert parent execution, attribution, consumption, eventual settlement, and no spurious missing-reply notice. Also cover an active parent and the stale-snapshot transition. Keep the test independent of renderer visibility.
+Retain the actual family route, CakeSessionRuntimes admission, runtime dispatch, and renderer projection; fake only external boundaries. Start an idle parent; send the child's encoded reply with explicit `delivery: "queue"` (the exact triggering case). Assert parent execution, attribution, consumption, eventual settlement, and no spurious missing-reply notice. Also cover an active parent and the stale-snapshot transition. Keep the test independent of renderer visibility.
 
 Existing starting points: `tests/app/domain/sessionFamilyDelivery.test.ts`, `tests/app/agent/pi-runtime.test.ts`; on the refactored branch, also inspect its turn-controller tests. Existing notice-delivery tests are not sufficient proof of explicit child-message dispatch.
 
