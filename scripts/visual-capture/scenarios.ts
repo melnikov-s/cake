@@ -454,65 +454,10 @@ const drawMermaidArchitectureScenario: VisualCaptureScenario = {
   },
 };
 
-const widgetPipelineScenario: VisualCaptureScenario = {
-  name: "widget-pipeline-explanation",
-  description: "Connected sandboxed diagram of widget publication, repair and ownership",
-  states: ["default", "selected", "fullscreen"],
-  async seed(paths, theme) {
-    const source = await readFile(
-      resolve(import.meta.dirname, "../../tests/fixtures/explanations/widget-pipeline.react.txt"),
-      "utf8",
-    );
-    await seedArtifactScenario(paths, theme, {
-      protocol: "cake.artifact/v1",
-      id: "widget-pipeline-explanation",
-      sessionId: "visual-widget-pipeline",
-      revision: 1,
-      kind: "widget",
-      title: "Widget publication paths",
-      payload: {
-        language: "react",
-        source,
-        brief:
-          "Source-backed diagram of the existing delegated widget path, not a live execution trace.",
-        generationSessionId: "manual-diagram-prototype",
-      },
-      fallback: {
-        markdown:
-          "The primary Pi session delegates a brief to an isolated specialist. Source must compile before Cake persists the artifact and Pi appends a transcript pointer. Compile failure allows one restricted repair and recheck; a second failure propagates. The renderer compiles stored source for an opaque-origin allow-scripts iframe. Generated code has no host privileges.",
-      },
-      interaction: { mode: "present" },
-    });
-  },
-  async prepare(page, state) {
-    await page.getByRole("button", { name: "1 artifacts" }).click();
-    await page.getByRole("button", { name: "Widget publication paths" }).click();
-    let frame = page.frameLocator('iframe[title="Widget publication paths"]');
-    await frame.getByRole("heading", { name: "One gate. Two outcomes." }).waitFor();
-    if (state === "fullscreen") {
-      await page.getByRole("button", { name: "View Widget publication paths fullscreen" }).click();
-      frame = page.getByRole("dialog").frameLocator('iframe[title="Widget publication paths"]');
-    }
-    if (state === "selected") {
-      await frame.getByRole("button", { name: "Repair loop", exact: true }).click();
-      await frame.getByRole("heading", { name: "One repair", exact: true }).waitFor();
-      await frame.getByRole("button", { name: "Source evidence" }).click();
-    }
-    // Flow measures nodes asynchronously; a heading alone does not prove the diagram is ready.
-    await frame.locator('.react-flow__node[data-id="widget"]').waitFor({ state: "visible" });
-    await frame.locator('.react-flow__edge[data-id="embed"] text').waitFor({ state: "visible" });
-    await page.mouse.move(1, 1);
-  },
-  region(page) {
-    return page.getByRole("dialog").or(page.locator('[data-artifact-kind="widget"]')).last();
-  },
-};
-
 export const visualCaptureScenarios = [
   assistantMarkdownCode,
   requestExplanationScenario,
   drawMermaidArchitectureScenario,
-  widgetPipelineScenario,
 ] as const;
 
 export function findVisualCaptureScenario(name: string) {

@@ -141,8 +141,8 @@ The `widgets.present` path remains the creation operation for substantial,
 persistent visual explanations, including architecture and dependency views. Its
 input is a semantic brief with audience, verified facts and relationships,
 source references, bounded data, and a readable Markdown fallback. A restricted
-specialist chooses the visual form and may combine prose and controls with React
-Flow and optional ELK inside the generated widget. Small diagrams remain inline
+specialist chooses the visual form and may combine prose and controls with
+SVG/D3 inside the generated widget. Small diagrams remain inline
 Mermaid when they are clearest in the conversation. User-requested widget edits
 use `artifacts.update`; Cake privately applies the requested delta to stored source
 and publishes only after compilation, rendering, and review succeed.
@@ -229,20 +229,16 @@ not every interaction or possible delayed update; review is visual feedback,
 not a guarantee of correctness or aesthetic quality.
 
 React source is bundled as TSX and must default-export one component. Approved
-imports are React, Cake's bundled D3 modules (`d3` or approved `d3-*`),
-`@xyflow/react`, and `elkjs/lib/elk.bundled.js`. Prefer D3 submodule imports for
-smaller bundles; `import * as d3 from "d3"` is supported for convenience.
-React Flow's required package stylesheet is embedded automatically in the
-sandbox document when imported; generated source must not import CSS files.
-React and ReactDOM peer dependencies share the entrypoint's instances. ELK uses
-its bundled browser distribution without a remote worker URL.
+imports are React and Cake's bundled D3 modules (`d3` or approved `d3-*`). Prefer
+D3 submodule imports for smaller bundles; `import * as d3 from "d3"` is supported
+for convenience. Generated source must not import CSS files.
 
 These are capabilities of the same React widget, not a separate flow-widget
-artifact type. The specialist can compose an actual React Flow diagram with
-ordinary React explanations, filters, source details, and accessible controls,
-or choose another visual form entirely. Diagram geometry belongs inside an
-explicitly sized canvas; surrounding content remains responsive normal-flow
-layout. Generation, repair and visual review share these instructions. The
+artifact type. The specialist can compose SVG/D3 diagrams with ordinary React
+explanations, filters, source details, and accessible controls, or choose another
+visual form entirely. Diagram geometry belongs inside an explicitly sized canvas;
+surrounding content remains responsive normal-flow layout. Generation, repair and
+visual review share these instructions. The
 ordinary `widgets.present` path performs automatic rendered screenshot review;
 viewing an existing widget does not trigger capture. Blocking request widgets
 remain separate interactions and do not automatically run this generation-only

@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": ["src/renderer/index.html", "src/assets/vscode-companion/extension.js"],
-  "ignoreDependencies": ["vscode", "elkjs"],
+  "ignoreDependencies": ["vscode"],
   "ignoreExportsUsedInFile": false
 }

@@ -9,7 +9,7 @@ The machine-readable copy is
 A specialist should choose the composition that best explains the brief and
 produce sandboxed React/SVG from the supplied facts. A narrative, layered
 view, annotated cards, timeline, radial view, or graph may all be appropriate;
-no graph DSL, React Flow, Mermaid, pixel coordinates, or fixed layout is
+no graph DSL, diagram library, Mermaid, pixel coordinates, or fixed layout is
 required. Keep interpretation visibly separate from confirmed facts, and use
 workspace-relative source references. Do not add a Cake web server, remote
 browser, or other architecture not established by the current source.
@@ -302,9 +302,9 @@ numeric pass results before a runnable prototype exists.
 
 ## Capture harness
 
-The registry-driven harness now includes deterministic React widget scenarios
-for the request explanation and React Flow/ELK pipeline explanation. New
-benchmark scenarios should follow those widget patterns:
+The registry-driven harness includes a deterministic React widget scenario for
+the request explanation. New benchmark scenarios should follow that widget
+pattern:
 
 1. Add a `VisualCaptureScenario` object in
    `scripts/visual-capture/scenarios.ts`, implementing its `name`,

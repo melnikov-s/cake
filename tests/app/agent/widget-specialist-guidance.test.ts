@@ -16,13 +16,9 @@ const run = vi.mocked(runIsolatedSession);
 const context = { cwd: "/project", agentDir: "/agent", sessionDir: "/private/widgets" };
 
 function expectUnifiedWidgetGuidance(prompt: string) {
-  expect(prompt).toContain("'@xyflow/react'");
-  expect(prompt).toContain("'elkjs/lib/elk.bundled.js'");
-  expect(prompt).toContain("stylesheet is supplied automatically inside the sandbox");
-  expect(prompt).toContain("ordinary React, SVG/D3, React Flow, or a composition of them");
-  expect(prompt).toContain("there is no separate flow artifact to create");
-  expect(prompt).toContain("explicitly sized container");
-  expect(prompt).toContain("render its routed sections instead of discarding them");
+  expect(prompt).toContain("approved D3 modules");
+  expect(prompt).toContain("ordinary React, SVG/D3, or a composition of them");
+  expect(prompt).toContain("there is no separate diagram artifact to create");
   expect(prompt).toContain("Outside a diagram canvas");
   expect(prompt).toContain("must not request remote resources");
 }
@@ -61,7 +57,7 @@ describe("widget specialist guidance", () => {
     "keeps the same diagram capabilities during %s widget repair",
     async (capability) => {
       const source =
-        'import { ReactFlow } from "@xyflow/react"; export default function Widget(){ return <ReactFlow />; }';
+        'import { hierarchy } from "d3-hierarchy"; export default function Widget(){ return <div>{hierarchy({}).depth}</div>; }';
       await runInlineWidgetRepair({
         ...context,
         language: "react",

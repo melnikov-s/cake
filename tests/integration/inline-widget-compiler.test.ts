@@ -1,6 +1,3 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { compileInlineWidget } from "../../src/services/widgets/inline-widget-service";
 
@@ -13,7 +10,6 @@ describe("inline widget compiler", () => {
 
     expect(compiled.document).toContain("cake-widget-root");
     expect(compiled.document.length).toBeGreaterThan(10_000);
-    expect(compiled.document).not.toContain('data-cake-widget-library="@xyflow/react"');
   });
 
   it("bundles approved D3 modules for local visualizations", async () => {
@@ -26,59 +22,14 @@ describe("inline widget compiler", () => {
     expect(compiled.document).toContain("D3");
   });
 
-  it("bundles React Flow with its required sandbox-local stylesheet", async () => {
-    const compiled = await compileInlineWidget(
-      "react",
-      `import { Background, ReactFlow } from "@xyflow/react";
-       export default function Widget() {
-         return <div style={{ height: 320 }}><ReactFlow nodes={[]} edges={[]}><Background /></ReactFlow></div>;
-       }`,
-    );
-
-    expect(compiled.document).toContain('data-cake-widget-library="@xyflow/react"');
-    expect(compiled.document).toContain(".react-flow__renderer");
-    expect(compiled.document).not.toContain("@xyflow/react/dist/style.css");
-  });
-
-  it("resolves the browser-safe ELK and React Flow packages from Cake rather than cwd", async () => {
-    const originalCwd = process.cwd();
-    const isolatedCwd = mkdtempSync(join(tmpdir(), "cake-widget-compiler-"));
-    try {
-      process.chdir(isolatedCwd);
-      const compiled = await compileInlineWidget(
-        "react",
-        `import { ReactFlow } from "@xyflow/react";
-         import ELK from "elkjs/lib/elk.bundled.js";
-         const elk = new ELK();
-         export default function Widget() {
-           void elk.layout({ id: "root", children: [] });
-           return <div style={{ height: 320 }}><ReactFlow nodes={[]} edges={[]} /></div>;
-         }`,
-      );
-
-      expect(compiled.document).toContain("cake-widget-root");
-      expect(compiled.document).toContain('data-cake-widget-library="@xyflow/react"');
-      expect(compiled.document).not.toMatch(/<script[^>]+src=/);
-    } finally {
-      process.chdir(originalCwd);
-      rmSync(isolatedCwd, { recursive: true, force: true });
-    }
-  });
-
   it("rejects every direct import outside the exact allowlist", async () => {
-    for (const specifier of [
-      "node:fs",
-      "lodash",
-      "elkjs",
-      "@xyflow/react/dist/style.css",
-      "@xyflow/system",
-    ]) {
+    for (const specifier of ["node:fs", "lodash"]) {
       await expect(
         compileInlineWidget(
           "react",
           `import value from ${JSON.stringify(specifier)}; export default function Widget(){ return <div>{String(value)}</div>; }`,
         ),
-      ).rejects.toThrow("@xyflow/react, or elkjs/lib/elk.bundled.js only");
+      ).rejects.toThrow("approved D3 modules");
     }
   });
 

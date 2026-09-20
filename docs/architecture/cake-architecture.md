@@ -552,7 +552,7 @@ The window Store hierarchy mirrors the product surfaces:
   effectively linked through either scope may publish the next immutable full snapshot with latest-revision compare-and-swap. Architecture diagrams default to native editable Draw boards through
   `draw.mermaid`; the unified delegated React widget path is reserved for custom interactive or
   explorable visualizations that Draw cannot express. A restricted widget specialist can compose
-  React Flow, optional ELK layout, explanations, and controls inside the widget sandbox. Generated candidates are compile-checked
+  SVG/D3 diagrams, explanations, and controls inside the widget sandbox. Generated candidates are compile-checked
   and reviewed from actual widget-only screenshots captured in a serialized, main-owned hidden offscreen Electron host before publication,
   with at most two replacements. Original historical graph blobs
   and Pi pointers remain immutable; storage projects their readable Markdown fallbacks instead of maintaining a second graph renderer.
