@@ -1,4 +1,4 @@
-import { Context, Deferred, Effect, Layer, PubSub, Schema, Stream } from "effect";
+import { Context, Deferred, Effect, Layer, Schema, Stream, SubscriptionRef } from "effect";
 import type { CakeChatControlRequest } from "../../domain/cake-chats/cake-chat-data";
 import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
@@ -52,6 +52,7 @@ type PendingRequest =
       readonly sessionId: string;
       readonly connectionId: number;
       readonly name: string;
+      readonly invocation: { readonly name: string; readonly arguments: JsonValue };
       readonly completion: Deferred.Deferred<JsonValue | undefined>;
     }
   | {
@@ -105,9 +106,9 @@ export interface RendererRequestCoordinatorService {
     invocation: DrawControlInvocation,
     signal: AbortSignal,
   ) => Effect.Effect<DrawControlResponse, RendererRequestCoordinatorError>;
-  readonly cakeChatControlRequests: (
+  readonly cakeChatControlSnapshots: (
     connectionId?: number,
-  ) => Stream.Stream<CakeChatControlRequest>;
+  ) => Stream.Stream<ReadonlyArray<CakeChatControlRequest>>;
   readonly respondUi: (
     connectionId: number,
     sessionId: string,
@@ -189,9 +190,9 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
     const bindings = new Map<string, number>();
     const projectWorkingDirectories = new Map<string, string>();
     const pending = new Map<string, PendingRequest>();
-    const cakeChatRequests = yield* PubSub.unbounded<
-      CakeChatControlRequest & { readonly connectionId: number }
-    >();
+    const cakeChatRequests = yield* SubscriptionRef.make<
+      ReadonlyArray<CakeChatControlRequest & { readonly connectionId: number }>
+    >([]);
 
     const requireBinding = (target: SessionTarget) => {
       const connectionId = bindings.get(targetKey(target));
@@ -203,21 +204,37 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       return connectionId;
     };
 
-    const complete = (requestId: string, value: JsonValue | undefined) => {
+    const removePending = Effect.fn("RendererRequestCoordinator.removePending")(function* (
+      requestId: string,
+    ) {
       const request = pending.get(requestId);
-      if (!request) return false;
+      if (!request) return undefined;
       pending.delete(requestId);
+      if (request._tag === "CakeChatControl")
+        yield* SubscriptionRef.update(cakeChatRequests, (requests) =>
+          requests.filter((candidate) => candidate.controlRequestId !== requestId),
+        );
+      return request;
+    });
+
+    const complete = Effect.fn("RendererRequestCoordinator.complete")(function* (
+      requestId: string,
+      value: JsonValue | undefined,
+    ) {
+      const request = yield* removePending(requestId);
+      if (!request) return false;
       Deferred.doneUnsafe(request.completion, Effect.succeed(value));
       return true;
-    };
+    });
 
-    const cancelMatching = (predicate: (request: PendingRequest) => boolean, stopped: boolean) => {
-      for (const [requestId, request] of pending)
-        if (predicate(request)) {
-          complete(requestId, cancellationValue(request, stopped));
-          pending.delete(requestId);
-        }
-    };
+    const cancelMatching = Effect.fn("RendererRequestCoordinator.cancelMatching")(function* (
+      predicate: (request: PendingRequest) => boolean,
+      stopped: boolean,
+    ) {
+      const matches = [...pending].filter(([, request]) => predicate(request));
+      for (const [requestId, request] of matches)
+        yield* complete(requestId, cancellationValue(request, stopped));
+    });
 
     const awaitAbort = (signal: AbortSignal, value: JsonValue | undefined) =>
       Effect.callback<JsonValue | undefined>((resume) => {
@@ -247,11 +264,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
         );
       if (timeout) waits.push(Effect.sleep(`${timeout} millis`).pipe(Effect.as(undefined)));
       return Effect.raceAll(waits).pipe(
-        Effect.ensuring(
-          Effect.sync(() => {
-            pending.delete(requestId);
-          }),
-        ),
+        Effect.ensuring(removePending(requestId).pipe(Effect.asVoid)),
       );
     };
 
@@ -448,16 +461,20 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
           sessionId,
           connectionId,
           name: invocation.name,
+          invocation,
           completion,
         };
         pending.set(controlRequestId, entry);
-        yield* PubSub.publish(cakeChatRequests, {
-          _tag: "ControlRequested",
-          sessionId,
-          controlRequestId,
-          invocation,
-          connectionId,
-        });
+        yield* SubscriptionRef.update(cakeChatRequests, (requests) => [
+          ...requests,
+          {
+            _tag: "ControlRequested" as const,
+            sessionId,
+            controlRequestId,
+            invocation,
+            connectionId,
+          },
+        ]);
         return (
           (yield* awaitPending(controlRequestId, entry, signal)) ?? {
             ok: false,
@@ -534,7 +551,8 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       });
       if (request?._tag === "Ui" && request.operationId !== response.requestId)
         return yield* coordinatorError("respondUi", "The response correlation ID does not match");
-      if (request) complete(response.uiRequestId, response.cancelled ? undefined : response.value);
+      if (request)
+        yield* complete(response.uiRequestId, response.cancelled ? undefined : response.value);
     });
 
     const respondArtifact = Effect.fn("RendererRequestCoordinator.respondArtifact")(function* (
@@ -562,7 +580,10 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
           "The response correlation ID does not match",
         );
       if (request)
-        complete(response.artifactRequestId, response.cancelled ? undefined : response.value);
+        yield* complete(
+          response.artifactRequestId,
+          response.cancelled ? undefined : response.value,
+        );
     });
 
     const respondProjectControl = Effect.fn("RendererRequestCoordinator.respondProjectControl")(
@@ -587,7 +608,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
               : coordinatorError("respondProjectControl", String(cause)),
         });
         // Session release may win while the renderer completes the requested mutation.
-        if (request) complete(controlRequestId, result);
+        if (request) yield* complete(controlRequestId, result);
       },
     );
 
@@ -611,7 +632,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
             "respondCakeChatControl",
             "That Cake Chat control request is no longer pending",
           );
-        complete(controlRequestId, result);
+        yield* complete(controlRequestId, result);
       },
     );
 
@@ -636,59 +657,55 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
               ? cause
               : coordinatorError("respondDrawControl", String(cause)),
         });
-        if (request) complete(drawRequestId, response);
+        if (request) yield* complete(drawRequestId, response);
       },
     );
 
-    const releaseSession = Effect.fn("RendererRequestCoordinator.releaseSession")(
-      (target: SessionTarget) =>
-        Effect.sync(() => {
-          bindings.delete(targetKey(target));
-          if (target._tag === "ProjectSession") projectWorkingDirectories.delete(target.sessionId);
-          cancelMatching(
-            (request) =>
-              request.sessionId === target.sessionId &&
-              ((target._tag === "ProjectSession" && request._tag !== "CakeChatControl") ||
-                (target._tag === "CakeChatSession" && request._tag === "CakeChatControl")),
-            true,
-          );
-        }),
-    );
+    const releaseSession = Effect.fn("RendererRequestCoordinator.releaseSession")(function* (
+      target: SessionTarget,
+    ) {
+      bindings.delete(targetKey(target));
+      if (target._tag === "ProjectSession") projectWorkingDirectories.delete(target.sessionId);
+      yield* cancelMatching(
+        (request) =>
+          request.sessionId === target.sessionId &&
+          ((target._tag === "ProjectSession" && request._tag !== "CakeChatControl") ||
+            (target._tag === "CakeChatSession" && request._tag === "CakeChatControl")),
+        true,
+      );
+    });
 
     const releaseWorkingDirectory = Effect.fn("RendererRequestCoordinator.releaseWorkingDirectory")(
-      (workingDirectory: string) =>
-        Effect.sync(() => {
-          const sessionIds = new Set(
-            [...projectWorkingDirectories].flatMap(([sessionId, directory]) =>
-              directory === workingDirectory ? [sessionId] : [],
-            ),
-          );
-          for (const sessionId of sessionIds) {
-            bindings.delete(targetKey({ _tag: "ProjectSession", sessionId }));
-            projectWorkingDirectories.delete(sessionId);
-          }
-          cancelMatching(
-            (request) => request._tag !== "CakeChatControl" && sessionIds.has(request.sessionId),
-            true,
-          );
-        }),
+      function* (workingDirectory: string) {
+        const sessionIds = new Set(
+          [...projectWorkingDirectories].flatMap(([sessionId, directory]) =>
+            directory === workingDirectory ? [sessionId] : [],
+          ),
+        );
+        for (const sessionId of sessionIds) {
+          bindings.delete(targetKey({ _tag: "ProjectSession", sessionId }));
+          projectWorkingDirectories.delete(sessionId);
+        }
+        yield* cancelMatching(
+          (request) => request._tag !== "CakeChatControl" && sessionIds.has(request.sessionId),
+          true,
+        );
+      },
     );
 
-    const releaseConnection = Effect.fn("RendererRequestCoordinator.releaseConnection")(
-      (connectionId: number) =>
-        Effect.sync(() => {
-          for (const [key, boundConnectionId] of bindings)
-            if (boundConnectionId === connectionId) bindings.delete(key);
-          cancelMatching((request) => request.connectionId === connectionId, false);
-        }),
-    );
+    const releaseConnection = Effect.fn("RendererRequestCoordinator.releaseConnection")(function* (
+      connectionId: number,
+    ) {
+      for (const [key, boundConnectionId] of bindings)
+        if (boundConnectionId === connectionId) bindings.delete(key);
+      yield* cancelMatching((request) => request.connectionId === connectionId, false);
+    });
 
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
-        cancelMatching(() => true, true);
+        yield* cancelMatching(() => true, true);
         bindings.clear();
         projectWorkingDirectories.clear();
-        yield* PubSub.shutdown(cakeChatRequests);
       }),
     );
 
@@ -701,17 +718,22 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       requestProjectControl,
       requestCakeChatControl,
       requestDrawControl,
-      cakeChatControlRequests: (connectionId) =>
-        Stream.fromPubSub(cakeChatRequests).pipe(
-          Stream.filter(
-            (request) => connectionId === undefined || request.connectionId === connectionId,
+      cakeChatControlSnapshots: (connectionId) =>
+        SubscriptionRef.changes(cakeChatRequests).pipe(
+          Stream.map((requests) =>
+            requests.flatMap((request) =>
+              connectionId === undefined || request.connectionId === connectionId
+                ? [
+                    {
+                      _tag: request._tag,
+                      sessionId: request.sessionId,
+                      controlRequestId: request.controlRequestId,
+                      invocation: request.invocation,
+                    },
+                  ]
+                : [],
+            ),
           ),
-          Stream.map((request) => ({
-            _tag: request._tag,
-            sessionId: request.sessionId,
-            controlRequestId: request.controlRequestId,
-            invocation: request.invocation,
-          })),
         ),
       respondUi,
       respondArtifact,

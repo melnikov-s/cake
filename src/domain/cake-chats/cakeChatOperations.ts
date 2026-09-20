@@ -115,13 +115,11 @@ export const observeControls = Effect.fn("CakeChats.observeControls")(function* 
   connectionId?: number,
 ) {
   const rendererRequests = yield* RendererRequestCoordinator;
-  return Stream.succeed({ _tag: "Snapshot" as const, requests: [] }).pipe(
-    Stream.concat(
-      rendererRequests.cakeChatControlRequests(connectionId).pipe(
-        Stream.filter((request) => request.sessionId === target.sessionId),
-        Stream.map((request) => ({ _tag: "Requested" as const, request })),
-      ),
-    ),
+  return rendererRequests.cakeChatControlSnapshots(connectionId).pipe(
+    Stream.map((requests) => ({
+      _tag: "Snapshot" as const,
+      requests: requests.filter((request) => request.sessionId === target.sessionId),
+    })),
   );
 });
 

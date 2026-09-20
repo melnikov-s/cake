@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Context, Effect, Exit, Fiber, Layer, Queue, Stream } from "effect";
 import { describe, expect, vi } from "vitest";
+import { observeControls } from "../../../../src/domain/cake-chats/cakeChatOperations";
 import type { CakeEvent } from "../../../../src/ipc/cake-rpc-contract";
 import {
   RendererRequestCoordinator,
@@ -53,27 +54,44 @@ describe("RendererRequestCoordinator", () => {
     }),
   );
 
-  it.effect("returns renderer rejection results and settles abort cancellation", () =>
+  it.effect("projects pending Cake Chat controls current-first across reconnect and removal", () =>
     Effect.gen(function* () {
       const { coordinator } = yield* makeFixture;
       yield* coordinator.bind({ _tag: "CakeChatSession", sessionId: "chat-1" }, 21);
-      const observed = yield* coordinator
-        .cakeChatControlRequests(21)
-        .pipe(Stream.take(1), Stream.runHead, Effect.forkChild);
-      const rejected = yield* coordinator
+
+      // The request exists before the first observer subscribes.
+      const requestFiber = yield* coordinator
         .requestCakeChatControl(
           "chat-1",
           { name: "projects.open", arguments: {} },
           new AbortController().signal,
         )
-        .pipe(Effect.forkChild);
-      const request = yield* Fiber.join(observed);
-      assert.equal(request._tag, "Some");
-      yield* coordinator.respondCakeChatControl(21, request.value.controlRequestId, {
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      const observe = () =>
+        observeControls({ sessionId: "chat-1", tools: [] }, 21).pipe(
+          Effect.provideService(RendererRequestCoordinator, coordinator),
+        );
+      const firstStream = yield* observe();
+      const first = yield* firstStream.pipe(Stream.runHead);
+      assert.equal(first._tag, "Some");
+      expect(first.value.requests).toHaveLength(1);
+
+      // A replacement subscription receives the same pending request exactly once.
+      const reconnectedStream = yield* observe();
+      const reconnected = yield* reconnectedStream.pipe(Stream.runHead);
+      assert.equal(reconnected._tag, "Some");
+      expect(reconnected.value.requests.map(({ controlRequestId }) => controlRequestId)).toEqual([
+        first.value.requests[0]!.controlRequestId,
+      ]);
+
+      yield* coordinator.respondCakeChatControl(21, first.value.requests[0]!.controlRequestId, {
         ok: false,
         error: "Not allowed",
       });
-      expect(yield* Fiber.join(rejected)).toEqual({ ok: false, error: "Not allowed" });
+      expect(yield* Fiber.join(requestFiber)).toEqual({ ok: false, error: "Not allowed" });
+      const settled = yield* coordinator.cakeChatControlSnapshots(21).pipe(Stream.runHead);
+      assert.equal(settled._tag, "Some");
+      expect(settled.value).toEqual([]);
 
       const controller = new AbortController();
       const cancelled = yield* coordinator
@@ -82,13 +100,19 @@ describe("RendererRequestCoordinator", () => {
           { name: "projects.open", arguments: {} },
           controller.signal,
         )
-        .pipe(Effect.forkChild);
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      const pending = yield* coordinator.cakeChatControlSnapshots(21).pipe(Stream.runHead);
+      assert.equal(pending._tag, "Some");
+      expect(pending.value).toHaveLength(1);
       controller.abort();
       expect(yield* Fiber.join(cancelled)).toEqual({
         ok: false,
         name: "projects.open",
         error: "The Cake Chat request was cancelled.",
       });
+      const cleared = yield* coordinator.cakeChatControlSnapshots(21).pipe(Stream.runHead);
+      assert.equal(cleared._tag, "Some");
+      expect(cleared.value).toEqual([]);
 
       yield* coordinator.registerProjectSession("project-1", "/projects/cake");
       yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-1" }, 22);

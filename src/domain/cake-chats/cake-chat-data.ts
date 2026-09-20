@@ -64,9 +64,8 @@ export const CakeChatControlRequest = Schema.TaggedStruct("ControlRequested", {
 });
 export interface CakeChatControlRequest extends Schema.Schema.Type<typeof CakeChatControlRequest> {}
 
-export const CakeChatControlUpdate = Schema.TaggedUnion({
-  Snapshot: { requests: Schema.Array(CakeChatControlRequest) },
-  Requested: { request: CakeChatControlRequest },
+export const CakeChatControlUpdate = Schema.TaggedStruct("Snapshot", {
+  requests: Schema.Array(CakeChatControlRequest),
 });
 export type CakeChatControlUpdate = Schema.Schema.Type<typeof CakeChatControlUpdate>;
 
