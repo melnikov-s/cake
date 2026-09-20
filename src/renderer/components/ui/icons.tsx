@@ -159,8 +159,9 @@ export const CautionIcon = () => (
   </Icon>
 );
 export const SteerIcon = () => (
-  <Icon size={13} strokeWidth={2}>
-    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+  <Icon size={15} strokeWidth={2}>
+    <path d="m15 5 4 4-4 4" />
+    <path d="M5 19v-6a4 4 0 0 1 4-4h10" />
   </Icon>
 );
 export const EditIcon = () => (
@@ -266,6 +267,12 @@ export const ClockIcon = () => (
 export const StopIcon = () => (
   <Icon>
     <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" />
+  </Icon>
+);
+export const StopAndSendIcon = () => (
+  <Icon size={15} strokeWidth={2.2}>
+    <path d="m6 16 6-6 6 6" />
+    <path d="m6 10 6-6 6 6" />
   </Icon>
 );
 export const CloseIcon = ({

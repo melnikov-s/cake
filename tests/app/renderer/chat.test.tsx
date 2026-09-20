@@ -287,9 +287,16 @@ describe("Chat", () => {
 
     act(() => root.render(<Chat store={store!} />));
 
-    expect(
-      container.querySelector('[aria-label="Send now as steering: Do this next"]'),
-    ).not.toBeNull();
+    const stopAndSendButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Stop and send now: Do this next"]',
+    );
+    const steerButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Send now as steering: Do this next"]',
+    );
+    expect(steerButton).not.toBeNull();
+    expect(stopAndSendButton?.nextElementSibling).toBe(steerButton);
+    expect(stopAndSendButton?.className).toContain("mr-[30px]");
+    expect(stopAndSendButton?.className).toContain("bg-destructive/10");
     expect(
       container.querySelector('[aria-label="Edit queued prompt: Do this next"]'),
     ).not.toBeNull();
