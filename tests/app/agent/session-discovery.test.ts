@@ -170,11 +170,42 @@ describe("loadWorkspacePiSessionPreview", () => {
       assistant([{ type: "text", text: "Ready to continue." }]),
     );
 
+    const compactedDisplay = projectConversationDisplay(manager);
     expect(
-      projectConversationDisplay(manager).find(
+      compactedDisplay.find((part) => part.kind === "tool" && part.id === "tool-historical-read"),
+    ).toMatchObject({ origin: "compacted", output: "historical output" });
+
+    const replayedAnswer = compactedDisplay.find(
+      (part) => part.kind === "text" && part.text === "Old inspection complete.",
+    );
+    expect(replayedAnswer?.kind).toBe("text");
+    if (replayedAnswer?.kind !== "text" || !replayedAnswer.entryId)
+      throw new Error("The compacted replay fixture is incomplete");
+
+    const sourceFile = manager.getSessionFile();
+    if (!sourceFile) throw new Error("The persisted source fixture has no session file");
+    const replayedAnswerCwd = join(root, "replayed-answer-project");
+    const replayedAnswerFork = forkWorkspaceSession(
+      sourceFile,
+      cwd,
+      replayedAnswer.entryId,
+      replayedAnswerCwd,
+      activeSessionRoot,
+      "Fork at replayed answer",
+    );
+    const replayedAnswerSession = SessionManager.open(
+      replayedAnswerFork.sessionFile!,
+      cakeWorkspaceSessionDirectory(replayedAnswerCwd, activeSessionRoot),
+      replayedAnswerCwd,
+    );
+    expect(
+      projectConversationDisplay(replayedAnswerSession).find(
         (part) => part.kind === "tool" && part.id === "tool-historical-read",
       ),
     ).toMatchObject({ origin: "compacted", output: "historical output" });
+    expect(JSON.stringify(replayedAnswerSession.buildSessionContext().messages)).not.toContain(
+      "historical output",
+    );
 
     const fork = forkWorkspaceSession(
       manager.getSessionFile()!,

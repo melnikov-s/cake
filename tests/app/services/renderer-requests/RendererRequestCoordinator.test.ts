@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Context, Effect, Exit, Fiber, Layer, Queue, Stream } from "effect";
+import { Context, Effect, Exit, Fiber, Layer, Queue, References, Stream } from "effect";
 import { describe, expect, vi } from "vitest";
 import { observeControls } from "../../../../src/domain/cake-chats/cakeChatOperations";
 import type { CakeEvent } from "../../../../src/ipc/cake-rpc-contract";
@@ -125,6 +125,67 @@ describe("RendererRequestCoordinator", () => {
         ok: false,
         error: "The request was cancelled.",
       });
+    }),
+  );
+
+  it.effect("settles Cake Chat response atomically when the responder is interrupted", () =>
+    Effect.gen(function* () {
+      const { coordinator } = yield* makeFixture;
+      yield* coordinator.bind({ _tag: "CakeChatSession", sessionId: "chat-1" }, 24);
+      const request = yield* coordinator
+        .requestCakeChatControl(
+          "chat-1",
+          { name: "projects.open", arguments: {} },
+          new AbortController().signal,
+        )
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      const initial = yield* coordinator.cakeChatControlSnapshots(24).pipe(Stream.runHead);
+      assert.equal(initial._tag, "Some");
+      const controlRequestId = initial.value[0]!.controlRequestId;
+      const removed = yield* coordinator.cakeChatControlSnapshots(24).pipe(
+        Stream.filter((requests) => requests.length === 0),
+        Stream.runHead,
+        Effect.forkChild({ startImmediately: true }),
+      );
+      const response = yield* coordinator
+        .respondCakeChatControl(24, controlRequestId, { ok: true })
+        .pipe(
+          Effect.provideService(References.MaxOpsBeforeYield, 10),
+          Effect.forkChild({ startImmediately: true }),
+        );
+      yield* Fiber.join(removed);
+      yield* Fiber.interrupt(response);
+
+      expect(yield* Fiber.join(request)).toEqual({ ok: true });
+      const current = yield* coordinator.cakeChatControlSnapshots(24).pipe(Stream.runHead);
+      assert.equal(current._tag, "Some");
+      expect(current.value).toEqual([]);
+    }),
+  );
+
+  it.effect("does not publish a Cake Chat request after its session is released", () =>
+    Effect.gen(function* () {
+      const { coordinator } = yield* makeFixture;
+      yield* coordinator.bind({ _tag: "CakeChatSession", sessionId: "chat-1" }, 25);
+      const abort = new AbortController();
+      const request = yield* coordinator
+        .requestCakeChatControl("chat-1", { name: "projects.open", arguments: {} }, abort.signal)
+        .pipe(
+          Effect.provideService(References.MaxOpsBeforeYield, 10),
+          Effect.forkChild({ startImmediately: true }),
+        );
+      yield* Effect.yieldNow;
+      yield* coordinator.releaseSession({ _tag: "CakeChatSession", sessionId: "chat-1" });
+      abort.abort();
+
+      expect(yield* Fiber.join(request)).toEqual({
+        ok: false,
+        name: "projects.open",
+        error: "Cake Chat stopped.",
+      });
+      const current = yield* coordinator.cakeChatControlSnapshots(25).pipe(Stream.runHead);
+      assert.equal(current._tag, "Some");
+      expect(current.value).toEqual([]);
     }),
   );
 

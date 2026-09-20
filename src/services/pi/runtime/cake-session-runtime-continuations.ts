@@ -4,7 +4,7 @@ import type { ArtifactPointer } from "../../../ipc/artifact-contract";
 import type { JsonValue } from "../../../ipc/json-contract";
 import { SESSION_TITLE_MAX_LENGTH, type UtilityModel } from "../../../ipc/session-contract";
 import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
-import { projectConversationDisplay } from "./conversation-display-projection";
+import { projectConversationForkDisplay } from "./conversation-display-projection";
 import {
   appendForkDisplayProvenance,
   captureForkDisplayProvenance,
@@ -156,7 +156,7 @@ export function createCakeSessionRuntimeContinuations(input: {
         options.cwd,
       );
       const displayProvenance = captureForkDisplayProvenance(
-        projectConversationDisplay(forked, { leafId: entryId }),
+        projectConversationForkDisplay(forked, entryId),
       );
       const sessionFile = forked.createBranchedSession(entryId);
       if (!sessionFile) throw new Error("The current session is not persisted");

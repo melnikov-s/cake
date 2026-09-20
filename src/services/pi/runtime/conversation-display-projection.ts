@@ -191,6 +191,90 @@ function reconstruct(
   ]);
 }
 
+function reconstructForkPrefix(
+  session: SessionManager,
+  contextLeafId: string,
+  targetEntryId: string,
+  visitedLeaves: ReadonlySet<string>,
+  depth: number,
+): ProjectionResult {
+  const contextBranch = session.getBranch(contextLeafId);
+  const resolvedLeafId = contextBranch.at(-1)?.id;
+  if (!resolvedLeafId || depth > maximumProvenanceDepth || visitedLeaves.has(resolvedLeafId))
+    return { valid: false };
+  const targetIndex = contextBranch.findIndex((entry) => entry.id === targetEntryId);
+  if (targetIndex < 0) return { valid: false };
+
+  // A fork point inside replayed dialogue precedes the provenance entry that
+  // explains that dialogue. Resolve it from the containing branch rather than
+  // projecting the raw prefix and silently dropping its historical work.
+  for (
+    let provenanceIndex = contextBranch.length - 1;
+    provenanceIndex > targetIndex;
+    provenanceIndex -= 1
+  ) {
+    const entry = contextBranch[provenanceIndex];
+    if (entry?.type !== "custom" || entry.customType !== toolCompactProvenanceEntryType) continue;
+    const parsed = Schema.decodeUnknownOption(toolCompactProvenanceSchema)(entry.data);
+    if (Option.isNone(parsed)) continue;
+    const mappingIndex = parsed.value.mappings.findIndex(
+      (mapping) => mapping.replayedEntryId === targetEntryId,
+    );
+    if (mappingIndex < 0) continue;
+    const replay = validateReplay(session, contextBranch, provenanceIndex, parsed.value);
+    if (!replay) return { valid: false };
+
+    const targetMapping = parsed.value.mappings[mappingIndex];
+    if (!targetMapping) return { valid: false };
+    const source = reconstructForkPrefix(
+      session,
+      parsed.value.sourceLeafId,
+      targetMapping.sourceEntryId,
+      new Set([...visitedLeaves, resolvedLeafId]),
+      depth + 1,
+    );
+    if (!source.valid) return source;
+
+    const replacements = new Map<string, UiPart>();
+    for (const mapping of parsed.value.mappings.slice(0, mappingIndex + 1)) {
+      const sourceEntry = session.getEntry(mapping.sourceEntryId);
+      const replayedEntry = session.getEntry(mapping.replayedEntryId);
+      if (!sourceEntry || !replayedEntry) return { valid: false };
+      const sourceDialogue = projectedDialogueParts(sourceEntry);
+      const replayedDialogue = projectedDialogueParts(replayedEntry);
+      if (!dialoguePartsCorrespond(sourceDialogue, replayedDialogue)) return { valid: false };
+      sourceDialogue.forEach((part, index) => {
+        const replacement = replayedDialogue[index];
+        if (replacement) replacements.set(part.id, replacement);
+      });
+    }
+
+    const markerParts = projectSessionEntries(contextBranch.slice(0, replay.markerIndex + 1));
+    return {
+      valid: true,
+      parts: [
+        ...markerParts,
+        ...source.parts.map((part) => replacements.get(part.id) ?? compactedPart(part)),
+      ],
+    };
+  }
+
+  return reconstruct(session, targetEntryId, visitedLeaves, depth, false);
+}
+
+/**
+ * Projects the visible prefix selected by a normal message-level fork. Unlike
+ * projecting the raw Pi prefix, this can consult provenance appended after a
+ * replayed message while still excluding every later visible turn.
+ */
+export function projectConversationForkDisplay(session: SessionManager, entryId: string): UiPart[] {
+  const activeLeafId = session.getLeafId();
+  if (!activeLeafId) return [];
+  const result = reconstructForkPrefix(session, activeLeafId, entryId, new Set(), 0);
+  if (result.valid) return result.parts;
+  return projectConversationDisplay(session, { leafId: entryId });
+}
+
 /**
  * Projects the Conversation timeline while recovering work logs from provenance-linked
  * inactive Pi branches. Pi's active branch remains the sole model-context branch.

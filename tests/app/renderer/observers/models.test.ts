@@ -262,6 +262,7 @@ describe("Discussion sidecar retention", () => {
     const registry = {
       sessions: retainedSessions,
       observationRetention: { sessions: retainedSessions },
+      discussionSessionDemand: retainedSessions,
     } as unknown as SessionRegistryStore;
     const operations = mount(createStore(SessionOperationCoordinatorStore));
     const reviews = mount(

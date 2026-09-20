@@ -131,6 +131,17 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     );
   }
 
+  /** Parents whose Discussion sidecars this window currently observes and renders. */
+  get discussionSessionDemand(): readonly ProjectSessionStore[] {
+    const retainedIds = new Set(
+      this.observationRetention.sessions.map((session) => session.sessionId),
+    );
+    return this.sessions.filter(
+      (session) =>
+        retainedIds.has(session.sessionId) || this.pendingSessions.isTemporary(session.sessionId),
+    );
+  }
+
   findModel(sessionId: string) {
     return this.findSession(sessionId)?.model;
   }

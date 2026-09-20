@@ -1,4 +1,13 @@
-import { Context, Deferred, Effect, Layer, Schema, Stream, SubscriptionRef } from "effect";
+import {
+  Context,
+  Deferred,
+  Effect,
+  Layer,
+  Schema,
+  Semaphore,
+  Stream,
+  SubscriptionRef,
+} from "effect";
 import type { CakeChatControlRequest } from "../../domain/cake-chats/cake-chat-data";
 import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
@@ -193,6 +202,9 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
     const cakeChatRequests = yield* SubscriptionRef.make<
       ReadonlyArray<CakeChatControlRequest & { readonly connectionId: number }>
     >([]);
+    const transitionLock = yield* Semaphore.make(1);
+    const runTransition = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      transitionLock.withPermits(1)(Effect.uninterruptible(effect));
 
     const requireBinding = (target: SessionTarget) => {
       const connectionId = bindings.get(targetKey(target));
@@ -204,37 +216,50 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       return connectionId;
     };
 
-    const removePending = Effect.fn("RendererRequestCoordinator.removePending")(function* (
-      requestId: string,
-    ) {
-      const request = pending.get(requestId);
-      if (!request) return undefined;
-      pending.delete(requestId);
-      if (request._tag === "CakeChatControl")
-        yield* SubscriptionRef.update(cakeChatRequests, (requests) =>
-          requests.filter((candidate) => candidate.controlRequestId !== requestId),
-        );
-      return request;
-    });
+    const removePendingUnlocked = Effect.fn("RendererRequestCoordinator.removePendingUnlocked")(
+      function* (requestId: string) {
+        const request = pending.get(requestId);
+        if (!request) return undefined;
+        pending.delete(requestId);
+        if (request._tag === "CakeChatControl")
+          yield* SubscriptionRef.update(cakeChatRequests, (requests) =>
+            requests.filter((candidate) => candidate.controlRequestId !== requestId),
+          );
+        return request;
+      },
+    );
 
-    const complete = Effect.fn("RendererRequestCoordinator.complete")(function* (
+    const removePending = Effect.fn("RendererRequestCoordinator.removePending")(
+      (requestId: string) => runTransition(removePendingUnlocked(requestId)),
+    );
+
+    const completeUnlocked = Effect.fn("RendererRequestCoordinator.completeUnlocked")(function* (
       requestId: string,
       value: JsonValue | undefined,
     ) {
-      const request = yield* removePending(requestId);
+      const request = yield* removePendingUnlocked(requestId);
       if (!request) return false;
       Deferred.doneUnsafe(request.completion, Effect.succeed(value));
       return true;
     });
 
-    const cancelMatching = Effect.fn("RendererRequestCoordinator.cancelMatching")(function* (
-      predicate: (request: PendingRequest) => boolean,
-      stopped: boolean,
-    ) {
-      const matches = [...pending].filter(([, request]) => predicate(request));
-      for (const [requestId, request] of matches)
-        yield* complete(requestId, cancellationValue(request, stopped));
-    });
+    const complete = Effect.fn("RendererRequestCoordinator.complete")(
+      (requestId: string, value: JsonValue | undefined) =>
+        runTransition(completeUnlocked(requestId, value)),
+    );
+
+    const cancelMatchingUnlocked = Effect.fn("RendererRequestCoordinator.cancelMatchingUnlocked")(
+      function* (predicate: (request: PendingRequest) => boolean, stopped: boolean) {
+        const matches = [...pending].filter(([, request]) => predicate(request));
+        for (const [requestId, request] of matches)
+          yield* completeUnlocked(requestId, cancellationValue(request, stopped));
+      },
+    );
+
+    const cancelMatching = Effect.fn("RendererRequestCoordinator.cancelMatching")(
+      (predicate: (request: PendingRequest) => boolean, stopped: boolean) =>
+        runTransition(cancelMatchingUnlocked(predicate, stopped)),
+    );
 
     const awaitAbort = (signal: AbortSignal, value: JsonValue | undefined) =>
       Effect.callback<JsonValue | undefined>((resume) => {
@@ -310,7 +335,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
 
     const bind = Effect.fn("RendererRequestCoordinator.bind")(
       (target: SessionTarget, connectionId: number) =>
-        Effect.sync(() => bindings.set(targetKey(target), connectionId)),
+        runTransition(Effect.sync(() => bindings.set(targetKey(target), connectionId))),
     );
 
     const requestUiForConnection = Effect.fn("RendererRequestCoordinator.requestUiForConnection")(
@@ -466,17 +491,32 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
               invocation,
               completion,
             };
-            pending.set(controlRequestId, entry);
-            yield* SubscriptionRef.update(cakeChatRequests, (requests) => [
-              ...requests,
-              {
-                _tag: "ControlRequested" as const,
-                sessionId,
-                controlRequestId,
-                invocation,
-                connectionId,
-              },
-            ]);
+            const registered = yield* runTransition(
+              Effect.gen(function* () {
+                if (
+                  bindings.get(targetKey({ _tag: "CakeChatSession", sessionId })) !== connectionId
+                )
+                  return false;
+                pending.set(controlRequestId, entry);
+                yield* SubscriptionRef.update(cakeChatRequests, (requests) => [
+                  ...requests,
+                  {
+                    _tag: "ControlRequested" as const,
+                    sessionId,
+                    controlRequestId,
+                    invocation,
+                    connectionId,
+                  },
+                ]);
+                return true;
+              }),
+            );
+            if (!registered)
+              return {
+                ok: false,
+                name: invocation.name,
+                error: "Cake Chat stopped.",
+              };
             return (
               (yield* restore(awaitPending(controlRequestId, entry, signal))) ?? {
                 ok: false,
@@ -665,19 +705,23 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       },
     );
 
-    const releaseSession = Effect.fn("RendererRequestCoordinator.releaseSession")(function* (
-      target: SessionTarget,
-    ) {
-      bindings.delete(targetKey(target));
-      if (target._tag === "ProjectSession") projectWorkingDirectories.delete(target.sessionId);
-      yield* cancelMatching(
-        (request) =>
-          request.sessionId === target.sessionId &&
-          ((target._tag === "ProjectSession" && request._tag !== "CakeChatControl") ||
-            (target._tag === "CakeChatSession" && request._tag === "CakeChatControl")),
-        true,
-      );
-    });
+    const releaseSession = Effect.fn("RendererRequestCoordinator.releaseSession")(
+      (target: SessionTarget) =>
+        runTransition(
+          Effect.gen(function* () {
+            bindings.delete(targetKey(target));
+            if (target._tag === "ProjectSession")
+              projectWorkingDirectories.delete(target.sessionId);
+            yield* cancelMatchingUnlocked(
+              (request) =>
+                request.sessionId === target.sessionId &&
+                ((target._tag === "ProjectSession" && request._tag !== "CakeChatControl") ||
+                  (target._tag === "CakeChatSession" && request._tag === "CakeChatControl")),
+              true,
+            );
+          }),
+        ),
+    );
 
     const releaseWorkingDirectory = Effect.fn("RendererRequestCoordinator.releaseWorkingDirectory")(
       function* (workingDirectory: string) {
@@ -697,13 +741,19 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       },
     );
 
-    const releaseConnection = Effect.fn("RendererRequestCoordinator.releaseConnection")(function* (
-      connectionId: number,
-    ) {
-      for (const [key, boundConnectionId] of bindings)
-        if (boundConnectionId === connectionId) bindings.delete(key);
-      yield* cancelMatching((request) => request.connectionId === connectionId, false);
-    });
+    const releaseConnection = Effect.fn("RendererRequestCoordinator.releaseConnection")(
+      (connectionId: number) =>
+        runTransition(
+          Effect.gen(function* () {
+            for (const [key, boundConnectionId] of bindings)
+              if (boundConnectionId === connectionId) bindings.delete(key);
+            yield* cancelMatchingUnlocked(
+              (request) => request.connectionId === connectionId,
+              false,
+            );
+          }),
+        ),
+    );
 
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {

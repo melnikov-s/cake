@@ -8,6 +8,9 @@ import { WorktreeCatalog } from "../../../../src/renderer/models/WorktreeCatalog
 import { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 import { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
+import { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
+import { applyDiscussionCatalogUpdate } from "../../../../src/renderer/reducers/DiscussionReducer";
+import { sessionAssistantThreadPath } from "../../../../src/domain/discussion-sessions/discussion-session-data";
 
 function registryFixture(
   snapshot?: StoreSnapshot,
@@ -58,6 +61,8 @@ function registryFixture(
   return {
     catalog,
     catalogModel,
+    models,
+    operations,
     registry,
     dispose() {
       registry[Symbol.dispose]();
@@ -153,6 +158,55 @@ describe("SessionRegistryStore materialization", () => {
     });
 
     restored.dispose();
+  });
+
+  it("provides Discussion Stores for staged parents before materialization", () => {
+    const fixture = registryFixture(undefined, (sessionId) => sessionId === "staged");
+    const staged = fixture.registry.pendingSessions.prepareStaged("/project", "staged");
+    const reviews = mount(
+      createStore(ReviewsStore, {
+        sessionRegistry: fixture.registry,
+        discussionSessionModel: (sessionId, workingDirectory) =>
+          fixture.models.discussionConversation(sessionId, workingDirectory),
+        operations: fixture.operations,
+        modelPresets: () => [],
+        openModelPresetSettings: () => undefined,
+      }),
+    );
+    applyDiscussionCatalogUpdate(staged.props.discussionCatalog, "staged", {
+      _tag: "Snapshot",
+      revision: 1,
+      parentSessionId: "staged",
+      threads: [
+        {
+          id: "assistant-thread",
+          parentSessionId: "staged",
+          sidecarSessionId: "sidecar",
+          workingDirectory: "/project",
+          status: "open",
+          parts: [],
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+          anchor: {
+            path: sessionAssistantThreadPath("staged"),
+            view: "session",
+            start: { diffLine: 0 },
+            end: { diffLine: 0 },
+            selectedText: "",
+            contextBefore: "",
+            contextAfter: "",
+            diff: "",
+          },
+        },
+      ],
+    });
+
+    expect(fixture.registry.observationRetention.sessions).toEqual([]);
+    expect(fixture.registry.discussionSessionDemand).toEqual([staged]);
+    expect(reviews.discussionSession("assistant-thread")).toBeDefined();
+
+    reviews[Symbol.dispose]();
+    fixture.dispose();
   });
 
   it("retains independent staged chats for multiple panes", () => {

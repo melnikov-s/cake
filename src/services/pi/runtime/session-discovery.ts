@@ -13,7 +13,10 @@ import {
   type PiSessionPreview,
   type PiSessionSummary,
 } from "../../../ipc/session-contract";
-import { projectConversationDisplay } from "./conversation-display-projection";
+import {
+  projectConversationDisplay,
+  projectConversationForkDisplay,
+} from "./conversation-display-projection";
 import {
   appendForkDisplayProvenance,
   captureForkDisplayProvenance,
@@ -139,7 +142,7 @@ export function forkWorkspaceSession(
 ) {
   const source = SessionManager.open(sourceFile, dirname(sourceFile), sourceCwd);
   const displayProvenance = captureForkDisplayProvenance(
-    projectConversationDisplay(source, { leafId: entryId }),
+    projectConversationForkDisplay(source, entryId),
   );
   const branchFile = source.createBranchedSession(entryId);
   if (!branchFile) throw new Error("The current session is not persisted");
