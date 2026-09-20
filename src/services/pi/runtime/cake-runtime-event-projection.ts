@@ -98,6 +98,28 @@ export function createCakeRuntimeEventProjection(input: {
   });
   let usageUpdateTimer: ReturnType<typeof setTimeout> | undefined;
   let lastUsageUpdateAt = 0;
+  let pendingAssistantUpdate: Extract<AgentSessionEvent, { type: "message_update" }> | undefined;
+  let assistantUpdateTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Pi's message_update carries the complete assistant message accumulated so far. Publishing
+  // every token therefore retains and serializes a succession of ever-larger values across the
+  // main PubSub and RPC boundary. Keep only the newest superseding update between UI frames.
+  const flushAssistantUpdate = () => {
+    if (assistantUpdateTimer !== undefined) clearTimeout(assistantUpdateTimer);
+    assistantUpdateTimer = undefined;
+    const event = pendingAssistantUpdate;
+    pendingAssistantUpdate = undefined;
+    if (!event || input.isDisposed()) return;
+    for (const part of projectLiveMessage(event)) emit({ type: "part-updated", sessionId, part });
+  };
+
+  const scheduleAssistantUpdate = (
+    event: Extract<AgentSessionEvent, { type: "message_update" }>,
+  ) => {
+    pendingAssistantUpdate = event;
+    if (assistantUpdateTimer !== undefined) return;
+    assistantUpdateTimer = setTimeout(flushAssistantUpdate, 50);
+  };
 
   const currentUsage = (): SessionUsage => {
     const stats = session.getSessionStats();
@@ -182,11 +204,20 @@ export function createCakeRuntimeEventProjection(input: {
 
   const projectEvent = (event: AgentSessionEvent) => {
     if (event.type === "agent_start") emit({ type: "streaming", sessionId, streaming: true });
-    for (const part of projectLiveMessage(event)) emit({ type: "part-updated", sessionId, part });
-
     if (event.type === "message_update" && event.message.role === "assistant") {
+      scheduleAssistantUpdate(event);
       scheduleUsageUpdate();
+    } else {
+      // A final assistant message supersedes its pending streaming projection. Tool execution
+      // first flushes the latest tool-call arguments so ordering remains intuitive.
+      if (event.type === "message_end" && event.message.role === "assistant") {
+        if (assistantUpdateTimer !== undefined) clearTimeout(assistantUpdateTimer);
+        assistantUpdateTimer = undefined;
+        pendingAssistantUpdate = undefined;
+      } else if (event.type === "tool_execution_start") flushAssistantUpdate();
+      for (const part of projectLiveMessage(event)) emit({ type: "part-updated", sessionId, part });
     }
+
     if (event.type === "message_end") queueMicrotask(publishUsageUpdate);
 
     if (event.type === "tool_execution_start") {
@@ -308,7 +339,10 @@ export function createCakeRuntimeEventProjection(input: {
 
   const dispose = () => {
     if (usageUpdateTimer !== undefined) clearTimeout(usageUpdateTimer);
+    if (assistantUpdateTimer !== undefined) clearTimeout(assistantUpdateTimer);
     usageUpdateTimer = undefined;
+    assistantUpdateTimer = undefined;
+    pendingAssistantUpdate = undefined;
   };
 
   return {
