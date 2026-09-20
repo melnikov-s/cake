@@ -59,7 +59,7 @@ export const CakeSessionIdentity = Schema.TaggedUnion({
 });
 export type CakeSessionIdentity = Schema.Schema.Type<typeof CakeSessionIdentity>;
 
-/** Bounded identity reference to the Conversation belonging to one Cake Session. */
+/** Complete validated renderer projection for one Conversation observation boundary. */
 export const ConversationSnapshot = Schema.Struct({
   sessionId: boundedId,
   sessionFile: Schema.String,
