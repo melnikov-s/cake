@@ -85,6 +85,9 @@ function editorHarness() {
     setElements(next: readonly ExcalidrawElement[]) {
       elements = next;
     },
+    setAppState(next: Partial<AppState>) {
+      appState = { ...appState, ...next };
+    },
   };
 }
 
@@ -128,7 +131,7 @@ describe("DrawEditorAdapter", () => {
     expect(harness.elements()).toHaveLength(3);
     expect(harness.elements().map(({ type }) => type)).toEqual(["arrow", "rectangle", "rectangle"]);
     expect(harness.api.scrollToContent).toHaveBeenCalledWith(harness.elements(), {
-      animate: true,
+      animate: false,
       fitToViewport: true,
       viewportZoomFactor: 0.85,
     });
@@ -235,15 +238,29 @@ describe("DrawEditorAdapter", () => {
     await adapter.insertMermaid("flowchart LR\n  subgraph System\n  A --> B\n  end");
 
     const elements = harness.elements();
-    const roots = elements.filter((element) => !(element.type === "text" && element.containerId));
-    expect(roots.map(({ type }) => type)).toEqual(["rectangle", "arrow", "rectangle", "rectangle"]);
-    expect(roots[0]?.width).toBe(500);
-    for (const root of roots) {
-      const labelIndex = elements.findIndex(
-        (element) => element.type === "text" && element.containerId === root.id,
-      );
-      expect(labelIndex).toBe(elements.findIndex(({ id }) => id === root.id) + 1);
-    }
+    const background = elements.find(
+      (element) =>
+        element.type === "rectangle" &&
+        element.customData?.cakeAutoSizeText === true &&
+        element.groupIds.includes("subgraph-group"),
+    )!;
+    const title = elements.find(
+      (element): element is Extract<ExcalidrawElement, { type: "text" }> =>
+        element.type === "text" && element.originalText === "System",
+    )!;
+    const nodes = elements.filter(
+      (element) => element.type === "rectangle" && element.id !== background.id,
+    );
+    expect(title.containerId).toBeNull();
+    expect(title.y + title.height).toBeLessThan(Math.min(...nodes.map(({ y }) => y)));
+    expect(background.y).toBeLessThanOrEqual(title.y);
+    expect(background.y + background.height).toBeGreaterThan(
+      Math.max(...nodes.map(({ y, height }) => y + height)),
+    );
+    const order = elements.map(({ id }) => id);
+    const arrow = elements.find(({ type }) => type === "arrow")!;
+    expect(order.indexOf(background.id)).toBeLessThan(order.indexOf(arrow.id));
+    expect(nodes.every(({ id }) => order.indexOf(arrow.id) < order.indexOf(id))).toBe(true);
   });
 
   it("assigns shape IDs, preserves every binding, and supports read-to-apply edits", async () => {
@@ -372,6 +389,45 @@ describe("DrawEditorAdapter", () => {
     ).rejects.toThrow("other HTML markup is not supported");
   });
 
+  it("reflows Mermaid siblings after measured labels widen their containers", async () => {
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValueOnce({
+      elements: [
+        {
+          id: "left",
+          type: "rectangle",
+          x: 0,
+          y: 0,
+          width: 100,
+          height: 60,
+          label: { text: "Short" },
+        },
+        {
+          id: "right",
+          type: "rectangle",
+          x: 150,
+          y: 0,
+          width: 100,
+          height: 60,
+          label: {
+            text: "A substantially longer sibling label that exceeds the converter skeleton width",
+          },
+        },
+      ],
+    } as never);
+
+    await adapter.insertMermaid("flowchart LR\n  A[Short] ~~~ B[Long label]");
+
+    const nodes = harness.elements().filter((element) => element.type === "rectangle");
+    expect(nodes).toHaveLength(2);
+    const [left, right] = nodes.sort((a, b) => a.x - b.x);
+    expect(left!.x + left!.width + 96).toBeLessThanOrEqual(right!.x);
+    const rightLabel = harness
+      .elements()
+      .find((element) => element.type === "text" && element.containerId === right!.id);
+    expect(right!.width).toBeGreaterThan(100);
+    expect(rightLabel?.width).toBeLessThan(right!.width);
+  });
+
   it("places a new Mermaid diagram away from existing content", async () => {
     adapter.apply({
       operations: [
@@ -464,7 +520,8 @@ describe("DrawEditorAdapter", () => {
 
     const elements = harness.elements();
     const background = elements.find(
-      (element) => element.type === "rectangle" && element.width >= 500,
+      (element) =>
+        element.type === "rectangle" && element.groupIds.includes("subgraph_group_cluster"),
     )!;
     const frame = elements.find((element) => element.type === "frame")!;
     const connector = elements.find((element) => element.type === "arrow")!;
@@ -533,121 +590,6 @@ describe("DrawEditorAdapter", () => {
       "cannot be converted to native editable shapes",
     );
     expect(harness.elements()).toHaveLength(0);
-  });
-
-  it("declaratively upserts and replaces one selectable native diagram region", () => {
-    const first = adapter.diagram({
-      id: "session-model",
-      mode: "upsert",
-      direction: "left-to-right",
-      groups: [{ id: "runtime", label: "Runtime boundary with a deliberately long title" }],
-      nodes: [
-        {
-          id: "renderer",
-          label: "Sandboxed Renderer with a long label that must wrap without clipping",
-          groupId: "runtime",
-          width: 180,
-        },
-        { id: "main", label: "Electron Main\nvalidated authority", groupId: "runtime" },
-      ],
-      edges: [
-        {
-          id: "rpc",
-          from: "renderer",
-          to: "main",
-          label: "validated request with a long connector label",
-          fromPort: "right",
-          toPort: "left",
-          routing: "orthogonal",
-        },
-      ],
-      validate: ["overlaps", "clipping", "dangling-edges", "crossing-edges"],
-    });
-
-    expect(first.mappings).toEqual([
-      { semanticId: "runtime", shapeId: "shape:session-model--group--runtime", role: "group" },
-      { semanticId: "renderer", shapeId: "shape:session-model--node--renderer", role: "node" },
-      { semanticId: "main", shapeId: "shape:session-model--node--main", role: "node" },
-      { semanticId: "rpc", shapeId: "shape:session-model--edge--rpc", role: "edge" },
-    ]);
-    expect(first.diagnostics).toEqual([]);
-    const scene = adapter.read({ scope: "selection" });
-    expect(scene.shapes).toHaveLength(4);
-    expect(scene.shapes.every(({ diagramId }) => diagramId === "session-model")).toBe(true);
-    const group = harness
-      .elements()
-      .find(({ id }) => id === "shape:session-model--group--runtime")!;
-    const groupLabel = harness
-      .elements()
-      .find((element) => element.type === "text" && element.containerId === group.id) as Extract<
-      ExcalidrawElement,
-      { type: "text" }
-    >;
-    expect(group.width).toBeGreaterThan(groupLabel.width);
-    expect(group.height).toBeGreaterThan(groupLabel.height);
-    const renderer = harness
-      .elements()
-      .find(({ id }) => id === "shape:session-model--node--renderer")!;
-    const rendererLabel = harness
-      .elements()
-      .find((element) => element.type === "text" && element.containerId === renderer.id) as Extract<
-      ExcalidrawElement,
-      { type: "text" }
-    >;
-    expect(rendererLabel.text).toContain("\n");
-    expect(rendererLabel.width).toBeLessThanOrEqual(renderer.width - 48);
-    expect(renderer.height).toBeGreaterThan(rendererLabel.height);
-    const edge = harness
-      .elements()
-      .find(
-        (element): element is Extract<ExcalidrawElement, { type: "arrow" }> =>
-          element.id === "shape:session-model--edge--rpc" && element.type === "arrow",
-      )!;
-    expect(edge.points).toHaveLength(4);
-    const edgeLabel = harness
-      .elements()
-      .find((element) => element.type === "text" && element.containerId === edge.id) as Extract<
-      ExcalidrawElement,
-      { type: "text" }
-    >;
-    expect(edgeLabel.width).toBeLessThanOrEqual(360);
-    expect(harness.api.scrollToContent).toHaveBeenLastCalledWith(
-      expect.arrayContaining([expect.objectContaining({ id: renderer.id })]),
-      { animate: true, fitToViewport: true, viewportZoomFactor: 0.85 },
-    );
-
-    const replacement = adapter.diagram({
-      id: "session-model",
-      mode: "replace",
-      direction: "top-to-bottom",
-      nodes: [
-        { id: "renderer", label: "Renderer revised" },
-        { id: "storage", label: "Durable board storage" },
-      ],
-      edges: [{ id: "persist", from: "renderer", to: "storage" }],
-      validate: ["overlaps", "clipping"],
-    });
-    expect(replacement.mappings.map(({ shapeId }) => shapeId)).toEqual([
-      "shape:session-model--node--renderer",
-      "shape:session-model--node--storage",
-      "shape:session-model--edge--persist",
-    ]);
-    expect(adapter.read({ scope: "page" }).shapes.map(({ semanticId }) => semanticId)).toEqual(
-      expect.arrayContaining(["renderer", "storage", "persist"]),
-    );
-    expect(
-      adapter.read({ scope: "page" }).shapes.some(({ semanticId }) => semanticId === "main"),
-    ).toBe(false);
-
-    const deletion = adapter.apply({
-      operations: [{ type: "delete-diagram", id: "session-model" }],
-    });
-    expect(deletion.deletedIds).toEqual([
-      "shape:session-model--edge--persist",
-      "shape:session-model--node--renderer",
-      "shape:session-model--node--storage",
-    ]);
-    expect(adapter.read({ scope: "page" }).shapes).toEqual([]);
   });
 
   it("reflows fixed and auto-sized generated text after edits and typography changes", () => {
@@ -1260,6 +1202,24 @@ describe("DrawEditorAdapter", () => {
     expect(second.elements().findIndex(({ id }) => id === "shape:edge")).toBeLessThan(
       second.elements().findIndex(({ id }) => id === "shape:box"),
     );
+  });
+
+  it("persists and restores the actual canvas viewport", () => {
+    harness.setAppState({
+      scrollX: -3_200,
+      scrollY: 480,
+      zoom: { value: 0.65 } as AppState["zoom"],
+    });
+    const snapshot = adapter.snapshotDocument();
+    const second = editorHarness();
+
+    createDrawEditorAdapter(second.api).loadDocument(snapshot);
+
+    expect(second.api.getAppState()).toMatchObject({
+      scrollX: -3_200,
+      scrollY: 480,
+      zoom: { value: 0.65 },
+    });
   });
 
   it("validates the full batch before mutation", () => {

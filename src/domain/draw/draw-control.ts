@@ -319,58 +319,6 @@ const DrawSemanticShapeMapping = Schema.Struct({
   role: Schema.Literals(["node", "group", "edge"]),
 });
 
-const DrawValidationCheck = Schema.Literals([
-  "overlaps",
-  "clipping",
-  "dangling-edges",
-  "excessive-whitespace",
-  "crossing-edges",
-]);
-
-const DrawDiagnostic = Schema.Struct({
-  check: DrawValidationCheck,
-  severity: Schema.Literals(["info", "warning", "error"]),
-  message: boundedString(1_024),
-  semanticIds: Schema.Array(semanticId).check(Schema.isMaxLength(50)),
-});
-
-const DrawDiagramNode = Schema.Struct({
-  id: semanticId,
-  label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_000)),
-  groupId: Schema.optionalKey(semanticId),
-  kind: Schema.optionalKey(Schema.Literals(["rectangle", "ellipse", "diamond"])),
-  width: Schema.optionalKey(positiveDimension.check(Schema.isLessThanOrEqualTo(2_000))),
-  height: Schema.optionalKey(positiveDimension.check(Schema.isLessThanOrEqualTo(2_000))),
-  sourceLink: Schema.optionalKey(DrawSourceLink),
-});
-
-const DrawDiagramGroup = Schema.Struct({
-  id: semanticId,
-  label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_000)),
-});
-
-const DrawDiagramEdge = Schema.Struct({
-  id: semanticId,
-  from: semanticId,
-  to: semanticId,
-  label: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2_000))),
-  fromPort: Schema.optionalKey(Schema.Literals(["top", "right", "bottom", "left", "auto"])),
-  toPort: Schema.optionalKey(Schema.Literals(["top", "right", "bottom", "left", "auto"])),
-  routing: Schema.optionalKey(Schema.Literals(["straight", "orthogonal"])),
-});
-
-export const DrawDiagramInput = Schema.Struct({
-  id: diagramId,
-  mode: Schema.Literals(["replace", "upsert"]),
-  direction: Schema.Literals(["left-to-right", "top-to-bottom"]),
-  nodes: Schema.Array(DrawDiagramNode).check(Schema.isMinLength(1), Schema.isMaxLength(200)),
-  groups: Schema.optionalKey(Schema.Array(DrawDiagramGroup).check(Schema.isMaxLength(50))),
-  edges: Schema.optionalKey(Schema.Array(DrawDiagramEdge).check(Schema.isMaxLength(500))),
-  maxRenderSize: Schema.optionalKey(DrawMaxRenderSize),
-  validate: Schema.optionalKey(Schema.Array(DrawValidationCheck).check(Schema.isMaxLength(5))),
-  preview: Schema.optionalKey(Schema.Boolean),
-});
-
 const DrawApplyReceipt = Schema.Struct({
   createdIds: shapeIds,
   updatedIds: shapeIds,
@@ -418,7 +366,6 @@ export const DrawControlInvocation = Schema.TaggedUnion({
     boardId: Schema.optionalKey(DrawBoardId),
     checkpointId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   },
-  Diagram: { boardId: Schema.optionalKey(DrawBoardId), diagram: DrawDiagramInput },
   ExportDocument: { boardId: Schema.optionalKey(DrawBoardId) },
   Apply: {
     boardId: Schema.optionalKey(DrawBoardId),
@@ -507,17 +454,6 @@ export const DrawControlResponse = Schema.Union([
     boardId: DrawBoardId,
     checkpointId: Schema.String.check(Schema.isUUID(4)),
     receipt: DrawApplyReceipt,
-    scene: DrawScene,
-  }),
-  Schema.Struct({
-    ok: Schema.Literal(true),
-    kind: Schema.Literal("diagram"),
-    boardId: DrawBoardId,
-    checkpointId: Schema.String.check(Schema.isUUID(4)),
-    diagramId,
-    mappings: Schema.Array(DrawSemanticShapeMapping).check(Schema.isMaxLength(1_000)),
-    diagnostics: Schema.Array(DrawDiagnostic).check(Schema.isMaxLength(100)),
-    preview: Schema.optionalKey(DrawRender),
     scene: DrawScene,
   }),
 ]);

@@ -468,17 +468,16 @@ The window Store hierarchy mirrors the product surfaces:
   Cake sidebar may sit beside it, and Cake's authoritative `Chat` occupies the right drawer.
   Draw embeds Excalidraw as an editor, not as another agent runtime or conversation. Explicit
   `cake draw` operations use the existing renderer-request coordinator to inspect or edit the
-  invoking session's board. `draw.diagram` is the primary structured-authoring boundary: one bounded
-  declarative graph names a stable diagram region, semantic nodes/groups/edges, direction, routing,
-  quality checks, and an optional fitted preview. The renderer computes geometry and persists native
-  editable Excalidraw elements. The Excalidraw document remains the only diagram authority: Cake tags
-  those elements with diagram and semantic identities rather than persisting a second graph. Upsert
-  creates or atomically replaces that named region while preserving unrelated artwork; replace
-  requires an existing region. `draw.mermaid` retains a focused syntax conversion path and can likewise
-  atomically replace a named region. Every public shape identity has canonical `shape:<id>` form and
-  conversion returns stable semantic mappings. Generated labels are measured with their final font,
+  invoking session's board. `draw.mermaid` is the authoritative structured-diagram boundary for
+  architecture, flow, sequence, class, state, and entity-relationship diagrams. A named conversion
+  atomically creates or replaces one stable region while preserving unrelated artwork and persists
+  editable native Excalidraw elements. The Excalidraw document remains the only diagram authority:
+  Cake tags converted elements with diagram and semantic identities rather than persisting a second
+  graph or maintaining another diagram language. Every public shape identity has canonical
+  `shape:<id>` form and conversion returns stable semantic mappings. Generated labels are measured with their final font,
   wrapping width, line height, and padding before routing or fitting: fixed-width containers wrap and
-  grow vertically, while auto-sized text uses a bounded width. Unsupported Mermaid markup, lossy image
+  grow vertically, while auto-sized text uses a bounded width. Converted siblings reflow after their
+  measured size is final, and subgraph titles occupy a reserved title band above child nodes. Unsupported Mermaid markup, lossy image
   diagram kinds, and pathological empty subgraph containers are rejected or constrained rather than
   stored as poor canvas output. Manual agent edit batches are validated before mutation, presented on the
   visible canvas operation by operation with active-shape focus and bounded camera
@@ -489,7 +488,8 @@ The window Store hierarchy mirrors the product surfaces:
   typography/alignment, arrowheads, locking, selection, position, alignment, distribution, layer
   order, explicit connector ports, straight or orthogonal routing, and validated Cake source links.
   Bound connectors reroute after node geometry changes. Rendering automatically downscales to a
-  validated maximum size, and camera fitting includes labels and viewport padding. Each successful
+  validated maximum size, camera fitting includes labels and viewport padding, and the persisted
+  board snapshot restores the last actual canvas scroll and zoom on re-entry. Each successful
   agent mutation records one bounded renderer-owned pre-mutation checkpoint; `draw.undo` restores it
   atomically during the mounted board lifetime. Checkpoints deliberately do not persist across board
   reloads and are not a competing durable history: the saved board snapshot remains main-owned and
@@ -562,7 +562,7 @@ The window Store hierarchy mirrors the product surfaces:
   Mermaid and small tables, stays inline. Artifact identity is a global Cake-owned lineage, while sessions and Session Families receive
   explicit follow-latest or exact-revision links. Links do not copy payloads, confer ownership, or add Pi transcript entries. A session
   effectively linked through either scope may publish the next immutable full snapshot with latest-revision compare-and-swap. Architecture diagrams default to native editable Draw boards through
-  `draw.diagram` (or named `draw.mermaid` when Mermaid syntax is specifically useful); the unified delegated React widget path is reserved for custom interactive or
+  named `draw.mermaid`; the unified delegated React widget path is reserved for custom interactive or
   explorable visualizations that Draw cannot express. A restricted widget specialist can compose
   SVG/D3 diagrams, explanations, and controls inside the widget sandbox. Generated candidates are compile-checked
   and reviewed from actual widget-only screenshots captured in a serialized, main-owned hidden offscreen Electron host before publication,

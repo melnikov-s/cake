@@ -31,20 +31,18 @@ import { formatDrawSourceLink, parseDrawSourceLink } from "../../domain/draw/dra
 import type {
   DrawArrowhead,
   DrawCreateShape,
-  DrawDiagramInput,
-  DrawDiagramReceipt,
   DrawDocumentSnapshot,
   DrawEditorController,
   DrawMermaidReceipt,
   DrawOperation,
   DrawPlaybackOptions,
   DrawReadScope,
+  DrawSemanticShapeMapping,
   DrawRelativeShape,
   DrawShapeStyle,
   DrawShapeSummary,
   DrawStyleUpdate,
 } from "../../domain/draw/draw-editor";
-import { diagramShapeId, layoutDrawDiagram } from "./DrawDiagramLayout";
 
 export interface DrawEditorAdapter extends DrawEditorController {
   loadDocument(snapshot: DrawDocumentSnapshot): void;
@@ -65,6 +63,7 @@ const MERMAID_INSERTION_GAP = 80;
 const MERMAID_PARALLEL_CONNECTOR_GAP = 18;
 const MERMAID_LABEL_HORIZONTAL_PADDING = 24;
 const MERMAID_LABEL_VERTICAL_PADDING = 16;
+const MERMAID_NODE_GAP = 96;
 
 const colorPalette = new Map([
   ["black", "#1b1b1f"],
@@ -87,7 +86,9 @@ interface DrawSnapshot {
   readonly version: typeof DRAW_SNAPSHOT_VERSION;
   readonly source: "cake";
   readonly elements: readonly ExcalidrawElement[];
-  readonly appState: Readonly<Pick<AppState, "viewBackgroundColor">>;
+  readonly appState: Readonly<
+    Pick<AppState, "viewBackgroundColor" | "scrollX" | "scrollY" | "zoom">
+  >;
   readonly files: BinaryFiles;
 }
 
@@ -211,19 +212,44 @@ function elementMap(elements: readonly ExcalidrawElement[]) {
   return new Map(elements.map((element) => [element.id, element]));
 }
 
+const CakeGeneratedCompanionDataSchema = Schema.Struct({
+  cakeGeneratedCompanionFor: Schema.String,
+  cakeGeneratedCompanionKind: Schema.Literals(["title", "connector"]),
+});
+
+function generatedCompanionData(element: ExcalidrawElement) {
+  return Option.getOrUndefined(
+    Schema.decodeUnknownOption(CakeGeneratedCompanionDataSchema)(element.customData),
+  );
+}
+
+function generatedCompanionFor(element: ExcalidrawElement) {
+  return generatedCompanionData(element)?.cakeGeneratedCompanionFor;
+}
+
 function boundLabel(
   element: ExcalidrawElement,
   elements: readonly ExcalidrawElement[],
 ): ExcalidrawTextElement | undefined {
   return elements.find(
     (candidate): candidate is ExcalidrawTextElement =>
-      candidate.type === "text" && candidate.containerId === element.id && !candidate.isDeleted,
+      candidate.type === "text" &&
+      (candidate.containerId === element.id || generatedCompanionFor(candidate) === element.id) &&
+      !candidate.isDeleted,
   );
+}
+
+function isGeneratedLabelFor(element: ExcalidrawElement, ids: ReadonlySet<string>) {
+  if (element.type !== "text") return false;
+  const relatedId = element.containerId ?? generatedCompanionFor(element);
+  return !!relatedId && ids.has(relatedId);
 }
 
 function visibleElements(elements: readonly ExcalidrawElement[]) {
   return elements.filter(
-    (element) => !element.isDeleted && !(element.type === "text" && element.containerId),
+    (element) =>
+      !element.isDeleted &&
+      !(element.type === "text" && (element.containerId || generatedCompanionFor(element))),
   );
 }
 
@@ -971,9 +997,12 @@ function moveRelated(
   dy: number,
 ) {
   return elements.map((element) => {
+    const companionId = generatedCompanionFor(element);
     const related =
       ids.has(element.id) ||
-      (element.type === "text" && !!element.containerId && ids.has(element.containerId));
+      (element.type === "text" &&
+        ((!!element.containerId && ids.has(element.containerId)) ||
+          (!!companionId && ids.has(companionId))));
     return related ? withPosition(element, element.x + dx, element.y + dy) : element;
   });
 }
@@ -1114,7 +1143,7 @@ function styleElements(
   style: DrawStyleUpdate,
 ) {
   let next = elements.map((element) => {
-    if (element.type === "text" && element.containerId && ids.has(element.containerId))
+    if (element.type === "text" && isGeneratedLabelFor(element, ids))
       return styleTextElement(element, style);
     if (!ids.has(element.id)) return element;
     if (element.type === "text") return styleTextElement(element, style);
@@ -1358,9 +1387,7 @@ function normalizeCreatedDiagramOrder(
 
 function reorder(elements: readonly ExcalidrawElement[], ids: ReadonlySet<string>, front: boolean) {
   const selected = elements.filter(
-    (element) =>
-      ids.has(element.id) ||
-      (element.type === "text" && !!element.containerId && ids.has(element.containerId)),
+    (element) => ids.has(element.id) || isGeneratedLabelFor(element, ids),
   );
   const rest = elements.filter((element) => !selected.includes(element));
   return front ? [...rest, ...selected] : [...selected, ...rest];
@@ -1373,9 +1400,7 @@ function reorderOneStep(
 ) {
   const blocks = elements.map((element) => ({
     element,
-    selected:
-      ids.has(element.id) ||
-      (element.type === "text" && !!element.containerId && ids.has(element.containerId)),
+    selected: ids.has(element.id) || isGeneratedLabelFor(element, ids),
   }));
   if (forward) {
     for (let index = blocks.length - 2; index >= 0; index -= 1) {
@@ -1392,19 +1417,27 @@ function reorderOneStep(
 }
 
 function plainSnapshot(api: ExcalidrawImperativeAPI): DrawSnapshot {
+  const appState = api.getAppState();
   return {
     type: DRAW_SNAPSHOT_TYPE,
     version: DRAW_SNAPSHOT_VERSION,
     source: "cake",
     elements: api.getSceneElementsIncludingDeleted(),
-    appState: { viewBackgroundColor: api.getAppState().viewBackgroundColor },
+    appState: {
+      viewBackgroundColor: appState.viewBackgroundColor,
+      scrollX: appState.scrollX,
+      scrollY: appState.scrollY,
+      zoom: appState.zoom,
+    },
     files: api.getFiles(),
   };
 }
 
 interface RestoredDrawDocument {
   readonly elements: readonly ExcalidrawElement[];
-  readonly appState: Readonly<Pick<AppState, "viewBackgroundColor">>;
+  readonly appState: Readonly<
+    Pick<AppState, "viewBackgroundColor" | "scrollX" | "scrollY" | "zoom">
+  >;
   readonly files: BinaryFiles;
 }
 
@@ -1426,7 +1459,12 @@ export function restoreDrawDocument(snapshot: DrawDocumentSnapshot): RestoredDra
   );
   return {
     elements: restored.elements,
-    appState: { viewBackgroundColor: restored.appState.viewBackgroundColor },
+    appState: {
+      viewBackgroundColor: restored.appState.viewBackgroundColor,
+      scrollX: restored.appState.scrollX,
+      scrollY: restored.appState.scrollY,
+      zoom: restored.appState.zoom,
+    },
     files: restored.files,
   };
 }
@@ -1629,8 +1667,7 @@ function applyPreparedOperations(
       case "delete": {
         const ids = new Set(operation.ids.map(shapeId));
         elements = elements.map((element) =>
-          ids.has(element.id) ||
-          (element.type === "text" && !!element.containerId && ids.has(element.containerId))
+          ids.has(element.id) || isGeneratedLabelFor(element, ids)
             ? newElementWith(element, { isDeleted: true })
             : element,
         );
@@ -1692,8 +1729,7 @@ function applyPreparedOperations(
       case "set-locked": {
         const ids = new Set(operation.ids.map(shapeId));
         elements = elements.map((element) =>
-          ids.has(element.id) ||
-          (element.type === "text" && !!element.containerId && ids.has(element.containerId))
+          ids.has(element.id) || isGeneratedLabelFor(element, ids)
             ? newElementWith(element, { locked: operation.locked })
             : element,
         );
@@ -1722,11 +1758,7 @@ function applyPreparedOperations(
   if (zoomIds) {
     const ids = new Set(zoomIds);
     api.scrollToContent(
-      elements.filter(
-        (element) =>
-          ids.has(element.id) ||
-          (element.type === "text" && !!element.containerId && ids.has(element.containerId)),
-      ),
+      elements.filter((element) => ids.has(element.id) || isGeneratedLabelFor(element, ids)),
       { animate: true, fitToViewport: true, viewportZoomFactor: 0.85 },
     );
   } else if (highlightActive && selectedElementIds) {
@@ -1781,6 +1813,16 @@ function normalizeMermaidSkeletonLabels(
   });
 }
 
+function namedDiagramShapeId(
+  diagramId: string,
+  role: DrawSemanticShapeMapping["role"],
+  semanticId: string,
+) {
+  const suffix = `${diagramId}--${role}--${semanticId}`;
+  if (suffix.length > 256) throw new Error("Diagram and semantic IDs are too long when combined");
+  return `shape:${suffix}`;
+}
+
 function semanticMermaidId(value: string, used: Set<string>) {
   const base = value.replace(/[^A-Za-z0-9_-]/gu, "_").replace(/^[_-]+/u, "") || "item";
   let candidate = base.slice(0, 96);
@@ -1806,7 +1848,7 @@ function remapMermaidElementIds(
     const semantic = rootSemantics.get(element.id);
     let id =
       diagramId && semantic
-        ? diagramShapeId(
+        ? namedDiagramShapeId(
             diagramId,
             element.type === "arrow" || element.type === "line" ? "edge" : "node",
             semantic,
@@ -1933,7 +1975,13 @@ function fitGeneratedText(elements: readonly ExcalidrawElement[]) {
   for (const original of textElements) {
     const current = elementMap(fitted).get(original.id);
     if (!current || current.type !== "text") continue;
-    const container = current.containerId ? elementMap(fitted).get(current.containerId) : undefined;
+    const companion = generatedCompanionData(current);
+    const companionContainerId =
+      companion?.cakeGeneratedCompanionKind === "connector"
+        ? companion.cakeGeneratedCompanionFor
+        : undefined;
+    const containerId = current.containerId ?? companionContainerId;
+    const container = containerId ? elementMap(fitted).get(containerId) : undefined;
     const sourceText = current.originalText || current.text;
     const fixedContainer =
       container && container.type !== "arrow" && container.type !== "line" ? container : undefined;
@@ -1996,50 +2044,196 @@ function fitGeneratedText(elements: readonly ExcalidrawElement[]) {
       }
       const vertical =
         Math.abs(segment.end[1] - segment.start[1]) > Math.abs(segment.end[0] - segment.start[0]);
-      const centerX = container.x + (segment.start[0] + segment.end[0]) / 2;
-      const centerY = container.y + (segment.start[1] + segment.end[1]) / 2;
-      nextText = newElementWith(nextText, {
-        x: vertical ? centerX - nextText.width - 12 : centerX - nextText.width / 2,
-        y: vertical ? centerY - nextText.height / 2 : centerY - nextText.height - 8,
-      });
+      const centerX = container.x + segment.start[0] * 0.75 + segment.end[0] * 0.25;
+      const centerY = container.y + segment.start[1] * 0.75 + segment.end[1] * 0.25;
+      const candidates = vertical
+        ? [
+            { x: centerX - nextText.width - 12, y: centerY - nextText.height / 2 },
+            { x: centerX + 12, y: centerY - nextText.height / 2 },
+          ]
+        : [
+            { x: centerX - nextText.width / 2, y: centerY - nextText.height - 8 },
+            { x: centerX - nextText.width / 2, y: centerY + 8 },
+          ];
+      const obstacles = fitted.filter(
+        (element) =>
+          element.id !== nextText.id &&
+          element.id !== container.id &&
+          !element.isDeleted &&
+          element.type !== "arrow" &&
+          element.type !== "line" &&
+          !(element.type !== "text" && diagramData(element)?.role === "group"),
+      );
+      const position =
+        candidates.find((candidate) =>
+          obstacles.every(
+            (obstacle) =>
+              !boundsOverlap(
+                { ...candidate, width: nextText.width, height: nextText.height },
+                boundsOf(obstacle, fitted),
+                6,
+              ),
+          ),
+        ) ?? candidates[0]!;
+      nextText = newElementWith(nextText, position);
       fitted = fitted.map((element) => (element.id === nextText.id ? nextText : element));
     }
   }
   return fitted;
 }
 
-function constrainMermaidContainers(elements: readonly ExcalidrawElement[]) {
-  const backgrounds = diagramBackgroundIds(
-    elements,
-    new Set(elements.filter((element) => !element.isDeleted).map(({ id }) => id)),
+function shiftMermaidRoot(
+  elements: readonly ExcalidrawElement[],
+  id: string,
+  dx: number,
+  dy: number,
+) {
+  return moveRelated(elements, new Set([id]), dx, dy);
+}
+
+/** Reflows converted nodes after final text measurement, then reserves a title band in subgraphs. */
+function reflowMeasuredMermaid(
+  elements: readonly ExcalidrawElement[],
+  backgrounds: ReadonlySet<string>,
+) {
+  let reflowed = [...elements];
+  const nodes = visibleElements(reflowed).filter(
+    (element) =>
+      !backgrounds.has(element.id) &&
+      element.type !== "arrow" &&
+      element.type !== "line" &&
+      element.type !== "text",
   );
-  let constrained = [...elements];
-  for (const id of backgrounds) {
-    const container = elementMap(constrained).get(id);
+  for (let pass = 0; pass < nodes.length; pass += 1) {
+    let moved = false;
+    for (let leftIndex = 0; leftIndex < nodes.length; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < nodes.length; rightIndex += 1) {
+        const byId = elementMap(reflowed);
+        const left = byId.get(nodes[leftIndex]!.id);
+        const right = byId.get(nodes[rightIndex]!.id);
+        if (!left || !right) continue;
+        const leftBounds = boundsOf(left, reflowed);
+        const rightBounds = boundsOf(right, reflowed);
+        if (!boundsOverlap(leftBounds, rightBounds, MERMAID_NODE_GAP)) continue;
+        const originalLeft = nodes[leftIndex]!;
+        const originalRight = nodes[rightIndex]!;
+        const horizontal =
+          Math.abs(originalRight.x - originalLeft.x) >= Math.abs(originalRight.y - originalLeft.y);
+        let dx = 0;
+        let dy = 0;
+        if (horizontal) {
+          dx =
+            originalRight.x >= originalLeft.x
+              ? leftBounds.x + leftBounds.width + MERMAID_NODE_GAP - rightBounds.x
+              : leftBounds.x - MERMAID_NODE_GAP - (rightBounds.x + rightBounds.width);
+        } else {
+          dy =
+            originalRight.y >= originalLeft.y
+              ? leftBounds.y + leftBounds.height + MERMAID_NODE_GAP - rightBounds.y
+              : leftBounds.y - MERMAID_NODE_GAP - (rightBounds.y + rightBounds.height);
+        }
+        reflowed = shiftMermaidRoot(reflowed, right.id, dx, dy);
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+
+  const orderedBackgrounds = [...backgrounds].sort((left, right) => {
+    const byId = elementMap(reflowed);
+    const leftElement = byId.get(left);
+    const rightElement = byId.get(right);
+    return (
+      (leftElement?.width ?? 0) * (leftElement?.height ?? 0) -
+      (rightElement?.width ?? 0) * (rightElement?.height ?? 0)
+    );
+  });
+  for (const id of orderedBackgrounds) {
+    const byId = elementMap(reflowed);
+    const container = byId.get(id);
     if (!container) continue;
+    const label = reflowed.find(
+      (element): element is ExcalidrawTextElement =>
+        element.type === "text" && element.containerId === id,
+    );
     const groupIds = new Set(container.groupIds);
-    const children = constrained.filter(
+    const children = visibleElements(reflowed).filter(
       (element) =>
         element.id !== id &&
-        !(element.type === "text" && element.containerId === id) &&
+        !backgrounds.has(element.id) &&
+        element.type !== "arrow" &&
+        element.type !== "line" &&
         (element.frameId === id || element.groupIds.some((groupId) => groupIds.has(groupId))),
     );
     if (children.length === 0) continue;
     const [minX, minY, maxX, maxY] = getCommonBounds(children);
-    const expected = {
+    let nextLabel = label;
+    if (nextLabel) {
+      const maximumTitleWidth = Math.max(160, maxX - minX + 24);
+      const wrapped = wrapMeasuredText(
+        nextLabel.originalText || nextLabel.text,
+        maximumTitleWidth,
+        nextLabel,
+      );
+      const lines = wrapped.split("\n");
+      nextLabel = newElementWith(nextLabel, {
+        containerId: null,
+        customData: {
+          ...nextLabel.customData,
+          cakeGeneratedCompanionFor: id,
+          cakeGeneratedCompanionKind: "title",
+        },
+        text: wrapped,
+        originalText: nextLabel.originalText || nextLabel.text,
+        width: Math.ceil(Math.max(...lines.map((line) => measuredLineWidth(line, nextLabel!)))),
+        height: Math.ceil(lines.length * nextLabel.fontSize * (nextLabel.lineHeight || 1.25)),
+        autoResize: true,
+      });
+    }
+    const titleHeight = nextLabel?.height ?? 0;
+    const nextContainer = newElementWith(container, {
       x: minX - 36,
-      y: minY - 64,
+      y: minY - titleHeight - 48,
       width: maxX - minX + 72,
-      height: maxY - minY + 100,
-    };
-    const currentArea = Math.max(1, container.width * container.height);
-    const expectedArea = Math.max(1, expected.width * expected.height);
-    if (currentArea <= expectedArea * 3) continue;
-    constrained = constrained.map((element) =>
-      element.id === id ? newElementWith(container, expected) : element,
-    );
+      height: maxY - minY + titleHeight + 84,
+      boundElements:
+        container.boundElements?.filter((binding) => binding.id !== nextLabel?.id) ?? null,
+    });
+    reflowed = reflowed.map((element) => {
+      if (element.id === id) return nextContainer;
+      if (nextLabel && element.id === nextLabel.id)
+        return newElementWith(nextLabel, {
+          x: nextContainer.x + 24,
+          y: nextContainer.y + 18,
+        });
+      return element;
+    });
   }
-  return constrained;
+  const connectorLabels = reflowed.filter((element): element is ExcalidrawTextElement => {
+    if (element.type !== "text" || !element.containerId) return false;
+    const container = elementMap(reflowed).get(element.containerId);
+    return container?.type === "arrow" || container?.type === "line";
+  });
+  for (const label of connectorLabels) {
+    const connectorId = label.containerId!;
+    reflowed = reflowed.map((element) => {
+      if (element.id === connectorId)
+        return newElementWith(element, {
+          boundElements: element.boundElements?.filter(({ id }) => id !== label.id) ?? null,
+        });
+      if (element.id === label.id)
+        return newElementWith(label, {
+          containerId: null,
+          customData: {
+            ...label.customData,
+            cakeGeneratedCompanionFor: connectorId,
+            cakeGeneratedCompanionKind: "connector",
+          },
+        });
+      return element;
+    });
+  }
+  return fitGeneratedText(updateConnections(reflowed));
 }
 
 function assertUsableMermaidGeometry(elements: readonly ExcalidrawElement[]) {
@@ -2051,7 +2245,7 @@ function assertUsableMermaidGeometry(elements: readonly ExcalidrawElement[]) {
     const longSide = Math.max(container.width, container.height);
     if (longSide / shortSide > 20 || container.width * container.height > 100_000_000)
       throw new Error(
-        "Mermaid subgraph layout is excessively sparse, usually because of cross-subgraph edges; use draw.diagram or simplify the subgraph boundaries",
+        "Mermaid subgraph layout is excessively sparse, usually because of cross-subgraph edges; simplify the subgraph boundaries or split the diagram",
       );
   }
 }
@@ -2130,7 +2324,10 @@ function spreadOverlappingMermaidConnectors(elements: readonly ExcalidrawElement
             width: maxX - minX,
             height: maxY - minY,
           });
-        if (element.type === "text" && element.containerId === arrow.id)
+        if (
+          element.type === "text" &&
+          (element.containerId === arrow.id || generatedCompanionFor(element) === arrow.id)
+        )
           return newElementWith(element, {
             x: element.x + normalX * offset,
             y: element.y + normalY * offset,
@@ -2240,6 +2437,10 @@ async function insertMermaid(
     : allExisting;
   const reservedIds = new Set(existing.map((element) => element.id));
   const remapped = remapMermaidElementIds(converted, reservedIds, options.id);
+  const backgrounds = diagramBackgroundIds(
+    remapped.elements,
+    new Set(remapped.elements.map(({ id }) => id)),
+  );
   const autoSized = remapped.elements.map((element) =>
     element.type === "text" || element.type === "arrow" || element.type === "line"
       ? element
@@ -2248,21 +2449,22 @@ async function insertMermaid(
         }),
   );
   let created = spreadOverlappingMermaidConnectors(
-    fitGeneratedText(constrainMermaidContainers(autoSized)),
+    reflowMeasuredMermaid(fitGeneratedText(autoSized), backgrounds),
   );
   assertUsableMermaidGeometry(created);
   if (options.id) {
-    const backgrounds = diagramBackgroundIds(created, new Set(created.map(({ id }) => id)));
+    const finalBackgrounds = diagramBackgroundIds(created, new Set(created.map(({ id }) => id)));
+    const groupSemantics = new Set(
+      [...finalBackgrounds].flatMap((id) => {
+        const data = diagramData(elementMap(created).get(id)!);
+        return data ? [data.semanticId] : [];
+      }),
+    );
     created = created.map((element) => {
       const data = diagramData(element);
-      if (
-        !data ||
-        !backgrounds.has(
-          element.type === "text" && element.containerId ? element.containerId : element.id,
-        )
-      )
-        return element;
-      return withDiagramData(element, { ...data, role: "group" });
+      return data && groupSemantics.has(data.semanticId)
+        ? withDiagramData(element, { ...data, role: "group" })
+        : element;
     });
   }
   const appState = api.getAppState();
@@ -2312,7 +2514,7 @@ async function insertMermaid(
           !!element.containerId &&
           selectedElementIds[element.containerId]),
     ),
-    { animate: true, fitToViewport: true, viewportZoomFactor: 0.85 },
+    { animate: false, fitToViewport: true, viewportZoomFactor: 0.85 },
   );
   return {
     diagramId: options.id,
@@ -2324,181 +2526,6 @@ async function insertMermaid(
         role: element ? (diagramData(element)?.role ?? mapping.role) : mapping.role,
       };
     }),
-  };
-}
-
-function createDeclarativeDiagram(
-  api: ExcalidrawImperativeAPI,
-  input: DrawDiagramInput,
-): DrawDiagramReceipt {
-  const layout = layoutDrawDiagram(input);
-  const allExisting = api.getSceneElementsIncludingDeleted();
-  const oldRegion = allExisting.filter((element) => diagramData(element)?.diagramId === input.id);
-  if (input.mode === "replace" && oldRegion.length === 0)
-    throw new Error(`Named diagram ${input.id} does not exist; use upsert for initial creation`);
-  const existing = allExisting.filter((element) => diagramData(element)?.diagramId !== input.id);
-  const roots = [...layout.groups, ...layout.nodes];
-  const [layoutMinX, layoutMinY, layoutMaxX, layoutMaxY] = [
-    Math.min(...roots.map(({ x }) => x)),
-    Math.min(...roots.map(({ y }) => y)),
-    Math.max(...roots.map(({ x, width }) => x + width)),
-    Math.max(...roots.map(({ y, height }) => y + height)),
-  ];
-  const appState = api.getAppState();
-  const viewportStart = viewportCoordsToSceneCoords({ clientX: 0, clientY: 0 }, appState);
-  const viewportEnd = viewportCoordsToSceneCoords(
-    { clientX: appState.width, clientY: appState.height },
-    appState,
-  );
-  const desiredCenter =
-    oldRegion.length > 0
-      ? (() => {
-          const [minX, minY, maxX, maxY] = getCommonBounds(oldRegion);
-          return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
-        })()
-      : {
-          x: (viewportStart.x + viewportEnd.x) / 2,
-          y: (viewportStart.y + viewportEnd.y) / 2,
-        };
-  const diagramWidth = layoutMaxX - layoutMinX;
-  const diagramHeight = layoutMaxY - layoutMinY;
-  const occupied = visibleElements(existing).map((element) => boundsOf(element, existing));
-  let target = {
-    x: desiredCenter.x - diagramWidth / 2,
-    y: desiredCenter.y - diagramHeight / 2,
-    width: diagramWidth,
-    height: diagramHeight,
-  };
-  if (occupied.some((bounds) => boundsOverlap(target, bounds, MERMAID_INSERTION_GAP))) {
-    const rightEdge = Math.max(...occupied.map((bounds) => bounds.x + bounds.width));
-    target = { ...target, x: rightEdge + MERMAID_INSERTION_GAP };
-  }
-  const delta = { x: target.x - layoutMinX, y: target.y - layoutMinY };
-  let created: ExcalidrawElement[] = [];
-  const mappings: Array<DrawDiagramReceipt["mappings"][number]> = [];
-  const addShape = (semanticId: string, role: "node" | "group", shape: DrawCreateShape) => {
-    const id = diagramShapeId(input.id, role, semanticId);
-    const block = createElements(shape, id).map((element) =>
-      withDiagramData(element, { diagramId: input.id, semanticId, role }),
-    );
-    created.push(...block);
-    mappings.push({ semanticId, shapeId: id, role });
-  };
-  for (const group of layout.groups)
-    addShape(group.id, "group", {
-      id: diagramShapeId(input.id, "group", group.id),
-      type: "geo",
-      x: group.x + delta.x,
-      y: group.y + delta.y,
-      width: group.width,
-      height: group.height,
-      text: group.label,
-      color: "grey",
-      fill: "none",
-    });
-  for (const node of layout.nodes)
-    addShape(node.id, "node", {
-      id: diagramShapeId(input.id, "node", node.id),
-      type: "geo",
-      x: node.x + delta.x,
-      y: node.y + delta.y,
-      width: node.width,
-      height: node.height,
-      text: node.label,
-      geo: node.kind,
-      color: "light-blue",
-      fill: "solid",
-      sourceLink: node.sourceLink,
-    });
-  created = fitGeneratedText(created);
-  for (const group of layout.groups) {
-    const groupId = diagramShapeId(input.id, "group", group.id);
-    const container = elementMap(created).get(groupId);
-    const childElements = layout.nodes
-      .filter(({ groupId: nodeGroupId }) => nodeGroupId === group.id)
-      .flatMap((node) => {
-        const element = elementMap(created).get(diagramShapeId(input.id, "node", node.id));
-        return element ? [element] : [];
-      });
-    if (!container || childElements.length === 0) continue;
-    const childBounds = childElements.map((element) => boundsOf(element, created));
-    const minX = Math.min(...childBounds.map(({ x }) => x));
-    const minY = Math.min(...childBounds.map(({ y }) => y));
-    const maxX = Math.max(...childBounds.map(({ x, width }) => x + width));
-    const maxY = Math.max(...childBounds.map(({ y, height }) => y + height));
-    created = created.map((element) =>
-      element.id === groupId
-        ? newElementWith(container, {
-            x: minX - 42,
-            y: minY - 82,
-            width: maxX - minX + 84,
-            height: maxY - minY + 124,
-          })
-        : element,
-    );
-  }
-  created = fitGeneratedText(created);
-  for (const edge of layout.edges) {
-    const id = diagramShapeId(input.id, "edge", edge.id);
-    const previousIds = new Set(created.map(({ id: previousId }) => previousId));
-    const next = connectElements(created, {
-      type: "connect",
-      id,
-      fromId: diagramShapeId(input.id, "node", edge.from),
-      toId: diagramShapeId(input.id, "node", edge.to),
-      text: edge.label,
-      fromPort: edge.fromPort,
-      toPort: edge.toPort,
-      routing: edge.routing ?? "orthogonal",
-    });
-    created = next.map((element) =>
-      previousIds.has(element.id)
-        ? element
-        : withDiagramData(element, { diagramId: input.id, semanticId: edge.id, role: "edge" }),
-    );
-    mappings.push({ semanticId: edge.id, shapeId: id, role: "edge" });
-  }
-  created = fitGeneratedText(updateConnections(created));
-  const diagramIds = new Set(created.map(({ id }) => id));
-  const ordered = normalizeCreatedDiagramOrder([...existing, ...created], diagramIds);
-  const selectedElementIds = Object.fromEntries(
-    created
-      .filter((element) => !(element.type === "text" && element.containerId))
-      .map((element) => [element.id, true as const]),
-  );
-  api.updateScene({
-    elements: ordered,
-    appState: { selectedElementIds },
-    captureUpdate: CaptureUpdateAction.IMMEDIATELY,
-  });
-  api.scrollToContent(created, {
-    animate: true,
-    fitToViewport: true,
-    viewportZoomFactor: 0.85,
-  });
-  const diagnostics = [...layout.diagnostics];
-  if ((input.validate ?? []).includes("clipping")) {
-    const clipped = created.filter(
-      (element) =>
-        element.type === "text" &&
-        (element.width <= 0 || element.height <= 0 || element.text.length === 0),
-    );
-    if (clipped.length > 0)
-      diagnostics.push({
-        check: "clipping",
-        severity: "error",
-        message: "One or more generated labels could not be fitted.",
-        semanticIds: clipped.flatMap((element) => {
-          const data = diagramData(element);
-          return data ? [data.semanticId] : [];
-        }),
-      });
-  }
-  return {
-    diagramId: input.id,
-    checkpointId: crypto.randomUUID(),
-    mappings,
-    diagnostics,
   };
 }
 
@@ -2564,9 +2591,7 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
       const allElements = nonDeleted(api);
       const ids = new Set(idsForScope(api, allElements, scope));
       const elements = allElements.filter(
-        (element) =>
-          ids.has(element.id) ||
-          (element.type === "text" && !!element.containerId && ids.has(element.containerId)),
+        (element) => ids.has(element.id) || isGeneratedLabelFor(element, ids),
       );
       if (elements.length === 0) throw new Error("There are no shapes to render");
       if (!Number.isFinite(scale) || scale <= 0 || scale > MAX_RENDER_SCALE)
@@ -2667,9 +2692,6 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
     insertMermaid(diagram, options) {
       return insertMermaid(api, diagram, options);
     },
-    diagram(input) {
-      return createDeclarativeDiagram(api, input);
-    },
     clear() {
       const roots = visibleElements(nonDeleted(api));
       const deletedIds = roots.map(({ id }) => id);
@@ -2677,8 +2699,7 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
       const elements = api
         .getSceneElementsIncludingDeleted()
         .map((element) =>
-          ids.has(element.id) ||
-          (element.type === "text" && !!element.containerId && ids.has(element.containerId))
+          ids.has(element.id) || isGeneratedLabelFor(element, ids)
             ? newElementWith(element, { isDeleted: true })
             : element,
         );

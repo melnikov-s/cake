@@ -96,30 +96,6 @@ function control(overrides: Partial<CakeDrawControl> = {}): CakeDrawControl {
           mappings: [],
           scene,
         };
-      if (invocation._tag === "Diagram")
-        return {
-          ok: true,
-          kind: "diagram",
-          boardId: board.id,
-          checkpointId,
-          diagramId: invocation.diagram.id,
-          mappings: [
-            {
-              semanticId: "renderer",
-              shapeId: "shape:session-model--node--renderer",
-              role: "node",
-            },
-          ],
-          diagnostics: [],
-          preview: {
-            format: "png",
-            mediaType: "image/png",
-            width: 800,
-            height: 600,
-            data: `data:image/png;base64,${tinyPng}`,
-          },
-          scene,
-        };
       if (invocation._tag === "Clear" || invocation._tag === "Undo")
         return {
           ok: true,
@@ -152,7 +128,7 @@ describe("Cake Draw operations", () => {
     expect(help.text).toContain("draw.apply");
     expect(help.text).toContain("draw.export");
     expect(help.text).toContain("draw.mermaid");
-    expect(help.text).toContain("Prefer draw.diagram for technical architecture");
+    expect(help.text).toContain("draw.mermaid as the authoritative structured-diagram path");
     expect(help.text).toContain("plain <br>, <br/>, or <br />");
     expect(help.text).toContain("explicit direction");
     expect(help.text).toContain("linear Mermaid routes");
@@ -223,44 +199,6 @@ describe("Cake Draw operations", () => {
       },
     });
     expect(JSON.stringify(applyResult.details)).not.toContain('"scene"');
-  });
-
-  it("creates a declarative diagram with semantic mappings, diagnostics, and a fitted preview", async () => {
-    const fake = control();
-    const registry = new CakeOperationRegistry(createCakeDrawOperations(fake));
-    const diagram = {
-      id: "session-model",
-      mode: "upsert" as const,
-      direction: "top-to-bottom" as const,
-      nodes: [{ id: "renderer", label: "Renderer" }],
-      maxRenderSize: { width: 800, height: 600 },
-      validate: ["overlaps" as const, "clipping" as const],
-      preview: true,
-    };
-
-    const result = await registry.invoke(
-      { command: "draw.diagram", input: { diagram } },
-      context(),
-    );
-
-    expect(fake.request).toHaveBeenCalledWith(
-      { _tag: "Diagram", diagram },
-      expect.any(AbortSignal),
-    );
-    expect(result.content).toContainEqual({ type: "image", mimeType: "image/png", data: tinyPng });
-    expect(result.details).toMatchObject({
-      result: {
-        boardId: board.id,
-        diagramId: "session-model",
-        checkpointId,
-        mappings: [
-          { semanticId: "renderer", shapeId: "shape:session-model--node--renderer", role: "node" },
-        ],
-        diagnostics: [],
-        preview: { width: 800, height: 600 },
-      },
-    });
-    expect(JSON.stringify(result.details)).not.toContain(tinyPng);
   });
 
   it("clears and undoes the board through checkpointed transactions", async () => {

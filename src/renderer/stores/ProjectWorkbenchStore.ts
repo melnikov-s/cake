@@ -971,28 +971,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
             scene: await draw.read("page"),
           };
         }
-        case "Diagram": {
-          const receipt = await draw.diagram(invocation.diagram);
-          const preview = invocation.diagram.preview
-            ? await draw.render({
-                scope: "selection",
-                format: "png",
-                background: true,
-                maxSize: invocation.diagram.maxRenderSize,
-              })
-            : undefined;
-          return {
-            ok: true,
-            kind: "diagram",
-            boardId: draw.activeBoard.id,
-            checkpointId: receipt.checkpointId,
-            diagramId: receipt.diagramId,
-            mappings: receipt.mappings,
-            diagnostics: receipt.diagnostics,
-            preview,
-            scene: await draw.read("page"),
-          };
-        }
         case "Mermaid": {
           const receipt = await draw.insertMermaid(invocation.diagram, {
             id: invocation.id,

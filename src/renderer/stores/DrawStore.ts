@@ -2,8 +2,6 @@ import { Store, observable, snapshot } from "r-state-tree";
 import type { DrawBoardMetadata } from "../../domain/draw/draw-board-data";
 import type {
   DrawApplyReceipt,
-  DrawDiagramInput,
-  DrawDiagramReceipt,
   DrawDocumentSnapshot,
   DrawMermaidReceipt,
   DrawOperation,
@@ -236,33 +234,17 @@ export class DrawStore extends Store<DrawStoreProps> {
     this.suppressDocumentChanges = true;
     try {
       const receipt = await adapter.insertMermaid(diagram, options);
+      this.suppressDocumentChanges = false;
+      this.documentChanged();
+      await this.flush();
       this.rememberCheckpoint(before);
-      this.suppressDocumentChanges = false;
-      this.documentChanged();
-      await this.flush();
-      return receipt;
-    } finally {
-      this.suppressDocumentChanges = false;
-      this.agentDrawing = false;
-    }
-  }
-
-  async diagram(input: DrawDiagramInput): Promise<DrawDiagramReceipt> {
-    if (this.agentDrawing) throw new Error("Cake Draw is already presenting an agent edit");
-    this.clearError();
-    const adapter = await this.waitUntilReady();
-    const before = adapter.snapshotDocument();
-    this.agentDrawing = true;
-    this.suppressDocumentChanges = true;
-    try {
-      const receipt = adapter.diagram(input);
-      this.rememberCheckpoint(before, receipt.checkpointId);
-      this.suppressDocumentChanges = false;
-      this.documentChanged();
-      await this.flush();
       return receipt;
     } catch (error) {
+      this.suppressDocumentChanges = true;
       adapter.loadDocument(before);
+      this.suppressDocumentChanges = false;
+      this.documentChanged();
+      await this.flush().catch(() => undefined);
       throw error;
     } finally {
       this.suppressDocumentChanges = false;

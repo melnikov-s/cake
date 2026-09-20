@@ -332,7 +332,7 @@ const requestExplanationScenario: VisualCaptureScenario = {
 
 const drawMermaidArchitectureScenario: VisualCaptureScenario = {
   name: "draw-mermaid-architecture",
-  description: "Native editable architecture diagram authored declaratively in Cake Draw",
+  description: "Named native editable Mermaid architecture diagram in Cake Draw",
   states: ["default"],
   async seed(paths, theme) {
     const sessionId = "visual-draw-mermaid-architecture";
@@ -418,25 +418,21 @@ const drawMermaidArchitectureScenario: VisualCaptureScenario = {
       sessionId: "visual-draw-mermaid-architecture",
       drawRequestId: "00000000-0000-4000-8000-000000000099",
       invocation: {
-        _tag: "Diagram",
-        diagram: {
-          id: "cake-desktop-architecture",
-          mode: "upsert",
-          direction: "top-to-bottom",
-          nodes: [
-            { id: "renderer", label: "Sandboxed Renderer\nModels + Stores" },
-            { id: "main", label: "Electron Main\nCake services" },
-            { id: "pi", label: "Pi Runtime\nagent loop + transcript" },
-            { id: "storage", label: "Cake state\nboards + metadata", kind: "ellipse" },
-          ],
-          edges: [
-            { id: "rpc", from: "renderer", to: "main", label: "typed RPC" },
-            { id: "runtime", from: "main", to: "pi" },
-            { id: "persistence", from: "main", to: "storage" },
-            { id: "events", from: "pi", to: "renderer", label: "validated events" },
-          ],
-          validate: ["overlaps", "clipping", "dangling-edges", "crossing-edges"],
-        },
+        _tag: "Mermaid",
+        id: "cake-desktop-architecture",
+        replace: true,
+        diagram: `flowchart TB
+  subgraph renderer["Sandboxed Renderer"]
+    models["Renderer Models + Stores with measured labels"]
+    chat["Shared Chat and Conversation surfaces"]
+  end
+  subgraph main["Electron Main"]
+    services["Cake services"]
+    pi["Pi Runtime agent loop + transcript"]
+  end
+  models -->|typed RPC| services
+  chat --> services
+  services --> pi`,
       },
     };
     await application.evaluate((_electron, input) => {
@@ -452,7 +448,7 @@ const drawMermaidArchitectureScenario: VisualCaptureScenario = {
       await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled({ timeout: 20_000 });
     } catch (cause) {
       const body = (await page.locator("body").innerText()).replaceAll(/\s+/g, " ").slice(0, 2_000);
-      throw new Error(`Declarative diagram insertion did not complete. Visible Cake UI: ${body}`, {
+      throw new Error(`Mermaid diagram insertion did not complete. Visible Cake UI: ${body}`, {
         cause,
       });
     }

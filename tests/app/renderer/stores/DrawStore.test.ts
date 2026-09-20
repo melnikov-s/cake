@@ -286,6 +286,22 @@ describe("DrawStore", () => {
     expect(subject.agentDrawing).toBe(false);
   });
 
+  it("restores the pre-conversion snapshot when Mermaid persistence fails", async () => {
+    const { subject, save } = mountDrawStore();
+    await subject.initialize();
+    const editor = adapterHarness();
+    subject.attachEditor(editor.adapter);
+    save.mockRejectedValueOnce(new Error("storage unavailable"));
+
+    await expect(subject.insertMermaid("flowchart LR\nA --> B")).rejects.toThrow(
+      "storage unavailable",
+    );
+
+    expect(editor.adapter.loadDocument).toHaveBeenCalledWith(emptyDocument);
+    expect(subject.lastCheckpointId).toBeUndefined();
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
   it("owns visible agent playback and persists only the final scene", async () => {
     const { subject, save } = mountDrawStore();
     await subject.initialize();

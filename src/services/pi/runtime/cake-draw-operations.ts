@@ -7,7 +7,6 @@ import type { JsonObject } from "../../../ipc/json-contract";
 import {
   DRAW_APPLY_MAX_OPERATIONS,
   type DrawControlResponse,
-  DrawDiagramInput,
   DrawMaxRenderSize,
   DrawOperation,
   DrawReadScope,
@@ -123,10 +122,9 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
     summary: definition.summary,
     guidance: [
       "Cake Draw commands always target the calling Project Session and never accept a sessionId.",
-      "enter and open explicitly foreground Cake Draw. read, render, diagram, mermaid, and apply never switch the user's board or mode; follow their recovery code when Draw is not visible.",
+      "enter and open explicitly foreground Cake Draw. read, render, mermaid, and apply never switch the user's board or mode; follow their recovery code when Draw is not visible.",
       "User drawing never triggers an agent turn. Every agent canvas change requires an explicit Draw mutation.",
-      "Prefer draw.diagram for technical architecture and flow diagrams. It declaratively upserts or replaces one stable named region, lays out editable native shapes, routes bound connectors, fits text, validates quality, and can return a fitted preview in one operation.",
-      "Use draw.mermaid for Mermaid-specific sequence, class, state, and entity-relationship syntax. Give it an id and replace:true for one-step named-region revision. Use plain-text labels; write multiline labels with \\n or a plain <br>, <br/>, or <br /> break, not other HTML markup.",
+      "Use draw.mermaid as the authoritative structured-diagram path for architecture, flow, sequence, class, state, and entity-relationship diagrams. Give it an id and replace:true for one-step named-region revision. Use plain-text labels; write multiline labels with \\n or a plain <br>, <br/>, or <br /> break, not other HTML markup.",
       "Give flowcharts an explicit direction (usually LR for pipelines or TB for hierarchies), keep labels concise, and avoid duplicate edges between the same nodes when one labeled edge communicates the relationship. Cake uses linear Mermaid routes and separates coincident parallel connectors after conversion; use draw.read and draw.apply for further cleanup.",
       "All public shape IDs use the canonical shape:<id> form. draw.read, semantic mappings, and every mutation accept and return that same form.",
       "Use draw.apply for freeform drawings and small targeted edits. Named diagram elements include diagramId, semanticId, and diagramRole in draw.read and can be selected, replaced, or deleted as a unit through their named operation.",
@@ -346,60 +344,6 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
       },
     }),
     operation({
-      command: "draw.diagram",
-      summary: "Declaratively create or revise one named native technical diagram.",
-      schema: Schema.Struct({ boardId: optionalBoardId, diagram: DrawDiagramInput }),
-      example: {
-        diagram: {
-          id: "cake-session-model",
-          mode: "upsert",
-          direction: "top-to-bottom",
-          nodes: [
-            { id: "renderer", label: "Sandboxed Renderer" },
-            { id: "main", label: "Electron Main" },
-            { id: "storage", label: "Board Storage" },
-          ],
-          edges: [
-            { id: "rpc", from: "renderer", to: "main", label: "validated RPC" },
-            { id: "persist", from: "main", to: "storage", label: "snapshot" },
-          ],
-          maxRenderSize: { width: 1600, height: 1200 },
-          validate: ["overlaps", "clipping", "dangling-edges", "crossing-edges"],
-          preview: true,
-        },
-      },
-      result:
-        "The stable diagram ID, checkpoint, semantic shape mappings, requested diagnostics, and optional fitted PNG preview.",
-      limitations: [
-        "mode upsert creates or atomically replaces the named region; mode replace requires that region to exist. Unrelated board artwork is preserved.",
-        "Layout supports bounded directed node/group graphs. Cycles remain editable but may receive a crossing warning; use concise stable semantic IDs.",
-        "Nodes and groups persist as editable native shapes, and edges remain bound to their endpoints when nodes move.",
-      ],
-      execute: async (input, signal) => {
-        requireMutable(control);
-        const response = requireSuccess(
-          await control.request({ _tag: "Diagram", ...input }, signal),
-        );
-        if (response.kind !== "diagram")
-          throw new Error("INVALID_REQUEST: Unexpected Draw response");
-        const result = {
-          boardId: response.boardId,
-          diagramId: response.diagramId,
-          checkpointId: response.checkpointId,
-          mappings: response.mappings,
-          diagnostics: response.diagnostics,
-          ...(response.preview
-            ? { preview: { width: response.preview.width, height: response.preview.height } }
-            : null),
-        };
-        if (!response.preview) return result;
-        if (response.preview.format !== "png" || response.preview.mediaType !== "image/png")
-          throw new Error("INVALID_REQUEST: Cake Draw returned a non-PNG preview");
-        const { data } = decodeDrawPng(response.preview.data);
-        return cakeOperationImageResult(result, [{ type: "image", mimeType: "image/png", data }]);
-      },
-    }),
-    operation({
       command: "draw.mermaid",
       summary: "Convert Mermaid source into native editable Excalidraw elements on the open board.",
       schema: Schema.Struct({
@@ -415,6 +359,8 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
         replace: Schema.optionalKey(Schema.Boolean),
       }),
       example: {
+        id: "request-flow",
+        replace: true,
         diagram:
           'flowchart LR\n  Request["HTTP Request\\nvalidated"] --> Service["API Service"]\n  Service -->|query| Database[(Database)]',
       },
