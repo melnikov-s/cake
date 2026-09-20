@@ -15,7 +15,8 @@ import type {
 } from "../../../ipc/session-contract";
 import { piBuiltinSlashCommands, slashCommandSchema } from "../../../ipc/session-contract";
 import { supportsFastMode } from "../fast-mode";
-import { projectSessionEntries, projectTree } from "./session-projection";
+import { projectConversationDisplay } from "./conversation-display-projection";
+import { projectTree } from "./session-projection";
 import { projectPiSettings } from "./settings-translation";
 
 export interface CakeSessionRuntimeSnapshotInput {
@@ -43,7 +44,7 @@ export function projectCakeSessionRuntimeSnapshot(
   input: CakeSessionRuntimeSnapshotInput,
 ): ConversationSnapshot {
   const { session, settingsManager } = input;
-  const branchParts = projectSessionEntries(session.sessionManager.getBranch(), undefined, {
+  const branchParts = projectConversationDisplay(session.sessionManager, {
     live: session.isStreaming,
   });
   return {

@@ -1,6 +1,10 @@
 import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { Message, Usage } from "@earendil-works/pi-ai";
-import { toolCompactEntryType } from "./session-projection";
+import {
+  toolCompactEntryType,
+  toolCompactProvenanceEntryType,
+  type ToolCompactProvenance,
+} from "./tool-compaction-provenance";
 
 const transferredUsage: Usage = {
   input: 0,
@@ -62,18 +66,18 @@ export function appendToolCompactedBranch(
   const branch = sourceBranch(session, assistantEntryId);
   const strippedToolActivity = countStrippedToolActivity(branch);
   session.resetLeaf();
-  if (strippedToolActivity > 0)
-    session.appendCustomMessageEntry(
-      toolCompactEntryType,
-      toolCompactPreamble(strippedToolActivity),
-      true,
-    );
+  const markerEntryId = session.appendCustomMessageEntry(
+    toolCompactEntryType,
+    toolCompactPreamble(strippedToolActivity),
+    true,
+  );
+  const mappings: ToolCompactProvenance["mappings"][number][] = [];
 
   for (const entry of branch) {
     if (entry.type !== "message") continue;
     const message = entry.message;
     if (message.role === "user") {
-      session.appendMessage(message);
+      mappings.push({ sourceEntryId: entry.id, replayedEntryId: session.appendMessage(message) });
       continue;
     }
     if (message.role !== "assistant") continue;
@@ -93,8 +97,25 @@ export function appendToolCompactedBranch(
       stopReason: "stop",
       timestamp: message.timestamp,
     };
-    session.appendMessage(transferred);
+    mappings.push({
+      sourceEntryId: entry.id,
+      replayedEntryId: session.appendMessage(transferred),
+    });
   }
+
+  const firstMapping = mappings[0];
+  const lastMapping = mappings.at(-1);
+  if (!firstMapping || !lastMapping)
+    throw new Error("Cake could not map the tool-compacted dialogue replay");
+  const provenance: ToolCompactProvenance = {
+    version: 1,
+    sourceLeafId: assistantEntryId,
+    markerEntryId,
+    replayStartEntryId: firstMapping.replayedEntryId,
+    replayEndEntryId: lastMapping.replayedEntryId,
+    mappings,
+  };
+  session.appendCustomEntry(toolCompactProvenanceEntryType, provenance);
 
   if (configuration) {
     session.appendModelChange(configuration.provider, configuration.modelId);

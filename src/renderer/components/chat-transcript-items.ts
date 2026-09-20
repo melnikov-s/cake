@@ -1,5 +1,9 @@
 import type { UiPart } from "../../ipc/session-contract";
-import { isWorkLogPart, workLogGroupKey } from "../../utils/work-log-groups";
+import {
+  isCompactedWorkLogPart,
+  isWorkLogPart,
+  workLogGroupKey,
+} from "../../utils/work-log-groups";
 
 export type TranscriptItem =
   | UiPart
@@ -21,6 +25,7 @@ export function errorNoticeFollowsUser(items: TranscriptItem[], index: number) {
 export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   let activity: UiPart[] = [];
+  let activityCompacted: boolean | undefined;
   let activityGroupIndex = 0;
   let sources: Extract<UiPart, { kind: "source" }>[] = [];
   const flushActivity = () => {
@@ -31,6 +36,7 @@ export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
       parts: activity,
     });
     activity = [];
+    activityCompacted = undefined;
   };
   const flushSources = () => {
     if (sources.length === 0) return;
@@ -40,6 +46,9 @@ export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
   for (const part of parts) {
     if (isWorkLogPart(part)) {
       flushSources();
+      const compacted = isCompactedWorkLogPart(part);
+      if (activity.length > 0 && compacted !== activityCompacted) flushActivity();
+      activityCompacted = compacted;
       activity.push(part);
     } else if (part.kind === "source") {
       flushActivity();

@@ -209,6 +209,7 @@ export const attachmentSchema = Schema.Union([
 ]);
 
 const partBase = { id: stringRange(1, 256) };
+const workLogOrigin = { origin: Schema.optional(Schema.Literal("compacted")) };
 const promptCacheResponseSchema = Schema.Struct({
   provider: stringMax(256),
   modelId: stringMax(512),
@@ -254,6 +255,7 @@ export const uiPartSchema = Schema.Union([
   Schema.Struct({
     ...partBase,
     kind: Schema.Literal("reasoning"),
+    ...workLogOrigin,
     text: boundedText,
     status: Schema.Literals(["streaming", "complete"]),
     response: Schema.optional(promptCacheResponseSchema),
@@ -261,6 +263,7 @@ export const uiPartSchema = Schema.Union([
   Schema.Struct({
     ...partBase,
     kind: Schema.Literal("command"),
+    ...workLogOrigin,
     command: boundedText,
     output: boundedText,
     excludeFromContext: Schema.Boolean,
@@ -269,6 +272,7 @@ export const uiPartSchema = Schema.Union([
   Schema.Struct({
     ...partBase,
     kind: Schema.Literal("tool"),
+    ...workLogOrigin,
     name: ipcProjectionString(256),
     command: Schema.optional(ipcProjectionString(256)),
     input: boundedText,

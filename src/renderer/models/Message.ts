@@ -6,6 +6,7 @@ type TextRole = Extract<UiPart, { kind: "text" }>["role"];
 type TextStatus = Extract<UiPart, { kind: "text" }>["status"];
 type PartStatus = Extract<UiPart, { kind: "text" | "reasoning" | "review-run" }>["status"];
 type PartState = Extract<UiPart, { kind: "tool" | "command" }>["state"];
+type WorkLogOrigin = Extract<UiPart, { kind: "tool" }>["origin"];
 type AttachmentKind = Extract<UiPart, { kind: "attachment" }>["attachmentKind"];
 type NoticeTone = Extract<UiPart, { kind: "notice" }>["tone"];
 type DeliveryState = Extract<UiPart, { kind: "text" }>["deliveryState"];
@@ -41,6 +42,7 @@ export class Message extends Model {
   diff: string | undefined;
   inputStreaming: boolean | undefined;
   state: PartState | undefined;
+  origin: WorkLogOrigin | undefined;
   title: string | undefined;
   url: string | undefined;
   mediaType: string | undefined;
@@ -87,12 +89,14 @@ export class Message extends Model {
         this.text = part.text;
         this.status = part.status;
         this.response = part.response;
+        this.origin = part.origin;
         return true;
       case "command":
         this.command = part.command;
         this.output = part.output;
         this.excludeFromContext = part.excludeFromContext;
         this.state = part.state;
+        this.origin = part.origin;
         return true;
       case "tool":
         this.name = part.name;
@@ -106,6 +110,7 @@ export class Message extends Model {
         this.inputStreaming = part.inputStreaming;
         this.state = part.state;
         this.response = part.response;
+        this.origin = part.origin;
         return true;
       case "source":
         this.title = part.title;
@@ -176,6 +181,7 @@ export class Message extends Model {
           text: this.text!,
           status: this.status as Extract<UiPart, { kind: "reasoning" }>["status"],
           response: this.response,
+          origin: this.origin,
         };
       case "command":
         return {
@@ -186,6 +192,7 @@ export class Message extends Model {
           excludeFromContext: this.excludeFromContext!,
           // SAFETY: snapshots and update() keep command state aligned with the part discriminant.
           state: this.state as Extract<UiPart, { kind: "command" }>["state"],
+          origin: this.origin,
         };
       case "tool":
         return {
@@ -202,6 +209,7 @@ export class Message extends Model {
           inputStreaming: this.inputStreaming,
           state: this.state!,
           response: this.response,
+          origin: this.origin,
         };
       case "source":
         return { id: this.partKey, kind: this.kind, title: this.title!, url: this.url! };

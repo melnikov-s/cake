@@ -9,6 +9,22 @@ import type { UiPart } from "../../../src/ipc/session-contract";
 
 const { renderWorkLogDiff } = vi.hoisted(() => ({ renderWorkLogDiff: vi.fn() }));
 
+vi.mock("@/components/ai-elements/conversation", () => ({
+  VirtualizedConversation: ({
+    data,
+    itemContent,
+  }: {
+    data: unknown[];
+    itemContent: (index: number, item: unknown) => React.ReactNode;
+  }) => (
+    <>
+      {data.map((item, index) => (
+        <React.Fragment key={index}>{itemContent(index, item)}</React.Fragment>
+      ))}
+    </>
+  ),
+}));
+
 vi.mock("@/components/ai-elements/work-log-diff", () => ({
   WorkLogDiff: () => {
     renderWorkLogDiff();
@@ -39,6 +55,49 @@ describe("ActivityGroup", () => {
     store?.[Symbol.dispose]();
     container.remove();
     vi.useRealTimers();
+  });
+
+  it("labels compacted work logs, dims them, and keeps them expandable", async () => {
+    const parts: UiPart[] = [
+      {
+        id: "compacted-tool",
+        kind: "tool",
+        origin: "compacted",
+        name: "read",
+        input: "src/old.ts",
+        output: "historical output",
+        state: "success",
+      },
+    ];
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "session-1",
+        parts: () => parts,
+        streaming: () => false,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "",
+        inputLabel: () => "Prompt",
+        canSubmit: () => true,
+        submit: async () => true,
+      }),
+    );
+    const behavior = { store } as CanonicalTranscriptBehavior;
+
+    await act(async () => {
+      root.render(<ActivityGroup groupId="group-1" parts={parts} behavior={behavior} />);
+    });
+    const log = container.querySelector<HTMLDetailsElement>('[data-slot="activity-group"]')!;
+    expect(log.dataset.origin).toBe("compacted");
+    expect(log.className).toContain("opacity-75");
+    expect(log.open).toBe(false);
+    expect(log.querySelector("summary")?.textContent).toContain("Compacted work log");
+
+    await act(async () => log.querySelector<HTMLElement>("summary")!.click());
+    expect(log.open).toBe(true);
+    expect(log.querySelector('[data-slot="work-log-content"]')).not.toBeNull();
+    expect(log.textContent).toContain("src/old.ts");
   });
 
   it("does not rebuild a streaming diff when only elapsed time advances", async () => {

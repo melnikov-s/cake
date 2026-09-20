@@ -2692,7 +2692,11 @@ describe("S1 Pi runtime", () => {
         expect.objectContaining({ kind: "text", text: "Investigation complete" }),
       ]),
     );
-    expect(snapshot.parts.some((part) => part.kind === "tool")).toBe(false);
+    expect(snapshot.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "tool", origin: "compacted", id: "tool-call-1" }),
+      ]),
+    );
     expect(snapshot.tree.filter((entry) => entry.messageRole === "user")).toHaveLength(2);
   });
 

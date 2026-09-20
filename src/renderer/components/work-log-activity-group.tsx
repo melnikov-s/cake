@@ -7,6 +7,8 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { WorkLogActivityTrigger } from "@/components/work-log-activity-trigger";
 import { toolDisplayTitle } from "@/lib/tool-presentation";
 import type { UiPart } from "../../ipc/session-contract";
+import { isCompactedWorkLogPart } from "../../utils/work-log-groups";
+import { cn } from "../lib/utils";
 import { combineSubagentWorkLogParts } from "../lib/subagent-work-log";
 import type { CanonicalTranscriptBehavior } from "./chat-message";
 import { TranscriptPart } from "./chat-transcript-part";
@@ -40,6 +42,7 @@ export const ActivityGroup = observer(function ActivityGroup({
   parts: UiPart[];
   behavior: CanonicalTranscriptBehavior;
 }) {
+  const compacted = parts.length > 0 && parts.every(isCompactedWorkLogPart);
   const changeSummary = behavior.store.workLogPresentation.changeSummary(parts);
   const hasDiff = changeSummary.editCount > 0;
   const viewMode = behavior.store.workLogPresentation.viewMode;
@@ -147,28 +150,43 @@ export const ActivityGroup = observer(function ActivityGroup({
     return (
       <div
         data-slot="activity-group"
-        className="flex items-center gap-2 rounded-xl border border-border/80 bg-muted/45 px-3.5 py-2.5 font-mono text-xs font-semibold text-muted-foreground"
+        data-origin={compacted ? "compacted" : "current"}
+        className={cn(
+          "flex items-center gap-2 rounded-xl border border-border/80 bg-muted/45 px-3.5 py-2.5 font-mono text-xs font-semibold text-muted-foreground",
+          compacted && "border-border/50 bg-muted/20 opacity-75",
+        )}
         role="status"
       >
         <StatusDot status={activityIsRunning ? "running" : "complete"} />
-        {reasoningIsStreaming ? "Thinking…" : "Reasoning details not exposed"}
+        {compacted
+          ? "Compacted work log · Reasoning details not exposed"
+          : reasoningIsStreaming
+            ? "Thinking…"
+            : "Reasoning details not exposed"}
       </div>
     );
   return (
     <details
       data-slot="activity-group"
-      className="overflow-hidden rounded-xl border border-border/80 bg-muted/45"
+      data-origin={compacted ? "compacted" : "current"}
+      className={cn(
+        "overflow-hidden rounded-xl border border-border/80 bg-muted/45",
+        compacted && "border-border/50 bg-muted/20 text-muted-foreground opacity-75",
+      )}
       open={open}
     >
       <summary
-        className="flex cursor-pointer select-none items-center gap-2 px-3.5 py-2.5 font-mono text-xs font-semibold text-foreground [&::-webkit-details-marker]:hidden"
+        className={cn(
+          "flex cursor-pointer select-none items-center gap-2 px-3.5 py-2.5 font-mono text-xs font-semibold text-foreground [&::-webkit-details-marker]:hidden",
+          compacted && "text-muted-foreground",
+        )}
         onClick={(event) => {
           event.preventDefault();
           behavior.store.workLogPresentation.setGroupOpen(groupId, !open);
         }}
       >
         <StatusDot status={activityIsRunning ? "running" : "complete"} />
-        <span className="shrink-0">Work log</span>
+        <span className="shrink-0">{compacted ? "Compacted work log" : "Work log"}</span>
         <small className="ml-1.5 min-w-0 truncate font-normal text-muted-foreground">
           {open ? label : latestAction}
         </small>

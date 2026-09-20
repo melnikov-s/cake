@@ -20,6 +20,9 @@ import {
   type UiPart,
 } from "../../../ipc/session-contract";
 
+export { toolCompactEntryType } from "./tool-compaction-provenance";
+import { toolCompactEntryType } from "./tool-compaction-provenance";
+
 export const reviewRunEntryType = "cake.review-run/v1";
 export const userMessagePresentationEntryType = "cake.user-message-presentation/v1";
 export const userMessagePresentationEntrySchema = Schema.Struct({
@@ -27,8 +30,6 @@ export const userMessagePresentationEntrySchema = Schema.Struct({
   renderAs: Schema.Literals(["markdown", "plain"]),
 });
 export type UserMessagePresentation = typeof userMessagePresentationEntrySchema.Type;
-/** Marks the orientation preamble on a tool-compacted session-tree branch. */
-export const toolCompactEntryType = "cake.tool-compact/v1";
 export const reviewRunEntrySchema = Schema.Struct({
   operationId: Schema.String.check(Schema.isUUID()),
   threadIds: Schema.Array(

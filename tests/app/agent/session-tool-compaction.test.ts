@@ -5,6 +5,11 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
+import {
+  toolCompactProvenanceEntryType,
+  toolCompactProvenanceSchema,
+} from "../../../src/services/pi/runtime/tool-compaction-provenance";
+import { Schema } from "effect";
 
 const usage: Usage = {
   input: 100,
@@ -43,7 +48,7 @@ describe("tool compaction", () => {
       content: "Investigate this",
       timestamp: 1,
     });
-    session.appendMessage(
+    const firstAssistantId = session.appendMessage(
       assistant([
         { type: "text", text: "I will inspect it." },
         { type: "thinking", thinking: "private analysis" },
@@ -82,7 +87,29 @@ describe("tool compaction", () => {
       customType: "cake.tool-compact/v1",
       parentId: null,
     });
+    const provenanceEntry = activeBranch.find(
+      (entry) => entry.type === "custom" && entry.customType === toolCompactProvenanceEntryType,
+    );
+    expect(provenanceEntry?.type).toBe("custom");
+    const provenance = Schema.decodeUnknownSync(toolCompactProvenanceSchema)(
+      provenanceEntry?.type === "custom" ? provenanceEntry.data : undefined,
+    );
+    expect(provenance).toMatchObject({
+      sourceLeafId: selectedId,
+      markerEntryId: activeBranch[0]?.id,
+      replayStartEntryId: provenance.mappings[0]?.replayedEntryId,
+      replayEndEntryId: provenance.mappings.at(-1)?.replayedEntryId,
+    });
+    expect(provenance.mappings.map((mapping) => mapping.sourceEntryId)).toEqual([
+      originalUserId,
+      firstAssistantId,
+      selectedId,
+    ]);
+    expect(new Set(provenance.mappings.map((mapping) => mapping.replayedEntryId)).size).toBe(3);
+
     const context = session.buildSessionContext();
+    expect(JSON.stringify(context.messages)).not.toContain(toolCompactProvenanceEntryType);
+    expect(JSON.stringify(context.messages)).not.toContain("sourceLeafId");
     expect(JSON.stringify(context.messages)).not.toContain("toolCall");
     expect(JSON.stringify(context.messages)).not.toContain("large result");
     expect(JSON.stringify(context.messages)).not.toContain("private analysis");
