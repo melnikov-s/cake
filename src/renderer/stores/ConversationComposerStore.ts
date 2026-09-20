@@ -274,13 +274,6 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
     }
     const builtin = parsePiBuiltinCommand(text);
     if (builtin?.name === "toolcompact") {
-      if (
-        this.draftStore.attachments.length ||
-        this.draftStore.annotationDraft.annotations.length
-      ) {
-        this.reportError(new Error("Remove attachments before using /toolcompact"));
-        return { handled: true, result: false };
-      }
       const assistantPart = this.props
         .canonicalParts()
         .findLast(

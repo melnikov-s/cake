@@ -136,6 +136,45 @@ class DraftHarnessStore extends Store<{ client: Client }> {
 }
 
 describe("ConversationComposerStore", () => {
+  it("preserves explicit attachments while tool compacting", async () => {
+    const model = Session.create({
+      sessionId: "session-1",
+      workingDirectory: "/project",
+      parts: [
+        {
+          id: "assistant-part",
+          kind: "text",
+          role: "assistant",
+          text: "Completed response",
+          status: "complete",
+          piId: "assistant-entry",
+          partKey: "assistant-part",
+        },
+      ],
+    });
+    const toolCompactSession = vi.fn(async () => true);
+    const client = { projectSessions: {} } as unknown as Client;
+    const root = mount(
+      createStore(HarnessStore, { client, model, existing: true, toolCompactSession }),
+    );
+    const image = {
+      kind: "image" as const,
+      name: "reference.png",
+      mimeType: "image/png",
+      data: "image-data",
+    };
+    root.composer.draftStore.setText("/toolcompact Continue cleanly");
+    root.composer.draftStore.attachments.push(image);
+
+    await root.composer.submit();
+
+    expect(toolCompactSession).toHaveBeenCalledWith("assistant-entry", "Continue cleanly");
+    expect(root.composer.draftStore.text).toBe("");
+    expect(root.composer.draftStore.attachments).toEqual([image]);
+    root[Symbol.dispose]();
+    model[Symbol.dispose]();
+  });
+
   it("allows tool compaction while VS Code contributes automatic source context", async () => {
     const model = Session.create({
       sessionId: "session-1",
