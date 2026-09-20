@@ -140,6 +140,21 @@ export class PendingSessionDraftStore extends Store<PendingSessionDraftStoreProp
               location: attachment.location,
             },
           ];
+        if (attachment.kind === "browser")
+          return [
+            {
+              id: `draft-${sessionId}-attachment-${index}`,
+              kind: "attachment",
+              name: attachment.name,
+              mediaType: "text/html",
+              attachmentKind: "browser",
+              url: attachment.url,
+              tagName: attachment.tagName,
+              selector: attachment.selector,
+              outerHTML: attachment.outerHTML,
+              browserText: attachment.text,
+            },
+          ];
         return [];
       }),
     ];

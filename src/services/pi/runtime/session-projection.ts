@@ -191,34 +191,50 @@ export function textFromContent(content: unknown): string {
 
 const sourceAttachmentPattern =
   /(?:^|\n)<cake-source-attachment>(.*?)<\/cake-source-attachment>(?:\n|$)/gs;
+const browserAttachmentPattern =
+  /(?:^|\n)<cake-browser-attachment>(.*?)<\/cake-browser-attachment>(?:\n|$)/gs;
 const annotationAttachmentPattern = /(?:^|\n)<cake-annotations>(.*?)<\/cake-annotations>(?:\n|$)/gs;
 
 function parseContextAttachmentBlocks(text: string) {
-  const attachments: Extract<Attachment, { kind: "source" | "annotation" }>[] = [];
-  const withoutSources = text.replace(sourceAttachmentPattern, (_match, encoded: string) => {
-    try {
-      const parsed = Schema.decodeUnknownOption(attachmentSchema)(JSON.parse(encoded));
-      if (Option.isNone(parsed) || parsed.value.kind !== "source") return _match;
-      attachments.push(parsed.value);
-      return "\n";
-    } catch {
-      return _match;
-    }
-  });
-  const visibleText = withoutSources.replace(
-    annotationAttachmentPattern,
-    (_match, encoded: string) => {
+  const attachments: Extract<Attachment, { kind: "source" | "browser" | "annotation" }>[] = [];
+  const parseBlocks = <Kind extends "source" | "browser" | "annotation">(
+    value: string,
+    pattern: RegExp,
+    kind: Kind,
+  ) =>
+    value.replace(pattern, (match, encoded: string) => {
       try {
         const parsed = Schema.decodeUnknownOption(attachmentSchema)(JSON.parse(encoded));
-        if (Option.isNone(parsed) || parsed.value.kind !== "annotation") return _match;
-        attachments.push(parsed.value);
+        if (Option.isNone(parsed) || parsed.value.kind !== kind) return match;
+        const attachment = parsed.value;
+        if (
+          attachment.kind !== "source" &&
+          attachment.kind !== "browser" &&
+          attachment.kind !== "annotation"
+        )
+          return match;
+        attachments.push(attachment);
         return "\n";
       } catch {
-        return _match;
+        return match;
       }
-    },
+    });
+  const withoutSources = parseBlocks(text, sourceAttachmentPattern, "source");
+  const withoutBrowserAttachments = parseBlocks(
+    withoutSources,
+    browserAttachmentPattern,
+    "browser",
+  );
+  const visibleText = parseBlocks(
+    withoutBrowserAttachments,
+    annotationAttachmentPattern,
+    "annotation",
   );
   return { text: visibleText.trim(), attachments };
+}
+
+export function visibleUserMessageText(text: string) {
+  return parseContextAttachmentBlocks(parseUserMessageEnvelope(text).text).text;
 }
 
 function partsFromMessage(
@@ -279,6 +295,21 @@ function partsFromMessage(
           id: `${baseId}-annotation-${index}`,
           kind: "annotation",
           annotations: attachment.annotations,
+        });
+        return;
+      }
+      if (attachment.kind === "browser") {
+        parts.push({
+          id: `${baseId}-browser-attachment-${index}`,
+          kind: "attachment",
+          name: attachment.name,
+          mediaType: "text/html",
+          attachmentKind: "browser",
+          url: attachment.url,
+          tagName: attachment.tagName,
+          selector: attachment.selector,
+          outerHTML: attachment.outerHTML,
+          browserText: attachment.text,
         });
         return;
       }
@@ -891,11 +922,11 @@ function entryPreview(entry: SessionEntry) {
   if (entry.type === "message") {
     const message = entry.message;
     const role = message.role;
-    const text = stripPresentationModeReminder(
+    const rawText = stripPresentationModeReminder(
       "content" in message ? textFromContent(message.content) : "",
-    )
-      .replace(/[\n\t]+/g, " ")
-      .trim();
+    );
+    const displayText = role === "user" ? visibleUserMessageText(rawText) : rawText;
+    const text = displayText.replace(/[\n\t]+/g, " ").trim();
     if (role === "user") return text.slice(0, 2_048);
     if (message.role === "assistant") {
       if (text) return text.slice(0, 2_048);
@@ -936,7 +967,9 @@ export function projectTree(sessionManager: SessionManager): SessionTreeEntry[] 
       messageRole: node.entry.type === "message" ? node.entry.message.role : undefined,
       editorText:
         node.entry.type === "message" && node.entry.message.role === "user"
-          ? stripPresentationModeReminder(textFromContent(node.entry.message.content))
+          ? visibleUserMessageText(
+              stripPresentationModeReminder(textFromContent(node.entry.message.content)),
+            )
           : undefined,
       label: node.label,
       preview: entryPreview(node.entry),

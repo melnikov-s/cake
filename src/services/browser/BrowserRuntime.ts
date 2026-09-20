@@ -4,17 +4,12 @@ import { jsonValueSchema, type JsonObject, type JsonValue } from "../../ipc/json
 import type { BrowserAction, BrowserBounds, BrowserState } from "./Browser";
 
 const DEFAULT_URL = "http://localhost:3000";
-const inspectNodeRequestedSchema = Schema.Struct({ backendNodeId: Schema.Number });
-const describedNodeSchema = Schema.Struct({
-  node: Schema.optionalKey(
-    Schema.Struct({
-      nodeName: Schema.optionalKey(Schema.String),
-      attributes: Schema.optionalKey(Schema.Array(Schema.String)),
-      nodeValue: Schema.optionalKey(Schema.String),
-    }),
-  ),
+const inspectedElementSchema = Schema.Struct({
+  tagName: Schema.String,
+  selector: Schema.String,
+  outerHTML: Schema.String,
+  text: Schema.String,
 });
-const outerHtmlSchema = Schema.Struct({ outerHTML: Schema.optionalKey(Schema.String) });
 
 interface BrowserEntry {
   readonly sessionId: string;
@@ -23,6 +18,7 @@ interface BrowserEntry {
   readonly view: WebContentsView;
   readonly cdpEvents: Array<{ readonly method: string; readonly params: JsonValue }>;
   inspecting: boolean;
+  inspectionRevision: number;
 }
 
 type BrowserRuntimeEvent =
@@ -67,7 +63,15 @@ export class BrowserRuntime {
           sandbox: true,
         },
       });
-      entry = { sessionId, ownerId, window, view, cdpEvents: [], inspecting: false };
+      entry = {
+        sessionId,
+        ownerId,
+        window,
+        view,
+        cdpEvents: [],
+        inspecting: false,
+        inspectionRevision: 0,
+      };
       this.entries.set(sessionId, entry);
       this.installListeners(entry);
       view.webContents.setWindowOpenHandler(({ url: target }) => {
@@ -142,21 +146,10 @@ export class BrowserRuntime {
 
   async inspect(sessionId: string): Promise<BrowserState> {
     const entry = this.require(sessionId);
-    this.attachDebugger(entry);
-    await entry.view.webContents.debugger.sendCommand("DOM.enable");
-    await entry.view.webContents.debugger.sendCommand("Overlay.enable");
-    await entry.view.webContents.debugger.sendCommand("Overlay.setInspectMode", {
-      mode: "searchForNode",
-      highlightConfig: {
-        showInfo: true,
-        showStyles: true,
-        contentColor: { r: 111, g: 168, b: 220, a: 0.25 },
-        borderColor: { r: 111, g: 168, b: 220, a: 0.9 },
-        marginColor: { r: 246, g: 178, b: 107, a: 0.25 },
-      },
-    });
+    const revision = ++entry.inspectionRevision;
     entry.inspecting = true;
     this.emitState(entry);
+    void this.completeInspection(entry, revision);
     return this.snapshot(entry);
   }
 
@@ -214,57 +207,29 @@ export class BrowserRuntime {
       );
       entry.cdpEvents.push({ method, params: value });
       if (entry.cdpEvents.length > 500) entry.cdpEvents.splice(0, entry.cdpEvents.length - 500);
-      if (method !== "Overlay.inspectNodeRequested") return;
-      const request = Schema.decodeUnknownOption(inspectNodeRequestedSchema)(params);
-      if (Option.isNone(request)) return;
-      void this.completeInspection(entry, request.value.backendNodeId);
     });
   }
 
-  private async completeInspection(entry: BrowserEntry, backendNodeId: number) {
+  private async completeInspection(entry: BrowserEntry, revision: number) {
     try {
-      const description = await Schema.decodeUnknownPromise(describedNodeSchema)(
-        await entry.view.webContents.debugger.sendCommand("DOM.describeNode", {
-          backendNodeId,
-          depth: 0,
-          pierce: true,
-        }),
-      );
-      const html = await Schema.decodeUnknownPromise(outerHtmlSchema)(
-        await entry.view.webContents.debugger.sendCommand("DOM.getOuterHTML", {
-          backendNodeId,
-        }),
-      );
-      const tagName = description.node?.nodeName?.toLowerCase() || "element";
-      const attributes = description.node?.attributes ?? [];
-      const idIndex = attributes.indexOf("id");
-      const classIndex = attributes.indexOf("class");
-      const id = idIndex >= 0 ? attributes[idIndex + 1] : undefined;
-      const className = classIndex >= 0 ? attributes[classIndex + 1] : undefined;
-      const selector = id
-        ? `#${cssEscape(id)}`
-        : className
-          ? `${tagName}.${className.split(/\s+/).filter(Boolean).map(cssEscape).join(".")}`
-          : tagName;
-      const outerHTML = (html.outerHTML ?? "").slice(0, 48_000);
-      const text = outerHTML
-        .replace(/<[^>]*>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 8_000);
+      const result = await entry.view.webContents.executeJavaScript(inspectorScript);
+      if (revision !== entry.inspectionRevision) return;
+      const selected = Schema.decodeUnknownOption(inspectedElementSchema)(result);
       entry.inspecting = false;
-      await entry.view.webContents.debugger.sendCommand("Overlay.setInspectMode", { mode: "none" });
-      this.options.emit(entry.ownerId, {
-        type: "browser-element-selected",
-        sessionId: entry.sessionId,
-        url: entry.view.webContents.getURL(),
-        tagName,
-        selector: selector.slice(0, 4_096),
-        outerHTML,
-        text,
-      });
+      if (Option.isSome(selected)) {
+        this.options.emit(entry.ownerId, {
+          type: "browser-element-selected",
+          sessionId: entry.sessionId,
+          url: entry.view.webContents.getURL(),
+          tagName: selected.value.tagName.slice(0, 128),
+          selector: selected.value.selector.slice(0, 4_096),
+          outerHTML: selected.value.outerHTML.slice(0, 48_000),
+          text: selected.value.text.slice(0, 8_000),
+        });
+      }
       this.emitState(entry);
     } catch {
+      if (revision !== entry.inspectionRevision) return;
       entry.inspecting = false;
       this.emitState(entry);
     }
@@ -327,9 +292,97 @@ function detach(window: BrowserWindow, view: WebContentsView) {
     window.contentView.removeChildView(view);
 }
 
-function cssEscape(value: string) {
-  return value.replace(
-    /[^a-zA-Z0-9_-]/g,
-    (character) => `\\${character.codePointAt(0)?.toString(16)} `,
-  );
-}
+const inspectorScript = `(() => {
+  const cancelKey = "__cakeCancelElementInspection";
+  const previousCancel = globalThis[cancelKey];
+  if (typeof previousCancel === "function") previousCancel();
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.setAttribute("data-cake-element-inspector", "");
+    Object.assign(overlay.style, {
+      position: "fixed",
+      zIndex: "2147483647",
+      pointerEvents: "none",
+      boxSizing: "border-box",
+      background: "rgba(111, 168, 220, 0.25)",
+      border: "2px solid rgba(111, 168, 220, 0.95)",
+      borderRadius: "2px",
+      display: "none",
+    });
+    document.documentElement.append(overlay);
+
+    let target;
+    let settled = false;
+    const cleanup = () => {
+      document.removeEventListener("mousemove", move, true);
+      document.removeEventListener("click", select, true);
+      document.removeEventListener("keydown", keydown, true);
+      window.removeEventListener("scroll", update, true);
+      overlay.remove();
+      if (globalThis[cancelKey] === cancel) delete globalThis[cancelKey];
+    };
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const cancel = () => finish(null);
+    const update = () => {
+      if (!target || !target.isConnected) {
+        overlay.style.display = "none";
+        return;
+      }
+      const rect = target.getBoundingClientRect();
+      Object.assign(overlay.style, {
+        display: rect.width > 0 && rect.height > 0 ? "block" : "none",
+        left: rect.left + "px",
+        top: rect.top + "px",
+        width: rect.width + "px",
+        height: rect.height + "px",
+      });
+    };
+    const eventTarget = (event) => {
+      const candidate = event.composedPath().find(
+        (value) => value instanceof Element && value !== overlay,
+      );
+      return candidate instanceof Element ? candidate : undefined;
+    };
+    const move = (event) => {
+      target = eventTarget(event);
+      update();
+    };
+    const select = (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      target = eventTarget(event) ?? target;
+      if (!target) return;
+      const tagName = target.tagName.toLowerCase();
+      const escapedId = target.id ? CSS.escape(target.id) : "";
+      const classes = [...target.classList].map((value) => CSS.escape(value));
+      const selector = escapedId
+        ? "#" + escapedId
+        : classes.length
+          ? tagName + "." + classes.join(".")
+          : tagName;
+      finish({
+        tagName,
+        selector,
+        outerHTML: target.outerHTML || "",
+        text: (target.textContent || "").replace(/\\s+/g, " ").trim(),
+      });
+    };
+    const keydown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      cancel();
+    };
+
+    globalThis[cancelKey] = cancel;
+    document.addEventListener("mousemove", move, true);
+    document.addEventListener("click", select, true);
+    document.addEventListener("keydown", keydown, true);
+    window.addEventListener("scroll", update, true);
+  });
+})()`;

@@ -2029,6 +2029,29 @@ describe("Transcript scrolling", () => {
     expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain("W".repeat(500));
   });
 
+  it("renders submitted browser context as a selector pill", () => {
+    const browserAttachment: UiPart = {
+      id: "browser-1",
+      kind: "attachment",
+      name: "button#save",
+      mediaType: "text/html",
+      attachmentKind: "browser",
+      url: "https://example.com/settings",
+      tagName: "button",
+      selector: "button#save",
+      outerHTML: '<button id="save">Save</button>',
+      browserText: "Save",
+    };
+
+    act(() =>
+      root.render(<TestTranscript sessionId="session-1" store={storeWith([browserAttachment])} />),
+    );
+
+    expect(container.textContent).toContain("button#save");
+    expect(container.textContent).not.toContain("cake-browser-attachment");
+    expect(container.querySelector("[class*='rounded-full']")).not.toBeNull();
+  });
+
   it("renders submitted image attachments from Pi's persisted base64 block", () => {
     const image: UiPart = {
       id: "image-1",

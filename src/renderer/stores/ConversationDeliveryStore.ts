@@ -274,5 +274,24 @@ const attachmentsFromParts = (parts: readonly UiPart[]): Attachment[] =>
           },
         },
       ];
+    if (
+      part.attachmentKind === "browser" &&
+      part.url &&
+      part.tagName &&
+      part.selector !== undefined &&
+      part.outerHTML !== undefined &&
+      part.browserText !== undefined
+    )
+      return [
+        {
+          kind: "browser",
+          name: part.name,
+          url: part.url,
+          tagName: part.tagName,
+          selector: part.selector,
+          outerHTML: part.outerHTML,
+          text: part.browserText,
+        },
+      ];
     return [];
   });

@@ -1286,6 +1286,41 @@ describe("Pi 0.85.1 foundation contract", () => {
     expect(projectQueuedMessages([], [""])).toEqual([]);
   });
 
+  it("round-trips browser attachments without exposing their context envelope", () => {
+    const attachment = {
+      kind: "browser" as const,
+      name: "button#save",
+      url: "https://example.com/settings",
+      tagName: "button",
+      selector: "button#save",
+      outerHTML: '<button id="save">Save</button>',
+      text: "Save",
+    };
+    const text = promptText("What does this do?", [attachment]);
+    expect(text).toContain("<cake-browser-attachment>");
+
+    expect(
+      projectSessionEntries([
+        {
+          type: "message",
+          id: "user-browser",
+          parentId: null,
+          timestamp: new Date(0).toISOString(),
+          message: { role: "user", content: [{ type: "text", text }], timestamp: 0 },
+        },
+      ] as never),
+    ).toEqual([
+      expect.objectContaining({ kind: "text", role: "user", text: "What does this do?" }),
+      expect.objectContaining({
+        kind: "attachment",
+        attachmentKind: "browser",
+        name: "button#save",
+        selector: "button#save",
+        outerHTML: '<button id="save">Save</button>',
+      }),
+    ]);
+  });
+
   it("round-trips structured source attachments through the Pi transcript", () => {
     const attachment = {
       kind: "source" as const,

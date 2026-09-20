@@ -5,8 +5,9 @@ import { ShellCommand } from "@/components/ai-elements/shell-command";
 import { Source } from "@/components/ai-elements/source";
 import { Tool, ToolRunTimer } from "@/components/ai-elements/tool";
 import { AnnotationSummary } from "@/components/annotation-summary";
+import { Badge } from "@/components/ui/badge";
 import { IconButton } from "@/components/ui/icon-button";
-import { EditIcon, MarkdownIcon, TreeIcon } from "@/components/ui/icons";
+import { BrowserIcon, EditIcon, MarkdownIcon, TreeIcon } from "@/components/ui/icons";
 import { ArtifactHost } from "@/components/artifact-host";
 import { ArtifactReference } from "@/components/ui/artifact-reference";
 import { CompactionMessage } from "@/components/compaction-message";
@@ -251,10 +252,15 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
           {part.name}
         </figcaption>
       </figure>
+    ) : part.attachmentKind === "browser" ? (
+      <Badge variant="mono" className="w-fit">
+        <BrowserIcon />
+        {part.selector || part.name}
+      </Badge>
     ) : (
-      <div className="w-fit rounded-full border border-border px-3 py-1 font-mono text-[0.68rem]">
-        {part.attachmentKind} · {part.name}
-      </div>
+      <Badge variant="mono" className="w-fit">
+        {part.name}
+      </Badge>
     );
   if (part.kind === "annotation")
     return <AnnotationSummary annotations={part.annotations} className="ml-auto" />;

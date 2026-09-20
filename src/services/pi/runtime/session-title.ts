@@ -1,7 +1,7 @@
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { dirname } from "node:path";
 import { SESSION_TITLE_MAX_LENGTH } from "../../../ipc/session-contract";
-import { textFromContent } from "./session-projection";
+import { textFromContent, visibleUserMessageText } from "./session-projection";
 import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
 
 function sessionTitle(sessionManager: SessionManager) {
@@ -9,7 +9,11 @@ function sessionTitle(sessionManager: SessionManager) {
     .getEntries()
     .flatMap((entry) => {
       if (entry.type !== "message" || entry.message.role !== "user") return [];
-      return [stripPresentationModeReminder(textFromContent(entry.message.content)).trim()];
+      return [
+        visibleUserMessageText(
+          stripPresentationModeReminder(textFromContent(entry.message.content)),
+        ).trim(),
+      ];
     })
     .find(Boolean);
   return (

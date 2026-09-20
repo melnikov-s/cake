@@ -177,7 +177,7 @@ export class BrowserStore extends Store<BrowserStoreProps> {
       this.inspecting = false;
       this.props.appendAttachment({
         kind: "browser",
-        name: `${event.tagName}${event.selector ? ` ${event.selector}` : ""}`.slice(0, 512),
+        name: (event.selector || event.tagName).slice(0, 512),
         url: event.url,
         tagName: event.tagName,
         selector: event.selector,

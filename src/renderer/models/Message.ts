@@ -1,5 +1,6 @@
 import { Model, computed, id } from "r-state-tree";
 import { type Annotation, type ToolOutputContent, type UiPart } from "../../ipc/session-contract";
+import type { SourceLocation } from "../../ipc/source-location";
 
 type TextRole = Extract<UiPart, { kind: "text" }>["role"];
 type TextStatus = Extract<UiPart, { kind: "text" }>["status"];
@@ -45,6 +46,13 @@ export class Message extends Model {
   mediaType: string | undefined;
   attachmentKind: AttachmentKind | undefined;
   data: string | undefined;
+  location: SourceLocation | undefined;
+  selectedText: string | undefined;
+  comment: string | undefined;
+  tagName: string | undefined;
+  selector: string | undefined;
+  outerHTML: string | undefined;
+  browserText: string | undefined;
   annotations: Annotation[] | undefined;
   tone: NoticeTone | undefined;
   detail: string | undefined;
@@ -108,6 +116,14 @@ export class Message extends Model {
         this.mediaType = part.mediaType;
         this.attachmentKind = part.attachmentKind;
         this.data = part.data;
+        this.location = part.location;
+        this.selectedText = part.selectedText;
+        this.comment = part.comment;
+        this.url = part.url;
+        this.tagName = part.tagName;
+        this.selector = part.selector;
+        this.outerHTML = part.outerHTML;
+        this.browserText = part.browserText;
         return true;
       case "annotation":
         this.annotations = [...part.annotations];
@@ -197,6 +213,14 @@ export class Message extends Model {
           mediaType: this.mediaType!,
           attachmentKind: this.attachmentKind!,
           data: this.data,
+          location: this.location,
+          selectedText: this.selectedText,
+          comment: this.comment,
+          url: this.url,
+          tagName: this.tagName,
+          selector: this.selector,
+          outerHTML: this.outerHTML,
+          browserText: this.browserText,
         };
       case "annotation":
         return { id: this.partKey, kind: this.kind, annotations: this.annotations! };

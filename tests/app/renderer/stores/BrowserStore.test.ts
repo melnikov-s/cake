@@ -91,7 +91,7 @@ describe("BrowserStore", () => {
     expect(attachments).toEqual([
       {
         kind: "browser",
-        name: "button #save",
+        name: "#save",
         url: "http://localhost:3000/settings",
         tagName: "button",
         selector: "#save",
