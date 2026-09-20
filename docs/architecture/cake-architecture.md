@@ -77,7 +77,11 @@ Cake's visible transcript projects the complete active branch returned by Pi's
 `SessionManager.getBranch()`. The compacted entries returned by
 `buildContextEntries()` are model input, not display history, and must never
 replace the complete transcript projection. Compaction entries remain visible
-as durable timeline events. Steering and follow-up queues are transient Pi
+as durable timeline events. When Pi's ordinary fork extraction can no longer
+carry an inactive branch referenced by tool-compaction provenance, the Pi
+adapter appends the reconstructed compacted work logs as a schema-validated,
+hidden Pi custom entry in the fork. The display projection consumes that entry;
+Pi's model context does not. Steering and follow-up queues are transient Pi
 runtime state: Cake overlays `queue_update` projections while messages wait and
 removes them when Pi consumes the corresponding user message into the branch.
 Pi only exposes whole-queue clearing, so removing or promoting one held message

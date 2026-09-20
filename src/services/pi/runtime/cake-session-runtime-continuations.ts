@@ -4,6 +4,11 @@ import type { ArtifactPointer } from "../../../ipc/artifact-contract";
 import type { JsonValue } from "../../../ipc/json-contract";
 import { SESSION_TITLE_MAX_LENGTH, type UtilityModel } from "../../../ipc/session-contract";
 import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
+import { projectConversationDisplay } from "./conversation-display-projection";
+import {
+  appendForkDisplayProvenance,
+  captureForkDisplayProvenance,
+} from "./fork-display-provenance";
 import { appendToolCompactedBranch } from "./session-tool-compaction";
 import { projectArtifactPointers, textFromContent } from "./session-projection";
 import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
@@ -150,8 +155,12 @@ export function createCakeSessionRuntimeContinuations(input: {
         session.sessionManager.getSessionDir(),
         options.cwd,
       );
+      const displayProvenance = captureForkDisplayProvenance(
+        projectConversationDisplay(forked, { leafId: entryId }),
+      );
       const sessionFile = forked.createBranchedSession(entryId);
       if (!sessionFile) throw new Error("The current session is not persisted");
+      appendForkDisplayProvenance(forked, displayProvenance);
       forked.appendSessionInfo(title);
       return {
         sessionId: forked.getSessionId(),

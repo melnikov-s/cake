@@ -14,6 +14,10 @@ import {
   type PiSessionSummary,
 } from "../../../ipc/session-contract";
 import { projectConversationDisplay } from "./conversation-display-projection";
+import {
+  appendForkDisplayProvenance,
+  captureForkDisplayProvenance,
+} from "./fork-display-provenance";
 import { projectArtifactPointers, projectDurableArtifactLineageIds } from "./session-projection";
 import { sessionTitleFromFile } from "./session-title";
 import {
@@ -134,6 +138,9 @@ export function forkWorkspaceSession(
   title: string,
 ) {
   const source = SessionManager.open(sourceFile, dirname(sourceFile), sourceCwd);
+  const displayProvenance = captureForkDisplayProvenance(
+    projectConversationDisplay(source, { leafId: entryId }),
+  );
   const branchFile = source.createBranchedSession(entryId);
   if (!branchFile) throw new Error("The current session is not persisted");
   try {
@@ -142,6 +149,7 @@ export function forkWorkspaceSession(
       destinationCwd,
       cakeWorkspaceSessionDirectory(destinationCwd, sessionRoot),
     );
+    appendForkDisplayProvenance(manager, displayProvenance);
     manager.appendSessionInfo(title);
     return {
       sessionId: manager.getSessionId(),

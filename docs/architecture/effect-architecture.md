@@ -410,9 +410,11 @@ Pi Session Runtime loads them, so they are exposed through the session handle.
 
 Raw Pi objects and events stop inside `services/pi`. Pure translation modules
 map Pi snapshots, events, resources, errors, and transient queue state to
-Cake-owned conversation values. Pi Service contracts never depend on a
-Project-Session projection or RPC payload type. No other Cake module imports Pi
-packages directly.
+Cake-owned conversation values. Ordinary Pi forks preserve reconstructed
+compacted work logs through a schema-validated hidden Pi custom provenance
+entry that only the display projection consumes; it does not enter Pi's model
+context. Pi Service contracts never depend on a Project-Session projection or
+RPC payload type. No other Cake module imports Pi packages directly.
 
 ## Session observation and Streams
 

@@ -2,6 +2,10 @@ import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-age
 import { Option, Schema } from "effect";
 import type { UiPart } from "../../../ipc/session-contract";
 import { isWorkLogPart } from "../../../utils/work-log-groups";
+import {
+  decodeForkDisplayProvenance,
+  forkDisplayProvenanceEntryType,
+} from "./fork-display-provenance";
 import { projectSessionEntries } from "./session-projection";
 import {
   toolCompactEntryType,
@@ -32,6 +36,40 @@ function dialoguePartsCorrespond(source: readonly UiPart[], replayed: readonly U
     source.length === replayed.length &&
     source.every((part, index) => part.kind === replayed[index]?.kind)
   );
+}
+
+function applyForkDisplayProvenance(
+  branch: readonly SessionEntry[],
+  projected: UiPart[],
+): ProjectionResult {
+  const encoded = branch.findLast(
+    (entry) => entry.type === "custom" && entry.customType === forkDisplayProvenanceEntryType,
+  );
+  if (!encoded || encoded.type !== "custom") return { valid: true, parts: projected };
+  const decoded = decodeForkDisplayProvenance(encoded.data);
+  if (Option.isNone(decoded)) return { valid: false };
+
+  const projectedIds = new Set(projected.map((part) => part.id));
+  const grouped = new Map<string | null, UiPart[]>();
+  for (const group of decoded.value.groups) {
+    if (
+      grouped.has(group.precedingPartId) ||
+      group.parts.some((part) => projectedIds.has(part.id)) ||
+      (group.precedingPartId !== null && !projectedIds.has(group.precedingPartId))
+    )
+      return { valid: false };
+    grouped.set(group.precedingPartId, [...group.parts]);
+  }
+
+  const parts = [...(grouped.get(null) ?? [])];
+  for (const part of projected) {
+    parts.push(part, ...(grouped.get(part.id) ?? []));
+  }
+  return { valid: true, parts };
+}
+
+function projectBranch(branch: readonly SessionEntry[], live: boolean): ProjectionResult {
+  return applyForkDisplayProvenance(branch, projectSessionEntries(branch, branch, { live }));
 }
 
 function locateProvenance(branch: readonly SessionEntry[]) {
@@ -117,9 +155,9 @@ function reconstruct(
   if (depth > maximumProvenanceDepth || visitedLeaves.has(resolvedLeafId)) return { valid: false };
 
   const located = locateProvenance(branch);
-  if (!located) return { valid: true, parts: projectSessionEntries(branch, branch, { live }) };
+  if (!located) return projectBranch(branch, live);
   const replay = validateReplay(session, branch, located.index, located.provenance);
-  if (!replay) return { valid: false };
+  if (!replay) return projectBranch(branch, live);
 
   const source = reconstruct(
     session,
@@ -146,10 +184,11 @@ function reconstruct(
   const markerParts = projectSessionEntries(branch.slice(0, replay.markerIndex + 1));
   const postEntries = branch.slice(located.index + 1);
   const postCompactionParts = projectSessionEntries(postEntries, postEntries, { live });
-  return {
-    valid: true,
-    parts: [...markerParts, ...reconstructedPrefix, ...postCompactionParts],
-  };
+  return applyForkDisplayProvenance(branch, [
+    ...markerParts,
+    ...reconstructedPrefix,
+    ...postCompactionParts,
+  ]);
 }
 
 /**
@@ -158,11 +197,16 @@ function reconstruct(
  */
 export function projectConversationDisplay(
   session: SessionManager,
-  options: { readonly live?: boolean } = {},
+  options: { readonly live?: boolean; readonly leafId?: string } = {},
 ): UiPart[] {
-  const activeBranch = session.getBranch();
-  const result = reconstruct(session, undefined, new Set(), 0, options.live === true);
-  return result.valid
-    ? result.parts
+  const activeBranch = session.getBranch(options.leafId);
+  const result = reconstruct(session, options.leafId, new Set(), 0, options.live === true);
+  if (result.valid) return result.parts;
+  const fallback = applyForkDisplayProvenance(
+    activeBranch,
+    projectSessionEntries(activeBranch, activeBranch, { live: options.live }),
+  );
+  return fallback.valid
+    ? fallback.parts
     : projectSessionEntries(activeBranch, activeBranch, { live: options.live });
 }

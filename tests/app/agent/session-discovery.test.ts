@@ -1,13 +1,15 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   cakeWorkspaceSessionDirectory,
+  forkWorkspaceSession,
   loadWorkspacePiSessionPreview,
 } from "../../../src/services/pi/runtime/session-discovery";
+import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
 
 const usage: Usage = {
@@ -126,5 +128,87 @@ describe("loadWorkspacePiSessionPreview", () => {
     expect(
       preview?.parts.find((part) => part.kind === "tool" && part.id === "tool-current-read"),
     ).not.toHaveProperty("origin");
+  });
+
+  it("preserves compacted display work through a fork and resolved-session reopen without adding model context", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-fork-display-provenance-"));
+    temporaryDirectories.push(root);
+    const cwd = join(root, "project");
+    const activeSessionRoot = join(root, "sessions");
+    const resolvedSessionRoot = join(root, "resolved-sessions");
+    const manager = SessionManager.create(
+      cwd,
+      cakeWorkspaceSessionDirectory(cwd, activeSessionRoot),
+    );
+
+    manager.appendMessage({ role: "user", content: "Inspect the old file", timestamp: 1 });
+    manager.appendMessage(
+      assistant([
+        { type: "thinking", thinking: "historical reasoning" },
+        {
+          type: "toolCall",
+          id: "historical-read",
+          name: "read",
+          arguments: { path: "src/old.ts" },
+        },
+      ]),
+    );
+    manager.appendMessage({
+      role: "toolResult",
+      toolCallId: "historical-read",
+      toolName: "read",
+      content: [{ type: "text", text: "historical output" }],
+      isError: false,
+      timestamp: 2,
+    });
+    const sourceLeafId = manager.appendMessage(
+      assistant([{ type: "text", text: "Old inspection complete." }]),
+    );
+    appendToolCompactedBranch(manager, sourceLeafId);
+    manager.appendMessage({ role: "user", content: "Continue", timestamp: 3 });
+    const forkLeafId = manager.appendMessage(
+      assistant([{ type: "text", text: "Ready to continue." }]),
+    );
+
+    expect(
+      projectConversationDisplay(manager).find(
+        (part) => part.kind === "tool" && part.id === "tool-historical-read",
+      ),
+    ).toMatchObject({ origin: "compacted", output: "historical output" });
+
+    const fork = forkWorkspaceSession(
+      manager.getSessionFile()!,
+      cwd,
+      forkLeafId,
+      cwd,
+      activeSessionRoot,
+      "Forked compacted session",
+    );
+    const forked = SessionManager.open(
+      fork.sessionFile!,
+      cakeWorkspaceSessionDirectory(cwd, activeSessionRoot),
+      cwd,
+    );
+    expect(
+      projectConversationDisplay(forked).find(
+        (part) => part.kind === "tool" && part.id === "tool-historical-read",
+      ),
+    ).toMatchObject({ origin: "compacted", output: "historical output" });
+    expect(JSON.stringify(forked.buildSessionContext().messages)).not.toContain(
+      "historical output",
+    );
+
+    const resolvedDirectory = cakeWorkspaceSessionDirectory(cwd, resolvedSessionRoot);
+    await mkdir(resolvedDirectory, { recursive: true });
+    await rename(fork.sessionFile!, join(resolvedDirectory, basename(fork.sessionFile!)));
+    const reopened = await loadWorkspacePiSessionPreview(
+      cwd,
+      fork.sessionId,
+      activeSessionRoot,
+      resolvedSessionRoot,
+    );
+    expect(
+      reopened?.parts.find((part) => part.kind === "tool" && part.id === "tool-historical-read"),
+    ).toMatchObject({ origin: "compacted", output: "historical output" });
   });
 });

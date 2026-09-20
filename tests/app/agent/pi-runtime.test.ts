@@ -12,6 +12,7 @@ import {
   type CakeSessionRuntime,
   type CakeSessionRuntimeEvent,
 } from "../../../src/services/pi/runtime/cake-session-runtime";
+import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import {
   createFoundationRuntime,
   type FoundationRuntime,
@@ -36,6 +37,7 @@ import {
   toolResultContent,
 } from "../../../src/services/pi/runtime/session-projection";
 import { loadReviewSessionProjection } from "../../../src/services/pi/runtime/sidecar-runtime";
+import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
 import { SessionManager, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   conversationSnapshotSchema,
@@ -2554,9 +2556,39 @@ describe("S1 Pi runtime", () => {
       cakeWorkspaceSessionDirectory(directory, sessionDir),
     );
     source.appendMessage({ role: "user", content: "Hello", timestamp: Date.now() });
-    const forkPointId = source.appendMessage({
+    source.appendMessage({
+      role: "assistant",
+      content: [{ type: "toolCall", id: "historical-read", name: "read", arguments: {} }],
+      api: "anthropic-messages",
+      provider: "anthropic",
+      model: "fixture",
+      usage: zeroUsage,
+      stopReason: "toolUse",
+      timestamp: Date.now(),
+    });
+    source.appendMessage({
+      role: "toolResult",
+      toolCallId: "historical-read",
+      toolName: "read",
+      content: [{ type: "text", text: "historical output" }],
+      isError: false,
+      timestamp: Date.now(),
+    });
+    const compactedLeafId = source.appendMessage({
       role: "assistant",
       content: [{ type: "text", text: "Hi" }],
+      api: "anthropic-messages",
+      provider: "anthropic",
+      model: "fixture",
+      usage: zeroUsage,
+      stopReason: "stop",
+      timestamp: Date.now(),
+    });
+    appendToolCompactedBranch(source, compactedLeafId);
+    source.appendMessage({ role: "user", content: "Continue", timestamp: Date.now() });
+    const forkPointId = source.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "Ready" }],
       api: "anthropic-messages",
       provider: "anthropic",
       model: "fixture",
@@ -2592,6 +2624,17 @@ describe("S1 Pi runtime", () => {
     expect(forked.getSessionId()).toBe(fork.sessionId);
     expect(forked.getSessionName()).toBe("Forked copy");
     expect(forked.getHeader()?.parentSession).toBe(sourceSessionFile);
+    expect(projectConversationDisplay(forked)).toContainEqual(
+      expect.objectContaining({
+        kind: "tool",
+        id: "tool-historical-read",
+        origin: "compacted",
+        output: "historical output",
+      }),
+    );
+    expect(JSON.stringify(forked.buildSessionContext().messages)).not.toContain(
+      "historical output",
+    );
     expect(projectSessionEntries(forked.getBranch())).not.toContainEqual(
       expect.objectContaining({ kind: "text", role: "user", text: "Keep going" }),
     );
