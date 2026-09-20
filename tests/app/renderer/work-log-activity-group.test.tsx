@@ -179,6 +179,7 @@ describe("ActivityGroup", () => {
         submit: async () => true,
       }),
     );
+    store.workLogPresentation.setExpansion("expanded");
     const behavior = { store } as CanonicalTranscriptBehavior;
 
     await act(async () => {

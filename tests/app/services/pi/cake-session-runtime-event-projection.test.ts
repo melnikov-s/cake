@@ -15,7 +15,7 @@ describe("Cake runtime streaming projection", () => {
       getFollowUpMessages: () => [],
       getSessionStats: () => ({ tokens: {}, cost: 0 }),
     } as unknown as AgentSession;
-    const projection = createCakeRuntimeEventProjection({
+    const projection = createCakeSessionRuntimeEventProjection({
       session,
       sessionId: "session-1",
       emit: (event) => events.push(event),
@@ -60,7 +60,7 @@ describe("Cake runtime streaming projection", () => {
       getFollowUpMessages: () => [],
       getSessionStats: () => ({ tokens: {}, cost: 0 }),
     } as unknown as AgentSession;
-    const projection = createCakeRuntimeEventProjection({
+    const projection = createCakeSessionRuntimeEventProjection({
       session,
       sessionId: "session-1",
       emit: (event) => events.push(event),
