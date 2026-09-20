@@ -1,13 +1,6 @@
 import { Model, child, computed, id, modelRef, observable, transient } from "r-state-tree";
 import type { ConversationSnapshot, ThinkingLevel, UiPart } from "../../ipc/session-contract";
 import type { CakeChatControlRequest } from "../../domain/cake-chats/cake-chat-data";
-import type {
-  DiscussionSessionReference,
-  ReviewThreadReference,
-  SessionFamilyReference,
-  SubagentSessionReference,
-} from "../../domain/project-sessions/project-session-data";
-import type { ArtifactLink } from "../../domain/artifacts/artifact-lineage";
 import { Artifact } from "./Artifact";
 import { CompatibilityResource } from "./CompatibilityResource";
 import { Message } from "./Message";
@@ -20,22 +13,12 @@ import { SubagentActivity } from "./SubagentActivity";
 import { ScheduledMessage } from "./ScheduledMessage";
 import { ExtensionUi } from "./ExtensionUi";
 
-export class CakeSession extends Model {
+/** Renderer projection of transcript and live Conversation display/runtime state. */
+export class Conversation extends Model {
   workingDirectory = "";
   @id sessionId = "";
   sessionFile = "";
-  /** Main-owned Project Session aggregate metadata; empty for other Cake Session kinds. */
-  projectPath = "";
-  projectName = "";
-  discussionSessionReferences: DiscussionSessionReference[] = observable([]);
-  subagentSessionReferences: SubagentSessionReference[] = observable([]);
-  reviewThreadReferences: ReviewThreadReference[] = observable([]);
-  artifactLinks: ArtifactLink[] = observable([]);
-  family: SessionFamilyReference | undefined = undefined;
-  /** Project Session lifecycle projection; other Cake Session kinds keep defaults. */
-  resolved = false;
-  unread = false;
-  /** Window-local marker for complete outer Project/Cake Chat snapshots. */
+  /** Window-local marker for an active, complete Conversation snapshot. */
   @transient observedSnapshotRevision = 0;
   @child(Message) parts: Message[] = observable([]);
   @modelRef(LlmModel) model: LlmModel | undefined;

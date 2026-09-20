@@ -37,18 +37,18 @@ target, preview, error, and persistence concepts remain `PiSession*` values.
 
 ## Authority and lifecycle
 
-| State                                                                      | Authority                        | Owner, lifetime, persistence, and concurrency                                                               |
-| -------------------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Conversation transcript, tool results, model history, branches, compaction | Pi                               | Pi Session JSONL; serialized by Pi; Cake projects only purpose-built snapshots and events                   |
-| Pi provider credentials and resources                                      | Pi                               | Pi storage/runtime; secrets never enter Cake projections                                                    |
-| Active turn and transient Pi queues                                        | Pi Session Runtime               | Runtime lifetime; turn admission follows Pi/Cake per-session serialization policy                           |
-| Cake Session kind, Project and Working Directory references, lifecycle     | Cake domain/storage              | Durable where declared by focused storage; lifecycle transitions serialize per authority                    |
-| Discussion anchors and review-thread metadata                              | Cake review/discussion authority | Durable focused records; Discussion Session transcripts remain in their own Pi Sessions                     |
-| Subagent ownership and activity                                            | Cake subagent coordinator        | Parent Cake Session-owned; process/runtime lifetime and bounded concurrency                                 |
-| Artifact lineage and payload                                               | Cake artifact repository         | Globally durable; Project Sessions and Session Families hold links, never ownership or copied payloads      |
-| Session Family membership                                                  | Cake Session Family storage      | Durable relation among independent Project Sessions; root owns family lifecycle                             |
-| `ProjectSessionProjection`                                                 | Main/domain assembly             | Rebuilt from the authorities above; current observation only; no independent persistence or write authority |
-| Renderer Models and Stores                                                 | Renderer window                  | Validated reactive projection plus UI/workflow state; Models/Stores do not define the aggregate             |
+| State                                                                      | Authority                        | Owner, lifetime, persistence, and concurrency                                                           |
+| -------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Conversation transcript, tool results, model history, branches, compaction | Pi                               | Pi Session JSONL; serialized by Pi; Cake projects only purpose-built snapshots and events               |
+| Pi provider credentials and resources                                      | Pi                               | Pi storage/runtime; secrets never enter Cake projections                                                |
+| Active turn and transient Pi queues                                        | Pi Session Runtime               | Runtime lifetime; turn admission follows Pi/Cake per-session serialization policy                       |
+| Cake Session kind, Project and Working Directory references, lifecycle     | Cake domain/storage              | Durable where declared by focused storage; lifecycle transitions serialize per authority                |
+| Discussion anchors and review-thread metadata                              | Cake review/discussion authority | Durable focused records; Discussion Session transcripts remain in their own Pi Sessions                 |
+| Subagent ownership and activity                                            | Cake subagent coordinator        | Parent Cake Session-owned; process/runtime lifetime and bounded concurrency                             |
+| Artifact lineage and payload                                               | Cake artifact repository         | Globally durable; Project Sessions and Session Families hold links, never ownership or copied payloads  |
+| Session Family membership                                                  | Cake Session Family storage      | Durable relation among independent Project Sessions; root owns family lifecycle                         |
+| `ProjectSessionProjection`                                                 | Main/domain assembly             | Fresh on-demand read from the authorities above; no independent persistence, stream, or write authority |
+| Renderer Models and Stores                                                 | Renderer window                  | Focused validated projections plus UI/workflow state; Models/Stores do not define the aggregate         |
 
 ## Main-owned aggregate projection
 
@@ -59,27 +59,31 @@ contains:
 - the Project Session identity;
 - Project and Working Directory references;
 - a lifecycle projection;
-- exactly one `primaryConversation: ConversationSnapshot`;
+- exactly one `primaryConversation: ConversationReference` identifying, but not
+  embedding, its primary Conversation;
 - bounded Discussion Session, Subagent Session, and review-thread references;
 - artifact links (not payloads or ownership);
 - optional Session Family membership and immediate relationship summaries.
 
-The Effect RPC success Schema validates this projection across the main-to-
-renderer boundary. The renderer's `ProjectSessionStore` consumes it and may
-compose focused observation streams, but it does not invent Project Session
-domain ownership.
+The `projectSessions.readProjection` Effect RPC success Schema validates this
+projection across the main-to-renderer boundary. It is a fresh on-demand read;
+there is intentionally no broad aggregate observation stream while no surface
+needs one. Current `ProjectSessionStore` composition continues to consume the
+focused Conversation, catalog, review, subagent, scheduled-message, and artifact
+projections it actually uses. It neither consumes nor invents a parallel copy of
+the aggregate.
 
-| Projection field                       | Authority and owner                                                   | Lifetime / persistence                                            | Concurrency policy                                                   |
-| -------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `identity`                             | Cake Project Session routing identity                                 | Durable focused routing metadata; projection lifetime in renderer | Identity collisions reject the projection                            |
-| `project`                              | Cake Project registry                                                 | Durable Project record; referenced by projection                  | Project mutations serialize in the Project authority                 |
-| `workingDirectory`                     | Cake routing plus Managed Worktree reference; Git owns checkout facts | Durable routing/worktree metadata; no copied filesystem state     | Managed Worktree operations use their repository/worktree queues     |
-| `lifecycle`                            | Project Session lifecycle / family-root authority                     | Durable active/archive placement and unread metadata              | Lifecycle transitions serialize under standalone/family authority    |
-| `primaryConversation`                  | Pi                                                                    | Pi JSONL plus live Pi runtime; renderer projection only           | Pi/Cake turn admission serializes or queues per session              |
-| `discussionSessions` / `reviewThreads` | Discussion/review storage                                             | Durable focused metadata; bounded references in aggregate         | Storage mutation order and its focused observation stream            |
-| `subagentSessions`                     | Parent Cake Session's Subagent coordinator                            | Process/runtime lifetime unless projected into parent transcript  | Parent and Working Directory bounds govern parallelism               |
-| `artifactLinks`                        | Artifact repository                                                   | Durable links; artifact payload remains separate                  | Repository catalog mutation semaphore / compare-and-swap publication |
-| `family`                               | Session Family storage                                                | Durable independent-Project-Session relationship                  | Family/member lock governs membership and lifecycle admission        |
+| Projection field                       | Authority and owner                                                           | Lifetime / persistence                                            | Concurrency policy                                                   |
+| -------------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `identity`                             | Cake Project Session routing identity                                         | Durable focused routing metadata; projection lifetime in renderer | Identity collisions reject the projection                            |
+| `project`                              | Cake Project registry                                                         | Durable Project record; referenced by projection                  | Project mutations serialize in the Project authority                 |
+| `workingDirectory`                     | Cake routing plus Managed Worktree reference; Git owns checkout facts         | Durable routing/worktree metadata; no copied filesystem state     | Managed Worktree operations use their repository/worktree queues     |
+| `lifecycle`                            | Project Session lifecycle / family-root authority                             | Durable active/archive placement and unread metadata              | Lifecycle transitions serialize under standalone/family authority    |
+| `primaryConversation`                  | Project Session-to-Conversation relation; transcript remains Pi-authoritative | Aggregate-read lifetime; bounded identity reference only          | Relation is fixed for the materialized Project Session               |
+| `discussionSessions` / `reviewThreads` | Discussion/review storage                                                     | Durable focused metadata; bounded references in aggregate         | Storage mutation order and its focused observation stream            |
+| `subagentSessions`                     | Parent Cake Session's Subagent coordinator                                    | Process/runtime lifetime unless projected into parent transcript  | Parent and Working Directory bounds govern parallelism               |
+| `artifactLinks`                        | Artifact repository                                                           | Durable links; artifact payload remains separate                  | Repository catalog mutation semaphore / compare-and-swap publication |
+| `family`                               | Session Family storage                                                        | Durable independent-Project-Session relationship                  | Family/member lock governs membership and lifecycle admission        |
 
 ## Conversation observation
 
@@ -89,11 +93,17 @@ SDK event objects stop below `src/services/pi`; Cake maps them before domain or
 RPC code sees them. Reconnect obtains a new authoritative snapshot. Cake never
 tails Pi JSONL or persists a duplicate transcript/event log.
 
-A Project Session observation initially carries the main-assembled aggregate
-projection. Conversation events continue to update its primary Conversation.
-Focused Discussion, Subagent, scheduled-message, review, and artifact streams
-remain separate authorities and may update their renderer projections without
-requiring a god-object event stream.
+A Project Session Conversation observation initially carries a purpose-built
+`ProjectSessionSnapshot`: the `ConversationSnapshot` plus only the existing
+identity and lifecycle metadata needed by that observation. Conversation events
+then update the same focused renderer `Conversation` Model. It never assembles
+`ProjectSessionProjection` or copies relationship arrays into that Model.
+Focused Discussion, Subagent, scheduled-message, review, artifact, family, and
+catalog streams remain separate and update only their own projections.
+
+`ProjectSessionProjection` is read on demand and independently of Conversation
+updates, so relationship references cannot become stale merely because no new
+Conversation snapshot arrived.
 
 ## Relationship language
 
@@ -116,15 +126,16 @@ separate decisions.
 
 Main validates Project and Working Directory access before trusted Pi resources
 load. Raw Pi and AI SDK values never cross RPC. The window-owned Model observer
-applies validated aggregate/Conversation snapshots and ordered events to stable
-Models. `ProjectSessionStore` owns renderer workflow and presentation around
-that projection; Stores invoke the Promise `Client` and do not import Effect,
-RPC contracts, main domain modules, or `CakeSessionRuntimes`.
+applies validated Conversation snapshots and ordered events to stable
+`Conversation` Models. It does not flatten the aggregate
+into those Models. `ProjectSessionStore` owns renderer workflow and presentation
+around the focused projections; Stores invoke the Promise `Client` and do not
+import Effect, RPC contracts, main domain modules, or `CakeSessionRuntimes`.
 
 ## Verification boundary
 
-Focused integration tests cover aggregate assembly from its authorities, Effect
-Schema round-tripping across the main-to-renderer contract, Pi JSONL reopen,
-complete active-branch Conversation projection, snapshot/event ordering,
-renderer hydration, stale-identity rejection, cancellation, and the Electron
-RPC boundary. Provider-backed calls remain opt-in.
+Focused integration tests cover the fresh aggregate read assembled from its
+authorities, Effect Schema round-tripping across its main-to-renderer RPC
+contract, Pi JSONL reopen, complete active-branch Conversation projection,
+snapshot/event ordering, renderer hydration, stale-identity rejection,
+cancellation, and the Electron RPC boundary. Provider-backed calls remain opt-in.

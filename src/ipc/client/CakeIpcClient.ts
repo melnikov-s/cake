@@ -67,6 +67,7 @@ import type {
   ProjectSessionCatalogQuery,
   ProjectSessionCompanionActionInput,
   ProjectSessionPreview,
+  ProjectSessionProjection,
   ProjectSessionStartInput,
   ProjectSessionTarget,
   ProjectSessionUpdate,
@@ -468,6 +469,9 @@ export interface CakeIpcClientService {
     readonly inspect: (
       target: ProjectSessionTarget,
     ) => Effect.Effect<ProjectSessionPreview, ProjectSessionError | TransportError>;
+    readonly readProjection: (
+      target: ProjectSessionTarget,
+    ) => Effect.Effect<ProjectSessionProjection, ProjectSessionError | TransportError>;
     readonly start: (
       input: ProjectSessionStartInput,
     ) => Effect.Effect<TurnId, ProjectSessionError | TransportError>;
@@ -998,6 +1002,9 @@ export const CakeIpcClientLive = Layer.effect(
         observeCatalog: (input) => client("projectSessions.observeCatalog", input),
         inspect: Effect.fn("CakeIpcClient.projectSessions.inspect")((target) =>
           client("projectSessions.inspect", target),
+        ),
+        readProjection: Effect.fn("CakeIpcClient.projectSessions.readProjection")((target) =>
+          client("projectSessions.readProjection", target),
         ),
         start: Effect.fn("CakeIpcClient.projectSessions.start")((input) =>
           client("projectSessions.start", input),

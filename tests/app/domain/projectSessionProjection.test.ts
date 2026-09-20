@@ -10,22 +10,6 @@ import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 
-const conversation = {
-  workingDirectory: "/projects/cake",
-  sessionId: "session-1",
-  sessionFile: "/sessions/session-1.jsonl",
-  parts: [],
-  models: [],
-  thinkingLevel: "off",
-  availableThinkingLevels: [],
-  streaming: false,
-  diagnostics: [],
-  commands: [],
-  compatibility: { resources: [], diagnostics: [] },
-  extensionUi: { statuses: [] },
-  tree: [],
-} as const;
-
 const reviewRecord = {
   id: "thread-1",
   workspacePath: "/projects/cake",
@@ -113,10 +97,9 @@ describe("ProjectSessionProjection", () => {
         },
         resolved: false,
         unread: true,
-        primaryConversation: conversation,
       });
 
-      assert.equal(projection.primaryConversation.sessionId, "session-1");
+      assert.deepEqual(projection.primaryConversation, { sessionId: "session-1" });
       assert.deepEqual(projection.discussionSessions, [
         {
           threadId: "thread-1",
@@ -141,6 +124,7 @@ describe("ProjectSessionProjection", () => {
         depth: 0,
       });
 
+      // Effect RPC uses this Schema at the main-to-renderer transport boundary.
       const encoded = yield* Schema.encodeEffect(ProjectSessionProjection)(projection);
       const decoded = yield* Schema.decodeUnknownEffect(ProjectSessionProjection)(encoded);
       assert.deepEqual(decoded, projection);

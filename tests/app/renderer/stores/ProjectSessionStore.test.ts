@@ -24,8 +24,7 @@ describe("ProjectSessionStore", () => {
       calls.push("model");
     });
     const models = RootProjection.create();
-    const model = models.projectSession("resolved-session", "/project");
-    model.resolved = true;
+    const model = models.projectConversation("resolved-session", "/project");
     const operations = mount(createStore(SessionOperationCoordinatorStore));
     const pendingSessions = {
       isTemporary: () => false,
@@ -76,20 +75,14 @@ describe("ProjectSessionStore", () => {
     expect(session.conversationSessionStore.chatStore.loading).toBe(true);
     await Promise.resolve();
     expect(prompt).not.toHaveBeenCalled();
-
-    model.resolved = false;
     model.observedSnapshotRevision += 1;
     await expect(submission).resolves.toBe(true);
 
     expect(calls).toEqual(["restore", "prompt"]);
-
-    model.resolved = true;
     const selection =
       session.conversationSessionStore.configurationStore.selectModel("openai/gpt-5");
     await Promise.resolve();
     expect(setModel).not.toHaveBeenCalled();
-
-    model.resolved = false;
     model.observedSnapshotRevision += 1;
     await selection;
 
@@ -102,7 +95,7 @@ describe("ProjectSessionStore", () => {
 
   it("opens a command-created side chat when its authoritative projection arrives", async () => {
     const models = RootProjection.create();
-    const model = models.projectSession("session-1", "/project");
+    const model = models.projectConversation("session-1", "/project");
     const operations = mount(createStore(SessionOperationCoordinatorStore));
     const sideChat = mount(
       createStore(ChatStore, {
@@ -204,7 +197,7 @@ describe("ProjectSessionStore", () => {
 
   it("hands a selection draft side chat over to the created thread's chat", async () => {
     const models = RootProjection.create();
-    const model = models.projectSession("session-1", "/project");
+    const model = models.projectConversation("session-1", "/project");
     const operations = mount(createStore(SessionOperationCoordinatorStore));
     const threadChat = mount(
       createStore(ChatStore, {

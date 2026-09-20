@@ -28,7 +28,7 @@ function registryFixture(
     createStore(SessionRegistryStore, {
       catalog,
       sessionModel: (sessionId, workingDirectory) =>
-        models.projectSession(sessionId, workingDirectory),
+        models.projectConversation(sessionId, workingDirectory),
       artifactModel: models.artifacts,
       operations,
       reviews: () => {

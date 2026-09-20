@@ -24,7 +24,7 @@ import { ProjectCatalog } from "../../../../src/renderer/models/ProjectCatalog";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { CakeChatCatalog } from "../../../../src/renderer/models/CakeChatCatalog";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
-import { CakeSession } from "../../../../src/renderer/models/CakeSession";
+import { Conversation } from "../../../../src/renderer/models/Conversation";
 import { WorktreeCatalog } from "../../../../src/renderer/models/WorktreeCatalog";
 
 function runtimeFor(client: CakeIpcClientService): Runtime {
@@ -194,7 +194,7 @@ describe("createModelObserver", () => {
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
-    const session = CakeSession.create({ sessionId: "session", workingDirectory: "/project" });
+    const session = Conversation.create({ sessionId: "session", workingDirectory: "/project" });
     const observer = observerFor(client);
 
     observer.sync({
@@ -232,7 +232,7 @@ describe("createModelObserver", () => {
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
-    const session = CakeSession.create({
+    const session = Conversation.create({
       sessionId: "session",
       workingDirectory: "/project",
       sessionFile: "/sessions/session.jsonl",
@@ -348,14 +348,10 @@ describe("createModelObserver", () => {
             projectPath: "/cake",
             workingDirectory: "/cake",
           },
-          project: { path: "/cake", name: "Cake" },
-          workingDirectory: { path: "/cake" },
-          lifecycle: { resolved: false, unread: false },
-          primaryConversation: conversation,
-          discussionSessions: [],
-          subagentSessions: [],
-          reviewThreads: [],
-          artifactLinks: [],
+          projectName: "Cake",
+          resolved: false,
+          unread: false,
+          conversation,
         },
       },
       {
@@ -382,7 +378,7 @@ describe("createModelObserver", () => {
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
-    const session = CakeSession.create({ sessionId: "session", workingDirectory: "/cake" });
+    const session = Conversation.create({ sessionId: "session", workingDirectory: "/cake" });
     const observer = observerFor(client);
 
     observer.sync({
@@ -442,7 +438,7 @@ describe("createModelObserver", () => {
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
-    const session = CakeSession.create({ sessionId: "session", workingDirectory: "/cake" });
+    const session = Conversation.create({ sessionId: "session", workingDirectory: "/cake" });
     const observer = observerFor(client);
 
     observer.sync({
@@ -465,14 +461,10 @@ describe("createModelObserver", () => {
             projectPath: "/cake",
             workingDirectory: "/cake",
           },
-          project: { path: "/cake", name: "Cake" },
-          workingDirectory: { path: "/cake" },
-          lifecycle: { resolved: false, unread: false },
-          primaryConversation: conversation,
-          discussionSessions: [],
-          subagentSessions: [],
-          reviewThreads: [],
-          artifactLinks: [],
+          projectName: "Cake",
+          resolved: false,
+          unread: false,
+          conversation,
         },
       }),
     );
@@ -780,7 +772,7 @@ describe("createModelObserver", () => {
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
-    const session = CakeSession.create({ sessionId: "archived", workingDirectory: "/cake" });
+    const session = Conversation.create({ sessionId: "archived", workingDirectory: "/cake" });
     const observer = observerFor(client);
 
     try {
@@ -832,10 +824,10 @@ describe("createModelObserver", () => {
           projectPath: "/cake",
           workingDirectory: "/cake",
         },
-        project: { path: "/cake", name: "Cake" },
-        workingDirectory: { path: "/cake" },
-        lifecycle: { resolved: false, unread: false },
-        primaryConversation: {
+        projectName: "Cake",
+        resolved: false,
+        unread: false,
+        conversation: {
           workingDirectory: "/cake",
           sessionId: "session",
           sessionFile: "/cake/session.jsonl",
@@ -858,10 +850,6 @@ describe("createModelObserver", () => {
           extensionUi: { statuses: [] },
           tree: [],
         },
-        discussionSessions: [],
-        subagentSessions: [],
-        reviewThreads: [],
-        artifactLinks: [],
       },
     };
     const client = {
@@ -881,7 +869,7 @@ describe("createModelObserver", () => {
     const projects = ProjectCatalog.create();
     const sessions = SessionCatalog.create();
     const cakeChats = CakeChatCatalog.create();
-    const session = CakeSession.create({ sessionId: "session", workingDirectory: "/cake" });
+    const session = Conversation.create({ sessionId: "session", workingDirectory: "/cake" });
     const observer = observerFor(client);
 
     try {
@@ -1001,7 +989,7 @@ describe("createModelObserver", () => {
       await vi.waitFor(() => expect(observedThreads).toEqual(["thread-1"]));
       // Ordinary side chats carry no control catalog.
       expect(observedTargets[0]).not.toHaveProperty("tools");
-      const sidecar = projection.findDiscussionSession("sidecar-1");
+      const sidecar = projection.findDiscussionConversation("sidecar-1");
       expect(sidecar?.workingDirectory).toBe("/cake");
 
       await Effect.runPromise(
@@ -1032,11 +1020,11 @@ describe("createModelObserver", () => {
         }),
       );
       await vi.waitFor(() =>
-        expect(projection.findProjectSession("session")?.reviewThreads[0]?.updatedAt).toBe(
+        expect(projection.findProjectConversation("session")?.reviewThreads[0]?.updatedAt).toBe(
           "2026-01-02",
         ),
       );
-      expect(projection.findDiscussionSession("sidecar-1")).toBe(sidecar);
+      expect(projection.findDiscussionConversation("sidecar-1")).toBe(sidecar);
       expect(sidecar?.uiParts.map((part) => part.id)).toEqual(["user-1"]);
       expect(sidecarObservations).toBe(1);
 
@@ -1061,7 +1049,7 @@ describe("createModelObserver", () => {
         threadId: "assistant",
         tools: [expect.objectContaining({ command: "sessions.open" })],
       });
-      expect(projection.findDiscussionSession("sidecar-assistant")).toBeDefined();
+      expect(projection.findDiscussionConversation("sidecar-assistant")).toBeDefined();
 
       // Dropping the threads releases their conversation Models and observations.
       await Effect.runPromise(
@@ -1072,8 +1060,10 @@ describe("createModelObserver", () => {
           event: { _tag: "Replaced", threads: [] },
         }),
       );
-      await vi.waitFor(() => expect(projection.findDiscussionSession("sidecar-1")).toBeUndefined());
-      expect(projection.findDiscussionSession("sidecar-assistant")).toBeUndefined();
+      await vi.waitFor(() =>
+        expect(projection.findDiscussionConversation("sidecar-1")).toBeUndefined(),
+      );
+      expect(projection.findDiscussionConversation("sidecar-assistant")).toBeUndefined();
     } finally {
       observer.stop();
       projection[Symbol.dispose]();

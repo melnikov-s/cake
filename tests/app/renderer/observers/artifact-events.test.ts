@@ -78,7 +78,7 @@ const runtimeFor = (client: CakeIpcClientService): Runtime => {
 describe("observeArtifactEvents", () => {
   it("patches the loaded Session projection directly", async () => {
     const projection = RootProjection.create();
-    const session = projection.projectSession("session", "/project");
+    const session = projection.projectConversation("session", "/project");
     const client = {
       events: {
         artifacts: () =>

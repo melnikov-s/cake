@@ -3,7 +3,7 @@ import type { JsonValue } from "../../ipc/json-contract";
 import type { ResourceDiagnostic } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import type { StoreEvent } from "../events/StoreEvent";
-import type { CakeSession } from "../models/CakeSession";
+import type { Conversation } from "../models/Conversation";
 import { describeError } from "../lib/error-details";
 
 export interface UiRequestState {
@@ -26,7 +26,7 @@ export interface ExtensionNotification {
 }
 
 export interface ExtensionUiStoreProps {
-  activeSessionModel(): CakeSession | undefined;
+  activeSessionModel(): Conversation | undefined;
   sessionContext(): { sessionId: string } | undefined;
   setDraft(value: string | ((current: string) => string)): void;
   requestComposerFocus(): void;

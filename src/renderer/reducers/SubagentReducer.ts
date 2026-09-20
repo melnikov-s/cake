@@ -5,10 +5,14 @@ import type {
   SubagentUpdate,
 } from "../../domain/subagents/subagent-data";
 import { conversationSnapshotSchema, uiPartSchema } from "../../ipc/session-contract";
-import type { CakeSession } from "../models/CakeSession";
+import type { Conversation } from "../models/Conversation";
 import { SubagentActivity } from "../models/SubagentActivity";
 
-export function applySubagentUpdate(model: CakeSession, sessionId: string, update: SubagentUpdate) {
+export function applySubagentUpdate(
+  model: Conversation,
+  sessionId: string,
+  update: SubagentUpdate,
+) {
   if (update.parentSessionId !== sessionId)
     throw new Error(`Subagent parent identity collision: ${sessionId}`);
   batch(() => {
@@ -41,7 +45,7 @@ export function applySubagentUpdate(model: CakeSession, sessionId: string, updat
   });
 }
 
-function upsertSubagentActivity(model: CakeSession, activity: SubagentActivityValue) {
+function upsertSubagentActivity(model: Conversation, activity: SubagentActivityValue) {
   let target = model.subagentActivities.find((item) => item.handleId === activity.handleId);
   if (!target) {
     target = SubagentActivity.create({ handleId: activity.handleId });

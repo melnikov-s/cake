@@ -4,16 +4,16 @@ import type { DiscussionCatalogUpdate } from "../../domain/application/catalog-d
 import type { DiscussionThread } from "../../domain/discussion-sessions/discussion-session-data";
 import { uiPartSchema } from "../../ipc/session-contract";
 import { ReviewThread } from "../models/ReviewThread";
-import type { CakeSession } from "../models/CakeSession";
+import type { Conversation } from "../models/Conversation";
 import { messageSnapshots } from "./SessionPartReducer";
 
 /**
  * Applies the parent's Cake-owned Discussion catalog. Rows carry thread
  * metadata and a persisted preview only; the live sidecar conversation is a
- * separately observed `CakeSession` Model.
+ * separately observed `Conversation` Model.
  */
 export function applyDiscussionCatalogUpdate(
-  model: CakeSession,
+  model: Conversation,
   sessionId: string,
   update: DiscussionCatalogUpdate,
 ) {

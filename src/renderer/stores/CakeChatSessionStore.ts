@@ -1,5 +1,5 @@
 import { Store, child, createStore } from "r-state-tree";
-import type { CakeSession } from "../models/CakeSession";
+import type { Conversation } from "../models/Conversation";
 import type { ModelPreset } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { ConversationSessionStore } from "./ConversationSessionStore";
@@ -12,7 +12,7 @@ import type { CakeChatTarget } from "../../domain/cake-chats/cake-chat-data";
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
-  model: CakeSession;
+  model: Conversation;
   target(): CakeChatTarget;
   pendingSessions: CakeChatPendingSessionsStore;
   management: CakeChatManagementStore;

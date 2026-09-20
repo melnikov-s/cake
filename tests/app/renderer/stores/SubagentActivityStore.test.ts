@@ -3,12 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../../src/ipc/session-contract";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { ClientContext } from "../../../../src/renderer/stores/context/ClientContext";
-import { CakeSession } from "../../../../src/renderer/models/CakeSession";
+import { Conversation } from "../../../../src/renderer/models/Conversation";
 import { SubagentActivityStore } from "../../../../src/renderer/stores/SubagentActivityStore";
 
 class HarnessStore extends Store<{
   client: Client;
-  model: CakeSession;
+  model: Conversation;
   parts(): readonly UiPart[];
 }> {
   [ClientContext.provide]() {
@@ -24,7 +24,7 @@ class HarnessStore extends Store<{
   }
 }
 
-function harness(model: CakeSession, parts: () => readonly UiPart[] = () => []) {
+function harness(model: Conversation, parts: () => readonly UiPart[] = () => []) {
   const prompt = vi.fn(async () => undefined);
   const steer = vi.fn(async () => undefined);
   const abort = vi.fn(async () => undefined);
@@ -66,7 +66,7 @@ const activity = (handleId: string) => ({
 describe("SubagentActivityStore", () => {
   it("reads synchronized activity Models and backs them with shared ChatStore", async () => {
     const handleId = crypto.randomUUID();
-    const model = CakeSession.create({
+    const model = Conversation.create({
       sessionId: "parent",
       subagentActivities: [activity(handleId)],
     });
@@ -139,7 +139,7 @@ describe("SubagentActivityStore", () => {
         state: "success",
       },
     ];
-    const model = CakeSession.create({ sessionId: "parent" });
+    const model = Conversation.create({ sessionId: "parent" });
     const fixture = harness(model, () => parts);
 
     const chat = fixture.store.chatStore(handleId)!;

@@ -20,13 +20,14 @@ import {
   ProjectSessionError,
   type ProjectSessionCompanionActionInput,
   type ProjectSessionPromptInput,
+  type ProjectSessionSnapshot,
   type ProjectSessionStartInput,
   type ProjectSessionTarget,
   type ProjectSessionUpdate,
 } from "./project-session-data";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
-import { assemble as assembleProjectSessionProjection } from "./projectSessionProjection";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
+import { assemble as assembleProjectSessionProjection } from "./projectSessionProjection";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import {
   archiveLocation,
@@ -120,12 +121,13 @@ const restoreIfResolved = Effect.fn("ProjectSessions.restoreIfResolved")(functio
   yield* publishCatalogChange(target.sessionId, restored, false).pipe(asError("restore"));
 });
 
-const isSessionResolved = Effect.fn("ProjectSessions.isSessionResolved")(function* (
+const isSessionResolvedAt = Effect.fn("ProjectSessions.isSessionResolvedAt")(function* (
   target: ProjectSessionTarget,
+  location: ProjectSessionLocation,
+  operation: "observe" | "readProjection" = "observe",
 ) {
-  const location = yield* findLocation(target);
   const namespace = yield* resolutionNamespace(target.sessionId, archiveLocation(location)).pipe(
-    asError("observe"),
+    asError(operation),
   );
   if (namespace) return namespace === "resolved";
   const sessions = yield* CakeSessionRuntimes;
@@ -138,9 +140,32 @@ const isSessionResolved = Effect.fn("ProjectSessions.isSessionResolved")(functio
   // It accounts for that missing-file case, but never overrides root resolution.
   if (activeRuntime) return false;
   return yield* new ProjectSessionError({
-    operation: "observe",
+    operation,
     message: "That session is no longer available",
   });
+});
+
+const isSessionResolved = Effect.fn("ProjectSessions.isSessionResolved")(function* (
+  target: ProjectSessionTarget,
+) {
+  return yield* isSessionResolvedAt(target, yield* findLocation(target));
+});
+
+/** Fresh on-demand aggregate read; it is not coupled to Conversation observation. */
+export const readProjection = Effect.fn("ProjectSessions.readProjection")(function* (
+  target: ProjectSessionTarget,
+) {
+  const location = yield* findLocation(target);
+  const [resolved, state] = yield* Effect.all(
+    [isSessionResolvedAt(target, location, "readProjection"), getState()] as const,
+    { concurrency: "unbounded" },
+  );
+  return yield* assembleProjectSessionProjection({
+    sessionId: target.sessionId,
+    location,
+    resolved,
+    unread: !resolved && state.unreadSessionIds.includes(target.sessionId),
+  }).pipe(asError("readProjection"));
 });
 
 export const observe = Effect.fn("ProjectSessions.observe")(function* (
@@ -182,17 +207,23 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
           ? Stream.fromEffect(
               Effect.gen(function* () {
                 const preview = yield* inspect(target);
-                const location = yield* findLocation(target);
-                const snapshot = yield* assembleProjectSessionProjection({
-                  sessionId: target.sessionId,
-                  location,
+                const snapshot: ProjectSessionSnapshot = {
+                  identity: {
+                    _tag: "ProjectSession",
+                    sessionId: target.sessionId,
+                    projectPath: preview.projectPath,
+                    workingDirectory: preview.workingDirectory,
+                  },
+                  projectName: (yield* findLocation(target)).projectName,
                   resolved: true,
                   unread: false,
-                  primaryConversation: projectPreviewSnapshot({
+                  conversation: projectPreviewSnapshot({
                     ...preview,
                     workspacePath: preview.workingDirectory,
                   }),
-                });
+                };
+                if (preview.managedWorktree !== undefined)
+                  Object.assign(snapshot, { managedWorktree: preview.managedWorktree });
                 return { _tag: "Snapshot", revision: 0, snapshot } satisfies ProjectSessionUpdate;
               }),
             )
@@ -206,6 +237,12 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
             Effect.gen(function* () {
               const location = yield* findLocation(target);
               const state = yield* getState();
+              const identity = {
+                _tag: "ProjectSession" as const,
+                sessionId: target.sessionId,
+                projectPath: location.projectPath,
+                workingDirectory: location.workingDirectory,
+              };
               const live = Stream.unwrap(
                 acquireTarget(location, target.sessionId, false).pipe(
                   Effect.map((handle) =>
@@ -221,27 +258,24 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
                             })
                           : Effect.void,
                       ),
-                      Stream.mapEffect((update) => {
+                      Stream.map((update): ProjectSessionUpdate => {
                         if (update._tag === "Event")
-                          return Effect.succeed<ProjectSessionUpdate>({
+                          return {
                             _tag: "Event",
                             revision: update.revision,
                             sessionId: target.sessionId,
                             event: update.event,
-                          });
-                        return assembleProjectSessionProjection({
-                          sessionId: target.sessionId,
-                          location,
+                          };
+                        const snapshot: ProjectSessionSnapshot = {
+                          identity,
+                          projectName: location.projectName,
                           resolved: false,
                           unread: state.unreadSessionIds.includes(target.sessionId),
-                          primaryConversation: update.snapshot,
-                        }).pipe(
-                          Effect.map((snapshot) => ({
-                            _tag: "Snapshot" as const,
-                            revision: update.revision,
-                            snapshot,
-                          })),
-                        );
+                          conversation: update.snapshot,
+                        };
+                        if (location.managedWorktree !== undefined)
+                          Object.assign(snapshot, { managedWorktree: location.managedWorktree });
+                        return { _tag: "Snapshot", revision: update.revision, snapshot };
                       }),
                     ),
                   ),
@@ -253,16 +287,18 @@ export const observe = Effect.fn("ProjectSessions.observe")(function* (
               // A continuation can be displayed from its durable transcript while checkout
               // setup runs. Runtime acquisition above remains gated until setup completes.
               const preview = yield* inspect(target);
-              const snapshot = yield* assembleProjectSessionProjection({
-                sessionId: target.sessionId,
-                location,
+              const snapshot: ProjectSessionSnapshot = {
+                identity,
+                projectName: location.projectName,
                 resolved: false,
                 unread: state.unreadSessionIds.includes(target.sessionId),
-                primaryConversation: projectPreviewSnapshot({
+                conversation: projectPreviewSnapshot({
                   ...preview,
                   workspacePath: preview.workingDirectory,
                 }),
-              });
+              };
+              if (location.managedWorktree !== undefined)
+                Object.assign(snapshot, { managedWorktree: location.managedWorktree });
               return Stream.succeed({
                 _tag: "Snapshot",
                 revision: 0,

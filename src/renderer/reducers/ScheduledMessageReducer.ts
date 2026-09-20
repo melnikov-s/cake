@@ -1,9 +1,9 @@
 import { applySnapshot, batch } from "r-state-tree";
 import type { ScheduledMessageUpdate } from "../../domain/scheduled-messages/scheduled-message-data";
-import type { CakeSession } from "../models/CakeSession";
+import type { Conversation } from "../models/Conversation";
 import { ScheduledMessage } from "../models/ScheduledMessage";
 
-export function applyScheduledMessageUpdate(model: CakeSession, update: ScheduledMessageUpdate) {
+export function applyScheduledMessageUpdate(model: Conversation, update: ScheduledMessageUpdate) {
   if (update._tag === "Snapshot") {
     batch(() => {
       model.scheduledMessages.splice(

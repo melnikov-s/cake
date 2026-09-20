@@ -1,5 +1,5 @@
 import { Store, child, createStore, effect as reactiveEffect } from "r-state-tree";
-import type { CakeSession } from "../models/CakeSession";
+import type { Conversation } from "../models/Conversation";
 import type { ModelPreset, ConversationSnapshot, UiPart } from "../../ipc/session-contract";
 import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import type { StoreEvent } from "../events/StoreEvent";
@@ -65,7 +65,7 @@ interface ConversationChatCapabilities {
 
 export interface ConversationSessionStoreProps {
   sessionId: string;
-  model: CakeSession;
+  model: Conversation;
   operations: SessionOperationCoordinatorStore;
   canSubmit(): boolean;
   /** Creates the kind-specific runtime profile for a not-yet-materialized session. */
@@ -394,8 +394,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
 
   /** Keeps pending interaction state visible until restored live observation is attached. */
   private waitForActiveProjection(afterRevision: number): Promise<boolean> {
-    if (!this.model.resolved && this.model.observedSnapshotRevision > afterRevision)
-      return Promise.resolve(true);
+    if (this.model.observedSnapshotRevision > afterRevision) return Promise.resolve(true);
     if (this.signal.aborted) return Promise.resolve(false);
     return new Promise((resolve) => {
       let settled = false;
@@ -409,8 +408,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       const abort = () => finish(false);
       this.signal.addEventListener("abort", abort, { once: true });
       const dispose = reactiveEffect(() => {
-        if (!this.model.resolved && this.model.observedSnapshotRevision > afterRevision)
-          queueMicrotask(() => finish(true));
+        if (this.model.observedSnapshotRevision > afterRevision) queueMicrotask(() => finish(true));
       });
     });
   }

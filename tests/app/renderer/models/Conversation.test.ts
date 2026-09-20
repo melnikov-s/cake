@@ -1,7 +1,7 @@
 import { toSnapshot } from "r-state-tree";
 import { expect, it } from "vitest";
 import type { ConversationSnapshot } from "../../../../src/domain/conversations/conversation-data";
-import { CakeSession } from "../../../../src/renderer/models/CakeSession";
+import { Conversation } from "../../../../src/renderer/models/Conversation";
 import {
   messageSnapshots,
   applyPartUpdate,
@@ -9,7 +9,7 @@ import {
 import { applyConversationSnapshot } from "../../../../src/renderer/reducers/ConversationReducer";
 
 it("memoizes projected transcript parts until a message changes", () => {
-  const model = CakeSession.create({
+  const model = Conversation.create({
     sessionId: "s",
     parts: [
       {
@@ -40,7 +40,7 @@ it("memoizes projected transcript parts until a message changes", () => {
 });
 
 it("hydrates a complete authoritative conversation snapshot", () => {
-  const model = CakeSession.create({ sessionId: "s", workingDirectory: "/p" });
+  const model = Conversation.create({ sessionId: "s", workingDirectory: "/p" });
   const snapshot: ConversationSnapshot = {
     workingDirectory: "/p",
     sessionId: "s",
@@ -81,8 +81,8 @@ it("separates Pi entry identity from Cake display-part identity only where neede
     },
     { id: "notice-1", kind: "notice" as const, tone: "info" as const, title: "Notice" },
   ];
-  const first = CakeSession.create({ sessionId: "one", parts: messageSnapshots(parts, "one") });
-  const fork = CakeSession.create({ sessionId: "two", parts: messageSnapshots(parts, "two") });
+  const first = Conversation.create({ sessionId: "one", parts: messageSnapshots(parts, "one") });
+  const fork = Conversation.create({ sessionId: "two", parts: messageSnapshots(parts, "two") });
   expect(first.parts[0]!.piId).toBe("a1b2c3d4");
   expect(first.parts[1]!.piId).toBe("a1b2c3d4");
   expect(first.parts[0]!.id).not.toBe(first.parts[1]!.id);
@@ -95,7 +95,7 @@ it("separates Pi entry identity from Cake display-part identity only where neede
   applyPartUpdate(first.parts, { ...textPart, text: "Updated" }, "one");
   expect(first.parts[0]).toBe(message);
   expect(message.piId).toBe("a1b2c3d4");
-  const restored = CakeSession.create(toSnapshot(first));
+  const restored = Conversation.create(toSnapshot(first));
   expect(restored.parts[0]!.piId).toBe(message.piId);
   expect(restored.parts[0]!.partKey).toBe(message.partKey);
   first[Symbol.dispose]();
@@ -104,7 +104,7 @@ it("separates Pi entry identity from Cake display-part identity only where neede
 });
 
 it("keeps Pi tree navigation identifiers distinct from renderer identity", () => {
-  const session = CakeSession.create({ sessionId: "session" });
+  const session = Conversation.create({ sessionId: "session" });
   applyConversationSnapshot(session, {
     sessionId: "session",
     workingDirectory: "/project",

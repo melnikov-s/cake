@@ -1,5 +1,5 @@
 import { Store, child, createStore } from "r-state-tree";
-import type { CakeSession } from "../models/CakeSession";
+import type { Conversation } from "../models/Conversation";
 import type { UiPart } from "../../ipc/session-contract";
 import { toolOperationName } from "../../utils/cake-tool";
 import {
@@ -16,7 +16,7 @@ type ToolPart = Extract<UiPart, { kind: "tool" }>;
 /** Owns live and historical subagent chats belonging to one parent session. */
 export class SubagentActivityStore extends Store<{
   sessionId: string;
-  model: CakeSession;
+  model: Conversation;
   parts(): readonly UiPart[];
 }> {
   get client() {

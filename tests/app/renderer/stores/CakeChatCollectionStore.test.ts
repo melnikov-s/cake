@@ -15,7 +15,7 @@ describe("CakeChatCollectionStore", () => {
     const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
-        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
         tools: () => [],
       }),
       {} as Client,
@@ -66,13 +66,12 @@ describe("CakeChatCollectionStore", () => {
     const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
-        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
         tools: () => [],
       }),
       { cakeChats: { restore }, sessionChats: { prompt, setModel } } as unknown as Client,
     );
     const session = store.registry.load("resolved-chat");
-    session.model.resolved = true;
 
     const submission = session.conversationSessionStore.chatStore.submit("Continue");
 
@@ -82,8 +81,6 @@ describe("CakeChatCollectionStore", () => {
     expect(session.conversationSessionStore.chatStore.loading).toBe(true);
     await Promise.resolve();
     expect(prompt).not.toHaveBeenCalled();
-
-    session.model.resolved = false;
     session.model.observedSnapshotRevision += 1;
     await expect(submission).resolves.toBe(true);
 
@@ -92,14 +89,10 @@ describe("CakeChatCollectionStore", () => {
       { sessionId: "resolved-chat", tools: [] },
       expect.anything(),
     );
-
-    session.model.resolved = true;
     const selection =
       session.conversationSessionStore.configurationStore.selectModel("openai/gpt-5");
     await Promise.resolve();
     expect(setModel).not.toHaveBeenCalled();
-
-    session.model.resolved = false;
     session.model.observedSnapshotRevision += 1;
     await selection;
 
@@ -118,7 +111,7 @@ describe("CakeChatCollectionStore", () => {
       const { root, subject: store } = mountWithClient(
         createStore(CakeChatCollectionStore, {
           catalog,
-          sessionModel: (sessionId) => models.cakeChat(sessionId),
+          sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
           tools: () => [],
         }),
         {} as Client,
@@ -148,7 +141,7 @@ describe("CakeChatCollectionStore", () => {
     const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
-        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
         tools: () => [],
       }),
       (operation === "rename"
@@ -188,7 +181,7 @@ describe("CakeChatCollectionStore", () => {
     const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
-        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
         tools: () => [],
       }),
       { cakeChats: { start: prompt } } as unknown as Client,
@@ -218,7 +211,7 @@ describe("CakeChatCollectionStore", () => {
     const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
-        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
         tools: () => [],
       }),
       { cakeChats: { start: prompt } } as unknown as Client,
@@ -264,7 +257,7 @@ describe("CakeChatCollectionStore", () => {
     const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
-        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
         tools: () => [],
       }),
       {} as Client,
@@ -292,7 +285,7 @@ describe("CakeChatCollectionStore", () => {
     const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
-        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
         tools: () => [],
       }),
       {} as Client,
@@ -316,7 +309,7 @@ describe("CakeChatCollectionStore", () => {
     const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
-        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
         tools: () => [],
       }),
       { cakeChats: { rename } } as unknown as Client,
@@ -345,7 +338,7 @@ describe("CakeChatCollectionStore", () => {
     const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
-        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
         tools: () => [],
       }),
       { cakeChats: { deleteResolved } } as unknown as Client,
@@ -371,7 +364,7 @@ describe("CakeChatCollectionStore", () => {
     const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
-        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
         tools: () => [],
       }),
       { cakeChats: { start: prompt } } as unknown as Client,
@@ -431,7 +424,7 @@ describe("CakeChatCollectionStore", () => {
     const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
-        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
         tools: () => [],
       }),
       { cakeChats: { open } } as unknown as Client,
@@ -462,7 +455,7 @@ describe("CakeChatCollectionStore", () => {
     const { root, subject: store } = mountWithClient(
       createStore(CakeChatCollectionStore, {
         catalog,
-        sessionModel: (sessionId) => models.cakeChat(sessionId),
+        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
         tools: () => [],
       }),
       { cakeChats: { start }, sessionChats: { prompt } } as unknown as Client,

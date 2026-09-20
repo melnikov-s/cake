@@ -12,7 +12,7 @@ const createCollection = () => {
   const mounted = mountWithClient(
     createStore(CakeChatCollectionStore, {
       catalog,
-      sessionModel: (sessionId) => models.cakeChat(sessionId),
+      sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
       tools: () => [],
     }),
     {} as Client,

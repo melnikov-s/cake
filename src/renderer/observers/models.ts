@@ -37,7 +37,7 @@ import type { RootStore } from "../stores/RootStore";
 import type { CakeChatCatalog } from "../models/CakeChatCatalog";
 import type { ProjectCatalog } from "../models/ProjectCatalog";
 import type { RootProjection } from "../models/RootProjection";
-import type { CakeSession } from "../models/CakeSession";
+import type { Conversation } from "../models/Conversation";
 import type { SessionCatalog } from "../models/SessionCatalog";
 import type { WorktreeCatalog } from "../models/WorktreeCatalog";
 import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
@@ -98,13 +98,16 @@ type ModelInput = {
   readonly projectSessionCatalogQueries?: ReadonlyArray<ProjectSessionCatalogQuery>;
   readonly cakeChatCatalog: CakeChatCatalog;
   readonly cakeChatCatalogQueries?: ReadonlyArray<CakeChatCatalogQuery>;
-  readonly projectSessions: ReadonlyArray<{ target: ProjectSessionTarget; model: CakeSession }>;
+  readonly projectSessions: ReadonlyArray<{ target: ProjectSessionTarget; model: Conversation }>;
   /** Parents observed for their Discussion catalog only. */
-  readonly discussionCatalogs?: ReadonlyArray<{ target: ProjectSessionTarget; model: CakeSession }>;
-  readonly cakeChats: ReadonlyArray<{ target: CakeChatTarget; model: CakeSession }>;
+  readonly discussionCatalogs?: ReadonlyArray<{
+    target: ProjectSessionTarget;
+    model: Conversation;
+  }>;
+  readonly cakeChats: ReadonlyArray<{ target: CakeChatTarget; model: Conversation }>;
   readonly discussionSessions?: ReadonlyArray<{
     thread: ReviewThread;
-    model: CakeSession;
+    model: Conversation;
     tools?: ReadonlyArray<CakeControlTool>;
   }>;
 };
@@ -160,19 +163,19 @@ export const createModelObserver = (
   };
 
   const assertSessionIdentity = (
-    model: CakeSession,
+    model: Conversation,
     sessionId: string,
     workingDirectory?: string,
   ) => {
     if (model.sessionId !== sessionId)
-      throw new Error(`Cake Session Model identity collision: ${sessionId}`);
+      throw new Error(`Conversation Model identity collision: ${sessionId}`);
     if (
       model.sessionFile &&
       workingDirectory &&
       model.workingDirectory &&
       model.workingDirectory !== workingDirectory
     )
-      throw new Error(`Cake Session Model Working Directory collision: ${sessionId}`);
+      throw new Error(`Conversation Model Working Directory collision: ${sessionId}`);
   };
 
   const sync = (input: ModelInput) => {
@@ -188,7 +191,7 @@ export const createModelObserver = (
       observeModelStream(key, model, stream, apply, options);
     };
 
-    const observeDiscussionCatalog = (target: ProjectSessionTarget, model: CakeSession) =>
+    const observeDiscussionCatalog = (target: ProjectSessionTarget, model: Conversation) =>
       observe(
         `discussion-catalog:${target.sessionId}`,
         model,
@@ -346,27 +349,32 @@ export const createModelObserver = (
       if (loadedProjectSessions) {
         const loadedIds = new Set(loadedProjectSessions.map(({ sessionId }) => sessionId));
         for (const target of loadedProjectSessions)
-          source.projection.projectSession(target.sessionId, target.workingDirectory);
-        for (const sessionId of source.projection.projectSessions.map(({ sessionId }) => sessionId))
-          if (!loadedIds.has(sessionId)) source.projection.removeProjectSession(sessionId);
+          source.projection.projectConversation(target.sessionId, target.workingDirectory);
+        for (const sessionId of source.projection.projectConversations.map(
+          ({ sessionId }) => sessionId,
+        ))
+          if (!loadedIds.has(sessionId)) source.projection.removeProjectConversation(sessionId);
       }
       const loadedCakeChatIds = source.loadedCakeChatIds?.();
       if (loadedCakeChatIds) {
         const loadedIds = new Set(loadedCakeChatIds);
-        for (const sessionId of loadedCakeChatIds) source.projection.cakeChat(sessionId);
-        for (const sessionId of source.projection.cakeChats.map(({ sessionId }) => sessionId))
-          if (!loadedIds.has(sessionId)) source.projection.removeCakeChat(sessionId);
+        for (const sessionId of loadedCakeChatIds)
+          source.projection.cakeChatConversation(sessionId);
+        for (const sessionId of source.projection.cakeChatConversations.map(
+          ({ sessionId }) => sessionId,
+        ))
+          if (!loadedIds.has(sessionId)) source.projection.removeCakeChatConversation(sessionId);
       }
       const projectSessions = source.projectSessionTargets().map((target) => ({
         target,
-        model: source.projection.projectSession(target.sessionId, target.workingDirectory),
+        model: source.projection.projectConversation(target.sessionId, target.workingDirectory),
       }));
       const observedIds = new Set(projectSessions.map(({ target }) => target.sessionId));
       const discussionCatalogs = (source.stagedProjectSessionTargets?.() ?? [])
         .filter((target) => !observedIds.has(target.sessionId))
         .map((target) => ({
           target,
-          model: source.projection.projectSession(target.sessionId, target.workingDirectory),
+          model: source.projection.projectConversation(target.sessionId, target.workingDirectory),
         }));
       // Every observed parent's threads with a sidecar own a live conversation
       // Model; sidecars whose thread or parent left the window are released.
@@ -374,10 +382,11 @@ export const createModelObserver = (
         model.reviewThreads.filter(hasSidecarConversation),
       );
       const liveSidecarIds = new Set(liveThreads.map((thread) => thread.sidecarSessionId!));
-      for (const sessionId of source.projection.discussionSessions.map(
+      for (const sessionId of source.projection.discussionConversations.map(
         ({ sessionId }) => sessionId,
       ))
-        if (!liveSidecarIds.has(sessionId)) source.projection.removeDiscussionSession(sessionId);
+        if (!liveSidecarIds.has(sessionId))
+          source.projection.removeDiscussionConversation(sessionId);
       sync({
         projects: source.projection.projects,
         sessionCatalog: source.projection.sessionCatalog,
@@ -390,12 +399,12 @@ export const createModelObserver = (
         discussionCatalogs,
         cakeChats: source.cakeChatTargets().map((target) => ({
           target,
-          model: source.projection.cakeChat(target.sessionId),
+          model: source.projection.cakeChatConversation(target.sessionId),
         })),
         discussionSessions: liveThreads.map((thread) => {
           const entry = {
             thread,
-            model: source.projection.discussionSession(
+            model: source.projection.discussionConversation(
               thread.sidecarSessionId!,
               thread.workingDirectory,
             ),

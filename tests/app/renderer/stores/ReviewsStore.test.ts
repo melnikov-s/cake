@@ -7,7 +7,7 @@ import {
 } from "../../../../src/domain/discussion-sessions/discussion-session-data";
 import type { ConversationSnapshot } from "../../../../src/domain/conversations/conversation-data";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
-import type { CakeSession } from "../../../../src/renderer/models/CakeSession";
+import type { Conversation } from "../../../../src/renderer/models/Conversation";
 import {
   applyConversationSnapshot,
   applyDiscussionSessionUpdate,
@@ -35,7 +35,7 @@ class ReviewsHarnessStore extends Store<{
     return createStore(ReviewsStore, {
       sessionRegistry: this.props.sessionRegistry,
       discussionSessionModel: (sessionId, workingDirectory) =>
-        this.props.projection.discussionSession(sessionId, workingDirectory),
+        this.props.projection.discussionConversation(sessionId, workingDirectory),
       operations: this.props.operations,
       modelPresets: () => [],
       openModelPresetSettings: () => undefined,
@@ -130,7 +130,7 @@ function fixture(
   client: Partial<Record<keyof Client, unknown>>,
 ) {
   const projection = RootProjection.create({});
-  const parent = projection.projectSession("parent-1", "/project");
+  const parent = projection.projectConversation("parent-1", "/project");
   applyConversationSnapshot(
     parent,
     conversation("parent-1", {
@@ -154,9 +154,9 @@ function fixture(
       updatedAt: "2026-01-01T00:00:00.000Z",
     })),
   });
-  const sidecars = new Map<string, CakeSession>();
+  const sidecars = new Map<string, Conversation>();
   for (const thread of threads) {
-    const sidecar = projection.discussionSession(`sidecar-${thread.id}`, "/project");
+    const sidecar = projection.discussionConversation(`sidecar-${thread.id}`, "/project");
     sidecars.set(thread.id, sidecar);
     if (thread.observed === false) continue;
     applyDiscussionSessionUpdate(sidecar, sidecar.sessionId, {

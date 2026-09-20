@@ -122,8 +122,12 @@ Session Family membership. Those authorities remain focused: the aggregate
 projection joins bounded references and summaries rather than copying Pi
 transcripts, artifact payloads, Git state, or review storage into a god object.
 
-The main/domain layer assembles the validated `ProjectSessionProjection`; the
-renderer consumes it and does not define Project Session ownership.
+The main/domain layer assembles the validated `ProjectSessionProjection` as a
+fresh, on-demand aggregate read. It identifies the primary Conversation by a
+bounded `ConversationReference`; it never embeds `ConversationSnapshot`. This
+aggregate read is distinct from the focused Project Session Conversation
+observation used by chat surfaces. The renderer may consume the projection but
+does not define Project Session ownership.
 
 ### Cake Chat Session
 

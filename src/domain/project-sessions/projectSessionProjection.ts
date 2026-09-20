@@ -8,7 +8,6 @@ import {
   familyMember,
 } from "../../services/storage/SessionFamilyStorage";
 import { SubagentCoordinator } from "../../services/subagents/SubagentCoordinator";
-import type { ConversationSnapshot } from "../conversations/conversation-data";
 import type { ProjectSessionLocation } from "./project-session-data";
 import {
   ProjectSessionProjection,
@@ -26,7 +25,6 @@ export const assemble = Effect.fn("ProjectSessions.assembleProjection")(function
   readonly location: ProjectSessionLocation;
   readonly resolved: boolean;
   readonly unread: boolean;
-  readonly primaryConversation: ConversationSnapshot;
 }) {
   const reviews = yield* ReviewStorage;
   const subagents = yield* SubagentCoordinator;
@@ -81,7 +79,7 @@ export const assemble = Effect.fn("ProjectSessions.assembleProjection")(function
     project: { path: input.location.projectPath, name: input.location.projectName },
     workingDirectory,
     lifecycle: { resolved: input.resolved, unread: input.unread },
-    primaryConversation: input.primaryConversation,
+    primaryConversation: { sessionId: input.sessionId },
     discussionSessions: reviewRecords.flatMap((record) =>
       record.agentSessionId === undefined
         ? []

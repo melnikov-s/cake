@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DiscussionThread } from "../../../../src/domain/discussion-sessions/discussion-session-data";
 import type { ConversationSnapshot } from "../../../../src/domain/conversations/conversation-data";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
-import { CakeSession } from "../../../../src/renderer/models/CakeSession";
+import { Conversation } from "../../../../src/renderer/models/Conversation";
 import { applyDiscussionSessionUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
 import { applyDiscussionCatalogUpdate } from "../../../../src/renderer/reducers/DiscussionReducer";
 
@@ -44,7 +44,7 @@ const conversation = (sessionId: string): ConversationSnapshot => ({
 
 describe("DiscussionReducer", () => {
   it("reconciles threads in order without reapplying unrelated session state", () => {
-    const session = CakeSession.create({
+    const session = Conversation.create({
       sessionId: "session",
       usage: {
         tokens: { input: 1, output: 0, cacheRead: 0, cacheWrite: 0, total: 1 },
@@ -81,8 +81,8 @@ describe("DiscussionReducer", () => {
 
   it("keeps the live sidecar conversation apart from catalog metadata refreshes", () => {
     const projection = RootProjection.create({});
-    const parent = projection.projectSession("session", "/project");
-    const sidecar = projection.discussionSession("sidecar-one", "/project");
+    const parent = projection.projectConversation("session", "/project");
+    const sidecar = projection.discussionConversation("sidecar-one", "/project");
     const linked: DiscussionThread = {
       ...thread("one"),
       sidecarSessionId: "sidecar-one",
@@ -169,12 +169,12 @@ describe("DiscussionReducer", () => {
     expect(sidecar.parts[1]).toBe(answer);
     expect(sidecar.uiParts.map((part) => part.id)).toEqual(["user-1", "assistant-1"]);
     expect(sidecar.streaming).toBe(true);
-    expect(projection.findDiscussionSession("sidecar-one")).toBe(sidecar);
+    expect(projection.findDiscussionConversation("sidecar-one")).toBe(sidecar);
     projection[Symbol.dispose]();
   });
 
   it("rejects sidecar updates addressed to another conversation", () => {
-    const sidecar = CakeSession.create({ sessionId: "sidecar-one" });
+    const sidecar = Conversation.create({ sessionId: "sidecar-one" });
     expect(() =>
       applyDiscussionSessionUpdate(sidecar, "sidecar-one", {
         _tag: "Snapshot",
@@ -198,7 +198,7 @@ describe("DiscussionReducer", () => {
   });
 
   it("validates every catalog row before mutating the collection", () => {
-    const session = CakeSession.create({ sessionId: "session" });
+    const session = Conversation.create({ sessionId: "session" });
     expect(() =>
       applyDiscussionCatalogUpdate(session, "session", {
         _tag: "Snapshot",

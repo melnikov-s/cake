@@ -788,7 +788,7 @@ export class RootStore extends Store<{
       operations: this.sessionOperationCoordinator,
       reviews: () => this.reviewsStore,
       sessionModel: (sessionId, workingDirectory) =>
-        this.props.projection.projectSession(sessionId, workingDirectory),
+        this.props.projection.projectConversation(sessionId, workingDirectory),
       artifactModel: this.props.projection.artifacts,
       canSubmit: (sessionId) => this.projectWorkbenchStore.canSubmitSession(sessionId),
       isActive: (sessionId) =>
@@ -998,7 +998,7 @@ export class RootStore extends Store<{
     return createStore(ReviewsStore, {
       sessionRegistry: this.sessionRegistry,
       discussionSessionModel: (sessionId, workingDirectory) =>
-        this.props.projection.discussionSession(sessionId, workingDirectory),
+        this.props.projection.discussionConversation(sessionId, workingDirectory),
       operations: this.sessionOperationCoordinator,
       modelPresets: () => this.settingsStore.modelPresets.presets,
       openModelPresetSettings: () => this.showModelPresetSettings(),
@@ -1099,7 +1099,7 @@ export class RootStore extends Store<{
   get cakeChatCollectionStore(): CakeChatCollectionStore {
     return createStore(CakeChatCollectionStore, {
       catalog: this.cakeChatCatalogModel,
-      sessionModel: (sessionId) => this.props.projection.cakeChat(sessionId),
+      sessionModel: (sessionId) => this.props.projection.cakeChatConversation(sessionId),
       tools: () => this.applicationControlStore.tools(),
       modelPresets: () => this.settingsStore.modelPresets.presets,
       defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,

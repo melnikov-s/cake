@@ -2,7 +2,7 @@ import { Store, child, createStore } from "r-state-tree";
 import { isSessionAssistantThread } from "../../domain/discussion-sessions/discussion-session-data";
 import type { ModelPreset, UiPart } from "../../ipc/session-contract";
 import type { ReviewThread } from "../models/ReviewThread";
-import type { CakeSession } from "../models/CakeSession";
+import type { Conversation } from "../models/Conversation";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ConversationSessionStore } from "./ConversationSessionStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -11,7 +11,7 @@ export interface DiscussionSessionStoreProps {
   /** Cake-owned thread metadata from the parent's Discussion catalog. */
   thread: ReviewThread;
   /** The sidecar's live conversation, observed like any other Cake Session. */
-  model: CakeSession;
+  model: Conversation;
   operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;

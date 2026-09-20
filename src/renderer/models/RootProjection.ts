@@ -4,7 +4,7 @@ import { ArtifactCatalog } from "./ArtifactCatalog";
 import { Resource } from "./Resource";
 import { CakeChatCatalog } from "./CakeChatCatalog";
 import { ProjectCatalog } from "./ProjectCatalog";
-import { CakeSession } from "./CakeSession";
+import { Conversation } from "./Conversation";
 import { SessionCatalog } from "./SessionCatalog";
 import { WorktreeCatalog } from "./WorktreeCatalog";
 import { WorktreeOperationCatalog } from "./WorktreeOperationCatalog";
@@ -19,55 +19,59 @@ export class RootProjection extends Model {
   @child(WorktreeOperationCatalog) worktreeOperations = WorktreeOperationCatalog.create();
   @child(CakeChatCatalog) cakeChatCatalog = CakeChatCatalog.create();
   @child(ArtifactCatalog) artifacts = ArtifactCatalog.create();
-  @child(CakeSession) projectSessions: CakeSession[] = observable([]);
-  @child(CakeSession) cakeChats: CakeSession[] = observable([]);
+  @child(Conversation) projectConversations: Conversation[] = observable([]);
+  @child(Conversation) cakeChatConversations: Conversation[] = observable([]);
   /** Live Discussion Session sidecars, keyed by their own Pi Session ID. */
-  @child(CakeSession) discussionSessions: CakeSession[] = observable([]);
+  @child(Conversation) discussionConversations: Conversation[] = observable([]);
 
-  projectSession(sessionId: string, workingDirectory: string) {
-    const existing = this.findProjectSession(sessionId);
+  projectConversation(sessionId: string, workingDirectory: string) {
+    const existing = this.findProjectConversation(sessionId);
     if (existing) return existing;
-    const session = CakeSession.create({ sessionId, workingDirectory });
-    this.projectSessions.push(session);
+    const session = Conversation.create({ sessionId, workingDirectory });
+    this.projectConversations.push(session);
     return session;
   }
 
-  findProjectSession(sessionId: string) {
-    return this.projectSessions.find((session) => session.sessionId === sessionId);
+  findProjectConversation(sessionId: string) {
+    return this.projectConversations.find((session) => session.sessionId === sessionId);
   }
 
-  removeProjectSession(sessionId: string) {
-    const index = this.projectSessions.findIndex((session) => session.sessionId === sessionId);
-    if (index >= 0) this.projectSessions.splice(index, 1);
+  removeProjectConversation(sessionId: string) {
+    const index = this.projectConversations.findIndex((session) => session.sessionId === sessionId);
+    if (index >= 0) this.projectConversations.splice(index, 1);
   }
 
-  cakeChat(sessionId: string) {
-    const existing = this.cakeChats.find((session) => session.sessionId === sessionId);
+  cakeChatConversation(sessionId: string) {
+    const existing = this.cakeChatConversations.find((session) => session.sessionId === sessionId);
     if (existing) return existing;
-    const session = CakeSession.create({ sessionId });
-    this.cakeChats.push(session);
+    const session = Conversation.create({ sessionId });
+    this.cakeChatConversations.push(session);
     return session;
   }
 
-  removeCakeChat(sessionId: string) {
-    const index = this.cakeChats.findIndex((session) => session.sessionId === sessionId);
-    if (index >= 0) this.cakeChats.splice(index, 1);
+  removeCakeChatConversation(sessionId: string) {
+    const index = this.cakeChatConversations.findIndex(
+      (session) => session.sessionId === sessionId,
+    );
+    if (index >= 0) this.cakeChatConversations.splice(index, 1);
   }
 
-  discussionSession(sessionId: string, workingDirectory: string) {
-    const existing = this.findDiscussionSession(sessionId);
+  discussionConversation(sessionId: string, workingDirectory: string) {
+    const existing = this.findDiscussionConversation(sessionId);
     if (existing) return existing;
-    const session = CakeSession.create({ sessionId, workingDirectory });
-    this.discussionSessions.push(session);
+    const session = Conversation.create({ sessionId, workingDirectory });
+    this.discussionConversations.push(session);
     return session;
   }
 
-  findDiscussionSession(sessionId: string) {
-    return this.discussionSessions.find((session) => session.sessionId === sessionId);
+  findDiscussionConversation(sessionId: string) {
+    return this.discussionConversations.find((session) => session.sessionId === sessionId);
   }
 
-  removeDiscussionSession(sessionId: string) {
-    const index = this.discussionSessions.findIndex((session) => session.sessionId === sessionId);
-    if (index >= 0) this.discussionSessions.splice(index, 1);
+  removeDiscussionConversation(sessionId: string) {
+    const index = this.discussionConversations.findIndex(
+      (session) => session.sessionId === sessionId,
+    );
+    if (index >= 0) this.discussionConversations.splice(index, 1);
   }
 }

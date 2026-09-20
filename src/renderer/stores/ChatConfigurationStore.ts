@@ -5,12 +5,12 @@ import type {
   ModelPreset,
   ThinkingLevel,
 } from "../../ipc/session-contract";
-import type { CakeSession } from "../models/CakeSession";
+import type { Conversation } from "../models/Conversation";
 import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
 
 export interface ChatConfigurationStoreProps {
-  session(): CakeSession | undefined;
+  session(): Conversation | undefined;
   operations: {
     start(owner?: string): string;
     finish(operationId: string): void;

@@ -5,7 +5,7 @@ import {
 } from "../../domain/discussion-sessions/discussion-session-data";
 import type { Annotation, ModelPreset } from "../../ipc/session-contract";
 import type { ReviewThread } from "../models/ReviewThread";
-import type { CakeSession } from "../models/CakeSession";
+import type { Conversation } from "../models/Conversation";
 import { ClientContext } from "./context/ClientContext";
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
 import { describeError } from "../lib/error-details";
@@ -19,7 +19,7 @@ import { AnnotationDraftStore } from "./AnnotationDraftStore";
 export interface ReviewsStoreProps {
   sessionRegistry: SessionRegistryStore;
   /** The live conversation Model for one Discussion sidecar (created on demand). */
-  discussionSessionModel(sessionId: string, workingDirectory: string): CakeSession;
+  discussionSessionModel(sessionId: string, workingDirectory: string): Conversation;
   operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;

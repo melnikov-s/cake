@@ -63,11 +63,13 @@ Every durable concept has one authority.
 
 Do not introduce a second transcript database, reconstruct Pi state into a
 competing domain model, or mutate Pi JSONL with ad hoc file operations. Main
-assembles each validated `ProjectSessionProjection` from the Project Session's
-primary Conversation and bounded references or summaries from Project,
-Working Directory, lifecycle, Discussion Session, Subagent Session, review,
-artifact-link, and Session Family authorities. The projection is an aggregate
-read contract, not a new persistence authority or payload-owning god object. A session
+assembles each validated `ProjectSessionProjection` on demand from bounded
+references or summaries supplied by Project, Working Directory, lifecycle,
+Discussion Session, Subagent Session, review, artifact-link, and Session Family
+authorities. Its `primaryConversation` is a `ConversationReference`, never an
+embedded transcript snapshot. The projection is an aggregate read contract,
+not a new persistence authority, a live Conversation stream, or a payload-owning
+god object. A session
 cannot be archived while its Pi turn is active. When the calling agent requests
 its own resolution during that turn, the runtime records the intent and applies
 it at the settled-turn boundary, after the final transcript snapshot is emitted.
@@ -550,9 +552,13 @@ The window Store hierarchy mirrors the product surfaces:
   Pi remains the transcript authority once the session starts. The Working
   Directory remains routing/storage context for the Pi runtime, not part of
   session identity. Cake Chat never enters this registry.
-- Each `ProjectSessionStore` consumes the main-assembled, Schema-validated
-  `ProjectSessionProjection`; it does not define the aggregate or infer domain
-  ownership. It owns that session's activity, remembered `normal`/`vscode`/`draw`
+- Each `ProjectSessionStore` composes the focused renderer Conversation,
+  catalog, review, subagent, scheduled-message, and artifact projections needed
+  by the current surface. It does not define the Project Session aggregate or
+  infer domain ownership. `ProjectSessionProjection` remains a separate,
+  Schema-validated on-demand main read rather than being flattened into the
+  renderer `Conversation` Model. The Store owns that session's activity,
+  remembered `normal`/`vscode`/`draw`
   presentation preference and shared workspace chat-drawer geometry, managed-worktree status and
   action presentation, artifact accessory-panel workflow, and message comments. Its focused
   `DrawStore` child owns board navigation, the remembered active board, editor readiness, agent
@@ -662,7 +668,7 @@ The window Store hierarchy mirrors the product surfaces:
   its identity and draft may be restored from window state without implying that a transcript file
   exists. Each visible Cake Chat pane may hold its own pending conversation and retains an
   independent composer. Persisted Cake Chat sessions keep live runtimes as they are opened. The
-  window's renderer Model owner retains each projected `CakeSession` independently of Store or React
+  window's renderer Model owner retains each projected `Conversation` independently of Store or React
   lifetimes and disposes Models only after Model synchronization has stopped. Project and Cake Chat
   session Stores receive those Models rather than creating or disposing them. Cake Chat snapshots
   and deltas route through the registry, independently of project-session registry and workbench
@@ -704,7 +710,7 @@ flowchart TD
   PendingSessions --> ProjectPendingConversation["PendingConversationStore per pending Project identity"]
   Registry --> ObservationRetention["SessionObservationRetentionStore"]
   Registry --> Session["ProjectSessionStore (one per loaded target)"]
-  Session --> Model["CakeSession projection"]
+  Session --> Model["Conversation projection"]
   Session --> Conversation["ConversationSessionStore"]
   Conversation --> Composer["ConversationComposerStore"]
   Composer --> ComposerDraft["ComposerDraftStore"]

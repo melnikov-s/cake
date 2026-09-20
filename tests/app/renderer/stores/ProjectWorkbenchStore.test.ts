@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { workingDirectoryEditorLocation } from "../../../../src/ipc/editor-location";
 import type { DrawControl } from "../../../../src/domain/draw/draw-control";
 import type { Client } from "../../../../src/renderer/client/Client";
-import { CakeSession } from "../../../../src/renderer/models/CakeSession";
+import { Conversation } from "../../../../src/renderer/models/Conversation";
 import type { ExtensionUiStore } from "../../../../src/renderer/stores/ExtensionUiStore";
 import type { ProjectCatalogStore } from "../../../../src/renderer/stores/ProjectCatalogStore";
 import { ProjectWorkbenchStore } from "../../../../src/renderer/stores/ProjectWorkbenchStore";
@@ -460,7 +460,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
     const opened = new Promise<void>((resolve) => {
       finishOpen = resolve;
     });
-    const model = CakeSession.create({ sessionId: "forked", workingDirectory: "/worktree" });
+    const model = Conversation.create({ sessionId: "forked", workingDirectory: "/worktree" });
     const session = loadedSessionStub(model, "/worktree");
     const registry = {
       findSession: (sessionId: string) => (sessionId === "forked" ? session : undefined),
@@ -494,7 +494,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
   });
 
   it("opens the runtime for a selected identity-only fork", async () => {
-    const model = CakeSession.create({ sessionId: "forked", workingDirectory: "/worktree" });
+    const model = Conversation.create({ sessionId: "forked", workingDirectory: "/worktree" });
     const session = loadedSessionStub(model, "/worktree");
     const open = vi.fn(async () => {
       model.sessionFile = "/sessions/forked.jsonl";
@@ -531,7 +531,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
   });
 
   it("keeps the source session visible while a continuation snapshot hydrates", async () => {
-    const model = CakeSession.create({ sessionId: "continuation", workingDirectory: "/project" });
+    const model = Conversation.create({ sessionId: "continuation", workingDirectory: "/project" });
     const session = loadedSessionStub(model);
     const registry = {
       findSession: (sessionId: string) => (sessionId === "continuation" ? session : undefined),

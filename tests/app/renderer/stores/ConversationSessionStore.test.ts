@@ -14,8 +14,8 @@ function fixture(
   const models = RootProjection.create();
   const model =
     profile === "project"
-      ? models.projectSession("session-1", "/project")
-      : models.cakeChat("session-1");
+      ? models.projectConversation("session-1", "/project")
+      : models.cakeChatConversation("session-1");
   const operations = mount(createStore(SessionOperationCoordinatorStore));
   const deliver = vi.fn<(input: unknown, options?: unknown) => Promise<boolean>>(async () => true);
   const editMessage = vi.fn<(input: unknown, options?: unknown) => Promise<undefined>>(

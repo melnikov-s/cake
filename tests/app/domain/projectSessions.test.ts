@@ -816,8 +816,7 @@ describe("Project Sessions domain", () => {
         );
         const childInitial = yield* Queue.take(childUpdates);
         assert.equal(childInitial._tag, "Snapshot");
-        if (childInitial._tag === "Snapshot")
-          assert.equal(childInitial.snapshot.lifecycle.resolved, false);
+        if (childInitial._tag === "Snapshot") assert.equal(childInitial.snapshot.resolved, false);
 
         yield* projectSessionLifecycle.resolve({ sessionId: "parent" });
         yield* Queue.take(received);
@@ -860,8 +859,7 @@ describe("Project Sessions domain", () => {
         assertFamily(false);
         const childRestored = yield* Queue.take(childUpdates);
         assert.equal(childRestored._tag, "Snapshot");
-        if (childRestored._tag === "Snapshot")
-          assert.equal(childRestored.snapshot.lifecycle.resolved, false);
+        if (childRestored._tag === "Snapshot") assert.equal(childRestored.snapshot.resolved, false);
         assert.deepEqual(restored, ["parent"]);
         for (const id of nestedFamilyIds)
           assert.equal((yield* projectSessionMetadata.inspect({ sessionId: id })).resolved, false);
@@ -994,8 +992,7 @@ describe("Project Sessions domain", () => {
             const updates = yield* projectSessionOperations.observe({ sessionId: "grandchild" });
             const [initial] = yield* updates.pipe(Stream.take(1), Stream.runCollect);
             assert.equal(initial?._tag, "Snapshot");
-            if (initial?._tag === "Snapshot")
-              assert.equal(initial.snapshot.lifecycle.resolved, true);
+            if (initial?._tag === "Snapshot") assert.equal(initial.snapshot.resolved, true);
           }
         }).pipe(
           Effect.provide(
@@ -2691,6 +2688,34 @@ describe("Project Sessions domain", () => {
     );
   });
 
+  it.effect("reads a fresh Project Session aggregate without embedding its transcript", () =>
+    Effect.gen(function* () {
+      const projection = yield* projectSessionOperations.readProjection({
+        sessionId: "session-1",
+        workingDirectory: "/project",
+      });
+
+      assert.deepEqual(projection.identity, {
+        _tag: "ProjectSession",
+        sessionId: "session-1",
+        projectPath: "/project",
+        workingDirectory: "/project",
+      });
+      assert.deepEqual(projection.project, { path: "/project", name: "Project" });
+      assert.deepEqual(projection.workingDirectory, { path: "/project" });
+      assert.deepEqual(projection.lifecycle, { resolved: false, unread: true });
+      assert.deepEqual(projection.primaryConversation, { sessionId: "session-1" });
+      assert.equal("parts" in projection.primaryConversation, false);
+    }).pipe(
+      Effect.provide(
+        makeLayer({
+          ...defaultApplicationState(),
+          unreadSessionIds: ["session-1"],
+        }),
+      ),
+    ),
+  );
+
   it.effect("previews a resolved session without restoring or constructing its runtime", () => {
     let runtimeConstructions = 0;
     let inspections = 0;
@@ -2705,7 +2730,7 @@ describe("Project Sessions domain", () => {
       assert.equal(preview[0]?._tag, "Snapshot");
       const first = preview[0];
       if (first?._tag === "Snapshot")
-        assert.deepEqual(first.snapshot.primaryConversation.parts[0], {
+        assert.deepEqual(first.snapshot.conversation.parts[0], {
           id: "user-message",
           kind: "text",
           role: "user",

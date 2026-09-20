@@ -444,13 +444,19 @@ type ConversationUpdate =
     };
 ```
 
-A Project Session observation wraps that primary Conversation in a validated
-`ProjectSessionProjection` assembled in main from focused authorities. Subsequent
-focused streams may update related renderer projections without turning the
-aggregate into a second event database. Conversation Events cover messages and
-the broader runtime lifecycle: turn state, message
-parts, tool execution, model selection, usage, compaction, commands, extension
-UI, and failures.
+A Project Session chat observation keeps that primary Conversation path focused.
+Its initial `ProjectSessionSnapshot` carries the `ConversationSnapshot` plus only
+the small Project Session routing/lifecycle surface needed to interpret the
+observation; subsequent events are Conversation events. It does not assemble the
+Project Session aggregate or query review, subagent, artifact, or family
+authorities when a Conversation snapshot arrives.
+
+`ProjectSessionProjection` is instead a fresh on-demand aggregate read assembled
+in main. It carries a bounded `ConversationReference`, not a transcript snapshot.
+Focused streams independently update the renderer projections they own.
+Conversation Events cover messages and the broader runtime lifecycle: turn
+state, message parts, tool execution, model selection, usage, compaction,
+commands, extension UI, and failures.
 
 A Stream is not automatically a durable log. If a renderer reconnects or a
 live transport cannot continue coherently, main asks Pi for a new authoritative
@@ -462,9 +468,11 @@ into Cake Session updates before RPC. The renderer Model observer maps the
 RPC Stream into Model snapshots and applies them.
 
 ```text
-Pi → CakeSessionRuntime → Conversation projection → Project Session aggregate/RPC Stream
-   → Model observer → snapshot hydration / event reduction
-   → reactive r-state-tree Models → Stores/React
+Pi → CakeSessionRuntime → Conversation snapshot/event projection
+   → focused Project Session Conversation RPC Stream → Model observer
+   → renderer Conversation Model → Stores/React
+
+Focused Cake authorities → on-demand ProjectSessionProjection (bounded references only)
 ```
 
 Terminal output, filesystem observation, and other live sources follow the same Scope and Stream principles but define their own event

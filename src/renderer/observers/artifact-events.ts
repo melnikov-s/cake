@@ -24,7 +24,7 @@ export const observeArtifactEvents = (
             sessionStore.sessionArtifactsStore.receive(lineageId);
           void root.artifactLibraryStore.load();
           if (event.type === "artifact-updated") {
-            const session = projection.findProjectSession(event.record.artifact.sessionId);
+            const session = projection.findProjectConversation(event.record.artifact.sessionId);
             if (session) applyArtifactUpdate(session, event.record);
           }
           return;

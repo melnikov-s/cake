@@ -77,8 +77,8 @@ describe("RootProjection", () => {
       createdAt: "2026-01-01",
       updatedAt: "2026-01-01",
     });
-    const first = root.projectSession("one", "/project");
-    const second = root.projectSession("two", "/project");
+    const first = root.projectConversation("one", "/project");
+    const second = root.projectConversation("two", "/project");
     applyArtifactUpdate(first, record("one", 1));
     applyArtifactUpdate(second, record("two", 1));
     const artifact = first.artifacts[0]!;
@@ -95,9 +95,9 @@ describe("RootProjection", () => {
   it("owns sessions and canonical LLM/resource entities through references", () => {
     const root = RootProjection.create();
     const sessions = [
-      root.projectSession("one", "/project"),
-      root.projectSession("two", "/project"),
-      root.cakeChat("chat"),
+      root.projectConversation("one", "/project"),
+      root.projectConversation("two", "/project"),
+      root.cakeChatConversation("chat"),
     ];
     for (const [index, session] of sessions.entries()) {
       const snapshot = conversation(session.sessionId, index === 0);
@@ -128,14 +128,10 @@ describe("RootProjection", () => {
           projectPath: "/project",
           workingDirectory: "/project",
         },
-        project: { path: "/project", name: "Project" },
-        workingDirectory: { path: "/project" },
-        lifecycle: { resolved: false, unread: false },
-        primaryConversation: snapshot,
-        discussionSessions: [],
-        subagentSessions: [],
-        reviewThreads: [],
-        artifactLinks: [],
+        projectName: "Project",
+        resolved: false,
+        unread: false,
+        conversation: snapshot,
       },
     });
     expect(sessions[0]!.modelOptions[0]).toBe(option);
@@ -158,10 +154,10 @@ describe("RootProjection", () => {
     });
     expect(sessions.map((session) => session.parts[0]!.text)).toEqual(["Updated", "two", "chat"]);
     const restored = RootProjection.create(toSnapshot(root));
-    expect(restored.projectSessions[0]!.model).toBe(restored.llmModels[0]);
-    expect(restored.cakeChats[0]!.resources[0]!.resource).toBe(restored.resources[0]);
-    root.removeProjectSession("one");
-    expect(root.projectSession("two", "/project")).toBe(sessions[1]);
+    expect(restored.projectConversations[0]!.model).toBe(restored.llmModels[0]);
+    expect(restored.cakeChatConversations[0]!.resources[0]!.resource).toBe(restored.resources[0]);
+    root.removeProjectConversation("one");
+    expect(root.projectConversation("two", "/project")).toBe(sessions[1]);
     expect(sessions[1]!.model).toBe(root.llmModels[0]);
     restored[Symbol.dispose]();
     root[Symbol.dispose]();

@@ -7,6 +7,7 @@ import { ManagedWorktreeContext } from "../worktrees/managed-worktree-data";
 import {
   CakeSessionIdentity,
   ConversationEvent,
+  ConversationReference,
   ConversationSnapshot,
   SessionChatConfiguration,
   SessionChatPromptInput,
@@ -73,6 +74,18 @@ export const ProjectSessionPreview = Schema.Struct({
 });
 export interface ProjectSessionPreview extends Schema.Schema.Type<typeof ProjectSessionPreview> {}
 
+/** Purpose-built observation surface for a Project Session's primary Conversation. */
+export const ProjectSessionSnapshot = Schema.Struct({
+  identity: CakeSessionIdentity.cases.ProjectSession,
+  projectName: Schema.String,
+  resolved: Schema.Boolean,
+  unread: Schema.Boolean,
+  worktreeName: Schema.optionalKey(Schema.String),
+  managedWorktree: Schema.optionalKey(ManagedWorktreeContext),
+  conversation: ConversationSnapshot,
+});
+export interface ProjectSessionSnapshot extends Schema.Schema.Type<typeof ProjectSessionSnapshot> {}
+
 const ProjectReference = Schema.Struct({
   path: boundedPath,
   name: Schema.String,
@@ -92,32 +105,25 @@ const ProjectSessionLifecycleProjection = Schema.Struct({
   unread: Schema.Boolean,
 });
 
-export const DiscussionSessionReference = Schema.Struct({
+const DiscussionSessionReference = Schema.Struct({
   threadId: boundedId,
   sessionId: boundedId,
   status: Schema.Literals(["open", "resolved"]),
   anchor: Schema.Literals(["file", "message", "session"]),
 });
-export interface DiscussionSessionReference extends Schema.Schema.Type<
-  typeof DiscussionSessionReference
-> {}
 
-export const ReviewThreadReference = Schema.Struct({
+const ReviewThreadReference = Schema.Struct({
   threadId: boundedId,
   status: Schema.Literals(["open", "resolved"]),
   anchor: Schema.Literals(["file", "message", "session"]),
   updatedAt: Schema.String,
 });
-export interface ReviewThreadReference extends Schema.Schema.Type<typeof ReviewThreadReference> {}
 
-export const SubagentSessionReference = Schema.Struct({
+const SubagentSessionReference = Schema.Struct({
   handleId: SubagentHandleId,
   status: SubagentStatus,
   task: boundedText,
 });
-export interface SubagentSessionReference extends Schema.Schema.Type<
-  typeof SubagentSessionReference
-> {}
 
 export const SessionFamilyReference = Schema.Struct({
   familyId: boundedId,
@@ -129,16 +135,15 @@ export const SessionFamilyReference = Schema.Struct({
 export interface SessionFamilyReference extends Schema.Schema.Type<typeof SessionFamilyReference> {}
 
 /**
- * Main-owned aggregate projection for one Project Session. It joins references
- * from their focused authorities and embeds exactly one Pi-authoritative primary
- * Conversation projection; it does not persist or copy related payloads.
+ * Main-owned aggregate read projection for one Project Session. It joins bounded
+ * references from focused authorities without embedding transcripts or payloads.
  */
 export const ProjectSessionProjection = Schema.Struct({
   identity: CakeSessionIdentity.cases.ProjectSession,
   project: ProjectReference,
   workingDirectory: WorkingDirectoryReference,
   lifecycle: ProjectSessionLifecycleProjection,
-  primaryConversation: ConversationSnapshot,
+  primaryConversation: ConversationReference,
   discussionSessions: Schema.Array(DiscussionSessionReference),
   subagentSessions: Schema.Array(SubagentSessionReference),
   reviewThreads: Schema.Array(ReviewThreadReference),
@@ -150,7 +155,7 @@ export interface ProjectSessionProjection extends Schema.Schema.Type<
 > {}
 
 export const ProjectSessionUpdate = Schema.TaggedUnion({
-  Snapshot: { revision: Schema.Int, snapshot: ProjectSessionProjection },
+  Snapshot: { revision: Schema.Int, snapshot: ProjectSessionSnapshot },
   Event: { revision: Schema.Int, sessionId: boundedId, event: ConversationEvent },
   LifecycleChanged: { revision: Schema.Int, sessionId: boundedId, resolved: Schema.Boolean },
 });

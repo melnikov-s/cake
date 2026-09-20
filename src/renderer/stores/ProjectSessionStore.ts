@@ -1,7 +1,7 @@
 import { Store, child, computed, createStore, snapshot } from "r-state-tree";
 import { isSessionAssistantThread } from "../../domain/discussion-sessions/discussion-session-data";
 import type { StoreEvent } from "../events/StoreEvent";
-import type { CakeSession } from "../models/CakeSession";
+import type { Conversation } from "../models/Conversation";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import type { CakeControlTool } from "../../domain/cake-chats/cake-chat-data";
 import type { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore";
@@ -35,7 +35,7 @@ export interface SessionTarget {
 }
 
 export interface ProjectSessionStoreProps extends SessionTarget {
-  model: CakeSession;
+  model: Conversation;
   artifactModel: ArtifactCatalog;
   pendingSessions: ProjectPendingSessionsStore;
   operations: SessionOperationCoordinatorStore;
@@ -346,7 +346,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         placeholder: () =>
           this.isStreaming
             ? "Add the next instruction…"
-            : `Ask Cake to work in ${this.model.projectName || this.props.projectName()}…`,
+            : `Ask Cake to work in ${this.props.projectName()}…`,
         inputLabel: () => "Message",
         sessionCreationChoice: this.props.sessionCreationChoice,
         draftActivationCandidates: this.props.draftActivationCandidates,

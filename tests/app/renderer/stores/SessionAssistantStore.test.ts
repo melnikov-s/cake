@@ -45,7 +45,7 @@ class AssistantHarnessStore extends Store<{
     return createStore(ReviewsStore, {
       sessionRegistry: this.props.sessionRegistry,
       discussionSessionModel: (sessionId, workingDirectory) =>
-        this.props.projection.discussionSession(sessionId, workingDirectory),
+        this.props.projection.discussionConversation(sessionId, workingDirectory),
       operations: this.props.operations,
       modelPresets: () => [],
       openModelPresetSettings: () => undefined,
@@ -61,7 +61,7 @@ class AssistantHarnessStore extends Store<{
       stagedMessages: () => [{ role: "user", text: "Draft the plan" }],
       thread: () =>
         this.props.projection
-          .findProjectSession("parent-1")
+          .findProjectConversation("parent-1")
           ?.reviewThreads.find(isSessionAssistantThread),
       tools: () => [tool],
       discussionSession: (threadId) => this.reviews.discussionSession(threadId),
@@ -112,7 +112,7 @@ const conversation = (
 
 function fixture(options: { threadListed: boolean; staged?: boolean }, client: object) {
   const projection = RootProjection.create({});
-  const parent = projection.projectSession("parent-1", "/project");
+  const parent = projection.projectConversation("parent-1", "/project");
   applyConversationSnapshot(parent, conversation("parent-1"));
   const listThread = (thread: DiscussionThread) =>
     applyDiscussionCatalogUpdate(parent, "parent-1", {
@@ -122,7 +122,7 @@ function fixture(options: { threadListed: boolean; staged?: boolean }, client: o
       threads: [thread],
     });
   const observeSidecar = (parts: ConversationSnapshot["parts"] = [], streaming = false) => {
-    const sidecar = projection.discussionSession("sidecar-assistant", "/project");
+    const sidecar = projection.discussionConversation("sidecar-assistant", "/project");
     applyDiscussionSessionUpdate(sidecar, sidecar.sessionId, {
       _tag: "Snapshot",
       revision: 1,
@@ -171,7 +171,7 @@ function fixture(options: { threadListed: boolean; staged?: boolean }, client: o
 }
 
 const settle = (
-  sidecar: ReturnType<typeof RootProjection.prototype.discussionSession>,
+  sidecar: ReturnType<typeof RootProjection.prototype.discussionConversation>,
   turnId = TurnId.make(crypto.randomUUID()),
 ) => {
   const sessionId = sidecar.sessionId;
@@ -317,7 +317,7 @@ describe("SessionAssistantStore", () => {
       { threadListed: true },
       { discussionSessions: { ensureSessionAssistant }, sessionChats: { prompt, abort } },
     );
-    const sidecar = projection.findDiscussionSession("sidecar-assistant")!;
+    const sidecar = projection.findDiscussionConversation("sidecar-assistant")!;
     const chat = assistant.chatStore;
 
     // The full chat is the side chat's own conversation Store, not a bespoke one.

@@ -5,7 +5,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { applySnapshot, createStore, mount } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CakeSession } from "../../../src/renderer/models/CakeSession";
+import { Conversation } from "../../../src/renderer/models/Conversation";
 import { SideChatContext } from "../../../src/renderer/components/side-chat-context";
 import { SubagentStatus } from "../../../src/renderer/components/subagent-status";
 import { SideChatStore } from "../../../src/renderer/stores/SideChatStore";
@@ -18,13 +18,13 @@ describe("SubagentStatus", () => {
   let root: Root;
   let store: SubagentActivityStore;
   let sideChat: SideChatStore;
-  let model: CakeSession;
+  let model: Conversation;
 
   beforeEach(() => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    model = CakeSession.create({ sessionId: "parent" });
+    model = Conversation.create({ sessionId: "parent" });
     sideChat = mount(createStore(SideChatStore, {}));
     store = mount(
       createStore(SubagentActivityStore, {

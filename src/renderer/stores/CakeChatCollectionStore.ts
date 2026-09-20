@@ -3,7 +3,7 @@ import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract"
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import { describeError } from "../lib/error-details";
 import type { CakeChatCatalog } from "../models/CakeChatCatalog";
-import type { CakeSession } from "../models/CakeSession";
+import type { Conversation } from "../models/Conversation";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { CakeChatManagementStore } from "./CakeChatManagementStore";
 import {
@@ -18,7 +18,7 @@ import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorS
 
 export interface CakeChatCollectionStoreProps {
   catalog: CakeChatCatalog;
-  sessionModel(sessionId: string): CakeSession;
+  sessionModel(sessionId: string): Conversation;
   tools(): ReadonlyArray<CakeControlTool>;
   modelPresets?(): readonly ModelPreset[];
   defaultConfiguration?(): ChatConfiguration | undefined;

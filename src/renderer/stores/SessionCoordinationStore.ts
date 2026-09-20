@@ -5,14 +5,14 @@ import {
   type CoordinationThread,
   type CrossSessionDeliveryProjection,
 } from "../../domain/conversations/cross-session-coordination";
-import type { CakeSession } from "../models/CakeSession";
+import type { Conversation } from "../models/Conversation";
 
 /**
  * Owns window-scoped, non-authoritative coordination bindings between Project Sessions.
  * Pi remains the authority for every delivered transcript message.
  */
 export class SessionCoordinationStore extends Store<{
-  sessionById(sessionId: string): CakeSession | undefined;
+  sessionById(sessionId: string): Conversation | undefined;
 }> {
   private readonly threads = observable(new Map<string, CoordinationThread>());
   private readonly latestThreadBySession = observable(new Map<string, string>());
