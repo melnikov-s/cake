@@ -1,5 +1,14 @@
-import { createContext, lazy, Suspense, useContext, useDeferredValue, useMemo } from "react";
-import type { ComponentProps, ReactNode } from "react";
+import {
+  createContext,
+  lazy,
+  Suspense,
+  useCallback,
+  useContext,
+  useDeferredValue,
+  useMemo,
+  useState,
+} from "react";
+import type { ComponentProps, MouseEvent, ReactNode } from "react";
 import type { Code, Root, RootContent } from "mdast";
 import remarkParse from "remark-parse";
 import {
@@ -18,6 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../../ipc/source-location";
 import { formatSourceLocation, parseSourceLocation } from "../../../utils/source-location";
+import { MermaidFullscreen } from "../mermaid-fullscreen";
 import { MarkdownCodeBlock, streamingCodeMarker } from "./markdown-code-block";
 
 /** Matches web-style hrefs that must never be treated as workspace file paths. */
@@ -435,6 +445,7 @@ function MarkdownRenderer({
 }: MarkdownProps & { richPlugins?: RichMarkdownPlugins }) {
   const colorTheme = useResolvedColorTheme();
   const linkActions = useContext(MarkdownLinkContext);
+  const [fullscreenMermaid, setFullscreenMermaid] = useState<string>();
   const plugins = useMemo(
     () => (richPlugins ? { ...configuredPlugins, ...richPlugins } : configuredPlugins),
     [richPlugins],
@@ -463,6 +474,22 @@ function MarkdownRenderer({
   const renderedSource = streaming
     ? markChangingFence(deferredRenderedSource, mutableCode)
     : deferredRenderedSource;
+  const openMermaidFullscreen = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const button = target.closest<HTMLButtonElement>('button[title="View fullscreen"]');
+    const block = button?.closest<HTMLElement>('[data-streamdown="mermaid-block"]');
+    const svg = block?.querySelector<SVGSVGElement>("svg");
+    if (!button || !block || !svg) return;
+
+    // Streamdown owns its fullscreen state inside the parsed Markdown block. A
+    // block may be replaced when a stream settles, which used to dismiss an
+    // open diagram without user input. Intercept that action and hoist the
+    // rendered diagram above the parser lifecycle instead.
+    event.preventDefault();
+    event.stopPropagation();
+    setFullscreenMermaid(svg.outerHTML);
+  }, []);
   const components = useMemo<Components>(() => {
     if (!onOpenSourceLocation) return { a: (anchorProps) => linkAnchor(anchorProps, linkActions) };
     const openSourceLocation = onOpenSourceLocation;
@@ -499,25 +526,35 @@ function MarkdownRenderer({
     };
   }, [linkActions, onOpenSourceLocation]);
   return (
-    <Streamdown
-      {...props}
-      components={components}
-      className={cn(
-        "markdown-content min-w-0 max-w-full break-words [overflow-wrap:anywhere] [&_[data-streamdown=code-block-body]]:overflow-x-hidden [&_[data-streamdown=code-block-body]_pre]:whitespace-pre-wrap [&_[data-streamdown=code-block-body]_pre]:[overflow-wrap:anywhere]",
-        codeBlockPresentation,
-        richBlockPresentation,
-        className,
+    <>
+      <div className="contents" onClickCapture={openMermaidFullscreen}>
+        <Streamdown
+          {...props}
+          components={components}
+          className={cn(
+            "markdown-content min-w-0 max-w-full break-words [overflow-wrap:anywhere] [&_[data-streamdown=code-block-body]]:overflow-x-hidden [&_[data-streamdown=code-block-body]_pre]:whitespace-pre-wrap [&_[data-streamdown=code-block-body]_pre]:[overflow-wrap:anywhere]",
+            codeBlockPresentation,
+            richBlockPresentation,
+            className,
+          )}
+          controls={markdownControls}
+          isAnimating={false}
+          mermaid={mermaidOptions}
+          mode="streaming"
+          parseMarkdownIntoBlocksFn={parseMarkdownIntoBlocks}
+          plugins={plugins}
+          skipHtml
+        >
+          {renderedSource}
+        </Streamdown>
+      </div>
+      {fullscreenMermaid && (
+        <MermaidFullscreen
+          svg={fullscreenMermaid}
+          onClose={() => setFullscreenMermaid(undefined)}
+        />
       )}
-      controls={markdownControls}
-      isAnimating={false}
-      mermaid={mermaidOptions}
-      mode="streaming"
-      parseMarkdownIntoBlocksFn={parseMarkdownIntoBlocks}
-      plugins={plugins}
-      skipHtml
-    >
-      {renderedSource}
-    </Streamdown>
+    </>
   );
 }
 

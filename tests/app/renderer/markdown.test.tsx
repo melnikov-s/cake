@@ -11,6 +11,7 @@ import {
   MarkdownLinkProvider,
 } from "../../../src/renderer/components/ai-elements/markdown";
 import { syntaxHighlighter } from "../../../src/renderer/lib/syntax-highlighter";
+import { FullscreenSurfaceFixture } from "./fullscreen-surface-fixture";
 
 vi.mock("streamdown", () => ({
   defaultRehypePlugins: {},
@@ -92,6 +93,55 @@ describe("Markdown", () => {
     expect(props.className).toContain(
       "[&_[data-streamdown=mermaid-block-actions]>button:last-child]:opacity-0",
     );
+  });
+
+  it("keeps a fullscreen Mermaid diagram open when streaming settles", async () => {
+    vi.mocked(Streamdown).mockImplementation(({ children }: { children?: string }) => (
+      <div>
+        {children}
+        <div data-streamdown="mermaid-block">
+          <button title="View fullscreen" type="button">
+            Open
+          </button>
+          <div data-streamdown="mermaid">
+            <svg aria-label="Rendered diagram" viewBox="0 0 10 10">
+              <circle cx="5" cy="5" r="4" />
+            </svg>
+          </div>
+        </div>
+      </div>
+    ));
+    const source = "```mermaid\ngraph LR\nA --> B\n```";
+
+    await act(async () => {
+      root.render(
+        <FullscreenSurfaceFixture>
+          <Markdown streaming>{source}</Markdown>
+        </FullscreenSurfaceFixture>,
+      );
+      await import("@streamdown/mermaid");
+    });
+    act(() =>
+      container.querySelector<HTMLButtonElement>('button[title="View fullscreen"]')!.click(),
+    );
+
+    const fullscreen = document.body.querySelector<HTMLElement>('[role="dialog"]');
+    expect(fullscreen?.textContent).toContain("Mermaid");
+    expect(fullscreen?.querySelector('svg[aria-label="Rendered diagram"]')).not.toBeNull();
+
+    await act(async () => {
+      root.render(
+        <FullscreenSurfaceFixture>
+          <Markdown>{source}</Markdown>
+        </FullscreenSurfaceFixture>,
+      );
+    });
+    expect(document.body.querySelector('[role="dialog"]')).toBe(fullscreen);
+
+    act(() =>
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
+    );
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it("marks only the incomplete fence for block-local plain rendering", () => {

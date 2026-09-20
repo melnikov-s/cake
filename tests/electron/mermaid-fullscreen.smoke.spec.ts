@@ -123,15 +123,15 @@ test("stacks a Mermaid diagram's fullscreen view above a fullscreen reader", asy
     await expect(diagramFullscreen).toHaveCSS("opacity", "1");
     await diagramFullscreen.click();
 
-    const overlay = page.locator("body > div.fixed.inset-0.z-50.backdrop-blur-sm");
+    const overlay = page.getByRole("dialog", { name: "Mermaid" });
     await expect(overlay).toBeVisible();
 
     // The overlay must actually paint above the reader, not behind it.
-    const topmost = await page.evaluate(() => {
+    const diagramIsTopmost = await overlay.evaluate((surface) => {
       const element = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
-      return element?.closest("body > div")?.className ?? "";
+      return Boolean(element && surface.contains(element));
     });
-    expect(topmost).toContain("backdrop-blur-sm");
+    expect(diagramIsTopmost).toBe(true);
 
     await page.keyboard.press("Escape");
     await expect(overlay).toHaveCount(0);
