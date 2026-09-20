@@ -149,7 +149,7 @@ const isSessionResolved = Effect.fn("ProjectSessions.isSessionResolved")(functio
   return yield* isSessionResolvedAt(target, yield* findLocation(target));
 });
 
-/** Fresh on-demand aggregate read; it is not coupled to Conversation observation. */
+/** Fresh on-demand overview read; it is not coupled to Conversation observation. */
 export const readProjection = Effect.fn("ProjectSessions.readProjection")(function* (
   target: ProjectSessionTarget,
 ) {

@@ -15,7 +15,6 @@ export function applySubagentUpdate(
 ) {
   if (update.parentSessionId !== sessionId)
     throw new Error(`Subagent parent identity collision: ${sessionId}`);
-  const before = relationshipSignature(model);
   batch(() => {
     if (update._tag === "Snapshot") {
       assertUnique(
@@ -39,15 +38,7 @@ export function applySubagentUpdate(
       if (!model.releasedHandleIds.includes(update.handleId))
         model.releasedHandleIds.push(update.handleId);
     } else model.backgroundActive = update.active;
-    if (relationshipSignature(model) !== before) model.relationshipRevision += 1;
   });
-}
-
-function relationshipSignature(model: SubagentCatalog) {
-  return model.activities
-    .map(({ handleId, status, task }) => `${handleId}\u0000${status}\u0000${task}`)
-    .sort()
-    .join("\u0001");
 }
 
 function upsertSubagentActivity(model: SubagentCatalog, activity: SubagentActivityValue) {

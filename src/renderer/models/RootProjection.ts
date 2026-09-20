@@ -8,7 +8,6 @@ import { Conversation } from "./Conversation";
 import { SessionCatalog } from "./SessionCatalog";
 import { WorktreeCatalog } from "./WorktreeCatalog";
 import { WorktreeOperationCatalog } from "./WorktreeOperationCatalog";
-import { ProjectSession } from "./ProjectSession";
 import { DiscussionCatalog } from "./DiscussionCatalog";
 import { SubagentCatalog } from "./SubagentCatalog";
 import { ScheduledMessageCatalog } from "./ScheduledMessageCatalog";
@@ -26,9 +25,8 @@ export class RootProjection extends Model {
   @child(ArtifactCatalog) artifacts = ArtifactCatalog.create();
   @child(Conversation) projectConversations: Conversation[] = observable([]);
   @child(Conversation) cakeChatConversations: Conversation[] = observable([]);
-  /** Live Discussion Session sidecars, keyed by their own Pi Session ID. */
+  /** Window-scoped Discussion Session identities, keyed by their own Pi Session ID. */
   @child(Conversation) discussionConversations: Conversation[] = observable([]);
-  @child(ProjectSession) projectSessions: ProjectSession[] = observable([]);
   @child(DiscussionCatalog) discussionCatalogs: DiscussionCatalog[] = observable([]);
   @child(SubagentCatalog) subagentCatalogs: SubagentCatalog[] = observable([]);
   @child(ScheduledMessageCatalog) scheduledMessageCatalogs: ScheduledMessageCatalog[] = observable(
@@ -36,25 +34,11 @@ export class RootProjection extends Model {
   );
   @child(CakeChatControls) cakeChatControls: CakeChatControls[] = observable([]);
 
-  findProjectSession(sessionId: string) {
-    return this.projectSessions.find((item) => item.sessionId === sessionId);
-  }
-
-  projectSession(sessionId: string) {
-    let model = this.findProjectSession(sessionId);
-    if (!model) {
-      model = ProjectSession.create({ sessionId });
-      this.projectSessions.push(model);
-    }
-    return model;
-  }
-
   removeProjectSessionProjections(
     sessionId: string,
     options: { readonly retainDiscussionCatalog?: boolean } = {},
   ) {
     removeBySessionId(this.projectConversations, sessionId);
-    removeBySessionId(this.projectSessions, sessionId);
     removeBySessionId(this.subagentCatalogs, sessionId);
     removeBySessionId(this.scheduledMessageCatalogs, sessionId);
     if (!options.retainDiscussionCatalog) removeBySessionId(this.discussionCatalogs, sessionId);
@@ -133,10 +117,6 @@ export class RootProjection extends Model {
 
   findDiscussionConversation(sessionId: string) {
     return this.discussionConversations.find((session) => session.sessionId === sessionId);
-  }
-
-  removeDiscussionConversation(sessionId: string) {
-    removeBySessionId(this.discussionConversations, sessionId);
   }
 }
 

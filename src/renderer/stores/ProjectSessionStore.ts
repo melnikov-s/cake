@@ -2,7 +2,6 @@ import { Store, child, computed, createStore, snapshot } from "r-state-tree";
 import { isSessionAssistantThread } from "../../domain/discussion-sessions/discussion-session-data";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { Conversation } from "../models/Conversation";
-import type { ProjectSession } from "../models/ProjectSession";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
@@ -40,7 +39,6 @@ export interface SessionTarget {
 
 export interface ProjectSessionStoreProps extends SessionTarget {
   model: Conversation;
-  projectSession: ProjectSession;
   discussionCatalog: DiscussionCatalog;
   subagentCatalog: SubagentCatalog;
   scheduledMessageCatalog: ScheduledMessageCatalog;
@@ -143,7 +141,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return ClientContext.consume(this)!;
   }
   get workspacePath() {
-    return this.props.projectSession.workingDirectory || this.props.workspacePath;
+    return this.props.workspacePath;
   }
   get sessionId() {
     return this.props.sessionId;
@@ -355,7 +353,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         placeholder: () =>
           this.isStreaming
             ? "Add the next instruction…"
-            : `Ask Cake to work in ${this.props.projectSession.projectName || this.props.projectName()}…`,
+            : `Ask Cake to work in ${this.props.projectName()}…`,
         inputLabel: () => "Message",
         sessionCreationChoice: this.props.sessionCreationChoice,
         draftActivationCandidates: this.props.draftActivationCandidates,

@@ -789,7 +789,6 @@ export class RootStore extends Store<{
       reviews: () => this.reviewsStore,
       sessionModel: (sessionId, workingDirectory) =>
         this.props.projection.projectConversation(sessionId, workingDirectory),
-      projectSessionModel: (sessionId) => this.props.projection.projectSession(sessionId),
       discussionCatalog: (sessionId) => this.props.projection.discussionCatalog(sessionId),
       subagentCatalog: (sessionId) => this.props.projection.subagentCatalog(sessionId),
       scheduledMessageCatalog: (sessionId) =>

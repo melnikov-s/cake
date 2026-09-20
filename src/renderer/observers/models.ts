@@ -1,4 +1,4 @@
-import { Schema, Stream } from "effect";
+import { Schema, type Stream } from "effect";
 import { effect as reactiveEffect, type Model } from "r-state-tree";
 import type {
   CakeChatCatalogQuery,
@@ -25,7 +25,6 @@ import type { ReviewThread } from "../models/ReviewThread";
 import type {
   ProjectSessionCatalogQuery,
   ProjectSessionTarget,
-  ProjectSessionProjection,
 } from "../../domain/project-sessions/project-session-data";
 import type { SubagentUpdate } from "../../domain/subagents/subagent-data";
 import type { ScheduledMessageUpdate } from "../../domain/scheduled-messages/scheduled-message-data";
@@ -38,13 +37,11 @@ import type { CakeChatCatalog } from "../models/CakeChatCatalog";
 import type { ProjectCatalog } from "../models/ProjectCatalog";
 import type { RootProjection } from "../models/RootProjection";
 import type { Conversation } from "../models/Conversation";
-import type { ProjectSession } from "../models/ProjectSession";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
 import type { CakeChatControls } from "../models/CakeChatControls";
 import type { SessionCatalog } from "../models/SessionCatalog";
-import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeCatalog } from "../models/WorktreeCatalog";
 import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
 import {
@@ -59,7 +56,6 @@ import {
   unloadConversationProjection,
 } from "../reducers/ConversationReducer";
 import { applyDiscussionCatalogUpdate } from "../reducers/DiscussionReducer";
-import { applyProjectSessionProjection } from "../reducers/ProjectSessionReducer";
 import { applyCakeChatControlUpdate } from "../reducers/CakeChatControlReducer";
 import { applySubagentUpdate } from "../reducers/SubagentReducer";
 import { applyScheduledMessageUpdate } from "../reducers/ScheduledMessageReducer";
@@ -107,12 +103,10 @@ type ModelInput = {
   readonly cakeChatCatalogQueries?: ReadonlyArray<CakeChatCatalogQuery>;
   readonly projectSessions: ReadonlyArray<{
     target: ProjectSessionTarget;
-    aggregate: ProjectSession;
     conversation: Conversation;
     discussions: DiscussionCatalog;
     subagents: SubagentCatalog;
     schedules: ScheduledMessageCatalog;
-    catalogKey: string;
   }>;
   /** Staged parents observed for their Discussion catalog only. */
   readonly discussionCatalogs?: ReadonlyArray<{
@@ -278,35 +272,19 @@ export const createModelObserver = (
 
     for (const {
       target,
-      aggregate,
       conversation,
       discussions,
       subagents,
       schedules,
-      catalogKey,
     } of input.projectSessions) {
       assertSessionIdentity(conversation, target.sessionId);
       observe(
-        `project-session-projection:${target.sessionId}:${catalogKey}:${discussions.relationshipRevision}:${subagents.relationshipRevision}:${aggregate.invalidationRevision}`,
-        aggregate,
-        (client) =>
-          Stream.fromEffect(client.projectSessions.readProjection(target)).pipe(
-            Stream.concat(Stream.never),
-          ),
-        (projection: ProjectSessionProjection) =>
-          applyProjectSessionProjection(aggregate, projection),
+        `conversation:${target.sessionId}`,
+        conversation,
+        (client) => client.conversations.observe({ _tag: "ProjectSession", ...target }),
+        (update) => applyConversationUpdate(conversation, update),
+        { clear: () => unloadConversationProjection(conversation) },
       );
-      if (aggregate.primaryConversationId) {
-        if (aggregate.primaryConversationId !== target.sessionId)
-          throw new Error(`Primary Conversation identity collision: ${target.sessionId}`);
-        observe(
-          `conversation:${aggregate.primaryConversationId}`,
-          conversation,
-          (client) => client.conversations.observe({ _tag: "ProjectSession", ...target }),
-          (update) => applyConversationUpdate(conversation, update),
-          { clear: () => unloadConversationProjection(conversation) },
-        );
-      }
       observe(
         `scheduled-messages:${target.sessionId}`,
         schedules,
@@ -387,7 +365,6 @@ export const createModelObserver = (
           source.projection.projectConversation(target.sessionId, target.workingDirectory);
         const projectionIds = new Set([
           ...source.projection.projectConversations.map(({ sessionId }) => sessionId),
-          ...source.projection.projectSessions.map(({ sessionId }) => sessionId),
           ...source.projection.discussionCatalogs.map(({ sessionId }) => sessionId),
           ...source.projection.subagentCatalogs.map(({ sessionId }) => sessionId),
           ...source.projection.scheduledMessageCatalogs.map(({ sessionId }) => sessionId),
@@ -412,7 +389,6 @@ export const createModelObserver = (
       }
       const projectSessions = source.projectSessionTargets().map((target) => ({
         target,
-        aggregate: source.projection.projectSession(target.sessionId),
         conversation: source.projection.projectConversation(
           target.sessionId,
           target.workingDirectory,
@@ -420,9 +396,6 @@ export const createModelObserver = (
         discussions: source.projection.discussionCatalog(target.sessionId),
         subagents: source.projection.subagentCatalog(target.sessionId),
         schedules: source.projection.scheduledMessageCatalog(target.sessionId),
-        catalogKey: projectAggregateCatalogKey(
-          source.projection.sessionCatalog.find(target.sessionId),
-        ),
       }));
       const observedIds = new Set(projectSessions.map(({ target }) => target.sessionId));
       const discussionCatalogs = stagedProjectSessionTargets
@@ -431,18 +404,13 @@ export const createModelObserver = (
           target,
           model: source.projection.discussionCatalog(target.sessionId),
         }));
-      // Every observed parent's threads with a sidecar own a live conversation
-      // Model; sidecars whose thread or parent left the window are released.
+      // Every observed parent's threads with a sidecar demand its Conversation
+      // payload. Conversation Model identity remains window-scoped; leaving
+      // retention stops observation and clears payload without reallocating it.
       const liveThreads = [
         ...projectSessions.map(({ discussions }) => discussions),
         ...discussionCatalogs.map(({ model }) => model),
       ].flatMap(({ threads }) => threads.filter(hasSidecarConversation));
-      const liveSidecarIds = new Set(liveThreads.map((thread) => thread.sidecarSessionId!));
-      for (const sessionId of source.projection.discussionConversations.map(
-        ({ sessionId }) => sessionId,
-      ))
-        if (!liveSidecarIds.has(sessionId))
-          source.projection.removeDiscussionConversation(sessionId);
       sync({
         projects: source.projection.projects,
         sessionCatalog: source.projection.sessionCatalog,
@@ -485,17 +453,6 @@ export const createModelObserver = (
 
   return { observe, sync, stop: dispose };
 };
-
-const projectAggregateCatalogKey = (summary: SessionSummary | undefined) =>
-  summary
-    ? [
-        summary.resolved,
-        summary.unread,
-        summary.familyId ?? "",
-        summary.familyParentSessionId ?? "",
-        ...(summary.familyChildSessionIds ?? []),
-      ].join(":")
-    : "missing";
 
 const observationFailureDetails = (key: string, error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);

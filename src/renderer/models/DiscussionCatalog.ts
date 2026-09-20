@@ -5,5 +5,4 @@ import { ReviewThread } from "./ReviewThread";
 export class DiscussionCatalog extends Model {
   @id sessionId = "";
   @child(ReviewThread) threads: ReviewThread[] = observable([]);
-  relationshipRevision = 0;
 }

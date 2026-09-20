@@ -2730,7 +2730,7 @@ describe("Project Sessions domain", () => {
     );
   });
 
-  it.effect("reads a fresh Project Session aggregate without embedding its transcript", () =>
+  it.effect("reads a fresh Project Session overview without embedding its transcript", () =>
     Effect.gen(function* () {
       const projection = yield* projectSessionOperations.readProjection({
         sessionId: "session-1",

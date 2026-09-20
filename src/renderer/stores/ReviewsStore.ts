@@ -84,7 +84,7 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
       .configurationStore;
   }
   private get liveThreads(): ReviewThread[] {
-    return this.props.sessionRegistry.sessions.flatMap((session) =>
+    return this.props.sessionRegistry.observationRetention.sessions.flatMap((session) =>
       session.props.discussionCatalog.threads.filter(hasSidecarConversation),
     );
   }

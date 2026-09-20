@@ -1,3 +1,4 @@
+import { toSnapshot } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import type { ConversationSnapshot } from "../../../../src/domain/conversations/conversation-data";
 import { Conversation } from "../../../../src/renderer/models/Conversation";
@@ -48,6 +49,31 @@ describe("ConversationReducer", () => {
     expect(model.uiParts[0]).toEqual(expect.objectContaining({ text: "Done" }));
     model[Symbol.dispose]();
   });
+
+  it.each(["Snapshot", "SnapshotUpdated"] as const)(
+    "rejects a mismatched %s without mutating the Conversation",
+    (kind) => {
+      const model = Conversation.create({ sessionId: "session" });
+      applyConversationUpdate(model, { _tag: "Snapshot", revision: 1, snapshot: snapshot() });
+      const before = toSnapshot(model);
+      const mismatched = { ...snapshot(), sessionId: "other", sessionFile: "/other.jsonl" };
+
+      expect(() =>
+        applyConversationUpdate(
+          model,
+          kind === "Snapshot"
+            ? { _tag: "Snapshot", revision: 2, snapshot: mismatched }
+            : {
+                _tag: "Event",
+                revision: 2,
+                event: { _tag: "SnapshotUpdated", snapshot: mismatched },
+              },
+        ),
+      ).toThrow("Conversation snapshot identity collision: session");
+      expect(toSnapshot(model)).toEqual(before);
+      model[Symbol.dispose]();
+    },
+  );
 
   it("preserves compacted historical work-log parts in durable snapshots", () => {
     const model = Conversation.create({ sessionId: "session" });

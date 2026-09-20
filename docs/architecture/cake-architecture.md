@@ -63,13 +63,12 @@ Every durable concept has one authority.
 
 Do not introduce a second transcript database, reconstruct Pi state into a
 competing domain model, or mutate Pi JSONL with ad hoc file operations. Main
-assembles each validated `ProjectSessionProjection` on demand from bounded
-references or summaries supplied by Project, Working Directory, lifecycle,
-Discussion Session, Subagent Session, review, artifact-link, and Session Family
-authorities. Its `primaryConversation` is a `ConversationReference`, never an
-embedded transcript snapshot. The projection is an aggregate read contract,
-not a new persistence authority, a live Conversation stream, or a payload-owning
-god object. A session
+assembles each validated `ProjectSessionProjection` on demand as a bounded
+overview of Project, Working Directory, lifecycle, and primary Conversation
+identity. Its `primaryConversation` is a `ConversationReference`, never an
+embedded transcript snapshot. Focused Discussion, Subagent, review, artifact,
+and Session Family authorities are queried or observed independently rather
+than copied into this optional overview. A session
 cannot be archived while its Pi turn is active. When the calling agent requests
 its own resolution during that turn, the runtime records the intent and applies
 it at the settled-turn boundary, after the final transcript snapshot is emitted.
@@ -552,15 +551,14 @@ The window Store hierarchy mirrors the product surfaces:
   Pi remains the transcript authority once the session starts. The Working
   Directory remains routing/storage context for the Pi runtime, not part of
   session identity. Cake Chat never enters this registry.
-- Each `ProjectSessionStore` coordinates one renderer `ProjectSession` aggregate
-  Model with independently owned Conversation, Discussion/review, subagent,
-  scheduled-message, and artifact projections needed by the current surface. It
-  owns none of those child payloads and does not re-export their APIs.
-  `ProjectSessionProjection` is a Schema-validated on-demand main read. Opening
-  first applies that aggregate, then its `primaryConversation` reference starts
-  `conversations.observe`; relationship authorities update their focused Models
-  and invalidate the aggregate only when bounded membership changes. Conversation
-  updates never rebuild the aggregate or replace transcript identity. The Store
+- Each `ProjectSessionStore` coordinates independently owned Conversation,
+  Discussion/review, subagent, scheduled-message, and artifact projections needed
+  by the current surface. It owns none of those child payloads and does not
+  re-export their APIs. `ProjectSessionProjection` remains a Schema-validated
+  on-demand overview query, not a renderer synchronization prerequisite. An
+  already-known Project Session target starts `conversations.observe` directly;
+  focused relationship authorities update only their own Models. Conversation
+  updates never rebuild an overview or replace transcript identity. The Store
   owns that session's activity,
   remembered `normal`/`vscode`/`draw`
   presentation preference and shared workspace chat-drawer geometry, managed-worktree status and

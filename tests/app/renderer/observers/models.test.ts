@@ -1,19 +1,21 @@
 import { Effect, Queue, Stream } from "effect";
-import { observable } from "r-state-tree";
+import { createStore, mount, observable } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import type { CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
-import { CakeIpcClient } from "../../../../src/ipc/client/CakeIpcClient";
-import type { ProjectSessionProjection } from "../../../../src/domain/project-sessions/project-session-data";
+import type { DiscussionCatalogUpdate } from "../../../../src/domain/application/catalog-data";
+import type { DiscussionSessionUpdate } from "../../../../src/domain/discussion-sessions/discussion-session-data";
 import {
   SessionChatError,
   type ConversationUpdate,
 } from "../../../../src/domain/conversations/conversation-data";
-import type { DiscussionCatalogUpdate } from "../../../../src/domain/application/catalog-data";
-import type { SubagentUpdate } from "../../../../src/domain/subagents/subagent-data";
 import type { CakeChatControlUpdate } from "../../../../src/domain/cake-chats/cake-chat-data";
+import type { CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
+import { CakeIpcClient } from "../../../../src/ipc/client/CakeIpcClient";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { createModelObserver, observeStream } from "../../../../src/renderer/observers";
 import type { Runtime } from "../../../../src/renderer/runtime";
+import { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
+import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
+import type { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 
 function runtimeFor(client: CakeIpcClientService): Runtime {
   const execute: Runtime["execute"] = (effect, signal) =>
@@ -28,48 +30,45 @@ function runtimeFor(client: CakeIpcClientService): Runtime {
   };
 }
 
-const aggregate = (sessionId = "project-1"): ProjectSessionProjection => ({
-  identity: {
-    _tag: "ProjectSession",
-    sessionId,
-    projectPath: "/project",
-    workingDirectory: "/project",
-  },
-  project: { path: "/project", name: "Project" },
-  workingDirectory: { path: "/project" },
-  lifecycle: { resolved: false, unread: false },
-  primaryConversation: { sessionId },
-  discussionSessions: [],
-  subagentSessions: [],
-  reviewThreads: [],
-  artifactLinks: [],
-});
+const conversationSnapshot = (sessionId: string, output = "history") =>
+  ({
+    _tag: "Snapshot",
+    revision: 1,
+    snapshot: {
+      sessionId,
+      sessionFile: `/sessions/${sessionId}.jsonl`,
+      parts: [
+        {
+          id: "historical-tool",
+          kind: "tool",
+          name: "read",
+          input: "README.md",
+          output,
+          state: "success",
+        },
+      ],
+      models: [],
+      thinkingLevel: "off",
+      availableThinkingLevels: [],
+      streaming: false,
+      diagnostics: [],
+      commands: [],
+      compatibility: { resources: [], diagnostics: [] },
+      extensionUi: { statuses: [] },
+      tree: [],
+    },
+  }) satisfies ConversationUpdate;
 
-const conversationSnapshot = (sessionId: string): ConversationUpdate => ({
+const discussionSnapshot = (sessionId: string, output: string): DiscussionSessionUpdate => ({
   _tag: "Snapshot",
   revision: 1,
   snapshot: {
-    sessionId,
-    sessionFile: `/sessions/${sessionId}.jsonl`,
-    parts: [
-      {
-        id: "historical-tool",
-        kind: "tool",
-        name: "read",
-        input: "README.md",
-        output: "history",
-        state: "success",
-      },
-    ],
-    models: [],
-    thinkingLevel: "off",
-    availableThinkingLevels: [],
-    streaming: false,
-    diagnostics: [],
-    commands: [],
-    compatibility: { resources: [], diagnostics: [] },
-    extensionUi: { statuses: [] },
-    tree: [],
+    identity: {
+      _tag: "DiscussionSession",
+      sessionId,
+      parentSessionId: "project-1",
+    },
+    conversation: conversationSnapshot(sessionId, output).snapshot,
   },
 });
 
@@ -80,16 +79,6 @@ const emptyDiscussions = (sessionId: string): DiscussionCatalogUpdate => ({
   threads: [],
 });
 
-const emptySubagents = (sessionId: string): SubagentUpdate => ({
-  _tag: "Snapshot",
-  revision: 1,
-  parentSessionId: sessionId,
-  activities: [],
-  backgroundActive: false,
-});
-
-const neverAfter = <A>(value: A) => Stream.make(value).pipe(Stream.concat(Stream.never));
-
 function baseInput(projection: RootProjection, sessionId = "project-1") {
   return {
     projects: projection.projects,
@@ -98,54 +87,109 @@ function baseInput(projection: RootProjection, sessionId = "project-1") {
     projectSessions: [
       {
         target: { sessionId, workingDirectory: "/project" },
-        aggregate: projection.projectSession(sessionId),
         conversation: projection.projectConversation(sessionId, "/project"),
         discussions: projection.discussionCatalog(sessionId),
         subagents: projection.subagentCatalog(sessionId),
         schedules: projection.scheduledMessageCatalog(sessionId),
-        catalogKey: "active",
       },
     ],
     cakeChats: [],
   };
 }
 
+function baseClient(overrides: object = {}) {
+  return {
+    projects: { observeCatalog: () => Stream.never },
+    cakeChats: { observeCatalog: () => Stream.never },
+    conversations: { observe: () => Stream.never },
+    discussionSessions: { observeCatalog: () => Stream.never, observe: () => Stream.never },
+    subagents: { observe: () => Stream.never },
+    scheduledMessages: { observe: () => Stream.never },
+    ...overrides,
+  } as unknown as CakeIpcClientService;
+}
+
 describe("Project Session composition observer", () => {
-  it("holds a successful aggregate read until one relationship invalidation", async () => {
-    vi.useFakeTimers();
+  it("starts the Conversation from the known target without waiting for aggregate side authorities", async () => {
+    const updates = await Effect.runPromise(Queue.unbounded<ConversationUpdate>());
+    const aggregateReads = vi.fn(() => Effect.never);
+    const observes = vi.fn(() => Stream.fromQueue(updates));
+    const client = baseClient({
+      projectSessions: { readProjection: aggregateReads },
+      conversations: { observe: observes },
+    });
     const projection = RootProjection.create();
-    const reads = vi.fn(() => Effect.succeed(aggregate()));
-    const client = {
-      projects: { observeCatalog: () => Stream.never },
-      cakeChats: { observeCatalog: () => Stream.never },
-      projectSessions: { readProjection: reads },
-      conversations: { observe: () => Stream.never },
-      discussionSessions: { observeCatalog: () => Stream.never },
-      subagents: { observe: () => Stream.never },
-      scheduledMessages: { observe: () => Stream.never },
-    } as unknown as CakeIpcClientService;
     const observer = createModelObserver(runtimeFor(client));
-    const input = baseInput(projection);
 
     try {
-      observer.sync(input);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(reads).toHaveBeenCalledOnce();
-
-      await vi.advanceTimersByTimeAsync(2_000);
-      expect(reads).toHaveBeenCalledOnce();
-
-      input.projectSessions[0]!.discussions.relationshipRevision += 1;
-      observer.sync(input);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(reads).toHaveBeenCalledTimes(2);
-
-      await vi.advanceTimersByTimeAsync(2_000);
-      expect(reads).toHaveBeenCalledTimes(2);
+      observer.sync(baseInput(projection));
+      await vi.waitFor(() => expect(observes).toHaveBeenCalledOnce());
+      await Effect.runPromise(Queue.offer(updates, conversationSnapshot("project-1")));
+      await vi.waitFor(() =>
+        expect(projection.projectConversation("project-1", "/project").sessionFile).not.toBe(""),
+      );
+      expect(aggregateReads).not.toHaveBeenCalled();
     } finally {
       observer.stop();
       projection[Symbol.dispose]();
-      vi.useRealTimers();
+    }
+  });
+
+  it("does not reread the on-demand overview for Discussion snapshots or membership changes", async () => {
+    const discussions = await Effect.runPromise(Queue.unbounded<DiscussionCatalogUpdate>());
+    const aggregateReads = vi.fn(() => Effect.never);
+    const client = baseClient({
+      projectSessions: { readProjection: aggregateReads },
+      discussionSessions: {
+        observeCatalog: () => Stream.fromQueue(discussions),
+        observe: () => Stream.never,
+      },
+    });
+    const projection = RootProjection.create();
+    const observer = createModelObserver(runtimeFor(client));
+
+    try {
+      observer.sync(baseInput(projection));
+      await Effect.runPromise(Queue.offer(discussions, emptyDiscussions("project-1")));
+      await Effect.runPromise(
+        Queue.offer(discussions, {
+          _tag: "Event",
+          revision: 2,
+          parentSessionId: "project-1",
+          event: {
+            _tag: "Replaced",
+            threads: [
+              {
+                id: "thread-1",
+                parentSessionId: "project-1",
+                workingDirectory: "/project",
+                sidecarSessionId: "sidecar-1",
+                anchor: {
+                  path: "session:project-1",
+                  view: "session",
+                  start: { diffLine: 0 },
+                  end: { diffLine: 0 },
+                  selectedText: "",
+                  contextBefore: "",
+                  contextAfter: "",
+                  diff: "",
+                },
+                parts: [],
+                status: "open",
+                createdAt: "now",
+                updatedAt: "now",
+              },
+            ],
+          },
+        }),
+      );
+      await vi.waitFor(() =>
+        expect(projection.discussionCatalog("project-1").threads).toHaveLength(1),
+      );
+      expect(aggregateReads).not.toHaveBeenCalled();
+    } finally {
+      observer.stop();
+      projection[Symbol.dispose]();
     }
   });
 
@@ -161,24 +205,14 @@ describe("Project Session composition observer", () => {
         }),
       ),
     );
-    const client = {
-      projects: { observeCatalog: () => Stream.never },
-      cakeChats: { observeCatalog: () => Stream.never },
-      projectSessions: { readProjection: () => Effect.succeed(aggregate()) },
-      conversations: { observe: observes },
-      discussionSessions: { observeCatalog: () => Stream.never },
-      subagents: { observe: () => Stream.never },
-      scheduledMessages: { observe: () => Stream.never },
-    } as unknown as CakeIpcClientService;
-    const observer = createModelObserver(runtimeFor(client), stopped);
-    const input = baseInput(projection);
+    const observer = createModelObserver(
+      runtimeFor(baseClient({ conversations: { observe: observes } })),
+      stopped,
+    );
 
     try {
-      observer.sync(input);
-      await vi.advanceTimersByTimeAsync(0);
-      observer.sync(input);
+      observer.sync(baseInput(projection));
       await vi.advanceTimersByTimeAsync(2_000);
-
       expect(observes).toHaveBeenCalledOnce();
       expect(stopped).not.toHaveBeenCalled();
     } finally {
@@ -188,226 +222,27 @@ describe("Project Session composition observer", () => {
     }
   });
 
-  it("reads the aggregate before independently observing Conversation and focused authorities", async () => {
-    const conversationUpdates = await Effect.runPromise(Queue.unbounded<ConversationUpdate>());
-    const discussionUpdates = await Effect.runPromise(Queue.unbounded<DiscussionCatalogUpdate>());
-    let resolved = false;
-    const reads = vi.fn(() =>
-      Effect.succeed({ ...aggregate(), lifecycle: { resolved, unread: false } }),
-    );
-    const client = {
-      projects: { observeCatalog: () => Stream.never },
-      cakeChats: { observeCatalog: () => Stream.never },
-      projectSessions: { readProjection: reads },
-      conversations: { observe: () => Stream.fromQueue(conversationUpdates) },
-      discussionSessions: { observeCatalog: () => Stream.fromQueue(discussionUpdates) },
-      subagents: { observe: () => neverAfter(emptySubagents("project-1")) },
-      scheduledMessages: {
-        observe: () => neverAfter({ _tag: "Snapshot", revision: 1, messages: [] }),
-      },
-    } as unknown as CakeIpcClientService;
-    const projection = RootProjection.create();
-    const observer = createModelObserver(runtimeFor(client));
-    const input = baseInput(projection);
-
-    observer.sync(input);
-    await vi.waitFor(() => expect(projection.projectSession("project-1").loadedRevision).toBe(1));
-    expect(reads).toHaveBeenCalledOnce();
-    expect(projection.projectConversation("project-1", "/project").sessionFile).toBe("");
-
-    // The aggregate's primaryConversation reference unlocks the independent stream.
-    observer.sync(input);
-    await Effect.runPromise(Queue.offer(conversationUpdates, conversationSnapshot("project-1")));
-    await Effect.runPromise(Queue.offer(discussionUpdates, emptyDiscussions("project-1")));
-    await vi.waitFor(() =>
-      expect(projection.projectConversation("project-1", "/project").sessionFile).not.toBe(""),
-    );
-    const transcript = projection.projectConversation("project-1", "/project").parts;
-    expect(transcript[0]?.value).toEqual(expect.objectContaining({ output: "history" }));
-    expect(projection.subagentCatalog("project-1").backgroundActive).toBe(false);
-    expect(projection.discussionCatalog("project-1").threads).toEqual([]);
-
-    await Effect.runPromise(
-      Queue.offer(conversationUpdates, {
-        _tag: "Event",
-        revision: 2,
-        event: {
-          _tag: "StreamingChanged",
-          sessionId: "project-1",
-          streaming: true,
-        },
-      }),
-    );
-    await vi.waitFor(() =>
-      expect(projection.projectConversation("project-1", "/project").streaming).toBe(true),
-    );
-    expect(reads).toHaveBeenCalledOnce();
-
-    resolved = true;
-    input.projectSessions[0]!.catalogKey = "resolved";
-    observer.sync(input);
-    await vi.waitFor(() => expect(reads).toHaveBeenCalledTimes(2));
-    expect(projection.projectSession("project-1").resolved).toBe(true);
-    expect(projection.projectConversation("project-1", "/project").parts).toBe(transcript);
-
-    // Relationship authority changes invalidate only the aggregate read. The transcript stays put.
-    await Effect.runPromise(
-      Queue.offer(discussionUpdates, {
-        _tag: "Event",
-        revision: 2,
-        parentSessionId: "project-1",
-        event: { _tag: "Replaced", threads: [] },
-      }),
-    );
-    await vi.waitFor(() =>
-      expect(projection.discussionCatalog("project-1").relationshipRevision).toBe(2),
-    );
-    observer.sync(input);
-    await vi.waitFor(() => expect(reads).toHaveBeenCalledTimes(3));
-    expect(projection.projectConversation("project-1", "/project").parts).toBe(transcript);
-
-    observer.stop();
-    projection[Symbol.dispose]();
-  });
-
   it("cancels a stale Conversation observation when demand changes", async () => {
     const stale = await Effect.runPromise(Queue.unbounded<ConversationUpdate>());
     const current = await Effect.runPromise(Queue.unbounded<ConversationUpdate>());
-    const client = {
-      projects: { observeCatalog: () => Stream.never },
-      cakeChats: { observeCatalog: () => Stream.never },
-      projectSessions: {
-        readProjection: ({ sessionId }: { sessionId: string }) =>
-          Effect.succeed(aggregate(sessionId)),
-      },
+    const client = baseClient({
       conversations: {
         observe: ({ sessionId }: { sessionId: string }) =>
           Stream.fromQueue(sessionId === "stale" ? stale : current),
       },
-      discussionSessions: { observeCatalog: () => Stream.never },
-      subagents: { observe: () => Stream.never },
-      scheduledMessages: { observe: () => Stream.never },
-    } as unknown as CakeIpcClientService;
-    const projection = RootProjection.create();
-    const observer = createModelObserver(runtimeFor(client));
-
-    const staleInput = baseInput(projection, "stale");
-    observer.sync(staleInput);
-    await vi.waitFor(() => expect(projection.projectSession("stale").loadedRevision).toBe(1));
-    observer.sync(staleInput);
-    const currentInput = baseInput(projection, "current");
-    observer.sync(currentInput);
-    await vi.waitFor(() => expect(projection.projectSession("current").loadedRevision).toBe(1));
-    observer.sync(currentInput);
-
-    await Effect.runPromise(Queue.offer(stale, conversationSnapshot("stale")));
-    await Effect.runPromise(Queue.offer(current, conversationSnapshot("current")));
-    await vi.waitFor(() =>
-      expect(projection.projectConversation("current", "/project").sessionFile).not.toBe(""),
-    );
-    expect(projection.projectConversation("stale", "/project").sessionFile).toBe("");
-
-    observer.stop();
-    projection[Symbol.dispose]();
-  });
-});
-
-describe("focused projection lifetimes", () => {
-  it("releases unloaded Models, retains staged Discussions, and reloads clean projections", async () => {
-    const loadedProjectIds: string[] = observable(["project-1"]);
-    const stagedProjectIds: string[] = observable([]);
-    const loadedCakeChatIds: string[] = observable(["cake-chat-1"]);
-    const projection = RootProjection.create();
-    const client = {
-      projects: { observeCatalog: () => Stream.never },
-      managedWorktrees: {
-        observeCatalog: () => Stream.never,
-        observeOperations: () => Stream.never,
-      },
-      cakeChats: {
-        observeCatalog: () => Stream.never,
-        observeControls: () => Stream.never,
-      },
-      projectSessions: { readProjection: () => Effect.succeed(aggregate()) },
-      conversations: { observe: () => Stream.never },
-      discussionSessions: { observeCatalog: () => Stream.never },
-      subagents: { observe: () => Stream.never },
-      scheduledMessages: { observe: () => Stream.never },
-    } as unknown as CakeIpcClientService;
-    const observer = createModelObserver(runtimeFor(client));
-    observer.observe({
-      projection,
-      projectSessionCatalogQueries: () => [],
-      loadedProjectSessions: () =>
-        loadedProjectIds.map((sessionId) => ({ sessionId, workingDirectory: "/project" })),
-      loadedCakeChatIds: () => loadedCakeChatIds,
-      projectSessionTargets: () =>
-        loadedProjectIds.map((sessionId) => ({ sessionId, workingDirectory: "/project" })),
-      stagedProjectSessionTargets: () =>
-        stagedProjectIds.map((sessionId) => ({ sessionId, workingDirectory: "/project" })),
-      cakeChatTargets: () => loadedCakeChatIds.map((sessionId) => ({ sessionId, tools: [] })),
     });
+    const projection = RootProjection.create();
+    const observer = createModelObserver(runtimeFor(client));
 
     try {
-      await vi.waitFor(() => expect(projection.projectSessions).toHaveLength(1));
-      const oldAggregate = projection.projectSessions[0]!;
-      const oldConversation = projection.projectConversations[0]!;
-      const oldDiscussions = projection.discussionCatalogs[0]!;
-      const oldSubagents = projection.subagentCatalogs[0]!;
-      const oldSchedules = projection.scheduledMessageCatalogs[0]!;
-      const oldCakeConversation = projection.cakeChatConversations[0]!;
-      const oldControls = projection.cakeChatControls[0]!;
-      oldAggregate.discussionSessions = [
-        {
-          threadId: "thread-1",
-          sessionId: "discussion-1",
-          status: "open",
-          anchor: "session",
-        },
-      ];
-      oldDiscussions.relationshipRevision = 7;
-      oldSubagents.backgroundActive = true;
-      oldControls.requests.push({
-        _tag: "ControlRequested",
-        sessionId: "cake-chat-1",
-        controlRequestId: crypto.randomUUID(),
-        invocation: { name: "app.showSettings", arguments: {} },
-      });
-
-      stagedProjectIds.push("project-1");
-      loadedProjectIds.splice(0, 1);
-      loadedCakeChatIds.splice(0, 1);
-      await vi.waitFor(() => {
-        expect(projection.projectSessions).toHaveLength(0);
-        expect(projection.projectConversations).toHaveLength(0);
-        expect(projection.subagentCatalogs).toHaveLength(0);
-        expect(projection.scheduledMessageCatalogs).toHaveLength(0);
-        expect(projection.cakeChatConversations).toHaveLength(0);
-        expect(projection.cakeChatControls).toHaveLength(0);
-      });
-      expect(projection.discussionCatalogs).toEqual([oldDiscussions]);
-
-      stagedProjectIds.splice(0, 1);
-      await vi.waitFor(() => expect(projection.discussionCatalogs).toHaveLength(0));
-
-      loadedProjectIds.push("project-1");
-      loadedCakeChatIds.push("cake-chat-1");
-      await vi.waitFor(() => {
-        expect(projection.projectSessions).toHaveLength(1);
-        expect(projection.cakeChatControls).toHaveLength(1);
-      });
-
-      expect(projection.projectSessions[0]).not.toBe(oldAggregate);
-      expect(projection.projectConversations[0]).not.toBe(oldConversation);
-      expect(projection.discussionCatalogs[0]).not.toBe(oldDiscussions);
-      expect(projection.subagentCatalogs[0]).not.toBe(oldSubagents);
-      expect(projection.scheduledMessageCatalogs[0]).not.toBe(oldSchedules);
-      expect(projection.cakeChatConversations[0]).not.toBe(oldCakeConversation);
-      expect(projection.cakeChatControls[0]).not.toBe(oldControls);
-      expect(projection.projectSessions[0]!.discussionSessions).toEqual([]);
-      expect(projection.discussionCatalogs[0]!.relationshipRevision).toBe(0);
-      expect(projection.subagentCatalogs[0]!.backgroundActive).toBe(false);
-      expect(projection.cakeChatControls[0]!.requests).toEqual([]);
+      observer.sync(baseInput(projection, "stale"));
+      observer.sync(baseInput(projection, "current"));
+      await Effect.runPromise(Queue.offer(stale, conversationSnapshot("stale")));
+      await Effect.runPromise(Queue.offer(current, conversationSnapshot("current")));
+      await vi.waitFor(() =>
+        expect(projection.projectConversation("current", "/project").sessionFile).not.toBe(""),
+      );
+      expect(projection.projectConversation("stale", "/project").sessionFile).toBe("");
     } finally {
       observer.stop();
       projection[Symbol.dispose]();
@@ -415,21 +250,208 @@ describe("focused projection lifetimes", () => {
   });
 });
 
+describe("focused projection lifetimes", () => {
+  it("unloads an idle retained identity and re-observes it into a fresh transcript projection", async () => {
+    const loadedIds: string[] = observable(["project-1"]);
+    const observedIds: string[] = observable(["project-1"]);
+    const observations: Queue.Queue<ConversationUpdate>[] = [];
+    const projection = RootProjection.create();
+    const client = baseClient({
+      managedWorktrees: {
+        observeCatalog: () => Stream.never,
+        observeOperations: () => Stream.never,
+      },
+      conversations: {
+        observe: () =>
+          Stream.unwrap(
+            Effect.gen(function* () {
+              const queue = yield* Queue.unbounded<ConversationUpdate>();
+              observations.push(queue);
+              return Stream.fromQueue(queue);
+            }),
+          ),
+      },
+    });
+    const observer = createModelObserver(runtimeFor(client));
+    observer.observe({
+      projection,
+      projectSessionCatalogQueries: () => [],
+      loadedProjectSessions: () =>
+        loadedIds.map((sessionId) => ({ sessionId, workingDirectory: "/project" })),
+      projectSessionTargets: () =>
+        observedIds.map((sessionId) => ({ sessionId, workingDirectory: "/project" })),
+      cakeChatTargets: () => [],
+    });
+
+    try {
+      await vi.waitFor(() => expect(observations).toHaveLength(1));
+      await Effect.runPromise(
+        Queue.offer(observations[0]!, conversationSnapshot("project-1", "old")),
+      );
+      await vi.waitFor(() =>
+        expect(projection.projectConversations[0]?.parts[0]?.value).toEqual(
+          expect.objectContaining({ output: "old" }),
+        ),
+      );
+
+      observedIds.splice(0, 1);
+      await vi.waitFor(() => expect(projection.projectConversations[0]?.parts).toEqual([]));
+      expect(loadedIds).toEqual(["project-1"]);
+
+      observedIds.push("project-1");
+      await vi.waitFor(() => expect(observations).toHaveLength(2));
+      expect(projection.projectConversations[0]?.parts).toEqual([]);
+      await Effect.runPromise(
+        Queue.offer(observations[1]!, conversationSnapshot("project-1", "new")),
+      );
+      await vi.waitFor(() =>
+        expect(projection.projectConversations[0]?.parts[0]?.value).toEqual(
+          expect.objectContaining({ output: "new" }),
+        ),
+      );
+    } finally {
+      observer.stop();
+      projection[Symbol.dispose]();
+    }
+  });
+});
+
+describe("Discussion sidecar retention", () => {
+  it("unloads sidecar payload with parent observation demand and rehydrates without a reactive cycle", async () => {
+    const parentId = "project-1";
+    const sidecarId = "sidecar-1";
+    const observedIds: string[] = observable([parentId]);
+    const catalogUpdates = await Effect.runPromise(Queue.unbounded<DiscussionCatalogUpdate>());
+    const sidecarObservations: Queue.Queue<DiscussionSessionUpdate>[] = [];
+    const projection = RootProjection.create();
+    const catalog = projection.discussionCatalog(parentId);
+    const retainedSessions: Array<{ props: { discussionCatalog: typeof catalog } }> = observable([
+      { props: { discussionCatalog: catalog } },
+    ]);
+    const registry = {
+      sessions: retainedSessions,
+      observationRetention: { sessions: retainedSessions },
+    } as unknown as SessionRegistryStore;
+    const operations = mount(createStore(SessionOperationCoordinatorStore));
+    const reviews = mount(
+      createStore(ReviewsStore, {
+        sessionRegistry: registry,
+        discussionSessionModel: (sessionId, workingDirectory) =>
+          projection.discussionConversation(sessionId, workingDirectory),
+        operations,
+        modelPresets: () => [],
+        openModelPresetSettings: () => undefined,
+      }),
+    );
+    const client = baseClient({
+      managedWorktrees: {
+        observeCatalog: () => Stream.never,
+        observeOperations: () => Stream.never,
+      },
+      discussionSessions: {
+        observeCatalog: () => Stream.fromQueue(catalogUpdates),
+        observe: () =>
+          Stream.unwrap(
+            Effect.gen(function* () {
+              const queue = yield* Queue.unbounded<DiscussionSessionUpdate>();
+              sidecarObservations.push(queue);
+              return Stream.fromQueue(queue);
+            }),
+          ),
+      },
+    });
+    const observer = createModelObserver(runtimeFor(client));
+    observer.observe({
+      projection,
+      projectSessionCatalogQueries: () => [],
+      loadedProjectSessions: () => [{ sessionId: parentId, workingDirectory: "/project" }],
+      projectSessionTargets: () =>
+        observedIds.map((sessionId) => ({ sessionId, workingDirectory: "/project" })),
+      cakeChatTargets: () => [],
+    });
+
+    try {
+      await Effect.runPromise(
+        Queue.offer(catalogUpdates, {
+          _tag: "Snapshot",
+          revision: 1,
+          parentSessionId: parentId,
+          threads: [
+            {
+              id: "thread-1",
+              parentSessionId: parentId,
+              workingDirectory: "/project",
+              sidecarSessionId: sidecarId,
+              anchor: {
+                path: `session:${parentId}`,
+                view: "session",
+                start: { diffLine: 0 },
+                end: { diffLine: 0 },
+                selectedText: "",
+                contextBefore: "",
+                contextAfter: "",
+                diff: "",
+              },
+              parts: [],
+              status: "open",
+              createdAt: "now",
+              updatedAt: "now",
+            },
+          ],
+        }),
+      );
+      await vi.waitFor(() => expect(sidecarObservations).toHaveLength(1));
+      await Effect.runPromise(
+        Queue.offer(sidecarObservations[0]!, discussionSnapshot(sidecarId, "old sidecar")),
+      );
+      await vi.waitFor(() => expect(reviews.discussionSessions).toHaveLength(1));
+      await vi.waitFor(() =>
+        expect(projection.findDiscussionConversation(sidecarId)?.parts).toHaveLength(1),
+      );
+      const sidecarModel = projection.findDiscussionConversation(sidecarId);
+
+      // The parent identity remains loaded, but both Stores and observer leave retention together.
+      retainedSessions.splice(0, 1);
+      observedIds.splice(0, 1);
+      await vi.waitFor(() => expect(reviews.discussionSessions).toHaveLength(0));
+      await vi.waitFor(() => expect(sidecarModel?.parts).toEqual([]));
+      expect(projection.findDiscussionConversation(sidecarId)).toBe(sidecarModel);
+      expect(projection.discussionCatalog(parentId).threads).toHaveLength(1);
+
+      retainedSessions.push({ props: { discussionCatalog: catalog } });
+      observedIds.push(parentId);
+      await vi.waitFor(() => expect(sidecarObservations).toHaveLength(2));
+      expect(reviews.discussionSessions).toHaveLength(1);
+      expect(projection.findDiscussionConversation(sidecarId)).toBe(sidecarModel);
+      expect(sidecarModel?.parts).toEqual([]);
+      await Effect.runPromise(
+        Queue.offer(sidecarObservations[1]!, discussionSnapshot(sidecarId, "fresh sidecar")),
+      );
+      await vi.waitFor(() =>
+        expect(projection.findDiscussionConversation(sidecarId)?.parts[0]?.value).toEqual(
+          expect.objectContaining({ output: "fresh sidecar" }),
+        ),
+      );
+    } finally {
+      observer.stop();
+      reviews[Symbol.dispose]();
+      operations[Symbol.dispose]();
+      projection[Symbol.dispose]();
+    }
+  });
+});
+
 describe("Cake Chat composition observer", () => {
-  it("composes Conversation and Cake controls without Project Session fields", async () => {
-    const updates = await Effect.runPromise(Queue.unbounded<ConversationUpdate>());
+  it("replaces the focused control projection from current-first snapshots", async () => {
     const controls = await Effect.runPromise(Queue.unbounded<CakeChatControlUpdate>());
-    const client = {
-      projects: { observeCatalog: () => Stream.never },
-      conversations: { observe: () => Stream.fromQueue(updates) },
+    const client = baseClient({
       cakeChats: {
         observeCatalog: () => Stream.never,
         observeControls: () => Stream.fromQueue(controls),
       },
-    } as unknown as CakeIpcClientService;
+    });
     const projection = RootProjection.create();
     const observer = createModelObserver(runtimeFor(client));
-    const conversation = projection.cakeChatConversation("cake-chat-1");
     const controlModel = projection.controlsForCakeChat("cake-chat-1");
     observer.sync({
       projects: projection.projects,
@@ -439,30 +461,22 @@ describe("Cake Chat composition observer", () => {
       cakeChats: [
         {
           target: { sessionId: "cake-chat-1", tools: [] },
-          conversation,
+          conversation: projection.cakeChatConversation("cake-chat-1"),
           controls: controlModel,
         },
       ],
     });
 
-    await Effect.runPromise(Queue.offer(updates, conversationSnapshot("cake-chat-1")));
-    await Effect.runPromise(
-      Queue.offer(controls, {
-        _tag: "Requested",
-        request: {
-          _tag: "ControlRequested",
-          sessionId: "cake-chat-1",
-          controlRequestId: crypto.randomUUID(),
-          invocation: { name: "app.showSettings", arguments: {} },
-        },
-      }),
-    );
-
-    await vi.waitFor(() => expect(controlModel.requests).toHaveLength(1));
-    expect(conversation.sessionFile).toContain("cake-chat-1");
-    expect(conversation).not.toHaveProperty("controlRequests");
-    expect(conversation).not.toHaveProperty("projectPath");
-    expect(controlModel).not.toHaveProperty("workingDirectory");
+    const request = {
+      _tag: "ControlRequested" as const,
+      sessionId: "cake-chat-1",
+      controlRequestId: crypto.randomUUID(),
+      invocation: { name: "app.showSettings", arguments: {} },
+    };
+    await Effect.runPromise(Queue.offer(controls, { _tag: "Snapshot", requests: [request] }));
+    await vi.waitFor(() => expect(controlModel.requests).toEqual([request]));
+    await Effect.runPromise(Queue.offer(controls, { _tag: "Snapshot", requests: [] }));
+    await vi.waitFor(() => expect(controlModel.requests).toEqual([]));
 
     observer.stop();
     projection[Symbol.dispose]();

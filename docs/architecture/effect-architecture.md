@@ -444,16 +444,14 @@ type ConversationUpdate =
     };
 ```
 
-Opening a Project Session first reads its fresh on-demand
-`ProjectSessionProjection`. The aggregate carries a bounded
-`ConversationReference`, not a transcript snapshot. Once that reference is
-validated, the renderer starts the independent `conversations.observe`
-subscription for the primary Conversation. Discussion, subagent,
-scheduled-message, artifact, review, and Session Family authorities are read or
-observed only by the focused surfaces that need them. A Conversation update
-never rebuilds the aggregate. A focused relationship change invalidates and
-re-reads the bounded aggregate without replacing the Conversation Model or its
-transcript identity.
+A Project Session's known target is sufficient to start the independent
+`conversations.observe` subscription for its primary Conversation. The optional
+`ProjectSessionProjection` is a fresh on-demand overview carrying a bounded
+`ConversationReference`, not a transcript snapshot or relationship catalogs.
+Discussion, subagent, scheduled-message, artifact, review, and Session Family
+authorities are read or observed only by the focused surfaces that need them.
+Conversation and focused-authority updates never rebuild that overview or
+replace Conversation Model identity.
 
 Conversation Events cover messages and the broader runtime lifecycle: turn
 state, message parts, tool execution, model selection, usage, compaction,
@@ -469,9 +467,9 @@ into Cake Session updates before RPC. The renderer Model observer maps the
 RPC Stream into Model snapshots and applies them.
 
 ```text
-Focused Cake authorities → on-demand ProjectSessionProjection
-  → primary ConversationReference → conversations.observe
+Known Project Session target → conversations.observe
 Pi → CakeSessionRuntime → Conversation snapshot/event projection
+Optional ProjectSessionProjection → on-demand overview/header only
   → Model observer → renderer Conversation Model → Stores/React
 
 Focused review / subagent / artifact / family / schedule authorities

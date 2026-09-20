@@ -24,8 +24,8 @@ does not imply that an entity is currently materialized.
 A bounded value that identifies another independently owned entity, optionally
 with routing or display metadata. A Reference does not transfer ownership and
 must not copy the referenced entity's authoritative payload. Project Session
-aggregate projections therefore carry Discussion Session, Subagent Session,
-review-thread, artifact-link, and Session Family references or summaries.
+workflows join Discussion Session, Subagent Session, review-thread, artifact-link,
+and Session Family references only at the focused surface that needs them.
 
 ### Handle
 
@@ -65,8 +65,8 @@ type Update<Snapshot, Event> =
 
 A purpose-built, validated, derived representation assembled from one or more
 authorities for a consumer. A Projection may itself be delivered as a Snapshot
-and then updated by Events. Project Session aggregate projections and renderer
-Models are projections; they are not additional authorities.
+and then updated by Events. Project Session overviews and renderer Models are
+projections; they are not additional authorities.
 
 ### Revision
 
@@ -122,16 +122,15 @@ Session Family membership. Those authorities remain focused: the aggregate
 projection joins bounded references and summaries rather than copying Pi
 transcripts, artifact payloads, Git state, or review storage into a god object.
 
-The main/domain layer assembles the validated `ProjectSessionProjection` as a
-fresh, on-demand aggregate read. It identifies the primary Conversation by a
-bounded `ConversationReference`; it never embeds `ConversationSnapshot`. The
-renderer applies this aggregate before independently subscribing through
-`conversations.observe`. Review, Discussion, subagent, artifact, Session Family,
-and scheduled-message payloads remain in focused authorities and renderer
-Models. Relationship membership changes invalidate the aggregate read without
-replacing the Conversation; Conversation updates never invalidate the aggregate.
-The renderer consumes the projection but does not define Project Session
-ownership.
+The main/domain layer assembles `ProjectSessionProjection` only as a fresh,
+on-demand overview/header read. It identifies the primary Conversation by a
+bounded `ConversationReference`; it never embeds `ConversationSnapshot` or
+copies relationship catalogs. A renderer that already knows the Project
+Session target subscribes directly through `conversations.observe` without
+waiting for that optional overview. Review, Discussion, subagent, artifact,
+Session Family, and scheduled-message payloads remain in focused authorities
+and renderer Models. The renderer consumes these projections but does not
+define Project Session ownership.
 
 ### Cake Chat Session
 

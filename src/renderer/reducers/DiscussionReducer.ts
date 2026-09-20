@@ -37,7 +37,6 @@ export function applyDiscussionCatalogUpdate(
     }
     const order = new Map(snapshots.map((thread, index) => [thread.id, index]));
     model.threads.sort((left, right) => order.get(left.id)! - order.get(right.id)!);
-    model.relationshipRevision += 1;
   });
 }
 

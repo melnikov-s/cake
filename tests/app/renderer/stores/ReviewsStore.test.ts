@@ -180,6 +180,7 @@ function fixture(
   const parentSession = { model: parent, props: { discussionCatalog } };
   const sessionRegistry = {
     sessions: [parentSession],
+    observationRetention: { sessions: [parentSession] },
     findModel: (sessionId: string) => (sessionId === "parent-1" ? parent : undefined),
     findSession: (sessionId: string) => (sessionId === "parent-1" ? parentSession : undefined),
   } as unknown as SessionRegistryStore;

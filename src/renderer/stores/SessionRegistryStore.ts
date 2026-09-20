@@ -3,7 +3,6 @@ import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract"
 import type { CakeControlTool } from "../../domain/cake-chats/cake-chat-data";
 import type { Conversation } from "../models/Conversation";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
-import type { ProjectSession } from "../models/ProjectSession";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
@@ -21,7 +20,6 @@ import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeC
 export interface SessionRegistryStoreProps {
   catalog?: SessionCatalogStore;
   sessionModel(sessionId: string, workingDirectory: string): Conversation;
-  projectSessionModel(sessionId: string): ProjectSession;
   discussionCatalog(sessionId: string): DiscussionCatalog;
   subagentCatalog(sessionId: string): SubagentCatalog;
   scheduledMessageCatalog(sessionId: string): ScheduledMessageCatalog;
@@ -93,7 +91,6 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         key: target.sessionId,
         ...target,
         model: this.props.sessionModel(target.sessionId, target.workspacePath),
-        projectSession: this.props.projectSessionModel(target.sessionId),
         discussionCatalog: this.props.discussionCatalog(target.sessionId),
         subagentCatalog: this.props.subagentCatalog(target.sessionId),
         scheduledMessageCatalog: this.props.scheduledMessageCatalog(target.sessionId),

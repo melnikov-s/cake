@@ -21,15 +21,23 @@ import { applyPartUpdate, messageSnapshots, removePart } from "./SessionPartRedu
 
 export function applyConversationUpdate(model: Conversation, update: ConversationUpdate) {
   if (update._tag === "Snapshot") {
+    assertConversationSnapshotIdentity(model, update.snapshot);
     batch(() => {
       applyConversationSnapshot(model, update.snapshot, false);
       model.observedSnapshotRevision += 1;
     });
     return;
   }
-  if (update.event._tag !== "SnapshotUpdated" && update.event.sessionId !== model.sessionId)
+  if (update.event._tag === "SnapshotUpdated")
+    assertConversationSnapshotIdentity(model, update.event.snapshot);
+  else if (update.event.sessionId !== model.sessionId)
     throw new Error(`Conversation event identity collision: ${model.sessionId}`);
   applyConversationEvent(model, update.event);
+}
+
+function assertConversationSnapshotIdentity(model: Conversation, snapshot: ConversationSnapshot) {
+  if (snapshot.sessionId !== model.sessionId)
+    throw new Error(`Conversation snapshot identity collision: ${model.sessionId}`);
 }
 
 export function unloadConversationProjection(model: Conversation) {
@@ -80,6 +88,8 @@ export function applyDiscussionSessionUpdate(
   }
   if (update.sessionId !== sessionId)
     throw new Error(`Discussion Session event identity collision: ${sessionId}`);
+  if (update.event._tag === "SnapshotUpdated")
+    assertConversationSnapshotIdentity(model, update.event.snapshot);
   applyConversationEvent(model, update.event);
 }
 

@@ -1,8 +1,6 @@
 import { Schema } from "effect";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
 import { ThinkingLevel } from "../../services/pi/model-data";
-import { ArtifactLink } from "../artifacts/artifact-lineage";
-import { SubagentHandleId, SubagentStatus } from "../subagents/subagent-data";
 import { ManagedWorktreeContext } from "../worktrees/managed-worktree-data";
 import {
   CakeSessionIdentity,
@@ -91,38 +89,9 @@ const ProjectSessionLifecycleProjection = Schema.Struct({
   unread: Schema.Boolean,
 });
 
-const DiscussionSessionReference = Schema.Struct({
-  threadId: boundedId,
-  sessionId: boundedId,
-  status: Schema.Literals(["open", "resolved"]),
-  anchor: Schema.Literals(["file", "message", "session"]),
-});
-
-const ReviewThreadReference = Schema.Struct({
-  threadId: boundedId,
-  status: Schema.Literals(["open", "resolved"]),
-  anchor: Schema.Literals(["file", "message", "session"]),
-  updatedAt: Schema.String,
-});
-
-const SubagentSessionReference = Schema.Struct({
-  handleId: SubagentHandleId,
-  status: SubagentStatus,
-  task: boundedText,
-});
-
-export const SessionFamilyReference = Schema.Struct({
-  familyId: boundedId,
-  rootProjectSessionId: boundedId,
-  parentProjectSessionId: Schema.optionalKey(boundedId),
-  childProjectSessionIds: Schema.Array(boundedId),
-  depth: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-});
-export interface SessionFamilyReference extends Schema.Schema.Type<typeof SessionFamilyReference> {}
-
 /**
- * Main-owned aggregate read projection for one Project Session. It joins bounded
- * references from focused authorities without embedding transcripts or payloads.
+ * Current on-demand overview for one Project Session. Focused relationship
+ * authorities are intentionally not duplicated into this header projection.
  */
 export const ProjectSessionProjection = Schema.Struct({
   identity: CakeSessionIdentity.cases.ProjectSession,
@@ -130,11 +99,6 @@ export const ProjectSessionProjection = Schema.Struct({
   workingDirectory: WorkingDirectoryReference,
   lifecycle: ProjectSessionLifecycleProjection,
   primaryConversation: ConversationReference,
-  discussionSessions: Schema.Array(DiscussionSessionReference),
-  subagentSessions: Schema.Array(SubagentSessionReference),
-  reviewThreads: Schema.Array(ReviewThreadReference),
-  artifactLinks: Schema.Array(ArtifactLink),
-  family: Schema.optionalKey(SessionFamilyReference),
 });
 export interface ProjectSessionProjection extends Schema.Schema.Type<
   typeof ProjectSessionProjection

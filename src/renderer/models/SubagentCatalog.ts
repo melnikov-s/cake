@@ -7,5 +7,4 @@ export class SubagentCatalog extends Model {
   @child(SubagentActivity) activities: SubagentActivity[] = observable([]);
   releasedHandleIds: string[] = observable([]);
   backgroundActive = false;
-  relationshipRevision = 0;
 }

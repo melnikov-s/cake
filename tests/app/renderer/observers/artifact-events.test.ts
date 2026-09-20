@@ -97,7 +97,7 @@ describe("observeArtifactEvents", () => {
       artifactLibraryStore: { load: vi.fn(async () => undefined) },
       projectWorkbenchStore: { setError: vi.fn() },
     } as unknown as RootStore;
-    const cancel = observeArtifactEvents(runtimeFor(client), projection, root);
+    const cancel = observeArtifactEvents(runtimeFor(client), root);
 
     await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
     expect(refresh).toHaveBeenNthCalledWith(1, "artifact");
@@ -157,7 +157,7 @@ describe("observeArtifactEvents", () => {
       artifactLibraryStore: { load: vi.fn(async () => undefined) },
       projectWorkbenchStore: { setError: vi.fn() },
     } as unknown as RootStore;
-    const cancel = observeArtifactEvents(runtimeFor(client), projection, root);
+    const cancel = observeArtifactEvents(runtimeFor(client), root);
 
     linked = true;
     Queue.offerUnsafe(events, { type: "artifact-catalog-invalidated", lineageId: "shared" });

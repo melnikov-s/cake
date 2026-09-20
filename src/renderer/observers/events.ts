@@ -11,7 +11,7 @@ import { observeVsCodeEvents } from "./vscode-events";
 export const observeEvents = (runtime: Runtime, projection: RootProjection, root: RootStore) => {
   const stop = [
     observeApplicationEvents(runtime, root),
-    observeArtifactEvents(runtime, projection, root),
+    observeArtifactEvents(runtime, root),
     observeTerminalEvents(runtime, root),
     observeVsCodeEvents(runtime, root),
     observeSurfaceEvents(runtime, root),
