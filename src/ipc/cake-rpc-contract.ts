@@ -3,6 +3,7 @@ import { artifactRecordSchema } from "./artifact-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { editorLocationSchema } from "./editor-location";
 import { editorAnnotationSnapshotSchema } from "./editor-annotation";
+import { vscodeEditorActionSchema } from "./vscode-editor-action";
 import {
   compiledInlineWidgetSchema,
   inlineWidgetCapabilitySchema,
@@ -425,6 +426,11 @@ export const cakeRpcPayloadSchemas = {
     ...requestBase,
     workspacePath: stringMax(4_096),
   }),
+  "perform-embedded-editor-action": Schema.Struct({
+    ...requestBase,
+    workspacePath: stringMax(4_096),
+    action: vscodeEditorActionSchema,
+  }),
   "update-embedded-editor-annotations": Schema.Struct({
     ...requestBase,
     workspacePath: stringMax(4_096),
@@ -724,6 +730,10 @@ export const cakeRpcSuccessSchemas = {
   "update-embedded-editor-bounds": cakeRpcResultSchemas.accepted,
   "reveal-in-embedded-editor": cakeRpcResultSchemas.accepted,
   "open-embedded-editor-source-control": cakeRpcResultSchemas.accepted,
+  "perform-embedded-editor-action": Schema.Struct({
+    ...requestBase,
+    result: jsonValueSchema,
+  }),
   "update-embedded-editor-annotations": cakeRpcResultSchemas.accepted,
   "open-browser": cakeRpcResultSchemas["browser-state-loaded"],
   "get-browser-state": cakeRpcResultSchemas["browser-state-loaded"],

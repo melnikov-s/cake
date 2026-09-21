@@ -380,6 +380,124 @@ async function setTheme(vscode, payload) {
     .update("colorTheme", themeLabel, vscode.ConfigurationTarget.Global);
 }
 
+function editorViewColumn(vscode, group) {
+  const columns = {
+    active: vscode.ViewColumn.Active,
+    beside: vscode.ViewColumn.Beside,
+    one: vscode.ViewColumn.One,
+    two: vscode.ViewColumn.Two,
+    three: vscode.ViewColumn.Three,
+    four: vscode.ViewColumn.Four,
+    five: vscode.ViewColumn.Five,
+    six: vscode.ViewColumn.Six,
+    seven: vscode.ViewColumn.Seven,
+    eight: vscode.ViewColumn.Eight,
+    nine: vscode.ViewColumn.Nine,
+  };
+  return group ? columns[group] : undefined;
+}
+
+function workspaceActionUri(vscode, requestedPath) {
+  const value = String(requestedPath || "").trim();
+  if (!value) throw new Error("A workspace-relative file path is required");
+  if (path.isAbsolute(value)) throw new Error("Editor actions require workspace-relative paths");
+  const target = path.resolve(WORKSPACE, value);
+  if (!workspaceRelative(target))
+    throw new Error("The editor action path is outside the workspace");
+  return vscode.Uri.file(target);
+}
+
+async function performEditorAction(vscode, action) {
+  if (!action) throw new Error("An editor action is required");
+  if (action.type === "layout.set") {
+    const commands = {
+      single: "workbench.action.editorLayoutSingle",
+      "two-columns": "workbench.action.editorLayoutTwoColumns",
+      "two-rows": "workbench.action.editorLayoutTwoRows",
+      grid: "workbench.action.editorLayoutTwoByTwoGrid",
+    };
+    const command = commands[action.layout];
+    if (!command) throw new Error("The editor layout is invalid");
+    await vscode.commands.executeCommand(command);
+    return { action: action.type, layout: action.layout };
+  }
+  if (action.type === "diff.open") {
+    const left = workspaceActionUri(vscode, action.leftPath);
+    const right = workspaceActionUri(vscode, action.rightPath);
+    await vscode.commands.executeCommand("vscode.diff", left, right, action.title || undefined);
+    return { action: action.type, leftPath: action.leftPath, rightPath: action.rightPath };
+  }
+  if (action.type === "editor.status") {
+    const active = vscode.window.activeTextEditor;
+    return {
+      action: action.type,
+      active: active
+        ? {
+            path: workspaceRelative(active.document.uri.fsPath) || active.document.uri.fsPath,
+            line: active.selection.active.line + 1,
+            column: active.selection.active.character + 1,
+            group: active.viewColumn,
+          }
+        : null,
+      visible: vscode.window.visibleTextEditors.slice(0, 32).map((editor) => ({
+        path: workspaceRelative(editor.document.uri.fsPath) || editor.document.uri.fsPath,
+        group: editor.viewColumn,
+        active: editor === active,
+      })),
+    };
+  }
+  if (action.type === "diagnostics.list") {
+    const requestedUri = action.path ? workspaceActionUri(vscode, action.path) : undefined;
+    const entries = requestedUri
+      ? [[requestedUri, vscode.languages.getDiagnostics(requestedUri)]]
+      : vscode.languages.getDiagnostics();
+    const diagnostics = [];
+    let truncated = false;
+    for (const [uri, items] of entries) {
+      if (uri.scheme !== "file") continue;
+      const relativePath = workspaceRelative(uri.fsPath);
+      if (!relativePath) continue;
+      for (const diagnostic of items) {
+        if (diagnostics.length >= 500) {
+          truncated = true;
+          break;
+        }
+        const item = {
+          path: relativePath,
+          severity: ["error", "warning", "information", "hint"][diagnostic.severity] || "unknown",
+          message: String(diagnostic.message).slice(0, 4_096),
+          line: diagnostic.range.start.line + 1,
+          column: diagnostic.range.start.character + 1,
+          endLine: diagnostic.range.end.line + 1,
+          endColumn: diagnostic.range.end.character + 1,
+        };
+        if (diagnostic.source) item.source = String(diagnostic.source).slice(0, 256);
+        if (diagnostic.code !== undefined)
+          item.code = String(diagnostic.code?.value ?? diagnostic.code).slice(0, 256);
+        diagnostics.push(item);
+      }
+      if (truncated) break;
+    }
+    return { action: action.type, diagnostics, truncated };
+  }
+  if (action.type === "panel.show") {
+    const commands = {
+      explorer: "workbench.view.explorer",
+      search: "workbench.view.search",
+      "source-control": "workbench.view.scm",
+      problems: "workbench.actions.view.problems",
+      output: "workbench.action.output.toggleOutput",
+      terminal: "workbench.action.terminal.toggleTerminal",
+      "debug-console": "workbench.debug.action.toggleRepl",
+    };
+    const command = commands[action.panel];
+    if (!command) throw new Error("The editor panel is invalid");
+    await vscode.commands.executeCommand(command);
+    return { action: action.type, panel: action.panel };
+  }
+  throw new Error("The editor action is unsupported");
+}
+
 async function runScript(vscode, payload) {
   const source = String(payload.source || "");
   if (source.length === 0) throw new Error("A JavaScript source body is required");
@@ -521,7 +639,11 @@ async function activate(context) {
           },
         ];
     }
-    const editor = await vscode.window.showTextDocument(document, { preview: false });
+    const editor = await vscode.window.showTextDocument(document, {
+      preview: payload.preview ?? false,
+      preserveFocus: payload.preserveFocus ?? false,
+      viewColumn: editorViewColumn(vscode, payload.group),
+    });
     if (requestedRanges.length === 0) return;
     revealEditorRanges(vscode, editor, requestedRanges);
   };
@@ -538,8 +660,11 @@ async function activate(context) {
     readBody(request)
       .then((raw) => JSON.parse(raw))
       .then(async (payload) => {
-        if (payload.type === "script") {
-          const result = await runScript(vscode, payload);
+        if (payload.type === "script" || payload.type === "editor-action") {
+          const result =
+            payload.type === "script"
+              ? await runScript(vscode, payload)
+              : await performEditorAction(vscode, payload.action);
           response
             .writeHead(200, { "content-type": "application/json" })
             .end(JSON.stringify(result));

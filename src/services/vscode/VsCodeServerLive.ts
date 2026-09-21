@@ -283,6 +283,33 @@ export const makeVsCodeServerLive = (
           );
           return { requestId: request.requestId };
         }),
+        performEditorAction: Effect.fn("VsCodeServer.performEditorAction")(function* (request) {
+          yield* requireAllowed(request.workspacePath);
+          const normalized = yield* tryNative("performEditorAction", async () => {
+            const action = request.action;
+            if (action.type === "diff.open") {
+              const left = await resolveSourceTarget(request.workspacePath, action.leftPath);
+              const right = await resolveSourceTarget(request.workspacePath, action.rightPath);
+              return {
+                ...action,
+                leftPath: relative(left.workspace, left.target).split(sep).join("/"),
+                rightPath: relative(right.workspace, right.target).split(sep).join("/"),
+              };
+            }
+            if (action.type === "diagnostics.list" && action.path) {
+              const target = await resolveSourceTarget(request.workspacePath, action.path);
+              return {
+                ...action,
+                path: relative(target.workspace, target.target).split(sep).join("/"),
+              };
+            }
+            return action;
+          });
+          const result = yield* tryNative("performEditorAction", (signal) =>
+            runtime.performEditorAction(request.workspacePath, normalized, signal),
+          );
+          return { requestId: request.requestId, result };
+        }),
         updateAnnotations: Effect.fn("VsCodeServer.updateAnnotations")(function* (request) {
           yield* requireAllowed(request.workspacePath);
           const normalized = yield* tryNative("updateAnnotations", async () => {

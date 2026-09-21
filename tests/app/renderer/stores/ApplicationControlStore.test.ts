@@ -71,6 +71,7 @@ function createHost(
     vscode: {
       enter: async () => undefined,
       open: async () => undefined,
+      performEditorAction: async () => null,
     },
     sessions: {
       inspect: async () => {

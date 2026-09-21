@@ -1,9 +1,30 @@
 import { Schema } from "effect";
 import { sourceLocationSchema, type SourceLocation } from "./source-location";
 
+const editorPresentationFields = {
+  group: Schema.optionalKey(
+    Schema.Literals([
+      "active",
+      "beside",
+      "one",
+      "two",
+      "three",
+      "four",
+      "five",
+      "six",
+      "seven",
+      "eight",
+      "nine",
+    ]),
+  ),
+  preview: Schema.optionalKey(Schema.Boolean),
+  preserveFocus: Schema.optionalKey(Schema.Boolean),
+};
+
 const workingDirectoryEditorLocationSchema = Schema.Struct({
   kind: Schema.Literal("working-directory"),
   ...sourceLocationSchema.fields,
+  ...editorPresentationFields,
 });
 
 const absoluteFileEditorLocationSchema = Schema.Struct({
@@ -13,6 +34,7 @@ const absoluteFileEditorLocationSchema = Schema.Struct({
   ranges: sourceLocationSchema.fields.ranges,
   symbol: sourceLocationSchema.fields.symbol,
   documentVersion: sourceLocationSchema.fields.documentVersion,
+  ...editorPresentationFields,
 });
 
 /** A file that embedded VS Code can open without changing the session's Working Directory. */

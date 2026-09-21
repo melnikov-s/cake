@@ -593,6 +593,48 @@ describe("VsCodeServerRuntime startup", () => {
     ]);
   });
 
+  it("sends curated editor actions to the companion and returns their result", async () => {
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
+    const received: unknown[] = [];
+    const server = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        received.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        response
+          .writeHead(200, { "content-type": "application/json" })
+          .end(JSON.stringify({ action: "layout.set", layout: "two-columns" }));
+      });
+    });
+    await new Promise<void>((resolvePromise) => server.listen(0, "127.0.0.1", resolvePromise));
+    const companionPort = (server.address() as AddressInfo).port;
+    const resolvedRoot = await realpath(root);
+
+    try {
+      runtime = createRuntime({ root });
+      runtime["servers"].set(resolvedRoot, {
+        workspacePath: resolvedRoot,
+        child: { kill: () => undefined, removeAllListeners: () => undefined } as never,
+        port: 1,
+        token: "token",
+        flavor: "codeserver",
+        binary: "/fake/code-server",
+        lastUsedAt: 0,
+        viewers: 1,
+      });
+      runtime["companionPorts"].set(resolvedRoot, companionPort);
+
+      await expect(
+        runtime.performEditorAction(root, { type: "layout.set", layout: "two-columns" }),
+      ).resolves.toEqual({ action: "layout.set", layout: "two-columns" });
+      expect(received).toEqual([
+        { type: "editor-action", action: { type: "layout.set", layout: "two-columns" } },
+      ]);
+    } finally {
+      await new Promise<void>((resolvePromise) => server.close(() => resolvePromise()));
+    }
+  });
+
   it("pushes the current theme to running companions and skips unchanged preferences", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
     const received: unknown[] = [];

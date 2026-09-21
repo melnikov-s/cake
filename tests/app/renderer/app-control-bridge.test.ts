@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { createStore, mount } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { CakeChatTarget } from "../../../src/domain/cake-chats/cake-chat-data";
+import type { VscodeEditorAction } from "../../../src/ipc/vscode-editor-action";
 import { encodeCrossSessionMessage } from "../../../src/domain/conversations/cross-session-coordination";
 import {
   AppControlBridge,
@@ -90,6 +91,7 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
       ({
         enter: async () => undefined,
         open: async () => undefined,
+        performEditorAction: async () => null,
       } satisfies AppControlHost["vscode"]),
     ...(overrides.worktrees ? { worktrees: overrides.worktrees } : null),
     sessions: {
@@ -175,7 +177,12 @@ describe("AppControlBridge", () => {
   it("gives the session assistant parent-scoped embedded VS Code controls", async () => {
     const enter = vi.fn(async () => undefined);
     const open = vi.fn(async () => undefined);
-    const bridge = new AppControlBridge(createHost({ vscode: { enter, open } }));
+    const performEditorAction = vi.fn(
+      async (_source: AgentControlSource, action: VscodeEditorAction) => action,
+    );
+    const bridge = new AppControlBridge(
+      createHost({ vscode: { enter, open, performEditorAction } }),
+    );
     const source: AgentControlSource = {
       kind: "project-session",
       sessionId: "parent-session",
@@ -187,7 +194,15 @@ describe("AppControlBridge", () => {
 
     expect(listAppControlTools().map(({ command }) => command)).not.toContain("vscode.enter");
     expect(listSessionAssistantControlTools().map(({ command }) => command)).toEqual(
-      expect.arrayContaining(["vscode.enter", "vscode.open"]),
+      expect.arrayContaining([
+        "vscode.enter",
+        "vscode.open",
+        "vscode.layout.set",
+        "vscode.diff.open",
+        "vscode.editor.status",
+        "vscode.diagnostics.list",
+        "vscode.panel.show",
+      ]),
     );
     await expect(
       bridge.invoke({ name: "vscode.enter", arguments: {} }, source),
@@ -196,7 +211,14 @@ describe("AppControlBridge", () => {
       bridge.invoke(
         {
           name: "vscode.open",
-          arguments: { path: "src/main.ts", line: 4, column: 2, endLine: 5 },
+          arguments: {
+            path: "src/main.ts",
+            group: "beside",
+            preview: false,
+            line: 4,
+            column: 2,
+            endLine: 5,
+          },
         },
         source,
       ),
@@ -206,6 +228,8 @@ describe("AppControlBridge", () => {
       opened: {
         kind: "working-directory",
         path: "src/main.ts",
+        group: "beside",
+        preview: false,
         range: { start: { line: 3, column: 1 }, end: { line: 4 } },
       },
     });
@@ -213,7 +237,21 @@ describe("AppControlBridge", () => {
     expect(open).toHaveBeenCalledWith(source, {
       kind: "working-directory",
       path: "src/main.ts",
+      group: "beside",
+      preview: false,
       range: { start: { line: 3, column: 1 }, end: { line: 4 } },
+    });
+
+    await expect(
+      bridge.invoke({ name: "vscode.layout.set", arguments: { layout: "two-columns" } }, source),
+    ).resolves.toMatchObject({
+      ok: true,
+      command: "vscode.layout.set",
+      result: { type: "layout.set", layout: "two-columns" },
+    });
+    expect(performEditorAction).toHaveBeenCalledWith(source, {
+      type: "layout.set",
+      layout: "two-columns",
     });
   });
 

@@ -32,6 +32,7 @@ import type {
   InlineWidgetLanguage,
 } from "../../ipc/inline-widget-contract";
 import type { JsonValue } from "../../ipc/json-contract";
+import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
 import type {
   Attachment,
   ApplicationState,
@@ -345,6 +346,11 @@ interface VsCodeCommands {
     options?: ClientCommandOptions,
   ): Promise<void>;
   openSourceControl(workingDirectory: string, options?: ClientCommandOptions): Promise<void>;
+  performEditorAction(
+    workingDirectory: string,
+    action: VscodeEditorAction,
+    options?: ClientCommandOptions,
+  ): Promise<JsonValue>;
   updateAnnotations(
     workingDirectory: string,
     snapshot: EditorAnnotationSnapshot,

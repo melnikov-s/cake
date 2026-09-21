@@ -1299,6 +1299,12 @@ export class RootStore extends Store<{
         enter: (source) => this.projectWorkbenchStore.showSessionEditor(source.sessionId),
         open: (source, location) =>
           this.projectWorkbenchStore.showSessionEditor(source.sessionId, location),
+        performEditorAction: (source, action) =>
+          this.client.vscode.performEditorAction(
+            this.requireProjectSessionWorkingDirectory(source.sessionId),
+            action,
+            { signal: this.signal },
+          ),
       },
       sessionLabels: {
         mutate: ({ projectPath }, mutation) =>

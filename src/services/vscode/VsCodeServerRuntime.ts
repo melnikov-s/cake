@@ -10,6 +10,7 @@ import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
 import type { EditorLocation } from "../../ipc/editor-location";
 import { jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
+import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
 import cakeIconMarkup from "../../assets/cake-icon.svg?raw";
 import {
   downloadFile,
@@ -261,7 +262,8 @@ type CompanionRequest =
   | { type: "open-source-control" }
   | ({ type: "annotations" } & EditorAnnotationSnapshot)
   | { type: "set-theme"; theme: "light" | "dark" }
-  | { type: "script"; source: string; input: JsonValue };
+  | { type: "script"; source: string; input: JsonValue }
+  | { type: "editor-action"; action: VscodeEditorAction };
 
 interface BroadcastTarget {
   broadcast(
@@ -702,6 +704,27 @@ export class VsCodeServerRuntime {
       port,
       "/",
       { type: "script", source, input },
+      this.bridgeToken,
+      COMPANION_SCRIPT_TIMEOUT,
+      signal,
+    );
+  }
+
+  /** Runs one schema-validated, companion-owned editor action for the workspace. */
+  async performEditorAction(
+    workspacePath: string,
+    action: VscodeEditorAction,
+    signal?: AbortSignal,
+  ): Promise<JsonValue> {
+    const resolved = await realpath(workspacePath);
+    const instance = this.servers.get(resolved);
+    if (!instance) throw new Error("The embedded editor is not running for this project yet");
+    const port = await this.waitForCompanionPort(resolved, signal);
+    this.touch(instance);
+    return postJsonResult(
+      port,
+      "/",
+      { type: "editor-action", action },
       this.bridgeToken,
       COMPANION_SCRIPT_TIMEOUT,
       signal,

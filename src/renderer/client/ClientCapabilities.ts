@@ -520,6 +520,19 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           options,
         );
       },
+      performEditorAction: (workingDirectory, action, options) => {
+        const requestId = crypto.randomUUID();
+        return execute(
+          "vscode.perform-embedded-editor-action",
+          (client) =>
+            client.vscode["perform-embedded-editor-action"]({
+              requestId,
+              workspacePath: workingDirectory,
+              action,
+            }),
+          options,
+        ).then((response) => response.result);
+      },
       updateAnnotations: (workingDirectory, snapshot, options) => {
         const requestId = crypto.randomUUID();
         return accepted(

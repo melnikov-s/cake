@@ -2,6 +2,7 @@ import { Context, Schema, type Effect, type Stream } from "effect";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
 import type { EditorLocation } from "../../ipc/editor-location";
 import type { JsonValue } from "../../ipc/json-contract";
+import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
 
 interface EmbeddedEditorState {
   readonly status: "missing" | "downloading" | "starting" | "ready" | "failed";
@@ -64,6 +65,12 @@ export interface VsCodeServerService {
   readonly openSourceControl: (
     request: OpenEmbeddedEditorInput,
   ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
+  readonly performEditorAction: (
+    request: OpenEmbeddedEditorInput & { readonly action: VscodeEditorAction },
+  ) => Effect.Effect<
+    EmbeddedEditorRequestIdentity & { readonly result: JsonValue },
+    VsCodeServerError
+  >;
   readonly updateAnnotations: (
     request: UpdateEmbeddedEditorAnnotationsInput,
   ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;

@@ -630,6 +630,7 @@ export interface CakeIpcClientService {
     | "update-embedded-editor-bounds"
     | "reveal-in-embedded-editor"
     | "open-embedded-editor-source-control"
+    | "perform-embedded-editor-action"
     | "update-embedded-editor-annotations",
     VsCodeServerError
   > & {
@@ -1234,6 +1235,9 @@ export const CakeIpcClientLive = Layer.effect(
         "open-embedded-editor-source-control": Effect.fn(
           "CakeIpcClient.vscode.open-embedded-editor-source-control",
         )((payload) => client("vscode.open-embedded-editor-source-control", payload)),
+        "perform-embedded-editor-action": Effect.fn(
+          "CakeIpcClient.vscode.perform-embedded-editor-action",
+        )((payload) => client("vscode.perform-embedded-editor-action", payload)),
         "update-embedded-editor-annotations": Effect.fn(
           "CakeIpcClient.vscode.update-embedded-editor-annotations",
         )((payload) => client("vscode.update-embedded-editor-annotations", payload)),

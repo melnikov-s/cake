@@ -12,6 +12,7 @@ import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-dat
 import type { ProjectSessionPreview } from "../../domain/project-sessions/project-session-data";
 import type { ScheduledMessage } from "../../domain/scheduled-messages/scheduled-message-data";
 import { editorLocationFromPath, type EditorLocation } from "../../ipc/editor-location";
+import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
 import type { SourceLocation, SourcePosition } from "../../ipc/source-location";
 import { parseCrossSessionMessage } from "../../domain/conversations/cross-session-coordination";
 import type {
@@ -198,6 +199,23 @@ const appControlArgumentSchemas = {
   "vscode.enter": Schema.Struct({}),
   "vscode.open": Schema.Struct({
     path: trimmed(1, 8_192),
+    group: Schema.optionalKey(
+      Schema.Literals([
+        "active",
+        "beside",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+      ]),
+    ),
+    preview: Schema.optionalKey(Schema.Boolean),
+    preserveFocus: Schema.optionalKey(Schema.Boolean),
     line: Schema.optionalKey(
       Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10_000_001 })),
     ),
@@ -221,6 +239,27 @@ const appControlArgumentSchemas = {
       return undefined;
     }),
   ),
+  "vscode.layout.set": Schema.Struct({
+    layout: Schema.Literals(["single", "two-columns", "two-rows", "grid"]),
+  }),
+  "vscode.diff.open": Schema.Struct({
+    leftPath: trimmed(1, 8_192),
+    rightPath: trimmed(1, 8_192),
+    title: Schema.optionalKey(trimmed(1, 256)),
+  }),
+  "vscode.editor.status": emptyArgumentsSchema,
+  "vscode.diagnostics.list": Schema.Struct({ path: Schema.optionalKey(trimmed(1, 8_192)) }),
+  "vscode.panel.show": Schema.Struct({
+    panel: Schema.Literals([
+      "explorer",
+      "search",
+      "source-control",
+      "problems",
+      "output",
+      "terminal",
+      "debug-console",
+    ]),
+  }),
   "notifications.send": Schema.Struct({
     title: trimmed(1, 256),
     body: trimmed(1, 2_000),
@@ -297,6 +336,11 @@ const appControlInvocationSchema = Schema.Union([
   invocation("worktrees.discard"),
   invocation("vscode.enter"),
   invocation("vscode.open"),
+  invocation("vscode.layout.set"),
+  invocation("vscode.diff.open"),
+  invocation("vscode.editor.status"),
+  invocation("vscode.diagnostics.list"),
+  invocation("vscode.panel.show"),
   invocation("notifications.send"),
   invocation("agent.action"),
 ]);
@@ -411,6 +455,7 @@ export interface AppControlHost {
   vscode: {
     enter(source: AgentControlSource): Promise<void>;
     open(source: AgentControlSource, location: EditorLocation): Promise<void>;
+    performEditorAction(source: AgentControlSource, action: VscodeEditorAction): Promise<JsonValue>;
   };
   worktrees?: {
     merge(input: { sessionId: string; workingDirectory: string }): Promise<string>;
@@ -672,6 +717,16 @@ export type AppControlResult =
     }
   | { ok: true; command: "vscode.enter"; entered: true }
   | { ok: true; command: "vscode.open"; opened: EditorLocation }
+  | {
+      ok: true;
+      command:
+        | "vscode.layout.set"
+        | "vscode.diff.open"
+        | "vscode.editor.status"
+        | "vscode.diagnostics.list"
+        | "vscode.panel.show";
+      result: JsonValue;
+    }
   | { ok: true; command: "notifications.send"; status: "queued" }
   | {
       ok: true;
@@ -722,8 +777,72 @@ const sessionAssistantControlOperations = [
       "Opening an absolute path does not add it to the project or change the Working Directory. Lines and columns are one-based.",
       "Call vscode.enter before vscode.open when the user asks to open a file in embedded VS Code.",
     ],
-    examples: [{ input: { path: "src/main.ts", line: 1 } }],
+    examples: [
+      { input: { path: "src/main.ts", line: 1 } },
+      {
+        input: { path: "tests/main.test.ts", group: "beside", preview: false },
+        description: "Open a test beside the current editor.",
+      },
+    ],
     result: "The project-relative or absolute local location opened in embedded VS Code.",
+  },
+  {
+    ...operation(
+      "vscode.layout.set",
+      "vscode",
+      "Arrange embedded VS Code editor groups using a safe layout preset.",
+      appControlArgumentSchemas["vscode.layout.set"],
+    ),
+    examples: [{ input: { layout: "two-columns" } }],
+    result: "The applied editor layout.",
+  },
+  {
+    ...operation(
+      "vscode.diff.open",
+      "vscode",
+      "Open a native diff between two Working Directory-relative files.",
+      appControlArgumentSchemas["vscode.diff.open"],
+    ),
+    examples: [
+      {
+        input: {
+          leftPath: "src/main.ts",
+          rightPath: "tests/main.test.ts",
+          title: "Implementation ↔ test",
+        },
+      },
+    ],
+    result: "The paths opened in the native diff editor.",
+    limitations: ["Both paths must remain inside the parent Project Session's Working Directory."],
+  },
+  {
+    ...operation(
+      "vscode.editor.status",
+      "vscode",
+      "Inspect the active and visible embedded VS Code editors and groups.",
+      appControlArgumentSchemas["vscode.editor.status"],
+    ),
+    result: "The active editor position and up to 32 visible editors.",
+  },
+  {
+    ...operation(
+      "vscode.diagnostics.list",
+      "vscode",
+      "List embedded VS Code diagnostics for one Working Directory-relative file or the workspace.",
+      appControlArgumentSchemas["vscode.diagnostics.list"],
+    ),
+    examples: [{ input: { path: "src/main.ts" } }],
+    result: "Up to 500 diagnostics with source ranges and a truncation flag.",
+  },
+  {
+    ...operation(
+      "vscode.panel.show",
+      "vscode",
+      "Show an allowlisted embedded VS Code panel or view.",
+      appControlArgumentSchemas["vscode.panel.show"],
+    ),
+    examples: [{ input: { panel: "problems" } }],
+    result: "The panel or view shown in embedded VS Code.",
   },
 ] as const;
 
@@ -1279,7 +1398,15 @@ export class AppControlBridge {
         ...split,
       };
     }
-    if (invocation.name === "vscode.enter" || invocation.name === "vscode.open") {
+    if (
+      invocation.name === "vscode.enter" ||
+      invocation.name === "vscode.open" ||
+      invocation.name === "vscode.layout.set" ||
+      invocation.name === "vscode.diff.open" ||
+      invocation.name === "vscode.editor.status" ||
+      invocation.name === "vscode.diagnostics.list" ||
+      invocation.name === "vscode.panel.show"
+    ) {
       if (source?.kind !== "project-session" || !source.workingDirectory)
         return {
           ok: false,
@@ -1290,9 +1417,29 @@ export class AppControlBridge {
         await this.host.vscode.enter(source);
         return { ok: true, command: invocation.name, entered: true };
       }
-      const location = editorLocationFromPath(sourceLocation(invocation.arguments));
-      await this.host.vscode.open(source, location);
-      return { ok: true, command: invocation.name, opened: location };
+      if (invocation.name === "vscode.open") {
+        const input = invocation.arguments;
+        const location = {
+          ...editorLocationFromPath(sourceLocation(input)),
+          ...(input.group ? { group: input.group } : null),
+          ...(input.preview !== undefined ? { preview: input.preview } : null),
+          ...(input.preserveFocus !== undefined ? { preserveFocus: input.preserveFocus } : null),
+        } satisfies EditorLocation;
+        await this.host.vscode.open(source, location);
+        return { ok: true, command: invocation.name, opened: location };
+      }
+      const action: VscodeEditorAction =
+        invocation.name === "vscode.layout.set"
+          ? { type: "layout.set", ...invocation.arguments }
+          : invocation.name === "vscode.diff.open"
+            ? { type: "diff.open", ...invocation.arguments }
+            : invocation.name === "vscode.editor.status"
+              ? { type: "editor.status" }
+              : invocation.name === "vscode.diagnostics.list"
+                ? { type: "diagnostics.list", ...invocation.arguments }
+                : { type: "panel.show", ...invocation.arguments };
+      const result = await this.host.vscode.performEditorAction(source, action);
+      return { ok: true, command: invocation.name, result };
     }
     if (invocation.name === "notifications.send") {
       await this.host.presentation.showNotification({
