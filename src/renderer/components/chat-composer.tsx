@@ -31,6 +31,27 @@ export const ChatComposer = observer(function ChatComposer({
   leadingAccessoryVisible?: boolean;
   className?: string;
 }) {
+  // Anchor the accessory to the input row when one exists so it tracks the textarea
+  // beneath annotations and attachments; the offsets compensate for the Composer
+  // frame's 0.75rem padding and 1px border so the resting position is unchanged.
+  const accessoryNode = leadingAccessory && (
+    <div
+      data-slot="composer-leading-accessory"
+      className={cn(
+        "absolute z-20 block transition-[opacity,transform] duration-300 ease-out @4xl/composer-dock:left-auto @4xl/composer-dock:right-full",
+        input
+          ? "left-[calc(0.25rem-1px)] top-[calc(0.25rem-1px)] @4xl/composer-dock:top-[calc(1rem-1px)] @4xl/composer-dock:mr-[calc(1.5rem+1px)]"
+          : "left-4 top-4 @4xl/composer-dock:top-7 @4xl/composer-dock:mr-3",
+        leadingAccessoryVisible
+          ? "scale-100 opacity-100"
+          : "pointer-events-none translate-x-2 scale-75 opacity-0",
+      )}
+      aria-hidden={!leadingAccessoryVisible}
+      inert={!leadingAccessoryVisible ? true : undefined}
+    >
+      {leadingAccessory}
+    </div>
+  );
   return (
     <div
       className={cn(
@@ -43,21 +64,7 @@ export const ChatComposer = observer(function ChatComposer({
     >
       {header}
       <div className="relative">
-        {leadingAccessory && (
-          <div
-            data-slot="composer-leading-accessory"
-            className={cn(
-              "absolute left-4 top-4 z-20 block transition-[opacity,transform] duration-300 ease-out @4xl/composer-dock:left-auto @4xl/composer-dock:right-full @4xl/composer-dock:top-7 @4xl/composer-dock:mr-3",
-              leadingAccessoryVisible
-                ? "scale-100 opacity-100"
-                : "pointer-events-none translate-x-2 scale-75 opacity-0",
-            )}
-            aria-hidden={!leadingAccessoryVisible}
-            inert={!leadingAccessoryVisible ? true : undefined}
-          >
-            {leadingAccessory}
-          </div>
-        )}
+        {!input && accessoryNode}
         <Composer
           className={cn(
             "relative z-10 border-border/90 bg-composer shadow-[0_24px_80px_-30px_hsl(var(--shadow)/0.55),0_2px_10px_hsl(var(--shadow)/0.08)]",
@@ -66,7 +73,12 @@ export const ChatComposer = observer(function ChatComposer({
           onSubmit={onSubmit}
         >
           {children}
-          {input}
+          {input && (
+            <div className="relative">
+              {accessoryNode}
+              {input}
+            </div>
+          )}
           <ComposerToolbar
             data-slot="composer-toolbar"
             separated={toolbarSeparated}
