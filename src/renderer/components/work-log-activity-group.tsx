@@ -112,14 +112,15 @@ export const ActivityGroup = observer(function ActivityGroup({
       ? "Reasoning"
       : `${tools} tool ${tools === 1 ? "call" : "calls"}${reasoningHasContent ? " · reasoning" : ""}`;
   const latestPart = parts.at(-1);
-  const latestAction =
-    latestPart?.kind === "tool"
+  const latestAction = activityIsRunning
+    ? latestPart?.kind === "tool"
       ? toolDisplayTitle(latestPart, false, behavior.workspacePath)
       : latestPart?.kind === "reasoning"
         ? latestPart.status === "streaming"
           ? "Thinking…"
           : "Reasoning"
-        : label;
+        : undefined
+    : undefined;
   const firstPartId = parts[0]?.id;
   const lastPartId = parts.at(-1)?.id;
   const live = behavior.store.liveWorkPossible;
@@ -188,7 +189,8 @@ export const ActivityGroup = observer(function ActivityGroup({
         <StatusDot status={activityIsRunning ? "running" : "complete"} />
         <span className="shrink-0">{compacted ? "Compacted work log" : "Work log"}</span>
         <small className="ml-1.5 min-w-0 truncate font-normal text-muted-foreground">
-          {open ? label : latestAction}
+          {label}
+          {!open && latestAction ? ` · ${latestAction}` : null}
         </small>
       </summary>
       {open &&

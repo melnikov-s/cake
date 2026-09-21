@@ -845,7 +845,7 @@ describe("Transcript scrolling", () => {
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("shows the latest action while a work log is collapsed", () => {
+  it("shows work-log totals with the active action only while collapsed work is running", () => {
     const readPart: UiPart = {
       id: "tool-read",
       kind: "tool",
@@ -860,16 +860,27 @@ describe("Transcript scrolling", () => {
       input: "pnpm test",
       state: "running",
     };
-
-    act(() =>
+    const render = (running: boolean) =>
       root.render(
-        <TestTranscript sessionId="session-1" store={storeWith([readPart, bashPart], true)} />,
-      ),
-    );
+        <TestTranscript
+          sessionId="session-1"
+          store={storeWith(
+            [readPart, running ? bashPart : { ...bashPart, state: "success" }],
+            running,
+          )}
+        />,
+      );
+
+    act(() => render(true));
 
     const summary = container.querySelector<HTMLElement>('[data-slot="activity-group"] > summary')!;
+    expect(summary.textContent).toContain("2 tool calls");
     expect(summary.textContent).toContain("bash pnpm test");
     expect(summary.textContent).not.toContain("read README.md");
+
+    act(() => render(false));
+    expect(summary.textContent).toContain("2 tool calls");
+    expect(summary.textContent).not.toContain("bash pnpm test");
 
     act(() => summary.click());
     expect(summary.textContent).toContain("2 tool calls");
@@ -1026,10 +1037,10 @@ describe("Transcript scrolling", () => {
       ),
     );
     const summary = container.querySelector<HTMLElement>('[data-slot="activity-group"] > summary')!;
-    expect(summary.textContent).toContain("subagents.wait");
+    expect(summary.textContent).toContain("1 tool call");
+    expect(summary.textContent).not.toContain("subagents.wait");
 
     act(() => summary.click());
-    expect(summary.textContent).toContain("1 tool call");
     expect(container.textContent).toContain("openai-codex/gpt-5.6-sol");
     expect(container.textContent).toContain("Tell a joke");
     expect(container.textContent).toContain("Background · 2 waits");
