@@ -12,7 +12,6 @@ export const DrawBoardToolbar = observer(function DrawBoardToolbar({
   sidebarCollapsed,
   canGoBack,
   canGoForward,
-  onBackToAgent,
   onToggleSidebar,
   onGoBack,
   onGoForward,
@@ -21,7 +20,6 @@ export const DrawBoardToolbar = observer(function DrawBoardToolbar({
   sidebarCollapsed: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
-  onBackToAgent(): void;
   onToggleSidebar(): void;
   onGoBack(): void;
   onGoForward(): void;
@@ -70,15 +68,6 @@ export const DrawBoardToolbar = observer(function DrawBoardToolbar({
           <div className="mx-1 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
         </div>
       ) : null}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="[-webkit-app-region:no-drag]"
-        onClick={onBackToAgent}
-      >
-        <BackIcon />
-        Back to agent
-      </Button>
       <strong className="ml-1 shrink-0 text-xs">Cake Draw</strong>
       <div className="ml-auto flex items-center gap-2 [-webkit-app-region:no-drag]">
         <span className="text-[10px] text-muted-foreground" role="status">

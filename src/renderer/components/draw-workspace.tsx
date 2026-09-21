@@ -16,7 +16,6 @@ export const DrawWorkspace = observer(function DrawWorkspace({
   sidebarCollapsed,
   canGoBack,
   canGoForward,
-  onBackToAgent,
   onToggleSidebar,
   onGoBack,
   onGoForward,
@@ -42,7 +41,6 @@ export const DrawWorkspace = observer(function DrawWorkspace({
   sidebarCollapsed: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
-  onBackToAgent(): void;
   onToggleSidebar(): void;
   onGoBack(): void;
   onGoForward(): void;
@@ -103,7 +101,6 @@ export const DrawWorkspace = observer(function DrawWorkspace({
             sidebarCollapsed={sidebarCollapsed}
             canGoBack={canGoBack}
             canGoForward={canGoForward}
-            onBackToAgent={onBackToAgent}
             onToggleSidebar={onToggleSidebar}
             onGoBack={onGoBack}
             onGoForward={onGoForward}

@@ -35,31 +35,6 @@ describe("DrawBoardToolbar", () => {
     exportBoard.mockReset();
   });
 
-  it("returns to the agent from the labeled toolbar action", () => {
-    const onBackToAgent = vi.fn();
-    act(() =>
-      root.render(
-        <DrawBoardToolbar
-          store={store}
-          sidebarCollapsed={false}
-          canGoBack={false}
-          canGoForward={false}
-          onBackToAgent={onBackToAgent}
-          onToggleSidebar={vi.fn()}
-          onGoBack={vi.fn()}
-          onGoForward={vi.fn()}
-        />,
-      ),
-    );
-
-    const backToAgent = [...container.querySelectorAll("button")].find(
-      (button) => button.textContent?.trim() === "Back to agent",
-    )!;
-    act(() => backToAgent.click());
-
-    expect(onBackToAgent).toHaveBeenCalledOnce();
-  });
-
   it("offers only the three deliberate board export formats", () => {
     act(() =>
       root.render(
@@ -68,7 +43,6 @@ describe("DrawBoardToolbar", () => {
           sidebarCollapsed={false}
           canGoBack={false}
           canGoForward={false}
-          onBackToAgent={vi.fn()}
           onToggleSidebar={vi.fn()}
           onGoBack={vi.fn()}
           onGoForward={vi.fn()}
@@ -103,7 +77,6 @@ describe("DrawBoardToolbar", () => {
           sidebarCollapsed
           canGoBack
           canGoForward
-          onBackToAgent={vi.fn()}
           onToggleSidebar={onToggleSidebar}
           onGoBack={onGoBack}
           onGoForward={onGoForward}

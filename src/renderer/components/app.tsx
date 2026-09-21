@@ -46,6 +46,7 @@ import { SettingsPage } from "@/components/settings-page";
 import { ToastHost } from "@/components/toast-host";
 import { WorktreePill } from "@/components/worktree-pill";
 import { WorkLogControls } from "@/components/work-log-controls";
+import { WorkspaceModeControls } from "@/components/workspace-mode-controls";
 import { SideChatsMenu } from "@/components/side-chats-menu";
 import { Sidebar } from "@/components/sidebar";
 import { ErrorNotice } from "@/components/error-notice";
@@ -584,6 +585,30 @@ export const App = observer(function App() {
       </>
     );
   };
+  const workspaceModeControls = (
+    paneSession: NonNullable<typeof session>,
+    mode: Exclude<NonNullable<typeof session>["presentationMode"], "normal">,
+  ) => (
+    <WorkspaceModeControls
+      mode={mode}
+      chat={paneSession.conversationSessionStore.chatStore}
+      treeOpen={store.commandPaneStore.pane === "tree"}
+      terminalAvailable={terminal.available}
+      terminalOpen={terminal.open}
+      terminalAcceleratorHint={terminal.toggleAcceleratorHint}
+      onToggleTree={() => {
+        void store.backToAgent().then(() => {
+          if (store.activeSession?.presentationMode === "normal")
+            store.commandPaneStore.toggle("tree");
+        });
+      }}
+      onBackToAgent={() => void store.backToAgent()}
+      onOpenDraw={() => void store.openDraw()}
+      onOpenBrowser={() => void store.openBrowser()}
+      onOpenIde={() => void store.openIde()}
+      onToggleTerminal={() => void terminal.toggle()}
+    />
+  );
   const projectComposerLeadingAccessory = (paneSession: NonNullable<typeof session>) => {
     const summary = root.sessionCatalogStore.find(paneSession.sessionId);
     return settings.appearance.sessionAvatarsEnabled && !summary?.resolved
@@ -733,7 +758,6 @@ export const App = observer(function App() {
               sidebarCollapsed={sidebarCollapsed}
               canGoBack={shell.canGoBack}
               canGoForward={shell.canGoForward}
-              onBackToAgent={() => void store.backToAgent()}
               onToggleSidebar={toggleSidebar}
               onGoBack={goBack}
               onGoForward={goForward}
@@ -743,12 +767,7 @@ export const App = observer(function App() {
               projectSidebarVisible={!sidebarCollapsed}
               projectSidebarWidth={displayedSidebarWidth}
               onProjectSidebarWidthChange={setSidebarWidth}
-              headerActions={
-                <>
-                  <SideChatsMenu store={session} />
-                  {artifactControl(session)}
-                </>
-              }
+              headerActions={workspaceModeControls(session, "draw")}
               conversationAccessory={workspaceConversationAccessory}
               projectComposerHeader={projectComposerHeader}
               projectComposerContent={workspaceComposerContent}
@@ -793,15 +812,9 @@ export const App = observer(function App() {
             projectSidebarVisible={!sidebarCollapsed}
             projectSidebarWidth={displayedSidebarWidth}
             onProjectSidebarWidthChange={setSidebarWidth}
-            onBackToAgent={() => void store.backToAgent()}
             projectChat={session.conversationSessionStore.chatStore}
             sideChat={session.conversationSessionStore.sideChatStore}
-            headerActions={
-              <>
-                <SideChatsMenu store={session} />
-                {artifactControl(session)}
-              </>
-            }
+            headerActions={workspaceModeControls(session, "browser")}
             conversationAccessory={workspaceConversationAccessory}
             projectComposerHeader={projectComposerHeader}
             projectComposerContent={workspaceComposerContent}
@@ -842,12 +855,7 @@ export const App = observer(function App() {
             onProjectSidebarWidthChange={setSidebarWidth}
             projectChat={session.conversationSessionStore.chatStore}
             sideChat={session.conversationSessionStore.sideChatStore}
-            headerActions={
-              <>
-                <SideChatsMenu store={session} />
-                {artifactControl(session)}
-              </>
-            }
+            headerActions={workspaceModeControls(session, "vscode")}
             conversationAccessory={workspaceConversationAccessory}
             projectComposerHeader={projectComposerHeader}
             projectComposerContent={workspaceComposerContent}

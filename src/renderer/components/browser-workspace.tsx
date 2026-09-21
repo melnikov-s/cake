@@ -8,7 +8,6 @@ import type { SideChatStore } from "../stores/SideChatStore";
 import { Chat } from "./chat";
 import { SideChatLayout } from "./side-chat-layout";
 import { WorkspaceChatLayout } from "./workspace-chat-layout";
-import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
 import { Input } from "./ui/input";
 import { BackIcon, ForwardIcon, InspectIcon, ReloadIcon, StopIcon } from "./ui/icons";
@@ -27,7 +26,6 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   projectSidebarVisible,
   projectSidebarWidth,
   onProjectSidebarWidthChange,
-  onBackToAgent,
   sessionTitle,
   terminalDock,
   transcriptBehavior,
@@ -44,7 +42,6 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   projectSidebarVisible: boolean;
   projectSidebarWidth: number;
   onProjectSidebarWidthChange(width: number): void;
-  onBackToAgent(): void;
   sessionTitle: string;
   terminalDock?: ReactNode;
   transcriptBehavior: ChatTranscriptBehavior;
@@ -139,9 +136,6 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
           >
             <InspectIcon />
           </IconButton>
-          <Button variant="ghost" size="sm" onClick={onBackToAgent}>
-            Agent
-          </Button>
         </div>
       </div>
       {browser.error ? (
