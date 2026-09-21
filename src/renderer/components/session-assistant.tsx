@@ -72,14 +72,14 @@ export const SessionAssistant = observer(function SessionAssistant({
           store.beginQuickPrompt(composerSelection(event.currentTarget));
         }}
         onContextMenu={openFullChat}
-        className="size-10 rounded-full p-0 hover:bg-muted [&_[data-slot=avatar]]:size-9"
+        className="size-8 rounded-full p-0 hover:bg-muted [&_[data-slot=avatar]]:size-7"
       >
         <Avatar
           kind="session"
           seed={seed}
           labelColors={labelColors}
           animated={animated}
-          className="size-9"
+          className="size-7"
         />
       </PopoverIconTrigger>
       {surface === "quick" ? (

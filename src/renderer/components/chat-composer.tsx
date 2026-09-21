@@ -36,7 +36,7 @@ export const ChatComposer = observer(function ChatComposer({
       className={cn(
         "workbench-composer pointer-events-auto mx-auto w-full min-w-0",
         leadingAccessory
-          ? "max-w-[51.25rem] @lg/composer-dock:max-w-[55.25rem] @lg/composer-dock:pl-16"
+          ? "max-w-[51.25rem] @4xl/composer-dock:max-w-[55.25rem] @4xl/composer-dock:pl-16"
           : "max-w-[51.25rem]",
         className,
       )}
@@ -47,7 +47,7 @@ export const ChatComposer = observer(function ChatComposer({
           <div
             data-slot="composer-leading-accessory"
             className={cn(
-              "absolute right-full top-7 mr-3 z-20 hidden transition-[opacity,transform] duration-300 ease-out @lg/composer-dock:block",
+              "absolute left-4 top-4 z-20 block transition-[opacity,transform] duration-300 ease-out @4xl/composer-dock:left-auto @4xl/composer-dock:right-full @4xl/composer-dock:top-7 @4xl/composer-dock:mr-3",
               leadingAccessoryVisible
                 ? "scale-100 opacity-100"
                 : "pointer-events-none translate-x-2 scale-75 opacity-0",
@@ -59,7 +59,10 @@ export const ChatComposer = observer(function ChatComposer({
           </div>
         )}
         <Composer
-          className="relative z-10 border-border/90 bg-composer shadow-[0_24px_80px_-30px_hsl(var(--shadow)/0.55),0_2px_10px_hsl(var(--shadow)/0.08)]"
+          className={cn(
+            "relative z-10 border-border/90 bg-composer shadow-[0_24px_80px_-30px_hsl(var(--shadow)/0.55),0_2px_10px_hsl(var(--shadow)/0.08)]",
+            leadingAccessory && "[&_textarea]:pl-12 @4xl/composer-dock:[&_textarea]:pl-2",
+          )}
           onSubmit={onSubmit}
         >
           {children}
