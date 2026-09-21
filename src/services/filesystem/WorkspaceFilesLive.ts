@@ -1,4 +1,4 @@
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { basename, extname, isAbsolute, relative, resolve } from "node:path";
 import { BrowserWindow, dialog } from "electron";
 import { Effect, Layer } from "effect";
@@ -9,12 +9,15 @@ import { suggestProjectFiles } from "../pi/runtime/session-discovery";
 import { WorkspaceFileError, WorkspaceFiles } from "./WorkspaceFiles";
 
 const imageMimeTypes = new Map([
+  [".avif", "image/avif"],
   [".png", "image/png"],
   [".jpg", "image/jpeg"],
   [".jpeg", "image/jpeg"],
   [".gif", "image/gif"],
   [".webp", "image/webp"],
 ]);
+
+const maxWorkspaceImageBytes = 8 * 1_024 * 1_024;
 
 const workspaceFilesError = (operation: string, cause: unknown) =>
   new WorkspaceFileError({
@@ -112,10 +115,43 @@ export const makeWorkspaceFilesLive = (agentDirectory: string) =>
         },
       );
 
+      const readWorkspaceImage = Effect.fn("WorkspaceFiles.readImage")(
+        function* (_connectionId, request) {
+          yield* requireAllowed(request.workspacePath);
+          if (isAbsolute(request.path))
+            return yield* new WorkspaceFileError({
+              operation: "readImage",
+              message: "Workspace image path must be relative",
+            });
+          const image = yield* Effect.tryPromise({
+            try: async () => {
+              const workspace = await realpath(request.workspacePath);
+              const target = await realpath(resolve(workspace, request.path));
+              const relativePath = relative(workspace, target);
+              if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath))
+                throw new Error("Image is outside the selected project");
+              const mimeType = imageMimeTypes.get(extname(target).toLowerCase());
+              if (!mimeType) throw new Error("Workspace image type is not supported");
+              const metadata = await stat(target);
+              if (!metadata.isFile()) throw new Error("Workspace image path must identify a file");
+              if (metadata.size > maxWorkspaceImageBytes)
+                throw new Error("Workspace image is too large to display");
+              const data = await readFile(target);
+              if (data.byteLength > maxWorkspaceImageBytes)
+                throw new Error("Workspace image is too large to display");
+              return { data: data.toString("base64"), mimeType };
+            },
+            catch: (cause) => workspaceFilesError("readImage", cause),
+          });
+          return image;
+        },
+      );
+
       return WorkspaceFiles.of({
         chooseAttachments,
         suggestFiles,
         readFile: readWorkspaceFile,
+        readImage: readWorkspaceImage,
       });
     }),
   );

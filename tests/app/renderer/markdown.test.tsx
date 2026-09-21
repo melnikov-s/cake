@@ -301,6 +301,41 @@ describe("Markdown", () => {
     );
   });
 
+  it("loads workspace-relative Markdown images through the authorized workspace boundary", async () => {
+    const loadWorkspaceImage = vi.fn(async () => ({ data: "cG5n", mimeType: "image/png" }));
+    act(() =>
+      root.render(
+        <MarkdownLinkProvider
+          actions={{ openExternalUrl: vi.fn(), openSession: vi.fn(), loadWorkspaceImage }}
+        >
+          <Markdown onOpenSourceLocation={vi.fn()}>
+            ![Visual capture](.visual-captures/example.png)
+          </Markdown>
+        </MarkdownLinkProvider>,
+      ),
+    );
+
+    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
+      "![Visual capture](/__cake_workspace__/.visual-captures/example.png)",
+    );
+    const imageComponent = vi.mocked(Streamdown).mock.calls.at(-1)![0].components!.img!;
+    await act(async () => {
+      root.render(
+        createElement(imageComponent, {
+          src: "/__cake_workspace__/.visual-captures/example.png",
+          alt: "Visual capture",
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(loadWorkspaceImage).toHaveBeenCalledWith(
+      ".visual-captures/example.png",
+      expect.any(AbortSignal),
+    );
+    expect(container.querySelector("img")?.src).toBe("data:image/png;base64,cG5n");
+  });
+
   it("turns a bare artifact URI into a bounded application reference surface", () => {
     const renderArtifactReference = vi.fn((reference: string) => (
       <span data-testid="artifact-reference">{reference}</span>
@@ -330,6 +365,37 @@ describe("Markdown", () => {
     expect(renderArtifactReference).toHaveBeenCalledWith("cake://artifact/report-1@r2");
     expect(container.querySelector("[data-testid=artifact-reference]")?.textContent).toBe(
       "cake://artifact/report-1@r2",
+    );
+  });
+
+  it("turns an explicit artifact link into the same application reference surface", () => {
+    const renderArtifactReference = vi.fn((reference: string) => (
+      <span data-testid="artifact-reference">{reference}</span>
+    ));
+    act(() =>
+      root.render(
+        <MarkdownLinkProvider
+          actions={{ openExternalUrl: vi.fn(), openSession: vi.fn(), renderArtifactReference }}
+        >
+          <Markdown>[Narrow layout](cake://artifact/session-assistant-narrow)</Markdown>
+        </MarkdownLinkProvider>,
+      ),
+    );
+
+    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
+      "[Narrow layout](/__cake_artifact__/cake%3A%2F%2Fartifact%2Fsession-assistant-narrow)",
+    );
+    const anchorComponent = vi.mocked(Streamdown).mock.calls.at(-1)![0].components!.a!;
+    act(() => {
+      root.render(
+        createElement(anchorComponent, {
+          href: "/__cake_artifact__/cake%3A%2F%2Fartifact%2Fsession-assistant-narrow",
+          children: "Narrow layout",
+        }),
+      );
+    });
+    expect(renderArtifactReference).toHaveBeenCalledWith(
+      "cake://artifact/session-assistant-narrow",
     );
   });
 

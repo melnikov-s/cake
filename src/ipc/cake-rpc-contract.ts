@@ -480,6 +480,10 @@ export const cakeRpcPayloadSchemas = {
     workspacePath: stringMax(4_096),
     path: bounded(1, 8_192),
   }),
+  "read-workspace-image": Schema.Struct({
+    workspacePath: stringMax(4_096),
+    path: bounded(1, 8_192),
+  }),
   "compile-inline-widget": Schema.Struct({
     language: inlineWidgetLanguageSchema,
     capability: inlineWidgetCapabilitySchema,
@@ -648,6 +652,10 @@ const cakeRpcResultSchemas = {
   "workspace-file": Schema.Struct({
     content: stringMax(2_000_000),
   }),
+  "workspace-image": Schema.Struct({
+    data: stringMax(11_184_812),
+    mimeType: bounded(1, 128),
+  }),
   "inline-widget-compiled": Schema.Struct({
     widget: compiledInlineWidgetSchema,
   }),
@@ -697,6 +705,7 @@ export const cakeRpcSuccessSchemas = {
   "choose-attachments": cakeRpcResultSchemas["attachments-chosen"],
   "suggest-files": cakeRpcResultSchemas["file-suggestions"],
   "read-workspace-file": cakeRpcResultSchemas["workspace-file"],
+  "read-workspace-image": cakeRpcResultSchemas["workspace-image"],
   "reword-composer-selection": cakeRpcResultSchemas["composer-selection-reworded"],
   "generate-session-title": cakeRpcResultSchemas["session-title-generated"],
   "set-utility-model": cakeRpcResultSchemas["application-state-updated"],

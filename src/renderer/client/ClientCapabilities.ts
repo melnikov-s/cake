@@ -117,6 +117,13 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
             client.filesystem["read-workspace-file"]({ workspacePath: workingDirectory, path }),
           options,
         ).then((response) => response.content),
+      readImage: (workingDirectory, path, options) =>
+        execute(
+          "filesystem.read-workspace-image",
+          (client) =>
+            client.filesystem["read-workspace-image"]({ workspacePath: workingDirectory, path }),
+          options,
+        ),
     },
     workspaces: {
       rewordComposerSelection: (input, options) =>

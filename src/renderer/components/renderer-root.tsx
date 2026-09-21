@@ -22,6 +22,9 @@ export const RendererRoot = observer(function RendererRoot({
     rootStore.appShellStore.activeConversation?.kind === "project-session"
       ? rootStore.appShellStore.activeConversation.sessionId
       : undefined;
+  const activeWorkingDirectory = activeSessionId
+    ? rootStore.sessionCatalogStore.find(activeSessionId)?.workingDirectory
+    : undefined;
   return (
     <RendererErrorBoundary>
       <StrictMode>
@@ -31,6 +34,13 @@ export const RendererRoot = observer(function RendererRoot({
               actions={{
                 openExternalUrl,
                 openSession,
+                loadWorkspaceImage: (path, signal) => {
+                  if (!activeWorkingDirectory)
+                    return Promise.reject(new Error("No active project Working Directory"));
+                  return rootStore.client.filesystem.readImage(activeWorkingDirectory, path, {
+                    signal,
+                  });
+                },
                 renderArtifactReference: (reference) => (
                   <ArtifactReferencePreview
                     reference={formatArtifactRef(parseArtifactRef(reference))}

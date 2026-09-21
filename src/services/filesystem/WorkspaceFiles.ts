@@ -6,10 +6,13 @@ export class WorkspaceFileError extends Schema.TaggedError<WorkspaceFileError>()
   { operation: Schema.String, message: Schema.String },
 ) {}
 
-type Payload<Type extends "choose-attachments" | "suggest-files" | "read-workspace-file"> =
-  (typeof cakeRpcPayloadSchemas)[Type]["Type"];
-type Success<Type extends "choose-attachments" | "suggest-files" | "read-workspace-file"> =
-  (typeof cakeRpcSuccessSchemas)[Type]["Type"];
+type FilesystemOperation =
+  | "choose-attachments"
+  | "suggest-files"
+  | "read-workspace-file"
+  | "read-workspace-image";
+type Payload<Type extends FilesystemOperation> = (typeof cakeRpcPayloadSchemas)[Type]["Type"];
+type Success<Type extends FilesystemOperation> = (typeof cakeRpcSuccessSchemas)[Type]["Type"];
 
 export class WorkspaceFiles extends Context.Service<
   WorkspaceFiles,
@@ -26,5 +29,9 @@ export class WorkspaceFiles extends Context.Service<
       connectionId: number,
       request: Payload<"read-workspace-file">,
     ) => Effect.Effect<Success<"read-workspace-file">, WorkspaceFileError>;
+    readonly readImage: (
+      connectionId: number,
+      request: Payload<"read-workspace-image">,
+    ) => Effect.Effect<Success<"read-workspace-image">, WorkspaceFileError>;
   }
 >()("cake/services/filesystem/WorkspaceFiles") {}

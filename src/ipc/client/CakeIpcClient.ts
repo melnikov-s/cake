@@ -560,7 +560,7 @@ export interface CakeIpcClientService {
     ElectronError
   >;
   readonly filesystem: RpcOperations<
-    "choose-attachments" | "suggest-files" | "read-workspace-file",
+    "choose-attachments" | "suggest-files" | "read-workspace-file" | "read-workspace-image",
     WorkspaceFileError
   >;
   readonly workspaces: RpcOperations<
@@ -1098,6 +1098,9 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         "read-workspace-file": Effect.fn("CakeIpcClient.filesystem.read-workspace-file")(
           (payload) => client("filesystem.read-workspace-file", payload),
+        ),
+        "read-workspace-image": Effect.fn("CakeIpcClient.filesystem.read-workspace-image")(
+          (payload) => client("filesystem.read-workspace-image", payload),
         ),
       },
       workspaces: {

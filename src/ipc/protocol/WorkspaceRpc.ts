@@ -29,6 +29,11 @@ export const WorkspaceRpc = RpcGroup.make(
     success: cakeRpcSuccessSchemas["read-workspace-file"],
     error: WorkspaceFileError,
   }),
+  Rpc.make("filesystem.read-workspace-image", {
+    payload: cakeRpcPayloadSchemas["read-workspace-image"],
+    success: cakeRpcSuccessSchemas["read-workspace-image"],
+    error: WorkspaceFileError,
+  }),
   workspaceRpc("workspaces.reword-composer-selection", "reword-composer-selection"),
   workspaceRpc("workspaces.generate-session-title", "generate-session-title"),
   workspaceRpc("workspaces.set-utility-model", "set-utility-model"),

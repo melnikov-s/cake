@@ -187,6 +187,11 @@ interface FilesystemCommands {
     options?: ClientCommandOptions,
   ): Promise<ReadonlyArray<FileSuggestion>>;
   readFile(workingDirectory: string, path: string, options?: ClientCommandOptions): Promise<string>;
+  readImage(
+    workingDirectory: string,
+    path: string,
+    options?: ClientCommandOptions,
+  ): Promise<{ readonly data: string; readonly mimeType: string }>;
 }
 
 interface WorkspaceCommands {

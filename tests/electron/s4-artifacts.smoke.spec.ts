@@ -140,7 +140,7 @@ test("opens the artifact workspace, keeps requests inline, and isolates HTML", a
     await artifactControl.click();
     await page.getByRole("button", { name: "New chat in project", exact: true }).click();
     await expect(page.getByLabel("Message")).toBeEnabled();
-    await page.getByLabel("Message").fill("cake://artifact/cake-s4-html@r1");
+    await page.getByLabel("Message").fill("[Sandboxed HTML](cake://artifact/cake-s4-html@r1)");
     await page.getByRole("button", { name: "Send" }).click();
     const referencePreview = page.locator(
       '[data-artifact-reference="cake://artifact/cake-s4-html@r1"]',

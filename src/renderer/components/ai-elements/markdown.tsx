@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../../ipc/source-location";
 import { formatSourceLocation, parseSourceLocation } from "../../../utils/source-location";
 import { MermaidFullscreen } from "../mermaid-fullscreen";
+import { MarkdownImage } from "../markdown-image";
 import { MarkdownCodeBlock, streamingCodeMarker } from "./markdown-code-block";
 
 /** Matches web-style hrefs that must never be treated as workspace file paths. */
@@ -42,10 +43,15 @@ const bareArtifactReference =
   /(^|[\s(])(cake:\/\/artifact\/[A-Za-z0-9][A-Za-z0-9._:-]*(?:@r[1-9][0-9]*)?)(?=$|[\s),.;!?])/g;
 
 type AnchorProps = ComponentProps<"a"> & { node?: unknown };
+type ImageProps = ComponentProps<"img"> & { node?: unknown };
 
 type MarkdownLinkActions = {
   openExternalUrl(url: string): void;
   openSession(sessionId: string): void;
+  loadWorkspaceImage?(
+    path: string,
+    signal: AbortSignal,
+  ): Promise<{ readonly data: string; readonly mimeType: string }>;
   renderArtifactReference?(reference: string): ReactNode;
 };
 
@@ -79,6 +85,19 @@ function sessionIdFromHref(href: string) {
 
 function sourceHref(reference: string) {
   return `${workspacePathPrefix}${reference}`;
+}
+
+function workspaceImagePathFromSrc(src: string) {
+  const reference = src.startsWith(workspacePathPrefix)
+    ? src.slice(workspacePathPrefix.length)
+    : src.startsWith("./")
+      ? src.slice(2)
+      : src;
+  if (nonPathHref.test(reference)) return undefined;
+  const location = parseSourceLocation(reference);
+  return location && !location.range && !location.ranges && !location.view
+    ? location.path
+    : undefined;
 }
 
 function artifactReferenceFromHref(href: string) {
@@ -491,10 +510,10 @@ function MarkdownRenderer({
     setFullscreenMermaid(svg.outerHTML);
   }, []);
   const components = useMemo<Components>(() => {
-    if (!onOpenSourceLocation) return { a: (anchorProps) => linkAnchor(anchorProps, linkActions) };
     const openSourceLocation = onOpenSourceLocation;
     return {
       a(allProps: AnchorProps) {
+        if (!openSourceLocation) return linkAnchor(allProps, linkActions);
         const href = allProps.href;
         if (!href) return linkAnchor(allProps, linkActions);
         const reference = href.startsWith(workspacePathPrefix)
@@ -520,6 +539,23 @@ function MarkdownRenderer({
               event.preventDefault();
               openSourceLocation(location);
             }}
+          />
+        );
+      },
+      img(allProps: ImageProps) {
+        const props = { ...allProps };
+        delete props.node;
+        const src = props.src;
+        const artifactReference = src ? artifactReferenceFromHref(src) : undefined;
+        const workspacePath = src ? workspaceImagePathFromSrc(src) : undefined;
+        return (
+          <MarkdownImage
+            {...props}
+            key={src}
+            artifactReference={artifactReference}
+            workspacePath={workspacePath}
+            loadWorkspaceImage={linkActions?.loadWorkspaceImage}
+            renderArtifactReference={linkActions?.renderArtifactReference}
           />
         );
       },

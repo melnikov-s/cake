@@ -20,6 +20,10 @@ export const workspaceHandlers = WorkspaceRpc.of({
     withConnection((connectionId) =>
       Effect.flatMap(WorkspaceFiles, (service) => service.readFile(connectionId, request)),
     ),
+  "filesystem.read-workspace-image": (request) =>
+    withConnection((connectionId) =>
+      Effect.flatMap(WorkspaceFiles, (service) => service.readImage(connectionId, request)),
+    ),
   "workspaces.reword-composer-selection": (request) =>
     withConnection((connectionId) => projects.rewordComposerSelection(connectionId, request)),
   "workspaces.generate-session-title": (request) =>
