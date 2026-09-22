@@ -1,7 +1,16 @@
 import { Avatar as DiceBearAvatar, Style } from "@dicebear/core";
 import gazeDefinition from "@dicebear/styles/gaze.json";
 import sliceDefinition from "@dicebear/styles/slice.json";
-import { useEffect, useId, useMemo, useRef, type HTMLAttributes, type RefObject } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type HTMLAttributes,
+  type RefObject,
+} from "react";
 import {
   animateSessionAvatar,
   interactWithSessionAvatar,
@@ -9,7 +18,6 @@ import {
 } from "../../lib/animate-session-avatar";
 import type { ProjectIcon, SessionLabelColor } from "../../../domain/application/application-data";
 import { cn } from "../../lib/utils";
-import { SmokePuffIcon } from "./icons";
 import { mergedSessionLabelColor } from "../../../utils/session-label-color";
 
 const styles = {
@@ -25,7 +33,7 @@ export interface AvatarProps extends HTMLAttributes<HTMLSpanElement> {
   labelColors?: readonly SessionLabelColor[];
   customIcon?: ProjectIcon;
   animated?: boolean;
-  /** Resolved sessions leave a small puff in place of their character. */
+  /** A session character disappears in a brief puff when resolved. */
   resolved?: boolean;
   /** Opt-in row feedback instead of idle animation; activationTarget is a NavItem. */
   interaction?: {
@@ -48,8 +56,23 @@ export function Avatar({
 }: AvatarProps) {
   const host = useRef<HTMLSpanElement>(null);
   const instanceId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const smoke = kind === "session" && resolved;
-  const materialized = !smoke && (animated || Boolean(interaction));
+  const disappearing = kind === "session" && resolved;
+  const [phase, setPhase] = useState<"visible" | "puff" | "gone">(
+    disappearing ? "gone" : "visible",
+  );
+  const previousDisappearing = useRef(disappearing);
+  useLayoutEffect(() => {
+    if (previousDisappearing.current === disappearing) return;
+    previousDisappearing.current = disappearing;
+    setPhase(
+      disappearing
+        ? window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+          ? "gone"
+          : "puff"
+        : "visible",
+    );
+  }, [disappearing]);
+  const materialized = !disappearing && (animated || Boolean(interaction));
   const interactionTarget = interaction?.target;
   const activationTarget = interaction?.activationTarget;
   const avatar = useMemo(() => {
@@ -77,7 +100,7 @@ export function Avatar({
   }, [kind, seed, instanceId, materialized]);
 
   useEffect(() => {
-    if (kind !== "session" || smoke || !host.current) return;
+    if (kind !== "session" || disappearing || !host.current) return;
     if (interactionTarget?.current && activationTarget?.current) {
       return interactWithSessionAvatar(
         host.current,
@@ -86,15 +109,15 @@ export function Avatar({
       );
     }
     if (animated) return animateSessionAvatar(host.current);
-  }, [animated, kind, smoke, avatar, interactionTarget, activationTarget]);
+  }, [animated, kind, disappearing, avatar, interactionTarget, activationTarget]);
 
   return (
     <span
       ref={host}
       data-slot="avatar"
-      data-resolved={smoke || undefined}
+      data-resolved={disappearing || undefined}
       data-animated={
-        kind === "session" && !smoke
+        kind === "session" && !disappearing
           ? interaction
             ? "interaction"
             : animated
@@ -103,7 +126,7 @@ export function Avatar({
           : undefined
       }
       className={cn(
-        "inline-grid size-5 shrink-0 place-items-center [&_svg]:size-full",
+        "relative inline-grid size-5 shrink-0 place-items-center [&_svg]:size-full",
         kind === "session" && "origin-bottom",
         kind === "session" &&
           (labelColors?.length
@@ -114,28 +137,41 @@ export function Avatar({
       data-session-label-color={mergedSessionLabelColor(labelColors ?? [])}
       {...props}
     >
-      {smoke ? (
-        <span
-          data-slot="session-smoke"
-          className="block size-full motion-safe:animate-[session-smoke-puff_550ms_ease-out_both]"
-        >
-          <SmokePuffIcon />
-        </span>
-      ) : kind === "project" && customIcon ? (
+      {kind === "project" && customIcon ? (
         <img
           className="size-full object-contain"
           src={`data:${customIcon.mimeType};base64,${customIcon.data}`}
           alt=""
           aria-hidden="true"
         />
-      ) : "uri" in avatar ? (
+      ) : kind === "session" && disappearing && phase === "gone" ? null : "uri" in avatar ? (
         <img className="size-full" src={avatar.uri} alt="" aria-hidden="true" />
       ) : (
         <span
           data-slot="session-character"
-          className="block size-full origin-bottom motion-safe:animate-[session-avatar-appear_500ms_ease-out_both]"
+          className={cn(
+            "block size-full origin-bottom",
+            phase === "puff"
+              ? "animate-[session-avatar-vanish_450ms_ease-in_both]"
+              : "motion-safe:animate-[session-avatar-appear_500ms_ease-out_both]",
+          )}
           dangerouslySetInnerHTML={avatar}
         />
+      )}
+      {disappearing && phase === "puff" && (
+        <span
+          data-slot="session-smoke"
+          aria-hidden="true"
+          onAnimationEnd={(event) => {
+            if (event.target === event.currentTarget) setPhase("gone");
+          }}
+          className="pointer-events-none absolute size-5 animate-[session-smoke-puff_450ms_ease-out_both]"
+        >
+          <span className="absolute left-[20%] top-[30%] size-[55%] rounded-full bg-muted-foreground/70 blur-[1px]" />
+          <span className="absolute left-[45%] top-[15%] size-[55%] rounded-full bg-muted-foreground/60 blur-[1px]" />
+          <span className="absolute left-[5%] top-[5%] size-[50%] rounded-full bg-muted-foreground/55 blur-[1px]" />
+          <span className="absolute left-[50%] top-[50%] size-[40%] rounded-full bg-muted-foreground/50 blur-[1px]" />
+        </span>
       )}
     </span>
   );

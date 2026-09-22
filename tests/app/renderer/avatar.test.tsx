@@ -4,19 +4,6 @@ import { describe, expect, it } from "vitest";
 import { Avatar } from "../../../src/renderer/components/ui/avatar";
 
 describe("Avatar", () => {
-  it("renders resolved sessions as smoke instead of an interactive character", () => {
-    const host = document.createElement("div");
-    host.innerHTML = renderToStaticMarkup(
-      <Avatar kind="session" seed="resolved" resolved animated />,
-    );
-
-    expect(host.querySelector('[data-slot="session-smoke"]')).not.toBeNull();
-    expect(host.querySelector('[data-resolved="true"]')).not.toBeNull();
-    expect(host.querySelector(".dbga-hop")).toBeNull();
-    expect(host.querySelector("[data-animated]")).toBeNull();
-    expect(host.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
-  });
-
   it("keeps active sessions and project artwork intact", () => {
     for (const kind of ["session", "project"] as const) {
       const markup = renderToStaticMarkup(
