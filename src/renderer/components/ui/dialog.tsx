@@ -4,10 +4,11 @@ import { cn } from "@/lib/utils";
 
 export interface DialogBackdropProps extends HTMLAttributes<HTMLDivElement> {
   onClose?: () => void;
+  portalContainer?: Element | DocumentFragment | null;
 }
 
 export const DialogBackdrop = forwardRef<HTMLDivElement, DialogBackdropProps>(
-  function DialogBackdrop({ className, onClose, children, ...props }, ref) {
+  function DialogBackdrop({ className, onClose, portalContainer, children, ...props }, ref) {
     if (!("document" in globalThis)) return null;
 
     return createPortal(
@@ -26,7 +27,7 @@ export const DialogBackdrop = forwardRef<HTMLDivElement, DialogBackdropProps>(
       >
         {children}
       </div>,
-      document.body,
+      portalContainer ?? document.body,
     );
   },
 );

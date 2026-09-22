@@ -1,4 +1,4 @@
-import { useContext, useState } from "react";
+import { useContext, useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { WorktreeCreationStore } from "../stores/WorktreeCreationStore";
 import type { WorktreeStore } from "../stores/WorktreeStore";
@@ -65,6 +65,7 @@ export const WorktreePill = observer(function WorktreePill({
 }: WorktreePillProps) {
   const [existingOpen, setExistingOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<ConfirmationKind>();
+  const pillRef = useRef<HTMLDivElement>(null);
   const transcriptControls = useContext(ChatTranscriptControlsContext);
   const { anchor: warningAnchor, hide: hideWarning, show: showWarning } = useTooltip();
   const { anchor: branchAnchor, hide: hideBranch, show: showBranch } = useTooltip();
@@ -287,6 +288,7 @@ export const WorktreePill = observer(function WorktreePill({
   return (
     <>
       <div
+        ref={pillRef}
         data-testid="worktree-pill"
         data-slot="worktree-pill"
         className="@container/worktree mx-4 -mb-5 flex flex-col gap-1 rounded-t-[1.75rem] border border-b-0 border-border/85 bg-card px-5 pt-3 pb-8"
@@ -508,7 +510,10 @@ export const WorktreePill = observer(function WorktreePill({
         {actions.error && <p className="px-2 text-xs text-destructive">{actions.error}</p>}
       </div>
       {(confirmation === "dirty-target" || confirmation === "dirty-target-resolve") && (
-        <DialogBackdrop>
+        <DialogBackdrop
+          className="absolute"
+          portalContainer={pillRef.current?.closest<HTMLElement>('[data-slot="session-pane"]')}
+        >
           <Confirmation
             state="requested"
             role="alertdialog"

@@ -104,17 +104,19 @@ describe("WorktreePill", () => {
         <ChatTranscriptControlsContext.Provider
           value={scrollToBottom ? { scrollToBottom } : undefined}
         >
-          <WorktreePill
-            creation={creation}
-            actions={actions}
-            record={record}
-            sessionId="session"
-            projectPath="/project"
-            resolved={resolved}
-            isFamilyChild={isFamilyChild}
-            configurationMode={configurationMode}
-            onConfigured={vi.fn()}
-          />
+          <section data-slot="session-pane">
+            <WorktreePill
+              creation={creation}
+              actions={actions}
+              record={record}
+              sessionId="session"
+              projectPath="/project"
+              resolved={resolved}
+              isFamilyChild={isFamilyChild}
+              configurationMode={configurationMode}
+              onConfigured={vi.fn()}
+            />
+          </section>
         </ChatTranscriptControlsContext.Provider>,
       ),
     );
@@ -312,6 +314,17 @@ describe("WorktreePill", () => {
     expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
       "The merge target has uncommitted changes.",
     );
+  });
+
+  it("centers target-change confirmation within its agent pane", () => {
+    render(actionStore({ aheadCount: 1, dirtyCount: 0, targetDirty: true }));
+
+    act(() => button("Merge").click());
+
+    const pane = container.querySelector('[data-slot="session-pane"]');
+    const backdrop = container.querySelector('[role="dialog"]');
+    expect(backdrop?.parentElement).toBe(pane);
+    expect(backdrop?.classList.contains("absolute")).toBe(true);
   });
 
   it("disables every worktree action while the session is running", () => {
