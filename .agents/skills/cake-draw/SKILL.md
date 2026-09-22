@@ -16,6 +16,166 @@ Explain at a shared whiteboard, not through a slide deck. Draw a little, say wha
 - Start with the smallest useful picture. For the first guided step, prefer 2–3 primary shapes and one visually encoded relationship; avoid decorative frames, redundant connectors, and styling passes. Do not first draw an agenda, taxonomy, or paragraphs in boxes unless their spatial arrangement itself explains something.
 - Distinguish verified facts from hypotheses and illustrative examples. A confident-looking diagram is not evidence.
 
+## Start drawing without protocol discovery
+
+The skill contains the common Draw protocol on purpose. Use these known calls first; do **not** request the `draw` topic index or `*.help` before an ordinary explanation. Protocol discovery is a recovery path for an uncommon operation or a validation failure, not startup work.
+
+Cake Draw is normally already foregrounded when this skill is invoked. Inspect the open board with:
+
+```json
+{ "command": "draw.read", "input": { "scope": "viewport" } }
+```
+
+`scope` may instead be `selection` when the user's selection is the subject, or `page` when off-screen context matters. `boardId` is optional for the open board.
+
+For a simple connected explanation, start immediately with `draw.flow`:
+
+```json
+{
+  "command": "draw.flow",
+  "input": {
+    "nodes": [
+      { "id": "shape:request", "text": "Request" },
+      { "id": "shape:service", "text": "Service" },
+      { "id": "shape:result", "text": "Result" }
+    ],
+    "direction": "down",
+    "connect": true
+  }
+}
+```
+
+Use stable, descriptive `shape:<id>` IDs. `direction` is `down` or `right`; `connect` defaults to true. Add a real ownership boundary with `"frame":{"id":"shape:runtime","title":"Runtime"}`. Extend the board without moving existing content by adding:
+
+```json
+"placement":{"relativeTo":"shape:service","side":"right","gap":100,"align":"center"}
+```
+
+For the common “owned region plus external dependency” picture, use one `draw.apply` call. Operations run in order, so later operations may connect or style shapes created earlier in the same call:
+
+```json
+{
+  "command": "draw.apply",
+  "input": {
+    "operations": [
+      {
+        "type": "flow",
+        "nodes": [
+          { "id": "shape:ui", "text": "UI" },
+          { "id": "shape:service", "text": "Service" }
+        ],
+        "direction": "down",
+        "connect": true,
+        "frame": { "id": "shape:app", "title": "Application" }
+      },
+      {
+        "type": "flow",
+        "nodes": [{ "id": "shape:external", "text": "External authority" }],
+        "placement": {
+          "relativeTo": "shape:app",
+          "side": "right",
+          "gap": 120,
+          "align": "center"
+        },
+        "connect": false
+      },
+      {
+        "type": "connect",
+        "id": "shape:service-to-external",
+        "fromId": "shape:service",
+        "toId": "shape:external",
+        "text": "adapter boundary",
+        "fromPort": "right",
+        "toPort": "left",
+        "routing": "orthogonal"
+      },
+      {
+        "type": "style",
+        "ids": ["shape:ui", "shape:service"],
+        "style": {
+          "strokeColor": "#2563eb",
+          "backgroundColor": "#dbeafe",
+          "fill": "solid",
+          "roundness": "round"
+        }
+      },
+      {
+        "type": "style",
+        "ids": ["shape:external"],
+        "style": {
+          "strokeColor": "#15803d",
+          "backgroundColor": "#dcfce7",
+          "fill": "solid",
+          "roundness": "round"
+        }
+      }
+    ]
+  }
+}
+```
+
+Useful targeted follow-ups through `draw.apply` are:
+
+```json
+{
+  "command": "draw.apply",
+  "input": { "operations": [{ "type": "select", "ids": ["shape:service"] }] }
+}
+```
+
+```json
+{
+  "command": "draw.apply",
+  "input": {
+    "operations": [
+      { "type": "style", "ids": ["shape:service"], "style": { "strokeWidth": 4, "opacity": 1 } }
+    ]
+  }
+}
+```
+
+```json
+{
+  "command": "draw.apply",
+  "input": {
+    "operations": [
+      {
+        "type": "connect",
+        "id": "shape:a-to-b",
+        "fromId": "shape:a",
+        "toId": "shape:b",
+        "routing": "orthogonal"
+      }
+    ]
+  }
+}
+```
+
+Use `draw.frame` when existing unframed shapes need a boundary:
+
+```json
+{
+  "command": "draw.frame",
+  "input": {
+    "id": "shape:system-boundary",
+    "title": "System boundary",
+    "ids": ["shape:a", "shape:b"]
+  }
+}
+```
+
+Trust successful mutation receipts for simple additions and automatic fitting. Call `draw.read` again only when user edits, selection, or uncertain board context matter. Request an exact operation's `.help` only if these recipes do not cover the needed action or a live call reports that the protocol changed.
+
+A topology-changing edit to an existing diagram requires one visual verification pass. This includes inserting an intermediary node, replacing connectors, rebuilding a frame, moving a connected node across the composition, or adding several routed connectors. Render the complete page—not merely the current viewport—after the mutation:
+
+```json
+{ "command": "draw.render", "input": { "scope": "page" } }
+```
+
+Inspect for shape overlap, connector crossings, labels sitting on shapes or other labels, awkward long routes, clipping, and a misleading camera position. Make at most one targeted corrective layout pass, then render again only if that correction changed routing or there is concrete doubt that it worked. Do not present a topology-changing step based only on mutation bounds.
+
+During a guided explanation, prefer adding a separate detail stage or inset beside or below the stable overview. Restructure the existing overview only when the relationship itself must change; preserving the user's spatial orientation is more important than making every new point part of one compact graph.
+
 ## Choose the interaction contract
 
 - Requests to explain, teach, walk through, or help the user understand something in Draw start a guided explanation by default. “In detail” describes depth, not permission to deliver every step in one turn.
@@ -93,14 +253,14 @@ For every guided Draw explanation, mount Cake's predefined `action-bar` Session 
 
 ## Use Cake's current tools
 
-- Discover the compact command index with `cake` command `draw`, then request only the needed schema with `draw.flow.help`, `draw.frame.help`, or another command plus `.help`. These are authoritative for limits and recovery; do not load all schemas for an ordinary step.
+- Use the embedded fast-start calls and recipes above for ordinary work. Request the compact `draw` index or one exact `*.help` schema only for recovery, a protocol change, or an operation not covered here; never load all schemas speculatively.
 - Use `draw.read` at the start of an explanation, when the user's selection or edits matter, or when board context is uncertain. Do not reread before every sequential step when your own recent mutations already establish the context. Open Draw when requested or needed for an agreed visual explanation, not merely because this skill loaded. If the board is unavailable, follow the tool's recovery guidance.
 - Prefer `draw.flow` for incremental flows: supply stable `shape:<id>` node IDs and short text; measured sizing, typography, spacing, and arrows are automatic. Default direction is down for a narrow pane. Use an optional frame to encode real containment, not decoration. Place the next whole stage relative to an existing node or frame; Cake uses its live bounds without moving existing content. Use `draw.frame` to enclose existing unframed shapes and internal connectors without manual rectangle geometry or layer ordering. Frames are native, editable, one-shot containment—not continuous layout constraints.
 - Use `draw.mermaid` for complete supported structured diagrams, with a stable diagram ID. Named replacement is for deliberate region revision, not every explanation step; it can disrupt layout.
 - Use `draw.apply` for freeform composition and targeted changes. Keep each call to one visible stage within the advertised operation limit. Create nodes before connecting them; prefer relative placement over unnecessary coordinate arithmetic. Keep shape labels short; put detailed explanation in chat, not inside large boxes.
 - Plan for the Draw pane rather than the whole application window, using already-known viewport context when available instead of measuring again. Prefer a compact vertical or stacked composition in a narrow pane. Keep labels to one or two short lines and explanatory prose in chat.
 - Mutation receipts include resulting composition bounds and per-shape layout. Use them instead of rereading geometry before the next stage. The harness automatically fits the complete changed composition without enlarging beyond 100%; styling alone does not move the camera. Trust that automatic fit for ordinary guided steps. Use `draw.read` or explicit `zoom-to` only when the returned geometry, a user report, or the composition itself gives a concrete reason to suspect clipping.
-- Optimize for conversational speed, not screenshot-perfect output. Do not call `draw.render` after every step. Render the viewport only when the layout is unusually dense, the visual meaning depends on precise routing or overlap, the user asks for a polished result, or there is specific evidence that the board is unreadable.
+- Optimize for conversational speed, not screenshot-perfect output. Do not call `draw.render` after every simple additive step. Render the complete page after topology-changing edits to an existing composition, and render when the layout is unusually dense, meaning depends on precise routing or overlap, the user asks for a polished result, or there is specific evidence that the board is unreadable. Use viewport rendering only when investigating a viewport-specific problem.
 - Accept small imperfections—slightly uneven spacing, non-ideal connector routes, modestly small text, or extra blank space—when the explanation remains understandable. Do not undo and redraw merely to polish them. Prefer one quick targeted correction only when a defect changes the meaning or makes a primary label unreadable.
 - Present the step promptly after a successful mutation. Verification must not become a blocking ritual: rely on the mutation receipt and automatic fitting for simple compositions, and reserve rollback for clearly broken or misleading output. If a correction would interrupt the teaching rhythm more than the defect does, continue and improve the layout only if the user requests it.
 - Use only supported actions. Do not claim narration and drawing are synchronized playback, that a user edit automatically starts a turn, or that you can see changes you have not inspected.
