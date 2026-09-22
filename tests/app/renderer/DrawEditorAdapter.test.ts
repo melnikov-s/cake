@@ -1141,6 +1141,28 @@ describe("DrawEditorAdapter", () => {
     );
   });
 
+  it("fits explicit zoom targets synchronously before returning", () => {
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: { id: "near", type: "geo", x: 0, y: 0, width: 80, height: 60 },
+        },
+        {
+          type: "create",
+          shape: { id: "far", type: "geo", x: 2_000, y: 0, width: 80, height: 60 },
+        },
+        { type: "zoom-to", ids: ["near", "far"] },
+      ],
+    });
+
+    expect(harness.api.scrollToContent).toHaveBeenCalledWith(harness.elements(), {
+      animate: false,
+      fitToViewport: true,
+      viewportZoomFactor: 0.85,
+    });
+  });
+
   it("allows explicit layer operations to override the creation default", () => {
     adapter.apply({
       operations: [

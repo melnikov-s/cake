@@ -1759,7 +1759,7 @@ function applyPreparedOperations(
     const ids = new Set(zoomIds);
     api.scrollToContent(
       elements.filter((element) => ids.has(element.id) || isGeneratedLabelFor(element, ids)),
-      { animate: true, fitToViewport: true, viewportZoomFactor: 0.85 },
+      { animate: false, fitToViewport: true, viewportZoomFactor: 0.85 },
     );
   } else if (highlightActive && selectedElementIds) {
     const activeIds = Object.keys(selectedElementIds);
