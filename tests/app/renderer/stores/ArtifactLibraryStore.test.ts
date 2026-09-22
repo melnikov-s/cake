@@ -79,7 +79,7 @@ const flush = async () => {
   await Promise.resolve();
 };
 
-describe("ArtifactLibraryStore", () => {
+describe("ArtifactLibraryStore and ArtifactDetailStore", () => {
   it("runs search → detail → historical read → restore through the typed client", async () => {
     let restored = false;
     const client = {
@@ -148,28 +148,28 @@ describe("ArtifactLibraryStore", () => {
       expect.anything(),
     );
 
-    await subject.select(id);
-    expect(subject.selectedLineage?.revisions.map((item) => item.revision).toSorted()).toEqual([
-      1, 2,
-    ]);
-    expect(subject.selectedLineage?.revision(2)?.snapshot?.payload).toEqual({
+    await subject.detailStore.select(id);
+    expect(
+      subject.detailStore.selectedLineage?.revisions.map((item) => item.revision).toSorted(),
+    ).toEqual([1, 2]);
+    expect(subject.detailStore.selectedLineage?.revision(2)?.snapshot?.payload).toEqual({
       markdown: "revision 2",
     });
 
-    await subject.selectRevision(id, revisionNumber(1));
-    expect(subject.selectedLineage?.revision(1)?.snapshot?.payload).toEqual({
+    await subject.detailStore.selectRevision(id, revisionNumber(1));
+    expect(subject.detailStore.selectedLineage?.revision(1)?.snapshot?.payload).toEqual({
       markdown: "revision 1",
     });
-    await subject.compare(id, revisionNumber(1), revisionNumber(2));
-    expect(subject.comparison?.fromText).toBe("revision 1");
+    await subject.detailStore.compare(id, revisionNumber(1), revisionNumber(2));
+    expect(subject.detailStore.comparison?.fromText).toBe("revision 1");
 
-    await subject.restore("session-1", id, revisionNumber(1), 2);
+    await subject.detailStore.restore("session-1", id, revisionNumber(1), 2);
     expect(client.artifacts.restore).toHaveBeenCalledWith(
       { sessionId: "session-1", lineageId: id, sourceRevision: 1, expectedLatestRevision: 2 },
       expect.anything(),
     );
     expect(changed).toHaveBeenCalledWith(id);
-    expect(subject.selectedLineage?.latestRevision).toBe(3);
+    expect(subject.detailStore.selectedLineage?.latestRevision).toBe(3);
     root[Symbol.dispose]();
   });
 
@@ -273,31 +273,33 @@ describe("ArtifactLibraryStore", () => {
       client,
     );
     await flush();
-    await subject.select(id);
+    await subject.detailStore.select(id);
 
-    expect(subject.selectedLineage?.revisions).toHaveLength(50);
+    expect(subject.detailStore.selectedLineage?.revisions).toHaveLength(50);
     expect(
-      subject.selectedLineage?.revisions.map((item) => item.revision).toSorted((a, b) => b - a),
+      subject.detailStore.selectedLineage?.revisions
+        .map((item) => item.revision)
+        .toSorted((a, b) => b - a),
     ).toEqual(Array.from({ length: 50 }, (_, index) => 52 - index));
-    expect(subject.historyHasMore).toBe(true);
+    expect(subject.detailStore.historyHasMore).toBe(true);
 
-    await subject.loadOlderHistory();
-    expect(subject.historyError).toBe("history unavailable");
-    expect(subject.historyOffset).toBe(50);
-    expect(subject.selectedLineage?.revisions).toHaveLength(50);
+    await subject.detailStore.loadOlderHistory();
+    expect(subject.detailStore.historyError).toBe("history unavailable");
+    expect(subject.detailStore.historyOffset).toBe(50);
+    expect(subject.detailStore.selectedLineage?.revisions).toHaveLength(50);
 
-    await subject.loadOlderHistory();
-    expect(subject.historyError).toBeUndefined();
-    expect(subject.historyHasMore).toBe(false);
-    expect(subject.selectedLineage?.revisions).toHaveLength(52);
-    await subject.selectRevision(id, revisionNumber(1));
-    expect(subject.selectedLineage?.revision(1)?.snapshot?.payload).toEqual({
+    await subject.detailStore.loadOlderHistory();
+    expect(subject.detailStore.historyError).toBeUndefined();
+    expect(subject.detailStore.historyHasMore).toBe(false);
+    expect(subject.detailStore.selectedLineage?.revisions).toHaveLength(52);
+    await subject.detailStore.selectRevision(id, revisionNumber(1));
+    expect(subject.detailStore.selectedLineage?.revision(1)?.snapshot?.payload).toEqual({
       markdown: "revision 1",
     });
-    await subject.compare(id, revisionNumber(1), revisionNumber(52));
-    expect(subject.comparison?.fromText).toBe("revision 1");
-    await subject.restore("session-1", id, revisionNumber(1), 52);
-    expect(subject.selectedLineage?.latestRevision).toBe(53);
+    await subject.detailStore.compare(id, revisionNumber(1), revisionNumber(52));
+    expect(subject.detailStore.comparison?.fromText).toBe("revision 1");
+    await subject.detailStore.restore("session-1", id, revisionNumber(1), 52);
+    expect(subject.detailStore.selectedLineage?.latestRevision).toBe(53);
     expect(client.artifacts.restore).toHaveBeenCalledWith(
       { sessionId: "session-1", lineageId: id, sourceRevision: 1, expectedLatestRevision: 52 },
       expect.anything(),
@@ -351,10 +353,10 @@ describe("ArtifactLibraryStore", () => {
       client,
     );
     await flush();
-    await subject.select(id);
-    await subject.selectRevision(id, revisionNumber(1));
-    const staleSelection = subject.compare(id, revisionNumber(1), revisionNumber(2));
-    await subject.select(secondId);
+    await subject.detailStore.select(id);
+    await subject.detailStore.selectRevision(id, revisionNumber(1));
+    const staleSelection = subject.detailStore.compare(id, revisionNumber(1), revisionNumber(2));
+    await subject.detailStore.select(secondId);
     comparisonResolvers[0]!({
       lineageId: id,
       fromRevision: revisionNumber(1),
@@ -363,11 +365,11 @@ describe("ArtifactLibraryStore", () => {
       toText: "stale A latest",
     });
     await staleSelection;
-    expect(subject.comparison).toBeUndefined();
+    expect(subject.detailStore.comparison).toBeUndefined();
 
-    await subject.selectRevision(secondId, revisionNumber(1));
-    const older = subject.compare(secondId, revisionNumber(1), revisionNumber(2));
-    const newer = subject.compare(secondId, revisionNumber(1), revisionNumber(2));
+    await subject.detailStore.selectRevision(secondId, revisionNumber(1));
+    const older = subject.detailStore.compare(secondId, revisionNumber(1), revisionNumber(2));
+    const newer = subject.detailStore.compare(secondId, revisionNumber(1), revisionNumber(2));
     comparisonResolvers[2]!({
       lineageId: secondId,
       fromRevision: revisionNumber(1),
@@ -384,7 +386,7 @@ describe("ArtifactLibraryStore", () => {
       toText: "older latest",
     });
     await older;
-    expect(subject.comparison?.fromText).toBe("newer");
+    expect(subject.detailStore.comparison?.fromText).toBe("newer");
     root[Symbol.dispose]();
   });
 
@@ -417,11 +419,11 @@ describe("ArtifactLibraryStore", () => {
       client,
     );
     await flush();
-    await subject.select(id);
-    await subject.restore("session-1", id, revisionNumber(1), 2);
+    await subject.detailStore.select(id);
+    await subject.detailStore.restore("session-1", id, revisionNumber(1), 2);
 
-    expect(subject.operationError).toBe("latest revision changed");
-    expect(subject.selectedLineage?.latestRevision).toBe(2);
+    expect(subject.detailStore.operationError).toBe("latest revision changed");
+    expect(subject.detailStore.selectedLineage?.latestRevision).toBe(2);
     root[Symbol.dispose]();
   });
 });

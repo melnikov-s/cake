@@ -368,6 +368,13 @@ The window Store hierarchy mirrors the product surfaces:
   active navigation treatment derive from that selection. `SidebarStore` owns
   navigation presentation and filtering, visibility, and width; neither Store
   opens sessions directly.
+- `ArtifactLibraryStore` owns artifact catalog search, filters, paging, and the
+  active-session scope of the library surface. Its `ArtifactDetailStore` child owns
+  the selected lineage and revision, paginated history, comparisons, and restore
+  coordination. The window-lifetime `ArtifactReferencePreviewStore` owns bounded
+  reference metadata previews and artifact link/materialization actions shared by
+  Markdown previews and the library detail surface. All three read and mutate the
+  shared `ArtifactCatalog` projection rather than copying artifact entities.
 - `ProjectCatalogStore` owns registered Project records and their window-local
   ordering. Cake application state owns a global status catalog available to every Project; each
   Project may also carry additional statuses and its per-session assignments. Global and local

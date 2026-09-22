@@ -21,7 +21,8 @@ import {
   type ArtifactLinkTarget,
 } from "../../domain/artifacts/artifact-lineage";
 import type { SessionCatalogStore } from "../stores/SessionCatalogStore";
-import type { ArtifactLibraryStore } from "../stores/ArtifactLibraryStore";
+import type { ArtifactDetailStore } from "../stores/ArtifactDetailStore";
+import type { ArtifactReferencePreviewStore } from "../stores/ArtifactReferencePreviewStore";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 
 const displayDate = (value: string) =>
@@ -31,10 +32,14 @@ const displayDate = (value: string) =>
 
 export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
   store,
+  referencePreviews,
+  activeSessionId,
   sessions,
   inlineWidgets,
 }: {
-  store: ArtifactLibraryStore;
+  store: ArtifactDetailStore;
+  referencePreviews: ArtifactReferencePreviewStore;
+  activeSessionId?: string;
   sessions: SessionCatalogStore;
   inlineWidgets: InlineWidgetStore;
 }) {
@@ -54,7 +59,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
   const latestRevision = decodeArtifactRevisionNumber(lineage.latestRevision);
   const selected = lineage.revision(selectedNumber);
   const record = selected?.record;
-  const activeSummary = store.activeSessionId ? sessions.find(store.activeSessionId) : undefined;
+  const activeSummary = activeSessionId ? sessions.find(activeSessionId) : undefined;
   const target: ArtifactLinkTarget | undefined = activeSummary
     ? activeSummary.familyId
       ? { type: "family", familyId: activeSummary.familyId }
@@ -77,7 +82,6 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
     });
   };
   const lineageId = decodeArtifactLineageId(lineage.id);
-  const activeSessionId = store.activeSessionId;
   const pendingRestoreRevision = store.pendingRestoreRevision;
   const exactRef = `${lineage.stableRef}@r${selectedNumber}`;
   return (
@@ -112,9 +116,9 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
             </Button>
           </div>
         </div>
-        {store.operationError && (
+        {(store.operationError || referencePreviews.operationError) && (
           <Callout variant="error" className="mt-3">
-            {store.operationError}
+            {store.operationError ?? referencePreviews.operationError}
           </Callout>
         )}
       </header>
@@ -223,7 +227,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
               {!currentLink ? (
                 <Button
                   size="sm"
-                  onClick={() => void store.link(activeSessionId, lineageId, target)}
+                  onClick={() => void referencePreviews.link(activeSessionId, lineageId, target)}
                 >
                   {target.type === "family" ? "Link to this family" : "Link to this session"}
                 </Button>
@@ -234,7 +238,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
                       size="sm"
                       variant="outline"
                       onClick={() =>
-                        void store.setSelection(activeSessionId, lineageId, target, {
+                        void referencePreviews.setSelection(activeSessionId, lineageId, target, {
                           mode: "follow-latest",
                         })
                       }
@@ -246,7 +250,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
                       size="sm"
                       variant="outline"
                       onClick={() =>
-                        void store.setSelection(activeSessionId, lineageId, target, {
+                        void referencePreviews.setSelection(activeSessionId, lineageId, target, {
                           mode: "pinned",
                           revision: selectedRevision,
                         })
@@ -258,7 +262,9 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => void store.unlink(activeSessionId, lineageId, target)}
+                    onClick={() =>
+                      void referencePreviews.unlink(activeSessionId, lineageId, target)
+                    }
                   >
                     Unlink
                   </Button>

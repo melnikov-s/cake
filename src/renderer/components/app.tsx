@@ -1029,6 +1029,7 @@ export const App = observer(function App() {
         ) : surface === "artifact-library" ? (
           <ArtifactLibrary
             store={root.artifactLibraryStore}
+            referencePreviews={root.artifactReferencePreviewStore}
             sessions={root.sessionCatalogStore}
             inlineWidgets={root.inlineWidgetStore}
           />

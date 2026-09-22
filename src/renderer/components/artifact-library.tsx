@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { decodeArtifactLineageId } from "../../domain/artifacts/artifact-lineage";
 import type { ArtifactLibraryStore } from "../stores/ArtifactLibraryStore";
+import type { ArtifactReferencePreviewStore } from "../stores/ArtifactReferencePreviewStore";
 import type { SessionCatalogStore } from "../stores/SessionCatalogStore";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { ArtifactLineageDetail } from "./artifact-lineage-detail";
@@ -16,10 +17,12 @@ const displayDate = (value: string) =>
 
 export const ArtifactLibrary = observer(function ArtifactLibrary({
   store,
+  referencePreviews,
   sessions,
   inlineWidgets,
 }: {
   store: ArtifactLibraryStore;
+  referencePreviews: ArtifactReferencePreviewStore;
   sessions: SessionCatalogStore;
   inlineWidgets: InlineWidgetStore;
 }) {
@@ -81,20 +84,28 @@ export const ArtifactLibrary = observer(function ArtifactLibrary({
                 title={lineage.title ?? lineage.id}
                 description={`Updated ${displayDate(lineage.latest?.publishedAt ?? lineage.createdAt)} · r${lineage.latestRevision}`}
                 badge={<Badge>{lineage.latest?.kind}</Badge>}
-                aria-current={store.selectedLineageId === lineage.id ? "page" : undefined}
+                aria-current={
+                  store.detailStore.selectedLineageId === lineage.id ? "page" : undefined
+                }
                 className={
-                  store.selectedLineageId === lineage.id
+                  store.detailStore.selectedLineageId === lineage.id
                     ? "border-primary/35 bg-accent/35"
                     : undefined
                 }
-                onClick={() => void store.select(decodeArtifactLineageId(lineage.id))}
+                onClick={() => void store.detailStore.select(decodeArtifactLineageId(lineage.id))}
               />
             ))}
           </nav>
         )}
       </aside>
       <section className="min-h-0 overflow-hidden">
-        <ArtifactLineageDetail store={store} sessions={sessions} inlineWidgets={inlineWidgets} />
+        <ArtifactLineageDetail
+          store={store.detailStore}
+          referencePreviews={referencePreviews}
+          activeSessionId={store.activeSessionId}
+          sessions={sessions}
+          inlineWidgets={inlineWidgets}
+        />
       </section>
     </div>
   );

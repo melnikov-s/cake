@@ -38,6 +38,7 @@ import type { RootProjection } from "../models/RootProjection";
 import { formatHotkey } from "../lib/hotkeys";
 import { UiHintModeStore } from "./UiHintModeStore";
 import { ArtifactLibraryStore } from "./ArtifactLibraryStore";
+import { ArtifactReferencePreviewStore } from "./ArtifactReferencePreviewStore";
 import type {
   DrawControl,
   DrawControlInvocation,
@@ -98,6 +99,17 @@ export class RootStore extends Store<{
   @child
   get artifactLibraryStore(): ArtifactLibraryStore {
     return createStore(ArtifactLibraryStore, {
+      model: this.props.projection.artifacts,
+      artifactsChanged: (lineageId) => {
+        for (const session of this.sessionRegistry.sessions)
+          session.sessionArtifactsStore.receive(lineageId);
+      },
+    });
+  }
+
+  @child
+  get artifactReferencePreviewStore(): ArtifactReferencePreviewStore {
+    return createStore(ArtifactReferencePreviewStore, {
       model: this.props.projection.artifacts,
       artifactsChanged: (lineageId) => {
         for (const session of this.sessionRegistry.sessions)
@@ -655,7 +667,8 @@ export class RootStore extends Store<{
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.artifactLibraryStore.open(sessionId);
     this.appShellStore.showArtifactLibrary();
-    if (lineageId) void this.artifactLibraryStore.select(decodeArtifactLineageId(lineageId));
+    if (lineageId)
+      void this.artifactLibraryStore.detailStore.select(decodeArtifactLineageId(lineageId));
   }
   showSettings() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();

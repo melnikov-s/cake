@@ -9,7 +9,7 @@ import type { ArtifactReferenceMetadata } from "../../../src/domain/artifacts/ar
 import { ArtifactReferencePreview } from "../../../src/renderer/components/artifact-reference-preview";
 import type { Client } from "../../../src/renderer/client/Client";
 import { ArtifactCatalog } from "../../../src/renderer/models/ArtifactCatalog";
-import { ArtifactLibraryStore } from "../../../src/renderer/stores/ArtifactLibraryStore";
+import { ArtifactReferencePreviewStore } from "../../../src/renderer/stores/ArtifactReferencePreviewStore";
 import type { SessionCatalogStore } from "../../../src/renderer/stores/SessionCatalogStore";
 import { mountWithClient } from "./mount-with-client";
 
@@ -58,29 +58,31 @@ describe("ArtifactReferencePreview", () => {
   });
 
   it("loads metadata only, then links and materializes the referenced revision", async () => {
+    const changed = vi.fn();
+    const linkedArtifact = {
+      lineageId: metadata.lineage.id,
+      target: { type: "family" as const, familyId: "family-1" },
+      selection: { mode: "pinned" as const, revision: metadata.revision.revision },
+      createdAt: "2025-01-01T00:00:00.000Z",
+    };
     const client = {
       artifacts: {
         catalog: vi.fn(async () => ({ items: [], offset: 0, limit: 50, total: 0, hasMore: false })),
         referenceMetadata: vi.fn(async () => metadata),
         readExact: vi.fn(),
-        link: vi.fn(async (input) => ({
-          lineageId: input.lineageId,
-          target: input.target,
-          selection: input.selection,
-          createdAt: "2025-01-01T00:00:00.000Z",
-        })),
+        link: vi.fn(async () => linkedArtifact),
         detail: vi.fn(async () => ({
           lineage: metadata.lineage,
-          links: [],
+          links: [linkedArtifact],
           stableRef: metadata.stableRef,
         })),
         materialize: vi.fn(async () => ({ exactPath: "/cache/report/revision-2.md" })),
       },
     } as unknown as Client;
     const mounted = mountWithClient(
-      createStore(ArtifactLibraryStore, {
+      createStore(ArtifactReferencePreviewStore, {
         model: ArtifactCatalog.create(),
-        artifactsChanged: vi.fn(),
+        artifactsChanged: changed,
       }),
       client,
     );
@@ -129,6 +131,48 @@ describe("ArtifactReferencePreview", () => {
       2,
       expect.anything(),
     );
+    expect(changed).toHaveBeenCalledWith("report");
+    expect(mounted.subject.previewStates[metadata.exactRef]?.metadata?.links).toEqual([
+      linkedArtifact,
+    ]);
     mounted.root[Symbol.dispose]();
+  });
+
+  it("bounds its window-wide metadata cache and ignores results after disposal", async () => {
+    let resolveLast: ((value: ArtifactReferenceMetadata) => void) | undefined;
+    const client = {
+      artifacts: {
+        referenceMetadata: vi.fn((reference: string) => {
+          if (reference === "cake://artifact/disposed")
+            return new Promise<ArtifactReferenceMetadata>((resolve) => {
+              resolveLast = resolve;
+            });
+          return Promise.resolve({
+            ...metadata,
+            stableRef: reference,
+            exactRef: reference,
+          });
+        }),
+      },
+    } as unknown as Client;
+    const mounted = mountWithClient(
+      createStore(ArtifactReferencePreviewStore, {
+        model: ArtifactCatalog.create(),
+        artifactsChanged: vi.fn(),
+      }),
+      client,
+    );
+
+    for (let index = 0; index < 101; index += 1)
+      await mounted.subject.previewReference(`cake://artifact/report-${index}` as never);
+
+    expect(Object.keys(mounted.subject.previewStates)).toHaveLength(100);
+    expect(mounted.subject.previewStates["cake://artifact/report-0"]).toBeUndefined();
+
+    const pending = mounted.subject.previewReference("cake://artifact/disposed" as never);
+    mounted.root[Symbol.dispose]();
+    resolveLast!(metadata);
+    await pending;
+    expect(mounted.subject.previewStates["cake://artifact/disposed"]?.metadata).toBeUndefined();
   });
 });

@@ -44,7 +44,7 @@ export const RendererRoot = observer(function RendererRoot({
                 renderArtifactReference: (reference) => (
                   <ArtifactReferencePreview
                     reference={formatArtifactRef(parseArtifactRef(reference))}
-                    store={rootStore.artifactLibraryStore}
+                    store={rootStore.artifactReferencePreviewStore}
                     sessions={rootStore.sessionCatalogStore}
                     activeSessionId={activeSessionId}
                     onOpen={(lineageId) =>

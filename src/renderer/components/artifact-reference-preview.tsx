@@ -8,7 +8,7 @@ import type {
   ArtifactStableRef,
 } from "../../domain/artifacts/artifact-lineage";
 import { parseArtifactRef } from "../../domain/artifacts/artifact-lineage";
-import type { ArtifactLibraryStore } from "../stores/ArtifactLibraryStore";
+import type { ArtifactReferencePreviewStore } from "../stores/ArtifactReferencePreviewStore";
 import type { SessionCatalogStore } from "../stores/SessionCatalogStore";
 
 export const ArtifactReferencePreview = observer(function ArtifactReferencePreview({
@@ -19,7 +19,7 @@ export const ArtifactReferencePreview = observer(function ArtifactReferencePrevi
   onOpen,
 }: {
   reference: ArtifactStableRef;
-  store: ArtifactLibraryStore;
+  store: ArtifactReferencePreviewStore;
   sessions: SessionCatalogStore;
   activeSessionId?: string;
   onOpen(lineageId: string): void;
