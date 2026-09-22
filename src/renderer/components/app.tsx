@@ -365,6 +365,8 @@ export const App = observer(function App() {
   const projectSidebar = (
     <Sidebar
       store={sidebar}
+      sessionList={sidebar.sessionListStore}
+      sessionMetadata={root.sessionMetadataStore}
       projects={projects}
       chat={store}
       cakeChat={root.cakeChatCollectionStore}
@@ -617,7 +619,7 @@ export const App = observer(function App() {
       content: summary?.resolved ? (
         <Avatar
           kind="session"
-          seed={sidebar.sessionAvatarSeed(paneSession.sessionId)}
+          seed={paneSession.sessionId}
           resolved
           className="size-7"
           role="img"
@@ -628,9 +630,9 @@ export const App = observer(function App() {
         <SessionAssistant
           store={paneSession.sessionAssistantStore}
           animated
-          seed={sidebar.sessionAvatarSeed(paneSession.sessionId)}
-          labels={sidebar.availableSessionLabels(paneSession.sessionId)}
-          value={sidebar.sessionLabelIds(paneSession.sessionId)}
+          seed={paneSession.sessionId}
+          labels={root.sessionMetadataStore.availableSessionLabels(paneSession.sessionId)}
+          value={root.sessionMetadataStore.sessionLabelIds(paneSession.sessionId)}
         />
       ),
     };

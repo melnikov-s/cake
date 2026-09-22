@@ -97,6 +97,71 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       ),
       now: fixture.now ?? Date.now(),
     } as any,
+    sessionList: {
+      projectSessions: fixture.projectSessions,
+      visibleProjectSessions:
+        fixture.visibleProjectSessions ??
+        ((path: string, resolved = false) =>
+          fixture.projectSessions(path, resolved).slice(0, fixture.sessionLimit(path, resolved))),
+      cakeChatSessions: (resolved = false) =>
+        (fixture.cakeChatSummaries ?? []).filter(
+          (session: { resolved?: boolean }) => Boolean(session.resolved) === resolved,
+        ),
+      sessionLimit: fixture.sessionLimit,
+      showMoreSessions: fixture.showMoreSessions,
+      hasMoreResolvedProjectSessions:
+        fixture.hasMoreResolvedProjectSessions ??
+        ((path: string) =>
+          fixture.projectSessions(path, true).length > fixture.sessionLimit(path, true)),
+      hasMoreResolvedCakeChatSessions:
+        fixture.hasMoreResolvedCakeChatSessions ??
+        (fixture.cakeChatSummaries ?? []).filter(
+          (session: { resolved?: boolean }) => session.resolved === true,
+        ).length > fixture.sessionLimit("cake-chat", true),
+      projectSessionSort: fixture.projectSessionSort ?? (() => "date"),
+      setProjectSessionSort: fixture.setProjectSessionSort ?? vi.fn(),
+      isActiveGroupExpanded: fixture.isActiveGroupExpanded ?? (() => true),
+      toggleActiveGroupExpanded: fixture.toggleActiveGroupExpanded ?? vi.fn(),
+      isResolvedGroupExpanded: fixture.isResolvedGroupExpanded ?? (() => false),
+      toggleResolvedGroupExpanded: fixture.toggleResolvedGroupExpanded ?? vi.fn(),
+      isFamilyCollapsed: fixture.isFamilyCollapsed ?? (() => false),
+      toggleFamilyCollapsed: fixture.toggleFamilyCollapsed ?? vi.fn(),
+      sessionActivityForDisplay:
+        fixture.sessionActivityForDisplay ??
+        ((session: { sessionId: string }) => fixture.sessionActivity(session.sessionId)),
+      resolvedLaneExpanded: fixture.resolvedLaneExpanded ?? false,
+      toggleResolvedLane: fixture.toggleResolvedLane ?? vi.fn(),
+      activeProjectSessionFamilies:
+        fixture.activeProjectSessionFamilies ??
+        (fixture.activeProjectSessions ?? []).map(
+          (session: { sessionId: string; modifiedAt: string }) => ({
+            rootSessionId: session.sessionId,
+            latestModifiedAt: session.modifiedAt,
+            sessions: [session],
+          }),
+        ),
+      activeCakeChatSessions: (fixture.cakeChatSummaries ?? []).filter(
+        (session: { resolved?: boolean }) => !session.resolved,
+      ),
+    } as any,
+    sessionMetadata: {
+      sessionLabels:
+        fixture.sessionLabels ??
+        ((sessionId: string) => {
+          const label = fixture.primarySessionLabel?.(sessionId);
+          return label ? [{ id: "fixture-status", ...label }] : [];
+        }),
+      sessionLabelIds:
+        fixture.sessionLabelIds ??
+        ((sessionId: string) =>
+          fixture.primarySessionLabel?.(sessionId) ? ["fixture-status"] : []),
+      availableSessionLabels:
+        fixture.availableSessionLabels ??
+        ((sessionId: string) => {
+          const status = fixture.primarySessionLabel?.(sessionId);
+          return status ? [{ id: "fixture-status", ...status }] : [];
+        }),
+    } as any,
     projects: {
       projectOrder: fixture.recentProjectPaths,
       orderedProjectPaths: fixture.orderedProjectPaths ?? fixture.recentProjectPaths,

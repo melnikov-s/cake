@@ -11,6 +11,7 @@ import type { SessionHistoryEntry } from "./AppShellStore";
 import { SessionRegistryStore } from "./SessionRegistryStore";
 import { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
 import { SidebarStore } from "./SidebarStore";
+import { SessionMetadataStore } from "./SessionMetadataStore";
 import { ReviewsStore } from "./ReviewsStore";
 import { SettingsStore } from "./SettingsStore";
 import { ExtensionUiStore } from "./ExtensionUiStore";
@@ -931,10 +932,6 @@ export class RootStore extends Store<{
     });
   }
 
-  get projectSessionCatalogQueries() {
-    return this.sidebarStore.projectSessionCatalogQueries;
-  }
-
   /** Project Session targets currently eligible for Model observation. */
   get projectSessionObservationTargets() {
     const blockedPath = this.projectWorkbenchStore.projectOpenStore.pendingAuthorizationPath;
@@ -966,13 +963,24 @@ export class RootStore extends Store<{
   }
 
   @child
-  get sidebarStore(): SidebarStore {
-    return createStore(SidebarStore, {
+  get sessionMetadataStore(): SessionMetadataStore {
+    return createStore(SessionMetadataStore, {
       projects: this.projectCatalogStore,
       catalog: this.sessionCatalogStore,
       sessions: this.sessionRegistry,
       worktreeOperations: this.props.projection.worktreeOperations,
       globalLabels: () => this.settingsStore.globalLabels.labels,
+    });
+  }
+
+  @child
+  get sidebarStore(): SidebarStore {
+    return createStore(SidebarStore, {
+      projects: this.projectCatalogStore,
+      catalog: this.sessionCatalogStore,
+      sessions: this.sessionRegistry,
+      sessionMetadata: this.sessionMetadataStore,
+      worktreeOperations: this.props.projection.worktreeOperations,
       cakeChat: () => this.cakeChatCollectionStore,
       selectedConversation: () => {
         const selection = this.appShellStore.selection;
@@ -1144,7 +1152,7 @@ export class RootStore extends Store<{
         sessionLayoutStore: this.sessionLayoutStore,
         sessionRegistry: this.sessionRegistry,
         settingsStore: this.settingsStore,
-        sidebarStore: this.sidebarStore,
+        sessionActivity: (sessionId) => this.sessionMetadataStore.sessionActivity(sessionId),
         toastStore: this.toastStore,
         projectSessionWorkingDirectory: (sessionId) =>
           this.projectSessionWorkingDirectory(sessionId),

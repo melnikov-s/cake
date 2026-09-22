@@ -160,5 +160,6 @@ still physically in active storage. The sidebar derives contiguous depth-first
 clusters, latest-descendant ordering, whole-family pagination, subtree collapse,
 and aggregate attention. It keeps session titles aligned and renders nesting as
 compact vertical depth rails instead of increasing indentation. Collapse state
-is window-owned `SidebarStore` state. Each member continues to use the normal
+is window-owned `SidebarSessionListStore` state beneath `SidebarStore`. Each
+member continues to use the normal
 session row, navigation, pane layout, `Chat`, and `ChatStore`.

@@ -23,6 +23,8 @@ import { ProjectSettingsDialog } from "./project-settings-dialog";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
 import type { SidebarStore } from "../stores/SidebarStore";
+import type { SidebarSessionListStore } from "../stores/SidebarSessionListStore";
+import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
 import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore";
 import type { AppShellStore } from "../stores/AppShellStore";
 import type { ProjectSettingsStore } from "../stores/ProjectSettingsStore";
@@ -33,6 +35,8 @@ import { SortableItem, type SortableItemDragHandleProps } from "./ui/sortable-it
 
 export const Sidebar = observer(function Sidebar({
   store,
+  sessionList,
+  sessionMetadata,
   projects,
   chat,
   cakeChat,
@@ -52,6 +56,8 @@ export const Sidebar = observer(function Sidebar({
   onToggle,
 }: {
   store: SidebarStore;
+  sessionList: SidebarSessionListStore;
+  sessionMetadata: SessionMetadataStore;
   projects: ProjectCatalogStore;
   chat: ProjectWorkbenchStore;
   cakeChat: CakeChatCollectionStore;
@@ -162,6 +168,8 @@ export const Sidebar = observer(function Sidebar({
           {activityMode ? (
             <SidebarActivityFeed
               store={store}
+              sessionList={sessionList}
+              sessionMetadata={sessionMetadata}
               projects={projects}
               chat={chat}
               cakeChat={cakeChat}
@@ -176,6 +184,7 @@ export const Sidebar = observer(function Sidebar({
                 <>
                   <SidebarCakeChatGroup
                     store={store}
+                    sessionList={sessionList}
                     cakeChat={cakeChat}
                     shell={shell}
                     resolved={false}
@@ -207,6 +216,8 @@ export const Sidebar = observer(function Sidebar({
                     <SidebarProjectGroup
                       key={path}
                       store={store}
+                      sessionList={sessionList}
+                      sessionMetadata={sessionMetadata}
                       projects={projects}
                       chat={chat}
                       shell={shell}
@@ -256,18 +267,19 @@ export const Sidebar = observer(function Sidebar({
                       "h-[27px] px-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground",
                       focusMode && "h-9 text-sm",
                     )}
-                    open={store.resolvedLaneExpanded}
+                    open={sessionList.resolvedLaneExpanded}
                     aria-controls="resolved-lane-content"
-                    aria-label={`${store.resolvedLaneExpanded ? "Collapse" : "Expand"} Resolved`}
-                    onClick={() => store.toggleResolvedLane()}
+                    aria-label={`${sessionList.resolvedLaneExpanded ? "Collapse" : "Expand"} Resolved`}
+                    onClick={() => sessionList.toggleResolvedLane()}
                     title="Resolved"
                   />
                 </div>
-                {store.resolvedLaneExpanded && (
+                {sessionList.resolvedLaneExpanded && (
                   <div id="resolved-lane-content" className="mt-1">
                     {!focusMode && (
                       <SidebarCakeChatGroup
                         store={store}
+                        sessionList={sessionList}
                         cakeChat={cakeChat}
                         shell={shell}
                         resolved
@@ -279,6 +291,8 @@ export const Sidebar = observer(function Sidebar({
                       <SidebarProjectGroup
                         key={`resolved:${path}`}
                         store={store}
+                        sessionList={sessionList}
+                        sessionMetadata={sessionMetadata}
                         projects={projects}
                         chat={chat}
                         shell={shell}

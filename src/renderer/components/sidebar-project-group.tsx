@@ -17,6 +17,8 @@ import type { AppShellStore } from "../stores/AppShellStore";
 import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { SidebarStore } from "../stores/SidebarStore";
+import type { SidebarSessionListStore } from "../stores/SidebarSessionListStore";
+import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
 import { ProjectActionDialog, type ProjectAction } from "./project-action-dialog";
 import { Avatar } from "./ui/avatar";
 import { AnimatedList } from "./ui/animated-list";
@@ -26,6 +28,8 @@ import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
 
 export interface SidebarProjectGroupProps {
   store: SidebarStore;
+  sessionList: SidebarSessionListStore;
+  sessionMetadata: SessionMetadataStore;
   projects: ProjectCatalogStore;
   chat: ProjectWorkbenchStore;
   shell: AppShellStore;
@@ -45,6 +49,8 @@ export interface SidebarProjectGroupProps {
 /** One project section in the sidebar: header row plus its visible session rows. */
 export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   store,
+  sessionList,
+  sessionMetadata,
   projects,
   chat,
   shell,
@@ -63,16 +69,18 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
   const [projectAction, setProjectAction] = useState<ProjectAction>();
   const [actionBusy, setActionBusy] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
-  const sessions = store.projectSessions(path, resolved);
+  const sessions = sessionList.projectSessions(path, resolved);
   const visibleSessions =
-    focusMode && !resolved ? sessions : store.visibleProjectSessions(path, resolved);
+    focusMode && !resolved ? sessions : sessionList.visibleProjectSessions(path, resolved);
   const expanded =
     flattenSessions ||
     (focusMode && !resolved) ||
-    (resolved ? store.isResolvedGroupExpanded(path) : store.isActiveGroupExpanded(path));
+    (resolved
+      ? sessionList.isResolvedGroupExpanded(path)
+      : sessionList.isActiveGroupExpanded(path));
   const empty = sessions.length === 0;
   const hasMore = resolved
-    ? store.hasMoreResolvedProjectSessions(path)
+    ? sessionList.hasMoreResolvedProjectSessions(path)
     : !focusMode && sessions.length > visibleSessions.length;
   return (
     <div
@@ -106,8 +114,8 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               focusMode
                 ? onToggleFocus?.(path)
                 : resolved
-                  ? store.toggleResolvedGroupExpanded(path)
-                  : store.toggleActiveGroupExpanded(path)
+                  ? sessionList.toggleResolvedGroupExpanded(path)
+                  : sessionList.toggleActiveGroupExpanded(path)
             }
           >
             {focusMode ? <BackIcon /> : <ChevronIcon />}
@@ -137,7 +145,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
                 : `Start new chat in ${projects.nameFromPath(path)}`
             }
             onClick={() =>
-              resolved ? store.toggleResolvedGroupExpanded(path) : onCreateSession(path)
+              resolved ? sessionList.toggleResolvedGroupExpanded(path) : onCreateSession(path)
             }
             onContextMenu={(event) => {
               event.preventDefault();
@@ -167,7 +175,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
                   <Popover open={sortMenuOpen} onOpenChange={setSortMenuOpen}>
                     <PopoverIconTrigger
                       className="size-6 flex items-center justify-center rounded text-muted-foreground hover:bg-sidebar-hover hover:text-foreground opacity-0 transition-opacity group-hover/proj:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100"
-                      tooltip={`Sort sessions by ${store.projectSessionSort(path)}`}
+                      tooltip={`Sort sessions by ${sessionList.projectSessionSort(path)}`}
                       ariaLabel={`Sort sessions in ${projects.nameFromPath(path)}`}
                       aria-haspopup="menu"
                     >
@@ -181,7 +189,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
                       className="w-40 rounded-lg p-1"
                     >
                       {(["date", "label"] as const).map((sort) => {
-                        const selected = store.projectSessionSort(path) === sort;
+                        const selected = sessionList.projectSessionSort(path) === sort;
                         return (
                           <Button
                             key={sort}
@@ -190,7 +198,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
                             aria-checked={selected}
                             className="h-8 w-full justify-start gap-2 rounded-md px-2 text-xs font-normal"
                             onClick={() => {
-                              store.setProjectSessionSort(path, sort);
+                              sessionList.setProjectSessionSort(path, sort);
                               setSortMenuOpen(false);
                             }}
                           >
@@ -237,6 +245,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
             <SidebarSessionItem
               key={session.sessionId}
               store={store}
+              sessionMetadata={sessionMetadata}
               session={session}
               managedWorktree={store.managedWorktree(session.workingDirectory)}
               selected={
@@ -245,14 +254,14 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               }
               paneNumber={chat.paneNumber?.(session.sessionId)}
               resolved={resolved}
-              activity={store.sessionActivityForDisplay(session)}
-              labels={store.sessionLabels(session.sessionId)}
-              avatarSeed={store.sessionAvatarSeed(session.sessionId)}
+              activity={sessionList.sessionActivityForDisplay(session)}
+              labels={sessionMetadata.sessionLabels(session.sessionId)}
+              avatarSeed={session.sessionId}
               avatarsEnabled={appearance.sessionAvatarsEnabled}
               focusMode={focusMode}
               onOpen={onOpenSession}
-              onToggleFamily={(sessionId) => store.toggleFamilyCollapsed(sessionId)}
-              familyCollapsed={store.isFamilyCollapsed(session.sessionId)}
+              onToggleFamily={(sessionId) => sessionList.toggleFamilyCollapsed(sessionId)}
+              familyCollapsed={sessionList.isFamilyCollapsed(session.sessionId)}
               onRename={(sessionId, name) =>
                 void chat.sessionManagementStore.renameSession(sessionId, name)
               }
@@ -273,7 +282,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
                 "h-7 justify-start px-2 text-[13px] text-muted-foreground hover:text-foreground",
                 focusMode && "h-9 text-sm",
               )}
-              onClick={() => store.showMoreSessions(path, resolved)}
+              onClick={() => sessionList.showMoreSessions(path, resolved)}
             >
               Show more
             </Button>

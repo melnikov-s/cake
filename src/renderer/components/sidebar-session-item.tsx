@@ -10,6 +10,7 @@ import { Input } from "./ui/input";
 import { NavItem } from "./ui/nav-item";
 import { CakeIcon, ChevronIcon, ResolveIcon, RestoreIcon } from "./ui/icons";
 import type { SidebarStore } from "../stores/SidebarStore";
+import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
 import type { SessionActivity } from "../lib/session-activity";
 import { StatusDot } from "./ui/status-dot";
@@ -20,6 +21,7 @@ import { DepthRails } from "./ui/depth-rails";
 
 export interface SidebarSessionItemProps {
   store: SidebarStore;
+  sessionMetadata?: SessionMetadataStore;
   session: {
     sessionId: string;
     title: string;
@@ -63,6 +65,7 @@ export interface SidebarSessionItemProps {
 /** One session row in the sidebar; owns its own rename draft. */
 export const SidebarSessionItem = observer(function SidebarSessionItem({
   store,
+  sessionMetadata,
   session,
   managedWorktree,
   selected,
@@ -92,8 +95,8 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   const isFamilyChild =
     Boolean(session.familyParentSessionId) && session.familyParentSessionId !== session.sessionId;
   const canResolve = !activity && !isFamilyChild;
-  const labelIds = store.sessionLabelIds(session.sessionId);
-  const availableLabels = store.availableSessionLabels(session.sessionId);
+  const labelIds = sessionMetadata?.sessionLabelIds(session.sessionId) ?? [];
+  const availableLabels = sessionMetadata?.availableSessionLabels(session.sessionId) ?? [];
   const canSetLabels = !session.draft && !resolved && Boolean(onSetLabels);
   const activityLabel =
     activity === "waiting"

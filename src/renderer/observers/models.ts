@@ -497,8 +497,9 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
   });
   observer.observe({
     projection,
-    projectSessionCatalogQueries: () => root.projectSessionCatalogQueries,
-    cakeChatCatalogQueries: () => root.sidebarStore.cakeChatCatalogQueries,
+    projectSessionCatalogQueries: () =>
+      root.sidebarStore.sessionListStore.projectSessionCatalogQueries,
+    cakeChatCatalogQueries: () => root.sidebarStore.sessionListStore.cakeChatCatalogQueries,
     loadedProjectSessions: () =>
       root.sessionRegistry.targets.map(({ sessionId, workspacePath }) => ({
         sessionId,

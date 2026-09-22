@@ -44,6 +44,8 @@ function sidebar(root: RootStore) {
   return (
     <Sidebar
       store={root.sidebarStore}
+      sessionList={root.sidebarStore.sessionListStore}
+      sessionMetadata={root.sessionMetadataStore}
       projects={root.projectCatalogStore}
       chat={root.projectWorkbenchStore}
       cakeChat={root.cakeChatCollectionStore}
@@ -146,9 +148,9 @@ describe("Project Session catalog to sidebar synchronization", () => {
     const visibleStates: boolean[] = [];
     const stopTrackingVisibility = effect(() => {
       visibleStates.push(
-        root.sidebarStore
+        root.sidebarStore.sessionListStore
           .projectSessions(projectPath)
-          .slice(0, root.sidebarStore.sessionLimit(projectPath))
+          .slice(0, root.sidebarStore.sessionListStore.sessionLimit(projectPath))
           .some((session) => session.sessionId === firstId),
       );
     });

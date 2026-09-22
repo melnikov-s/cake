@@ -11,8 +11,8 @@ import type { SessionCoordinationStore } from "../stores/SessionCoordinationStor
 import type { SessionLayoutStore } from "../stores/SessionLayoutStore";
 import type { SessionRegistryStore } from "../stores/SessionRegistryStore";
 import type { SettingsStore } from "../stores/SettingsStore";
-import type { SidebarStore } from "../stores/SidebarStore";
 import type { ToastStore } from "../stores/ToastStore";
+import type { SessionActivity } from "../lib/session-activity";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
 import { defaultProjectSettings } from "../../domain/application/application-data";
@@ -33,7 +33,7 @@ export interface RootApplicationControlCapabilities {
   sessionLayoutStore: SessionLayoutStore;
   sessionRegistry: SessionRegistryStore;
   settingsStore: SettingsStore;
-  sidebarStore: SidebarStore;
+  sessionActivity(sessionId: string): SessionActivity | undefined;
   toastStore: ToastStore;
   projectSessionWorkingDirectory(sessionId: string): string | undefined;
   requireProjectSessionWorkingDirectory(sessionId: string): string;
@@ -130,7 +130,7 @@ export function createRootApplicationControlHost(
       projects: () => capabilities.projectCatalogStore.projects,
       sessions: () => capabilities.sessionCatalogStore.sessions,
       cakeChatSessions: () => capabilities.cakeChatCollectionStore.summaries,
-      sessionActivity: (sessionId) => capabilities.sidebarStore.sessionActivity(sessionId),
+      sessionActivity: capabilities.sessionActivity,
       managedWorktree: (workingDirectory) =>
         capabilities.sessionCatalogStore.managedWorktree(workingDirectory),
       globalSessionLabels: () => capabilities.settingsStore.globalLabels.labels,

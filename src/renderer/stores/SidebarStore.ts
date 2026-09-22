@@ -1,24 +1,21 @@
-import { Store, observable, snapshot } from "r-state-tree";
+import { Store, child, createStore, snapshot } from "r-state-tree";
 import { formatRelativeSessionTime } from "../../utils/format-relative-session-time";
-import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
-import type { ProjectCatalogStore } from "./ProjectCatalogStore";
-import type { SessionCatalogStore } from "./SessionCatalogStore";
-import type { SessionRegistryStore } from "./SessionRegistryStore";
+import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { ClientContext } from "./context/ClientContext";
-import type { ProjectSessionCatalogQuery } from "../../domain/project-sessions/project-session-data";
-import type { CakeChatCatalogQuery } from "../../domain/cake-chats/cake-chat-data";
 import type { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
-import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
-import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
-import type { SessionLabel } from "../../domain/application/application-data";
+import type { ProjectCatalogStore } from "./ProjectCatalogStore";
+import type { SessionCatalogStore } from "./SessionCatalogStore";
+import type { SessionMetadataStore } from "./SessionMetadataStore";
+import type { SessionRegistryStore } from "./SessionRegistryStore";
+import { SidebarSessionListStore } from "./SidebarSessionListStore";
 
 export interface SidebarStoreProps {
   projects: ProjectCatalogStore;
   catalog: SessionCatalogStore;
   sessions: SessionRegistryStore;
+  sessionMetadata: SessionMetadataStore;
   worktreeOperations?: WorktreeOperationCatalog;
-  globalLabels(): ReadonlyArray<SessionLabel>;
   cakeChat(): CakeChatCollectionStore;
   selectedConversation?(): { kind: "project-session" | "cake-chat"; sessionId: string } | undefined;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
@@ -30,7 +27,7 @@ export interface SidebarStoreProps {
   embeddedEditorSettings: EmbeddedEditorSettingsStore;
 }
 
-/** Owns project navigation, metadata-stream demand, and activity badges. */
+/** Owns sidebar visibility, sizing, navigation mode, and Project focus presentation. */
 export class SidebarStore extends Store<SidebarStoreProps> {
   get electron() {
     return ClientContext.consume(this)!.electron;
@@ -39,32 +36,12 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   @snapshot hidden = false;
   @snapshot width = 292;
   @snapshot navigationMode: "projects" | "activity" = "projects";
-  @snapshot private readonly projectSessionSorts: Record<string, "date" | "label"> = observable({});
   /** Window-local presentation mode that narrows navigation to one Project. */
   @snapshot focusedProjectPath: string | undefined;
   private ideActive = false;
   private ideHidden: boolean | undefined;
   private ideVisibilityManuallySet = false;
   private ideViewportWidth = Number.POSITIVE_INFINITY;
-  @snapshot private readonly expandedActiveGroups: Record<string, boolean> = observable({
-    "cake-chat": true,
-  });
-  private readonly expandedResolvedGroups: Record<string, boolean> = observable({});
-  private readonly activatedResolvedCakeChatCatalogs: Record<string, boolean> = observable({});
-  private readonly sessionLimits: Record<string, number> = observable({});
-  @snapshot private readonly collapsedFamilies: Record<string, boolean> = observable({});
-  private pinnedSession:
-    | {
-        kind: "project-session" | "cake-chat";
-        sessionId: string;
-        groupKey: string;
-        resolved: boolean;
-        index: number;
-      }
-    | undefined;
-  /** Prevents transcript writes from continually reordering a lane while it has active turns. */
-  private readonly activeLaneOrders = observable(new Map<string, readonly string[]>());
-  resolvedLaneExpanded = false;
   now = Date.now();
 
   constructor(props: SidebarStore["props"]) {
@@ -89,27 +66,23 @@ export class SidebarStore extends Store<SidebarStoreProps> {
       ],
       () => this.applyIdeAutoHide(),
     );
-    this.reaction(
-      () => {
-        const selected = this.props.selectedConversation?.();
-        return selected ? `${selected.kind}:${selected.sessionId}` : undefined;
-      },
-      () => this.pinSelectedSession(),
-    );
-    this.reaction(
-      () => this.activeLaneMemberships(),
-      (memberships) => this.syncActiveLaneOrders(memberships),
-    );
-    this.pinSelectedSession();
-    this.syncActiveLaneOrders(this.activeLaneMemberships());
+  }
+
+  @child
+  get sessionListStore(): SidebarSessionListStore {
+    return createStore(SidebarSessionListStore, {
+      projects: this.props.projects,
+      catalog: this.props.catalog,
+      sessions: this.props.sessions,
+      sessionMetadata: this.props.sessionMetadata,
+      worktreeOperations: this.props.worktreeOperations,
+      cakeChat: this.props.cakeChat,
+      selectedConversation: this.props.selectedConversation,
+    });
   }
 
   get visible() {
     return !(this.ideActive ? (this.ideHidden ?? this.hidden) : this.hidden);
-  }
-
-  get sessions() {
-    return this.props.catalog.sessions;
   }
 
   get focusModeProjectPath() {
@@ -120,7 +93,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   focusProject(path: string) {
     if (!this.props.projects.find(path)) return;
     this.focusedProjectPath = path;
-    this.expandedActiveGroups[path] = true;
+    this.sessionListStore.expandActiveGroup(path);
   }
 
   leaveProjectFocus() {
@@ -129,6 +102,14 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   managedWorktree(workingDirectory: string) {
     return this.props.catalog.managedWorktree(workingDirectory);
+  }
+
+  projectSessionCount(path: string) {
+    return this.props.catalog.projectSessions(path).length;
+  }
+
+  resolvedWorktreeCount(path: string) {
+    return this.props.catalog.resolvedWorktrees(path).length;
   }
 
   toggle() {
@@ -194,29 +175,17 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     });
   }
 
-  setSessionLabels(sessionId: string, labelIds: readonly string[]) {
-    return this.props.setSessionLabels(sessionId, labelIds);
-  }
-
   async showProjectContextMenu(path: string, x: number, y: number) {
     const action = await this.electron.showProjectContextMenu({
       path,
       x,
       y,
       resolvedWorktreeCount: this.props.catalog.resolvedWorktrees(path).length,
-      sessionSort: this.projectSessionSort(path),
+      sessionSort: this.sessionListStore.projectSessionSort(path),
     });
-    if (action === "sort-by-date") this.setProjectSessionSort(path, "date");
-    if (action === "sort-by-label") this.setProjectSessionSort(path, "label");
+    if (action === "sort-by-date") this.sessionListStore.setProjectSessionSort(path, "date");
+    if (action === "sort-by-label") this.sessionListStore.setProjectSessionSort(path, "label");
     return action;
-  }
-
-  projectSessionSort(path: string): "date" | "label" {
-    return this.projectSessionSorts[path] ?? "date";
-  }
-
-  setProjectSessionSort(path: string, sort: "date" | "label") {
-    this.projectSessionSorts[path] = sort;
   }
 
   showProjects() {
@@ -228,224 +197,12 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     this.navigationMode = "activity";
   }
 
-  get activeProjectSessionFamilies() {
-    const sessions = this.props.catalog.sessions.filter((session) => !session.resolved);
-    const byId = new Map(sessions.map((session) => [session.sessionId, session]));
-    const roots = sessions.filter(
-      (session) =>
-        !session.familyParentSessionId ||
-        session.familyParentSessionId === session.sessionId ||
-        !byId.has(session.familyParentSessionId),
-    );
-    const latestActivity = (session: (typeof sessions)[number]): string =>
-      (session.familyChildSessionIds ?? []).reduce((latest, id) => {
-        const child = byId.get(id);
-        if (!child) return latest;
-        const childLatest = latestActivity(child);
-        return childLatest > latest ? childLatest : latest;
-      }, session.modifiedAt);
-    const flatten = (session: (typeof sessions)[number]): Array<(typeof sessions)[number]> => {
-      if (!session.familyChildSessionIds?.length || this.isFamilyCollapsed(session.sessionId))
-        return [session];
-      const children = session.familyChildSessionIds
-        .flatMap((id) => (byId.get(id) ? [byId.get(id)!] : []))
-        .sort((left, right) => (left.familyChildOrder ?? 0) - (right.familyChildOrder ?? 0));
-      return [session, ...children.flatMap(flatten)];
-    };
-    return roots
-      .map((root) => ({
-        rootSessionId: root.sessionId,
-        latestModifiedAt: latestActivity(root),
-        sessions: flatten(root),
-      }))
-      .sort((left, right) => right.latestModifiedAt.localeCompare(left.latestModifiedAt));
-  }
-
-  get activeCakeChatSessions() {
-    return this.props
-      .cakeChat()
-      .summaries.filter((session) => !session.resolved)
-      .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
-  }
-
-  projectSessionCount(path: string) {
-    return this.props.catalog.projectSessions(path).length;
-  }
-
-  resolvedWorktreeCount(path: string) {
-    return this.props.catalog.resolvedWorktrees(path).length;
-  }
-
-  projectSessions(workspacePath: string, resolved = false) {
-    const { byId, roots } = this.orderedProjectSessionRoots(workspacePath, resolved);
-    return this.flattenProjectSessionRoots(byId, roots);
-  }
-
-  visibleProjectSessions(workspacePath: string, resolved = false) {
-    const { byId, roots } = this.orderedProjectSessionRoots(workspacePath, resolved);
-    const visibleRoots = roots.slice(0, this.sessionLimit(workspacePath, resolved));
-    return this.flattenProjectSessionRoots(byId, visibleRoots);
-  }
-
-  isFamilyCollapsed(parentSessionId: string) {
-    return this.collapsedFamilies[parentSessionId] === true;
-  }
-
-  toggleFamilyCollapsed(parentSessionId: string) {
-    this.collapsedFamilies[parentSessionId] = !this.isFamilyCollapsed(parentSessionId);
-  }
-
-  cakeChatSessions(resolved = false) {
-    const sessions = this.props
-      .cakeChat()
-      .summaries.filter((session) => session.resolved === resolved);
-    const pinned = this.pinnedSession;
-    if (pinned?.kind !== "cake-chat" || pinned.resolved !== resolved) return sessions;
-    const currentIndex = sessions.findIndex((session) => session.sessionId === pinned.sessionId);
-    if (currentIndex < 0) return sessions;
-    const ordered = [...sessions];
-    const [selected] = ordered.splice(currentIndex, 1);
-    ordered.splice(Math.min(pinned.index, ordered.length), 0, selected!);
-    return ordered;
-  }
-
-  hasMoreResolvedProjectSessions(projectPath: string) {
-    return (
-      this.props.catalog.hasMoreResolvedSessions(projectPath) ||
-      this.sortedProjectSessionRoots(projectPath, true).roots.length >
-        this.sessionLimit(projectPath, true)
-    );
-  }
-
-  get hasMoreResolvedCakeChatSessions() {
-    return this.props.cakeChat().hasMoreResolvedSessions;
-  }
-
-  sessionLimit(groupKey: string, resolved = false) {
-    return this.sessionLimits[this.limitKey(groupKey, resolved)] ?? 10;
-  }
-
-  showMoreSessions(groupKey: string, resolved = false) {
-    const key = this.limitKey(groupKey, resolved);
-    this.sessionLimits[key] = this.sessionLimit(groupKey, resolved) + 10;
-  }
-
-  private projectLabels(projectPath: string) {
-    const local = this.props.projects.find(projectPath)?.workflow.labels ?? [];
-    return [...this.props.globalLabels(), ...local];
-  }
-
-  availableSessionLabels(sessionId: string) {
-    const session = this.props.catalog.find(sessionId);
-    const pendingSession = this.props.sessions.findSession(sessionId);
-    const projectPath =
-      session?.projectPath ??
-      (pendingSession
-        ? (this.props.catalog.projectOfManagedWorktree(pendingSession.workspacePath) ??
-          pendingSession.workspacePath)
-        : undefined);
-    return projectPath ? this.projectLabels(projectPath) : [];
-  }
-
-  sessionLabelIds(sessionId: string): readonly string[] {
-    const availableIds = new Set(this.availableSessionLabels(sessionId).map((label) => label.id));
-    if (this.props.sessions.pendingSessions.isTemporary(sessionId))
-      return (this.props.sessions.pendingSessions.conversation(sessionId)?.labelIds ?? []).filter(
-        (labelId) => availableIds.has(labelId),
-      );
-    const session = this.props.catalog.find(sessionId);
-    if (!session || session.resolved) return [];
-    const assignment = this.props.projects
-      .find(session.projectPath)
-      ?.workflow.assignments.find((candidate) => candidate.sessionId === sessionId);
-    return (assignment?.labelIds ?? []).filter((labelId) => availableIds.has(labelId));
-  }
-
-  sessionLabels(sessionId: string) {
-    const byId = new Map(this.availableSessionLabels(sessionId).map((label) => [label.id, label]));
-    return this.sessionLabelIds(sessionId).flatMap((labelId) => {
-      const label = byId.get(labelId);
-      return label ? [label] : [];
-    });
-  }
-
-  primarySessionLabel(sessionId: string) {
-    return this.sessionLabels(sessionId)[0];
-  }
-
-  sessionAvatarSeed(sessionId: string) {
-    return sessionId;
-  }
-
-  sessionActivity(sessionId: string): SessionActivity | undefined {
-    const activity = this.props.sessions.findSession?.(sessionId)?.activity;
-    if (activity) return activity;
-    const waitingToMerge = this.props.worktreeOperations?.operations.some(
-      (operation) =>
-        operation.sessionId === sessionId &&
-        operation.kind === "landing" &&
-        operation.phase === "waiting",
-    );
-    if (waitingToMerge) return "running";
-    return this.props.catalog.find(sessionId)?.unread ? "unread" : undefined;
-  }
-
-  sessionActivityForDisplay(session: {
-    sessionId: string;
-    familyChildSessionIds?: readonly string[];
-  }) {
-    const own = this.sessionActivity(session.sessionId);
-    if (!session.familyChildSessionIds || !this.isFamilyCollapsed(session.sessionId)) return own;
-    const descendants = (sessionIds: readonly string[]): string[] =>
-      sessionIds.flatMap((id) => {
-        const child = this.props.catalog.find(id);
-        return [id, ...descendants(child?.familyChildSessionIds ?? [])];
-      });
-    const activities = [
-      own,
-      ...descendants(session.familyChildSessionIds).map((id) => this.sessionActivity(id)),
-    ];
-    if (activities.includes("waiting")) return "waiting";
-    if (activities.includes("running")) return "running";
-    if (activities.includes("error")) return "error";
-    if (activities.includes("unread")) return "unread";
-    return undefined;
-  }
-
-  isActiveGroupExpanded(groupKey: string) {
-    return this.expandedActiveGroups[groupKey] !== false;
-  }
-
-  toggleActiveGroupExpanded(groupKey: string) {
-    this.expandedActiveGroups[groupKey] = !this.isActiveGroupExpanded(groupKey);
-  }
-
-  isResolvedGroupExpanded(groupKey: string) {
-    return this.expandedResolvedGroups[groupKey] === true;
-  }
-
-  toggleResolvedGroupExpanded(groupKey: string) {
-    const expanded = !this.isResolvedGroupExpanded(groupKey);
-    this.expandedResolvedGroups[groupKey] = expanded;
-    if (expanded && groupKey === "cake-chat")
-      this.activatedResolvedCakeChatCatalogs[groupKey] = true;
-  }
-
-  get projectSessionCatalogQueries(): ReadonlyArray<ProjectSessionCatalogQuery> {
-    return this.props.projects.orderedProjectPaths.flatMap((projectPath) => [
-      { projectPath, resolved: false },
-      { projectPath, resolved: true },
-    ]);
-  }
-
-  get cakeChatCatalogQueries(): ReadonlyArray<CakeChatCatalogQuery> {
-    return this.activatedResolvedCakeChatCatalogs["cake-chat"]
-      ? [{ resolved: false }, { resolved: true, limit: this.sessionLimit("cake-chat", true) }]
-      : [{ resolved: false }];
-  }
-
   setSessionResolved(sessionId: string, resolved: boolean) {
     return this.props.setSessionResolved(sessionId, resolved);
+  }
+
+  setSessionLabels(sessionId: string, labelIds: readonly string[]) {
+    return this.props.setSessionLabels(sessionId, labelIds);
   }
 
   setCakeChatSessionResolved(sessionId: string, resolved: boolean) {
@@ -465,198 +222,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return this.props.setSessionUnread(sessionId, unread);
   }
 
-  toggleResolvedLane() {
-    this.resolvedLaneExpanded = !this.resolvedLaneExpanded;
-  }
-
   sessionActivityTime(modified: string) {
     return formatRelativeSessionTime(modified, this.now);
-  }
-
-  private orderedProjectSessionRoots(workspacePath: string, resolved: boolean) {
-    const { byId, roots } = this.sortedProjectSessionRoots(workspacePath, resolved);
-    const pinned = this.pinnedSession;
-    if (
-      pinned?.kind === "project-session" &&
-      pinned.groupKey === workspacePath &&
-      pinned.resolved === resolved
-    ) {
-      const currentIndex = roots.findIndex((session) => session.sessionId === pinned.sessionId);
-      if (currentIndex >= 0) {
-        const [selected] = roots.splice(currentIndex, 1);
-        roots.splice(Math.min(pinned.index, roots.length), 0, selected!);
-      }
-    }
-    return { byId, roots };
-  }
-
-  private flattenProjectSessionRoots(
-    byId: ReturnType<SidebarStore["sortedProjectSessionRoots"]>["byId"],
-    roots: ReturnType<SidebarStore["sortedProjectSessionRoots"]>["roots"],
-  ) {
-    const flatten = (session: (typeof roots)[number]): Array<(typeof roots)[number]> => {
-      if (!session.familyChildSessionIds?.length || this.isFamilyCollapsed(session.sessionId))
-        return [session];
-      const children = session.familyChildSessionIds
-        .flatMap((id) => (byId.get(id) ? [byId.get(id)!] : []))
-        .sort((left, right) => (left.familyChildOrder ?? 0) - (right.familyChildOrder ?? 0));
-      return [session, ...children.flatMap(flatten)];
-    };
-    return roots.flatMap(flatten);
-  }
-
-  private sortedProjectSessionRoots(
-    workspacePath: string,
-    resolved: boolean,
-    preserveActiveOrder = true,
-  ) {
-    const sessions = this.props.catalog
-      .projectSessions(workspacePath)
-      .filter((item) => item.resolved === resolved);
-    const byId = new Map(sessions.map((session) => [session.sessionId, session]));
-    const roots = sessions.filter(
-      (session) =>
-        !session.familyParentSessionId ||
-        session.familyParentSessionId === session.sessionId ||
-        !byId.has(session.familyParentSessionId),
-    );
-    const latestActivity = (session: (typeof sessions)[number]): string =>
-      (session.familyChildSessionIds ?? []).reduce((latest, id) => {
-        const child = byId.get(id);
-        if (!child) return latest;
-        const childLatest = latestActivity(child);
-        return childLatest > latest ? childLatest : latest;
-      }, session.modifiedAt);
-    const compareByDate = (left: (typeof roots)[number], right: (typeof roots)[number]) =>
-      compareSessionSummariesForSidebar(
-        { modifiedAt: latestActivity(left), draft: left.draft },
-        { modifiedAt: latestActivity(right), draft: right.draft },
-      );
-    roots.sort((left, right) => {
-      if (this.projectSessionSort(workspacePath) === "date") return compareByDate(left, right);
-      const labelOrder = new Map(
-        this.projectLabels(workspacePath).map((label, index) => [label.id, index]),
-      );
-      const leftOrder = labelOrder.get(this.sessionLabelIds(left.sessionId)[0] ?? "") ?? Infinity;
-      const rightOrder = labelOrder.get(this.sessionLabelIds(right.sessionId)[0] ?? "") ?? Infinity;
-      return leftOrder - rightOrder || compareByDate(left, right);
-    });
-    const frozenOrder = preserveActiveOrder
-      ? this.activeLaneOrders.get(this.laneKey(workspacePath, resolved))
-      : undefined;
-    if (frozenOrder) {
-      const frozenIds = new Set(frozenOrder);
-      const rootsById = new Map(roots.map((root) => [root.sessionId, root]));
-      const newlyAdded = roots.filter((root) => !frozenIds.has(root.sessionId));
-      const frozen = frozenOrder.flatMap((id) => (rootsById.has(id) ? [rootsById.get(id)!] : []));
-      roots.splice(0, roots.length, ...newlyAdded, ...frozen);
-    }
-    return { byId, roots };
-  }
-
-  private activeLaneMemberships() {
-    const activeSessionIds = new Set<string>();
-    for (const session of this.props.sessions.sessions ?? []) {
-      if (isActiveSessionActivity(session.activity)) activeSessionIds.add(session.sessionId);
-    }
-    for (const operation of this.props.worktreeOperations?.operations ?? []) {
-      if (operation.kind === "landing" && operation.phase === "waiting")
-        activeSessionIds.add(operation.sessionId);
-    }
-    return [...activeSessionIds].flatMap((sessionId) => {
-      const summary = this.props.catalog.find(sessionId);
-      return summary
-        ? [
-            {
-              sessionId,
-              workspacePath: summary.projectPath,
-              resolved: summary.resolved,
-            },
-          ]
-        : [];
-    });
-  }
-
-  private syncActiveLaneOrders(
-    memberships: ReadonlyArray<{
-      sessionId: string;
-      workspacePath: string;
-      resolved: boolean;
-    }>,
-  ) {
-    const activeLanes = new Map<string, { workspacePath: string; resolved: boolean }>();
-    for (const membership of memberships) {
-      activeLanes.set(this.laneKey(membership.workspacePath, membership.resolved), membership);
-    }
-    for (const key of this.activeLaneOrders.keys()) {
-      if (!activeLanes.has(key)) this.activeLaneOrders.delete(key);
-    }
-    for (const [key, lane] of activeLanes) {
-      if (this.activeLaneOrders.has(key)) continue;
-      const { roots } = this.sortedProjectSessionRoots(lane.workspacePath, lane.resolved, false);
-      this.activeLaneOrders.set(
-        key,
-        roots.map((root) => root.sessionId),
-      );
-    }
-  }
-
-  private laneKey(workspacePath: string, resolved: boolean) {
-    return `${resolved ? "resolved" : "active"}:${workspacePath}`;
-  }
-
-  private pinSelectedSession() {
-    this.pinnedSession = undefined;
-    const selected = this.props.selectedConversation?.();
-    if (!selected) return;
-    if (selected.kind === "cake-chat") {
-      const summary = this.props
-        .cakeChat()
-        .summaries.find((session) => session.sessionId === selected.sessionId);
-      if (!summary) return;
-      const sessions = this.props
-        .cakeChat()
-        .summaries.filter((session) => session.resolved === summary.resolved);
-      const index = sessions.findIndex((session) => session.sessionId === selected.sessionId);
-      if (index >= 0)
-        this.pinnedSession = {
-          kind: selected.kind,
-          sessionId: selected.sessionId,
-          groupKey: "cake-chat",
-          resolved: summary.resolved,
-          index,
-        };
-      return;
-    }
-    const summary = this.props.catalog.find(selected.sessionId);
-    if (!summary) return;
-    const { byId, roots } = this.sortedProjectSessionRoots(summary.projectPath, summary.resolved);
-    let rootId = summary.sessionId;
-    let current = summary;
-    const visited = new Set<string>();
-    while (
-      current.familyParentSessionId &&
-      current.familyParentSessionId !== current.sessionId &&
-      !visited.has(current.sessionId)
-    ) {
-      const parent = byId.get(current.familyParentSessionId);
-      if (!parent) break;
-      visited.add(current.sessionId);
-      rootId = parent.sessionId;
-      current = parent;
-    }
-    const index = roots.findIndex((session) => session.sessionId === rootId);
-    if (index >= 0)
-      this.pinnedSession = {
-        kind: selected.kind,
-        sessionId: rootId,
-        groupKey: summary.projectPath,
-        resolved: summary.resolved,
-        index,
-      };
-  }
-
-  private limitKey(groupKey: string, resolved: boolean) {
-    return `${resolved ? "resolved" : "active"}:${groupKey}`;
   }
 }

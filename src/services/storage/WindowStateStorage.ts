@@ -1,7 +1,7 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const WINDOW_STATE_DOCUMENT_VERSION = 11;
+const WINDOW_STATE_DOCUMENT_VERSION = 12;
 const WINDOW_STATE_DOCUMENT_NAME = "window-state.json";
 
 const JsonRecord = Schema.Record(Schema.String, Schema.Json);
@@ -750,6 +750,49 @@ const migrateVersion10WindowState = (
   return migrateStore(snapshot);
 };
 
+/** Moves persisted session-list presentation beneath SidebarSessionListStore. */
+const migrateVersion11WindowState = (snapshot: Schema.Schema.Type<typeof Schema.Json>) => {
+  const root = decodeJsonRecord(snapshot);
+  const rootChildren = decodeJsonRecord(root?.children);
+  const sidebar = decodeJsonRecord(rootChildren?.sidebarStore);
+  const sidebarState = decodeJsonRecord(sidebar?.state);
+  if (!root || !rootChildren || !sidebar || !sidebarState) return snapshot;
+
+  const nextSidebarState = { ...sidebarState };
+  const movedState: Record<string, Schema.Schema.Type<typeof Schema.Json>> = {};
+  for (const name of [
+    "projectSessionSorts",
+    "expandedActiveGroups",
+    "collapsedFamilies",
+  ] as const) {
+    if (nextSidebarState[name] !== undefined) movedState[name] = nextSidebarState[name];
+    delete nextSidebarState[name];
+  }
+  if (Object.keys(movedState).length === 0) return snapshot;
+
+  const sidebarChildren = decodeJsonRecord(sidebar.children) ?? {};
+  const sessionList = decodeJsonRecord(sidebarChildren.sessionListStore) ?? {};
+  const sessionListState = decodeJsonRecord(sessionList.state) ?? {};
+  return {
+    ...root,
+    children: {
+      ...rootChildren,
+      sidebarStore: {
+        ...sidebar,
+        state: nextSidebarState,
+        children: {
+          ...sidebarChildren,
+          sessionListStore: {
+            ...sessionList,
+            state: { ...movedState, ...sessionListState },
+            children: decodeJsonRecord(sessionList.children) ?? {},
+          },
+        },
+      },
+    },
+  };
+};
+
 const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(function* (
   legacy: LegacyWindowState,
 ) {
@@ -989,13 +1032,15 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
   ).pipe(
     Effect.mapError((cause) => new WindowStateMalformedDocumentError({ message: cause.message })),
   );
-  return migrateVersion10WindowState(
-    migrateVersion9WindowState(
-      migrateVersion8WindowState(
-        migrateVersion7WindowState(
-          migrateVersion6WindowState(
-            migrateVersion5WindowState(
-              migrateVersion4WindowState(migrateVersion3WindowState(decoded)),
+  return migrateVersion11WindowState(
+    migrateVersion10WindowState(
+      migrateVersion9WindowState(
+        migrateVersion8WindowState(
+          migrateVersion7WindowState(
+            migrateVersion6WindowState(
+              migrateVersion5WindowState(
+                migrateVersion4WindowState(migrateVersion3WindowState(decoded)),
+              ),
             ),
           ),
         ),
@@ -1046,7 +1091,7 @@ export const makeWindowStateStorageLive = (userDataDirectory: string) =>
         if (envelope._tag === "Success") {
           if (envelope.success.version === WINDOW_STATE_DOCUMENT_VERSION)
             return envelope.success.data;
-          if (envelope.success.version >= 2 && envelope.success.version <= 10) {
+          if (envelope.success.version >= 2 && envelope.success.version <= 11) {
             let migrated = envelope.success.data;
             if (envelope.success.version <= 2) migrated = migrateVersion2WindowState(migrated);
             if (envelope.success.version <= 3) migrated = migrateVersion3WindowState(migrated);
@@ -1056,7 +1101,8 @@ export const makeWindowStateStorageLive = (userDataDirectory: string) =>
             if (envelope.success.version <= 7) migrated = migrateVersion7WindowState(migrated);
             if (envelope.success.version <= 8) migrated = migrateVersion8WindowState(migrated);
             if (envelope.success.version <= 9) migrated = migrateVersion9WindowState(migrated);
-            migrated = migrateVersion10WindowState(migrated);
+            if (envelope.success.version <= 10) migrated = migrateVersion10WindowState(migrated);
+            migrated = migrateVersion11WindowState(migrated);
             yield* saveUnlocked(migrated);
             return migrated;
           }

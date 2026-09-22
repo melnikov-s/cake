@@ -367,8 +367,14 @@ The window Store hierarchy mirrors the product surfaces:
   ID; its Working Directory is routing context derived from the session catalog
   or registry, never part of selection identity. The visible surface and every
   active navigation treatment derive from that selection. `SidebarStore` owns
-  navigation presentation and filtering, visibility, and width; neither Store
-  opens sessions directly.
+  navigation mode, Project focus, visibility, width, and temporary embedded-IDE
+  visibility overrides. Its `SidebarSessionListStore` child owns the coupled list
+  policy: Project sorting, Session Family expansion and flattening, root-based
+  pagination, selected-row pinning, active-turn lane stability, group expansion,
+  and catalog demand. `SessionMetadataStore` is a window-shared join for Project
+  Session labels and activity, so the sidebar, composer, and application controls
+  consume the same semantics without making those facts sidebar-owned. Neither
+  navigation Store opens sessions directly.
 - `ArtifactLibraryStore` owns artifact catalog search, filters, paging, and the
   active-session scope of the library surface. Its `ArtifactDetailStore` child owns
   the selected lineage and revision, paginated history, comparisons, and restore
@@ -732,6 +738,8 @@ callers do not assemble cross-Store navigation recipes.
 flowchart TD
   Root["RootStore"] --> Shell["AppShellStore"]
   Root --> Sidebar["SidebarStore"]
+  Sidebar --> SidebarList["SidebarSessionListStore"]
+  Root --> SessionMetadata["SessionMetadataStore"]
   Root --> Projects["ProjectCatalogStore"]
   Root --> Catalog["SessionCatalogStore"]
   Root --> Registry["SessionRegistryStore"]

@@ -2,6 +2,7 @@ import { observer } from "r-state-tree/react";
 import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore";
 import type { AppShellStore } from "../stores/AppShellStore";
 import type { SidebarStore } from "../stores/SidebarStore";
+import type { SidebarSessionListStore } from "../stores/SidebarSessionListStore";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { CakeIcon, ChevronIcon, PlusIcon } from "./ui/icons";
@@ -11,6 +12,7 @@ import { AnimatedList } from "./ui/animated-list";
 
 export interface SidebarCakeChatGroupProps {
   store: SidebarStore;
+  sessionList: SidebarSessionListStore;
   cakeChat: CakeChatCollectionStore;
   shell: AppShellStore;
   resolved: boolean;
@@ -21,17 +23,18 @@ export interface SidebarCakeChatGroupProps {
 /** The Cake Chat section in the sidebar: header row plus its session rows. */
 export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
   store,
+  sessionList,
   cakeChat,
   shell,
   resolved,
   onOpenCakeChat,
   onCreateCakeChat,
 }: SidebarCakeChatGroupProps) {
-  const sessions = store.cakeChatSessions(resolved);
-  const visibleSessions = sessions.slice(0, store.sessionLimit("cake-chat", resolved));
+  const sessions = sessionList.cakeChatSessions(resolved);
+  const visibleSessions = sessions.slice(0, sessionList.sessionLimit("cake-chat", resolved));
   const expanded = resolved
-    ? store.isResolvedGroupExpanded("cake-chat")
-    : store.isActiveGroupExpanded("cake-chat");
+    ? sessionList.isResolvedGroupExpanded("cake-chat")
+    : sessionList.isActiveGroupExpanded("cake-chat");
   const empty = sessions.length === 0;
   return (
     <div data-slot="cake-chat-group" className={cn("mb-3 last:mb-0", empty && "mb-1")}>
@@ -49,8 +52,8 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
           ariaLabel={`${expanded ? "Collapse" : "Expand"} Cake Chat${resolved ? " resolved" : ""}`}
           onClick={() =>
             resolved
-              ? store.toggleResolvedGroupExpanded("cake-chat")
-              : store.toggleActiveGroupExpanded("cake-chat")
+              ? sessionList.toggleResolvedGroupExpanded("cake-chat")
+              : sessionList.toggleActiveGroupExpanded("cake-chat")
           }
         >
           <ChevronIcon />
@@ -64,7 +67,7 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
             resolved ? `${expanded ? "Collapse" : "Expand"} Cake Chat resolved` : "New Cake Chat"
           }
           onClick={() =>
-            resolved ? store.toggleResolvedGroupExpanded("cake-chat") : onCreateCakeChat()
+            resolved ? sessionList.toggleResolvedGroupExpanded("cake-chat") : onCreateCakeChat()
           }
         >
           <CakeIcon />
@@ -110,12 +113,12 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
             );
           })}
           {(resolved
-            ? store.hasMoreResolvedCakeChatSessions
+            ? sessionList.hasMoreResolvedCakeChatSessions
             : sessions.length > visibleSessions.length) && (
             <Button
               variant="ghost"
               className="h-7 justify-start px-2 text-[13px] text-muted-foreground hover:text-foreground"
-              onClick={() => store.showMoreSessions("cake-chat", resolved)}
+              onClick={() => sessionList.showMoreSessions("cake-chat", resolved)}
             >
               Show more
             </Button>

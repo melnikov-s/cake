@@ -5,6 +5,7 @@ import type { SessionCatalogStore } from "../../../../src/renderer/stores/Sessio
 import type { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import type { CakeChatCollectionStore } from "../../../../src/renderer/stores/CakeChatCollectionStore";
 import { SidebarStore } from "../../../../src/renderer/stores/SidebarStore";
+import { SessionMetadataStore } from "../../../../src/renderer/stores/SessionMetadataStore";
 import type { EmbeddedEditorSettingsStore } from "../../../../src/renderer/stores/EmbeddedEditorSettingsStore";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { mountWithClient } from "../mount-with-client";
@@ -22,7 +23,11 @@ describe("SidebarStore catalog demand", () => {
         } as unknown as ProjectCatalogStore,
         catalog: {} as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
-        globalLabels: () => [],
+        sessionMetadata: {
+          projectLabels: () => [],
+          sessionLabelIds: () => [],
+          sessionActivity: () => undefined,
+        } as unknown as SessionMetadataStore,
         cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionLabels: async () => undefined,
@@ -38,9 +43,55 @@ describe("SidebarStore catalog demand", () => {
     expect(store.focusModeProjectPath).toBeUndefined();
     store.focusProject("/cake");
     expect(store.focusModeProjectPath).toBe("/cake");
-    expect(store.isActiveGroupExpanded("/cake")).toBe(true);
+    expect(store.sessionListStore.isActiveGroupExpanded("/cake")).toBe(true);
     store.leaveProjectFocus();
     expect(store.focusModeProjectPath).toBeUndefined();
+    store[Symbol.dispose]();
+  });
+
+  it("hydrates sidebar presentation and extracted session-list preferences", () => {
+    const store = mount(
+      createStore(SidebarStore, {
+        projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
+        catalog: {} as SessionCatalogStore,
+        sessions: { sessions: [] } as unknown as SessionRegistryStore,
+        sessionMetadata: {
+          projectLabels: () => [],
+          sessionLabelIds: () => [],
+          sessionActivity: () => undefined,
+        } as unknown as SessionMetadataStore,
+        cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
+        setSessionResolved: async () => undefined,
+        setSessionLabels: async () => undefined,
+        setCakeChatSessionResolved: async () => undefined,
+        deleteSession: async () => undefined,
+        deleteCakeChatSession: async () => undefined,
+        setSessionUnread: async () => undefined,
+        embeddedEditorSettings: embeddedEditorSettings(),
+      }),
+      {
+        snapshot: {
+          state: { hidden: true, width: 344, navigationMode: "activity" },
+          children: {
+            sessionListStore: {
+              state: {
+                projectSessionSorts: { "/cake": "label" },
+                expandedActiveGroups: { "cake-chat": true, "/cake": false },
+                collapsedFamilies: { root: true },
+              },
+              children: {},
+            },
+          },
+        },
+      },
+    );
+
+    expect(store.hidden).toBe(true);
+    expect(store.width).toBe(344);
+    expect(store.navigationMode).toBe("activity");
+    expect(store.sessionListStore.projectSessionSort("/cake")).toBe("label");
+    expect(store.sessionListStore.isActiveGroupExpanded("/cake")).toBe(false);
+    expect(store.sessionListStore.isFamilyCollapsed("root")).toBe(true);
     store[Symbol.dispose]();
   });
 
@@ -82,7 +133,11 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog,
         sessions: {} as SessionRegistryStore,
-        globalLabels: () => [],
+        sessionMetadata: {
+          projectLabels: () => [],
+          sessionLabelIds: () => [],
+          sessionActivity: () => undefined,
+        } as unknown as SessionMetadataStore,
         cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
         selectedConversation: () => selection.current,
         setSessionResolved: async () => undefined,
@@ -95,16 +150,17 @@ describe("SidebarStore catalog demand", () => {
       }),
     );
 
+    const list = store.sessionListStore;
     selection.current = { kind: "project-session", sessionId: "selected" };
     summaries[1]!.modifiedAt = "2026-01-04T00:00:00.000Z";
-    expect(store.projectSessions("/cake").map((session) => session.sessionId)).toEqual([
+    expect(list.projectSessions("/cake").map((session) => session.sessionId)).toEqual([
       "newer",
       "selected",
       "older",
     ]);
 
     selection.current = undefined;
-    expect(store.projectSessions("/cake").map((session) => session.sessionId)).toEqual([
+    expect(list.projectSessions("/cake").map((session) => session.sessionId)).toEqual([
       "selected",
       "newer",
       "older",
@@ -163,7 +219,11 @@ describe("SidebarStore catalog demand", () => {
             activity: activities[sessionId],
           }),
         } as unknown as SessionRegistryStore,
-        globalLabels: () => [],
+        sessionMetadata: {
+          projectLabels: () => [],
+          sessionLabelIds: () => [],
+          sessionActivity: () => undefined,
+        } as unknown as SessionMetadataStore,
         cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionLabels: async () => undefined,
@@ -175,12 +235,13 @@ describe("SidebarStore catalog demand", () => {
       }),
     );
 
+    const list = store.sessionListStore;
     activities.newest = "running";
     activities.middle = "running";
     activities.oldest = "running";
     summaries[2]!.modifiedAt = "2026-01-06T00:00:00.000Z";
     summaries[1]!.modifiedAt = "2026-01-05T00:00:00.000Z";
-    expect(store.projectSessions("/cake").map((session) => session.sessionId)).toEqual([
+    expect(list.projectSessions("/cake").map((session) => session.sessionId)).toEqual([
       "newest",
       "middle",
       "oldest",
@@ -188,14 +249,14 @@ describe("SidebarStore catalog demand", () => {
 
     activities.newest = undefined;
     activities.middle = undefined;
-    expect(store.projectSessions("/cake").map((session) => session.sessionId)).toEqual([
+    expect(list.projectSessions("/cake").map((session) => session.sessionId)).toEqual([
       "newest",
       "middle",
       "oldest",
     ]);
 
     activities.oldest = undefined;
-    expect(store.projectSessions("/cake").map((session) => session.sessionId)).toEqual([
+    expect(list.projectSessions("/cake").map((session) => session.sessionId)).toEqual([
       "oldest",
       "middle",
       "newest",
@@ -226,7 +287,11 @@ describe("SidebarStore catalog demand", () => {
           sessions: [{ sessionId: "session-50", activity: "running" }],
           findSession,
         } as unknown as SessionRegistryStore,
-        globalLabels: () => [],
+        sessionMetadata: {
+          projectLabels: () => [],
+          sessionLabelIds: () => [],
+          sessionActivity: () => undefined,
+        } as unknown as SessionMetadataStore,
         cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionLabels: async () => undefined,
@@ -239,28 +304,6 @@ describe("SidebarStore catalog demand", () => {
     );
 
     expect(findSession).not.toHaveBeenCalled();
-    store[Symbol.dispose]();
-  });
-
-  it("uses the stable Session ID as the avatar seed", () => {
-    const store = mount(
-      createStore(SidebarStore, {
-        projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
-        catalog: {} as unknown as SessionCatalogStore,
-        sessions: {} as SessionRegistryStore,
-        globalLabels: () => [],
-        cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
-        setSessionResolved: async () => undefined,
-        setSessionLabels: async () => undefined,
-        setCakeChatSessionResolved: async () => undefined,
-        deleteSession: async () => undefined,
-        deleteCakeChatSession: async () => undefined,
-        setSessionUnread: async () => undefined,
-        embeddedEditorSettings: embeddedEditorSettings(),
-      }),
-    );
-
-    expect(store.sessionAvatarSeed("session-1")).toBe("session-1");
     store[Symbol.dispose]();
   });
 
@@ -278,7 +321,11 @@ describe("SidebarStore catalog demand", () => {
         sessions: {
           findSession: (sessionId: string) => ({ activity: activities.get(sessionId) }),
         } as unknown as SessionRegistryStore,
-        globalLabels: () => [],
+        sessionMetadata: {
+          projectLabels: () => [],
+          sessionLabelIds: () => [],
+          sessionActivity: (sessionId: string) => activities.get(sessionId),
+        } as unknown as SessionMetadataStore,
         cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionLabels: async () => undefined,
@@ -291,10 +338,12 @@ describe("SidebarStore catalog demand", () => {
     );
     const parent = { sessionId: "parent", familyChildSessionIds: ["child"] };
 
-    expect(store.sessionActivityForDisplay(parent)).toBeUndefined();
-    store.toggleFamilyCollapsed("parent");
-    expect(store.sessionActivityForDisplay(parent)).toBe("running");
-    expect(store.sessionActivityForDisplay({ sessionId: "child" })).toBe("running");
+    expect(store.sessionListStore.sessionActivityForDisplay(parent)).toBeUndefined();
+    store.sessionListStore.toggleFamilyCollapsed("parent");
+    expect(store.sessionListStore.sessionActivityForDisplay(parent)).toBe("running");
+    expect(store.sessionListStore.sessionActivityForDisplay({ sessionId: "child" })).toBe(
+      "running",
+    );
     store[Symbol.dispose]();
   });
 
@@ -320,30 +369,16 @@ describe("SidebarStore catalog demand", () => {
       ],
     });
     const store = mount(
-      createStore(SidebarStore, {
+      createStore(SessionMetadataStore, {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog: {
-          find: (sessionId: string) => ({
-            sessionId,
-            unread: false,
-            projectPath: "/cake",
-            resolved: false,
-          }),
-          projectSessions: () => [],
+          find: (sessionId: string) => ({ sessionId, unread: false }),
         } as unknown as SessionCatalogStore,
         sessions: {
           findSession: () => undefined,
         } as unknown as SessionRegistryStore,
         worktreeOperations,
         globalLabels: () => [],
-        cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
-        setSessionResolved: async () => undefined,
-        setSessionLabels: async () => undefined,
-        setCakeChatSessionResolved: async () => undefined,
-        deleteSession: async () => undefined,
-        deleteCakeChatSession: async () => undefined,
-        setSessionUnread: async () => undefined,
-        embeddedEditorSettings: embeddedEditorSettings(),
       }),
     );
 
@@ -383,7 +418,11 @@ describe("SidebarStore catalog demand", () => {
           }),
         } as unknown as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
-        globalLabels: () => [globalStatus],
+        sessionMetadata: {
+          projectLabels: () => [],
+          sessionLabelIds: () => [],
+          sessionActivity: () => undefined,
+        } as unknown as SessionMetadataStore,
         cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionLabels: async () => undefined,
@@ -418,7 +457,11 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog: {} as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
-        globalLabels: () => [],
+        sessionMetadata: {
+          projectLabels: () => [],
+          sessionLabelIds: () => [],
+          sessionActivity: () => undefined,
+        } as unknown as SessionMetadataStore,
         cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionLabels: async () => undefined,
@@ -430,15 +473,15 @@ describe("SidebarStore catalog demand", () => {
       }),
     );
 
-    expect(store.sessionLimit("/cake")).toBe(10);
-    store.showMoreSessions("/cake");
-    expect(store.sessionLimit("/cake")).toBe(20);
-    expect(store.sessionLimit("/pi")).toBe(10);
-    expect(store.sessionLimit("/cake", true)).toBe(10);
+    expect(store.sessionListStore.sessionLimit("/cake")).toBe(10);
+    store.sessionListStore.showMoreSessions("/cake");
+    expect(store.sessionListStore.sessionLimit("/cake")).toBe(20);
+    expect(store.sessionListStore.sessionLimit("/pi")).toBe(10);
+    expect(store.sessionListStore.sessionLimit("/cake", true)).toBe(10);
 
-    store.showMoreSessions("/cake", true);
-    expect(store.sessionLimit("/cake", true)).toBe(20);
-    expect(store.sessionLimit("/cake")).toBe(20);
+    store.sessionListStore.showMoreSessions("/cake", true);
+    expect(store.sessionListStore.sessionLimit("/cake", true)).toBe(20);
+    expect(store.sessionListStore.sessionLimit("/cake")).toBe(20);
     store[Symbol.dispose]();
   });
 
@@ -493,7 +536,11 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog,
         sessions: {} as SessionRegistryStore,
-        globalLabels: () => [],
+        sessionMetadata: {
+          projectLabels: () => [],
+          sessionLabelIds: () => [],
+          sessionActivity: () => undefined,
+        } as unknown as SessionMetadataStore,
         cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionLabels: async () => undefined,
@@ -505,18 +552,13 @@ describe("SidebarStore catalog demand", () => {
       }),
     );
 
-    expect(store.projectSessions("/cake").map(({ sessionId }) => sessionId)).toEqual([
-      "root",
-      "planner",
-      "worker",
-      "sibling",
-    ]);
-    store.toggleFamilyCollapsed("planner");
-    expect(store.projectSessions("/cake").map(({ sessionId }) => sessionId)).toEqual([
-      "root",
-      "planner",
-      "sibling",
-    ]);
+    expect(
+      store.sessionListStore.projectSessions("/cake").map(({ sessionId }) => sessionId),
+    ).toEqual(["root", "planner", "worker", "sibling"]);
+    store.sessionListStore.toggleFamilyCollapsed("planner");
+    expect(
+      store.sessionListStore.projectSessions("/cake").map(({ sessionId }) => sessionId),
+    ).toEqual(["root", "planner", "sibling"]);
     store[Symbol.dispose]();
   });
 
@@ -561,7 +603,11 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog,
         sessions: {} as SessionRegistryStore,
-        globalLabels: () => [],
+        sessionMetadata: {
+          projectLabels: () => [],
+          sessionLabelIds: () => [],
+          sessionActivity: () => undefined,
+        } as unknown as SessionMetadataStore,
         cakeChat: () => ({ summaries: [] }) as unknown as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionLabels: async () => undefined,
@@ -574,11 +620,13 @@ describe("SidebarStore catalog demand", () => {
     );
 
     expect(
-      store.activeProjectSessionFamilies.map(({ rootSessionId, latestModifiedAt, sessions }) => ({
-        rootSessionId,
-        latestModifiedAt,
-        sessionIds: sessions.map((session) => session.sessionId),
-      })),
+      store.sessionListStore.activeProjectSessionFamilies.map(
+        ({ rootSessionId, latestModifiedAt, sessions }) => ({
+          rootSessionId,
+          latestModifiedAt,
+          sessionIds: sessions.map((session) => session.sessionId),
+        }),
+      ),
     ).toEqual([
       {
         rootSessionId: "root",
@@ -592,11 +640,13 @@ describe("SidebarStore catalog demand", () => {
       },
     ]);
 
-    store.toggleFamilyCollapsed("root");
+    store.sessionListStore.toggleFamilyCollapsed("root");
     expect(
-      store.activeProjectSessionFamilies[0]?.sessions.map((session) => session.sessionId),
+      store.sessionListStore.activeProjectSessionFamilies[0]?.sessions.map(
+        (session) => session.sessionId,
+      ),
     ).toEqual(["root"]);
-    expect(store.activeProjectSessionFamilies[0]?.latestModifiedAt).toBe(
+    expect(store.sessionListStore.activeProjectSessionFamilies[0]?.latestModifiedAt).toBe(
       "2026-01-04T00:00:00.000Z",
     );
     store[Symbol.dispose]();
@@ -635,7 +685,11 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog,
         sessions: {} as SessionRegistryStore,
-        globalLabels: () => [],
+        sessionMetadata: {
+          projectLabels: () => [],
+          sessionLabelIds: () => [],
+          sessionActivity: () => undefined,
+        } as unknown as SessionMetadataStore,
         cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionLabels: async () => undefined,
@@ -647,8 +701,10 @@ describe("SidebarStore catalog demand", () => {
       }),
     );
 
-    expect(store.visibleProjectSessions("/cake")).toHaveLength(20);
-    expect(store.visibleProjectSessions("/cake")).toEqual(store.projectSessions("/cake"));
+    expect(store.sessionListStore.visibleProjectSessions("/cake")).toHaveLength(20);
+    expect(store.sessionListStore.visibleProjectSessions("/cake")).toEqual(
+      store.sessionListStore.projectSessions("/cake"),
+    );
 
     summaries.push({
       sessionId: "standalone-11",
@@ -658,11 +714,11 @@ describe("SidebarStore catalog demand", () => {
       projectPath: "/cake",
       familyChildSessionIds: [],
     });
-    expect(store.projectSessions("/cake")).toHaveLength(21);
-    expect(store.visibleProjectSessions("/cake")).toHaveLength(20);
-    expect(store.visibleProjectSessions("/cake").map((session) => session.sessionId)).not.toContain(
-      "standalone-11",
-    );
+    expect(store.sessionListStore.projectSessions("/cake")).toHaveLength(21);
+    expect(store.sessionListStore.visibleProjectSessions("/cake")).toHaveLength(20);
+    expect(
+      store.sessionListStore.visibleProjectSessions("/cake").map((session) => session.sessionId),
+    ).not.toContain("standalone-11");
     store[Symbol.dispose]();
   });
 
@@ -672,7 +728,11 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog: {} as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
-        globalLabels: () => [],
+        sessionMetadata: {
+          projectLabels: () => [],
+          sessionLabelIds: () => [],
+          sessionActivity: () => undefined,
+        } as unknown as SessionMetadataStore,
         cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionLabels: async () => undefined,
@@ -709,7 +769,11 @@ describe("SidebarStore catalog demand", () => {
         projects: { orderedProjectPaths: [] } as unknown as ProjectCatalogStore,
         catalog: {} as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
-        globalLabels: () => [],
+        sessionMetadata: {
+          projectLabels: () => [],
+          sessionLabelIds: () => [],
+          sessionActivity: () => undefined,
+        } as unknown as SessionMetadataStore,
         cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionLabels: async () => undefined,
@@ -736,7 +800,11 @@ describe("SidebarStore catalog demand", () => {
         } as ProjectCatalogStore,
         catalog: {} as SessionCatalogStore,
         sessions: {} as SessionRegistryStore,
-        globalLabels: () => [],
+        sessionMetadata: {
+          projectLabels: () => [],
+          sessionLabelIds: () => [],
+          sessionActivity: () => undefined,
+        } as unknown as SessionMetadataStore,
         cakeChat: () => ({}) as CakeChatCollectionStore,
         setSessionResolved: async () => undefined,
         setSessionLabels: async () => undefined,
@@ -754,33 +822,36 @@ describe("SidebarStore catalog demand", () => {
       { projectPath: "/pi", resolved: false },
       { projectPath: "/pi", resolved: true },
     ];
-    expect(store.projectSessionCatalogQueries).toEqual(projectQueries);
-    expect(store.cakeChatCatalogQueries).toEqual([{ resolved: false }]);
+    expect(store.sessionListStore.projectSessionCatalogQueries).toEqual(projectQueries);
+    expect(store.sessionListStore.cakeChatCatalogQueries).toEqual([{ resolved: false }]);
 
-    store.toggleActiveGroupExpanded("/cake");
-    store.toggleResolvedLane();
-    store.toggleResolvedGroupExpanded("/cake");
-    expect(store.isActiveGroupExpanded("/cake")).toBe(false);
-    expect(store.projectSessionCatalogQueries).toEqual(projectQueries);
-    expect(store.cakeChatCatalogQueries).toEqual([{ resolved: false }]);
+    store.sessionListStore.toggleActiveGroupExpanded("/cake");
+    store.sessionListStore.toggleResolvedLane();
+    store.sessionListStore.toggleResolvedGroupExpanded("/cake");
+    expect(store.sessionListStore.isActiveGroupExpanded("/cake")).toBe(false);
+    expect(store.sessionListStore.projectSessionCatalogQueries).toEqual(projectQueries);
+    expect(store.sessionListStore.cakeChatCatalogQueries).toEqual([{ resolved: false }]);
 
-    store.toggleResolvedGroupExpanded("cake-chat");
-    expect(store.cakeChatCatalogQueries).toEqual([
+    store.sessionListStore.toggleResolvedGroupExpanded("cake-chat");
+    expect(store.sessionListStore.cakeChatCatalogQueries).toEqual([
       { resolved: false },
       { resolved: true, limit: 10 },
     ]);
 
-    store.showMoreSessions("/cake", true);
-    store.showMoreSessions("cake-chat", true);
-    expect(store.projectSessionCatalogQueries).toEqual(projectQueries);
-    expect(store.cakeChatCatalogQueries).toContainEqual({ resolved: true, limit: 20 });
+    store.sessionListStore.showMoreSessions("/cake", true);
+    store.sessionListStore.showMoreSessions("cake-chat", true);
+    expect(store.sessionListStore.projectSessionCatalogQueries).toEqual(projectQueries);
+    expect(store.sessionListStore.cakeChatCatalogQueries).toContainEqual({
+      resolved: true,
+      limit: 20,
+    });
 
-    store.toggleResolvedGroupExpanded("/cake");
-    store.toggleResolvedGroupExpanded("cake-chat");
-    store.toggleResolvedLane();
-    expect(store.isResolvedGroupExpanded("/cake")).toBe(false);
-    expect(store.projectSessionCatalogQueries).toEqual(projectQueries);
-    expect(store.cakeChatCatalogQueries).toEqual([
+    store.sessionListStore.toggleResolvedGroupExpanded("/cake");
+    store.sessionListStore.toggleResolvedGroupExpanded("cake-chat");
+    store.sessionListStore.toggleResolvedLane();
+    expect(store.sessionListStore.isResolvedGroupExpanded("/cake")).toBe(false);
+    expect(store.sessionListStore.projectSessionCatalogQueries).toEqual(projectQueries);
+    expect(store.sessionListStore.cakeChatCatalogQueries).toEqual([
       { resolved: false },
       { resolved: true, limit: 20 },
     ]);

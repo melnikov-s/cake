@@ -6,6 +6,8 @@ import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore"
 import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { SidebarStore } from "../stores/SidebarStore";
+import type { SidebarSessionListStore } from "../stores/SidebarSessionListStore";
+import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
 import { AnimatedList } from "./ui/animated-list";
 import { SidebarSessionItem } from "./sidebar-session-item";
 
@@ -28,6 +30,8 @@ function dayLabel(iso: string, now: number) {
 /** Date-grouped cross-Project navigation for active Project and Cake Chat sessions. */
 export const SidebarActivityFeed = observer(function SidebarActivityFeed({
   store,
+  sessionList,
+  sessionMetadata,
   projects,
   chat,
   cakeChat,
@@ -37,6 +41,8 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
   onOpenCakeChat,
 }: {
   store: SidebarStore;
+  sessionList: SidebarSessionListStore;
+  sessionMetadata: SessionMetadataStore;
   projects: ProjectCatalogStore;
   chat: ProjectWorkbenchStore;
   cakeChat: CakeChatCollectionStore;
@@ -46,13 +52,13 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
   onOpenCakeChat(sessionId?: string): void;
 }) {
   const entries = [
-    ...store.activeProjectSessionFamilies.map((family) => ({
+    ...sessionList.activeProjectSessionFamilies.map((family) => ({
       kind: "project" as const,
       modifiedAt: family.latestModifiedAt,
       draft: family.sessions.some((session) => session.draft),
       family,
     })),
-    ...store.activeCakeChatSessions.map((session) => ({
+    ...sessionList.activeCakeChatSessions.map((session) => ({
       kind: "cake-chat" as const,
       modifiedAt: session.modifiedAt,
       draft: false,
@@ -125,14 +131,15 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
                       <SidebarSessionItem
                         key={`project:${session.sessionId}`}
                         store={store}
+                        sessionMetadata={sessionMetadata}
                         session={session}
                         managedWorktree={store.managedWorktree(session.workingDirectory)}
                         selected={selected}
                         paneNumber={chat.paneNumber?.(session.sessionId)}
                         resolved={false}
-                        activity={store.sessionActivityForDisplay(session)}
-                        labels={store.sessionLabels(session.sessionId)}
-                        avatarSeed={store.sessionAvatarSeed(session.sessionId)}
+                        activity={sessionList.sessionActivityForDisplay(session)}
+                        labels={sessionMetadata.sessionLabels(session.sessionId)}
+                        avatarSeed={session.sessionId}
                         avatarsEnabled={appearance.sessionAvatarsEnabled}
                         source={{
                           kind: "project",
@@ -142,8 +149,8 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
                           showAvatar: appearance.projectAvatarsEnabled,
                         }}
                         onOpen={onOpenSession}
-                        onToggleFamily={(sessionId) => store.toggleFamilyCollapsed(sessionId)}
-                        familyCollapsed={store.isFamilyCollapsed(session.sessionId)}
+                        onToggleFamily={(sessionId) => sessionList.toggleFamilyCollapsed(sessionId)}
+                        familyCollapsed={sessionList.isFamilyCollapsed(session.sessionId)}
                         onRename={(sessionId, name) =>
                           void chat.sessionManagementStore.renameSession(sessionId, name)
                         }

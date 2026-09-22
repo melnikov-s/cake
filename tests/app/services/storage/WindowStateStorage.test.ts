@@ -610,6 +610,55 @@ describe("WindowStateStorage", () => {
     );
   });
 
+  it.effect("moves persisted sidebar list policy into SidebarSessionListStore", () => {
+    const snapshot = {
+      state: {},
+      children: {
+        sidebarStore: {
+          state: {
+            hidden: true,
+            width: 344,
+            navigationMode: "activity",
+            focusedProjectPath: "/cake",
+            projectSessionSorts: { "/cake": "label" },
+            expandedActiveGroups: { "cake-chat": false, "/cake": true },
+            collapsedFamilies: { "family-root": true },
+          },
+          children: {},
+        },
+      },
+    };
+
+    return withStorage(JSON.stringify({ version: 11, data: snapshot }), (storage) =>
+      Effect.gen(function* () {
+        const loaded = yield* storage.load();
+        assert.deepStrictEqual(loaded, {
+          state: {},
+          children: {
+            sidebarStore: {
+              state: {
+                hidden: true,
+                width: 344,
+                navigationMode: "activity",
+                focusedProjectPath: "/cake",
+              },
+              children: {
+                sessionListStore: {
+                  state: {
+                    projectSessionSorts: { "/cake": "label" },
+                    expandedActiveGroups: { "cake-chat": false, "/cake": true },
+                    collapsedFamilies: { "family-root": true },
+                  },
+                  children: {},
+                },
+              },
+            },
+          },
+        });
+      }),
+    );
+  });
+
   it.effect("places unversioned Cake Chat input under the shared composer Store", () => {
     const attachment = {
       kind: "image",
