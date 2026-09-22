@@ -2687,6 +2687,16 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
         elements: api.getSceneElementsIncludingDeleted(),
         captureUpdate: CaptureUpdateAction.IMMEDIATELY,
       });
+      if (receipt.createdIds.length > 1) {
+        const createdIds = new Set(receipt.createdIds);
+        const elements = nonDeleted(api);
+        api.scrollToContent(
+          elements.filter(
+            (element) => createdIds.has(element.id) || isGeneratedLabelFor(element, createdIds),
+          ),
+          { animate: false, fitToViewport: true, viewportZoomFactor: 0.85 },
+        );
+      }
       return receipt;
     },
     insertMermaid(diagram, options) {

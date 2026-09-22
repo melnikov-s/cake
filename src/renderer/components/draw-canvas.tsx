@@ -10,6 +10,7 @@ import {
   restoreDrawDocument,
   type DrawEditorAdapter,
 } from "../draw/DrawEditorAdapter";
+import { useResolvedColorTheme } from "../lib/resolved-color-theme";
 import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
 
@@ -53,7 +54,7 @@ export const DrawCanvas = observer(function DrawCanvas({
     [onOpenSourceLocation],
   );
 
-  const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  const theme = useResolvedColorTheme();
   // Excalidraw restores initialData after publishing its imperative API. Loading through
   // the API callback races that initialization and can be reset to an empty scene.
   const initialData = store.documentSnapshot ? restoreDrawDocument(store.documentSnapshot) : null;
