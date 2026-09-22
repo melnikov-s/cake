@@ -380,7 +380,9 @@ export const App = observer(function App() {
       onCreateCakeChat={createCakeChat}
       onOpenSession={openSession}
       onCreateSession={createSession}
-      onRemoveProject={(path, deleteSessions) => root.removeProject(path, deleteSessions)}
+      onRemoveProject={(path, deleteSessions) =>
+        root.projectRemovalStore.remove(path, deleteSessions)
+      }
       onChooseProject={chooseProject}
       onGoBack={goBack}
       onGoForward={goForward}

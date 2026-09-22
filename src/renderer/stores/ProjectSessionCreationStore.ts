@@ -1,6 +1,7 @@
 import { Store, child, createStore } from "r-state-tree";
 import type { ProjectSessionStartInput } from "../../domain/project-sessions/project-session-data";
 import type { ChatConfiguration } from "../../ipc/session-contract";
+import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
 import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import { ClientContext } from "./context/ClientContext";
 import type { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore";
@@ -8,6 +9,28 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import { WorktreeCreationStore, type WorktreeDraftChoice } from "./WorktreeCreationStore";
+
+export interface CreatePromptedProjectSessionInput {
+  workspacePath: string;
+  name: string;
+  initialPrompt: string;
+  model?: ChatConfiguration;
+  worktreeName?: string;
+  markdown?: boolean;
+}
+
+export interface CreateDraftProjectSessionInput {
+  workspacePath: string;
+  name: string;
+  initialPrompt: string;
+  model?: ChatConfiguration;
+}
+
+export interface ProjectSessionCreationResult {
+  workspacePath: string;
+  sessionId: string;
+  managedWorktree?: WorktreeRecord;
+}
 
 export interface ProjectSessionCreationStoreProps {
   registry: SessionRegistryStore;
@@ -40,6 +63,45 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
       },
       reportError: this.props.reportError,
     });
+  }
+
+  /** Creates a cataloged renderer draft without acquiring a Pi runtime. */
+  async createDraftSession(input: CreateDraftProjectSessionInput) {
+    const sessionId = await this.createDraft(
+      input.workspacePath,
+      input.name,
+      input.initialPrompt,
+      input.model,
+    );
+    return { workspacePath: input.workspacePath, sessionId };
+  }
+
+  /**
+   * Owns the managed-checkout-then-session-start sequence used by application controls.
+   * A requested checkout must succeed before session creation; it never falls back to the Project
+   * root. Main owns rollback of failed checkout creation, while this Store owns pending renderer
+   * cleanup when session start fails.
+   */
+  async createPromptedSession(
+    input: CreatePromptedProjectSessionInput,
+  ): Promise<ProjectSessionCreationResult> {
+    const managedWorktree = input.worktreeName
+      ? await this.worktrees.create(input.workspacePath, {
+          name: input.worktreeName,
+          backgroundSetup: true,
+        })
+      : undefined;
+    const workspacePath = managedWorktree?.worktreePath ?? input.workspacePath;
+    const sessionId = await this.createPrompted(
+      workspacePath,
+      input.name,
+      input.initialPrompt,
+      input.model,
+      input.markdown !== false,
+    );
+    return managedWorktree
+      ? { workspacePath, sessionId, managedWorktree }
+      : { workspacePath, sessionId };
   }
 
   async createDraft(

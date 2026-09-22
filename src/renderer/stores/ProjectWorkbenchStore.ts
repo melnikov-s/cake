@@ -293,18 +293,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
   }
 
-  async removeProject(path: string, deleteSessions: boolean) {
-    try {
-      await this.client.workspaces.removeProject(path, deleteSessions, { signal: this.signal });
-      if (this.signal.aborted) return false;
-      this.projectOpenStore.clear(path);
-      return true;
-    } catch (error) {
-      if (!this.signal.aborted) this.setError(error);
-      return false;
-    }
-  }
-
   async deleteResolvedWorktrees(path: string) {
     try {
       const plan = await this.client.managedWorktrees.inspectResolvedForProject(path, {

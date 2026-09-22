@@ -457,8 +457,15 @@ The window Store hierarchy mirrors the product surfaces:
   concurrency. `SessionPresentationStore` composes the embedded editor and browser and owns
   Agent/VS Code/browser/Draw transitions, suspend/restore policy, Draw flushing, and native
   presentation-event coordination. `ProjectSessionCreationStore` composes
-  `WorktreeCreationStore` and owns background draft/prompted creation plus first-send activation;
-  stable pending identities remain in `ProjectPendingSessionsStore`. Window-level
+  `WorktreeCreationStore` and owns background draft/prompted creation, the required
+  Managed-Worktree-before-session sequence, plus first-send activation; stable pending identities
+  remain in `ProjectPendingSessionsStore`. `ProjectSessionPlacementStore` owns renderer registration,
+  runtime-open-before-command sequencing, failed-open cleanup, and optional pane placement for
+  agent-created forks and Session Family children. `SessionRetirementStore` owns renderer history,
+  layout, registry, and fallback-navigation cleanup after authoritative resolve/delete operations,
+  while the focused management Stores retain transition serialization. `ProjectRemovalStore` owns
+  equivalent window cleanup after main accepts Project deregistration and optional session deletion.
+  Window-level
   `DrawControlStore` registers controls for loaded sessions and dispatches to background Draw
   sessions without changing shell selection. The remaining workbench children include
   `CommandPaneStore`, `SessionManagementStore`, and `SessionContinuationStore`.

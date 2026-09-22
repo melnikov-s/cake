@@ -369,6 +369,131 @@ describe("RootStore session navigation", () => {
     }
   });
 
+  it("removes a fork registration when its runtime cannot be opened", async () => {
+    const models = RootProjection.create();
+    applySnapshot(models.sessionCatalog, {
+      sessions: [sessionSummary("source", projectPath)],
+      resolvedHasMoreByProject: {},
+    });
+    const prompt = vi.fn(async () => "turn-1");
+    const respondControl = vi.fn(async () => undefined);
+    const client = {
+      projectSessions: {
+        fork: vi.fn(async () => ({ sessionId: "failed-fork" })),
+        open: vi.fn(async () => {
+          throw new Error("runtime failed to open");
+        }),
+        respondControl,
+      },
+      sessionChats: { prompt },
+    } as unknown as Client;
+    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
+
+    try {
+      await root.applicationControlStore.handleProjectSessionRequest({
+        sessionId: "source",
+        controlRequestId: "00000000-0000-4000-8000-000000000006",
+        invocation: {
+          _tag: "ForkSession",
+          entryId: "entry-1",
+          prompt: "This must not be sent.",
+          resolveSource: false,
+          placement: "none",
+        },
+      });
+
+      expect(root.sessionRegistry.findSession("failed-fork")).toBeUndefined();
+      expect(prompt).not.toHaveBeenCalled();
+      expect(respondControl).toHaveBeenCalledWith(
+        "source",
+        "00000000-0000-4000-8000-000000000006",
+        expect.objectContaining({ ok: false, error: "runtime failed to open" }),
+        expect.anything(),
+      );
+    } finally {
+      root[Symbol.dispose]();
+      models[Symbol.dispose]();
+    }
+  });
+
+  it("removes a projected family child when opening its runtime fails", async () => {
+    const models = RootProjection.create();
+    applySnapshot(models.sessionCatalog, {
+      sessions: [sessionSummary("parent", projectPath)],
+      resolvedHasMoreByProject: {},
+    });
+    const respondControl = vi.fn(async () => undefined);
+    const client = {
+      projectSessions: {
+        open: vi.fn(async () => {
+          throw new Error("child runtime failed");
+        }),
+        respondControl,
+      },
+    } as unknown as Client;
+    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
+
+    try {
+      await root.applicationControlStore.handleProjectSessionRequest({
+        sessionId: "parent",
+        controlRequestId: "00000000-0000-4000-8000-000000000007",
+        invocation: {
+          _tag: "ProjectChildSession",
+          childSessionId: "failed-child",
+          title: "Failed child",
+          familyId: "family",
+          familyChildOrder: 0,
+          familyDepth: 1,
+          workingDirectory: projectPath,
+          placement: "none",
+        },
+      });
+
+      expect(root.sessionRegistry.findSession("failed-child")).toBeUndefined();
+      expect(root.sessionCatalogStore.find("failed-child")).toBeUndefined();
+      expect(respondControl).toHaveBeenCalledWith(
+        "parent",
+        "00000000-0000-4000-8000-000000000007",
+        expect.objectContaining({ ok: false, error: "child runtime failed" }),
+        expect.anything(),
+      );
+    } finally {
+      root[Symbol.dispose]();
+      models[Symbol.dispose]();
+    }
+  });
+
+  it("retires resolved Project Session renderer ownership and creates a project fallback", async () => {
+    const models = RootProjection.create();
+    applySnapshot(models.sessionCatalog, {
+      sessions: [sessionSummary("active", projectPath)],
+      resolvedHasMoreByProject: {},
+    });
+    const resolve = vi.fn(async () => undefined);
+    const client = { projectSessions: { resolve } } as unknown as Client;
+    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
+    const createSession = vi.spyOn(root, "createSession").mockResolvedValue(undefined);
+
+    try {
+      root.sessionRegistry.load("active", projectPath);
+      root.sessionLayoutStore.ensureSession("active");
+      root.appShellStore.selectProjectSession("active");
+
+      await root.sessionRetirementStore.setProjectSessionResolved("active", true);
+
+      expect(resolve).toHaveBeenCalledWith(
+        { sessionId: "active", workingDirectory: projectPath },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(root.sessionRegistry.findSession("active")).toBeUndefined();
+      expect(root.sessionLayoutStore.hasSession("active")).toBe(false);
+      expect(createSession).toHaveBeenCalledWith(projectPath);
+    } finally {
+      root[Symbol.dispose]();
+      models[Symbol.dispose]();
+    }
+  });
+
   it("routes independent session creation through a new managed worktree when requested", async () => {
     const models = RootProjection.create();
     const parentWorktreePath = "/projects/.cake-worktrees/parent-task";
@@ -564,6 +689,46 @@ describe("RootStore session navigation", () => {
           options: expect.objectContaining({ signal: expect.any(AbortSignal) }),
         },
       ]);
+    } finally {
+      root[Symbol.dispose]();
+      models[Symbol.dispose]();
+    }
+  });
+
+  it("cleans Project navigation and loaded sessions after delete-on-remove succeeds", async () => {
+    const models = RootProjection.create();
+    applySnapshot(models.projects, {
+      projects: [
+        {
+          path: projectPath,
+          name: "Example",
+          addedAt: "2026-01-01T00:00:00.000Z",
+          lastOpenedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    applySnapshot(models.sessionCatalog, {
+      sessions: [sessionSummary("removed-session", projectPath)],
+      resolvedHasMoreByProject: {},
+    });
+    const removeProject = vi.fn(async () => ({ projects: [] }));
+    const client = { workspaces: { removeProject } } as unknown as Client;
+    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
+
+    try {
+      root.sessionRegistry.load("removed-session", projectPath);
+      root.sessionLayoutStore.ensureSession("removed-session");
+      root.appShellStore.selectProjectSession("removed-session");
+
+      await expect(root.projectRemovalStore.remove(projectPath, true)).resolves.toBe(true);
+
+      expect(removeProject).toHaveBeenCalledWith(
+        projectPath,
+        true,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(root.sessionRegistry.findSession("removed-session")).toBeUndefined();
+      expect(root.appShellStore.selection).toEqual({ kind: "workbench" });
     } finally {
       root[Symbol.dispose]();
       models[Symbol.dispose]();

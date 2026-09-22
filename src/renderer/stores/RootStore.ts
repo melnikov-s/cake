@@ -1,9 +1,6 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
 import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
 import { decodeArtifactLineageId } from "../../domain/artifacts/artifact-lineage";
-import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
-import type { JsonValue } from "../../ipc/json-contract";
-import type { ChatConfiguration } from "../../ipc/session-contract";
 import type { Client } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
@@ -41,6 +38,9 @@ import { UiHintModeStore } from "./UiHintModeStore";
 import { ArtifactLibraryStore } from "./ArtifactLibraryStore";
 import { ArtifactReferencePreviewStore } from "./ArtifactReferencePreviewStore";
 import { DrawControlStore } from "./DrawControlStore";
+import { ProjectSessionPlacementStore } from "./ProjectSessionPlacementStore";
+import { SessionRetirementStore } from "./SessionRetirementStore";
+import { ProjectRemovalStore } from "./ProjectRemovalStore";
 
 export class RootStore extends Store<{
   client: Client;
@@ -234,21 +234,6 @@ export class RootStore extends Store<{
     if (sessionId) this.selectProjectSessionForShell(sessionId);
   }
 
-  async createDraftSession(input: {
-    workspacePath: string;
-    name: string;
-    initialPrompt: string;
-    model?: ChatConfiguration;
-  }) {
-    const sessionId = await this.projectWorkbenchStore.sessionCreationStore.createDraft(
-      input.workspacePath,
-      input.name,
-      input.initialPrompt,
-      input.model,
-    );
-    return { workspacePath: input.workspacePath, sessionId };
-  }
-
   private projectControlSource(sessionId: string): AgentControlSource {
     const summary = this.sessionCatalogStore.find(sessionId);
     const loaded = this.sessionRegistry.findSession(sessionId);
@@ -266,142 +251,6 @@ export class RootStore extends Store<{
       workingDirectory: workingDirectory ?? "Unknown working directory",
       ...(projectPath ? { projectPath } : null),
     };
-  }
-
-  private async forkProjectSession(
-    sourceSessionId: string,
-    input: Extract<ProjectSessionControlInvocation, { _tag: "ForkSession" }>,
-  ): Promise<JsonValue> {
-    const sourceWorkingDirectory = this.requireProjectSessionWorkingDirectory(sourceSessionId);
-    const destinationWorkingDirectory = input.destinationWorkingDirectory ?? sourceWorkingDirectory;
-    const result = await this.client.projectSessions.fork(
-      {
-        sessionId: sourceSessionId,
-        workingDirectory: sourceWorkingDirectory,
-        entryId: input.entryId,
-        resolveSource: input.resolveSource,
-        destinationWorkingDirectory,
-      },
-      { signal: this.signal },
-    );
-    // A fork creates its transcript but does not assemble a Pi runtime. Open it
-    // before any shared Session Chat command, even when no pane will be shown.
-    this.sessionRegistry.load(result.sessionId, destinationWorkingDirectory);
-    await this.client.projectSessions.open(
-      { sessionId: result.sessionId, workingDirectory: destinationWorkingDirectory },
-      { signal: this.signal },
-    );
-    if (input.title !== undefined)
-      await this.client.projectSessions.rename(
-        {
-          sessionId: result.sessionId,
-          workingDirectory: destinationWorkingDirectory,
-          name: input.title,
-        },
-        { signal: this.signal },
-      );
-    if (input.prompt !== undefined)
-      await this.client.sessionChats.prompt(
-        {
-          sessionId: result.sessionId,
-          text: input.prompt,
-          attachments: [],
-          renderUserMessageAsMarkdown: false,
-        },
-        { signal: this.signal },
-      );
-    if (input.placement === "none")
-      return {
-        ok: true,
-        sessionId: result.sessionId,
-        placement: input.placement,
-        sourceResolved: input.resolveSource,
-      };
-
-    const paneId = this.sessionLayoutStore.showChildSession(
-      sourceSessionId,
-      result.sessionId,
-      input.placement === "right" ? "x" : "y",
-    );
-    if (!paneId) throw new Error("Cake could not open the fork beside its source session.");
-    this.projectWorkbenchStore.dismissSecondarySurfaces();
-    this.selectProjectSessionForShell(result.sessionId);
-    this.projectWorkbenchStore.showLoadedSession(result.sessionId);
-    return {
-      ok: true,
-      sessionId: result.sessionId,
-      placement: input.placement,
-      paneId,
-      sourceResolved: input.resolveSource,
-    };
-  }
-
-  private async projectChildSession(
-    parentSessionId: string,
-    input: Extract<ProjectSessionControlInvocation, { _tag: "ProjectChildSession" }>,
-  ): Promise<JsonValue> {
-    this.sessionRegistry.loadUnlistedFamilySession(
-      input.childSessionId,
-      input.workingDirectory,
-      input.title,
-      {
-        familyId: input.familyId,
-        parentSessionId,
-        childOrder: input.familyChildOrder,
-        depth: input.familyDepth,
-      },
-    );
-    try {
-      await this.client.projectSessions.open(
-        { sessionId: input.childSessionId, workingDirectory: input.workingDirectory },
-        { signal: this.signal },
-      );
-    } catch (error) {
-      this.sessionRegistry.removeSession(input.childSessionId);
-      throw error;
-    }
-    if (input.placement === "none")
-      return { ok: true, childSessionId: input.childSessionId, placement: input.placement };
-    const paneId = this.sessionLayoutStore.showChildSession(
-      parentSessionId,
-      input.childSessionId,
-      input.placement === "right" ? "x" : "y",
-    );
-    if (!paneId) throw new Error("Cake could not open a child pane beside its parent.");
-    this.projectWorkbenchStore.dismissSecondarySurfaces();
-    this.selectProjectSessionForShell(input.childSessionId);
-    this.projectWorkbenchStore.showLoadedSession(input.childSessionId);
-    return { ok: true, childSessionId: input.childSessionId, placement: input.placement, paneId };
-  }
-
-  async createPromptedSession(input: {
-    workspacePath: string;
-    name: string;
-    initialPrompt: string;
-    model?: ChatConfiguration;
-    worktreeName?: string;
-    markdown?: boolean;
-  }) {
-    const managedWorktree = input.worktreeName
-      ? await this.projectWorkbenchStore.sessionCreationStore.worktrees.create(
-          input.workspacePath,
-          {
-            name: input.worktreeName,
-            backgroundSetup: true,
-          },
-        )
-      : undefined;
-    const workspacePath = managedWorktree?.worktreePath ?? input.workspacePath;
-    const sessionId = await this.projectWorkbenchStore.sessionCreationStore.createPrompted(
-      workspacePath,
-      input.name,
-      input.initialPrompt,
-      input.model,
-      input.markdown !== false,
-    );
-    return managedWorktree
-      ? { workspacePath, sessionId, managedWorktree }
-      : { workspacePath, sessionId };
   }
 
   async startOneOffChat() {
@@ -670,113 +519,51 @@ export class RootStore extends Store<{
     this.showSettings();
   }
 
-  async removeProject(path: string, deleteSessions: boolean) {
-    const sessionIds = this.sessionCatalogStore
-      .projectSessions(path)
-      .map((session) => session.sessionId);
-    const removed = await this.projectWorkbenchStore.removeProject(path, deleteSessions);
-    if (!removed) return false;
-    if (this.sidebarStore.focusedProjectPath === path) this.sidebarStore.leaveProjectFocus();
-    const target = this.appShellStore.removeSessionsFromHistory(sessionIds);
-    if (deleteSessions) {
-      for (const sessionId of sessionIds) {
-        this.sessionRegistry.removeSession(sessionId);
-      }
-    }
-    if (target) await this.navigateToHistoryEntry(target);
-    else if (
-      this.appShellStore.selection.kind === "project-session" &&
-      sessionIds.includes(this.appShellStore.selection.sessionId)
-    )
-      this.showEmptyWorkbench();
-    return true;
-  }
-
   private showEmptyWorkbench() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.showWorkbench();
   }
 
-  private async resolveProjectSession(sessionId: string, resolved: boolean) {
-    const rendererDraft = this.sessionRegistry.pendingSessions.isDraft(sessionId);
-    const changed = await this.projectWorkbenchStore.sessionManagementStore.resolveSession(
-      sessionId,
-      resolved,
-    );
-    if (resolved && changed && !rendererDraft)
-      await this.forgetResolvedProjectSessions([sessionId]);
-    return changed;
+  @child
+  get projectSessionPlacementStore(): ProjectSessionPlacementStore {
+    return createStore(ProjectSessionPlacementStore, {
+      registry: this.sessionRegistry,
+      layout: this.sessionLayoutStore,
+      requireWorkingDirectory: (sessionId) => this.requireProjectSessionWorkingDirectory(sessionId),
+      dismissSecondarySurfaces: () => this.projectWorkbenchStore.dismissSecondarySurfaces(),
+      selectSession: (sessionId) => this.selectProjectSessionForShell(sessionId),
+      showLoadedSession: (sessionId) => this.projectWorkbenchStore.showLoadedSession(sessionId),
+    });
   }
 
-  private async deleteProjectSession(sessionId: string) {
-    const session = this.sessionCatalogStore.find(sessionId);
-    const wasSelected = this.appShellStore.activeConversation?.sessionId === sessionId;
-    await this.projectWorkbenchStore.sessionManagementStore.deleteSession(sessionId);
-    if (!this.sessionCatalogStore.find(sessionId))
-      await this.forgetResolvedSessions(
-        [sessionId],
-        wasSelected ? session?.workingDirectory : undefined,
-      );
+  @child
+  get sessionRetirementStore(): SessionRetirementStore {
+    return createStore(SessionRetirementStore, {
+      shell: this.appShellStore,
+      catalog: this.sessionCatalogStore,
+      registry: this.sessionRegistry,
+      layout: this.sessionLayoutStore,
+      projectSessions: this.projectWorkbenchStore.sessionManagementStore,
+      cakeChats: this.cakeChatCollectionStore,
+      navigate: (target) => this.navigateToHistoryEntry(target),
+      createProjectSession: (projectPath) => this.createSession(projectPath),
+      showCakeChat: () => this.showCakeChat(),
+    });
   }
 
-  private async deleteCakeChatSession(sessionId: string) {
-    const wasSelected = this.appShellStore.activeConversation?.sessionId === sessionId;
-    await this.cakeChatCollectionStore.management.deleteSession(sessionId);
-    if (this.cakeChatCollectionStore.summaries.some((session) => session.sessionId === sessionId))
-      return;
-    await this.forgetResolvedSessions([sessionId]);
-    if (wasSelected && this.appShellStore.activeConversation?.sessionId === sessionId)
-      this.showCakeChat();
-  }
-
-  private async resolveCakeChatSession(sessionId: string, resolved: boolean) {
-    await this.cakeChatCollectionStore.management.resolveSession(sessionId, resolved);
-    if (!resolved) return;
-    if (this.cakeChatCollectionStore.isSessionResolved(sessionId)) {
-      await this.forgetResolvedSessions([sessionId]);
-      return;
-    }
-    if (
-      this.appShellStore.activeConversation?.kind === "cake-chat" &&
-      this.appShellStore.activeConversation.sessionId === sessionId
-    ) {
-      this.appShellStore.selectCakeChat(this.cakeChatCollectionStore.sessionId);
-    }
-  }
-
-  /** Drops resolved sessions from navigation history and returns to the previous session. */
-  private async forgetResolvedSessions(
-    sessionIds: readonly string[],
-    fallbackProjectPath?: string,
-  ) {
-    const activeSessionId = this.appShellStore.activeConversation?.sessionId;
-    const activeConversationRemoved =
-      activeSessionId !== undefined && sessionIds.includes(activeSessionId);
-    const target = this.appShellStore.removeSessionsFromHistory(sessionIds);
-    if (target) {
-      await this.navigateToHistoryEntry(target);
-      return;
-    }
-    if (activeConversationRemoved && fallbackProjectPath)
-      await this.createSession(fallbackProjectPath);
-  }
-
-  /** Ends live renderer ownership before navigating away from archived Pi sessions. */
-  private async forgetResolvedProjectSessions(
-    sessionIds: readonly string[],
-    fallbackProjectPath?: string,
-  ) {
-    const active = this.appShellStore.activeConversation;
-    const activeSessionId =
-      active?.kind === "project-session" && sessionIds.includes(active.sessionId)
-        ? active.sessionId
-        : undefined;
-    const activeProjectPath = activeSessionId
-      ? this.sessionCatalogStore.find(activeSessionId)?.projectPath
-      : undefined;
-    this.sessionLayoutStore.removeSessions(sessionIds);
-    for (const sessionId of sessionIds) this.sessionRegistry.removeSession(sessionId);
-    await this.forgetResolvedSessions(sessionIds, fallbackProjectPath ?? activeProjectPath);
+  @child
+  get projectRemovalStore(): ProjectRemovalStore {
+    return createStore(ProjectRemovalStore, {
+      catalog: this.sessionCatalogStore,
+      registry: this.sessionRegistry,
+      shell: this.appShellStore,
+      clearOpenProject: (path) => this.projectWorkbenchStore.projectOpenStore.clear(path),
+      focusedProjectPath: () => this.sidebarStore.focusedProjectPath,
+      leaveProjectFocus: () => this.sidebarStore.leaveProjectFocus(),
+      navigate: (target) => this.navigateToHistoryEntry(target),
+      showEmptyWorkbench: () => this.showEmptyWorkbench(),
+      reportError: (error) => this.projectWorkbenchStore.setError(error),
+    });
   }
 
   @child
@@ -990,7 +777,7 @@ export class RootStore extends Store<{
           : undefined;
       },
       setSessionResolved: async (sessionId, resolved) => {
-        await this.resolveProjectSession(sessionId, resolved);
+        await this.sessionRetirementStore.setProjectSessionResolved(sessionId, resolved);
       },
       setSessionLabels: async (sessionId, labelIds) => {
         await this.projectWorkbenchStore.sessionManagementStore.setSessionLabels(
@@ -999,9 +786,9 @@ export class RootStore extends Store<{
         );
       },
       setCakeChatSessionResolved: (sessionId, resolved) =>
-        this.resolveCakeChatSession(sessionId, resolved),
-      deleteSession: (sessionId) => this.deleteProjectSession(sessionId),
-      deleteCakeChatSession: (sessionId) => this.deleteCakeChatSession(sessionId),
+        this.sessionRetirementStore.setCakeChatResolved(sessionId, resolved),
+      deleteSession: (sessionId) => this.sessionRetirementStore.deleteProjectSession(sessionId),
+      deleteCakeChatSession: (sessionId) => this.sessionRetirementStore.deleteCakeChat(sessionId),
       setSessionUnread: (sessionId, unread) =>
         this.projectWorkbenchStore.sessionManagementStore.setSessionUnread(sessionId, unread),
       embeddedEditorSettings: this.settingsStore.embeddedEditor,
@@ -1074,7 +861,7 @@ export class RootStore extends Store<{
       catalog: this.sessionCatalogStore,
       startCakeChat: (prompt) => this.startCakeChat(prompt),
       onWorktreeSessionsResolved: (sessionIds, projectPath) =>
-        this.forgetResolvedProjectSessions(sessionIds, projectPath),
+        this.sessionRetirementStore.forgetProjectSessions(sessionIds, projectPath),
       openSessionById: async (sessionId) => {
         await this.openSession(sessionId);
       },
@@ -1161,11 +948,8 @@ export class RootStore extends Store<{
         prepareProjectSessionChat: (sessionId) => this.prepareProjectSessionChat(sessionId),
         openSession: (sessionId, messageId) => this.openSession(sessionId, messageId),
         openCakeChat: (sessionId) => this.openCakeChat(sessionId),
-        createPromptedSession: (input) => this.createPromptedSession(input),
-        createDraftSession: (input) => this.createDraftSession(input),
-        forgetResolvedProjectSessions: (sessionIds) =>
-          this.forgetResolvedProjectSessions(sessionIds),
-        forgetResolvedSessions: (sessionIds) => this.forgetResolvedSessions(sessionIds),
+        sessionCreationStore: this.projectWorkbenchStore.sessionCreationStore,
+        sessionRetirementStore: this.sessionRetirementStore,
         focusCakeChatPane: (paneId) => this.focusCakeChatPane(paneId),
         focusSessionPane: (paneId) => this.focusSessionPane(paneId),
         splitFocusedCakeChat: (axis) => this.splitFocusedCakeChat(axis),
@@ -1192,9 +976,9 @@ export class RootStore extends Store<{
         };
       },
       forkProjectSession: (sourceSessionId, invocation) =>
-        this.forkProjectSession(sourceSessionId, invocation),
+        this.projectSessionPlacementStore.fork(sourceSessionId, invocation),
       openProjectChildSession: (parentSessionId, invocation) =>
-        this.projectChildSession(parentSessionId, invocation),
+        this.projectSessionPlacementStore.openChild(parentSessionId, invocation),
       reportProjectError: (error, context) => this.projectWorkbenchStore.setError(error, context),
       reportCakeChatError: (error, context) =>
         this.cakeChatCollectionStore.reportError(error, context),

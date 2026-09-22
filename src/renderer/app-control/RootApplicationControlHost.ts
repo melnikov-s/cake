@@ -13,8 +13,8 @@ import type { SessionRegistryStore } from "../stores/SessionRegistryStore";
 import type { SettingsStore } from "../stores/SettingsStore";
 import type { ToastStore } from "../stores/ToastStore";
 import type { SessionActivity } from "../lib/session-activity";
-import type { ChatConfiguration } from "../../ipc/session-contract";
-import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
+import type { ProjectSessionCreationStore } from "../stores/ProjectSessionCreationStore";
+import type { SessionRetirementStore } from "../stores/SessionRetirementStore";
 import { defaultProjectSettings } from "../../domain/application/application-data";
 import { crossSessionContextSnapshot } from "../../domain/conversations/cross-session-coordination";
 
@@ -40,22 +40,8 @@ export interface RootApplicationControlCapabilities {
   prepareProjectSessionChat(sessionId: string): Promise<void>;
   openSession(sessionId: string, messageId?: string): Promise<boolean>;
   openCakeChat(sessionId?: string): Promise<void>;
-  createPromptedSession(input: {
-    workspacePath: string;
-    name: string;
-    initialPrompt: string;
-    model?: ChatConfiguration;
-    worktreeName?: string;
-    markdown?: boolean;
-  }): Promise<{ workspacePath: string; sessionId: string; managedWorktree?: WorktreeRecord }>;
-  createDraftSession(input: {
-    workspacePath: string;
-    name: string;
-    initialPrompt: string;
-    model?: ChatConfiguration;
-  }): Promise<{ workspacePath: string; sessionId: string }>;
-  forgetResolvedProjectSessions(sessionIds: readonly string[]): Promise<void>;
-  forgetResolvedSessions(sessionIds: readonly string[]): Promise<void>;
+  sessionCreationStore: ProjectSessionCreationStore;
+  sessionRetirementStore: SessionRetirementStore;
   focusCakeChatPane(paneId: string): void;
   focusSessionPane(paneId: string): void;
   splitFocusedCakeChat(axis: "x" | "y"): { paneId: string; sessionId: string } | undefined;
@@ -226,8 +212,8 @@ export function createRootApplicationControlHost(
       inspect: (sessionId) =>
         capabilities.client.projectSessions.inspect({ sessionId }, { signal: capabilities.signal }),
       open: (sessionId, messageId) => capabilities.openSession(sessionId, messageId),
-      create: (input) => capabilities.createPromptedSession(input),
-      createDraft: (input) => capabilities.createDraftSession(input),
+      create: (input) => capabilities.sessionCreationStore.createPromptedSession(input),
+      createDraft: (input) => capabilities.sessionCreationStore.createDraftSession(input),
       sendMessage: (sessionId, text, delivery, crossSession) =>
         capabilities.applicationControlStore().runOperation(async () => {
           await capabilities.prepareProjectSessionChat(sessionId);
@@ -304,24 +290,10 @@ export function createRootApplicationControlHost(
               sessionId,
               title,
             ),
-      setProjectSessionsResolved: async (sessionIds, resolved) => {
-        const count =
-          await capabilities.projectWorkbenchStore.sessionManagementStore.resolveSessionsById(
-            sessionIds,
-            resolved,
-          );
-        if (resolved && count === sessionIds.length)
-          await capabilities.forgetResolvedProjectSessions(sessionIds);
-        return count;
-      },
-      setCakeChatSessionsResolved: async (sessionIds, resolved) => {
-        const count = await capabilities.cakeChatCollectionStore.management.resolveSessions(
-          sessionIds,
-          resolved,
-        );
-        if (resolved) await capabilities.forgetResolvedSessions(sessionIds);
-        return count;
-      },
+      setProjectSessionsResolved: (sessionIds, resolved) =>
+        capabilities.sessionRetirementStore.setProjectSessionsResolved(sessionIds, resolved),
+      setCakeChatSessionsResolved: (sessionIds, resolved) =>
+        capabilities.sessionRetirementStore.setCakeChatsResolved(sessionIds, resolved),
     },
     presentation: {
       splitView: (source, direction) => {
