@@ -45,6 +45,18 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
     let offset = 0;
     for (const message of this.pending) {
       if (this.isReconciled(message)) continue;
+      const replacementRange = message.replacingEntryId
+        ? this.replacementRange(parts, message.replacingEntryId)
+        : undefined;
+      if (replacementRange) {
+        parts.splice(
+          replacementRange.start,
+          replacementRange.end - replacementRange.start,
+          ...message.parts,
+        );
+        offset += message.parts.length - (replacementRange.end - replacementRange.start);
+        continue;
+      }
       parts.splice(
         Math.min(message.canonicalPartCount + offset, parts.length),
         0,
@@ -205,6 +217,30 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
 
   clear() {
     this.pending.splice(0);
+  }
+
+  private replacementRange(parts: readonly UiPart[], entryId: string) {
+    const start = parts.findIndex(
+      (part) =>
+        ((part.kind === "text" && part.role === "user") || part.kind === "skill") &&
+        part.entryId === entryId,
+    );
+    if (start < 0) return undefined;
+    let end = start + 1;
+    while (end < parts.length) {
+      const part = parts[end]!;
+      if (
+        (((part.kind === "text" && part.role === "user") || part.kind === "skill") &&
+          part.entryId === entryId) ||
+        part.kind === "attachment" ||
+        part.kind === "annotation"
+      ) {
+        end += 1;
+        continue;
+      }
+      break;
+    }
+    return { start, end };
   }
 
   private isReconciled(message: PendingUserMessage) {

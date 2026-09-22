@@ -58,6 +58,51 @@ describe("ConversationDeliveryStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("projects an edited message in place instead of appending it after the reply", async () => {
+    let completeEdit!: () => void;
+    const editMessage = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          completeEdit = resolve;
+        }),
+    );
+    const root = mount(
+      createStore(HarnessStore, {
+        deliver: async () => true,
+        editMessage,
+        restoreDraft: () => undefined,
+      }),
+    );
+    root.canonicalParts.push(
+      {
+        id: "original-user",
+        kind: "text",
+        role: "user",
+        entryId: "original-entry",
+        text: "Original text",
+        status: "complete",
+      },
+      {
+        id: "original-reply",
+        kind: "text",
+        role: "assistant",
+        entryId: "assistant-entry",
+        text: "Original reply",
+        status: "complete",
+      },
+    );
+
+    const editing = root.delivery.sendEdit("original-entry", "Edited text", [], false);
+
+    expect(root.delivery.parts).toEqual([
+      expect.objectContaining({ text: "Edited text", deliveryState: "sending" }),
+      expect.objectContaining({ id: "original-reply", text: "Original reply" }),
+    ]);
+    completeEdit();
+    await editing;
+    root[Symbol.dispose]();
+  });
+
   it("reconciles an unchanged edited message after Pi replaces its transcript entry", async () => {
     let completeEdit!: () => void;
     const editMessage = vi.fn(

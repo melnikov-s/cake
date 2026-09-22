@@ -175,7 +175,8 @@ export const Chat = observer(function Chat({
     [],
   );
   const submitMessage = async (value?: string) => {
-    if (store.canSubmitValue(value)) void transcriptRef.current?.scrollToBottom();
+    if (store.canSubmitValue(value) && !store.editingMessage)
+      void transcriptRef.current?.scrollToBottom();
     await store.submit(value);
   };
   useLayoutEffect(() => {
