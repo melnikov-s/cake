@@ -145,6 +145,7 @@ export interface ProjectSessionIntegrationHostOptions {
     sessionId: string,
     widget: { readonly token: string; readonly url: string },
     signal: AbortSignal,
+    pluginState?: JsonValue,
   ) => Promise<{ readonly pngBase64: string; readonly diagnostics: ReadonlyArray<string> }>;
   readonly requireVisionModel?: (
     model: { provider: string; id: string } | undefined,
@@ -343,6 +344,7 @@ export class ProjectSessionIntegrationHost {
     const context = JSON.stringify({
       brief: input.brief,
       data: input.data,
+      initialState: input.initialState,
       fallback: input.fallback,
       surface: input.surface ?? "widget",
     });
@@ -427,7 +429,14 @@ export class ProjectSessionIntegrationHost {
           }),
         ),
       capture: (widget) =>
-        fromPromise((signal) => this.captureWidget(input.sessionId, widget, signal)),
+        fromPromise((signal) =>
+          this.captureWidget(
+            input.sessionId,
+            widget,
+            signal,
+            input.surface === "session-plugin" ? (input.initialState ?? null) : undefined,
+          ),
+        ),
       review: (source, diagnostic, pngBase64) => {
         const model = input.model;
         if (!model)

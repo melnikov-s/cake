@@ -497,15 +497,21 @@ The window Store hierarchy mirrors the product surfaces:
   measured size is final, and subgraph titles occupy a reserved title band above child nodes. Unsupported Mermaid markup, lossy image
   diagram kinds, and pathological empty subgraph containers are rejected or constrained rather than
   stored as poor canvas output. Manual agent edit batches are validated before mutation, presented on the
-  visible canvas operation by operation with active-shape focus and bounded camera
-  following, then persisted once after playback. Opening or reading a board returns viewport,
+  visible canvas operation by operation with active-shape focus and cumulative composition
+  framing, then persisted once after playback. Automatic framing fits the batch's live changed
+  elements, bound labels, and connector endpoints at no more than 100% zoom, not the last operation
+  or unrelated page content. Explicit `zoom-to` takes precedence; style-only batches preserve the
+  camera. Camera changes commit before the completion receipt and saved snapshot. Opening or reading a board returns viewport,
   selection, shape bounds, and compact style summaries; later shapes can use relative placement
   against stable shape IDs so Pi can reason about layout without raw Excalidraw elements. Explicit
   semantic operations preserve existing IDs while changing geometry, text, colors, fill, strokes,
   typography/alignment, arrowheads, locking, selection, position, alignment, distribution, layer
   order, explicit connector ports, straight or orthogonal routing, and validated Cake source links.
-  Bound connectors reroute after node geometry changes. Rendering automatically downscales to a
-  validated maximum size, camera fitting includes labels and viewport padding, and the persisted
+  Bound connectors reroute after node geometry changes. Viewport reads use the Draw pane's window
+  offsets; viewport renders clip to that same scene rectangle at the current zoom and theme,
+  including blank space. Page/selection renders remain content-fitted exports, not viewport proof.
+  Rendering automatically downscales to a validated maximum size, camera fitting includes labels
+  and viewport padding, and the persisted
   board snapshot restores the last actual canvas scroll and zoom on re-entry. Each successful
   agent mutation records one bounded renderer-owned pre-mutation checkpoint; `draw.undo` restores it
   atomically during the mounted board lifetime. Checkpoints deliberately do not persist across board

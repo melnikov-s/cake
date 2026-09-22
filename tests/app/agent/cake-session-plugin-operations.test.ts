@@ -39,6 +39,7 @@ describe("Cake Session Plugin operations", () => {
       expect.objectContaining({
         sessionId: "session-1",
         surface: "session-plugin",
+        initialState: { current: 1, total: 4 },
         model: { provider: "openai", id: "builder" },
       }),
     );

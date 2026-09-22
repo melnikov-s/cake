@@ -63,6 +63,7 @@ export function createCakeSessionPluginOperations(
           sessionId: control.sessionId,
           brief: request.brief,
           data: request.data,
+          initialState: request.initialState ?? null,
           fallback: request.title,
           model:
             typeof context.runtime === "object" &&

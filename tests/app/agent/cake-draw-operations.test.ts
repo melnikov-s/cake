@@ -136,7 +136,8 @@ describe("Cake Draw operations", () => {
     expect(help.text).toContain("nearest collision-free position");
     expect(help.text).toContain("only render as an image are rejected");
     expect(help.text).toContain("one visible stage of at most 8 operations");
-    expect(help.text).toContain("draw.read or draw.render between major stages");
+    expect(help.text).toContain("fits the complete changed composition");
+    expect(help.text).toContain("clips to the actual Draw pane");
     expect(help.text).toContain("update changes position, size, endpoints");
     expect(help.text).toContain("style applies colors, fill, stroke");
     expect(help.text).toContain("sourceLink");

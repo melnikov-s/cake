@@ -134,7 +134,8 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
       "Selection and arrangement operations include select (an empty IDs list clears selection), zoom-to, move, align, distribute, four explicit layer-order operations, set-locked, delete, and delete-diagram for removing one named region atomically. zoom-to and generated diagrams fit every requested shape plus labels with viewport padding. Use read scope selection to inspect the current selection.",
       "Every agent mutation creates a bounded window-lifetime checkpoint. Use draw.undo immediately with its checkpointId (or omit it for the latest); checkpoints are not a second persisted board history and reset when the board is reloaded.",
       `Keep each draw.apply to one visible stage of at most ${DRAW_APPLY_MAX_OPERATIONS} operations (for example, one region, then connections, then cleanup). Use another apply for the next stage so the user sees steady progress.`,
-      "draw.apply is presented on the canvas operation by operation, then persisted once; order node creation before connections so the user can follow the construction. Use draw.read or draw.render between major stages when visual feedback could improve accuracy.",
+      "draw.apply is presented operation by operation and fits the complete changed composition (including connector endpoints and labels) before persistence, never just the last styled shape. Explicit zoom-to takes precedence; styling-only batches preserve the camera. Automatic fitting does not enlarge beyond 100%. Order nodes before connections.",
+      "Verify with draw.render scope viewport: it clips to the actual Draw pane at the current scroll, zoom, and theme, including empty space. Page and selection renders fit exported content and do not prove what the user sees. draw.read viewport returns intersecting shapes, not necessarily fully visible ones; compare full bounds to viewportBounds. Keep labels short and adapt wide compositions to narrow panes rather than accepting unreadably small text.",
     ],
     inputSchema: definition.schema,
     examples: [{ input: definition.example }],
@@ -209,7 +210,7 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
       }),
       example: { scope: "viewport", scale: 1, maxSize: { width: 1600, height: 1200 } },
       result:
-        "A real PNG image block fitted within maxSize plus concise dimensions and board metadata; no base64 is retained in details.",
+        "A PNG image block plus dimensions and board metadata; no base64 is retained in details. Viewport scope preserves the visible crop (even when empty); page/selection fit content. All scopes downscale to maxSize.",
       execute: async (input, signal) => {
         const response = requireSuccess(
           await control.request({ _tag: "Render", ...input, format: "png" }, signal),

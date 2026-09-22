@@ -1,6 +1,7 @@
 /* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is Cake's drawing-domain entity. */
 import { parseMermaidToExcalidraw } from "@excalidraw/mermaid-to-excalidraw";
 import { Option, Schema } from "effect";
+import { flushSync } from "react-dom";
 import {
   CaptureUpdateAction,
   FONT_FAMILY,
@@ -305,6 +306,59 @@ function boundsOf(element: ExcalidrawElement, elements: readonly ExcalidrawEleme
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
+function viewportBounds(appState: AppState) {
+  // Excalidraw converts window-client coordinates, not pane-local coordinates.
+  const start = viewportCoordsToSceneCoords(
+    { clientX: appState.offsetLeft, clientY: appState.offsetTop },
+    appState,
+  );
+  return {
+    x: start.x,
+    y: start.y,
+    width: appState.width / appState.zoom.value,
+    height: appState.height / appState.zoom.value,
+  };
+}
+
+function fitElements(api: ExcalidrawImperativeAPI, elements: readonly ExcalidrawElement[]) {
+  if (elements.length === 0) return;
+  // scrollToContent uses React setState even with animation disabled. Commit it before
+  // the tool reads the camera or DrawStore snapshots and persists the completed stage.
+  flushSync(() =>
+    api.scrollToContent(elements, {
+      animate: false,
+      fitToViewport: true,
+      viewportZoomFactor: 0.85,
+      maxZoom: 1,
+    }),
+  );
+}
+
+function compositionElements(api: ExcalidrawImperativeAPI, receipt: MutableDrawApplyReceipt) {
+  const elements = nonDeleted(api);
+  const ids = new Set([...receipt.createdIds, ...receipt.updatedIds]);
+  for (const element of elements) {
+    if (!ids.has(element.id) || element.type !== "arrow") continue;
+    if (element.startBinding) ids.add(element.startBinding.elementId);
+    if (element.endBinding) ids.add(element.endBinding.elementId);
+  }
+  return elements.filter((element) => ids.has(element.id) || isGeneratedLabelFor(element, ids));
+}
+
+function changesLayout(operation: PreparedOperation) {
+  return (
+    operation.type === "create" ||
+    operation.type === "create-relative" ||
+    operation.type === "connect" ||
+    operation.type === "update" ||
+    operation.type === "move" ||
+    operation.type === "align" ||
+    operation.type === "distribute" ||
+    (operation.type === "style" &&
+      (operation.style.fontSize !== undefined || operation.style.fontFamily !== undefined))
+  );
+}
+
 function idsForScope(
   api: ExcalidrawImperativeAPI,
   elements: readonly ExcalidrawElement[],
@@ -316,18 +370,7 @@ function idsForScope(
     return visible.filter((element) => selected[element.id]).map((element) => element.id);
   }
   if (scope === "page") return visible.map((element) => element.id);
-  const appState = api.getAppState();
-  const start = viewportCoordsToSceneCoords({ clientX: 0, clientY: 0 }, appState);
-  const end = viewportCoordsToSceneCoords(
-    { clientX: appState.width, clientY: appState.height },
-    appState,
-  );
-  const viewport = {
-    x: Math.min(start.x, end.x),
-    y: Math.min(start.y, end.y),
-    width: Math.abs(end.x - start.x),
-    height: Math.abs(end.y - start.y),
-  };
+  const viewport = viewportBounds(api.getAppState());
   return visible
     .filter((element) => {
       const bounds = boundsOf(element, elements);
@@ -925,7 +968,14 @@ function connectorPoints(
       route = [start, { x: start.x, y: detourY }, { x: end.x, y: detourY }, end];
     }
   }
-  return route.map(({ x, y }) => [x - start.x, y - start.y] as const);
+  // Aligned ports can collapse a dogleg's first or last segment to zero length.
+  // Excalidraw derives arrowhead direction from those segments, so remove duplicates.
+  return route
+    .filter(
+      (point, index) =>
+        index === 0 || point.x !== route[index - 1]!.x || point.y !== route[index - 1]!.y,
+    )
+    .map(({ x, y }) => [x - start.x, y - start.y] as const);
 }
 
 function connectElements(
@@ -1757,20 +1807,13 @@ function applyPreparedOperations(
   });
   if (zoomIds) {
     const ids = new Set(zoomIds);
-    api.scrollToContent(
-      elements.filter((element) => ids.has(element.id) || isGeneratedLabelFor(element, ids)),
-      { animate: false, fitToViewport: true, viewportZoomFactor: 0.85 },
+    fitElements(
+      api,
+      elements.filter(
+        (element) =>
+          !element.isDeleted && (ids.has(element.id) || isGeneratedLabelFor(element, ids)),
+      ),
     );
-  } else if (highlightActive && selectedElementIds) {
-    const activeIds = Object.keys(selectedElementIds);
-    const visibleIds = new Set(idsForScope(api, elements, "viewport"));
-    if (activeIds.some((id) => !visibleIds.has(id))) {
-      const ids = new Set(activeIds);
-      api.scrollToContent(
-        elements.filter((element) => ids.has(element.id)),
-        { animate: true, fitToContent: false },
-      );
-    }
   }
   return compactReceipt(receipt);
 }
@@ -2467,12 +2510,7 @@ async function insertMermaid(
         : element;
     });
   }
-  const appState = api.getAppState();
-  const viewportStart = viewportCoordsToSceneCoords({ clientX: 0, clientY: 0 }, appState);
-  const viewportEnd = viewportCoordsToSceneCoords(
-    { clientX: appState.width, clientY: appState.height },
-    appState,
-  );
+  const viewport = viewportBounds(api.getAppState());
   const replacementCenter =
     existingRegion.length > 0
       ? (() => {
@@ -2484,8 +2522,8 @@ async function insertMermaid(
     created,
     existing,
     replacementCenter ?? {
-      x: (viewportStart.x + viewportEnd.x) / 2,
-      y: (viewportStart.y + viewportEnd.y) / 2,
+      x: viewport.x + viewport.width / 2,
+      y: viewport.y + viewport.height / 2,
     },
   );
   const positioned = created.map((element) =>
@@ -2506,7 +2544,8 @@ async function insertMermaid(
     appState: { selectedElementIds },
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
   });
-  api.scrollToContent(
+  fitElements(
+    api,
     ordered.filter(
       (element) =>
         selectedElementIds[element.id] ||
@@ -2514,7 +2553,6 @@ async function insertMermaid(
           !!element.containerId &&
           selectedElementIds[element.containerId]),
     ),
-    { animate: false, fitToViewport: true, viewportZoomFactor: 0.85 },
   );
   return {
     diagramId: options.id,
@@ -2565,20 +2603,9 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
         summaryTextTruncated ||= result.textTruncated;
         return [result.summary];
       });
-      const appState = api.getAppState();
-      const start = viewportCoordsToSceneCoords({ clientX: 0, clientY: 0 }, appState);
-      const end = viewportCoordsToSceneCoords(
-        { clientX: appState.width, clientY: appState.height },
-        appState,
-      );
       return {
         pageId: "page:default",
-        viewportBounds: {
-          x: Math.min(start.x, end.x),
-          y: Math.min(start.y, end.y),
-          width: Math.abs(end.x - start.x),
-          height: Math.abs(end.y - start.y),
-        },
+        viewportBounds: viewportBounds(api.getAppState()),
         selectedShapeIds: selectedShapeIds.slice(0, MAX_READ_SHAPES),
         shapes,
         truncated:
@@ -2593,16 +2620,28 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
       const elements = allElements.filter(
         (element) => ids.has(element.id) || isGeneratedLabelFor(element, ids),
       );
-      if (elements.length === 0) throw new Error("There are no shapes to render");
+      if (elements.length === 0 && scope !== "viewport")
+        throw new Error("There are no shapes to render");
       if (!Number.isFinite(scale) || scale <= 0 || scale > MAX_RENDER_SCALE)
         throw new Error(`scale must be between 0 and ${MAX_RENDER_SCALE}`);
-      const [minX, minY, maxX, maxY] = getCommonBounds(elements);
-      const sourceWidth = maxX - minX + 20;
-      const sourceHeight = maxY - minY + 20;
+      const camera = api.getAppState();
+      const viewport = scope === "viewport" ? viewportBounds(camera) : undefined;
+      // An export-only frame clips to the exact visible scene rectangle, including blank
+      // space. It is never inserted into the board or included in saved history.
+      const frame = viewport
+        ? convertToExcalidrawElements([{ type: "frame", ...viewport, children: [] }])[0]
+        : undefined;
+      const exportingFrame = frame?.type === "frame" ? frame : null;
+      const [minX, minY, maxX, maxY] = viewport
+        ? [viewport.x, viewport.y, viewport.x + viewport.width, viewport.y + viewport.height]
+        : getCommonBounds(elements);
+      const exportPadding = viewport ? 0 : 10;
+      const sourceWidth = maxX - minX + exportPadding * 2;
+      const sourceHeight = maxY - minY + exportPadding * 2;
       const maximumWidth = Math.min(MAX_RENDER_DIMENSION, maxSize?.width ?? MAX_RENDER_DIMENSION);
       const maximumHeight = Math.min(MAX_RENDER_DIMENSION, maxSize?.height ?? MAX_RENDER_DIMENSION);
       const effectiveScale = Math.min(
-        scale,
+        scale * (viewport ? camera.zoom.value : 1),
         maximumWidth / sourceWidth,
         maximumHeight / sourceHeight,
       );
@@ -2610,16 +2649,16 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
       const height = Math.max(1, Math.ceil(sourceHeight * effectiveScale));
       const appState = {
         exportBackground: background,
-        exportWithDarkMode: false,
-        viewBackgroundColor: background ? api.getAppState().viewBackgroundColor : "transparent",
+        exportWithDarkMode: scope === "viewport" && camera.theme === "dark",
+        viewBackgroundColor: background ? camera.viewBackgroundColor : "transparent",
       };
       if (format === "svg") {
         const svg = await exportToSvg({
           elements,
           appState,
           files: api.getFiles(),
-          exportPadding: 10,
-          exportingFrame: null,
+          exportPadding,
+          exportingFrame,
         });
         svg.setAttribute("width", String(width));
         svg.setAttribute("height", String(height));
@@ -2633,10 +2672,11 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
         appState,
         files: api.getFiles(),
         mimeType: "image/png",
-        exportPadding: 10,
-        getDimensions: (sourceWidth: number, sourceHeight: number) => ({
-          width: sourceWidth * effectiveScale,
-          height: sourceHeight * effectiveScale,
+        exportPadding,
+        exportingFrame,
+        getDimensions: () => ({
+          width,
+          height,
           scale: effectiveScale,
         }),
       });
@@ -2658,7 +2698,18 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
     },
     apply({ operations }) {
       const prepared = prepareOperations(api, operations);
-      return applyPreparedOperations(api, prepared, CaptureUpdateAction.IMMEDIATELY, false);
+      const receipt = applyPreparedOperations(
+        api,
+        prepared,
+        CaptureUpdateAction.IMMEDIATELY,
+        false,
+      );
+      if (
+        !prepared.some((operation) => operation.type === "zoom-to") &&
+        prepared.some(changesLayout)
+      )
+        fitElements(api, compositionElements(api, receipt));
+      return receipt;
     },
     async applyAnimated({ operations }, options: DrawPlaybackOptions = {}) {
       const prepared = prepareOperations(api, operations);
@@ -2673,6 +2724,7 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
         prepared.length <= 1
           ? 0
           : Math.max(0, Math.min(requestedDelay, maxDuration / (prepared.length - 1)));
+      const explicitCamera = prepared.some((operation) => operation.type === "zoom-to");
       for (let index = 0; index < prepared.length; index += 1) {
         const step = applyPreparedOperations(
           api,
@@ -2681,8 +2733,24 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
           true,
         );
         mergeReceipt(receipt, step);
+        if (!explicitCamera && changesLayout(prepared[index]!)) {
+          const composition = compositionElements(api, receipt);
+          if (composition.length > 0) {
+            const [left, top, right, bottom] = getCommonBounds(composition);
+            const viewport = viewportBounds(api.getAppState());
+            if (
+              left < viewport.x ||
+              top < viewport.y ||
+              right > viewport.x + viewport.width ||
+              bottom > viewport.y + viewport.height
+            )
+              fitElements(api, composition);
+          }
+        }
         if (index < prepared.length - 1) await playbackDelay(delay, options.signal);
       }
+      if (!explicitCamera && prepared.some(changesLayout))
+        fitElements(api, compositionElements(api, receipt));
       api.updateScene({
         elements: api.getSceneElementsIncludingDeleted(),
         captureUpdate: CaptureUpdateAction.IMMEDIATELY,

@@ -17,6 +17,9 @@ function host(options: {
   captureError?: RenderedWidgetCaptureError;
 }) {
   const calls: string[] = [];
+  const generationInputs: unknown[] = [];
+  const captureStates: unknown[] = [];
+  const reviewContexts: string[] = [];
   let token = 0;
   const integration = new ProjectSessionIntegrationHost({
     workspacePath: "/workspace",
@@ -31,7 +34,8 @@ function host(options: {
     requireVisionModel: async (model) => {
       calls.push(`vision:${model?.id}`);
     },
-    runWidgetGeneration: async () => {
+    runWidgetGeneration: async (input) => {
+      generationInputs.push(input);
       calls.push("generate");
       return { sessionId: "generation-session", response: options.generation ?? source("Initial") };
     },
@@ -45,7 +49,8 @@ function host(options: {
         document: `<html>${name}</html>`,
       };
     },
-    captureWidget: async (_sessionId, widget) => {
+    captureWidget: async (_sessionId, widget, _signal, pluginState) => {
+      captureStates.push(pluginState);
       calls.push(`capture:${widget.token.slice(-1)}`);
       if (options.captureError) throw options.captureError;
       return { pngBase64: "cG5n", diagnostics: ["widget=560x480"] };
@@ -54,7 +59,8 @@ function host(options: {
       calls.push(`repair:${diagnostic?.split(":")[0]}`);
       return { sessionId: "repair", response: source("Repaired") };
     },
-    runWidgetVisualReview: async ({ signal }) => {
+    runWidgetVisualReview: async ({ signal, context }) => {
+      reviewContexts.push(context);
       calls.push("review");
       return {
         sessionId: "review",
@@ -64,7 +70,7 @@ function host(options: {
       };
     },
   });
-  return { integration, calls };
+  return { integration, calls, generationInputs, captureStates, reviewContexts };
 }
 
 const request = (signal?: AbortSignal): InlineWidgetGenerationRequest => ({
@@ -85,6 +91,14 @@ const generate = (
 };
 
 describe("ProjectSessionIntegrationHost widget rendered review", () => {
+  it("generates, captures and reviews plugins with their actual durable state", async () => {
+    const fixture = host({ reviews: ["ACCEPT_CURRENT"] });
+    const initialState = { topic: "Cake and Pi", step: 1 };
+    await generate(fixture.integration, { ...request(), surface: "session-plugin", initialState });
+    expect(fixture.generationInputs).toEqual([expect.objectContaining({ initialState })]);
+    expect(fixture.captureStates).toEqual([initialState]);
+    expect(JSON.parse(fixture.reviewContexts[0]!)).toMatchObject({ initialState });
+  });
   it("starts a durable revision from the existing source and reviews the replacement", async () => {
     const fixture = host({ reviews: ["ACCEPT_CURRENT"] });
     const revise = fixture.integration.runtimeIntegrations("project-session").reviseInlineWidget;

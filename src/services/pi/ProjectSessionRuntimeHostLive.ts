@@ -213,8 +213,10 @@ export const makeProjectSessionRuntimeHostLive = (
             canMutate: () => true,
           },
           runReviewedWidget: generateReviewedWidget,
-          captureWidget: (targetSessionId, widget, signal) =>
-            runAdapter(widgetCapture.capture(targetSessionId, widget, signal), { signal }),
+          captureWidget: (targetSessionId, widget, signal, pluginState) =>
+            runAdapter(widgetCapture.capture(targetSessionId, widget, signal, pluginState), {
+              signal,
+            }),
           requireVisionModel: async (model) => {
             if (!model)
               throw new Error(

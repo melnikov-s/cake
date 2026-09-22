@@ -134,6 +134,7 @@ describe("DrawEditorAdapter", () => {
       animate: false,
       fitToViewport: true,
       viewportZoomFactor: 0.85,
+      maxZoom: 1,
     });
     const [minX, minY, maxX, maxY] = await import("@excalidraw/excalidraw").then(
       ({ getCommonBounds }) => getCommonBounds(harness.elements()),
@@ -771,6 +772,39 @@ describe("DrawEditorAdapter", () => {
     expect(after.endBinding?.elementId).toBe("shape:right");
   });
 
+  it.each(["below", "right"] as const)(
+    "keeps visible arrowhead directions when connecting aligned ports %s",
+    (side) => {
+      adapter.apply({
+        operations: [
+          {
+            type: "create",
+            shape: { id: "from", type: "geo", x: 0, y: 0, width: 220, height: 100 },
+          },
+          {
+            type: "create-relative",
+            shape: {
+              id: "to",
+              type: "geo",
+              width: 220,
+              height: 100,
+              placement: { relativeTo: "from", side, gap: 100 },
+            },
+          },
+          { type: "connect", id: "link", fromId: "from", toId: "to", routing: "orthogonal" },
+          { type: "style", ids: ["link"], style: { startArrowhead: "arrow" } },
+        ],
+      });
+      const arrow = harness.elements().find((element) => element.type === "arrow")!;
+      if (arrow.type !== "arrow") throw new Error("Expected an arrow");
+      expect(arrow.points[0]).toEqual([0, 0]);
+      expect(arrow.points.at(-1)).toEqual(side === "below" ? [0, 100] : [100, 0]);
+      expect(arrow.points[0]).not.toEqual(arrow.points[1]);
+      expect(arrow.points.at(-1)).not.toEqual(arrow.points.at(-2));
+      expect([arrow.startArrowhead, arrow.endArrowhead]).toEqual(["arrow", "arrow"]);
+    },
+  );
+
   it("plays operations progressively and resolves relative positions", async () => {
     const receipt = await adapter.applyAnimated(
       {
@@ -1160,7 +1194,93 @@ describe("DrawEditorAdapter", () => {
       animate: false,
       fitToViewport: true,
       viewportZoomFactor: 0.85,
+      maxZoom: 1,
     });
+  });
+
+  it("fits the whole animated batch, including labels, rather than the last styled arrow", async () => {
+    await adapter.applyAnimated(
+      {
+        operations: [
+          {
+            type: "create",
+            shape: { id: "left", type: "geo", x: 0, y: 0, width: 240, height: 120, text: "Cake" },
+          },
+          {
+            type: "create-relative",
+            shape: {
+              id: "right",
+              type: "geo",
+              width: 240,
+              height: 120,
+              text: "Pi",
+              placement: { relativeTo: "left", side: "right", gap: 300 },
+            },
+          },
+          { type: "connect", id: "link", fromId: "left", toId: "right", text: "calls" },
+          { type: "style", ids: ["link"], style: { startArrowhead: "arrow" } },
+        ],
+      },
+      { stepDelayMs: 0 },
+    );
+    expect(harness.api.scrollToContent).toHaveBeenLastCalledWith(harness.elements(), {
+      animate: false,
+      fitToViewport: true,
+      viewportZoomFactor: 0.85,
+      maxZoom: 1,
+    });
+  });
+
+  it("includes existing connector endpoints but excludes unrelated artwork from automatic fitting", async () => {
+    adapter.apply({
+      operations: [
+        { type: "create", shape: { id: "left", type: "geo", x: 0, y: 0, width: 120, height: 80 } },
+        {
+          type: "create",
+          shape: { id: "right", type: "geo", x: 800, y: 0, width: 120, height: 80 },
+        },
+        {
+          type: "create",
+          shape: { id: "unrelated", type: "geo", x: 10000, y: 0, width: 120, height: 80 },
+        },
+      ],
+    });
+    await adapter.applyAnimated({
+      operations: [{ type: "connect", id: "link", fromId: "left", toId: "right" }],
+    });
+    const fitted = vi.mocked(harness.api.scrollToContent).mock.lastCall![0] as ExcalidrawElement[];
+    expect(fitted.map(({ id }) => id)).toEqual(["shape:link", "shape:left", "shape:right"]);
+  });
+
+  it("does not reframe a style-only batch or override explicit zoom with later styling", async () => {
+    adapter.apply({
+      operations: [
+        { type: "create", shape: { id: "left", type: "geo", x: 0, y: 0, width: 120, height: 80 } },
+      ],
+    });
+    vi.mocked(harness.api.scrollToContent).mockClear();
+    await adapter.applyAnimated({
+      operations: [{ type: "style", ids: ["left"], style: { strokeColor: "red" } }],
+    });
+    expect(harness.api.scrollToContent).not.toHaveBeenCalled();
+    await adapter.applyAnimated(
+      {
+        operations: [
+          {
+            type: "create",
+            shape: { id: "right", type: "geo", x: 800, y: 0, width: 120, height: 80 },
+          },
+          { type: "zoom-to", ids: ["left"] },
+          { type: "style", ids: ["right"], style: { strokeColor: "blue" } },
+        ],
+      },
+      { stepDelayMs: 0 },
+    );
+    expect(harness.api.scrollToContent).toHaveBeenCalledTimes(1);
+    expect(harness.api.scrollToContent).toHaveBeenCalledWith(
+      [expect.objectContaining({ id: "shape:left" })],
+      expect.any(Object),
+    );
   });
 
   it("allows explicit layer operations to override the creation default", () => {
@@ -1359,6 +1479,88 @@ describe("DrawEditorAdapter", () => {
     expect(render.height).toBeLessThanOrEqual(600);
     expect(render.data).toContain(`width="${render.width}"`);
     expect(render.data).toContain(`height="${render.height}"`);
+  });
+
+  it("uses pane-local bounds for an offset, scrolled, zoomed viewport", async () => {
+    harness.setAppState({
+      offsetLeft: 300,
+      offsetTop: 100,
+      scrollX: -100,
+      scrollY: -50,
+      zoom: { value: 0.5 } as AppState["zoom"],
+    });
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: { id: "visible", type: "geo", x: 1600, y: 1100, width: 50, height: 50 },
+        },
+        {
+          type: "create",
+          shape: { id: "outside", type: "geo", x: -300, y: -100, width: 50, height: 50 },
+        },
+      ],
+    });
+    const scene = adapter.read({ scope: "viewport" });
+    expect(scene.viewportBounds).toEqual({ x: 100, y: 50, width: 1600, height: 1200 });
+    expect(scene.shapes.map(({ id }) => id)).toEqual(["shape:visible"]);
+    await adapter.clear();
+    await adapter.insertMermaid("flowchart LR\n  A --> B");
+    const { getCommonBounds } = await import("@excalidraw/excalidraw");
+    const [left, top, right, bottom] = getCommonBounds(
+      harness.elements().filter((element) => !element.isDeleted),
+    );
+    expect((left + right) / 2).toBe(900);
+    expect((top + bottom) / 2).toBe(650);
+  });
+
+  it("renders a clipped viewport at screen scale instead of fitting intersecting shapes", async () => {
+    harness.setAppState({
+      offsetLeft: 300,
+      offsetTop: 100,
+      scrollX: -100,
+      zoom: { value: 0.5 } as AppState["zoom"],
+    });
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: { id: "wide", type: "geo", x: -500, y: 0, width: 3000, height: 400 },
+        },
+      ],
+    });
+    const before = adapter.snapshotDocument();
+    const render = await adapter.render({ scope: "viewport", format: "svg" });
+    expect(render.width).toBe(800);
+    expect(render.height).toBe(600);
+    expect(render.data).toContain('viewBox="0 0 1600 1200"');
+    expect(adapter.snapshotDocument()).toEqual(before);
+    const small = await adapter.render({
+      scope: "viewport",
+      format: "svg",
+      scale: 2,
+      maxSize: { width: 400, height: 400 },
+    });
+    expect([small.width, small.height]).toEqual([400, 300]);
+  });
+
+  it("renders an empty viewport without substituting page content", async () => {
+    const empty = await adapter.render({ scope: "viewport", format: "svg" });
+    expect([empty.width, empty.height]).toEqual([800, 600]);
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: { id: "offscreen", type: "geo", x: 10000, y: 10000, width: 80, height: 80 },
+        },
+      ],
+    });
+    const offscreen = await adapter.render({ scope: "viewport", format: "svg" });
+    expect([offscreen.width, offscreen.height]).toEqual([800, 600]);
+    expect(offscreen.data).not.toContain("translate(10000");
+    await expect(adapter.render({ scope: "selection", format: "svg" })).rejects.toThrow(
+      "There are no shapes",
+    );
   });
 
   it("reads selection and viewport scopes and marks truncated text", () => {

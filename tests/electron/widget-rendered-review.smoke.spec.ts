@@ -69,6 +69,7 @@ test("production widget review captures settled sandbox pixels before persistenc
       workingDirectory: string;
       artifactId: string;
       source: string;
+      pluginState?: { topic: string };
       cancelAfterMs?: number;
     }) =>
       application.evaluate((_electron, value) => {
@@ -160,6 +161,27 @@ export default function DelayedReviewFixture() {
     expect(result.diagnostics).toContain("host=hidden-offscreen");
     expect(colors.size.width).toBeGreaterThan(800);
     expect(colors.size.width).toBeLessThan(1_200);
+
+    // A generated plugin must be reviewed with host state, not just its hook default.
+    const plugin = await capture({
+      sessionId: "widget-review-session",
+      workingDirectory: project,
+      artifactId: "plugin-state-review",
+      pluginState: { topic: "Authority" },
+      source: `import { usePluginState } from "@cake/plugin-sdk";
+export default function StateReviewFixture() {
+  const [state] = usePluginState({ topic: "Default" });
+  return <main style={{ height: 430, background: state.topic === "Authority" ? "rgb(0, 220, 220)" : "rgb(255, 0, 255)" }}>{state.topic}</main>;
+}`,
+    });
+    const pluginPixel = await application.evaluate(({ nativeImage }, base64) => {
+      const image = nativeImage.createFromBuffer(Buffer.from(base64, "base64"));
+      const { width, height } = image.getSize();
+      const bitmap = image.toBitmap();
+      const center = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4;
+      return [...bitmap.subarray(center, center + 3)];
+    }, plugin.pngBase64);
+    expect(pluginPixel).toEqual([220, 220, 0]);
 
     await expect(
       capture({

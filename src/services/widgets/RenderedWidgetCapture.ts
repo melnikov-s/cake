@@ -1,6 +1,7 @@
 import { BrowserWindow } from "electron";
 import { Context, Effect, Layer, Schema, Semaphore } from "effect";
 import type { CompiledInlineWidget } from "../../ipc/inline-widget-contract";
+import type { JsonValue } from "../../ipc/json-contract";
 
 const CAPTURE_WIDTH = 560;
 const CAPTURE_HEIGHT = 480;
@@ -24,6 +25,7 @@ export class RenderedWidgetCapture extends Context.Service<
       sessionId: string,
       widget: CompiledInlineWidget,
       signal: AbortSignal,
+      pluginState?: JsonValue,
     ) => Effect.Effect<RenderedWidgetCaptureResult, RenderedWidgetCaptureError>;
   }
 >()("cake/services/widgets/RenderedWidgetCapture") {}
@@ -37,7 +39,10 @@ const failure = (kind: RenderedWidgetCaptureError["kind"], cause: unknown) =>
 const hostDocument = () =>
   `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src cake-widget:; style-src 'unsafe-inline'"><style>html,body{width:100%;height:100%;margin:0;overflow:hidden;background:transparent}iframe{display:block;width:100%;height:100%;border:0}</style></head><body></body></html>`;
 
-const prepareScript = (widget: CompiledInlineWidget) => `(() => new Promise((resolve) => {
+const prepareScript = (
+  widget: CompiledInlineWidget,
+  pluginState?: JsonValue,
+) => `(() => new Promise((resolve) => {
   const token = ${JSON.stringify(widget.token)};
   const diagnostics = [];
   let contentHeight;
@@ -64,6 +69,7 @@ const prepareScript = (widget: CompiledInlineWidget) => `(() => new Promise((res
       return;
     }
     if (value.type !== "ready") return;
+    ${pluginState === undefined ? "" : `frame.contentWindow.postMessage({ source: "cake-session-plugin-host", token, type: "context", value: { pluginState: ${JSON.stringify(pluginState)}, sharedState: {} } }, "*");`}
     requestAnimationFrame(() => requestAnimationFrame(() => finish({
       rect: { x: 0, y: 0, width: innerWidth, height: innerHeight },
       diagnostics: [
@@ -131,6 +137,7 @@ export const RenderedWidgetCaptureLive = Layer.effect(
       _sessionId: string,
       widget: CompiledInlineWidget,
       signal: AbortSignal,
+      pluginState?: JsonValue,
     ) {
       if (signal.aborted) return yield* failure("cancelled", "Widget review was cancelled");
       const work = lock.withPermits(1)(
@@ -146,7 +153,8 @@ export const RenderedWidgetCaptureLive = Layer.effect(
               catch: (cause) => failure("infrastructure", cause),
             });
             const prepared = yield* Effect.tryPromise({
-              try: () => window.webContents.executeJavaScript(prepareScript(widget), true),
+              try: () =>
+                window.webContents.executeJavaScript(prepareScript(widget, pluginState), true),
               catch: (cause) => failure("infrastructure", cause),
             }).pipe(
               Effect.flatMap((value) =>

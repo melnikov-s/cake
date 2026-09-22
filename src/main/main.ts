@@ -1,7 +1,10 @@
 import { Cause, Effect, Exit, ManagedRuntime, Schema } from "effect";
 import { app, nativeTheme } from "electron";
 import { cakeEventSchema, type CakeEvent } from "../ipc/cake-rpc-contract";
+import type { JsonValue } from "../ipc/json-contract";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
+import { DrawControlInvocation } from "../domain/draw/draw-control";
+import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import { Electron } from "../services/electron/Electron";
 import {
   registerInlineWidgetScheme,
@@ -92,6 +95,19 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1") {
     console.error(`[cake.smoke] ${operation} failed`, defect);
   };
   Object.assign(globalThis, {
+    cakeSmokeDrawControl(sessionId: string, invocation: DrawControlInvocation) {
+      return mainRuntime.runPromise(
+        Effect.gen(function* () {
+          const request = yield* Schema.decodeUnknownEffect(DrawControlInvocation)(invocation);
+          const coordinator = yield* RendererRequestCoordinator;
+          return yield* coordinator.requestDrawControl(
+            sessionId,
+            request,
+            new AbortController().signal,
+          );
+        }),
+      );
+    },
     cakeSmokeEmitRendererEvent(input: CakeEvent) {
       void mainRuntime
         .runPromise(
@@ -106,6 +122,7 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1") {
       workingDirectory: string;
       artifactId: string;
       source: string;
+      pluginState?: JsonValue;
       cancelAfterMs?: number;
     }) {
       return mainRuntime.runPromise(
@@ -117,7 +134,7 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1") {
           const before = yield* artifacts.read(lineageId);
           const compiled = yield* widgets.compile({
             language: "react",
-            capability: "display",
+            capability: input.pluginState === undefined ? "display" : "session-plugin",
             source: input.source,
           });
           const controller = new AbortController();
@@ -126,7 +143,7 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1") {
               ? undefined
               : setTimeout(() => controller.abort(), input.cancelAfterMs);
           const capture = yield* captures
-            .capture(input.sessionId, compiled.widget, controller.signal)
+            .capture(input.sessionId, compiled.widget, controller.signal, input.pluginState)
             .pipe(
               Effect.ensuring(
                 Effect.sync(() => {

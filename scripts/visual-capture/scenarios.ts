@@ -479,6 +479,70 @@ const drawMermaidArchitectureScenario: VisualCaptureScenario = {
   },
 };
 
+const drawCompositionScenario: VisualCaptureScenario = {
+  name: "draw-composition",
+  description: "Compact two-node Draw composition with automatic batch framing",
+  states: ["default"],
+  seed: drawMermaidArchitectureScenario.seed,
+  async prepare(page, _state, application) {
+    if (!application) throw new Error("The Draw scenario requires Electron");
+    await page.getByRole("combobox", { name: "Message", exact: true }).waitFor({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Open Cake Draw" }).click();
+    await page.locator(".excalidraw__canvas.interactive").waitFor({ timeout: 20_000 });
+    const response = await application.evaluate(async () => {
+      const control = Reflect.get(globalThis, "cakeSmokeDrawControl") as (
+        sessionId: string,
+        invocation: unknown,
+      ) => Promise<{ ok: boolean; message?: string }>;
+      return control("visual-draw-mermaid-architecture", {
+        _tag: "Apply",
+        operations: [
+          {
+            type: "create",
+            shape: {
+              id: "shape:cake",
+              type: "geo",
+              x: 80,
+              y: 80,
+              width: 220,
+              height: 100,
+              text: "Cake\nDesktop + UI",
+            },
+          },
+          {
+            type: "create-relative",
+            shape: {
+              id: "shape:pi",
+              type: "geo",
+              width: 220,
+              height: 100,
+              text: "Pi\nAgent + history",
+              placement: { relativeTo: "shape:cake", side: "below", gap: 100 },
+            },
+          },
+          {
+            type: "connect",
+            id: "shape:link",
+            fromId: "shape:cake",
+            toId: "shape:pi",
+            text: "intents / events",
+          },
+          {
+            type: "style",
+            ids: ["shape:cake", "shape:pi", "shape:link"],
+            style: { fontFamily: "sans-serif", roughness: 0 },
+          },
+          { type: "style", ids: ["shape:link"], style: { startArrowhead: "arrow" } },
+        ],
+      });
+    });
+    if (!response.ok) throw new Error(response.message);
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: drawMermaidArchitectureScenario.region,
+};
+
 const cakePromptsSettingsScenario: VisualCaptureScenario = {
   name: "cake-prompts-settings",
   description: "Editable Cake workflow prompts in Settings",
@@ -544,6 +608,7 @@ export const visualCaptureScenarios = [
   assistantMarkdownCode,
   requestExplanationScenario,
   drawMermaidArchitectureScenario,
+  drawCompositionScenario,
   cakePromptsSettingsScenario,
 ] as const;
 

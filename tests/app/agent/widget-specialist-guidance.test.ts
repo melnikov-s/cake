@@ -53,6 +53,25 @@ describe("widget specialist guidance", () => {
     expect(result.sessionId).toBe("private-widget-session");
   });
 
+  it.each([{ topic: "Authority", step: 1 }, "Authority", null, false])(
+    "passes the exact durable state to the plugin builder: %j",
+    async (initialState) => {
+      await runInlineWidgetGeneration({
+        ...context,
+        surface: "session-plugin",
+        brief: "Show the current topic.",
+        data: { notes: "Separate reference data" },
+        initialState,
+        fallback: "Topic",
+      });
+      const options = run.mock.calls[0]![0];
+      const payload = JSON.parse(options.prompt!.slice(options.prompt!.indexOf("\n") + 1));
+      expect(payload.initialState).toEqual(initialState);
+      expect(payload.data).toEqual({ notes: "Separate reference data" });
+      expect(options.systemPrompt).toContain("Render named scalar fields");
+    },
+  );
+
   it.each(["display", "request"] as const)(
     "keeps the same diagram capabilities during %s widget repair",
     async (capability) => {

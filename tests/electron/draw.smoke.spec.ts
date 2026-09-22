@@ -3,6 +3,38 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import type {
+  DrawControlInvocation,
+  DrawControlResponse,
+} from "../../src/domain/draw/draw-control";
+import type { DrawScene } from "../../src/domain/draw/draw-editor";
+
+async function drawControl(application: ElectronApplication, invocation: DrawControlInvocation) {
+  const response = await application.evaluate(
+    async (_electron, input) => {
+      const control = Reflect.get(globalThis, "cakeSmokeDrawControl") as (
+        sessionId: string,
+        invocation: DrawControlInvocation,
+      ) => Promise<DrawControlResponse>;
+      return control(input.sessionId, input.invocation);
+    },
+    { sessionId, invocation },
+  );
+  if (!response.ok) throw new Error(`${response.code}: ${response.message}`);
+  return response;
+}
+
+function expectContained(scene: DrawScene) {
+  expect(scene.shapes.length).toBeGreaterThan(0);
+  const viewport = scene.viewportBounds;
+  for (const shape of scene.shapes) {
+    const bounds = shape.bounds!;
+    expect(bounds.x, shape.id).toBeGreaterThan(viewport.x);
+    expect(bounds.y, shape.id).toBeGreaterThan(viewport.y);
+    expect(bounds.x + bounds.width, shape.id).toBeLessThan(viewport.x + viewport.width);
+    expect(bounds.y + bounds.height, shape.id).toBeLessThan(viewport.y + viewport.height);
+  }
+}
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const sessionId = "draw-smoke-session";
@@ -16,7 +48,12 @@ async function mockNextSave(application: ElectronApplication, filePath: string) 
   }, filePath);
 }
 
-async function launchFixture(root: string, initialize = true, seedLayeringBoard = false) {
+async function launchFixture(
+  root: string,
+  initialize = true,
+  seedLayeringBoard = false,
+  theme = seedLayeringBoard ? "light" : "dark",
+) {
   const userData = join(root, "user-data");
   const project = join(root, "project");
   const cakeHome = join(root, "cake-home");
@@ -37,7 +74,7 @@ async function launchFixture(root: string, initialize = true, seedLayeringBoard 
         activeConversation: { kind: "project-session", workspacePath: project, sessionId },
         recentProjectPaths: [project],
         draft: "",
-        theme: seedLayeringBoard ? "light" : "dark",
+        theme,
         draftsBySession: {},
       }),
     );
@@ -109,6 +146,130 @@ async function launchFixture(root: string, initialize = true, seedLayeringBoard 
     },
   });
   return { application };
+}
+
+for (const windowWidth of [1024, 1440]) {
+  test(`Cake Draw fits and renders the actual viewport at window width ${windowWidth}`, async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-draw-framing-"));
+    const { application } = await launchFixture(root, true, false, "light");
+    try {
+      const page = await application.firstWindow();
+      await application.evaluate(({ BrowserWindow }, width) => {
+        BrowserWindow.getAllWindows()[0]!.setContentSize(width, 900);
+      }, windowWidth);
+      await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+        timeout: 20_000,
+      });
+      await page.getByRole("button", { name: "Open Cake Draw" }).click();
+      const canvas = page.locator(".excalidraw__canvas.interactive");
+      await expect(canvas).toBeVisible({ timeout: 20_000 });
+      const applied = await drawControl(application, {
+        _tag: "Apply",
+        operations: [
+          {
+            type: "create",
+            shape: {
+              id: "shape:cake",
+              type: "geo",
+              x: 80,
+              y: 80,
+              width: 240,
+              height: 120,
+              text: "Cake",
+              color: "light-blue",
+              fill: "solid",
+            },
+          },
+          {
+            type: "create-relative",
+            shape: {
+              id: "shape:pi",
+              type: "geo",
+              width: 240,
+              height: 120,
+              text: "Pi",
+              color: "light-green",
+              fill: "solid",
+              placement: { relativeTo: "shape:cake", side: "right", gap: 280 },
+            },
+          },
+          { type: "connect", id: "shape:link", fromId: "shape:cake", toId: "shape:pi" },
+          { type: "style", ids: ["shape:link"], style: { startArrowhead: "arrow" } },
+        ],
+      });
+      if (!("scene" in applied)) throw new Error("Expected completed scene");
+      expect(applied.scene.shapes).toHaveLength(3);
+      expectContained(applied.scene);
+      const boardDirectory = join(root, "cake-home", "state", "draw-boards", "boards");
+      const boardFile = (await readdir(boardDirectory))[0]!;
+      const saved = JSON.parse(await readFile(join(boardDirectory, boardFile), "utf8")).data
+        .snapshot;
+      expect(saved.appState.scrollX).toBeCloseTo(-applied.scene.viewportBounds.x);
+      expect(saved.appState.scrollY).toBeCloseTo(-applied.scene.viewportBounds.y);
+      const read = await drawControl(application, { _tag: "Read", scope: "page" });
+      if (!("scene" in read)) throw new Error("Expected scene");
+      expectContained(read.scene);
+
+      const viewport = await drawControl(application, {
+        _tag: "Render",
+        scope: "viewport",
+        format: "png",
+      });
+      if (!("render" in viewport)) throw new Error("Expected render");
+      const box = (await canvas.boundingBox())!;
+      expect(Math.abs(viewport.render.width - box.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(viewport.render.height - box.height)).toBeLessThanOrEqual(1);
+      // Compare the tool's raster with the real canvas, not another fitted export.
+      const pixels = await page
+        .locator(".excalidraw__canvas.static")
+        .evaluate(async (element: HTMLCanvasElement, data) => {
+          const image = new Image();
+          image.src = data;
+          await image.decode();
+          const actual = document.createElement("canvas");
+          actual.width = image.width;
+          actual.height = image.height;
+          const context = actual.getContext("2d")!;
+          context.drawImage(element, 0, 0, actual.width, actual.height);
+          const screen = context.getImageData(0, 0, actual.width, actual.height).data;
+          context.clearRect(0, 0, actual.width, actual.height);
+          context.drawImage(image, 0, 0);
+          const rendered = context.getImageData(0, 0, actual.width, actual.height).data;
+          let mismatches = 0;
+          for (let i = 0; i < screen.length; i += 4) {
+            if (
+              Math.abs(screen[i]! - rendered[i]!) +
+                Math.abs(screen[i + 1]! - rendered[i + 1]!) +
+                Math.abs(screen[i + 2]! - rendered[i + 2]!) >
+              90
+            )
+              mismatches++;
+          }
+          return mismatches / (actual.width * actual.height);
+        }, viewport.render.data);
+      expect(pixels).toBeLessThan(0.025);
+
+      // Explicit focus wins, and viewport renders retain the crop instead of refitting the other node.
+      await drawControl(application, {
+        _tag: "Apply",
+        operations: [{ type: "zoom-to", ids: ["shape:cake"] }],
+      });
+      const focused = await drawControl(application, { _tag: "Read", scope: "viewport" });
+      if (!("scene" in focused)) throw new Error("Expected scene");
+      expect(focused.scene.shapes.some(({ id }) => id === "shape:cake")).toBe(true);
+      const cropped = await drawControl(application, {
+        _tag: "Render",
+        scope: "viewport",
+        format: "svg",
+      });
+      if (!("render" in cropped)) throw new Error("Expected render");
+      expect(cropped.render.width).toBe(viewport.render.width);
+      expect(cropped.render.height).toBe(viewport.render.height);
+    } finally {
+      await application.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 }
 
 test("Cake Draw preserves chat and its session board through Electron", async () => {

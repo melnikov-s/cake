@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import type { JsonValue } from "../../ipc/json-contract";
 import { extractRepairedWidget } from "../../services/widgets/inline-widget-service";
 import { RenderedWidgetCaptureError } from "../../services/widgets/RenderedWidgetCapture";
 
@@ -6,6 +7,7 @@ export interface InlineWidgetGenerationRequest {
   readonly sessionId: string;
   readonly brief: string;
   readonly data?: unknown;
+  readonly initialState?: JsonValue;
   readonly fallback: string;
   readonly surface?: "widget" | "session-plugin";
   readonly model?: { readonly provider: string; readonly id: string };
