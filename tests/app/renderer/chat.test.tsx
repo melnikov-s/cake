@@ -304,7 +304,8 @@ describe("Chat", () => {
     );
     expect(stopAndSendButton).not.toBeNull();
     expect(stopAndSendButton?.className).toContain("mr-[30px]");
-    expect(stopAndSendButton?.className).toContain("bg-destructive/10");
+    expect(stopAndSendButton?.className).toContain("bg-success/10");
+    expect(stopAndSendButton?.className).not.toContain("bg-destructive/10");
     expect(
       container.querySelector('[aria-label="Message from Storage implementation"]'),
     ).not.toBeNull();

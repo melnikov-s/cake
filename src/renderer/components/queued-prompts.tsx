@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/icons";
 import { IconButton } from "@/components/ui/icon-button";
 import { LoadingSpinner } from "@/components/ui/loading-state";
+import { cn } from "@/lib/utils";
 import type { ChatStore } from "../stores/ChatStore";
 import { describeScheduledOrigin } from "../../utils/scheduled-message-time";
 
@@ -71,7 +72,12 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                   <>
                     {store.canStopAndSendQueuedPrompt && (
                       <IconButton
-                        className="mr-[30px] bg-destructive/10 text-destructive/80 hover:bg-destructive/15 hover:text-destructive"
+                        className={cn(
+                          "mr-[30px]",
+                          store.canStop
+                            ? "bg-destructive/10 text-destructive/80 hover:bg-destructive/15 hover:text-destructive"
+                            : "bg-success/10 text-success/80 hover:bg-success/15 hover:text-success",
+                        )}
                         tooltip="Stop current response and send now"
                         ariaLabel={`Stop and send now: ${label}`}
                         onClick={() => void store.stopAndSendQueuedPrompt(entry.id)}
