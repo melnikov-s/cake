@@ -33,8 +33,9 @@ Cake should recognize and open common references such as:
 - `src/main.ts#L880-L892`
 - `src/main.ts?view=changes#L880-L892` for the changed (after) side of VS Code's native diff
 - `src/main.ts?view=changes&side=before#L880-L892` for the previous (before) side
+- `src/main.ts?view=changes&base=main#L880-L892` to compare the working tree with another revision, so committed branch work appears in the diff
 
-Selecting a source reference anywhere in Cake should enter IDE mode if necessary, open the file in VS Code, center the relevant code, select the exact range, and briefly highlight it. Diff references should retain that behavior on their requested before or after side. References from assistant messages, tool activity, work logs, changes, review threads, and artifacts should behave consistently.
+Selecting a source reference anywhere in Cake should enter IDE mode if necessary, open the file in VS Code, center the relevant code, select the exact range, and briefly highlight it. Diff references should retain that behavior on their requested before or after side; they compare the working tree with `base` (HEAD unless given), and when the file does not differ from it, the revision cannot be resolved, or the Git extension cannot answer promptly they open the plain file and report that fallback rather than failing. References from assistant messages, tool activity, work logs, changes, review threads, and artifacts should behave consistently.
 
 The experience should make “show me where that is” a dependable application-wide capability.
 

@@ -1,8 +1,37 @@
-import type { SourceLocation, SourceRange } from "../ipc/source-location";
+import { Schema } from "effect";
+import { gitRevisionSchema, type SourceLocation, type SourceRange } from "../ipc/source-location";
 
 const webReference = /^(?:(?:https?|mailto|file|data|javascript|vscode):|\/\/|#)/i;
 const sourcePath = /^(?!\.\.?$)(?:[^\s/:#]+\/)*[^\s/:#]+\.[a-z][a-z0-9._+-]*$/i;
 const lineRangeReference = /^L(\d+)(?:-L?(\d+))?$/;
+const isGitRevision = Schema.is(gitRevisionSchema);
+
+type ChangesQuery = Pick<SourceLocation, "side" | "base">;
+
+/** Reads `side` and `base` from a `?view=changes&…` query; undefined when any parameter is invalid. */
+function parseChangesQuery(query: string): ChangesQuery | undefined {
+  let result: ChangesQuery = {};
+  if (!query) return result;
+  for (const parameter of query.split("&")) {
+    const [key, value = ""] = parameter.split("=", 2);
+    if (key === "side" && (value === "before" || value === "after") && !result.side)
+      result = { ...result, side: value };
+    else if (key === "base" && !result.base) {
+      const base = safeDecode(value);
+      if (base === undefined || !isGitRevision(base)) return undefined;
+      result = { ...result, base };
+    } else return undefined;
+  }
+  return result;
+}
+
+function safeDecode(value: string): string | undefined {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return undefined;
+  }
+}
 
 function parseLineRanges(reference: string): SourceRange[] | undefined {
   const parts = reference.split(",");
@@ -24,23 +53,19 @@ export function parseSourceLocation(reference: string): SourceLocation | undefin
   const candidate = reference.trim().replace(/^`|`$/g, "");
   if (!candidate || webReference.test(candidate)) return undefined;
 
-  const qualified =
-    /^(.*?)(?:\?view=changes(?:&side=(before|after))?)?(#L\d+(?:-L?\d+)?(?:,L\d+(?:-L?\d+)?)*)?$/.exec(
-      candidate,
-    );
-  const diffView = candidate.includes("?view=changes");
-  if (diffView) {
+  if (candidate.includes("?view=changes")) {
+    const qualified =
+      /^(.*?)\?view=changes((?:&[^&#=]+=[^&#]*)*)(#L\d+(?:-L?\d+)?(?:,L\d+(?:-L?\d+)?)*)?$/.exec(
+        candidate,
+      );
     if (!qualified) return undefined;
     const path = qualified[1] ?? "";
+    const query = parseChangesQuery((qualified[2] ?? "").replace(/^&/, ""));
     const rangeReference = qualified[3] ?? "";
-    if (!sourcePath.test(path)) return undefined;
+    if (!sourcePath.test(path) || !query) return undefined;
     const parsed = rangeReference ? parseSourceLocation(`${path}${rangeReference}`) : { path };
     if (!parsed) return undefined;
-    return {
-      ...parsed,
-      view: "changes",
-      ...(qualified[2] === "before" || qualified[2] === "after" ? { side: qualified[2] } : null),
-    };
+    return { ...parsed, view: "changes", ...query };
   }
 
   const hashRanges = /^(.*?)#(.+)$/.exec(candidate);
@@ -80,7 +105,8 @@ export function formatSourceLocation(location: SourceLocation): string {
   const lineRanges = ranges.length > 0 ? `#${ranges.map(formatLineRange).join(",")}` : "";
   if (location.view === "changes") {
     const side = location.side ? `&side=${location.side}` : "";
-    return `${location.path}?view=changes${side}${lineRanges}`;
+    const base = location.base ? `&base=${encodeURIComponent(location.base)}` : "";
+    return `${location.path}?view=changes${side}${base}${lineRanges}`;
   }
   if (location.ranges) return `${location.path}${lineRanges}`;
   const range = location.range;

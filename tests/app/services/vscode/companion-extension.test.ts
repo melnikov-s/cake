@@ -99,7 +99,34 @@ const openTextDocument = vi.fn(async (uri: FakeUri) => ({
 }));
 const showTextDocument = vi.fn(async () => ({}));
 const revealDecorations: Array<{ dispose: ReturnType<typeof vi.fn> }> = [];
-let gitChangedPath: string | undefined;
+
+/**
+ * Stand-in for the built-in Git extension's API for one repository. `status`
+ * is the repository-wide refresh the companion must never trigger, `state` is
+ * the cached Source Control list it must not trust, and `diffWith` is the
+ * single-path probe it relies on instead.
+ */
+interface FakeGitRepository {
+  status: ReturnType<typeof vi.fn>;
+  diffWith: ReturnType<typeof vi.fn>;
+  state: { workingTreeChanges: Array<{ uri: FakeUri }> };
+}
+let gitRepository: FakeGitRepository | undefined;
+function fakeGitRepository(options: {
+  workingTreeChanges?: string[];
+  diff?: string | (() => Promise<string>);
+}): FakeGitRepository {
+  const diff = options.diff ?? "";
+  return {
+    status: vi.fn(async () => undefined),
+    diffWith: vi.fn(typeof diff === "function" ? diff : async () => diff),
+    state: {
+      workingTreeChanges: (options.workingTreeChanges ?? []).map((file) => ({
+        uri: FakeUri.file(file),
+      })),
+    },
+  };
+}
 let visibleTextEditorsListener: (editors: unknown[]) => void = () => {};
 const window = {
   activeTextEditor: undefined as FakeEditor | undefined,
@@ -126,6 +153,7 @@ const fakeVscode = {
   Range: FakeRange,
   Selection: FakeSelection,
   TextEditorRevealType: { InCenter: 0 },
+  ViewColumn: { Active: -1, Beside: -2, One: 1, Two: 2 },
   ThemeColor: class {
     constructor(readonly id: string) {}
   },
@@ -144,17 +172,13 @@ const fakeVscode = {
   },
   extensions: {
     getExtension: () =>
-      gitChangedPath
+      gitRepository
         ? {
             isActive: true,
             exports: {
               getAPI: () => ({
-                repositories: [
-                  {
-                    status: vi.fn(async () => undefined),
-                    state: { workingTreeChanges: [{ uri: FakeUri.file(gitChangedPath!) }] },
-                  },
-                ],
+                getRepository: () => gitRepository,
+                toGitUri: (uri: FakeUri, ref: string) => gitRevisionUri(uri.fsPath, ref),
               }),
             },
           }
@@ -218,7 +242,8 @@ afterEach(() => {
   visibleTextEditorsListener([]);
   posted.length = 0;
   revealDecorations.length = 0;
-  gitChangedPath = undefined;
+  gitRepository = undefined;
+  vi.useRealTimers();
   showInformationMessage.mockClear();
   fakeVscode.commands.executeCommand.mockClear();
   openTextDocument.mockClear();
@@ -236,7 +261,10 @@ describe("companion editor reveals", () => {
     expect(openTextDocument).toHaveBeenCalledWith(
       expect.objectContaining({ scheme: "file", path: "/tmp/cake.log" }),
     );
-    expect(showTextDocument).toHaveBeenCalledWith(expect.any(Object), { preview: false });
+    expect(showTextDocument).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ preview: false }),
+    );
   });
 
   it("continues rejecting Working Directory locations that escape the workspace", async () => {
@@ -294,12 +322,13 @@ describe("companion editor reveals", () => {
   });
 
   it("opens a native diff and marks the requested range without selecting text", async () => {
-    gitChangedPath = `${WORKSPACE}/src/run.ts`;
+    const changedPath = `${WORKSPACE}/src/run.ts`;
+    gitRepository = fakeGitRepository({ diff: "@@ -1 +1 @@\n-old\n+new\n" });
     const before = Object.assign(
-      editorFor(gitRevisionUri(gitChangedPath, "HEAD"), lines, [0, 0], [0, 0]),
+      editorFor(gitRevisionUri(changedPath, "HEAD"), lines, [0, 0], [0, 0]),
       { revealRange: vi.fn(), setDecorations: vi.fn() },
     );
-    const after = Object.assign(editorFor(FakeUri.file(gitChangedPath), lines, [0, 0], [0, 0]), {
+    const after = Object.assign(editorFor(FakeUri.file(changedPath), lines, [0, 0], [0, 0]), {
       revealRange: vi.fn(),
       setDecorations: vi.fn(),
     });
@@ -307,7 +336,7 @@ describe("companion editor reveals", () => {
     const beforeSelection = before.selection;
     const afterSelection = after.selection;
 
-    await commands.get("cake.reveal")!({
+    const outcome = await commands.get("cake.reveal")!({
       kind: "working-directory",
       path: "src/run.ts",
       view: "changes",
@@ -315,13 +344,22 @@ describe("companion editor reveals", () => {
       range: { start: { line: 2 }, end: { line: 3 } },
     });
 
+    expect(outcome).toEqual({ view: "changes" });
+    expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith("workbench.view.scm");
     expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith(
-      "git.openChange",
-      expect.objectContaining({ path: gitChangedPath }),
+      "vscode.diff",
+      expect.objectContaining({ scheme: "git", path: changedPath }),
+      expect.objectContaining({ scheme: "file", path: changedPath }),
+      "run.ts (Working Tree)",
+      { preview: false },
     );
     expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith(
       "workbench.action.compareEditor.focusPrimarySide",
     );
+    // A repository-wide status walk is what made large checkouts time out.
+    expect(gitRepository.status).not.toHaveBeenCalled();
+    expect(gitRepository.diffWith).toHaveBeenCalledWith("HEAD", changedPath);
+    expect(openTextDocument).not.toHaveBeenCalled();
     expect(before.selection).toBe(beforeSelection);
     expect(before.revealRange).toHaveBeenCalledOnce();
     expect(after.revealRange).not.toHaveBeenCalled();
@@ -338,6 +376,166 @@ describe("companion editor reveals", () => {
     );
     expect(after.selection).toBe(afterSelection);
     expect(after.revealRange).toHaveBeenCalledOnce();
+  });
+
+  it("does not trust a stale Source Control entry once the file's changes are committed", async () => {
+    const changedPath = `${WORKSPACE}/src/run.ts`;
+    // The Git extension's watcher has not refreshed since an external commit.
+    gitRepository = fakeGitRepository({ workingTreeChanges: [changedPath], diff: "" });
+
+    const outcome = await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      view: "changes",
+    });
+
+    expect(outcome).toEqual({ view: "file", fallback: "no-changes" });
+    expect(gitRepository.diffWith).toHaveBeenCalledWith("HEAD", changedPath);
+    expect(fakeVscode.commands.executeCommand).not.toHaveBeenCalledWith(
+      "vscode.diff",
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(openTextDocument).toHaveBeenCalledOnce();
+  });
+
+  it("opens the file itself and says why when there are no uncommitted changes to diff", async () => {
+    const changedPath = `${WORKSPACE}/src/run.ts`;
+    gitRepository = fakeGitRepository({ diff: "" });
+    const editor = {
+      document: {
+        lineCount: lines.length,
+        lineAt: (line: number) => ({ text: lines[line] ?? "" }),
+      },
+      revealRange: vi.fn(),
+      setDecorations: vi.fn(),
+    };
+    showTextDocument.mockResolvedValueOnce(editor);
+
+    const outcome = await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      view: "changes",
+      range: { start: { line: 1 }, end: { line: 1 } },
+    });
+
+    expect(outcome).toEqual({ view: "file", fallback: "no-changes" });
+    expect(gitRepository.diffWith).toHaveBeenCalledWith("HEAD", changedPath);
+    expect(gitRepository.status).not.toHaveBeenCalled();
+    expect(fakeVscode.commands.executeCommand).not.toHaveBeenCalledWith(
+      "vscode.diff",
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(openTextDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ scheme: "file", path: changedPath }),
+    );
+    expect(showTextDocument).toHaveBeenCalledOnce();
+    // The requested range is still marked in the plain file.
+    expect(editor.revealRange).toHaveBeenCalledOnce();
+  });
+
+  it("compares the working tree with a requested base revision instead of HEAD", async () => {
+    const changedPath = `${WORKSPACE}/src/run.ts`;
+    gitRepository = fakeGitRepository({ diff: "@@ -1 +1 @@\n-old\n+new\n" });
+
+    const outcome = await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      view: "changes",
+      base: "origin/main",
+    });
+
+    expect(outcome).toEqual({ view: "changes" });
+    expect(gitRepository.diffWith).toHaveBeenCalledWith("origin/main", changedPath);
+    expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith(
+      "vscode.diff",
+      expect.objectContaining({
+        scheme: "git",
+        path: changedPath,
+        query: JSON.stringify({ path: changedPath, ref: "origin/main" }),
+      }),
+      expect.objectContaining({ scheme: "file", path: changedPath }),
+      "run.ts (origin/main ↔ Working Tree)",
+      { preview: false },
+    );
+  });
+
+  it("opens the file itself and says so when Git cannot resolve the base revision", async () => {
+    gitRepository = fakeGitRepository({
+      diff: () => Promise.reject(new Error("fatal: bad revision 'nope'")),
+    });
+
+    const outcome = await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      view: "changes",
+      base: "nope",
+    });
+
+    expect(outcome).toEqual({ view: "file", fallback: "unknown-base" });
+    expect(openTextDocument).toHaveBeenCalledOnce();
+  });
+
+  it("refuses option-like or range base revisions before touching Git", async () => {
+    gitRepository = fakeGitRepository({ diff: "@@" });
+
+    for (const base of ["--output=/tmp/x", "main..HEAD", "HEAD:src/run.ts", " "]) {
+      await expect(
+        commands.get("cake.reveal")!({
+          kind: "working-directory",
+          path: "src/run.ts",
+          view: "changes",
+          base,
+        }),
+      ).rejects.toThrow("single Git revision");
+    }
+    expect(gitRepository.diffWith).not.toHaveBeenCalled();
+    expect(openTextDocument).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the file within its time budget when Git does not answer", async () => {
+    vi.useFakeTimers();
+    gitRepository = fakeGitRepository({ diff: () => new Promise<string>(() => {}) });
+
+    const pending = commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      view: "changes",
+    });
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(openTextDocument).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(pending).resolves.toEqual({ view: "file", fallback: "git-unavailable" });
+    expect(openTextDocument).toHaveBeenCalledOnce();
+    expect(showTextDocument).toHaveBeenCalledOnce();
+  });
+
+  it("opens the file itself and says so when the Git extension is missing", async () => {
+    gitRepository = undefined;
+
+    const outcome = await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      view: "changes",
+    });
+
+    expect(outcome).toEqual({ view: "file", fallback: "git-unavailable" });
+    expect(openTextDocument).toHaveBeenCalledOnce();
+  });
+
+  it("reports a plain file view for ordinary reveals", async () => {
+    const outcome = await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+    });
+
+    expect(outcome).toEqual({ view: "file" });
   });
 
   it("replaces the previous reveal highlight within the same editor", async () => {

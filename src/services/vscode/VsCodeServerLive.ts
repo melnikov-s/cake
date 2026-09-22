@@ -375,8 +375,11 @@ export const makeVsCodeServerLive = (
                 return { status: "mode-required" as const };
               const resolved = await resolveEditorTarget(workingDirectory, location);
               signal.throwIfAborted();
-              await runtime.reveal(resolved.workspace, resolved.location, signal);
-              return { status: "completed" as const, value: resolved.location };
+              const outcome = await runtime.reveal(resolved.workspace, resolved.location, signal);
+              return {
+                status: "completed" as const,
+                value: { location: resolved.location, outcome },
+              };
             });
           },
         ),

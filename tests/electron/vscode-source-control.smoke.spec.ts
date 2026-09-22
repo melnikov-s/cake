@@ -14,7 +14,7 @@ async function git(cwd: string, ...args: string[]) {
   await execFileAsync("git", args, { cwd });
 }
 
-test("workspace changes use Source Control and historical changed files fall back to the file", async () => {
+test("workspace changes use Source Control, committed files fall back to the file, and a base revision diffs them", async () => {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-vscode-source-control-"));
   const userData = join(temporaryRoot, "user-data");
@@ -120,6 +120,34 @@ test("workspace changes use Source Control and historical changed files fall bac
           timestamp: 2,
         },
       },
+      {
+        type: "message",
+        id: "assistant-summary",
+        parentId: "tool-result",
+        timestamp,
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "Compare with the previous commit: [what this branch changed](src/app.ts?view=changes&base=HEAD~1#L1).",
+            },
+          ],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "fixture",
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+          stopReason: "stop",
+          timestamp: 3,
+        },
+      },
     ]
       .map((entry) => JSON.stringify(entry))
       .join("\n") + "\n",
@@ -193,6 +221,17 @@ test("workspace changes use Source Control and historical changed files fall bac
 
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
     await expect.poll(activeVsCodeTab, { timeout: 20_000 }).toBe("app.ts");
+
+    await emitRendererEvent(application, {
+      type: "embedded-editor-back-to-agent",
+      workspacePath: project,
+    });
+    await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeHidden();
+
+    // A base revision brings the now-committed change back into the diff editor.
+    await page.locator('a[href="src/app.ts?view=changes&base=HEAD~1#L1"]').click();
+    await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
+    await expect.poll(activeVsCodeTab, { timeout: 20_000 }).toBe("app.ts (HEAD~1 ↔ Working Tree)");
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

@@ -8,7 +8,11 @@ import { dirname, join } from "node:path";
 import { WebContentsView, BrowserWindow } from "electron";
 import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
-import type { EditorLocation } from "../../ipc/editor-location";
+import {
+  editorRevealOutcomeSchema,
+  type EditorLocation,
+  type EditorRevealOutcome,
+} from "../../ipc/editor-location";
 import { jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
 import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
 import cakeIconMarkup from "../../assets/cake-icon.svg?raw";
@@ -31,6 +35,7 @@ const MAX_RUNNING_SERVERS = 3;
 const START_TIMEOUT = 45_000;
 const COMPANION_START_TIMEOUT = 5_000;
 const COMPANION_SCRIPT_TIMEOUT = 30_000;
+const COMPANION_REQUEST_TIMEOUT = 5_000;
 const COMPANION_SCRIPT_RESULT_BYTES = 256_000;
 /** Explicit selections carry up to 48k of source plus context and a note, JSON-escaped. */
 const BRIDGE_MESSAGE_BYTES = 256_000;
@@ -649,14 +654,29 @@ export class VsCodeServerRuntime {
     });
   }
 
-  /** Asks the Working Directory's companion extension to reveal an editor location. */
-  async reveal(workspacePath: string, location: EditorLocation, signal?: AbortSignal) {
+  /**
+   * Asks the Working Directory's companion extension to reveal an editor
+   * location and reports how it was presented.
+   */
+  async reveal(
+    workspacePath: string,
+    location: EditorLocation,
+    signal?: AbortSignal,
+  ): Promise<EditorRevealOutcome> {
     const resolved = await realpath(workspacePath);
     const instance = this.servers.get(resolved);
     if (!instance) throw new Error("The embedded editor is not running for this project yet");
     const port = await this.waitForCompanionPort(resolved, signal);
     this.touch(instance);
-    await postJson(port, "/", { type: "reveal", ...location }, this.bridgeToken, signal);
+    const response = await postJsonResult(
+      port,
+      "/",
+      { type: "reveal", ...location },
+      this.bridgeToken,
+      COMPANION_REQUEST_TIMEOUT,
+      signal,
+    );
+    return Schema.decodeUnknownSync(editorRevealOutcomeSchema)(response);
   }
 
   /** Reports whether this workspace currently has a visible embedded editor surface. */
@@ -1293,7 +1313,7 @@ async function postJson(
   token: string,
   signal?: AbortSignal,
 ): Promise<void> {
-  await postJsonResponse(port, requestPath, body, token, 5_000, signal);
+  await postJsonResponse(port, requestPath, body, token, COMPANION_REQUEST_TIMEOUT, signal);
 }
 
 async function postJsonResult(

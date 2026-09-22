@@ -3,14 +3,23 @@ import { createCakeVscodeOperations } from "../../../src/services/pi/runtime/cak
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import type { EditorLocation } from "../../../src/ipc/editor-location";
 import type { JsonValue } from "../../../src/ipc/json-contract";
-import type { VscodeActionResult } from "../../../src/services/vscode/VsCodeServer";
+import type {
+  OpenedProjectLocation,
+  VscodeActionResult,
+} from "../../../src/services/vscode/VsCodeServer";
 
 function registry() {
   const enter = vi.fn(async () => undefined);
   const open = vi.fn(
-    async (location: EditorLocation): Promise<VscodeActionResult<EditorLocation>> => ({
+    async (location: EditorLocation): Promise<VscodeActionResult<OpenedProjectLocation>> => ({
       status: "completed",
-      value: location,
+      value: {
+        location,
+        outcome:
+          location.kind === "working-directory" && location.view === "changes"
+            ? { view: "changes" }
+            : { view: "file" },
+      },
     }),
   );
   const runScript = vi.fn(
@@ -68,6 +77,7 @@ describe("Cake VS Code operations", () => {
       command: "vscode.open",
       result: {
         opened: true,
+        view: "changes",
         location: {
           path: "src/main/main.ts",
           line: 804,
@@ -79,6 +89,86 @@ describe("Cake VS Code operations", () => {
         },
       },
     });
+    expect(result.details).not.toHaveProperty("result.warning");
+  });
+
+  it.each([
+    ["no-changes", undefined, /no uncommitted changes.*pass base/],
+    ["no-changes", "main", /does not differ from main/],
+    ["unknown-base", "nope", /could not compare it with nope/],
+    ["git-unavailable", undefined, /Git extension did not report/],
+  ] as const)(
+    "reports the actual view and a warning when a changes request falls back (%s, base %s)",
+    async (fallback, base, warning) => {
+      const { open, operations } = registry();
+      const requested = {
+        path: "src/main.ts",
+        view: "changes" as const,
+        ...(base ? { base } : null),
+      };
+      open.mockResolvedValueOnce({
+        status: "completed",
+        value: {
+          location: { kind: "working-directory", ...requested },
+          outcome: { view: "file", fallback },
+        },
+      });
+
+      const result = await operations.invoke(
+        { command: "vscode.open", input: { line: 4, ...requested } },
+        { signal: new AbortController().signal, toolCallId: "tool-fallback", runtime: {} },
+      );
+
+      expect(open).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "working-directory", ...requested }),
+        expect.any(AbortSignal),
+      );
+      expect(result.details).toMatchObject({
+        result: {
+          opened: true,
+          view: "file",
+          location: requested,
+          warning: expect.stringMatching(warning),
+        },
+      });
+    },
+  );
+
+  it("passes a base revision through and echoes it, but only with the changes view", async () => {
+    const { open, operations } = registry();
+    const context = { signal: new AbortController().signal, toolCallId: "tool-base", runtime: {} };
+
+    const result = await operations.invoke(
+      { command: "vscode.open", input: { path: "src/main.ts", view: "changes", base: "HEAD~1" } },
+      context,
+    );
+
+    expect(open).toHaveBeenCalledWith(
+      { kind: "working-directory", path: "src/main.ts", view: "changes", base: "HEAD~1" },
+      expect.any(AbortSignal),
+    );
+    expect(result.details).toMatchObject({
+      result: {
+        view: "changes",
+        location: { path: "src/main.ts", view: "changes", base: "HEAD~1" },
+      },
+    });
+
+    await expect(
+      operations.invoke(
+        { command: "vscode.open", input: { path: "src/main.ts", base: "main" } },
+        context,
+      ),
+    ).rejects.toThrow("base requires changes view");
+    for (const base of ["--output=/tmp/x", "main..HEAD", "HEAD:src/main.ts", "a b"]) {
+      await expect(
+        operations.invoke(
+          { command: "vscode.open", input: { path: "src/main.ts", view: "changes", base } },
+          context,
+        ),
+      ).rejects.toThrow();
+    }
+    expect(open).toHaveBeenCalledTimes(1);
   });
 
   it("opens a whole file and advertises the progressively disclosed topic", async () => {
@@ -137,7 +227,7 @@ describe("Cake VS Code operations", () => {
       expect.any(AbortSignal),
     );
     expect(result.details).toMatchObject({
-      result: { opened: true, location: { path: "/tmp/cake.log", line: 3 } },
+      result: { opened: true, view: "file", location: { path: "/tmp/cake.log", line: 3 } },
     });
   });
 

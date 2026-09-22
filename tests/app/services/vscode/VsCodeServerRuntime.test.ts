@@ -269,6 +269,48 @@ describe("VsCodeServerRuntime startup", () => {
     expect(pollingStopped).toBe(true);
   });
 
+  it("returns the companion's reveal outcome so callers learn how the location was shown", async () => {
+    root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
+    const received: unknown[] = [];
+    const server = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        received.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        response
+          .writeHead(200, { "content-type": "application/json" })
+          .end(JSON.stringify({ view: "file", fallback: "no-changes" }));
+      });
+    });
+    await new Promise<void>((resolvePromise) => server.listen(0, "127.0.0.1", resolvePromise));
+    const companionPort = (server.address() as AddressInfo).port;
+    runtime = createRuntime({ root });
+    const resolvedRoot = await realpath(root);
+    runtime["servers"].set(resolvedRoot, {
+      workspacePath: resolvedRoot,
+      child: { kill: () => undefined, removeAllListeners: () => undefined } as never,
+      port: 1,
+      token: "token",
+      flavor: "codeserver",
+      binary: "/fake/code-server",
+      lastUsedAt: 0,
+      viewers: 1,
+    });
+    runtime["companionPorts"].set(resolvedRoot, companionPort);
+
+    const outcome = await runtime.reveal(root, {
+      kind: "working-directory",
+      path: "src/app.ts",
+      view: "changes",
+    });
+
+    expect(outcome).toEqual({ view: "file", fallback: "no-changes" });
+    expect(received).toEqual([
+      { type: "reveal", kind: "working-directory", path: "src/app.ts", view: "changes" },
+    ]);
+    await new Promise<void>((resolvePromise) => server.close(() => resolvePromise()));
+  });
+
   it("destroys an in-flight companion request when canceled", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
     let requestStarted!: () => void;

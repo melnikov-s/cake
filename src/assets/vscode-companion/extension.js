@@ -15,6 +15,10 @@ const MAX_SELECTION_LENGTH = 48_000;
 const MAX_CONTEXT_LENGTH = 8_000;
 const MAX_COMMENT_LENGTH = 16_000;
 const SELECTION_CONTEXT_LINES = 3;
+// Cake waits 5 s for a reveal. The Git probe must finish well inside that so a
+// slow or unready Git extension degrades to a plain file open instead of a
+// transport error.
+const GIT_PROBE_TIMEOUT_MS = 2_000;
 
 let revealServer;
 let selectionSubscription;
@@ -348,29 +352,76 @@ async function openSourceControl(vscode) {
   await vscode.commands.executeCommand("workbench.view.scm");
 }
 
-async function hasGitChange(vscode, targetUri) {
-  try {
+function gitUnavailable() {
+  return { changed: false, fallback: "git-unavailable" };
+}
+
+/**
+ * The base revision is handed to `git diff <base> -- <path>` as one argument.
+ * Cake validates it before sending, but `cake.reveal` is also a VS Code
+ * command, so refuse option-like values and ranges here as well.
+ */
+function changesBase(payload) {
+  const base = payload.base === undefined ? "HEAD" : String(payload.base).trim();
+  if (!base || base.startsWith("-") || base.includes("..") || /[\s:]/.test(base))
+    throw new Error("The changes base must be a single Git revision");
+  return base;
+}
+
+/**
+ * Decides whether the target's working tree differs from the base revision.
+ *
+ * This asks Git about the one path only (`git diff <base> -- <path>`), which
+ * stays fast in very large checkouts. It deliberately avoids both alternatives:
+ * `repository.status()` refreshes the whole working tree and takes longer than
+ * Cake waits for a reveal, while the extension's cached Source Control list can
+ * lag behind a commit and would open an empty diff.
+ */
+async function probeWorkingTreeChange(vscode, targetUri, base) {
+  const probe = (async () => {
     const extension = vscode.extensions.getExtension("vscode.git");
-    if (!extension) return false;
+    if (!extension) return gitUnavailable();
     const exports = extension.isActive ? extension.exports : await extension.activate();
     const api = exports?.getAPI?.(1);
-    if (!api) return false;
-    await Promise.allSettled(api.repositories.map((repository) => repository.status()));
-    const targetPath = path.resolve(targetUri.fsPath);
-    return api.repositories.some((repository) => {
-      const state = repository.state;
-      return [
-        ...(state.workingTreeChanges || []),
-        ...(state.indexChanges || []),
-        ...(state.mergeChanges || []),
-      ].some((change) => {
-        const changeUri = change.uri || change.resourceUri;
-        return changeUri?.scheme === "file" && path.resolve(changeUri.fsPath) === targetPath;
-      });
-    });
-  } catch {
-    return false;
+    const repository = api?.getRepository?.(targetUri);
+    if (!api || !repository) return gitUnavailable();
+    let diff;
+    try {
+      diff = await repository.diffWith(base, path.resolve(targetUri.fsPath));
+    } catch {
+      // Git rejected the comparison; an unknown revision is by far the usual cause.
+      return { changed: false, fallback: "unknown-base" };
+    }
+    return diff ? { changed: true, api } : { changed: false, fallback: "no-changes" };
+  })();
+  let timer;
+  const deadline = new Promise((resolvePromise) => {
+    timer = setTimeout(() => resolvePromise(gitUnavailable()), GIT_PROBE_TIMEOUT_MS);
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([probe.catch(gitUnavailable), deadline]);
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+/**
+ * Opens VS Code's native diff editor for the target's working tree against the
+ * base revision. The left side is a `git:` URI whose content comes from one
+ * `git show <base>:<path>`, so this stays fast regardless of repository size
+ * and does not depend on the Source Control list being current.
+ */
+async function openWorkingTreeDiff(vscode, api, targetUri, base) {
+  const name = path.basename(targetUri.fsPath);
+  const title = base === "HEAD" ? `${name} (Working Tree)` : `${name} (${base} ↔ Working Tree)`;
+  await vscode.commands.executeCommand(
+    "vscode.diff",
+    api.toGitUri(targetUri, base),
+    targetUri,
+    title,
+    { preview: false },
+  );
 }
 
 async function setTheme(vscode, payload) {
@@ -586,27 +637,35 @@ async function activate(context) {
       throw new Error("The editor location kind is invalid");
     }
     const targetUri = vscode.Uri.file(target);
-    if (payload.view === "changes" && (await hasGitChange(vscode, targetUri))) {
-      await openSourceControl(vscode);
-      try {
-        await vscode.commands.executeCommand("git.openChange", targetUri);
-        const requestedRanges = payload.ranges || (payload.range ? [payload.range] : []);
-        if (requestedRanges.length > 0) {
-          const side = payload.side === "before" ? "before" : "after";
-          await vscode.commands.executeCommand(
-            side === "before"
-              ? "workbench.action.compareEditor.focusPrimarySide"
-              : "workbench.action.compareEditor.focusSecondarySide",
-          );
-          const editor = await visibleDiffEditor(vscode, target, side);
-          if (editor) revealEditorRanges(vscode, editor, requestedRanges);
+    let fallback;
+    if (payload.view === "changes") {
+      const base = changesBase(payload);
+      const probe = await probeWorkingTreeChange(vscode, targetUri, base);
+      fallback = probe.fallback;
+      if (probe.changed) {
+        try {
+          await openSourceControl(vscode);
+          await openWorkingTreeDiff(vscode, probe.api, targetUri, base);
+          const requestedRanges = payload.ranges || (payload.range ? [payload.range] : []);
+          if (requestedRanges.length > 0) {
+            const side = payload.side === "before" ? "before" : "after";
+            await vscode.commands.executeCommand(
+              side === "before"
+                ? "workbench.action.compareEditor.focusPrimarySide"
+                : "workbench.action.compareEditor.focusSecondarySide",
+            );
+            const editor = await visibleDiffEditor(vscode, target, side);
+            if (editor) revealEditorRanges(vscode, editor, requestedRanges);
+          }
+          return { view: "changes" };
+        } catch {
+          // Fall through to the ordinary source document when the diff editor
+          // cannot open; the caller learns about it through the fallback.
+          fallback = "git-unavailable";
         }
-        return;
-      } catch {
-        // Deleted, untracked, or non-Git files may not have a native change editor.
-        // Fall through to the ordinary source document when the file still exists.
       }
     }
+    const outcome = fallback ? { view: "file", fallback } : { view: "file" };
     const document = await vscode.workspace.openTextDocument(targetUri);
     if (Number.isInteger(payload.documentVersion) && payload.documentVersion !== document.version)
       void vscode.window.showWarningMessage(
@@ -644,8 +703,8 @@ async function activate(context) {
       preserveFocus: payload.preserveFocus ?? false,
       viewColumn: editorViewColumn(vscode, payload.group),
     });
-    if (requestedRanges.length === 0) return;
-    revealEditorRanges(vscode, editor, requestedRanges);
+    if (requestedRanges.length > 0) revealEditorRanges(vscode, editor, requestedRanges);
+    return outcome;
   };
 
   revealServer = http.createServer((request, response) => {
@@ -670,10 +729,17 @@ async function activate(context) {
             .end(JSON.stringify(result));
           return;
         }
+        if (payload.type === "reveal") {
+          const outcome = await reveal(payload);
+          response
+            .writeHead(200, { "content-type": "application/json" })
+            .end(JSON.stringify(outcome));
+          return;
+        }
         if (payload.type === "annotations") await updateAnnotations(vscode, payload);
         else if (payload.type === "open-source-control") await openSourceControl(vscode);
         else if (payload.type === "set-theme") await setTheme(vscode, payload);
-        else await reveal(payload);
+        else throw new Error("The companion request type is unsupported");
         response.writeHead(204).end();
       })
       .catch((error) => {

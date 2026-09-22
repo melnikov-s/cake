@@ -45,6 +45,19 @@ export const editorLocationSchema = Schema.Union([
 
 export type EditorLocation = typeof editorLocationSchema.Type;
 
+/**
+ * How embedded VS Code actually presented a revealed location. A `changes`
+ * request degrades to `file` when the target does not differ from the base
+ * revision, the base cannot be resolved, or the Git extension could not answer
+ * in time; `fallback` says which.
+ */
+export const editorRevealOutcomeSchema = Schema.Struct({
+  view: Schema.Literals(["changes", "file"]),
+  fallback: Schema.optionalKey(Schema.Literals(["no-changes", "unknown-base", "git-unavailable"])),
+});
+
+export type EditorRevealOutcome = typeof editorRevealOutcomeSchema.Type;
+
 /** Classifies a user-facing path while keeping project source locations Working Directory-relative. */
 export function editorLocationFromPath(location: SourceLocation): EditorLocation {
   const path = location.path.trim();

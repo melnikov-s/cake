@@ -1,8 +1,12 @@
 import { Schema } from "effect";
 import type { JsonObject, JsonValue } from "../../../ipc/json-contract";
 import { editorLocationFromPath, type EditorLocation } from "../../../ipc/editor-location";
-import type { SourceLocation, SourcePosition } from "../../../ipc/source-location";
-import type { VscodeActionResult } from "../../vscode/VsCodeServer";
+import {
+  gitRevisionSchema,
+  type SourceLocation,
+  type SourcePosition,
+} from "../../../ipc/source-location";
+import type { OpenedProjectLocation, VscodeActionResult } from "../../vscode/VsCodeServer";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 import { createCakeVscodeDebugOperations } from "./cake-vscode-debug-operations";
 
@@ -15,6 +19,7 @@ const vscodeOpenInputSchema = Schema.Struct({
   endColumn: Schema.optionalKey(coordinate),
   view: Schema.optionalKey(Schema.Literal("changes")),
   side: Schema.optionalKey(Schema.Literals(["before", "after"])),
+  base: Schema.optionalKey(gitRevisionSchema),
 }).check(
   Schema.makeFilter((input) => {
     if (input.line === undefined && input.column !== undefined) return "column requires line";
@@ -23,6 +28,7 @@ const vscodeOpenInputSchema = Schema.Struct({
     if (input.endLine !== undefined && input.line !== undefined && input.endLine < input.line)
       return "endLine cannot precede line";
     if (input.side !== undefined && input.view !== "changes") return "side requires changes view";
+    if (input.base !== undefined && input.view !== "changes") return "base requires changes view";
     return undefined;
   }),
 );
@@ -37,7 +43,10 @@ type VscodeScriptInput = typeof vscodeScriptInputSchema.Type;
 
 export interface VscodeControl {
   enter(signal: AbortSignal): Promise<void>;
-  open(location: EditorLocation, signal: AbortSignal): Promise<VscodeActionResult<EditorLocation>>;
+  open(
+    location: EditorLocation,
+    signal: AbortSignal,
+  ): Promise<VscodeActionResult<OpenedProjectLocation>>;
   runScript(
     source: string,
     input: JsonValue,
@@ -49,6 +58,7 @@ function sourceLocation(input: VscodeOpenInput): SourceLocation {
   const presentation = {
     ...(input.view ? { view: input.view } : null),
     ...(input.side ? { side: input.side } : null),
+    ...(input.base ? { base: input.base } : null),
   };
   if (input.line === undefined) return { path: input.path, ...presentation };
   const start: SourcePosition =
@@ -70,6 +80,7 @@ interface AgentLocation {
   endColumn?: number;
   view?: "changes";
   side?: "before" | "after";
+  base?: string;
 }
 
 function agentLocation(location: EditorLocation): JsonObject {
@@ -77,6 +88,7 @@ function agentLocation(location: EditorLocation): JsonObject {
     path: location.path,
     ...(location.kind === "working-directory" && location.view ? { view: location.view } : null),
     ...(location.kind === "working-directory" && location.side ? { side: location.side } : null),
+    ...(location.kind === "working-directory" && location.base ? { base: location.base } : null),
   };
   if (!location.range) return { ...result };
   result.line = location.range.start.line + 1;
@@ -86,6 +98,33 @@ function agentLocation(location: EditorLocation): JsonObject {
     if (location.range.end.column !== undefined) result.endColumn = location.range.end.column + 1;
   }
   return { ...result };
+}
+
+type RevealFallback = NonNullable<OpenedProjectLocation["outcome"]["fallback"]>;
+
+function revealFallbackWarning(fallback: RevealFallback, base: string | undefined): string {
+  const opened = "VS Code opened the file itself because";
+  switch (fallback) {
+    case "no-changes":
+      return base === undefined
+        ? `${opened} it has no uncommitted changes to diff. The changes view compares the working tree with HEAD by default; pass base (for example the branch's merge base) to include committed changes.`
+        : `${opened} its working tree does not differ from ${base}.`;
+    case "unknown-base":
+      return `${opened} Git could not compare it with ${base ?? "HEAD"}; check that the revision exists in this checkout.`;
+    case "git-unavailable":
+      return `${opened} its Git extension did not report the file's changes in time.`;
+  }
+}
+
+function openedResult(opened: OpenedProjectLocation): JsonObject {
+  const { fallback } = opened.outcome;
+  const base = opened.location.kind === "working-directory" ? opened.location.base : undefined;
+  return {
+    opened: true,
+    location: agentLocation(opened.location),
+    view: opened.outcome.view,
+    ...(fallback ? { warning: revealFallbackWarning(fallback, base) } : null),
+  };
 }
 
 function modeRequired() {
@@ -136,6 +175,8 @@ export function createCakeVscodeOperations(control: VscodeControl): CakeOperatio
         "Join disjoint ranges with commas in one source link, for example [related handlers](src/main.ts#L55-L64,L92-L108).",
         "To link an exact range in VS Code's native diff editor, use [changed request handling](src/main.ts?view=changes#L55-L64) for the after side or [previous request handling](src/main.ts?view=changes&side=before#L55-L64) for the before side.",
         "Set view to changes to open this operation's range in the native diff editor; its side defaults to after.",
+        "The changes view compares the working tree with base, which defaults to HEAD and therefore shows uncommitted changes only. To show committed work as well, set base to a single revision such as main, origin/main, HEAD~1, a merge base, or a SHA; links accept the same as [what this branch changed](src/main.ts?view=changes&base=main#L55-L64).",
+        "When the file does not differ from base, or base cannot be resolved, VS Code opens the file itself and the result reports view file with a warning; tell the user when that happens.",
         "Lines and columns in this operation are one-based.",
       ],
       inputSchema: vscodeOpenInputSchema,
@@ -151,17 +192,28 @@ export function createCakeVscodeOperations(control: VscodeControl): CakeOperatio
             side: "after",
           },
         },
+        {
+          input: {
+            path: "src/main/main.ts",
+            line: 804,
+            endLine: 812,
+            view: "changes",
+            base: "main",
+          },
+          description:
+            "Diff the working tree against the main branch, including committed changes.",
+        },
         { input: { path: "/tmp/cake.log" }, description: "Open an absolute local file." },
       ],
       result:
-        "The normalized project-relative or absolute local location, or VSCODE_MODE_REQUIRED when VS Code mode is inactive.",
+        "The normalized project-relative or absolute local location, the view VS Code actually showed (changes or file), and a warning when a changes request fell back to the file, or VSCODE_MODE_REQUIRED when VS Code mode is inactive.",
       limitations: ["Call vscode.enter before using this operation."],
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry parsed this value with vscodeOpenInputSchema.
         const location = editorLocationFromPath(sourceLocation(input as VscodeOpenInput));
         const result = await control.open(location, context.signal);
         if (result.status === "mode-required") return modeRequired();
-        return { opened: true, location: agentLocation(result.value) };
+        return openedResult(result.value);
       },
     },
     {

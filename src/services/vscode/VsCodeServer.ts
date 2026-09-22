@@ -1,6 +1,6 @@
 import { Context, Schema, type Effect, type Stream } from "effect";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
-import type { EditorLocation } from "../../ipc/editor-location";
+import type { EditorLocation, EditorRevealOutcome } from "../../ipc/editor-location";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
 
@@ -44,6 +44,12 @@ export type VscodeActionResult<Value> =
   | { readonly status: "completed"; readonly value: Value }
   | { readonly status: "mode-required" };
 
+/** A project location embedded VS Code opened, with the view it actually showed. */
+export interface OpenedProjectLocation {
+  readonly location: EditorLocation;
+  readonly outcome: EditorRevealOutcome;
+}
+
 export interface VsCodeServerService {
   readonly state: () => Effect.Effect<EmbeddedEditorState>;
   readonly stateChanges: () => Stream.Stream<EmbeddedEditorState>;
@@ -78,7 +84,7 @@ export interface VsCodeServerService {
   readonly openProjectLocation: (
     workingDirectory: string,
     location: EditorLocation,
-  ) => Effect.Effect<VscodeActionResult<EditorLocation>, VsCodeServerError>;
+  ) => Effect.Effect<VscodeActionResult<OpenedProjectLocation>, VsCodeServerError>;
   readonly runProjectScript: (
     workingDirectory: string,
     source: string,

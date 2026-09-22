@@ -27,12 +27,27 @@ const sourceRangesSchema = Schema.Array(sourceRangeSchema).check(
   Schema.isMaxLength(32),
 );
 
+/**
+ * One Git revision such as `HEAD~1`, `main`, `origin/main`, `@{upstream}`, or a
+ * SHA. The companion passes it to `git diff <base> -- <path>`, so option-like
+ * values, `a..b` ranges, `ref:path` forms, and whitespace are rejected.
+ */
+export const gitRevisionSchema = Schema.Trim.pipe(
+  Schema.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(256),
+    Schema.isPattern(/^(?!-)(?!.*\.\.)[A-Za-z0-9._/@{}^~-]+$/),
+  ),
+);
+
 export const sourceLocationSchema = Schema.Struct({
   path: boundedText(8_192),
   /** Prefer VS Code's native working-tree diff when opening this file. */
   view: Schema.optional(Schema.Literal("changes")),
   /** Side of a native diff to reveal; omitted means the changed (after) side. */
   side: Schema.optional(Schema.Literals(["before", "after"])),
+  /** Revision the working tree is compared with in the changes view; omitted means HEAD. */
+  base: Schema.optional(gitRevisionSchema),
   range: Schema.optional(sourceRangeSchema),
   /** Disjoint ranges in one document, ordered as they should be presented. */
   ranges: Schema.optional(sourceRangesSchema),
