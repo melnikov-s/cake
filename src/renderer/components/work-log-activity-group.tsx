@@ -99,8 +99,21 @@ export const ActivityGroup = observer(function ActivityGroup({
     () => parts.filter((part): part is Extract<UiPart, { kind: "tool" }> => part.kind === "tool"),
     [parts],
   );
+  const latestGroupPart = parts.at(-1);
+  const latestTranscriptPart = behavior.store.parts.at(-1);
+  const turnIsChurning =
+    behavior.store.liveWorkPossible &&
+    !behavior.waitingForUser &&
+    !behavior.artifacts?.interaction.request;
+  const waitingForNextPart =
+    !compacted &&
+    turnIsChurning &&
+    latestGroupPart !== undefined &&
+    latestGroupPart.id === latestTranscriptPart?.id;
   const activityIsRunning =
-    reasoningIsStreaming || toolParts.some((part) => part.state === "running");
+    reasoningIsStreaming ||
+    toolParts.some((part) => part.state === "running") ||
+    waitingForNextPart;
   const label =
     changeSummary.editCount > 0
       ? `${changeSummary.editCount} ${changeSummary.editCount === 1 ? "edit" : "edits"} · +${changeSummary.additions} −${changeSummary.deletions}`

@@ -100,6 +100,74 @@ describe("ActivityGroup", () => {
     expect(log.textContent).toContain("src/old.ts");
   });
 
+  it("stays active between a completed tool and the next streamed part", async () => {
+    const tool: UiPart = {
+      id: "tool-read",
+      kind: "tool",
+      name: "read",
+      input: "src/app.ts",
+      state: "success",
+    };
+    let transcriptParts: UiPart[] = [tool];
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "session-1",
+        parts: () => transcriptParts,
+        streaming: () => true,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "",
+        inputLabel: () => "Prompt",
+        canSubmit: () => true,
+        submit: async () => true,
+      }),
+    );
+    let behavior = { store } as CanonicalTranscriptBehavior;
+
+    await act(async () => {
+      root.render(<ActivityGroup groupId="group-1" parts={[tool]} behavior={behavior} />);
+    });
+    const status = () =>
+      container.querySelector<HTMLElement>(
+        '[data-slot="activity-group"] > summary > span:first-child',
+      );
+    expect(status()?.className).toContain("animate-pulse");
+    expect(status()?.className).not.toContain("bg-success");
+
+    transcriptParts = [
+      tool,
+      {
+        id: "assistant-1",
+        kind: "text",
+        role: "assistant",
+        text: "Here is what I found",
+        status: "streaming",
+      },
+    ];
+    store[Symbol.dispose]();
+    store = mount(
+      createStore(ChatStore, {
+        id: () => "session-1",
+        parts: () => transcriptParts,
+        streaming: () => true,
+        submitting: () => false,
+        configuration: () => undefined,
+        commands: () => [],
+        placeholder: () => "",
+        inputLabel: () => "Prompt",
+        canSubmit: () => true,
+        submit: async () => true,
+      }),
+    );
+    behavior = { store } as CanonicalTranscriptBehavior;
+    await act(async () => {
+      root.render(<ActivityGroup groupId="group-1" parts={[tool]} behavior={behavior} />);
+    });
+    expect(status()?.className).toContain("bg-success");
+    expect(status()?.className).not.toContain("animate-pulse");
+  });
+
   it("does not rebuild a streaming diff when only elapsed time advances", async () => {
     const parts: UiPart[] = [
       {
