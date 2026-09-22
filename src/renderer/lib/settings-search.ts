@@ -114,6 +114,18 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     label: "Application",
     items: [
       {
+        page: "prompts",
+        label: "Cake prompts",
+        description: "Automatic workflow messages",
+        settings: [
+          { label: "Commit before merge", targetId: "setting-prompt-worktree-commit" },
+          { label: "Rebase conflict", targetId: "setting-prompt-worktree-rebase-conflict" },
+          { label: "Merge conflict", targetId: "setting-prompt-worktree-preserve-conflict" },
+          { label: "Squash conflict", targetId: "setting-prompt-worktree-squash-conflict" },
+          { label: "Squash commit message", targetId: "setting-prompt-worktree-squash-message" },
+        ],
+      },
+      {
         page: "labels",
         label: "Session labels",
         description: "Global workflow labels",

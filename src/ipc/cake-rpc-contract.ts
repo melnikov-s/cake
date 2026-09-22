@@ -12,6 +12,7 @@ import {
 } from "./inline-widget-contract";
 import { jsonValueSchema } from "./json-contract";
 import { ProjectSettings } from "../domain/application/application-data";
+import { CakePrompts } from "../domain/application/cake-prompts";
 import { ProjectSessionControlRequest } from "../domain/project-sessions/project-session-data";
 import {
   applicationStateSchema,
@@ -492,6 +493,9 @@ export const cakeRpcPayloadSchemas = {
   "set-utility-model": Schema.Struct({
     model: Schema.optional(utilityModelSchema),
   }),
+  "set-cake-prompts": Schema.Struct({
+    prompts: CakePrompts,
+  }),
   "load-staged-slash-commands": Schema.Struct({
     path: stringMax(4_096),
   }),
@@ -709,6 +713,7 @@ export const cakeRpcSuccessSchemas = {
   "reword-composer-selection": cakeRpcResultSchemas["composer-selection-reworded"],
   "generate-session-title": cakeRpcResultSchemas["session-title-generated"],
   "set-utility-model": cakeRpcResultSchemas["application-state-updated"],
+  "set-cake-prompts": cakeRpcResultSchemas["application-state-updated"],
   "load-staged-slash-commands": cakeRpcResultSchemas["slash-commands-loaded"],
   "register-project": cakeRpcResultSchemas["application-state-updated"],
   "rename-project": cakeRpcResultSchemas["application-state-updated"],

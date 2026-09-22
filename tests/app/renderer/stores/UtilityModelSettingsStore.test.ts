@@ -1,5 +1,6 @@
 import { createStore } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
+import { defaultCakePrompts } from "../../../../src/domain/application/cake-prompts";
 import type { ApplicationState, UtilityModel } from "../../../../src/ipc/session-contract";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { UtilityModelSettingsStore } from "../../../../src/renderer/stores/UtilityModelSettingsStore";
@@ -13,6 +14,7 @@ const applicationState = (utilityModel?: UtilityModel): ApplicationState => ({
   fastModeSessionIds: [],
   sessionPlugins: [],
   sessionPluginSharedState: [],
+  cakePrompts: defaultCakePrompts(),
   modelPresets: [],
   utilityModel,
 });

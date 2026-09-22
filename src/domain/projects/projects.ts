@@ -39,6 +39,7 @@ import {
   setProjectWorkflowSessionDetails,
   setProjectSettings as setApplicationProjectSettings,
   setSessionUnread as setApplicationSessionUnread,
+  setCakePrompts as setApplicationCakePrompts,
   setUtilityModel as setApplicationUtilityModel,
   trustProject,
   upsertProject,
@@ -189,6 +190,15 @@ export const generateSessionTitle = Effect.fn("Projects.generateSessionTitle")(f
     }),
   );
   return title === undefined ? {} : { title };
+});
+
+export const setCakePrompts = Effect.fn("Projects.setCakePrompts")(function* (
+  _connectionId: number,
+  request: Payload<"set-cake-prompts">,
+) {
+  return {
+    state: yield* mapProjectError("setCakePrompts", setApplicationCakePrompts(request.prompts)),
+  };
 });
 
 export const setUtilityModel = Effect.fn("Projects.setUtilityModel")(function* (

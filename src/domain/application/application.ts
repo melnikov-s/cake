@@ -1,4 +1,5 @@
 import { DateTime, Effect, Schema } from "effect";
+import type { CakePrompts } from "./cake-prompts";
 import {
   ApplicationState as ApplicationStateSchema,
   type ApplicationState,
@@ -348,6 +349,12 @@ export const revokeProjectTrust = Effect.fn("Application.revokeProjectTrust")(fu
     ...current,
     trustedProjectPaths: current.trustedProjectPaths.filter((trusted) => trusted !== path),
   }));
+});
+
+export const setCakePrompts = Effect.fn("Application.setCakePrompts")(function* (
+  cakePrompts: CakePrompts,
+) {
+  return yield* update((current) => ({ ...current, cakePrompts }));
 });
 
 export const setUtilityModel = Effect.fn("Application.setUtilityModel")(function* (

@@ -155,7 +155,7 @@ describe("ApplicationStorage", () => {
   );
 
   it.effect("loads a current version envelope", () =>
-    withStorage({ [documentPath]: JSON.stringify({ version: 4, data: current }) }, (storage) =>
+    withStorage({ [documentPath]: JSON.stringify({ version: 5, data: current }) }, (storage) =>
       Effect.gen(function* () {
         const loaded = yield* storage.load();
         assert.strictEqual(loaded.source, "current");
@@ -168,7 +168,7 @@ describe("ApplicationStorage", () => {
     withStorage(
       {
         [documentPath]: JSON.stringify({
-          version: 4,
+          version: 5,
           data: {
             ...current,
             projects: [
@@ -196,6 +196,20 @@ describe("ApplicationStorage", () => {
     ),
   );
 
+  it.effect("adds default Cake prompts when migrating a version-four document", () => {
+    const versionFour = { ...current };
+    Reflect.deleteProperty(versionFour, "cakePrompts");
+    return withStorage(
+      { [documentPath]: JSON.stringify({ version: 4, data: versionFour }) },
+      (storage) =>
+        Effect.gen(function* () {
+          const loaded = yield* storage.load();
+          assert.strictEqual(loaded.source, "migrated");
+          assert.match(loaded.state.cakePrompts.worktreeCommit, /uncommitted changes/);
+        }),
+    );
+  });
+
   it.effect("migrates recognized legacy and version-zero documents", () =>
     Effect.gen(function* () {
       for (const input of [legacy, { version: 0, data: legacy }]) {
@@ -207,7 +221,7 @@ describe("ApplicationStorage", () => {
             const persistedText = controls.files.get(documentPath);
             assert.ok(persistedText);
             const persisted = JSON.parse(persistedText);
-            assert.strictEqual(persisted.version, 4);
+            assert.strictEqual(persisted.version, 5);
             assert.ok(!("schemaVersion" in persisted.data));
           }),
         );
@@ -267,10 +281,10 @@ describe("ApplicationStorage", () => {
         ["{", ApplicationMalformedDocumentError],
         [JSON.stringify({ nope: true }), ApplicationMalformedDocumentError],
         [
-          JSON.stringify({ version: 4, data: { ...current, projects: "invalid" } }),
+          JSON.stringify({ version: 5, data: { ...current, projects: "invalid" } }),
           ApplicationDecodeError,
         ],
-        [JSON.stringify({ version: 5, data: current }), ApplicationUnsupportedVersionError],
+        [JSON.stringify({ version: 6, data: current }), ApplicationUnsupportedVersionError],
         [
           JSON.stringify({ version: 0, data: { schemaVersion: 1, projects: "invalid" } }),
           ApplicationMigrationError,

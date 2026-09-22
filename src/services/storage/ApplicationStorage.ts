@@ -11,9 +11,10 @@ import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
 } from "../../domain/application/application-data";
+import { defaultCakePrompts } from "../../domain/application/cake-prompts";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const APPLICATION_DOCUMENT_VERSION = 4;
+const APPLICATION_DOCUMENT_VERSION = 5;
 export const APPLICATION_DOCUMENT_NAME = "application.json";
 
 class ApplicationReadError extends Schema.TaggedError<ApplicationReadError>()(
@@ -156,6 +157,13 @@ const ApplicationStateV3 = Schema.Struct({
 });
 type ApplicationStateV3 = typeof ApplicationStateV3.Type;
 
+const ApplicationStateV4 = Schema.Struct({
+  ...ApplicationStateV3.fields,
+  sessionPlugins: ApplicationState.fields.sessionPlugins,
+  sessionPluginSharedState: ApplicationState.fields.sessionPluginSharedState,
+});
+type ApplicationStateV4 = typeof ApplicationStateV4.Type;
+
 const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
 
@@ -259,6 +267,10 @@ const migrateVersionTwo = Effect.fn("ApplicationStorage.migrateVersionTwo")((
 const migrateVersionThree = Effect.fn("ApplicationStorage.migrateVersionThree")(
   (state: ApplicationStateV3) =>
     Effect.succeed({ ...state, sessionPlugins: [], sessionPluginSharedState: [] }),
+);
+
+const migrateVersionFour = Effect.fn("ApplicationStorage.migrateVersionFour")(
+  (state: ApplicationStateV4) => Effect.succeed({ ...state, cakePrompts: defaultCakePrompts() }),
 );
 
 const writeError = (stage: AtomicFileStage, cause: unknown) =>
@@ -381,6 +393,17 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
               ),
             );
             data = yield* migrateVersionThree(previous);
+          } else if (version === 4) {
+            const previous = yield* Schema.decodeUnknownEffect(ApplicationStateV4)(data).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ApplicationMigrationError({
+                    fromVersion: 4,
+                    message: cause.message,
+                  }),
+              ),
+            );
+            data = yield* migrateVersionFour(previous);
           } else
             return yield* new ApplicationMigrationError({
               fromVersion: version,

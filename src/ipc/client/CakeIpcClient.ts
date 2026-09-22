@@ -567,6 +567,7 @@ export interface CakeIpcClientService {
     | "reword-composer-selection"
     | "generate-session-title"
     | "set-utility-model"
+    | "set-cake-prompts"
     | "load-staged-slash-commands"
     | "register-project"
     | "rename-project"
@@ -1112,6 +1113,9 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         "set-utility-model": Effect.fn("CakeIpcClient.workspaces.set-utility-model")((payload) =>
           client("workspaces.set-utility-model", payload),
+        ),
+        "set-cake-prompts": Effect.fn("CakeIpcClient.workspaces.set-cake-prompts")((payload) =>
+          client("workspaces.set-cake-prompts", payload),
         ),
         "load-staged-slash-commands": Effect.fn(
           "CakeIpcClient.workspaces.load-staged-slash-commands",

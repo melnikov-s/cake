@@ -1,5 +1,6 @@
 import { child, createStore, mount, Store } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
+import { defaultCakePrompts } from "../../../../src/domain/application/cake-prompts";
 import type {
   ApplicationState,
   ModelOption,
@@ -144,6 +145,7 @@ function mountStore(initial?: Projection, models?: ModelOption[]) {
     fastModeSessionIds: [],
     sessionPlugins: [],
     sessionPluginSharedState: [],
+    cakePrompts: defaultCakePrompts(),
     modelPresets: initial?.presets ?? [],
     defaultModelPresetId: initial?.defaultPresetId,
   } satisfies ApplicationState);
@@ -186,6 +188,7 @@ describe("ModelPresetSettingsStore", () => {
       fastModeSessionIds: [],
       sessionPlugins: [],
       sessionPluginSharedState: [],
+      cakePrompts: defaultCakePrompts(),
       modelPresets: [replacement],
       defaultModelPresetId: replacement.id,
     });
@@ -341,6 +344,7 @@ describe("ModelPresetSettingsStore", () => {
       fastModeSessionIds: [],
       sessionPlugins: [],
       sessionPluginSharedState: [],
+      cakePrompts: defaultCakePrompts(),
       utilityModel: { provider: "openai", modelId: "utility", thinkingLevel: "off" },
       modelPresets: [first, second],
     });
@@ -369,6 +373,7 @@ describe("ModelPresetSettingsStore", () => {
       fastModeSessionIds: [],
       sessionPlugins: [],
       sessionPluginSharedState: [],
+      cakePrompts: defaultCakePrompts(),
       modelPresets: [external],
     });
     expect(store.presets[0]?.name).toBe("Local edit");

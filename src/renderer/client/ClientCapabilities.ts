@@ -149,6 +149,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.workspaces["set-utility-model"]({ model }),
           options,
         ).then((response) => response.state),
+      setCakePrompts: (prompts, options) =>
+        execute(
+          "workspaces.set-cake-prompts",
+          (client) => client.workspaces["set-cake-prompts"]({ prompts }),
+          options,
+        ).then((response) => response.state),
       loadStagedSlashCommands: (path, options) =>
         execute(
           "workspaces.load-staged-slash-commands",

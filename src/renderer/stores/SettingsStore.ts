@@ -16,6 +16,7 @@ import { UtilityModelSettingsStore } from "./UtilityModelSettingsStore";
 import { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
 import { HotkeySettingsStore } from "./HotkeySettingsStore";
 import { GlobalLabelSettingsStore } from "./GlobalLabelSettingsStore";
+import { CakePromptSettingsStore } from "./CakePromptSettingsStore";
 
 export type SettingsPageId =
   | "models"
@@ -24,6 +25,7 @@ export type SettingsPageId =
   | "runtime"
   | "network"
   | "labels"
+  | "prompts"
   | "appearance"
   | "hotkeys"
   | "editor";
@@ -56,6 +58,9 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   @child get modelPresets(): ModelPresetSettingsStore {
     return createStore(ModelPresetSettingsStore);
   }
+  @child get cakePrompts(): CakePromptSettingsStore {
+    return createStore(CakePromptSettingsStore);
+  }
   @child get providers(): ProviderSettingsStore {
     return createStore(ProviderSettingsStore, {
       operations: this.props.operations,
@@ -85,6 +90,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
       this.providers.error ??
       this.utilityModel.error ??
       this.modelPresets.error ??
+      this.cakePrompts.error ??
       this.globalLabels.error ??
       this.configuration?.error ??
       this.props.workbenchError()
@@ -94,7 +100,8 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     return (
       this.providers.errorDetails ??
       this.utilityModel.errorDetails ??
-      this.modelPresets.errorDetails
+      this.modelPresets.errorDetails ??
+      this.cakePrompts.errorDetails
     );
   }
 
@@ -168,6 +175,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   applyApplicationState(revision: number, state: ApplicationState) {
     this.utilityModel.applyApplicationState(revision, state);
     this.modelPresets.applyApplicationState(revision, state);
+    this.cakePrompts.applyApplicationState(revision, state);
     this.globalLabels.applyApplicationState(revision, state);
   }
 }

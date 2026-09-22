@@ -479,10 +479,72 @@ const drawMermaidArchitectureScenario: VisualCaptureScenario = {
   },
 };
 
+const cakePromptsSettingsScenario: VisualCaptureScenario = {
+  name: "cake-prompts-settings",
+  description: "Editable Cake workflow prompts in Settings",
+  states: ["default", "lower"],
+  async seed(paths, theme) {
+    const timestamp = new Date(0).toISOString();
+    await Promise.all([
+      mkdir(paths.userData, { recursive: true }),
+      mkdir(paths.project, { recursive: true }),
+      mkdir(join(paths.cakeHome, "state"), { recursive: true }),
+    ]);
+    await writeFile(
+      join(paths.userData, "window-state.json"),
+      JSON.stringify({
+        projectPath: paths.project,
+        recentProjectPaths: [paths.project],
+        draft: "",
+        draftsBySession: {},
+        theme,
+      }),
+    );
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        projects: [
+          {
+            path: paths.project,
+            name: "visual-capture-project",
+            addedAt: timestamp,
+            lastOpenedAt: timestamp,
+          },
+        ],
+        trustedProjectPaths: [],
+      }),
+    );
+  },
+  async prepare(page, state) {
+    await page.getByRole("button", { name: "Open settings", exact: true }).waitFor({
+      state: "visible",
+      timeout: 20_000,
+    });
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.waitForTimeout(1_000);
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    const prompts = page.getByRole("button", { name: "Cake prompts" });
+    await prompts.waitFor({ state: "visible", timeout: 20_000 });
+    await prompts.click();
+    await page.getByRole("textbox", { name: "Commit before merge" }).waitFor({
+      state: "visible",
+      timeout: 20_000,
+    });
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    if (state === "lower")
+      await page.getByRole("textbox", { name: "Squash commit message" }).scrollIntoViewIfNeeded();
+  },
+  region(page) {
+    return page.locator("#settings-content-scroll");
+  },
+};
+
 export const visualCaptureScenarios = [
   assistantMarkdownCode,
   requestExplanationScenario,
   drawMermaidArchitectureScenario,
+  cakePromptsSettingsScenario,
 ] as const;
 
 export function findVisualCaptureScenario(name: string) {

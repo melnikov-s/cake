@@ -14,6 +14,10 @@ import { SettingsTextField } from "./settings/settings-text-field";
 import { Input } from "./ui/input";
 import { SearchIcon } from "./ui/icons";
 import { SETTINGS_NAV_GROUPS, searchSettings } from "../lib/settings-search";
+import { defaultCakePrompts } from "../../domain/application/cake-prompts";
+import { SettingsPromptField } from "./settings/settings-prompt-field";
+
+const cakePromptDefaults = defaultCakePrompts();
 
 function queueMode(value: string) {
   if (value === "one-at-a-time" || value === "all") return value;
@@ -176,18 +180,22 @@ export const SettingsPage = observer(function SettingsPage({
                         ? "Network & privacy"
                         : activePage === "labels"
                           ? "Session labels"
-                          : activePage === "appearance"
-                            ? "Appearance"
-                            : activePage === "hotkeys"
-                              ? "Hotkeys"
-                              : "VS Code"}
+                          : activePage === "prompts"
+                            ? "Cake prompts"
+                            : activePage === "appearance"
+                              ? "Appearance"
+                              : activePage === "hotkeys"
+                                ? "Hotkeys"
+                                : "VS Code"}
             </h2>
             <p className="mt-1.5 text-xs text-muted-foreground">
               {activePage === "hotkeys"
                 ? "Customize Cake's application shortcuts. Changes take effect immediately."
                 : activePage === "labels"
                   ? "Create the labels available across all projects."
-                  : "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects."}
+                  : activePage === "prompts"
+                    ? "Customize the messages Cake automatically sends while completing workflows."
+                    : "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects."}
             </p>
           </div>
           {error && (
@@ -767,6 +775,80 @@ export const SettingsPage = observer(function SettingsPage({
                 )}
               </section>
             </>
+          )}
+
+          {activePage === "prompts" && settings.cakePrompts.prompts && (
+            <section className="border-t border-border py-5" aria-labelledby="cake-prompts-title">
+              <header className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <h2 id="cake-prompts-title" className="text-[15px] font-semibold text-foreground">
+                    Worktree automation
+                  </h2>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    These prompts appear as user messages when Cake needs an agent to finish a merge
+                    or rebase step. Template variables are replaced when the message is sent.
+                  </p>
+                </div>
+                <Badge variant="outline" size="xs" className="text-muted-foreground">
+                  Cake global
+                </Badge>
+              </header>
+              <div className="grid gap-4">
+                <SettingsPromptField
+                  id="setting-prompt-worktree-commit"
+                  label="Commit before merge"
+                  description="Sent when a worktree has uncommitted changes before landing."
+                  variables="{{target}}"
+                  value={settings.cakePrompts.prompts.worktreeCommit}
+                  defaultValue={cakePromptDefaults.worktreeCommit}
+                  onApply={(value) => void settings.cakePrompts.update("worktreeCommit", value)}
+                />
+                <SettingsPromptField
+                  id="setting-prompt-worktree-rebase-conflict"
+                  label="Rebase conflict"
+                  description="Sent when a standalone worktree rebase stops on conflicts."
+                  variables="{{target}}, {{files}}"
+                  value={settings.cakePrompts.prompts.worktreeRebaseConflict}
+                  defaultValue={cakePromptDefaults.worktreeRebaseConflict}
+                  onApply={(value) =>
+                    void settings.cakePrompts.update("worktreeRebaseConflict", value)
+                  }
+                />
+                <SettingsPromptField
+                  id="setting-prompt-worktree-preserve-conflict"
+                  label="Merge conflict"
+                  description="Sent when preserving commits requires conflict resolution."
+                  variables="{{target}}, {{files}}"
+                  value={settings.cakePrompts.prompts.worktreePreserveConflict}
+                  defaultValue={cakePromptDefaults.worktreePreserveConflict}
+                  onApply={(value) =>
+                    void settings.cakePrompts.update("worktreePreserveConflict", value)
+                  }
+                />
+                <SettingsPromptField
+                  id="setting-prompt-worktree-squash-conflict"
+                  label="Squash conflict"
+                  description="Sent when a squash landing requires conflict resolution."
+                  variables="{{target}}, {{files}}"
+                  value={settings.cakePrompts.prompts.worktreeSquashConflict}
+                  defaultValue={cakePromptDefaults.worktreeSquashConflict}
+                  onApply={(value) =>
+                    void settings.cakePrompts.update("worktreeSquashConflict", value)
+                  }
+                />
+                <SettingsPromptField
+                  id="setting-prompt-worktree-squash-message"
+                  label="Squash commit message"
+                  description="Sent when Cake needs the agent to propose the squash commit message."
+                  variables="{{target}}"
+                  value={settings.cakePrompts.prompts.worktreeSquashMessage}
+                  defaultValue={cakePromptDefaults.worktreeSquashMessage}
+                  onApply={(value) =>
+                    void settings.cakePrompts.update("worktreeSquashMessage", value)
+                  }
+                />
+              </div>
+            </section>
           )}
 
           {activePage === "labels" && (

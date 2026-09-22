@@ -8,6 +8,8 @@ import {
 } from "../../../src/domain/worktrees/worktree-landing-data";
 import { WorktreeOperationCatalogUpdate } from "../../../src/domain/worktrees/worktree-operation-data";
 import type { WorktreeRecord } from "../../../src/domain/worktrees/managed-worktree-data";
+import { defaultApplicationState } from "../../../src/domain/application/application-data";
+import type { CakePrompts } from "../../../src/domain/application/cake-prompts";
 import * as worktreeLandings from "../../../src/domain/worktrees/worktreeLandings";
 import type { WorktreeLandOutcome, WorktreeStatus } from "../../../src/ipc/worktree-contract";
 import {
@@ -19,6 +21,7 @@ import {
   WorktreeLandingCoordinatorLive,
 } from "../../../src/services/worktrees/WorktreeLandingCoordinator";
 import { WorktreeLandingCompletion } from "../../../src/services/worktrees/WorktreeLandingCompletion";
+import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import {
   ManagedWorktreeError,
   ManagedWorktrees,
@@ -58,6 +61,7 @@ function services(options: {
   land?: () => WorktreeLandOutcome;
   prompt?: (text: string) => void;
   promptWait?: Effect.Effect<void>;
+  prompts?: Partial<CakePrompts>;
   prepare?: Effect.Effect<void, ManagedWorktreeError>;
   cancel?: (onlyIfQueued: boolean | undefined) => Effect.Effect<void, ManagedWorktreeError>;
   resolve?: (workingDirectory: string) => Effect.Effect<
@@ -109,7 +113,20 @@ function services(options: {
         ),
       ),
   });
+  const defaults = defaultApplicationState();
+  const state = {
+    ...defaults,
+    cakePrompts: { ...defaults.cakePrompts, ...options.prompts },
+  };
+  const application = ApplicationState.of({
+    initialize: () => Effect.succeed(state),
+    current: () => Effect.succeed(state),
+    snapshot: () => state,
+    changes: () => Stream.never,
+    transact: (transition) => transition(state),
+  });
   return Layer.mergeAll(
+    Layer.succeed(ApplicationState, application),
     Layer.succeed(ManagedWorktrees, managed),
     Layer.succeed(WorktreeLandingAgent, agent),
     WorktreeLandingCoordinatorLive,
@@ -166,6 +183,35 @@ describe("WorktreeLandings", () => {
         expect(events).toEqual(["prepare", "prompt", "land"]);
         expect(promptText).toContain("commit all intended work");
         expect(promptText).toContain("Do not merge, rebase, push");
+      }).pipe(Effect.provide(layer)),
+    );
+  });
+
+  it.effect("uses the configured automatic commit prompt", () => {
+    const events: string[] = [];
+    let status = { ...baseStatus(), dirtyCount: 1, aheadCount: 0 };
+    let promptText = "";
+    const layer = services({
+      status: () => status,
+      events,
+      prompts: { worktreeCommit: "Custom commit instructions for {{target}}." },
+      prompt: (text) => {
+        promptText = text;
+        status = baseStatus();
+      },
+    });
+    return Effect.scoped(
+      Effect.gen(function* () {
+        yield* worktreeLandings.start({
+          operationId: "landing-custom-prompt",
+          workspacePath,
+          sessionId: "session-1",
+          strategy: "preserve",
+          allowDirtyTarget: false,
+          commitBeforeLanding: true,
+        });
+        yield* awaitPhase("landed");
+        expect(promptText).toBe("Custom commit instructions for main.");
       }).pipe(Effect.provide(layer)),
     );
   });

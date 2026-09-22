@@ -1,5 +1,7 @@
 import { Cause, Effect, FiberMap, Stream, SubscriptionRef } from "effect";
 import type { WorktreeLandRequest, WorktreeStatus } from "../../ipc/worktree-contract";
+import { ApplicationState } from "../../services/storage/ApplicationState";
+import { renderCakePrompt } from "../application/cake-prompts";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { WorktreeLandingAgent } from "../../services/worktrees/WorktreeLandingAgent";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
@@ -62,70 +64,8 @@ const requireStatus = Effect.fn("WorktreeLandings.requireStatus")(function* (
   });
 });
 
-const listedFiles = (files: ReadonlyArray<string>) =>
-  files.length > 0
-    ? files.map((file) => `- ${file}`).join("\n")
-    : "- Run `git status` to list the conflicted files.";
-
-const commitPrompt = (target: string) =>
-  [
-    `Cake is preparing to merge this worktree into ${target}, but it has uncommitted changes.`,
-    "",
-    "Inspect the complete working tree, verify the change, and commit all intended work with an appropriate commit message.",
-    "",
-    "Do not merge, rebase, push, switch branches, or modify the target checkout. Cake will merge the committed branch after this turn finishes.",
-  ].join("\n");
-
-const rebaseConflictPrompt = (target: string, files: ReadonlyArray<string>) =>
-  [
-    `Cake tried to rebase this worktree onto ${target}, but the deterministic rebase stopped on conflicts in these files:`,
-    "",
-    listedFiles(files),
-    "",
-    "Resolve each conflict, preserving the intent of both sides.",
-    "Stage the resolved files and continue with `GIT_EDITOR=true git rebase --continue` until the rebase is complete.",
-    "",
-    "Do not push, merge, switch branches, or rewrite commit messages.",
-  ].join("\n");
-
-const conflictPrompt = (
-  target: string,
-  strategy: WorktreeLandRequest["strategy"],
-  files: ReadonlyArray<string>,
-) =>
-  strategy === "squash"
-    ? [
-        `Cake is preparing to squash this worktree into ${target} as one commit, but the combined change conflicts with ${target}.`,
-        "Git stopped on conflicts in these files:",
-        "",
-        listedFiles(files),
-        "",
-        "1. Resolve the conflicts in the working tree, preserving the intent of both sides.",
-        "2. Complete the in-progress merge with `git commit --no-edit`.",
-        `3. Inspect the complete change against ${target}, then propose one commit message for it with the Cake \`worktrees.proposeSquashMessage\` tool (a subject and optional body).`,
-        "",
-        "Do not push, rebase, or switch branches, and do not touch the target checkout. Cake will finish the landing.",
-      ].join("\n")
-    : [
-        `Cake is landing this worktree into ${target} by replaying its commits on top of ${target}.`,
-        "The rebase stopped on conflicts in these files:",
-        "",
-        listedFiles(files),
-        "",
-        "Resolve each conflict in the working tree, preserving the intent of both sides.",
-        "Stage the resolved files and continue the rebase with `GIT_EDITOR=true git rebase --continue` until the rebase is complete.",
-        "",
-        "Do not push, merge, or switch branches, and do not rewrite commit messages. Cake will finish the landing.",
-      ].join("\n");
-
-const squashPrompt = (target: string) =>
-  [
-    `Cake is preparing to squash this worktree into ${target} as one commit.`,
-    "",
-    `Inspect the complete change (for example \`git log --reverse ${target}..HEAD\`, \`git diff --stat ${target}...HEAD\`, and file contents where needed), then propose one commit message describing the entire resulting change with the Cake \`worktrees.proposeSquashMessage\` tool: a concise subject line plus an optional body.`,
-    "",
-    "Do not modify Git state; Cake will create the commit.",
-  ].join("\n");
+const configuredPrompts = (application: ApplicationState["Service"]) =>
+  application.snapshot().cakePrompts;
 
 const prompt = Effect.fn("WorktreeLandings.prompt")(function* (
   operation: WorktreeLandingOperation,
@@ -148,9 +88,14 @@ const performLanding: (
 ) => Effect.Effect<
   void,
   WorktreeLandingError,
-  ManagedWorktrees | WorktreeLandingAgent | WorktreeLandingCoordinator | WorktreeLandingCompletion
+  | ManagedWorktrees
+  | WorktreeLandingAgent
+  | WorktreeLandingCoordinator
+  | WorktreeLandingCompletion
+  | ApplicationState
 > = Effect.fn("WorktreeLandings.performLanding")(function* (operation) {
   const worktrees = yield* ManagedWorktrees;
+  const application = yield* ApplicationState;
   yield* update(operation.workspacePath, operation.operationId, (current) => ({
     ...current,
     phase: "landing",
@@ -194,8 +139,15 @@ const performLanding: (
   yield* prompt(
     operation,
     outcome.outcome === "proposal"
-      ? squashPrompt(status.targetBranch)
-      : conflictPrompt(status.targetBranch, request.strategy, outcome.files),
+      ? renderCakePrompt(configuredPrompts(application).worktreeSquashMessage, {
+          target: status.targetBranch,
+        })
+      : renderCakePrompt(
+          request.strategy === "squash"
+            ? configuredPrompts(application).worktreeSquashConflict
+            : configuredPrompts(application).worktreePreserveConflict,
+          { target: status.targetBranch, files: outcome.files },
+        ),
   );
   const refreshed = yield* requireStatus(operation.workspacePath);
   if (landingBlocked(refreshed, request.strategy)) {
@@ -213,6 +165,7 @@ const prepareCommitAndLand = Effect.fn("WorktreeLandings.prepareCommitAndLand")(
   operation: WorktreeLandingOperation,
 ) {
   const worktrees = yield* ManagedWorktrees;
+  const application = yield* ApplicationState;
   yield* worktrees
     .prepareLanding(operation.workspacePath, operation.operationId)
     .pipe(asError("prepareLanding"));
@@ -223,7 +176,12 @@ const prepareCommitAndLand = Effect.fn("WorktreeLandings.prepareCommitAndLand")(
     phase: "committing",
     pauseReason: "commit",
   }));
-  yield* prompt(operation, commitPrompt(status.targetBranch));
+  yield* prompt(
+    operation,
+    renderCakePrompt(configuredPrompts(application).worktreeCommit, {
+      target: status.targetBranch,
+    }),
+  );
   const refreshed = yield* requireStatus(operation.workspacePath);
   if (landingBlocked(refreshed, operation.strategy ?? "preserve")) {
     yield* update(operation.workspacePath, operation.operationId, (current) => ({
@@ -267,6 +225,7 @@ const performRebase = Effect.fn("WorktreeLandings.performRebase")(function* (
     phase: "rebasing",
     pauseReason: undefined,
   }));
+  const application = yield* ApplicationState;
   const outcome = yield* (yield* ManagedWorktrees)
     .rebase(operation.workspacePath)
     .pipe(asError("rebase"));
@@ -283,7 +242,13 @@ const performRebase = Effect.fn("WorktreeLandings.performRebase")(function* (
     phase: "resolving-rebase",
     pauseReason: "rebase-conflict",
   }));
-  yield* prompt(operation, rebaseConflictPrompt(status.targetBranch, outcome.files));
+  yield* prompt(
+    operation,
+    renderCakePrompt(configuredPrompts(application).worktreeRebaseConflict, {
+      target: status.targetBranch,
+      files: outcome.files,
+    }),
+  );
   const refreshed = yield* requireStatus(operation.workspacePath);
   if (
     refreshed.dirtyCount > 0 ||
@@ -309,7 +274,11 @@ const run = Effect.fn("WorktreeLandings.run")(function* (
   worker: Effect.Effect<
     void,
     WorktreeLandingError,
-    ManagedWorktrees | WorktreeLandingAgent | WorktreeLandingCoordinator | WorktreeLandingCompletion
+    | ManagedWorktrees
+    | WorktreeLandingAgent
+    | WorktreeLandingCoordinator
+    | WorktreeLandingCompletion
+    | ApplicationState
   >,
 ) {
   const coordinator = yield* WorktreeLandingCoordinator;
@@ -419,6 +388,7 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
   readonly sessionId: string;
 }) {
   const coordinator = yield* WorktreeLandingCoordinator;
+  const application = yield* ApplicationState;
   const status = yield* requireStatus(input.workspacePath);
   const operation = yield* SubscriptionRef.modify(coordinator.state, (state) => {
     const current = state.operations.get(input.workspacePath);
@@ -455,7 +425,12 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
               ...item,
               phase: "committing",
             }));
-            yield* prompt(operation, commitPrompt(status.targetBranch));
+            yield* prompt(
+              operation,
+              renderCakePrompt(configuredPrompts(application).worktreeCommit, {
+                target: status.targetBranch,
+              }),
+            );
             const refreshed = yield* requireStatus(operation.workspacePath);
             if (landingBlocked(refreshed, operation.strategy ?? "preserve")) {
               yield* update(operation.workspacePath, operation.operationId, (item) => ({
@@ -474,9 +449,14 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
             }));
             yield* prompt(
               operation,
-              reason === "squash-message"
-                ? squashPrompt(status.targetBranch)
-                : conflictPrompt(status.targetBranch, operation.strategy ?? "preserve", []),
+              renderCakePrompt(
+                reason === "squash-message"
+                  ? configuredPrompts(application).worktreeSquashMessage
+                  : operation.strategy === "squash"
+                    ? configuredPrompts(application).worktreeSquashConflict
+                    : configuredPrompts(application).worktreePreserveConflict,
+                { target: status.targetBranch, files: [] },
+              ),
             );
             const refreshed = yield* requireStatus(operation.workspacePath);
             if (landingBlocked(refreshed, operation.strategy ?? "preserve")) {

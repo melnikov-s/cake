@@ -15,6 +15,7 @@ import type {
 } from "../../domain/artifacts/artifact-lineage";
 import type { ArtifactProjectionMetadata } from "../../services/artifacts/ArtifactProjection";
 import type { ProjectSettings } from "../../domain/application/application-data";
+import type { CakePrompts } from "../../domain/application/cake-prompts";
 import type {
   ResolvedManagedWorktreeCleanupPlan,
   ResolvedManagedWorktreeCleanupResult,
@@ -207,6 +208,7 @@ interface WorkspaceCommands {
     model: UtilityModel | undefined,
     options?: ClientCommandOptions,
   ): Promise<ApplicationState>;
+  setCakePrompts(prompts: CakePrompts, options?: ClientCommandOptions): Promise<ApplicationState>;
   loadStagedSlashCommands(
     path: string,
     options?: ClientCommandOptions,
