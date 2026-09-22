@@ -92,10 +92,7 @@ export const ArtifactLibrary = observer(function ArtifactLibrary({
                     ? "border-primary/35 bg-accent/35"
                     : undefined
                 }
-                onClick={() => {
-                  referencePreviews.clearOperationError();
-                  void store.detailStore.select(decodeArtifactLineageId(lineage.id));
-                }}
+                onClick={() => void store.detailStore.select(decodeArtifactLineageId(lineage.id))}
               />
             ))}
           </nav>

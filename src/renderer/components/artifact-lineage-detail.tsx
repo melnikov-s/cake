@@ -150,13 +150,12 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
             className="mt-2"
             aria-label="Selected artifact revision"
             value={selectedNumber}
-            onChange={(event) => {
-              referencePreviews.clearOperationError(lineageId);
+            onChange={(event) =>
               void store.selectRevision(
                 lineageId,
                 decodeArtifactRevisionNumber(Number(event.target.value)),
-              );
-            }}
+              )
+            }
           >
             {lineage.revisions
               .toSorted((left, right) => right.revision - left.revision)
@@ -192,21 +191,12 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    referencePreviews.clearOperationError(lineageId);
-                    void store.compare(lineageId, selectedRevision, latestRevision);
-                  }}
+                  onClick={() => void store.compare(lineageId, selectedRevision, latestRevision)}
                 >
                   Compare with latest
                 </Button>
                 {activeSessionId && (
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      referencePreviews.clearOperationError(lineageId);
-                      store.requestRestore(selectedRevision);
-                    }}
-                  >
+                  <Button size="sm" onClick={() => store.requestRestore(selectedRevision)}>
                     <RestoreIcon /> Restore as new latest
                   </Button>
                 )}

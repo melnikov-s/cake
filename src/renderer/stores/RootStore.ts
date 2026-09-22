@@ -86,6 +86,8 @@ export class RootStore extends Store<{
         for (const session of this.sessionRegistry.sessions)
           session.sessionArtifactsStore.receive(lineageId);
       },
+      clearReferenceOperationError: (lineageId) =>
+        this.artifactReferencePreviewStore.clearOperationError(lineageId),
     });
   }
 
@@ -654,10 +656,8 @@ export class RootStore extends Store<{
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.artifactLibraryStore.open(sessionId);
     this.appShellStore.showArtifactLibrary();
-    if (lineageId) {
-      this.artifactReferencePreviewStore.clearOperationError();
+    if (lineageId)
       void this.artifactLibraryStore.detailStore.select(decodeArtifactLineageId(lineageId));
-    }
   }
   showSettings() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();

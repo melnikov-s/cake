@@ -9,6 +9,7 @@ import type { ArtifactReferenceMetadata } from "../../../src/domain/artifacts/ar
 import { ArtifactReferencePreview } from "../../../src/renderer/components/artifact-reference-preview";
 import type { Client } from "../../../src/renderer/client/Client";
 import { ArtifactCatalog } from "../../../src/renderer/models/ArtifactCatalog";
+import { ArtifactDetailStore } from "../../../src/renderer/stores/ArtifactDetailStore";
 import { ArtifactReferencePreviewStore } from "../../../src/renderer/stores/ArtifactReferencePreviewStore";
 import type { SessionCatalogStore } from "../../../src/renderer/stores/SessionCatalogStore";
 import { mountWithClient } from "./mount-with-client";
@@ -138,33 +139,83 @@ describe("ArtifactReferencePreview", () => {
     mounted.root[Symbol.dispose]();
   });
 
-  it("scopes mutation failures to their initiating lineage and clears them on detail changes", async () => {
+  it("scopes mutation failures and clears them through detail selection intents", async () => {
     const changed = vi.fn();
     const link = vi.fn(async () => Promise.reject(new Error("link unavailable")));
+    const artifactRevision = (lineageId: string) => ({
+      lineageId,
+      metadata: metadata.revision,
+      snapshot: {
+        protocol: "cake.artifact/v1" as const,
+        id: lineageId,
+        sessionId: "session-1",
+        revision: 2,
+        title: "Report",
+        kind: "markdown" as const,
+        payload: { markdown: "report" },
+        fallback: { markdown: "report" },
+      },
+    });
     const client = {
-      artifacts: { link },
+      artifacts: {
+        link,
+        detail: vi.fn(async (lineageId: string) => ({
+          lineage: {
+            ...metadata.lineage,
+            id: lineageId,
+            stableRef: `cake://artifact/${lineageId}`,
+          },
+          links: [],
+          stableRef: `cake://artifact/${lineageId}`,
+        })),
+        history: vi.fn(async () => ({
+          items: [metadata.revision],
+          offset: 0,
+          limit: 50,
+          total: 1,
+          hasMore: false,
+        })),
+        readExact: vi.fn(async (lineageId: string) => artifactRevision(lineageId)),
+      },
     } as unknown as Client;
-    const mounted = mountWithClient(
+    const model = ArtifactCatalog.create();
+    const previews = mountWithClient(
       createStore(ArtifactReferencePreviewStore, {
-        model: ArtifactCatalog.create(),
+        model,
         artifactsChanged: changed,
+      }),
+      client,
+    );
+    const detail = mountWithClient(
+      createStore(ArtifactDetailStore, {
+        model,
+        artifactsChanged: changed,
+        clearReferenceOperationError: (lineageId) =>
+          previews.subject.clearOperationError(lineageId),
       }),
       client,
     );
     const firstLineage = "report" as never;
     const secondLineage = "appendix" as never;
 
-    await mounted.subject.link("session-1", firstLineage, {
+    await previews.subject.link("session-1", firstLineage, {
       type: "session",
       sessionId: "session-1",
     });
-
-    expect(mounted.subject.operationErrorFor(firstLineage)).toBe("link unavailable");
-    expect(mounted.subject.operationErrorFor(secondLineage)).toBeUndefined();
+    expect(previews.subject.operationErrorFor(firstLineage)).toBe("link unavailable");
+    expect(previews.subject.operationErrorFor(secondLineage)).toBeUndefined();
     expect(changed).not.toHaveBeenCalled();
 
-    mounted.subject.clearOperationError(firstLineage);
-    expect(mounted.subject.operationErrorFor(firstLineage)).toBeUndefined();
+    await detail.subject.select(secondLineage);
+    expect(previews.subject.operationErrorFor(firstLineage)).toBeUndefined();
+
+    await previews.subject.link("session-1", secondLineage, {
+      type: "session",
+      sessionId: "session-1",
+    });
+    expect(previews.subject.operationErrorFor(secondLineage)).toBe("link unavailable");
+    await detail.subject.selectRevision(secondLineage, 2 as never);
+    expect(previews.subject.operationErrorFor(secondLineage)).toBeUndefined();
 
     let rejectLate: ((error: Error) => void) | undefined;
     link.mockImplementationOnce(
@@ -173,15 +224,16 @@ describe("ArtifactReferencePreview", () => {
           rejectLate = reject;
         }),
     );
-    const pending = mounted.subject.link("session-1", firstLineage, {
+    const pending = previews.subject.link("session-1", secondLineage, {
       type: "session",
       sessionId: "session-1",
     });
-    mounted.subject.clearOperationError(firstLineage);
+    await detail.subject.selectRevision(secondLineage, 2 as never);
     rejectLate!(new Error("late failure"));
     await pending;
-    expect(mounted.subject.operationErrorFor(firstLineage)).toBeUndefined();
-    mounted.root[Symbol.dispose]();
+    expect(previews.subject.operationErrorFor(secondLineage)).toBeUndefined();
+    detail.root[Symbol.dispose]();
+    previews.root[Symbol.dispose]();
   });
 
   it("bounds its window-wide metadata cache and ignores results after disposal", async () => {

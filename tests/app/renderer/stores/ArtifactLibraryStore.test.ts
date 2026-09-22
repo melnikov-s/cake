@@ -136,6 +136,7 @@ describe("ArtifactLibraryStore and ArtifactDetailStore", () => {
       createStore(ArtifactLibraryStore, {
         model: ArtifactCatalog.create(),
         artifactsChanged: changed,
+        clearReferenceOperationError: vi.fn(),
       }),
       client,
     );
@@ -184,6 +185,7 @@ describe("ArtifactLibraryStore and ArtifactDetailStore", () => {
       createStore(ArtifactLibraryStore, {
         model: ArtifactCatalog.create(),
         artifactsChanged: vi.fn(),
+        clearReferenceOperationError: vi.fn(),
       }),
       client,
     );
@@ -269,6 +271,7 @@ describe("ArtifactLibraryStore and ArtifactDetailStore", () => {
       createStore(ArtifactLibraryStore, {
         model: ArtifactCatalog.create(),
         artifactsChanged: vi.fn(),
+        clearReferenceOperationError: vi.fn(),
       }),
       client,
     );
@@ -349,6 +352,7 @@ describe("ArtifactLibraryStore and ArtifactDetailStore", () => {
       createStore(ArtifactLibraryStore, {
         model: ArtifactCatalog.create(),
         artifactsChanged: vi.fn(),
+        clearReferenceOperationError: vi.fn(),
       }),
       client,
     );
@@ -415,6 +419,7 @@ describe("ArtifactLibraryStore and ArtifactDetailStore", () => {
       createStore(ArtifactLibraryStore, {
         model: ArtifactCatalog.create(),
         artifactsChanged: vi.fn(),
+        clearReferenceOperationError: vi.fn(),
       }),
       client,
     );

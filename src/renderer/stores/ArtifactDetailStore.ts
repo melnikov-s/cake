@@ -10,6 +10,7 @@ import { ClientContext } from "./context/ClientContext";
 export class ArtifactDetailStore extends Store<{
   model: ArtifactCatalog;
   artifactsChanged(lineageId: string): void;
+  clearReferenceOperationError(lineageId?: ArtifactLineageId): void;
 }> {
   detailLoading = false;
   historyLoading = false;
@@ -45,6 +46,7 @@ export class ArtifactDetailStore extends Store<{
   }
 
   async select(lineageId: ArtifactLineageId) {
+    this.props.clearReferenceOperationError();
     const selectionRequest = ++this.selectionRequest;
     this.historyRequest += 1;
     this.revisionRequest += 1;
@@ -97,6 +99,7 @@ export class ArtifactDetailStore extends Store<{
 
   async selectRevision(lineageId: ArtifactLineageId, revision: ArtifactRevisionNumber) {
     if (this.selectedLineageId !== lineageId) return undefined;
+    this.props.clearReferenceOperationError(lineageId);
     const selectionRequest = this.selectionRequest;
     const revisionRequest = ++this.revisionRequest;
     this.compareRequest += 1;
@@ -178,6 +181,7 @@ export class ArtifactDetailStore extends Store<{
     to: ArtifactRevisionNumber,
   ) {
     if (this.selectedLineageId !== lineageId || this.selectedRevision !== from) return undefined;
+    this.props.clearReferenceOperationError(lineageId);
     const selectionRequest = this.selectionRequest;
     const request = ++this.compareRequest;
     this.comparison = undefined;
@@ -206,6 +210,7 @@ export class ArtifactDetailStore extends Store<{
   }
 
   requestRestore(revision: ArtifactRevisionNumber) {
+    if (this.selectedLineageId) this.props.clearReferenceOperationError(this.selectedLineageId);
     this.pendingRestoreRevision = revision;
   }
 

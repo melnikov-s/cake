@@ -1,4 +1,5 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
+import type { ArtifactLineageId } from "../../domain/artifacts/artifact-lineage";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { ArtifactDetailStore } from "./ArtifactDetailStore";
 import { ClientContext } from "./context/ClientContext";
@@ -6,6 +7,7 @@ import { ClientContext } from "./context/ClientContext";
 export class ArtifactLibraryStore extends Store<{
   model: ArtifactCatalog;
   artifactsChanged(lineageId: string): void;
+  clearReferenceOperationError(lineageId?: ArtifactLineageId): void;
 }> {
   search = "";
   kind = "all";
@@ -38,6 +40,7 @@ export class ArtifactLibraryStore extends Store<{
     return createStore(ArtifactDetailStore, {
       model: this.props.model,
       artifactsChanged: this.props.artifactsChanged,
+      clearReferenceOperationError: this.props.clearReferenceOperationError,
     });
   }
 
