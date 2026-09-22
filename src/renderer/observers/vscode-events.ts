@@ -10,7 +10,7 @@ export const observeVsCodeEvents = (runtime: Runtime, root: RootStore) =>
         if (event.type === "renderer-events-ready") return;
         if (event.type === "embedded-editor-toggle-mode-requested") {
           if (root.appShellStore.selection.kind === "project-session")
-            void root.projectWorkbenchStore.toggleIde();
+            void root.projectWorkbenchStore.presentationStore.toggleIde();
           return;
         }
         root.projectWorkbenchStore.receive(event);

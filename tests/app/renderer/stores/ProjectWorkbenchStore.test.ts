@@ -1,7 +1,6 @@
 import { createStore, mount, toSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { workingDirectoryEditorLocation } from "../../../../src/ipc/editor-location";
-import type { DrawControl } from "../../../../src/domain/draw/draw-control";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { Conversation } from "../../../../src/renderer/models/Conversation";
 import type { ExtensionUiStore } from "../../../../src/renderer/stores/ExtensionUiStore";
@@ -24,7 +23,6 @@ function mountWorkbench(
     onWorktreeSessionsResolved?(sessionIds: readonly string[], projectPath: string): Promise<void>;
     openSessionById?(sessionId: string): Promise<void>;
     reviews?: Partial<ReviewsStore>;
-    registerDrawControl?(control: DrawControl): () => void;
   },
 ) {
   let activeSessionId = initialActiveSessionId;
@@ -63,7 +61,6 @@ function mountWorkbench(
       enterIdeSidebarMode: vi.fn(),
       leaveIdeSidebarMode: vi.fn(),
       projectSidebarWidth: () => 292,
-      registerDrawControl: workflow?.registerDrawControl ?? (() => () => undefined),
     }),
     client,
   );
@@ -125,8 +122,15 @@ describe("ProjectWorkbenchStore", () => {
       operations,
     } = mountWorkbench(registry, catalog, { managedWorktrees: { create } } as unknown as Client);
 
-    store.configureDraftActivation("draft-1", { kind: "new" });
-    await expect(store.prepareNewSession("draft-1", "Fix the draft workflow")).resolves.toBe(true);
+    store.sessionCreationStore.configureDraftActivation("draft-1", { kind: "new" });
+    await expect(
+      store.sessionCreationStore.worktrees.prepare(
+        "draft-1",
+        "/project",
+        "Fix the draft workflow",
+        "Fix Worktree Naming",
+      ),
+    ).resolves.toBe(true);
 
     expect(create).toHaveBeenCalledWith({
       operationId: expect.any(String),
@@ -669,7 +673,11 @@ describe("ProjectWorkbenchStore startup selection", () => {
     } = mountWorkbench(registry, {} as SessionCatalogStore, {} as Client, "visible-session");
     store.projectOpenStore.projectPath = "/visible-project";
 
-    const created = await store.createDraftSession("/other-project", "Draft", "Do this later");
+    const created = await store.sessionCreationStore.createDraft(
+      "/other-project",
+      "Draft",
+      "Do this later",
+    );
 
     expect(pendingSessions.prepare).toHaveBeenCalledWith("/other-project", created);
     expect(pendingSessions.createDraft).toHaveBeenCalledWith(created, "Do this later", []);
@@ -708,7 +716,11 @@ describe("ProjectWorkbenchStore startup selection", () => {
     );
     store.projectOpenStore.projectPath = "/visible-project";
 
-    const created = await store.createSession("/other-project", "Background", "Run the tests");
+    const created = await store.sessionCreationStore.createPrompted(
+      "/other-project",
+      "Background",
+      "Run the tests",
+    );
 
     expect(start).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -798,7 +810,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
       { reviews: reviews as unknown as Partial<ReviewsStore> },
     );
     store.projectOpenStore.projectPath = "/project";
-    store.embeddedEditorStore.visible = true;
+    store.presentationStore.embeddedEditorStore.visible = true;
     const selection = {
       path: "src/main.ts",
       startLine: 4,
@@ -890,145 +902,14 @@ describe("ProjectWorkbenchStore startup selection", () => {
       operations,
     } = mountWorkbench(registry, {} as SessionCatalogStore, {} as Client, "session-1");
 
-    await store.backToAgent();
+    await store.presentationStore.backToAgent();
     expect(showPresentation).not.toHaveBeenCalled();
     expect(requestFocus).not.toHaveBeenCalled();
 
-    await store.backToAgent();
+    await store.presentationStore.backToAgent();
     expect(flush).toHaveBeenCalledTimes(2);
     expect(showPresentation).toHaveBeenCalledWith("normal");
     expect(requestFocus).toHaveBeenCalledOnce();
-
-    root[Symbol.dispose]();
-    operations[Symbol.dispose]();
-  });
-
-  it("targets a background session's Draw mode without changing the active session", async () => {
-    const background = {
-      ...loadedSessionStub({ sessionFile: "/background.jsonl" }),
-      sessionId: "background",
-      showPresentation: vi.fn(),
-      drawStore: { initialize: vi.fn(async () => undefined), activeBoard: undefined },
-    };
-    const focused = {
-      ...loadedSessionStub({ sessionFile: "/focused.jsonl" }),
-      sessionId: "focused",
-      drawStore: { initialize: vi.fn(async () => undefined), activeBoard: undefined },
-    };
-    const registry = {
-      sessions: [background, focused],
-      findSession: vi.fn((sessionId: string) =>
-        sessionId === background.sessionId ? background : focused,
-      ),
-      pendingSessions: { isTemporary: vi.fn(() => false) },
-    } as unknown as SessionRegistryStore;
-    const controls = new Map<string, DrawControl>();
-    const { root, operations, selectSession } = mountWorkbench(
-      registry,
-      { find: () => undefined } as unknown as SessionCatalogStore,
-      {} as Client,
-      "focused",
-      undefined,
-      {
-        registerDrawControl: (control) => {
-          controls.set(control.sessionId, control);
-          return () => controls.delete(control.sessionId);
-        },
-      },
-    );
-
-    await controls.get("background")!.invoke({ _tag: "Enter" });
-
-    expect(background.showPresentation).toHaveBeenCalledWith("draw");
-    expect(background.drawStore.initialize).toHaveBeenCalledOnce();
-    expect(focused.showPresentation).not.toHaveBeenCalled();
-    expect(selectSession).not.toHaveBeenCalled();
-
-    root[Symbol.dispose]();
-    operations[Symbol.dispose]();
-  });
-
-  it("registers loaded sessions and returns Apply only after the Draw Store flush completes", async () => {
-    let finishApply!: () => void;
-    const applyFinished = new Promise<void>((resolve) => {
-      finishApply = resolve;
-    });
-    const apply = vi.fn(async () => {
-      await applyFinished;
-      return { createdIds: ["shape:agent"], updatedIds: [], deletedIds: [] };
-    });
-    const board = {
-      id: "11111111-1111-4111-8111-111111111111",
-      sessionId: "session-1",
-      title: "Board 1",
-      revision: 1,
-      createdAt: "2026-01-01T00:00:00.000Z",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-    };
-    const scene = {
-      pageId: "page:default",
-      viewportBounds: { x: 0, y: 0, width: 800, height: 600 },
-      selectedShapeIds: ["shape:agent"],
-      shapes: [],
-      truncated: false,
-    };
-    const session = {
-      ...loadedSessionStub({ sessionFile: "/session.jsonl" }),
-      presentationMode: "draw" as const,
-      drawStore: {
-        activeBoard: board,
-        apply,
-        read: vi.fn(async () => scene),
-        lastCheckpointId: "00000000-0000-4000-8000-000000000099",
-      },
-    };
-    const registry = {
-      sessions: [session],
-      findSession: vi.fn(() => session),
-      pendingSessions: { isTemporary: vi.fn(() => false) },
-    } as unknown as SessionRegistryStore;
-    let control: DrawControl | undefined;
-    const { root, operations } = mountWorkbench(
-      registry,
-      { find: () => undefined } as unknown as SessionCatalogStore,
-      {} as Client,
-      "session-1",
-      undefined,
-      {
-        registerDrawControl: (next) => {
-          control = next;
-          return () => {
-            control = undefined;
-          };
-        },
-      },
-    );
-
-    expect(control?.sessionId).toBe("session-1");
-    const response = control!.invoke({
-      _tag: "Apply",
-      operations: [
-        {
-          type: "create",
-          shape: { id: "agent", type: "geo", x: 0, y: 0, width: 100, height: 80 },
-        },
-      ],
-    });
-    let settled = false;
-    void response.then(() => {
-      settled = true;
-    });
-    await Promise.resolve();
-    expect(settled).toBe(false);
-    finishApply();
-    await expect(response).resolves.toEqual({
-      ok: true,
-      kind: "applied",
-      boardId: board.id,
-      checkpointId: "00000000-0000-4000-8000-000000000099",
-      receipt: { createdIds: ["shape:agent"], updatedIds: [], deletedIds: [] },
-      scene,
-    });
 
     root[Symbol.dispose]();
     operations[Symbol.dispose]();
@@ -1067,7 +948,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
       range: { start: { line: 4, column: 2 }, end: { line: 8, column: 7 } },
     });
 
-    await store.openFileInIde(location);
+    await store.presentationStore.openFile(location);
 
     expect(flush).toHaveBeenCalledOnce();
     expect(session.showPresentation).toHaveBeenCalledWith("vscode");
@@ -1104,12 +985,12 @@ describe("ProjectWorkbenchStore startup selection", () => {
     );
     store.projectOpenStore.projectPath = "/project";
 
-    store.restoreSessionPresentation();
-    await store.openIde();
-    await store.openWorkspaceChanges();
-    await store.openFileInIde(workingDirectoryEditorLocation({ path: "src/app.ts" }));
+    store.presentationStore.restore();
+    await store.presentationStore.openIde();
+    await store.presentationStore.openWorkspaceChanges();
+    await store.presentationStore.openFile(workingDirectoryEditorLocation({ path: "src/app.ts" }));
 
-    expect(store.embeddedEditorStore.visible).toBe(false);
+    expect(store.presentationStore.embeddedEditorStore.visible).toBe(false);
     expect(open).not.toHaveBeenCalled();
     expect(openSourceControl).not.toHaveBeenCalled();
 

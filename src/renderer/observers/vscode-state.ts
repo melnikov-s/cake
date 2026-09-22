@@ -5,7 +5,7 @@ import type { RootStore } from "../stores/RootStore";
 export const observeVsCodeState = (runtime: Runtime, root: RootStore) =>
   runtime.observe(
     (client) => client.vscode.observeState(),
-    (state) => root.projectWorkbenchStore.embeddedEditorStore.applyState(state),
+    (state) => root.projectWorkbenchStore.presentationStore.embeddedEditorStore.applyState(state),
     {
       reportFailure: (error) =>
         root.projectWorkbenchStore.setError(error, "VS Code state observation"),

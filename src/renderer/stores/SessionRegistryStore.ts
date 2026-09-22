@@ -1,5 +1,6 @@
 import { Store, batch, child, createStore, observable, snapshot, updateStore } from "r-state-tree";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
+import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import type { CakeControlTool } from "../../domain/cake-chats/cake-chat-data";
 import type { Conversation } from "../models/Conversation";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
@@ -38,10 +39,8 @@ export interface SessionRegistryStoreProps {
   modelPresets?(): readonly ModelPreset[];
   assistantTools?(): readonly CakeControlTool[];
   openModelPresetSettings?(): void;
-  newSessionRequest?(
-    sessionId: string,
-  ): { path: string; configuration?: ChatConfiguration; name?: string } | undefined;
-  prepareNewSession?(sessionId: string, firstUserMessage: string): Promise<boolean>;
+  newSessionConfiguration?(sessionId: string): ChatConfiguration | undefined;
+  startNewSession?(sessionId: string, input: ComposerDeliveryInput): Promise<boolean>;
   ensureSessionActive?(sessionId: string): boolean | Promise<boolean>;
   configureDraftActivation?(sessionId: string, choice: WorktreeDraftChoice): void;
   sessionCreationChoice?(sessionId: string): WorktreeDraftChoice;
@@ -111,10 +110,9 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         modelPresets: () => this.props.modelPresets?.() ?? [],
         assistantTools: () => this.props.assistantTools?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
-        newSessionRequest: () => this.props.newSessionRequest?.(target.sessionId),
-        prepareNewSession: (firstUserMessage) =>
-          this.props.prepareNewSession?.(target.sessionId, firstUserMessage) ??
-          Promise.resolve(true),
+        newSessionConfiguration: () => this.props.newSessionConfiguration?.(target.sessionId),
+        startNewSession: (input) =>
+          this.props.startNewSession?.(target.sessionId, input) ?? Promise.resolve(false),
         ensureSessionActive: () => this.props.ensureSessionActive?.(target.sessionId) ?? true,
         configureDraftActivation: (choice) =>
           this.props.configureDraftActivation?.(target.sessionId, choice),

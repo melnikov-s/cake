@@ -7,7 +7,7 @@ type DrawControlRequested = Extract<CakeEvent, { readonly type: "draw-control-re
 export async function handleDrawControlRequest(root: RootStore, event: DrawControlRequested) {
   let response;
   try {
-    response = await root.invokeDrawControl(event.sessionId, event.invocation, root.signal);
+    response = await root.drawControlStore.invoke(event.sessionId, event.invocation, root.signal);
   } catch (error) {
     response = {
       ok: false as const,

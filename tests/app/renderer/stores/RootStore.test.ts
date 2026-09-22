@@ -212,9 +212,9 @@ describe("RootStore session navigation", () => {
     try {
       root.appShellStore.selectProjectSession("focused");
       root.sessionLayoutStore.ensureSession("focused");
-      root.registerDrawControl({ sessionId: "background", invoke });
+      root.drawControlStore.register({ sessionId: "background", invoke });
 
-      await root.invokeDrawControl("background", { _tag: "Enter" });
+      await root.drawControlStore.invoke("background", { _tag: "Enter" });
 
       expect(invoke).toHaveBeenCalledOnce();
       expect(root.appShellStore.activeConversation).toEqual({

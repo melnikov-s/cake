@@ -356,10 +356,11 @@ The window Store hierarchy mirrors the product surfaces:
   do not bypass this policy. On delivery, Cake presents the result in its in-window
   toast stack and Electron also sends it to the operating system notification center.
   `ApplicationControlStore` owns Project Session and Cake Chat application-control request
-  acceptance, deduplication, invocation, response delivery, and lifetime cancellation. Root
-  supplies grouped application-state, session-intent, and presentation capabilities and retains
-  genuine cross-Store navigation and Session Family presentation coordination; the request owner
-  does not duplicate those workflows or expose the transport bridge to other Stores.
+  acceptance, deduplication, invocation, response delivery, and lifetime cancellation. The typed
+  application-control host adapter composes narrow capabilities from their focused owners; Root
+  retains genuine cross-Store navigation and Session Family presentation coordination rather than
+  interpreting the protocol itself. Plugin command interpretation likewise stays at the plugin
+  boundary. Neither adapter duplicates workflows or exposes the transport bridge to other Stores.
 - `AppShellStore` owns the window's one mutually exclusive application
   selection: a Project Session, a Cake Chat Session, settings, or an empty
   workbench. A Project Session selection stores only its globally unique Session
@@ -445,11 +446,16 @@ The window Store hierarchy mirrors the product surfaces:
   snapshots through `Client`. Persistence is not a Store and never
   synchronizes storage back into an already-mounted Store tree.
 - `ProjectWorkbenchStore` coordinates accepted Project-open results with Project Session
-  selection and presentation plus its focused workflow children. `ProjectOpenStore` owns Project
-  picker and inspection state, trust decisions, active Working Directory persistence, and
-  latest-result concurrency. The other children are `CommandPaneStore`,
-  `SessionManagementStore`, `SessionContinuationStore`, `WorktreeCreationStore`, and
-  `EmbeddedEditorStore`.
+  selection and its focused workflow children. `ProjectOpenStore` owns Project picker and
+  inspection state, trust decisions, active Working Directory persistence, and latest-result
+  concurrency. `SessionPresentationStore` composes the embedded editor and browser and owns
+  Agent/VS Code/browser/Draw transitions, suspend/restore policy, Draw flushing, and native
+  presentation-event coordination. `ProjectSessionCreationStore` composes
+  `WorktreeCreationStore` and owns background draft/prompted creation plus first-send activation;
+  stable pending identities remain in `ProjectPendingSessionsStore`. Window-level
+  `DrawControlStore` registers controls for loaded sessions and dispatches to background Draw
+  sessions without changing shell selection. The remaining workbench children include
+  `CommandPaneStore`, `SessionManagementStore`, and `SessionContinuationStore`.
   `SessionLayoutStore` owns a persisted binary split tree, divider ratios, focused pane,
   and per-pane session navigation. Root owns the Project Session layout, while the Cake Chat
   collection owns an independent instance for its meta-sessions. Splitting is relative to the

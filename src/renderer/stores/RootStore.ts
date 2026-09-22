@@ -1,10 +1,8 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
 import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
 import { decodeArtifactLineageId } from "../../domain/artifacts/artifact-lineage";
-import { defaultProjectSettings } from "../../domain/application/application-data";
 import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
-import { crossSessionContextSnapshot } from "../../domain/conversations/cross-session-coordination";
-import type { JsonObject, JsonValue } from "../../ipc/json-contract";
+import type { JsonValue } from "../../ipc/json-contract";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import type { Client } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
@@ -17,7 +15,9 @@ import { ReviewsStore } from "./ReviewsStore";
 import { SettingsStore } from "./SettingsStore";
 import { ExtensionUiStore } from "./ExtensionUiStore";
 import { FullscreenSurfaceStore } from "./FullscreenSurfaceStore";
-import type { AgentControlSource, AppControlHost } from "../app-control/AppControlBridge";
+import type { AgentControlSource } from "../app-control/AppControlBridge";
+import { createRootApplicationControlHost } from "../app-control/RootApplicationControlHost";
+import { createSessionPluginOperationAdapter } from "../app-control/SessionPluginOperationAdapter";
 import { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { AppShellStore } from "./AppShellStore";
 import { InlineWidgetStore } from "./InlineWidgetStore";
@@ -39,40 +39,22 @@ import { formatHotkey } from "../lib/hotkeys";
 import { UiHintModeStore } from "./UiHintModeStore";
 import { ArtifactLibraryStore } from "./ArtifactLibraryStore";
 import { ArtifactReferencePreviewStore } from "./ArtifactReferencePreviewStore";
-import type {
-  DrawControl,
-  DrawControlInvocation,
-  DrawControlResponse,
-} from "../../domain/draw/draw-control";
+import { DrawControlStore } from "./DrawControlStore";
 
 export class RootStore extends Store<{
   client: Client;
   projection: RootProjection;
   flushWindowState(): Promise<void>;
 }> {
-  private readonly drawControls = new Map<string, DrawControl>();
-
-  registerDrawControl(control: DrawControl) {
-    this.drawControls.set(control.sessionId, control);
-    return () => {
-      if (this.drawControls.get(control.sessionId) === control)
-        this.drawControls.delete(control.sessionId);
-    };
-  }
-
-  async invokeDrawControl(
-    sessionId: string,
-    invocation: DrawControlInvocation,
-    signal?: AbortSignal,
-  ): Promise<DrawControlResponse> {
-    const control = this.drawControls.get(sessionId);
-    if (!control)
-      return {
-        ok: false,
-        code: "DRAW_MODE_REQUIRED",
-        message: "Enter Cake Draw for this Project Session, then retry.",
-      };
-    return control.invoke(invocation, signal);
+  @child
+  get drawControlStore(): DrawControlStore {
+    return createStore(DrawControlStore, {
+      sessions: () => this.sessionRegistry.sessions,
+      findSession: (sessionId) => this.sessionRegistry.findSession(sessionId),
+      isResolved: (sessionId) => this.sessionCatalogStore.find(sessionId)?.resolved === true,
+      activeSessionId: () => this.projectWorkbenchStore.activeSessionId,
+      openActiveDraw: () => this.projectWorkbenchStore.presentationStore.openDraw(),
+    });
   }
 
   get projectCatalogModel() {
@@ -255,7 +237,7 @@ export class RootStore extends Store<{
     initialPrompt: string;
     model?: ChatConfiguration;
   }) {
-    const sessionId = await this.projectWorkbenchStore.createDraftSession(
+    const sessionId = await this.projectWorkbenchStore.sessionCreationStore.createDraft(
       input.workspacePath,
       input.name,
       input.initialPrompt,
@@ -398,13 +380,16 @@ export class RootStore extends Store<{
     markdown?: boolean;
   }) {
     const managedWorktree = input.worktreeName
-      ? await this.projectWorkbenchStore.worktreeCreationStore.create(input.workspacePath, {
-          name: input.worktreeName,
-          backgroundSetup: true,
-        })
+      ? await this.projectWorkbenchStore.sessionCreationStore.worktrees.create(
+          input.workspacePath,
+          {
+            name: input.worktreeName,
+            backgroundSetup: true,
+          },
+        )
       : undefined;
     const workspacePath = managedWorktree?.worktreePath ?? input.workspacePath;
-    const sessionId = await this.projectWorkbenchStore.createSession(
+    const sessionId = await this.projectWorkbenchStore.sessionCreationStore.createPrompted(
       workspacePath,
       input.name,
       input.initialPrompt,
@@ -488,14 +473,16 @@ export class RootStore extends Store<{
           : undefined;
     switch (action) {
       case "toggle-agent-editor":
-        if (projectSelected && !projectResolved) void this.projectWorkbenchStore.toggleIde();
+        if (projectSelected && !projectResolved)
+          void this.projectWorkbenchStore.presentationStore.toggleIde();
         break;
       case "open-editor":
-        if (projectSelected && !projectResolved) void this.projectWorkbenchStore.openIde();
+        if (projectSelected && !projectResolved)
+          void this.projectWorkbenchStore.presentationStore.openIde();
         break;
       case "open-changes":
         if (projectSelected && !projectResolved)
-          void this.projectWorkbenchStore.openWorkspaceChanges();
+          void this.projectWorkbenchStore.presentationStore.openWorkspaceChanges();
         break;
       case "toggle-terminal":
         if (!projectResolved) void this.terminalStore.toggle();
@@ -615,7 +602,7 @@ export class RootStore extends Store<{
     const context = this.projectWorkbenchStore.sessionContext();
     if (context) this.appShellStore.selectProjectSession(context.sessionId);
     else this.appShellStore.showWorkbench();
-    this.projectWorkbenchStore.restoreSessionPresentation();
+    this.projectWorkbenchStore.presentationStore.restore();
   }
   returnToWorkbench() {
     const active = this.appShellStore.activeConversation;
@@ -635,8 +622,8 @@ export class RootStore extends Store<{
       this.projectWorkbenchStore.sessionContinuationStore.cancelPrompt();
       return;
     }
-    if (this.projectWorkbenchStore.embeddedEditorStore.visible) {
-      this.projectWorkbenchStore.backToAgent();
+    if (this.projectWorkbenchStore.presentationStore.embeddedEditorStore.visible) {
+      this.projectWorkbenchStore.presentationStore.backToAgent();
       return;
     }
     if (this.projectWorkbenchStore.commandPaneStore.pane)
@@ -825,19 +812,20 @@ export class RootStore extends Store<{
       modelPresets: () => this.settingsStore.modelPresets.presets,
       assistantTools: () => this.applicationControlStore.sessionAssistantTools(),
       openModelPresetSettings: () => this.showModelPresetSettings(),
-      newSessionRequest: (sessionId) => this.projectWorkbenchStore.newSessionRequest(sessionId),
-      prepareNewSession: (sessionId, firstUserMessage) =>
-        this.projectWorkbenchStore.prepareNewSession(sessionId, firstUserMessage),
+      newSessionConfiguration: (sessionId) =>
+        this.projectWorkbenchStore.sessionCreationStore.request(sessionId)?.configuration,
+      startNewSession: (sessionId, input) =>
+        this.projectWorkbenchStore.sessionCreationStore.start(sessionId, input),
       ensureSessionActive: (sessionId) => {
         if (!this.sessionCatalogStore.find(sessionId)?.resolved) return true;
         return this.projectWorkbenchStore.sessionManagementStore.resolveSession(sessionId, false);
       },
       configureDraftActivation: (sessionId, choice) =>
-        this.projectWorkbenchStore.configureDraftActivation(sessionId, choice),
+        this.projectWorkbenchStore.sessionCreationStore.configureDraftActivation(sessionId, choice),
       sessionCreationChoice: (sessionId) =>
-        this.projectWorkbenchStore.sessionCreationChoice(sessionId),
+        this.projectWorkbenchStore.sessionCreationStore.choice(sessionId),
       draftActivationCandidates: (sessionId) =>
-        this.projectWorkbenchStore.draftActivationCandidates(sessionId),
+        this.projectWorkbenchStore.sessionCreationStore.candidates(sessionId),
       onWorktreeLanded: (_record, result) => {
         this.toastStore.show(
           result.resolved
@@ -1110,7 +1098,6 @@ export class RootStore extends Store<{
       leaveIdeSidebarMode: () => this.sidebarStore.leaveIdeMode(),
       projectSidebarWidth: () => this.sidebarStore.width,
       paneNumber: (sessionId) => this.sessionLayoutStore.paneNumber(sessionId),
-      registerDrawControl: (control) => this.registerDrawControl(control),
     });
   }
 
@@ -1142,7 +1129,40 @@ export class RootStore extends Store<{
   get applicationControlStore(): ApplicationControlStore {
     return createStore(ApplicationControlStore, {
       client: this.client,
-      host: this.applicationControlHost(),
+      host: createRootApplicationControlHost({
+        client: this.client,
+        signal: this.signal,
+        flushWindowState: this.props.flushWindowState,
+        appShellStore: this.appShellStore,
+        applicationControlStore: () => this.applicationControlStore,
+        cakeChatCollectionStore: this.cakeChatCollectionStore,
+        notificationStore: this.notificationStore,
+        projectCatalogStore: this.projectCatalogStore,
+        projectWorkbenchStore: this.projectWorkbenchStore,
+        sessionCatalogStore: this.sessionCatalogStore,
+        sessionCoordinationStore: this.sessionCoordinationStore,
+        sessionLayoutStore: this.sessionLayoutStore,
+        sessionRegistry: this.sessionRegistry,
+        settingsStore: this.settingsStore,
+        sidebarStore: this.sidebarStore,
+        toastStore: this.toastStore,
+        projectSessionWorkingDirectory: (sessionId) =>
+          this.projectSessionWorkingDirectory(sessionId),
+        requireProjectSessionWorkingDirectory: (sessionId) =>
+          this.requireProjectSessionWorkingDirectory(sessionId),
+        prepareProjectSessionChat: (sessionId) => this.prepareProjectSessionChat(sessionId),
+        openSession: (sessionId, messageId) => this.openSession(sessionId, messageId),
+        openCakeChat: (sessionId) => this.openCakeChat(sessionId),
+        createPromptedSession: (input) => this.createPromptedSession(input),
+        createDraftSession: (input) => this.createDraftSession(input),
+        forgetResolvedProjectSessions: (sessionIds) =>
+          this.forgetResolvedProjectSessions(sessionIds),
+        forgetResolvedSessions: (sessionIds) => this.forgetResolvedSessions(sessionIds),
+        focusCakeChatPane: (paneId) => this.focusCakeChatPane(paneId),
+        focusSessionPane: (paneId) => this.focusSessionPane(paneId),
+        splitFocusedCakeChat: (axis) => this.splitFocusedCakeChat(axis),
+        splitFocusedSession: (axis) => this.splitFocusedSession(axis),
+      }),
       operations: this.sessionOperationCoordinator,
       cakeChatRequests: () =>
         this.cakeChatCollectionStore.registry.sessions.flatMap(
@@ -1173,326 +1193,14 @@ export class RootStore extends Store<{
     });
   }
 
-  async invokeSessionPluginOperation(
-    sessionId: string,
-    pluginId: string,
-    command: string,
-    input: JsonObject,
-  ): Promise<JsonValue> {
-    if (command === "session.prompt") {
-      const text = String(input.text ?? "").trim();
-      if (!text) throw new Error("session.prompt requires non-empty text");
-      await this.prepareProjectSessionChat(sessionId);
-      await this.client.sessionChats.prompt(
-        {
-          sessionId,
-          text,
-          attachments: [],
-          renderUserMessageAsMarkdown: false,
-        },
-        { signal: this.signal },
-      );
-      return { accepted: true };
-    }
-    if (command === "plugins.set-state") {
-      if (!("state" in input)) throw new Error("plugins.set-state requires state");
-      await this.sessionPluginStore.setPluginState(sessionId, pluginId, input.state);
-      return { updated: true };
-    }
-    if (command === "plugins.set-shared-state") {
-      const key = String(input.key ?? "").trim();
-      if (!key || !("value" in input))
-        throw new Error("plugins.set-shared-state requires key and value");
-      await this.sessionPluginStore.setSharedState(sessionId, key, input.value);
-      return { updated: true };
-    }
-    if (command === "plugins.delete") {
-      await this.sessionPluginStore.delete(sessionId, pluginId);
-      return { deleted: true };
-    }
-    return this.client.projectSessions.callCakeOperation(
-      {
-        sessionId,
-        workingDirectory: this.requireProjectSessionWorkingDirectory(sessionId),
-        command,
-        input,
-      },
-      { signal: this.signal },
-    );
-  }
-
-  private applicationControlHost(): AppControlHost {
-    return {
-      sessionCoordination: this.sessionCoordinationStore,
-      state: {
-        currentSelection: () => {
-          const selection = this.appShellStore.selection;
-          if (selection.kind === "project-session") {
-            if (
-              this.sessionRegistry.pendingSessions.isTemporary(selection.sessionId) &&
-              !this.sessionRegistry.pendingSessions.isDraft(selection.sessionId)
-            )
-              return { kind: "new-project-chat" as const };
-            const summary = this.sessionCatalogStore.find(selection.sessionId);
-            const workspacePath = this.projectSessionWorkingDirectory(selection.sessionId) ?? "";
-            return {
-              kind: "project-session" as const,
-              sessionId: selection.sessionId,
-              title: summary?.title ?? "New chat",
-              workspacePath,
-              workspaceName:
-                summary?.projectName ?? this.projectCatalogStore.nameForPath(workspacePath),
-            };
-          }
-          if (selection.kind === "cake-chat") {
-            if (
-              !selection.sessionId ||
-              (this.cakeChatCollectionStore.pendingSessions.isPending(selection.sessionId) &&
-                !this.cakeChatCollectionStore.pendingSessions.conversation(selection.sessionId)
-                  ?.isDraft)
-            )
-              return { kind: "new-cake-chat" as const };
-            return {
-              kind: "cake-chat" as const,
-              sessionId: selection.sessionId,
-              title:
-                this.cakeChatCollectionStore.summaries.find(
-                  (session) => session.sessionId === selection.sessionId,
-                )?.title ?? "Cake Chat",
-            };
-          }
-          if (selection.kind === "settings")
-            return { kind: "settings" as const, page: this.settingsStore.activePage };
-          return { kind: "workbench" as const };
-        },
-        sessionLayout: (source) => {
-          const layout =
-            source?.kind === "cake-chat"
-              ? this.cakeChatCollectionStore.sessionLayoutStore
-              : this.sessionLayoutStore;
-          const relativeSessionId =
-            source?.sessionId && layout.hasSession(source.sessionId)
-              ? source.sessionId
-              : layout.focusedSessionId;
-          return {
-            focusedSessionId: layout.focusedSessionId,
-            ...(relativeSessionId ? { originSessionId: relativeSessionId } : null),
-            panes: layout.panePlacements.map((pane) => ({ ...pane })),
-            ...(relativeSessionId ? { neighbors: layout.neighbors(relativeSessionId) } : null),
-          };
-        },
-        projects: () => this.projectCatalogStore.projects,
-        sessions: () => this.sessionCatalogStore.sessions,
-        cakeChatSessions: () => this.cakeChatCollectionStore.summaries,
-        sessionActivity: (sessionId) => this.sidebarStore.sessionActivity(sessionId),
-        managedWorktree: (workingDirectory) =>
-          this.sessionCatalogStore.managedWorktree(workingDirectory),
-        globalSessionLabels: () => this.settingsStore.globalLabels.labels,
-      },
-      settings: {
-        get: (section) => this.settingsStore.settingsSection(section),
-        update: async (input) => {
-          const view = this.settingsStore.updateSettings(input);
-          await this.props.flushWindowState();
-          return view;
-        },
-      },
-      projectSettings: {
-        get: (projectPath) => this.projectCatalogStore.find(projectPath)?.settings,
-        update: (projectPath, changes) =>
-          this.applicationControlStore.runOperation(async () => {
-            const current =
-              this.projectCatalogStore.find(projectPath)?.settings ?? defaultProjectSettings();
-            const settings = { ...current, ...changes };
-            await this.client.workspaces.setProjectSettings(projectPath, settings, {
-              signal: this.signal,
-            });
-            return settings;
-          }),
-      },
-      vscode: {
-        enter: (source) => this.projectWorkbenchStore.showSessionEditor(source.sessionId),
-        open: (source, location) =>
-          this.projectWorkbenchStore.showSessionEditor(source.sessionId, location),
-        performEditorAction: (source, action) =>
-          this.client.vscode.performEditorAction(
-            this.requireProjectSessionWorkingDirectory(source.sessionId),
-            action,
-            { signal: this.signal },
-          ),
-      },
-      sessionLabels: {
-        mutate: ({ projectPath }, mutation) =>
-          this.applicationControlStore.runOperation(async () => {
-            if (projectPath)
-              await this.client.projectWorkflow.mutate(
-                { projectPath, mutation },
-                { signal: this.signal },
-              );
-            else
-              await this.client.projectWorkflow.mutateGlobal({ mutation }, { signal: this.signal });
-          }),
-        setSessionLabels: (sessionId, labelIds) =>
-          this.projectWorkbenchStore.sessionManagementStore.setSessionLabels(sessionId, labelIds),
-      },
-      worktrees: {
-        merge: async ({ sessionId, workingDirectory }) => {
-          const operationId = crypto.randomUUID();
-          await this.client.managedWorktrees.startLanding(
-            {
-              operationId,
-              workspacePath: workingDirectory,
-              sessionId,
-              strategy: "preserve",
-              allowDirtyTarget: false,
-              commitBeforeLanding: true,
-              resolveAfterLanding: false,
-            },
-            { signal: this.signal },
-          );
-          return operationId;
-        },
-        discard: async ({ workingDirectory, keepBranch }) => {
-          await this.client.managedWorktrees.discard(
-            {
-              operationId: crypto.randomUUID(),
-              workspacePath: workingDirectory,
-              keepBranch,
-            },
-            { signal: this.signal },
-          );
-        },
-      },
-      sessions: {
-        contextSnapshot: (sessionId) => {
-          const model =
-            this.sessionRegistry.findSession(sessionId)?.model ??
-            this.cakeChatCollectionStore.registry.find(sessionId)?.model;
-          return crossSessionContextSnapshot(model?.usage?.context);
-        },
-        inspect: (sessionId) =>
-          this.client.projectSessions.inspect({ sessionId }, { signal: this.signal }),
-        open: (sessionId, messageId) => this.openSession(sessionId, messageId),
-        create: (input) => this.createPromptedSession(input),
-        createDraft: (input) => this.createDraftSession(input),
-        sendMessage: (sessionId, text, delivery, crossSession) =>
-          this.applicationControlStore.runOperation(async () => {
-            await this.prepareProjectSessionChat(sessionId);
-            const command =
-              delivery === "steer"
-                ? this.client.sessionChats.steer
-                : delivery === "follow-up"
-                  ? this.client.sessionChats.followUp
-                  : this.client.sessionChats.prompt;
-            return command(
-              {
-                sessionId,
-                text,
-                renderUserMessageAsMarkdown: false,
-                attachments: [],
-                ...(crossSession ? { crossSession } : null),
-              },
-              { signal: this.signal },
-            );
-          }),
-        compact: (sessionId, instructions) =>
-          this.applicationControlStore.runOperation(async () => {
-            await this.prepareProjectSessionChat(sessionId);
-            return this.client.sessionChats.compact(
-              { sessionId, instructions },
-              { signal: this.signal },
-            );
-          }),
-        scheduleMessage: (input) =>
-          this.applicationControlStore.runOperation(() =>
-            this.client.scheduledMessages.schedule(input, { signal: this.signal }),
-          ),
-        listScheduledMessages: (sessionId) =>
-          this.client.scheduledMessages.list(sessionId, { signal: this.signal }),
-        cancelScheduledMessage: (id) =>
-          this.applicationControlStore.runOperation(() =>
-            this.client.scheduledMessages.cancel(id, { signal: this.signal }),
-          ),
-        listPendingMessages: async (sessionId) => {
-          await this.prepareProjectSessionChat(sessionId);
-          return this.client.sessionChats.listQueuedMessages(
-            { sessionId },
-            { signal: this.signal },
-          );
-        },
-        dequeuePendingMessages: (sessionId) =>
-          this.applicationControlStore.runOperation(async () => {
-            await this.prepareProjectSessionChat(sessionId);
-            return this.client.sessionChats.clearQueue({ sessionId }, { signal: this.signal });
-          }),
-        abort: (sessionId) =>
-          this.applicationControlStore.runOperation(async () => {
-            await this.prepareProjectSessionChat(sessionId);
-            return this.client.sessionChats.abort({ sessionId }, { signal: this.signal });
-          }),
-        rename: (sessionId, title) =>
-          this.cakeChatCollectionStore.summaries.some((session) => session.sessionId === sessionId)
-            ? this.cakeChatCollectionStore.management
-                .renameSession(sessionId, title)
-                .then(() => undefined)
-            : this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, title),
-        setProjectSessionsResolved: async (sessionIds, resolved) => {
-          const count = await this.projectWorkbenchStore.sessionManagementStore.resolveSessionsById(
-            sessionIds,
-            resolved,
-          );
-          if (resolved && count === sessionIds.length)
-            await this.forgetResolvedProjectSessions(sessionIds);
-          return count;
-        },
-        setCakeChatSessionsResolved: async (sessionIds, resolved) => {
-          const count = await this.cakeChatCollectionStore.management.resolveSessions(
-            sessionIds,
-            resolved,
-          );
-          if (resolved) await this.forgetResolvedSessions(sessionIds);
-          return count;
-        },
-      },
-      presentation: {
-        splitView: (source, direction) => {
-          const axis = direction === "right" ? "x" : "y";
-          if (source.kind === "cake-chat") {
-            const pane = this.cakeChatCollectionStore.sessionLayoutStore.paneForSession(
-              source.sessionId,
-            );
-            if (!pane) return undefined;
-            this.focusCakeChatPane(pane.paneId);
-            const split = this.splitFocusedCakeChat(axis);
-            return split ? { kind: source.kind, ...split } : undefined;
-          }
-          const pane = this.sessionLayoutStore.paneForSession(source.sessionId);
-          if (!pane) return undefined;
-          this.focusSessionPane(pane.paneId);
-          const split = this.splitFocusedSession(axis);
-          return split ? { kind: source.kind, ...split } : undefined;
-        },
-        showNotification: (input) => this.notificationStore.enqueue(input),
-        showAgentAction: ({ source, message, targetSessionId, targetKind, coalesceKey }) => {
-          const action =
-            targetSessionId && targetKind
-              ? {
-                  label: "View",
-                  run: async () => {
-                    if (targetKind === "cake-chat") await this.openCakeChat(targetSessionId);
-                    else await this.openSession(targetSessionId);
-                  },
-                }
-              : undefined;
-          this.toastStore.show({
-            title: `Agent action · ${source.title}`,
-            message,
-            action,
-            coalesceKey: `agent:${source.sessionId}:${coalesceKey}`,
-          });
-        },
-      },
-    };
+  get sessionPluginOperations() {
+    return createSessionPluginOperationAdapter({
+      client: this.client,
+      signal: this.signal,
+      plugins: this.sessionPluginStore,
+      workingDirectory: (sessionId) => this.requireProjectSessionWorkingDirectory(sessionId),
+      prepareChat: (sessionId) => this.prepareProjectSessionChat(sessionId),
+    });
   }
 
   constructor(props: RootStore["props"]) {

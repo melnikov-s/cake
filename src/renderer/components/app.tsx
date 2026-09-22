@@ -269,8 +269,8 @@ export const App = observer(function App() {
             root.focusSessionPane(
               root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
             );
-            void store
-              .openFileInIde(
+            void store.presentationStore
+              .openFile(
                 editorLocationFromPath({
                   ...location,
                   path: toWorkspaceRelativePath(location.path, paneSession.workspacePath),
@@ -284,7 +284,7 @@ export const App = observer(function App() {
             root.focusSessionPane(
               root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
             );
-            if (threadId) void store.openReviewThread(threadId);
+            if (threadId) void store.presentationStore.openReviewThread(threadId);
           },
       waitingForUser:
         !resolved &&
@@ -418,7 +418,7 @@ export const App = observer(function App() {
       plugins={root.sessionPluginStore}
       inlineWidgets={root.inlineWidgetStore}
       call={(pluginId, command, input) =>
-        root.invokeSessionPluginOperation(paneSession.sessionId, pluginId, command, input)
+        root.sessionPluginOperations.invoke(paneSession.sessionId, pluginId, command, input)
       }
     />
   );
@@ -427,7 +427,7 @@ export const App = observer(function App() {
       {projectExtensionCompanions(session)}
       {projectSessionPlugins(session)}
       <WorktreePill
-        creation={store.worktreeCreationStore}
+        creation={store.sessionCreationStore.worktrees}
         actions={session.worktreeStore}
         record={root.sessionCatalogStore.managedWorktree(session.workspacePath)}
         sessionId={session.sessionId}
@@ -533,7 +533,7 @@ export const App = observer(function App() {
           tooltip="Open Cake Draw"
           onClick={() => {
             focusPane();
-            void store.openDraw();
+            void store.presentationStore.openDraw();
           }}
         >
           <WhiteboardIcon />
@@ -542,7 +542,7 @@ export const App = observer(function App() {
           tooltip="Open Browser Mode"
           onClick={() => {
             focusPane();
-            void store.openBrowser();
+            void store.presentationStore.openBrowser();
           }}
         >
           <BrowserIcon />
@@ -552,7 +552,7 @@ export const App = observer(function App() {
           tooltip="Open VS Code"
           onClick={() => {
             focusPane();
-            void store.openIde();
+            void store.presentationStore.openIde();
           }}
         >
           <VsCodeIcon />
@@ -563,7 +563,7 @@ export const App = observer(function App() {
             tooltip="Open workspace changes in VS Code"
             onClick={() => {
               focusPane();
-              void store.openWorkspaceChanges();
+              void store.presentationStore.openWorkspaceChanges();
             }}
           >
             <ChangesIcon />
@@ -597,15 +597,15 @@ export const App = observer(function App() {
       terminalOpen={terminal.open}
       terminalAcceleratorHint={terminal.toggleAcceleratorHint}
       onToggleTree={() => {
-        void store.backToAgent().then(() => {
+        void store.presentationStore.backToAgent().then(() => {
           if (store.activeSession?.presentationMode === "normal")
             store.commandPaneStore.toggle("tree");
         });
       }}
-      onBackToAgent={() => void store.backToAgent()}
-      onOpenDraw={() => void store.openDraw()}
-      onOpenBrowser={() => void store.openBrowser()}
-      onOpenIde={() => void store.openIde()}
+      onBackToAgent={() => void store.presentationStore.backToAgent()}
+      onOpenDraw={() => void store.presentationStore.openDraw()}
+      onOpenBrowser={() => void store.presentationStore.openBrowser()}
+      onOpenIde={() => void store.presentationStore.openIde()}
       onToggleTerminal={() => void terminal.toggle()}
     />
   );
@@ -687,7 +687,7 @@ export const App = observer(function App() {
           {projectExtensionCompanions(paneSession)}
           {projectSessionPlugins(paneSession)}
           <WorktreePill
-            creation={store.worktreeCreationStore}
+            creation={store.sessionCreationStore.worktrees}
             actions={paneSession.worktreeStore}
             record={root.sessionCatalogStore.managedWorktree(paneSession.workspacePath)}
             sessionId={paneSession.sessionId}
@@ -809,14 +809,14 @@ export const App = observer(function App() {
   if (
     session?.presentationMode === "browser" &&
     !store.activeSessionResolved &&
-    store.browserStore.visible &&
+    store.presentationStore.browserStore.visible &&
     projectTranscriptBehavior
   )
     return (
       <>
         <StoreProvider key={session.sessionId} store={session}>
           <BrowserWorkspace
-            browser={store.browserStore}
+            browser={store.presentationStore.browserStore}
             projectSidebar={projectSidebar}
             projectSidebarVisible={!sidebarCollapsed}
             projectSidebarWidth={displayedSidebarWidth}
@@ -849,14 +849,14 @@ export const App = observer(function App() {
   if (
     session?.presentationMode === "vscode" &&
     !store.activeSessionResolved &&
-    store.embeddedEditorStore.visible &&
+    store.presentationStore.embeddedEditorStore.visible &&
     projectTranscriptBehavior
   )
     return (
       <>
         <StoreProvider key={session.sessionId} store={session}>
           <IdeWorkspace
-            editor={store.embeddedEditorStore}
+            editor={store.presentationStore.embeddedEditorStore}
             reviews={reviews}
             projectSidebar={projectSidebar}
             projectSidebarVisible={!sidebarCollapsed}

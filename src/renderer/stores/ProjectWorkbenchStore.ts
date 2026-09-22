@@ -1,19 +1,11 @@
 import { Store, batch, child, createStore, effect as reactiveEffect } from "r-state-tree";
-import type { ProjectSessionStartInput } from "../../domain/project-sessions/project-session-data";
-import { workingDirectoryEditorLocation, type EditorLocation } from "../../ipc/editor-location";
+import type { EditorLocation } from "../../ipc/editor-location";
 import type { ChatConfiguration } from "../../ipc/session-contract";
-import {
-  discussionAnchorFromEditorSelection,
-  sourceAttachmentFromEditorSelection,
-} from "../../utils/editor-selection";
-import { reviewThreadAnnotations } from "../../utils/review-thread-annotations";
 import type { StoreEvent } from "../events/StoreEvent";
 import type {
   AgentAvailabilitySnapshot,
   AgentAvailabilityState,
 } from "../../domain/application/agent-availability-data";
-import { EmbeddedEditorStore } from "./EmbeddedEditorStore";
-import { BrowserStore } from "./BrowserStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { ExtensionUiStore } from "./ExtensionUiStore";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
@@ -25,15 +17,11 @@ import { ClientContext } from "./context/ClientContext";
 import { CommandPaneStore } from "./CommandPaneStore";
 import { SessionManagementStore } from "./SessionManagementStore";
 import { SessionContinuationStore } from "./SessionContinuationStore";
-import { WorktreeCreationStore, type WorktreeDraftChoice } from "./WorktreeCreationStore";
 import { ProjectOpenStore, type ProjectOpenResult } from "./ProjectOpenStore";
 import type { WorkingDirectoryRetirementWorkflow } from "./WorkingDirectoryRetirementStore";
 import type { SessionLabel } from "../../domain/application/application-data";
-import type {
-  DrawControl,
-  DrawControlInvocation,
-  DrawControlResponse,
-} from "../../domain/draw/draw-control";
+import { SessionPresentationStore } from "./SessionPresentationStore";
+import { ProjectSessionCreationStore } from "./ProjectSessionCreationStore";
 
 export interface ProjectWorkbenchStoreProps {
   retirement: WorkingDirectoryRetirementWorkflow;
@@ -61,28 +49,11 @@ export interface ProjectWorkbenchStoreProps {
   leaveIdeSidebarMode(): void;
   projectSidebarWidth(): number;
   paneNumber?(sessionId: string): number | undefined;
-  registerDrawControl(control: DrawControl): () => void;
 }
 
 /** Coordinates accepted Project opens with Project Session and workbench presentation. */
 export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   readonly process = "renderer" as const;
-
-  constructor(props: ProjectWorkbenchStore["props"]) {
-    super(props);
-    this.effect(() => {
-      const unregister = (this.sessionRegistry.sessions ?? []).map((session) =>
-        this.props.registerDrawControl({
-          sessionId: session.sessionId,
-          invoke: (invocation, signal) =>
-            this.invokeDrawControl(session.sessionId, invocation, signal),
-        }),
-      );
-      return () => {
-        for (const dispose of unregister) dispose();
-      };
-    });
-  }
 
   get client() {
     return ClientContext.consume(this)!;
@@ -117,47 +88,19 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   @child
-  get embeddedEditorStore(): EmbeddedEditorStore {
-    return createStore(EmbeddedEditorStore, {
+  get presentationStore(): SessionPresentationStore {
+    return createStore(SessionPresentationStore, {
+      activeSession: () => this.activeSession,
+      activeSessionId: () => this.activeSessionId,
+      activeSessionResolved: () => this.activeSessionResolved,
       projectPath: () => this.projectOpenStore.projectPath,
-      presentationMode: () => this.activeSession?.presentationMode ?? "normal",
-      setPresentationMode: (mode) => this.activeSession?.showPresentation(mode),
-      chatSidebarVisible: () => this.activeSession?.workspaceChatSidebarVisible ?? true,
-      toggleChatSidebar: () => this.activeSession?.toggleWorkspaceChatSidebar(),
-      showChatSidebar: () => this.activeSession?.showWorkspaceChatSidebar(),
-      chatSidebarWidth: () => this.activeSession?.workspaceChatSidebarWidth ?? 420,
-      setChatSidebarWidth: (width) => this.activeSession?.setWorkspaceChatSidebarWidth(width),
-      annotations: () => {
-        const sessionId = this.activeSessionId;
-        if (!sessionId) return undefined;
-        return reviewThreadAnnotations(
-          sessionId,
-          this.reviews.codeThreadsForSession(sessionId),
-          (threadId) => this.reviews.threadStreaming(threadId),
-        );
-      },
-      startCakeChat: (prompt) => this.props.startCakeChat(prompt),
-      enterProjectSidebarMode: () => this.props.enterIdeSidebarMode(),
-      leaveProjectSidebarMode: () => this.props.leaveIdeSidebarMode(),
-      projectSidebarWidth: () => this.props.projectSidebarWidth(),
-    });
-  }
-
-  @child
-  get browserStore(): BrowserStore {
-    return createStore(BrowserStore, {
-      sessionId: () => this.activeSessionId,
-      presentationMode: () => this.activeSession?.presentationMode ?? "normal",
-      setPresentationMode: (mode) => this.activeSession?.showPresentation(mode),
-      chatSidebarVisible: () => this.activeSession?.workspaceChatSidebarVisible ?? true,
-      chatSidebarWidth: () => this.activeSession?.workspaceChatSidebarWidth ?? 420,
-      setChatSidebarWidth: (width) => this.activeSession?.setWorkspaceChatSidebarWidth(width),
-      appendAttachment: (attachment) =>
-        this.activeSession?.conversationSessionStore.composerStore.draftStore.appendAttachments([
-          attachment,
-        ]),
-      enterProjectSidebarMode: () => this.props.enterIdeSidebarMode(),
-      leaveProjectSidebarMode: () => this.props.leaveIdeSidebarMode(),
+      reviews: this.props.reviews,
+      dismissCommandPane: () => this.commandPaneStore.dismiss(),
+      startCakeChat: this.props.startCakeChat,
+      toggleProjectSidebar: this.props.toggleProjectSidebar,
+      enterProjectSidebarMode: this.props.enterIdeSidebarMode,
+      leaveProjectSidebarMode: this.props.leaveIdeSidebarMode,
+      projectSidebarWidth: this.props.projectSidebarWidth,
     });
   }
 
@@ -192,7 +135,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return createStore(SessionContinuationStore, {
       operations: this.props.operations,
       createWorktree: async (projectPath, name, baseWorktreePath) => {
-        const record = await this.worktreeCreationStore.create(projectPath, {
+        const record = await this.sessionCreationStore.worktrees.create(projectPath, {
           name,
           baseWorktreePath,
           backgroundSetup: true,
@@ -209,14 +152,14 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   @child
-  get worktreeCreationStore(): WorktreeCreationStore {
-    return createStore(WorktreeCreationStore, {
+  get sessionCreationStore(): ProjectSessionCreationStore {
+    return createStore(ProjectSessionCreationStore, {
+      registry: this.sessionRegistry,
       operations: this.props.operations,
       catalog: this.props.catalog,
-      relocateTemporarySession: (sessionId, workspacePath) => {
-        this.sessionRegistry.pendingSessions.relocate(sessionId, workspacePath);
-        if (this.activeSessionId === sessionId) this.projectOpenStore.activate(workspacePath);
-      },
+      activeSessionId: () => this.activeSessionId,
+      defaultConfiguration: this.props.defaultConfiguration,
+      activateWorkspace: (path) => this.projectOpenStore.activate(path),
       reportError: (error) => this.setError(error),
     });
   }
@@ -417,111 +360,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       });
   }
 
-  newSessionRequest(sessionId: string) {
-    const session = this.sessionRegistry.findSession(sessionId);
-    if (!session || !this.sessionRegistry.pendingSessions.isTemporary(sessionId)) return undefined;
-    return {
-      path: session.workspacePath,
-      configuration:
-        this.sessionRegistry.pendingSessions.conversation(sessionId)?.configuration ??
-        this.props.defaultConfiguration?.(),
-      name: this.sessionRegistry.pendingSessions.conversation(sessionId)?.name,
-    };
-  }
-
-  /** Creates and saves a Cake-owned draft in the background without changing selection. */
-  async createDraftSession(
-    path: string,
-    name: string,
-    initialPrompt: string,
-    configuration?: ChatConfiguration,
-  ) {
-    const sessionId = crypto.randomUUID();
-    this.sessionRegistry.pendingSessions.prepare(path, sessionId);
-    const conversation = this.sessionRegistry.pendingSessions.conversation(sessionId)!;
-    conversation.setName(name);
-    if (configuration) conversation.setConfiguration(configuration);
-    try {
-      await this.sessionRegistry.pendingSessions.createDraft(sessionId, initialPrompt, []);
-      return sessionId;
-    } catch (error) {
-      this.sessionRegistry.removeSession(sessionId);
-      throw error;
-    }
-  }
-
-  /** Creates, names, and starts a session in the background without changing selection. */
-  async createSession(
-    path: string,
-    name: string,
-    initialPrompt: string,
-    configuration?: ChatConfiguration,
-    renderUserMessageAsMarkdown = true,
-  ) {
-    const sessionId = crypto.randomUUID();
-    this.sessionRegistry.pendingSessions.prepare(path, sessionId);
-    const conversation = this.sessionRegistry.pendingSessions.conversation(sessionId)!;
-    conversation.setName(name);
-    if (configuration) conversation.setConfiguration(configuration);
-    const input: ProjectSessionStartInput = configuration
-      ? {
-          sessionId,
-          workingDirectory: path,
-          text: initialPrompt,
-          renderUserMessageAsMarkdown,
-          attachments: [],
-          name,
-          configuration,
-        }
-      : {
-          sessionId,
-          workingDirectory: path,
-          text: initialPrompt,
-          renderUserMessageAsMarkdown,
-          attachments: [],
-          name,
-        };
-    this.sessionRegistry.pendingSessions.projectSubmission(sessionId, name);
-    try {
-      await this.client.projectSessions.start(input, { signal: this.signal });
-      this.sessionRegistry.pendingSessions.materialize(sessionId, path);
-      return sessionId;
-    } catch (error) {
-      this.sessionRegistry.removeSession(sessionId);
-      throw error;
-    }
-  }
-
-  configureDraftActivation(sessionId: string, choice: WorktreeDraftChoice) {
-    this.worktreeCreationStore.select(sessionId, choice);
-  }
-
-  sessionCreationChoice(sessionId: string) {
-    return this.worktreeCreationStore.choice(sessionId);
-  }
-
-  draftActivationCandidates(sessionId: string) {
-    const session = this.sessionRegistry.findSession(sessionId);
-    if (!session) return [];
-    const projectPath =
-      this.props.catalog.projectOfManagedWorktree(session.workspacePath) ?? session.workspacePath;
-    return this.worktreeCreationStore.candidates(projectPath);
-  }
-
-  async prepareNewSession(sessionId: string, firstUserMessage: string) {
-    const session = this.sessionRegistry.findSession(sessionId);
-    if (!session || !this.sessionRegistry.pendingSessions.isTemporary(sessionId)) return true;
-    const projectPath =
-      this.props.catalog.projectOfManagedWorktree(session.workspacePath) ?? session.workspacePath;
-    const sessionName = this.sessionRegistry.pendingSessions.conversation(sessionId)?.name;
-    return this.worktreeCreationStore.prepare(
-      sessionId,
-      projectPath,
-      firstUserMessage,
-      sessionName,
-    );
-  }
-
   async resolveWorktreeWorkspace(
     workspacePath: string,
     options: { initiatingSessionId: string; workingDirectoryRetired?: boolean },
@@ -549,57 +387,14 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
   }
 
-  private suspendEmbeddedEditor() {
-    this.activeSession?.conversationSessionStore.composerStore.draftStore.setEditorContextAttachment(
-      undefined,
-    );
-    if (this.activeSession?.presentationMode === "draw")
-      void this.activeSession.drawStore.flush().catch(() => undefined);
-    this.embeddedEditorStore.suspend();
-    this.browserStore.suspend();
-  }
-
-  private async flushDrawBeforeLeaving() {
-    const session = this.activeSession;
-    if (session?.presentationMode !== "draw") return true;
-    try {
-      await session.drawStore.flush();
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /** Explicitly returns the active session to its normal conversation presentation. */
-  async backToAgent() {
-    const session = this.activeSession;
-    if (!(await this.flushDrawBeforeLeaving())) return;
-    session?.conversationSessionStore.composerStore.draftStore.setEditorContextAttachment(
-      undefined,
-    );
-    this.embeddedEditorStore.suspend();
-    this.browserStore.suspend();
-    session?.showPresentation("normal");
-    session?.conversationSessionStore.composerStore.draftStore.requestFocus();
-  }
-
-  restoreSessionPresentation() {
-    if (this.activeSessionResolved || !this.activeSession) return;
-    if (this.activeSession.presentationMode === "vscode")
-      void this.embeddedEditorStore.restore(this.activeSession.takePendingEditorLocation());
-    else if (this.activeSession.presentationMode === "draw")
-      void this.activeSession.drawStore.initialize();
-    else if (this.activeSession.presentationMode === "browser") void this.browserStore.restore();
-  }
-
   /** Switches a session to VS Code without changing the window's focused conversation. */
   async showSessionEditor(sessionId: string, location?: EditorLocation) {
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session || this.props.catalog.find(sessionId)?.resolved)
       throw new Error("Cake could not open VS Code for that Project Session");
     if (this.activeSessionId === sessionId) {
-      if (location) await this.openFileInIde(location);
-      else await this.openIde();
+      if (location) await this.presentationStore.openFile(location);
+      else await this.presentationStore.openIde();
       return;
     }
     session.showPresentation("vscode");
@@ -617,7 +412,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const session = staged
       ? this.sessionRegistry.pendingSessions.prepareStaged(path, sessionId)
       : this.sessionRegistry.pendingSessions.prepare(path, sessionId);
-    this.suspendEmbeddedEditor();
+    this.presentationStore.suspend();
     this.projectOpenStore.activate(path);
     this.props.selectSession(sessionId);
     this.markSessionRead(sessionId);
@@ -657,7 +452,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         Boolean(existingSession?.model.sessionFile))
     ) {
       this.props.selectSession(sessionId);
-      this.restoreSessionPresentation();
+      this.presentationStore.restore();
       return;
     }
     if (existingSession && this.sessionRegistry.pendingSessions.isTemporary(sessionId)) {
@@ -729,9 +524,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!session) return false;
     if (!acceptedProjectOpen) this.projectOpenStore.cancelPending();
     this.sessionRegistry.observationRetention.retain(sessionId);
-    this.suspendEmbeddedEditor();
+    this.presentationStore.suspend();
     this.projectOpenStore.activate(session.workspacePath);
-    this.restoreSessionPresentation();
+    this.presentationStore.restore();
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
     session.conversationSessionStore.composerStore.draftStore.requestFocus();
@@ -741,7 +536,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   private async acceptProjectOpen(result: ProjectOpenResult) {
     if (this.signal.aborted) return;
     this.commandPaneStore.dismiss();
-    this.suspendEmbeddedEditor();
+    this.presentationStore.suspend();
     if (result.kind === "new-session") {
       this.showTemporarySession(
         result.path,
@@ -759,274 +554,10 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     else this.showTemporarySession(result.path, crypto.randomUUID(), true, true);
   }
 
-  async openWorkspaceChanges() {
-    if (this.activeSessionResolved || !this.activeSession || !this.projectOpenStore.projectPath)
-      return;
-    if (!(await this.flushDrawBeforeLeaving())) return;
-    this.commandPaneStore.dismiss();
-    this.reviews.clearActiveThread();
-    await this.embeddedEditorStore.showSourceControl();
-  }
-
-  async openReviewThread(threadId: string) {
-    if (this.activeSessionResolved || !this.activeSession || !this.projectOpenStore.projectPath)
-      return;
-    const thread = this.reviews.threads.find((item) => item.id === threadId);
-    if (!thread || thread.anchor.view !== "file") return;
-    this.reviews.selectThread(thread.id);
-    await this.openFileInIde(
-      workingDirectoryEditorLocation({
-        path: thread.anchor.path,
-        range: {
-          start: {
-            line:
-              (thread.anchor.start.newLine ??
-                thread.anchor.start.oldLine ??
-                thread.anchor.start.diffLine + 1) - 1,
-            column: thread.anchor.start.column,
-          },
-          end: {
-            line:
-              (thread.anchor.end.newLine ??
-                thread.anchor.end.oldLine ??
-                thread.anchor.end.diffLine + 1) - 1,
-            column: thread.anchor.end.column,
-          },
-        },
-      }),
-    );
-  }
-
-  async openIde() {
-    if (this.activeSessionResolved || !this.activeSession || !this.projectOpenStore.projectPath)
-      return;
-    if (!(await this.flushDrawBeforeLeaving())) return;
-    this.commandPaneStore.dismiss();
-    this.reviews.clearActiveThread();
-    this.browserStore.suspend();
-    await this.embeddedEditorStore.show();
-  }
-
-  async openBrowser() {
-    if (this.activeSessionResolved || !this.activeSession || !this.projectOpenStore.projectPath)
-      return;
-    if (!(await this.flushDrawBeforeLeaving())) return;
-    this.commandPaneStore.dismiss();
-    this.reviews.clearActiveThread();
-    this.embeddedEditorStore.suspend();
-    await this.browserStore.show();
-  }
-
-  async openDraw() {
-    if (this.activeSessionResolved || !this.activeSession || !this.projectOpenStore.projectPath)
-      return;
-    this.commandPaneStore.dismiss();
-    this.reviews.clearActiveThread();
-    this.embeddedEditorStore.suspend();
-    this.browserStore.suspend();
-    this.activeSession.showPresentation("draw");
-    await this.activeSession.drawStore.initialize();
-  }
-
-  private async invokeDrawControl(
-    sessionId: string,
-    invocation: DrawControlInvocation,
-    signal?: AbortSignal,
-  ): Promise<DrawControlResponse> {
-    const cancelled = (): DrawControlResponse => ({
-      ok: false,
-      code: "REQUEST_CANCELLED",
-      message: "The Draw request was cancelled.",
-    });
-    if (signal?.aborted) return cancelled();
-    const targetSession = this.sessionRegistry.findSession(sessionId);
-    if (!targetSession)
-      return {
-        ok: false,
-        code: "SESSION_NOT_VISIBLE",
-        message: "This Project Session is not loaded in the invoking Cake window.",
-      };
-    if (this.props.catalog.find(sessionId)?.resolved)
-      return {
-        ok: false,
-        code: "SESSION_RESOLVED",
-        message: "Resolved Project Sessions cannot change a whiteboard.",
-      };
-    const enterDraw = async () => {
-      if (this.activeSessionId === sessionId) await this.openDraw();
-      else {
-        targetSession.showPresentation("draw");
-        await targetSession.drawStore.initialize();
-      }
-    };
-    if (invocation._tag === "Enter") {
-      await enterDraw();
-      if (signal?.aborted) return cancelled();
-      const draw = targetSession.drawStore;
-      const board = draw?.activeBoard;
-      return board && draw
-        ? { ok: true, kind: "entered", board, scene: await draw.read("viewport") }
-        : { ok: false, code: "BOARD_NOT_OPEN", message: "No whiteboard is open." };
-    }
-    if (invocation._tag === "Open") {
-      await enterDraw();
-      if (signal?.aborted) return cancelled();
-      const draw = targetSession.drawStore;
-      if (!draw?.boards.some((board) => board.id === invocation.boardId))
-        return {
-          ok: false,
-          code: "BOARD_NOT_OPEN",
-          message: "That whiteboard does not exist in this Project Session.",
-        };
-      await draw.selectBoard(invocation.boardId);
-      const board = draw.activeBoard;
-      return board
-        ? { ok: true, kind: "opened", board, scene: await draw.read("viewport") }
-        : { ok: false, code: "BOARD_NOT_OPEN", message: "That whiteboard is not open." };
-    }
-    const session = targetSession;
-    if (session.presentationMode !== "draw")
-      return {
-        ok: false,
-        code: "DRAW_MODE_REQUIRED",
-        message: "Enter Cake Draw for this Project Session, then retry.",
-      };
-    const draw = session.drawStore;
-    const requestedBoardId = invocation.boardId;
-    if (!draw.activeBoard || (requestedBoardId && requestedBoardId !== draw.activeBoard.id))
-      return {
-        ok: false,
-        code: "BOARD_NOT_OPEN",
-        message: "Open the requested whiteboard before using it.",
-      };
-    try {
-      switch (invocation._tag) {
-        case "Read":
-          return {
-            ok: true,
-            kind: "read",
-            boardId: draw.activeBoard.id,
-            scene: await draw.read(invocation.scope),
-          };
-        case "Render":
-          return {
-            ok: true,
-            kind: "rendered",
-            boardId: draw.activeBoard.id,
-            render: await draw.render({
-              scope: invocation.scope,
-              format: invocation.format,
-              background: invocation.background,
-              scale: invocation.scale,
-              maxSize: invocation.maxSize,
-            }),
-          };
-        case "ExportDocument":
-          return {
-            ok: true,
-            kind: "exported-document",
-            boardId: draw.activeBoard.id,
-            document: await draw.exportDocument(),
-          };
-        case "Apply": {
-          const receipt = await draw.apply(invocation.operations);
-          const checkpointId = draw.lastCheckpointId;
-          if (!checkpointId) throw new Error("Cake Draw did not create an agent checkpoint");
-          if (signal?.aborted)
-            return {
-              ok: false,
-              code: "APPLY_OUTCOME_UNKNOWN",
-              message: "The request was cancelled while the Draw batch was being saved.",
-            };
-          return {
-            ok: true,
-            kind: "applied",
-            boardId: draw.activeBoard.id,
-            checkpointId,
-            receipt,
-            scene: await draw.read("page"),
-          };
-        }
-        case "Clear": {
-          const receipt = await draw.clear();
-          const checkpointId = draw.lastCheckpointId;
-          if (!checkpointId) throw new Error("Cake Draw did not create an agent checkpoint");
-          return {
-            ok: true,
-            kind: "cleared",
-            boardId: draw.activeBoard.id,
-            checkpointId,
-            receipt,
-            scene: await draw.read("page"),
-          };
-        }
-        case "Undo": {
-          const result = await draw.undo(invocation.checkpointId);
-          return {
-            ok: true,
-            kind: "undone",
-            boardId: draw.activeBoard.id,
-            checkpointId: result.checkpointId,
-            receipt: result.receipt,
-            scene: await draw.read("page"),
-          };
-        }
-        case "Mermaid": {
-          const receipt = await draw.insertMermaid(invocation.diagram, {
-            id: invocation.id,
-            replace: invocation.replace,
-          });
-          const checkpointId = draw.lastCheckpointId;
-          if (!checkpointId) throw new Error("Cake Draw did not create an agent checkpoint");
-          if (signal?.aborted)
-            return {
-              ok: false,
-              code: "APPLY_OUTCOME_UNKNOWN",
-              message: "The request was cancelled while the Mermaid diagram was being saved.",
-            };
-          return {
-            ok: true,
-            kind: "mermaid",
-            boardId: draw.activeBoard.id,
-            checkpointId,
-            diagramId: receipt.diagramId,
-            elementCount: receipt.elementCount,
-            mappings: receipt.mappings,
-            scene: await draw.read("page"),
-          };
-        }
-      }
-    } catch (error) {
-      return {
-        ok: false,
-        code: "INVALID_REQUEST",
-        message: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }
-
-  /** Toggles the active Project Session between Agent and IDE presentation. */
-  async toggleIde() {
-    if (this.embeddedEditorStore.visible) {
-      await this.backToAgent();
-      return;
-    }
-    await this.openIde();
-  }
-
-  async openFileInIde(location: EditorLocation) {
-    if (this.activeSessionResolved || !this.activeSession || !this.projectOpenStore.projectPath)
-      return;
-    if (!(await this.flushDrawBeforeLeaving())) return;
-    this.commandPaneStore.dismiss();
-    this.browserStore.suspend();
-    await this.embeddedEditorStore.show(location);
-  }
-
   dismissSecondarySurfaces() {
     this.sessionContinuationStore.cancelPrompt();
     this.commandPaneStore.dismiss();
-    this.suspendEmbeddedEditor();
+    this.presentationStore.suspend();
   }
 
   sessionContext() {
@@ -1064,80 +595,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   receive(event: StoreEvent) {
     this.projectOpenStore.receive(event);
-    if (event.type === "browser-state-changed" || event.type === "browser-element-selected")
-      this.browserStore.receive(event);
-    if (
-      event.type === "embedded-editor-selection" ||
-      event.type === "embedded-editor-selection-cleared"
-    ) {
-      this.embeddedEditorStore.receive(event);
-      if (event.workspacePath === this.projectOpenStore.projectPath)
-        this.activeSession?.conversationSessionStore.composerStore.draftStore.setEditorContextAttachment(
-          this.embeddedEditorStore.visible
-            ? this.embeddedEditorStore.activeContextAttachment
-            : undefined,
-        );
-      return;
-    }
-    if (event.type === "embedded-editor-back-to-agent") {
-      if (event.workspacePath === this.projectOpenStore.projectPath) this.backToAgent();
-      return;
-    }
-    if (event.type === "embedded-editor-annotation-opened") {
-      if (
-        event.workspacePath === this.projectOpenStore.projectPath &&
-        event.sessionId === this.activeSessionId &&
-        this.reviews.trySelectThread(event.threadId)
-      ) {
-        this.reviews.cancelDraft();
-        this.embeddedEditorStore.showChatSidebar();
-      }
-      return;
-    }
-    if (event.type === "embedded-editor-toggle-chat") {
-      if (event.workspacePath === this.projectOpenStore.projectPath)
-        this.embeddedEditorStore.toggleChatSidebar();
-      return;
-    }
-    if (event.type === "embedded-editor-toggle-sidebar") {
-      if (event.workspacePath === this.projectOpenStore.projectPath)
-        this.props.toggleProjectSidebar();
-      return;
-    }
-    if (event.type === "embedded-editor-entered") {
-      if (event.workspacePath === this.projectOpenStore.projectPath)
-        this.embeddedEditorStore.showAgentEditor();
-      return;
-    }
-    if (event.type === "browser-entered") {
-      if (
-        event.workspacePath === this.projectOpenStore.projectPath &&
-        event.sessionId === this.activeSessionId
-      ) {
-        this.embeddedEditorStore.suspend();
-        this.browserStore.showAgentBrowser();
-      }
-      return;
-    }
-    if (event.type === "embedded-editor-side-chat-requested") {
-      if (event.workspacePath !== this.projectOpenStore.projectPath || !this.activeSession) return;
-      // The IDE chat sidebar presents the code-chat draft in place of the project chat.
-      this.reviews.clearActiveThread();
-      this.reviews.prepareDraft(discussionAnchorFromEditorSelection(event));
-      this.embeddedEditorStore.showChatSidebar();
-      return;
-    }
-    if (event.type === "embedded-editor-annotation-requested") {
-      if (event.workspacePath !== this.projectOpenStore.projectPath || !this.activeSession) return;
-      // Annotations accumulate in the project composer, so surface it over any code chat.
-      this.reviews.cancelDraft();
-      this.reviews.clearActiveThread();
-      this.activeSession.conversationSessionStore.composerStore.draftStore.addSourceAttachment(
-        sourceAttachmentFromEditorSelection(event, event.comment),
-      );
-      this.embeddedEditorStore.showChatSidebar();
-      return;
-    }
+    this.presentationStore.receive(event);
     if (event.type === "agent-availability-changed") {
       if (
         event.workingDirectory &&

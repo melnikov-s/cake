@@ -11,7 +11,6 @@ import type { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore"
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { ComposerDeliveryInput } from "./ConversationComposerStore";
-import type { ProjectSessionStartInput } from "../../domain/project-sessions/project-session-data";
 import type { EditorLocation } from "../../ipc/editor-location";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ConversationSessionStore } from "./ConversationSessionStore";
@@ -57,10 +56,8 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   modelPresets(): readonly ModelPreset[];
   assistantTools?(): readonly CakeControlTool[];
   openModelPresetSettings(): void;
-  newSessionRequest():
-    | { path: string; configuration?: ChatConfiguration; name?: string }
-    | undefined;
-  prepareNewSession(firstUserMessage: string): Promise<boolean>;
+  newSessionConfiguration(): ChatConfiguration | undefined;
+  startNewSession(input: ComposerDeliveryInput): Promise<boolean>;
   ensureSessionActive(): boolean | Promise<boolean>;
   configureDraftActivation(choice: WorktreeDraftChoice): void;
   sessionCreationChoice(): WorktreeDraftChoice;
@@ -308,7 +305,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       model: this.model,
       operations: this.props.operations,
       canSubmit: this.props.canSubmit,
-      startSession: (input) => this.startSession(input),
+      startSession: this.props.startNewSession,
       ensureSessionActive: this.props.ensureSessionActive,
       composer: {
         projectPath: () => this.workspacePath,
@@ -340,7 +337,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       },
       configuration: {
         deferredNewSession: () => this.props.pendingSessions.isTemporary(this.sessionId),
-        effectiveConfiguration: () => this.props.newSessionRequest()?.configuration,
+        effectiveConfiguration: this.props.newSessionConfiguration,
         setPendingConfiguration: (configuration) =>
           this.props.pendingSessions.conversation(this.sessionId)?.setConfiguration(configuration),
       },
@@ -375,44 +372,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       openModelPresetSettings: this.props.openModelPresetSettings,
       settings: this.props.settings,
     });
-  }
-
-  private async startSession(input: ComposerDeliveryInput) {
-    const pending = this.props.newSessionRequest();
-    if (!pending) return false;
-    this.props.pendingSessions.projectSubmission(input.sessionId, input.text);
-    try {
-      if (!(await this.props.prepareNewSession(input.text))) {
-        this.props.pendingSessions.cancelSubmission(input.sessionId);
-        return false;
-      }
-      const newSession = this.props.newSessionRequest();
-      if (!newSession) {
-        this.props.pendingSessions.cancelSubmission(input.sessionId);
-        return false;
-      }
-      const pendingLabelIds =
-        this.props.pendingSessions.conversation(input.sessionId)?.labelIds ?? [];
-      const startInput: ProjectSessionStartInput = {
-        sessionId: input.sessionId,
-        workingDirectory: newSession.path,
-        text: input.text,
-        renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
-        attachments: input.attachments,
-      };
-      if (input.presentationMode !== undefined)
-        Object.assign(startInput, { presentationMode: input.presentationMode });
-      if (newSession.configuration !== undefined)
-        Object.assign(startInput, { configuration: newSession.configuration });
-      if (newSession.name !== undefined) Object.assign(startInput, { name: newSession.name });
-      if (pendingLabelIds.length > 0) Object.assign(startInput, { labelIds: pendingLabelIds });
-      await this.client.projectSessions.start(startInput, { signal: this.signal });
-      this.props.pendingSessions.materialize(input.sessionId, newSession.path);
-      return true;
-    } catch (error) {
-      this.props.pendingSessions.cancelSubmission(input.sessionId);
-      throw error;
-    }
   }
 
   private async scheduleMessage(sessionId: string, args: string) {
