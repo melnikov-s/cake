@@ -209,7 +209,7 @@ describe("Chat", () => {
     expect(container.querySelector('[data-slot="composer-toolbar"] .w-px')).not.toBeNull();
   });
 
-  it("keeps queue controls and shows cancellable progress only while steering", async () => {
+  it("keeps queue controls and only shows stop-and-send while steering", async () => {
     const steerQueuedPrompt = vi.fn();
     const editQueuedPrompt = vi.fn();
     const removeQueuedPrompt = vi.fn();
@@ -287,16 +287,11 @@ describe("Chat", () => {
 
     act(() => root.render(<Chat store={store!} />));
 
-    const stopAndSendButton = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Stop and send now: Do this next"]',
-    );
     const steerButton = container.querySelector<HTMLButtonElement>(
       '[aria-label="Send now as steering: Do this next"]',
     );
     expect(steerButton).not.toBeNull();
-    expect(stopAndSendButton?.nextElementSibling).toBe(steerButton);
-    expect(stopAndSendButton?.className).toContain("mr-[30px]");
-    expect(stopAndSendButton?.className).toContain("bg-destructive/10");
+    expect(container.querySelector('[aria-label="Stop and send now: Do this next"]')).toBeNull();
     expect(
       container.querySelector('[aria-label="Edit queued prompt: Do this next"]'),
     ).not.toBeNull();
@@ -304,12 +299,12 @@ describe("Chat", () => {
       container.querySelector('[aria-label="Remove queued prompt: Do this next"]'),
     ).not.toBeNull();
     expect(container.querySelector('[aria-label="Steering: Change direction"]')).not.toBeNull();
-    expect(
-      container.querySelector('[aria-label="Stop and send now: Do this next"]'),
-    ).not.toBeNull();
-    expect(
-      container.querySelector('[aria-label="Stop and send now: Change direction"]'),
-    ).not.toBeNull();
+    const stopAndSendButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Stop and send now: Change direction"]',
+    );
+    expect(stopAndSendButton).not.toBeNull();
+    expect(stopAndSendButton?.className).toContain("mr-[30px]");
+    expect(stopAndSendButton?.className).toContain("bg-destructive/10");
     expect(
       container.querySelector('[aria-label="Message from Storage implementation"]'),
     ).not.toBeNull();

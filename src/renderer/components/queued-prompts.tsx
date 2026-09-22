@@ -92,16 +92,6 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                   </>
                 ) : (
                   <>
-                    {store.canStopAndSendQueuedPrompt && (
-                      <IconButton
-                        className="mr-[30px] bg-destructive/10 text-destructive/80 hover:bg-destructive/15 hover:text-destructive"
-                        tooltip="Stop current response and send now"
-                        ariaLabel={`Stop and send now: ${label}`}
-                        onClick={() => void store.stopAndSendQueuedPrompt(entry.id)}
-                      >
-                        <StopAndSendIcon />
-                      </IconButton>
-                    )}
                     {store.canSteerQueuedPrompt && (
                       <IconButton
                         tooltip="Send now as steering"
