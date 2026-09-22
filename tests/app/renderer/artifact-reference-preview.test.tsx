@@ -138,6 +138,52 @@ describe("ArtifactReferencePreview", () => {
     mounted.root[Symbol.dispose]();
   });
 
+  it("scopes mutation failures to their initiating lineage and clears them on detail changes", async () => {
+    const changed = vi.fn();
+    const link = vi.fn(async () => Promise.reject(new Error("link unavailable")));
+    const client = {
+      artifacts: { link },
+    } as unknown as Client;
+    const mounted = mountWithClient(
+      createStore(ArtifactReferencePreviewStore, {
+        model: ArtifactCatalog.create(),
+        artifactsChanged: changed,
+      }),
+      client,
+    );
+    const firstLineage = "report" as never;
+    const secondLineage = "appendix" as never;
+
+    await mounted.subject.link("session-1", firstLineage, {
+      type: "session",
+      sessionId: "session-1",
+    });
+
+    expect(mounted.subject.operationErrorFor(firstLineage)).toBe("link unavailable");
+    expect(mounted.subject.operationErrorFor(secondLineage)).toBeUndefined();
+    expect(changed).not.toHaveBeenCalled();
+
+    mounted.subject.clearOperationError(firstLineage);
+    expect(mounted.subject.operationErrorFor(firstLineage)).toBeUndefined();
+
+    let rejectLate: ((error: Error) => void) | undefined;
+    link.mockImplementationOnce(
+      () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectLate = reject;
+        }),
+    );
+    const pending = mounted.subject.link("session-1", firstLineage, {
+      type: "session",
+      sessionId: "session-1",
+    });
+    mounted.subject.clearOperationError(firstLineage);
+    rejectLate!(new Error("late failure"));
+    await pending;
+    expect(mounted.subject.operationErrorFor(firstLineage)).toBeUndefined();
+    mounted.root[Symbol.dispose]();
+  });
+
   it("bounds its window-wide metadata cache and ignores results after disposal", async () => {
     let resolveLast: ((value: ArtifactReferenceMetadata) => void) | undefined;
     const client = {

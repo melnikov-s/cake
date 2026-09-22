@@ -83,6 +83,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
   };
   const lineageId = decodeArtifactLineageId(lineage.id);
   const pendingRestoreRevision = store.pendingRestoreRevision;
+  const referenceOperationError = referencePreviews.operationErrorFor(lineageId);
   const exactRef = `${lineage.stableRef}@r${selectedNumber}`;
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
@@ -116,9 +117,9 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
             </Button>
           </div>
         </div>
-        {(store.operationError || referencePreviews.operationError) && (
+        {(store.operationError || referenceOperationError) && (
           <Callout variant="error" className="mt-3">
-            {store.operationError ?? referencePreviews.operationError}
+            {store.operationError ?? referenceOperationError}
           </Callout>
         )}
       </header>
@@ -149,12 +150,13 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
             className="mt-2"
             aria-label="Selected artifact revision"
             value={selectedNumber}
-            onChange={(event) =>
+            onChange={(event) => {
+              referencePreviews.clearOperationError(lineageId);
               void store.selectRevision(
                 lineageId,
                 decodeArtifactRevisionNumber(Number(event.target.value)),
-              )
-            }
+              );
+            }}
           >
             {lineage.revisions
               .toSorted((left, right) => right.revision - left.revision)
@@ -190,12 +192,21 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => void store.compare(lineageId, selectedRevision, latestRevision)}
+                  onClick={() => {
+                    referencePreviews.clearOperationError(lineageId);
+                    void store.compare(lineageId, selectedRevision, latestRevision);
+                  }}
                 >
                   Compare with latest
                 </Button>
                 {activeSessionId && (
-                  <Button size="sm" onClick={() => store.requestRestore(selectedRevision)}>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      referencePreviews.clearOperationError(lineageId);
+                      store.requestRestore(selectedRevision);
+                    }}
+                  >
                     <RestoreIcon /> Restore as new latest
                   </Button>
                 )}

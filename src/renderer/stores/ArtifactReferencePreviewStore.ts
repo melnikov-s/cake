@@ -17,6 +17,8 @@ export class ArtifactReferencePreviewStore extends Store<{
 }> {
   previewStates: Record<string, ArtifactReferencePreviewState> = {};
   operationError: string | undefined;
+  private operationErrorLineageId: ArtifactLineageId | undefined;
+  private operationRequest = 0;
 
   get client() {
     return ClientContext.consume(this)!;
@@ -53,19 +55,41 @@ export class ArtifactReferencePreviewStore extends Store<{
     }
   }
 
+  operationErrorFor(lineageId: ArtifactLineageId) {
+    return this.operationErrorLineageId === lineageId ? this.operationError : undefined;
+  }
+
+  clearOperationError(lineageId?: ArtifactLineageId) {
+    if (lineageId !== undefined && this.operationErrorLineageId !== lineageId) return;
+    this.operationRequest += 1;
+    this.operationError = undefined;
+    this.operationErrorLineageId = undefined;
+  }
+
+  private beginOperation(lineageId: ArtifactLineageId) {
+    this.operationError = undefined;
+    this.operationErrorLineageId = lineageId;
+    return ++this.operationRequest;
+  }
+
+  private failOperation(lineageId: ArtifactLineageId, request: number, error: unknown) {
+    if (this.signal.aborted || request !== this.operationRequest) return;
+    this.operationErrorLineageId = lineageId;
+    this.operationError = error instanceof Error ? error.message : String(error);
+  }
+
   async materialize(
     sessionId: string,
     lineageId: ArtifactLineageId,
     revision: ArtifactRevisionNumber,
   ): Promise<ArtifactProjectionMetadata | undefined> {
-    this.operationError = undefined;
+    const operationRequest = this.beginOperation(lineageId);
     try {
       return await this.client.artifacts.materialize(sessionId, lineageId, revision, {
         signal: this.signal,
       });
     } catch (error) {
-      if (!this.signal.aborted)
-        this.operationError = error instanceof Error ? error.message : String(error);
+      this.failOperation(lineageId, operationRequest, error);
       return undefined;
     }
   }
@@ -95,7 +119,7 @@ export class ArtifactReferencePreviewStore extends Store<{
     target: ArtifactLinkTarget,
     selection: ArtifactLink["selection"] = { mode: "follow-latest" },
   ) {
-    this.operationError = undefined;
+    const operationRequest = this.beginOperation(lineageId);
     let link: ArtifactLink;
     try {
       link = await this.client.artifacts.link(
@@ -103,16 +127,14 @@ export class ArtifactReferencePreviewStore extends Store<{
         { signal: this.signal },
       );
     } catch (error) {
-      if (!this.signal.aborted)
-        this.operationError = error instanceof Error ? error.message : String(error);
+      this.failOperation(lineageId, operationRequest, error);
       return undefined;
     }
     if (!this.signal.aborted) this.props.artifactsChanged(lineageId);
     try {
       await this.refreshLinks(lineageId);
     } catch (error) {
-      if (!this.signal.aborted)
-        this.operationError = error instanceof Error ? error.message : String(error);
+      this.failOperation(lineageId, operationRequest, error);
     }
     return link;
   }
@@ -123,7 +145,7 @@ export class ArtifactReferencePreviewStore extends Store<{
     target: ArtifactLinkTarget,
     selection: ArtifactLink["selection"],
   ) {
-    this.operationError = undefined;
+    const operationRequest = this.beginOperation(lineageId);
     try {
       const link = await this.client.artifacts.setSelection(
         { sessionId, lineageId, target, selection },
@@ -133,21 +155,19 @@ export class ArtifactReferencePreviewStore extends Store<{
       if (!this.signal.aborted) this.props.artifactsChanged(lineageId);
       return link;
     } catch (error) {
-      if (!this.signal.aborted)
-        this.operationError = error instanceof Error ? error.message : String(error);
+      this.failOperation(lineageId, operationRequest, error);
       return undefined;
     }
   }
 
   async unlink(sessionId: string, lineageId: ArtifactLineageId, target: ArtifactLinkTarget) {
-    this.operationError = undefined;
+    const operationRequest = this.beginOperation(lineageId);
     try {
       await this.client.artifacts.unlink({ sessionId, lineageId, target }, { signal: this.signal });
       await this.refreshLinks(lineageId);
       if (!this.signal.aborted) this.props.artifactsChanged(lineageId);
     } catch (error) {
-      if (!this.signal.aborted)
-        this.operationError = error instanceof Error ? error.message : String(error);
+      this.failOperation(lineageId, operationRequest, error);
     }
   }
 }

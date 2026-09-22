@@ -667,8 +667,10 @@ export class RootStore extends Store<{
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.artifactLibraryStore.open(sessionId);
     this.appShellStore.showArtifactLibrary();
-    if (lineageId)
+    if (lineageId) {
+      this.artifactReferencePreviewStore.clearOperationError();
       void this.artifactLibraryStore.detailStore.select(decodeArtifactLineageId(lineageId));
+    }
   }
   showSettings() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
