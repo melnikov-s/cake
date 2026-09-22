@@ -57,6 +57,12 @@ describe("inline widget service", () => {
     const compiled = await compileInlineWidget("react", source, "session-plugin");
     expect(compiled.document).toContain("__cakePluginBridge");
     expect(compiled.document).toContain("plugin-call");
+    expect(compiled.document).toContain("event.source !== parent");
+    expect(compiled.document).toContain(
+      "document.documentElement.dataset.theme = theme.colorScheme",
+    );
+    expect(compiled.document).toContain("background:var(--card)");
+    expect(compiled.document).toContain(":focus-visible{outline:2px solid var(--ring)");
     await expect(compileInlineWidget("react", source, "display")).rejects.toThrow(
       "available only to Session Plugins",
     );

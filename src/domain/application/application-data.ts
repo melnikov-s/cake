@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { SessionPluginControls } from "./session-plugin-controls";
 import { ThinkingLevel } from "../../services/pi/model-data";
 import { SESSION_LABEL_COLORS } from "../../utils/session-label-palette";
 import { CakePrompts, defaultCakePrompts } from "./cake-prompts";
@@ -26,19 +27,30 @@ export const ModelPreset = Schema.Struct({
   fastMode: Schema.Boolean,
 });
 
-/** Durable generated UI mounted into a semantic slot for one Cake Session. */
-export const SessionPlugin = Schema.Struct({
+/** Durable session controls. Hidden is user-owned, separate from agent-managed state. */
+const sessionPluginFields = {
   sessionId: nonEmptyBoundedString(256),
   id: nonEmptyBoundedString(256),
   title: nonEmptyBoundedString(512),
   slot: Schema.Literal("composer.above"),
-  source: nonEmptyBoundedString(1_048_576),
-  state: Schema.Json,
-  generationSessionId: Schema.optionalKey(nonEmptyBoundedString(256)),
+  hidden: Schema.optionalKey(Schema.Boolean),
   createdAt: nonEmptyBoundedString(64),
   updatedAt: nonEmptyBoundedString(64),
-});
-export interface SessionPlugin extends Schema.Schema.Type<typeof SessionPlugin> {}
+};
+export const SessionPlugin = Schema.Union([
+  Schema.Struct({
+    ...sessionPluginFields,
+    source: nonEmptyBoundedString(1_048_576),
+    state: Schema.Json,
+    generationSessionId: Schema.optionalKey(nonEmptyBoundedString(256)),
+  }),
+  Schema.Struct({
+    ...sessionPluginFields,
+    preset: Schema.Literal("action-bar"),
+    state: SessionPluginControls,
+  }),
+]);
+export type SessionPlugin = typeof SessionPlugin.Type;
 
 export const SessionPluginSharedState = Schema.Struct({
   sessionId: nonEmptyBoundedString(256),

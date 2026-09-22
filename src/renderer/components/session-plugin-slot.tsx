@@ -30,6 +30,7 @@ export const SessionPluginSlot = observer(function SessionPluginSlot({
         <SessionPluginContribution
           key={plugin.id}
           plugin={plugin}
+          plugins={plugins}
           sharedState={sharedState}
           inlineWidgets={inlineWidgets}
           call={(command, input) => call(plugin.id, command, input)}

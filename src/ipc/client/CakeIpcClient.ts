@@ -201,6 +201,11 @@ export interface CakeIpcClientService {
       AgentAvailabilitySnapshot,
       TransportError
     >;
+    readonly setSessionPluginHidden: (input: {
+      readonly sessionId: string;
+      readonly pluginId: string;
+      readonly hidden: boolean;
+    }) => Effect.Effect<void, SessionPluginMutationError | TransportError>;
     readonly setSessionPluginState: (input: {
       readonly sessionId: string;
       readonly pluginId: string;
@@ -789,6 +794,9 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         observeState: () => client("application.observeState", undefined),
         observeAgentAvailability: () => client("application.observeAgentAvailability", undefined),
+        setSessionPluginHidden: Effect.fn("CakeIpcClient.application.setSessionPluginHidden")(
+          (input) => client("application.setSessionPluginHidden", input),
+        ),
         setSessionPluginState: Effect.fn("CakeIpcClient.application.setSessionPluginState")(
           (input) => client("application.setSessionPluginState", input),
         ),

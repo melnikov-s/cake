@@ -1,3 +1,4 @@
+import { sessionPluginThemeTokens } from "../../utils/session-plugin-theme";
 import { dirname } from "node:path";
 import { TextEncoder } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -92,8 +93,19 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
   const publish = (next) => { snapshot = Object.freeze(next); for (const listener of listeners) listener(); };
   addEventListener("message", (event) => {
     const message = event.data;
-    if (!message || message.source !== "cake-session-plugin-host" || message.token !== token) return;
-    if (message.type === "context") publish({ hasContext: true, pluginState: message.value.pluginState, sharedState: Object.freeze(message.value.sharedState || {}) });
+    if (event.source !== parent || !message || message.source !== "cake-session-plugin-host" || message.token !== token) return;
+    if (message.type === "context") {
+      const theme = message.value.theme;
+      if (theme && (theme.colorScheme === "light" || theme.colorScheme === "dark")) {
+        document.documentElement.style.colorScheme = theme.colorScheme;
+        document.documentElement.dataset.theme = theme.colorScheme;
+        for (const name of ${JSON.stringify(sessionPluginThemeTokens)}) {
+          const value = theme.tokens?.[name];
+          if (typeof value === "string" && CSS.supports("color", value)) document.documentElement.style.setProperty("--" + name, value);
+        }
+      }
+      publish({ hasContext: true, pluginState: message.value.pluginState, sharedState: Object.freeze(message.value.sharedState || {}) });
+    }
     if (message.type === "call-result") {
       const operation = pending.get(message.value.id);
       if (!operation) return;
@@ -149,7 +161,23 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
 }
 
 function documentShell(token: string, body: string, capability: InlineWidgetCapability) {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:light dark;font:14px/1.5 system-ui,sans-serif;background:transparent}body{min-width:0;margin:0;padding:16px;overflow:auto;color:CanvasText;background:Canvas}*,*::before,*::after{box-sizing:border-box}body>*{max-width:100%}#cake-widget-root{min-width:0;max-width:100%}:where(h1,h2,h3,h4,h5,h6,p,span,a,button,label,legend,th,td){overflow-wrap:anywhere}img,svg,video,canvas{max-width:100%;height:auto}button,input,select,textarea{max-width:100%;font:inherit}</style>${runtimeBridge(token, capability)}</head><body>${body}</body></html>`;
+  // Generated documents cannot inherit CSS across their opaque origin. These base
+  // element rules consume the host's live tokens, never a second hardcoded palette.
+  const pluginStyles =
+    capability === "session-plugin"
+      ? `<style>
+body{padding:12px;color:var(--card-foreground);background:var(--card)}
+a{color:var(--accent)}
+button,input,select,textarea{border:1px solid var(--border);border-radius:6px;color:var(--foreground);background:var(--background);padding:6px 12px}
+button{cursor:pointer;font-weight:600}
+button:not(:disabled):hover{background:var(--muted)}
+button[data-variant="primary"]{color:var(--primary-foreground);background:var(--primary);border-color:var(--primary)}
+button[data-variant="primary"]:not(:disabled):hover{background:color-mix(in srgb,var(--primary) 88%,transparent)}
+:where(button,input,select,textarea,a):focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+:where(button,input,select,textarea):disabled{opacity:.45;cursor:default}
+</style>`
+      : "";
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:light dark;font:14px/1.5 system-ui,sans-serif;background:transparent}body{min-width:0;margin:0;padding:16px;overflow:auto;color:CanvasText;background:Canvas}*,*::before,*::after{box-sizing:border-box}body>*{max-width:100%}#cake-widget-root{min-width:0;max-width:100%}:where(h1,h2,h3,h4,h5,h6,p,span,a,button,label,legend,th,td){overflow-wrap:anywhere}img,svg,video,canvas{max-width:100%;height:auto}button,input,select,textarea{max-width:100%;font:inherit}</style>${pluginStyles}${runtimeBridge(token, capability)}</head><body>${body}</body></html>`;
 }
 
 function widgetModulePlugin(source: string): Plugin {

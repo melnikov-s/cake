@@ -1,17 +1,28 @@
 import { Schema } from "effect";
+import { SessionPluginControls } from "../../../domain/application/session-plugin-controls";
 import type { SessionPlugin } from "../../../domain/application/application-data";
 import type { JsonValue } from "../../../ipc/json-contract";
 import type { InlineWidgetGenerationRequest } from "./sidecar-runtime";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 
 const pluginId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
-const pluginBrief = Schema.Struct({
+const identity = {
   id: pluginId,
   title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
-  brief: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(65_536)),
-  data: Schema.optionalKey(Schema.Json),
-  initialState: Schema.optionalKey(Schema.Json),
-});
+};
+const pluginBrief = Schema.Union([
+  Schema.Struct({
+    ...identity,
+    brief: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(65_536)),
+    data: Schema.optionalKey(Schema.Json),
+    initialState: Schema.optionalKey(Schema.Json),
+  }),
+  Schema.Struct({
+    ...identity,
+    preset: Schema.Literal("action-bar"),
+    initialState: SessionPluginControls,
+  }),
+]);
 
 export interface SessionPluginControl {
   readonly sessionId: string;
@@ -31,14 +42,81 @@ export function createCakeSessionPluginOperations(
     {
       command: "plugins.present",
       topic: "plugins",
-      summary: "Generate and mount a durable Session Plugin in a semantic session slot.",
+      summary:
+        "Mount prebuilt session controls, or generate custom UI, above this session's composer.",
       guidance: [
         "Use Session Plugins for task-specific controls that should remain attached to this session, such as Previous/Next guided-tour navigation.",
-        "Describe behavior and state semantically. A private UI builder writes the React source with useCake, usePluginState, and useSharedState.",
-        "Presenting the same ID replaces the implementation while preserving the original creation time.",
+        "Prefer preset: action-bar with initialState: { label, actions: [{ id, label, message, primary?, disabled? }], progress?: { current, total } }. No generation is needed. Use Previous/Next/Done actions for guided navigation, or Continue/Explain this/Done for Draw.",
+        "Actions send their exact message visibly to the owning session. They do not advance progress, undo a board, or remove the plugin automatically. Update state after completing a step; a Done message can request plugins.delete while preserving the board.",
+        "For genuinely custom UI, supply brief instead of preset. A private builder writes React using useCake, usePluginState, useSharedState and Cake semantic theme tokens.",
+        "Presenting the same ID replaces the implementation while preserving creation time and the user's hidden preference. Users can Hide/Show controls without messaging the agent. Ordinary chat remains available.",
       ],
       inputSchema: Schema.Struct({ plugin: pluginBrief }),
       examples: [
+        {
+          input: {
+            plugin: {
+              id: "draw-guide",
+              title: "Draw guide",
+              preset: "action-bar",
+              initialState: {
+                label: "Current topic",
+                actions: [
+                  {
+                    id: "continue",
+                    label: "Continue",
+                    primary: true,
+                    message:
+                      "Continue with one meaningful Draw step, then update draw-guide's topic.",
+                  },
+                  {
+                    id: "explain",
+                    label: "Explain this",
+                    message: "Clarify the current Draw point or selection.",
+                  },
+                  {
+                    id: "done",
+                    label: "Done",
+                    message:
+                      "Remove the draw-guide plugin using plugins.delete. Preserve the Draw board.",
+                  },
+                ],
+              },
+            },
+          },
+        },
+        {
+          input: {
+            plugin: {
+              id: "guided-steps",
+              title: "Guided steps",
+              preset: "action-bar",
+              initialState: {
+                label: "Introduction",
+                progress: { current: 1, total: 4 },
+                actions: [
+                  {
+                    id: "previous",
+                    label: "Previous",
+                    disabled: true,
+                    message: "Revisit the previous step; do not undo board changes.",
+                  },
+                  {
+                    id: "next",
+                    label: "Next",
+                    primary: true,
+                    message: "Explain the next step, then update guided-steps progress.",
+                  },
+                  {
+                    id: "done",
+                    label: "Done",
+                    message: "End the guide and delete guided-steps. Preserve existing work.",
+                  },
+                ],
+              },
+            },
+          },
+        },
         {
           input: {
             plugin: {
@@ -59,6 +137,20 @@ export function createCakeSessionPluginOperations(
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry decoded input with this operation's schema.
         const request = (input as { plugin: typeof pluginBrief.Type }).plugin;
+        const now = new Date().toISOString();
+        if ("preset" in request) {
+          await control.present({
+            sessionId: control.sessionId,
+            id: request.id,
+            title: request.title,
+            slot: "composer.above",
+            preset: request.preset,
+            state: request.initialState,
+            createdAt: now,
+            updatedAt: now,
+          });
+          return { id: request.id, slot: "composer.above", status: "mounted" };
+        }
         const generated = await control.generate({
           sessionId: control.sessionId,
           brief: request.brief,
@@ -81,7 +173,6 @@ export function createCakeSessionPluginOperations(
           surface: "session-plugin",
           signal: context.signal,
         });
-        const now = new Date().toISOString();
         await control.present({
           sessionId: control.sessionId,
           id: request.id,
@@ -99,7 +190,11 @@ export function createCakeSessionPluginOperations(
     {
       command: "plugins.update",
       topic: "plugins",
-      summary: "Replace the durable private state of a Session Plugin without regenerating it.",
+      summary:
+        "Replace durable plugin state without regeneration or changing the user's hidden preference.",
+      guidance: [
+        "For action-bar, state is the complete { label, actions, progress? } configuration, not a partial patch. Keep message intent explicit; progress changes only when updated, never optimistically on click.",
+      ],
       inputSchema: Schema.Struct({ id: pluginId, state: Schema.Json }),
       examples: [{ input: { id: "change-tour", state: { current: 2, total: 5 } } }],
       result: "The updated Session Plugin identity.",

@@ -5,6 +5,7 @@ import {
   observeState,
   setSessionPluginSharedState,
   setSessionPluginState,
+  setSessionPluginHidden,
 } from "../../domain/application/application";
 import { AgentAvailability } from "../../services/pi/AgentAvailability";
 import { ApplicationRpc, SessionPluginMutationError } from "../protocol/ApplicationRpc";
@@ -21,6 +22,8 @@ export const applicationStateHandlers = ApplicationRpc.of({
   "application.observeState": () => Stream.unwrap(observeState()),
   "application.observeAgentAvailability": () =>
     Stream.unwrap(Effect.map(AgentAvailability, (availability) => availability.changes())),
+  "application.setSessionPluginHidden": ({ sessionId, pluginId, hidden }) =>
+    setSessionPluginHidden(sessionId, pluginId, hidden).pipe(Effect.asVoid, pluginMutationError),
   "application.setSessionPluginState": ({ sessionId, pluginId, state }) =>
     setSessionPluginState(sessionId, pluginId, state).pipe(Effect.asVoid, pluginMutationError),
   "application.setSessionPluginSharedState": ({ sessionId, key, value }) =>

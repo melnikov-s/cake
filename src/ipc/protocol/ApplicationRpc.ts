@@ -21,6 +21,11 @@ export const ApplicationRpc = RpcGroup.make(
     success: AgentAvailabilitySnapshot,
     stream: true,
   }),
+  Rpc.make("application.setSessionPluginHidden", {
+    payload: { sessionId: Schema.String, pluginId: Schema.String, hidden: Schema.Boolean },
+    success: Schema.Void,
+    error: SessionPluginMutationError,
+  }),
   Rpc.make("application.setSessionPluginState", {
     payload: {
       sessionId: Schema.String,

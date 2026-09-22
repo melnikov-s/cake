@@ -237,6 +237,13 @@ const harness = {
   },
   getHomeDirectory: () => run(withClient((client) => client.application.getHomeDirectory())),
   getApplicationState: () => run(withClient((client) => client.application.getState())),
+  setSessionPluginState: (input: {
+    sessionId: string;
+    pluginId: string;
+    state: Schema.Schema.Type<typeof Schema.Json>;
+  }) => run(withClient((client) => client.application.setSessionPluginState(input))),
+  deleteSessionPlugin: (input: { sessionId: string; pluginId: string }) =>
+    run(withClient((client) => client.application.deleteSessionPlugin(input))),
   listModels: () => run(withClient((client) => client.models.list())),
   listModelPresets: () => run(withClient((client) => client.modelPresets.list())),
   invokeElectronProbe: () =>

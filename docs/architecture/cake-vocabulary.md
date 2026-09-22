@@ -399,16 +399,20 @@ lifecycle belongs to `CakeSessionRuntimes`; discovery and diagnostics belong to
 
 ### Session Plugin
 
-A generated React control surface durably bound to one Cake Session and mounted
-in a named semantic slot whenever that session is shown. Its definition,
-generated source, private JSON state, and session-shared named JSON state survive
-turns, unmounting, window closure, and application restart. Ordinary React state
-such as `useState` belongs only to one mounted iframe and resets on unmount.
+A control surface durably bound to one Cake Session and mounted in a named
+semantic slot whenever that session is shown. A Session Plugin is either a
+first-party prebuilt control configured with validated state or generated React
+for a genuinely custom need. Its definition, private JSON state, and
+session-shared named JSON state survive turns, unmounting, window closure, and
+application restart. A user-owned hidden preference is independent of
+agent-managed state, so updates and replacement do not reopen a hidden plugin.
 
-Session Plugins execute in Cake's opaque-origin widget sandbox. The host-bound
-`useCake()` capability invokes the owning session's actual Cake operation
-registry; `usePluginState()` addresses the current plugin's durable private
-state; and `useSharedState(key)` addresses durable named state shared only among
-plugins in the same session. Session Plugin data is removed on explicit plugin
-deletion or permanent deletion of the owning Cake Session, not on resolution or
-runtime release.
+Generated Session Plugins execute in Cake's opaque-origin widget sandbox. The
+host supplies live semantic theme tokens and owns the always-available Hide/Show
+control. The host-bound `useCake()` capability invokes the owning session's
+actual Cake operation registry; `usePluginState()` addresses the current
+plugin's durable private state; and `useSharedState(key)` addresses durable named
+state shared only among plugins in the same session. Ordinary React state such
+as `useState` belongs only to one mounted iframe and resets on unmount. Session
+Plugin data is removed on explicit plugin deletion or permanent deletion of the
+owning Cake Session, not on hide, resolution, or runtime release.

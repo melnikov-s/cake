@@ -13,6 +13,7 @@ import {
   setProjectSessionLabels,
   setProjectSessionLabelsIfUnlabelled,
   setSessionFastMode,
+  setSessionPluginHidden,
   setSessionPluginSharedState,
   setSessionPluginState,
   setSessionUnread,
@@ -81,9 +82,28 @@ describe("Application domain", () => {
           updatedAt: timestamp,
         });
         yield* setSessionPluginState("session-1", "tour", { current: 2 });
+        yield* setSessionPluginHidden("session-1", "tour", true);
+        yield* upsertSessionPlugin({
+          sessionId: "session-1",
+          id: "tour",
+          title: "Guided tour",
+          slot: "composer.above",
+          preset: "action-bar",
+          state: {
+            label: "Step two",
+            actions: [{ id: "next", label: "Next", message: "Show the next step." }],
+          },
+          createdAt: "2026-02-01T00:00:00.000Z",
+          updatedAt: "2026-02-01T00:00:00.000Z",
+        });
         yield* setSessionPluginSharedState("session-1", "tour-progress", { total: 4 });
         const deleted = yield* deleteSessionPlugin("session-1", "missing");
-        assert.deepEqual(deleted.sessionPlugins[0]?.state, { current: 2 });
+        assert.equal(deleted.sessionPlugins[0]?.hidden, true);
+        assert.equal(deleted.sessionPlugins[0]?.createdAt, timestamp);
+        assert.deepEqual(deleted.sessionPlugins[0]?.state, {
+          label: "Step two",
+          actions: [{ id: "next", label: "Next", message: "Show the next step." }],
+        });
         assert.deepEqual(deleted.sessionPluginSharedState[0]?.value, { total: 4 });
 
         const forgotten = yield* forgetProjectSessions(["session-1"]);

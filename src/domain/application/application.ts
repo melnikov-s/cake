@@ -9,7 +9,7 @@ import {
   type ProjectWorkflow,
   type SessionLabelMutation,
   type ProjectWorkflowSessionDetails,
-  type SessionPlugin,
+  SessionPlugin,
   type UtilityModel,
   validateSessionLabelName,
 } from "./application-data";
@@ -419,7 +419,9 @@ export const upsertSessionPlugin = Effect.fn("Application.upsertSessionPlugin")(
         existing < 0
           ? [...current.sessionPlugins, plugin]
           : current.sessionPlugins.map((candidate, index) =>
-              index === existing ? { ...plugin, createdAt: candidate.createdAt } : candidate,
+              index === existing
+                ? { ...plugin, createdAt: candidate.createdAt, hidden: candidate.hidden }
+                : candidate,
             ),
     };
   });
@@ -431,12 +433,30 @@ export const setSessionPluginState = Effect.fn("Application.setSessionPluginStat
   state: typeof Schema.Json.Type,
 ) {
   const updatedAt = DateTime.formatIso(yield* DateTime.now);
+  const owner = yield* ApplicationStateOwner;
+  return yield* owner.transact((current) =>
+    Effect.gen(function* () {
+      const plugins = yield* Effect.forEach(current.sessionPlugins, (plugin) =>
+        plugin.sessionId === sessionId && plugin.id === pluginId
+          ? Schema.decodeUnknownEffect(SessionPlugin)({ ...plugin, state, updatedAt }).pipe(
+              Effect.mapError((cause) => new ApplicationPolicyError({ message: cause.message })),
+            )
+          : Effect.succeed(plugin),
+      );
+      return yield* validate({ ...current, sessionPlugins: plugins });
+    }),
+  );
+});
+
+export const setSessionPluginHidden = Effect.fn("Application.setSessionPluginHidden")(function* (
+  sessionId: string,
+  pluginId: string,
+  hidden: boolean,
+) {
   return yield* update((current) => ({
     ...current,
     sessionPlugins: current.sessionPlugins.map((plugin) =>
-      plugin.sessionId === sessionId && plugin.id === pluginId
-        ? { ...plugin, state, updatedAt }
-        : plugin,
+      plugin.sessionId === sessionId && plugin.id === pluginId ? { ...plugin, hidden } : plugin,
     ),
   }));
 });

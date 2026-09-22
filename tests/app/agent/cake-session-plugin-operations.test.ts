@@ -54,6 +54,64 @@ describe("Cake Session Plugin operations", () => {
     );
   });
 
+  it("mounts the prebuilt action bar without invoking generation", async () => {
+    const generate = vi.fn();
+    const present = vi.fn(async () => undefined);
+    const operations = createCakeSessionPluginOperations({
+      sessionId: "session-1",
+      generate,
+      present,
+      setState: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+    });
+
+    await operations
+      .find((candidate) => candidate.command === "plugins.present")!
+      .execute(
+        {
+          plugin: {
+            id: "draw-guide",
+            title: "Draw guide",
+            preset: "action-bar",
+            initialState: {
+              label: "Current topic",
+              progress: { current: 2, total: 4 },
+              actions: [
+                {
+                  id: "next",
+                  label: "Next",
+                  message: "Explain the next step, then update the guide.",
+                  primary: true,
+                },
+              ],
+            },
+          },
+        },
+        context,
+      );
+
+    expect(generate).not.toHaveBeenCalled();
+    expect(present).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-1",
+        id: "draw-guide",
+        preset: "action-bar",
+        state: {
+          label: "Current topic",
+          progress: { current: 2, total: 4 },
+          actions: [
+            {
+              id: "next",
+              label: "Next",
+              message: "Explain the next step, then update the guide.",
+              primary: true,
+            },
+          ],
+        },
+      }),
+    );
+  });
+
   it("updates state and deletes without regenerating source", async () => {
     const setState = vi.fn(async () => undefined);
     const remove = vi.fn(async () => undefined);

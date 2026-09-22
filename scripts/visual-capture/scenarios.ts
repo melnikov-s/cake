@@ -604,7 +604,124 @@ const cakePromptsSettingsScenario: VisualCaptureScenario = {
   },
 };
 
+export const sessionPluginsScenario: VisualCaptureScenario = {
+  name: "session-plugins",
+  description: "Session Plugin controls and generated theme bridge above ordinary chat",
+  states: ["default", "hover"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const timestamp = new Date(0).toISOString();
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        version: 4,
+        data: {
+          globalSessionLabels: [],
+          unreadSessionIds: [],
+          trustedProjectPaths: [],
+          fastModeSessionIds: [],
+          modelPresets: [],
+          sessionPluginSharedState: [],
+          projects: [
+            {
+              path: paths.project,
+              name: "Session controls",
+              addedAt: timestamp,
+              lastOpenedAt: timestamp,
+            },
+          ],
+          sessionPlugins: [
+            {
+              sessionId: "visual-assistant-markdown-code",
+              id: "generated",
+              title: "Custom controls",
+              slot: "composer.above",
+              source: `import { useCake, usePluginState } from "@cake/plugin-sdk";
+export default function Plugin() { const cake = useCake(); const [state, setState] = usePluginState({ topic: "Current selection" }); return <section><span>{state.topic}</span> <button onClick={() => setState({topic: "Selection clarified"})}>Explain this</button> <button disabled>Unavailable</button></section>; }`,
+              state: { topic: "Current selection" },
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+            {
+              sessionId: "visual-assistant-markdown-code",
+              id: "draw-guide",
+              title: "Draw guide",
+              slot: "composer.above",
+              preset: "action-bar",
+              state: {
+                label: "One meaningful Draw step",
+                actions: [
+                  {
+                    id: "continue",
+                    label: "Continue",
+                    primary: true,
+                    message: "Continue with one meaningful Draw step.",
+                  },
+                  {
+                    id: "explain",
+                    label: "Explain this",
+                    message: "Clarify the current Draw point or selection.",
+                  },
+                  {
+                    id: "done",
+                    label: "Done",
+                    message: "Remove draw-guide with plugins.delete; preserve the board.",
+                  },
+                ],
+              },
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+            {
+              sessionId: "visual-assistant-markdown-code",
+              id: "guided-steps",
+              title: "Guided steps",
+              slot: "composer.above",
+              preset: "action-bar",
+              state: {
+                label: "Understanding the flow",
+                progress: { current: 1, total: 4 },
+                actions: [
+                  {
+                    id: "previous",
+                    label: "Previous",
+                    disabled: true,
+                    message: "Revisit the previous step without undoing the board.",
+                  },
+                  {
+                    id: "next",
+                    label: "Next",
+                    primary: true,
+                    message: "Explain the next step and update guided-steps progress.",
+                  },
+                  {
+                    id: "done",
+                    label: "Done",
+                    message: "Delete guided-steps; preserve existing work.",
+                  },
+                ],
+              },
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+          ],
+        },
+      }),
+    );
+  },
+  async prepare(page, state) {
+    const frame = page.frameLocator('iframe[title="Custom controls"]');
+    await expect(frame.getByRole("button", { name: "Explain this" })).toBeVisible();
+    await expect(frame.locator("html")).toHaveAttribute("data-cake-widget-ready", "true");
+    if (state === "hover") await frame.getByRole("button", { name: "Explain this" }).hover();
+  },
+  region(page) {
+    return page.locator('[data-session-plugin-slot="composer.above"]');
+  },
+};
+
 export const visualCaptureScenarios = [
+  sessionPluginsScenario,
   assistantMarkdownCode,
   requestExplanationScenario,
   drawMermaidArchitectureScenario,

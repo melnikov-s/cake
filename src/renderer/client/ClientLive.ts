@@ -63,6 +63,12 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           withClient((client) => client.application.getState()),
           options,
         ),
+      setSessionPluginHidden: (input, options) =>
+        run(
+          "application.setSessionPluginHidden",
+          withClient((client) => client.application.setSessionPluginHidden(input)),
+          options,
+        ),
       setSessionPluginState: (input, options) =>
         run(
           "application.setSessionPluginState",
