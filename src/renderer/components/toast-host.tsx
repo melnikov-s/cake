@@ -16,7 +16,7 @@ export const ToastHost = observer(function ToastHost({
 }) {
   if (store.toasts.length === 0 && !children) return null;
   return (
-    <div className="fixed right-4 top-4 z-50 flex max-w-sm flex-col gap-2" aria-live="polite">
+    <div className="fixed right-4 top-[60px] z-50 flex max-w-sm flex-col gap-2" aria-live="polite">
       {store.toasts.map((toast) => (
         <ToastItem
           key={toast.id}
