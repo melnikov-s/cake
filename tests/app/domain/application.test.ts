@@ -16,6 +16,7 @@ import {
   setSessionPluginHidden,
   setSessionPluginSharedState,
   setSessionPluginState,
+  patchSessionPluginState,
   setSessionUnread,
   setUtilityModel,
   setVscodeServerPath,
@@ -111,6 +112,70 @@ describe("Application domain", () => {
         assert.deepEqual(forgotten.sessionPluginSharedState, []);
       }),
     ),
+  );
+
+  it.effect(
+    "atomically patches guide state without losing actions, visibility, or concurrent fields",
+    () =>
+      run(
+        Effect.gen(function* () {
+          const timestamp = "2026-01-01T00:00:00.000Z";
+          const actions = [{ id: "next", label: "Continue", message: "Continue one step" }];
+          yield* upsertSessionPlugin({
+            sessionId: "session-1",
+            id: "draw-guide",
+            title: "Guide",
+            slot: "composer.above",
+            preset: "action-bar",
+            hidden: true,
+            state: { label: "First", actions, progress: { current: 1, total: 3 } },
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          });
+          yield* Effect.all(
+            [
+              patchSessionPluginState("session-1", "draw-guide", { label: "Second" }),
+              patchSessionPluginState("session-1", "draw-guide", {
+                progress: { current: 2, total: 3 },
+              }),
+            ],
+            { concurrency: "unbounded" },
+          );
+          const owner = yield* ApplicationState;
+          const plugin = (yield* owner.current()).sessionPlugins[0]!;
+          assert.deepEqual(plugin.state, {
+            label: "Second",
+            actions,
+            progress: { current: 2, total: 3 },
+          });
+          assert.equal(plugin.hidden, true);
+          assert.equal(plugin.createdAt, timestamp);
+          // A shallow nested patch cannot silently drop required progress fields.
+          yield* patchSessionPluginState("session-1", "draw-guide", {
+            progress: { current: 3 },
+          }).pipe(Effect.flip);
+          yield* patchSessionPluginState("session-1", "draw-guide", { actions: [] }).pipe(
+            Effect.flip,
+          );
+          yield* patchSessionPluginState("other-session", "draw-guide", {
+            label: "Wrong owner",
+          }).pipe(Effect.flip);
+          assert.deepEqual((yield* owner.current()).sessionPlugins[0], plugin);
+          yield* upsertSessionPlugin({
+            sessionId: "session-1",
+            id: "custom",
+            title: "Custom",
+            slot: "composer.above",
+            source: "export default function X() { return null }",
+            state: null,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          });
+          yield* patchSessionPluginState("session-1", "custom", {
+            label: "Cannot patch null",
+          }).pipe(Effect.flip);
+        }),
+      ),
   );
 
   it.effect("creates, touches, renames, and removes Projects with trust revocation", () =>

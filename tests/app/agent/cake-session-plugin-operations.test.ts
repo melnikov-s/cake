@@ -20,6 +20,7 @@ describe("Cake Session Plugin operations", () => {
       present,
       setState: vi.fn(async () => undefined),
       delete: vi.fn(async () => undefined),
+      patchState: vi.fn(async () => undefined),
     });
     const operation = operations.find((candidate) => candidate.command === "plugins.present")!;
 
@@ -63,6 +64,7 @@ describe("Cake Session Plugin operations", () => {
       present,
       setState: vi.fn(async () => undefined),
       delete: vi.fn(async () => undefined),
+      patchState: vi.fn(async () => undefined),
     });
 
     await operations
@@ -114,12 +116,14 @@ describe("Cake Session Plugin operations", () => {
 
   it("updates state and deletes without regenerating source", async () => {
     const setState = vi.fn(async () => undefined);
+    const patchState = vi.fn(async () => undefined);
     const remove = vi.fn(async () => undefined);
     const operations = createCakeSessionPluginOperations({
       sessionId: "session-1",
       generate: vi.fn(),
       present: vi.fn(),
       setState,
+      patchState,
       delete: remove,
     });
 
@@ -130,6 +134,10 @@ describe("Cake Session Plugin operations", () => {
       .find((candidate) => candidate.command === "plugins.delete")!
       .execute({ id: "tour" }, context);
 
+    await operations
+      .find((candidate) => candidate.command === "plugins.patch")!
+      .execute({ id: "tour", patch: { label: "Next" } }, context);
+    expect(patchState).toHaveBeenCalledWith("tour", { label: "Next" });
     expect(setState).toHaveBeenCalledWith("tour", { current: 2 });
     expect(remove).toHaveBeenCalledWith("tour");
   });

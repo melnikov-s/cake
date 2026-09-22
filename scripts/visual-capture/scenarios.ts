@@ -481,7 +481,7 @@ const drawMermaidArchitectureScenario: VisualCaptureScenario = {
 
 const drawCompositionScenario: VisualCaptureScenario = {
   name: "draw-composition",
-  description: "Compact two-node Draw composition with automatic batch framing",
+  description: "Compact authoring flow with a native frame and measured node labels",
   states: ["default"],
   seed: drawMermaidArchitectureScenario.seed,
   async prepare(page, _state, application) {
@@ -498,41 +498,13 @@ const drawCompositionScenario: VisualCaptureScenario = {
         _tag: "Apply",
         operations: [
           {
-            type: "create",
-            shape: {
-              id: "shape:cake",
-              type: "geo",
-              x: 80,
-              y: 80,
-              width: 220,
-              height: 100,
-              text: "Cake\nDesktop + UI",
-            },
+            type: "flow",
+            nodes: [
+              { id: "shape:cake", text: "Cake\nDesktop + UI" },
+              { id: "shape:pi", text: "Pi\nAgent + history" },
+            ],
+            frame: { id: "shape:application", title: "Cake application" },
           },
-          {
-            type: "create-relative",
-            shape: {
-              id: "shape:pi",
-              type: "geo",
-              width: 220,
-              height: 100,
-              text: "Pi\nAgent + history",
-              placement: { relativeTo: "shape:cake", side: "below", gap: 100 },
-            },
-          },
-          {
-            type: "connect",
-            id: "shape:link",
-            fromId: "shape:cake",
-            toId: "shape:pi",
-            text: "intents / events",
-          },
-          {
-            type: "style",
-            ids: ["shape:cake", "shape:pi", "shape:link"],
-            style: { fontFamily: "sans-serif", roughness: 0 },
-          },
-          { type: "style", ids: ["shape:link"], style: { startArrowhead: "arrow" } },
         ],
       });
     });

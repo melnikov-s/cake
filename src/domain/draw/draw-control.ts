@@ -108,6 +108,7 @@ const DrawShapeSummary = Schema.Struct({
   ),
   sourceLink: Schema.optionalKey(DrawSourceLink),
   diagramId: Schema.optionalKey(diagramId),
+  frameId: Schema.optionalKey(shapeId),
   semanticId: Schema.optionalKey(semanticId),
   diagramRole: Schema.optionalKey(Schema.Literals(["node", "group", "edge"])),
 });
@@ -235,7 +236,38 @@ const DrawStyleUpdate = Schema.Struct({
   }),
 );
 
+export const DrawFrameInput = Schema.Struct({
+  id: shapeId,
+  title: boundedString(256),
+  ids: nonEmptyShapeIds,
+});
+
+export const DrawFlowInput = Schema.Struct({
+  nodes: Schema.Array(
+    Schema.Struct({
+      id: shapeId,
+      text: boundedString(512),
+      geo: Schema.optionalKey(Schema.Literals(["rectangle", "ellipse", "diamond"])),
+    }),
+  ).check(Schema.isMinLength(1), Schema.isMaxLength(8)),
+  direction: Schema.optionalKey(Schema.Literals(["right", "down"])),
+  placement: Schema.optionalKey(DrawRelativePlacement),
+  connect: Schema.optionalKey(Schema.Boolean),
+  frame: Schema.optionalKey(Schema.Struct({ id: shapeId, title: boundedString(256) })),
+});
+
+export const DrawFlowOperation = Schema.Struct({
+  type: Schema.Literal("flow"),
+  ...DrawFlowInput.fields,
+});
+export const DrawFrameOperation = Schema.Struct({
+  type: Schema.Literal("frame"),
+  ...DrawFrameInput.fields,
+});
+
 export const DrawOperation = Schema.Union([
+  DrawFlowOperation,
+  DrawFrameOperation,
   Schema.Struct({ type: Schema.Literal("create"), shape: DrawCreateShape }),
   Schema.Struct({ type: Schema.Literal("create-relative"), shape: DrawRelativeShape }),
   Schema.Struct({
@@ -323,6 +355,11 @@ const DrawApplyReceipt = Schema.Struct({
   createdIds: shapeIds,
   updatedIds: shapeIds,
   deletedIds: shapeIds,
+  bounds: Schema.optionalKey(DrawBounds),
+  layoutTruncated: Schema.optionalKey(Schema.Boolean),
+  layout: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ id: shapeId, bounds: DrawBounds })).check(Schema.isMaxLength(200)),
+  ),
 });
 interface DrawApplyReceipt extends Schema.Schema.Type<typeof DrawApplyReceipt> {}
 

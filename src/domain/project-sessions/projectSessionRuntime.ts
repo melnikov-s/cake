@@ -7,6 +7,7 @@ import {
   setProjectSessionLabelsIfUnlabelled,
   setSessionFastMode,
   setSessionPluginState,
+  patchSessionPluginState,
   upsertSessionPlugin,
 } from "../application/application";
 import {
@@ -313,6 +314,8 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         present: (plugin) => run(upsertSessionPlugin(plugin)).then(() => undefined),
         setState: (pluginId, state) =>
           run(setSessionPluginState(sessionId, pluginId, state)).then(() => undefined),
+        patchState: (pluginId, patch) =>
+          run(patchSessionPluginState(sessionId, pluginId, patch)).then(() => undefined),
         delete: (pluginId) => run(deleteSessionPlugin(sessionId, pluginId)).then(() => undefined),
       },
       fastMode: {

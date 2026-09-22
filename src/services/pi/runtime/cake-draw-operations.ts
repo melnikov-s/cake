@@ -9,6 +9,8 @@ import {
   type DrawControlResponse,
   DrawMaxRenderSize,
   DrawOperation,
+  DrawFlowInput,
+  DrawFrameInput,
   DrawReadScope,
   type DrawControlInvocation,
 } from "../../../domain/draw/draw-control";
@@ -121,21 +123,10 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
     topic: "draw",
     summary: definition.summary,
     guidance: [
-      "Cake Draw commands always target the calling Project Session and never accept a sessionId.",
-      "enter and open explicitly foreground Cake Draw. read, render, mermaid, and apply never switch the user's board or mode; follow their recovery code when Draw is not visible.",
-      "User drawing never triggers an agent turn. Every agent canvas change requires an explicit Draw mutation.",
-      "Use draw.mermaid as the authoritative structured-diagram path for architecture, flow, sequence, class, state, and entity-relationship diagrams. Give it an id and replace:true for one-step named-region revision. Use plain-text labels; write multiline labels with \\n or a plain <br>, <br/>, or <br /> break, not other HTML markup.",
-      "Give flowcharts an explicit direction (usually LR for pipelines or TB for hierarchies), keep labels concise, and avoid duplicate edges between the same nodes when one labeled edge communicates the relationship. Cake uses linear Mermaid routes and separates coincident parallel connectors after conversion; use draw.read and draw.apply for further cleanup.",
-      "All public shape IDs use the canonical shape:<id> form. draw.read, semantic mappings, and every mutation accept and return that same form.",
-      "Use draw.apply for freeform drawings and small targeted edits. Named diagram elements include diagramId, semanticId, and diagramRole in draw.read and can be selected, replaced, or deleted as a unit through their named operation.",
-      "Edit existing shapes without replacing them: update changes position, size, endpoints, rotation, text, opacity, rectangle/ellipse/diamond geometry, or a Cake sourceLink while preserving the shape ID; style applies colors, fill, stroke, opacity, roundness, typography/alignment, or arrowheads to one or more IDs.",
-      "A create or update sourceLink uses a Working Directory-relative path and optional zero-based source range. Activating it opens that exact location in Cake's embedded VS Code editor. Set update sourceLink to null to remove it.",
-      "New agent-generated diagrams use a deterministic layer order automatically: subgraph/frame backgrounds, then connectors behind nodes, then node shapes and readable labels. This applies to draw.mermaid and draw.apply creation batches, including standalone lines/arrows and connect operations, so do not emit redundant send-to-back cleanup operations.",
-      "Selection and arrangement operations include select (an empty IDs list clears selection), zoom-to, move, align, distribute, four explicit layer-order operations, set-locked, delete, and delete-diagram for removing one named region atomically. zoom-to and generated diagrams fit every requested shape plus labels with viewport padding. Use read scope selection to inspect the current selection.",
-      "Every agent mutation creates a bounded window-lifetime checkpoint. Use draw.undo immediately with its checkpointId (or omit it for the latest); checkpoints are not a second persisted board history and reset when the board is reloaded.",
-      `Keep each draw.apply to one visible stage of at most ${DRAW_APPLY_MAX_OPERATIONS} operations (for example, one region, then connections, then cleanup). Use another apply for the next stage so the user sees steady progress.`,
-      "draw.apply is presented operation by operation and fits the complete changed composition (including connector endpoints and labels) before persistence, never just the last styled shape. Explicit zoom-to takes precedence; styling-only batches preserve the camera. Automatic fitting does not enlarge beyond 100%. Order nodes before connections.",
-      "Verify with draw.render scope viewport: it clips to the actual Draw pane at the current scroll, zoom, and theme, including empty space. Page and selection renders fit exported content and do not prove what the user sees. draw.read viewport returns intersecting shapes, not necessarily fully visible ones; compare full bounds to viewportBounds. Keep labels short and adapt wide compositions to narrow panes rather than accepting unreadably small text.",
+      "Targets only the calling Project Session. Only enter/open foreground Draw; other commands require its visible board. User edits never start agent turns.",
+      "For guided steps use flow (measured nodes, arrows, optional frame) and frame (contain existing shapes). Placement uses live shape:<id> bounds; existing content is never relaid out. Mermaid is for complete named diagrams; apply is for targeted edits.",
+      "Mutation receipts include stable IDs, live layout/bounds and an undo checkpoint after playback and durable flush. Automatic fit includes the composition at no more than 100% zoom. Read when user edits/context matter; render viewport only to investigate visual issues.",
+      "Deliver one meaningful visual step, explain briefly, then wait. Guide progress can use plugins.patch without resending actions. No transient spotlight is exposed; use selection for emphasis.",
     ],
     inputSchema: definition.schema,
     examples: [{ input: definition.example }],
@@ -152,6 +143,82 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
   });
 
   return [
+    operation({
+      command: "draw.flow",
+      summary:
+        "Lay out 1–8 new labeled nodes with arrows and an optional native frame, without coordinates.",
+      schema: Schema.Struct({ boardId: optionalBoardId, ...DrawFlowInput.fields }),
+      example: {
+        nodes: [
+          { id: "shape:request", text: "Request" },
+          { id: "shape:service", text: "Service" },
+        ],
+        frame: { id: "shape:runtime", title: "Runtime" },
+      },
+      result:
+        "Board ID, checkpoint, created IDs and compact live layout/bounds. Nodes and frame retain supplied IDs; arrow IDs are returned.",
+      limitations: [
+        "Defaults: down, connected, 220-wide measured nodes, 80 gap, readable sans-serif type. Use direction:right for a horizontal flow or connect:false for an unconnected row/column.",
+        "placement:{relativeTo,side,gap?,align?} places the entire new stage using live bounds. Default gap is 80 and alignment center. Obstructions slide new content outward on that side; without placement, use a collision-free viewport location.",
+        "IDs must be new. This never replaces a diagram or relayouts user edits. Extend beside an existing node/frame, then use apply connect for a cross-stage edge. Frames cannot nest; each flow is one visible stage in the Apply playback transaction.",
+      ],
+      execute: async ({ boardId, ...input }, signal) => {
+        requireMutable(control);
+        const response = requireSuccess(
+          await control.request(
+            {
+              _tag: "Apply",
+              ...(boardId ? { boardId } : null),
+              operations: [{ type: "flow", ...input }],
+            },
+            signal,
+          ),
+        );
+        if (response.kind !== "applied")
+          throw new Error("INVALID_REQUEST: Unexpected Draw response");
+        return {
+          boardId: response.boardId,
+          checkpointId: response.checkpointId,
+          receipt: response.receipt,
+        };
+      },
+    }),
+    operation({
+      command: "draw.frame",
+      summary:
+        "Fit a named native frame around existing shapes and their labels without moving them.",
+      schema: Schema.Struct({ boardId: optionalBoardId, ...DrawFrameInput.fields }),
+      example: {
+        id: "shape:boundary",
+        title: "Ownership boundary",
+        ids: ["shape:request", "shape:service"],
+      },
+      result:
+        "Board ID, checkpoint and compact live layout/bounds including the frame and its members. Layout is capped at 200 roots with layoutTruncated:true when needed; composition bounds remain complete.",
+      limitations: [
+        "Creates a new frame with 32 padding. Children must be unframed; include internal connectors in ids. Native membership is editable. Moving the frame moves its children; deleting the frame preserves them. Fitting is one-shot, not a persistent layout constraint.",
+      ],
+      execute: async ({ boardId, ...input }, signal) => {
+        requireMutable(control);
+        const response = requireSuccess(
+          await control.request(
+            {
+              _tag: "Apply",
+              ...(boardId ? { boardId } : null),
+              operations: [{ type: "frame", ...input }],
+            },
+            signal,
+          ),
+        );
+        if (response.kind !== "applied")
+          throw new Error("INVALID_REQUEST: Unexpected Draw response");
+        return {
+          boardId: response.boardId,
+          checkpointId: response.checkpointId,
+          receipt: response.receipt,
+        };
+      },
+    }),
     operation({
       command: "draw.enter",
       summary: "Foreground Cake Draw for the calling Project Session.",
@@ -444,7 +511,7 @@ export function createCakeDrawOperations(control: CakeDrawControl): CakeOperatio
         ],
       },
       result:
-        "The open board ID and a compact created, updated, and deleted shape receipt after animated playback and durable flush. Updated shapes retain their IDs. draw.read summaries include valid Cake source links. Use draw.read when the next stage needs resulting geometry or styles.",
+        "The open board ID and a compact created, updated, and deleted shape receipt after animated playback and durable flush. Includes complete composition bounds and per-shape layout without a read (up to 200 roots; layoutTruncated:true marks a partial listing). Updated shapes retain their IDs. Source links use Working Directory-relative paths and zero-based ranges; update sourceLink:null removes a link.",
       limitations: [
         "Geometry conversion is intentionally limited to rectangle, ellipse, and diamond. Linear shapes resize through endX/endY; free-draw point editing is not exposed.",
         "Fill/background/roundness apply only to rectangle, ellipse, and diamond; typography applies only to text or labeled shapes; arrowheads apply only to lines and arrows.",

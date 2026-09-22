@@ -13,7 +13,7 @@ const MAX_CAKE_OPERATION_IMAGES = 4;
 const MAX_CAKE_OPERATION_IMAGE_BASE64_LENGTH = Math.ceil(MAX_CAKE_OPERATION_IMAGE_BYTES / 3) * 4;
 
 export const cakeToolDescription =
-  'Cake capabilities are part of the response and are progressively disclosed by topic: app, sessions, context, models, interview, artifacts, widgets, plugins, vscode, browser, draw, subagents, notifications, and worktrees. Before defaulting to prose, consider whether the request may imply a Cake interaction. If a topic seems potentially relevant—even when unsure—request it to discover its current operations, exact schemas, and examples, then use it when it better fulfills the request. Users do not need to name the tool explicitly. Call with {} for the topic index; request a topic with {"command":"<topic>"}, not in input. Artifacts are durable linked records; use artifacts.list or artifacts.search to discover them and artifacts.resolve-reference for an exact readable path. Artifact content is not automatically in context.';
+  'Cake capabilities are part of the response and are progressively disclosed by topic: app, sessions, context, models, interview, artifacts, widgets, plugins, vscode, browser, draw, subagents, notifications, and worktrees. Before defaulting to prose, consider whether the request may imply a Cake interaction. If a topic seems potentially relevant—even when unsure—request it to discover its current operations, exact schemas, and examples, then use it when it better fulfills the request. Users do not need to name the tool explicitly. Call with {} for the topic index; request a topic with {"command":"<topic>"}, not in input. Request one exact operation schema with {"command":"<operation>.help"}. Artifacts are durable linked records; use artifacts.list or artifacts.search to discover them and artifacts.resolve-reference for an exact readable path. Artifact content is not automatically in context.';
 
 const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
   description: "Exact topic or operation command. Omit for the help index.",
@@ -211,10 +211,33 @@ export class CakeOperationRegistry {
       .join("\n\n");
   }
 
+  operationHelp(command: string) {
+    const operation = this.operations.get(command);
+    if (!operation) return undefined;
+    return [
+      `${operation.command} — ${operation.summary}`,
+      `Input schema:\n${JSON.stringify(operation.inputJsonSchema ?? schemaJson(operation.inputSchema))}`,
+      `Result: ${operation.result}`,
+      ...(operation.limitations ?? []).map((line) => `Limitation: ${line}`),
+      ...operation.examples
+        .slice(0, 1)
+        .map(
+          (example) => `Example:\n${JSON.stringify(exampleEnvelope(operation.command, example))}`,
+        ),
+    ].join("\n");
+  }
+
   topicHelp(topic: string) {
     const operations = this.definitions().filter((definition) => definition.topic === topic);
     if (operations.length === 0) return undefined;
     const topicDefinition = cakeTopics.find((candidate) => candidate.name === topic);
+    if (topic === "draw")
+      return [
+        `${topic} — ${topicDefinition?.summary}`,
+        'Get one exact schema with {"command":"draw.flow.help"} (or any command + .help).',
+        ...new Set(operations.flatMap((operation) => operation.guidance ?? [])),
+        ...operations.map((operation) => `${operation.command} — ${operation.summary}`),
+      ].join("\n");
     return [
       `${topic} — ${topicDefinition?.summary ?? "Cake operations."}`,
       ...[...new Set(operations.flatMap((operation) => operation.guidance ?? []))].map(
@@ -257,6 +280,10 @@ export class CakeOperationRegistry {
     if (command === "help") return helpResult(command, this.help());
     const topicHelp = this.topicHelp(command);
     if (topicHelp !== undefined) return helpResult(command, topicHelp);
+    if (command.endsWith(".help")) {
+      const help = this.operationHelp(command.slice(0, -5));
+      if (help) return helpResult(command, help);
+    }
     const operation = this.operations.get(command);
     if (!operation) return helpResult(command, this.unknown(command));
     const input = Schema.decodeUnknownSync(operation.inputSchema, { onExcessProperty: "error" })(

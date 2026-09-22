@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { SessionPluginControls } from "../../../domain/application/session-plugin-controls";
 import type { SessionPlugin } from "../../../domain/application/application-data";
-import type { JsonValue } from "../../../ipc/json-contract";
+import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
 import type { InlineWidgetGenerationRequest } from "./sidecar-runtime";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 
@@ -32,6 +32,7 @@ export interface SessionPluginControl {
   }>;
   readonly present: (plugin: SessionPlugin) => Promise<void>;
   readonly setState: (pluginId: string, state: JsonValue) => Promise<void>;
+  readonly patchState: (pluginId: string, patch: JsonObject) => Promise<void>;
   readonly delete: (pluginId: string) => Promise<void>;
 }
 
@@ -188,12 +189,37 @@ export function createCakeSessionPluginOperations(
       },
     },
     {
+      command: "plugins.patch",
+      topic: "plugins",
+      summary:
+        "Atomically patch top-level plugin state fields, preserving omitted fields and user visibility.",
+      inputSchema: Schema.Struct({ id: pluginId, patch: jsonObjectSchema }),
+      examples: [
+        {
+          input: {
+            id: "draw-guide",
+            patch: { label: "Next point", progress: { current: 2, total: 5 } },
+          },
+        },
+      ],
+      result: "The updated plugin identity; no state echo.",
+      limitations: [
+        "Shallow merge only: nested objects and arrays replace as units, null is a value (not deletion). Existing state must be an object. The complete merged preset state is validated atomically; a missing plugin or invalid patch fails without changes.",
+      ],
+      async execute(input) {
+        // SAFETY: CakeOperationRegistry decoded input with this operation's schema.
+        const { id, patch } = input as { id: string; patch: JsonObject };
+        await control.patchState(id, patch);
+        return { id, updated: true };
+      },
+    },
+    {
       command: "plugins.update",
       topic: "plugins",
       summary:
         "Replace durable plugin state without regeneration or changing the user's hidden preference.",
       guidance: [
-        "For action-bar, state is the complete { label, actions, progress? } configuration, not a partial patch. Keep message intent explicit; progress changes only when updated, never optimistically on click.",
+        "For action-bar, update requires the complete { label, actions, progress? } configuration. Prefer plugins.patch for label/progress changes without resending actions. Keep message intent explicit; progress changes only when updated, never optimistically on click.",
       ],
       inputSchema: Schema.Struct({ id: pluginId, state: Schema.Json }),
       examples: [{ input: { id: "change-tour", state: { current: 2, total: 5 } } }],

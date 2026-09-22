@@ -28,6 +28,7 @@ import {
   DRAW_SNAPSHOT_VERSION,
 } from "./DrawDocumentValidation";
 import { serializeExcalidrawDocument } from "./DrawExportSerializer";
+import { DrawFlowOperation, DrawFrameOperation } from "../../domain/draw/draw-control";
 import { formatDrawSourceLink, parseDrawSourceLink } from "../../domain/draw/draw-source-link";
 import type {
   DrawArrowhead,
@@ -127,7 +128,8 @@ type PreparedOperation =
   | PreparedCreateOperation
   | PreparedRelativeCreateOperation
   | PreparedConnectOperation
-  | Exclude<DrawOperation, { type: "create" | "create-relative" | "connect" }>;
+  | (Extract<DrawOperation, { type: "flow" }> & { readonly edgeIds: readonly string[] })
+  | Exclude<DrawOperation, { type: "create" | "create-relative" | "connect" | "flow" }>;
 
 function finite(value: number, name: string) {
   if (!Number.isFinite(value) || Math.abs(value) > MAX_ABSOLUTE_COORDINATE)
@@ -337,6 +339,8 @@ function fitElements(api: ExcalidrawImperativeAPI, elements: readonly Excalidraw
 function compositionElements(api: ExcalidrawImperativeAPI, receipt: MutableDrawApplyReceipt) {
   const elements = nonDeleted(api);
   const ids = new Set([...receipt.createdIds, ...receipt.updatedIds]);
+  for (const element of elements)
+    if (element.frameId && ids.has(element.frameId)) ids.add(element.id);
   for (const element of elements) {
     if (!ids.has(element.id) || element.type !== "arrow") continue;
     if (element.startBinding) ids.add(element.startBinding.elementId);
@@ -347,6 +351,8 @@ function compositionElements(api: ExcalidrawImperativeAPI, receipt: MutableDrawA
 
 function changesLayout(operation: PreparedOperation) {
   return (
+    operation.type === "flow" ||
+    operation.type === "frame" ||
     operation.type === "create" ||
     operation.type === "create-relative" ||
     operation.type === "connect" ||
@@ -531,9 +537,60 @@ function prepareOperations(
       },
     ]),
   );
+  const framed = new Map(
+    sceneElements.flatMap((element) =>
+      element.frameId ? [[element.id, element.frameId] as const] : [],
+    ),
+  );
   const prepared: PreparedOperation[] = [];
   for (const operation of operations) {
     switch (operation.type) {
+      case "flow": {
+        Schema.decodeUnknownSync(DrawFlowOperation, { onExcessProperty: "error" })(operation);
+        if (operation.placement) requireTargets(known, [operation.placement.relativeTo], "flow");
+        const edgeIds =
+          operation.connect === false ? [] : operation.nodes.slice(1).map(() => generatedShapeId());
+        const ids = [
+          ...operation.nodes.map(({ id }) => id),
+          ...edgeIds,
+          ...(operation.frame ? [operation.frame.id] : []),
+        ];
+        for (const id of ids) {
+          if (
+            known.has(id) ||
+            api.getSceneElementsIncludingDeleted().some((element) => element.id === id)
+          )
+            throw new Error(`Duplicate shape ID: ${id}`);
+          known.set(id, { type: "rectangle", hasText: true });
+        }
+        for (const node of operation.nodes)
+          known.set(node.id, { type: node.geo ?? "rectangle", hasText: true });
+        for (const id of edgeIds) known.set(id, { type: "arrow", hasText: false });
+        if (operation.frame) {
+          known.set(operation.frame.id, { type: "frame", hasText: false });
+          for (const id of ids) if (id !== operation.frame.id) framed.set(id, operation.frame.id);
+        }
+        prepared.push({ ...operation, edgeIds });
+        break;
+      }
+      case "frame": {
+        Schema.decodeUnknownSync(DrawFrameOperation, { onExcessProperty: "error" })(operation);
+        const ids = uniqueTargetIds(operation.ids, "frame");
+        requireTargets(known, ids, "frame");
+        if (ids.some((id) => known.get(id)?.type === "frame" || framed.has(id)))
+          throw new Error(
+            "Frame children must be unframed shapes; nested frames are not supported",
+          );
+        if (
+          known.has(operation.id) ||
+          api.getSceneElementsIncludingDeleted().some(({ id }) => id === operation.id)
+        )
+          throw new Error(`Duplicate shape ID: ${operation.id}`);
+        known.set(operation.id, { type: "frame", hasText: false });
+        for (const id of ids) framed.set(id, operation.id);
+        prepared.push(operation);
+        break;
+      }
       case "create": {
         validateCreateShape(operation.shape);
         const id = operation.shape.id ? shapeId(operation.shape.id) : generatedShapeId();
@@ -634,7 +691,10 @@ function prepareOperations(
         const ids = uniqueTargetIds(operation.ids, "delete");
         requireTargetCount(ids, "delete", 1);
         requireTargets(known, ids, "delete");
-        for (const id of ids) known.delete(id);
+        for (const id of ids) {
+          known.delete(id);
+          for (const [childId, frameId] of framed) if (frameId === id) framed.delete(childId);
+        }
         prepared.push(operation);
         break;
       }
@@ -1046,21 +1106,33 @@ function moveRelated(
   dx: number,
   dy: number,
 ) {
+  const movingIds = new Set(ids);
+  for (const element of elements)
+    if (element.frameId && ids.has(element.frameId)) movingIds.add(element.id);
   return elements.map((element) => {
     const companionId = generatedCompanionFor(element);
     const related =
-      ids.has(element.id) ||
+      movingIds.has(element.id) ||
       (element.type === "text" &&
-        ((!!element.containerId && ids.has(element.containerId)) ||
-          (!!companionId && ids.has(companionId))));
+        ((!!element.containerId && movingIds.has(element.containerId)) ||
+          (!!companionId && movingIds.has(companionId))));
     return related ? withPosition(element, element.x + dx, element.y + dy) : element;
   });
 }
 
-function updateConnections(elements: readonly ExcalidrawElement[]) {
+function updateConnections(
+  elements: readonly ExcalidrawElement[],
+  changedIds?: ReadonlySet<string>,
+) {
   const byId = elementMap(elements);
   return elements.map((element) => {
-    if (element.type !== "arrow" || !element.startBinding || !element.endBinding) return element;
+    if (
+      element.type !== "arrow" ||
+      !element.startBinding ||
+      !element.endBinding ||
+      (changedIds && !changedIds.has(element.id))
+    )
+      return element;
     const from = byId.get(element.startBinding.elementId);
     const to = byId.get(element.endBinding.elementId);
     if (!from || !to) return element;
@@ -1074,7 +1146,7 @@ function updateConnections(elements: readonly ExcalidrawElement[]) {
     const obstacles = visibleElements(elements)
       .filter((candidate) => candidate.id !== from.id && candidate.id !== to.id)
       .filter((candidate) => candidate.type !== "arrow" && candidate.type !== "line")
-      .filter((candidate) => diagramData(candidate)?.role !== "group")
+      .filter((candidate) => candidate.type !== "frame" && diagramData(candidate)?.role !== "group")
       .map((candidate) => boundsOf(candidate, elements));
     return newElementWith(element, {
       x: start.x,
@@ -1583,7 +1655,9 @@ function summaryFor(
   const fullText =
     element.type === "text"
       ? element.originalText || element.text
-      : label?.originalText || label?.text || "";
+      : element.type === "frame"
+        ? (element.name ?? "")
+        : label?.originalText || label?.text || "";
   const bounds = boundsOf(element, elements);
   const connections =
     element.type === "arrow"
@@ -1607,6 +1681,7 @@ function summaryFor(
       style: summaryStyle(element, label),
       ...(connections?.length ? { connections } : null),
       ...(sourceLink ? { sourceLink } : null),
+      ...(element.frameId ? { frameId: element.frameId } : null),
       ...(diagram
         ? {
             diagramId: diagram.diagramId,
@@ -1637,6 +1712,185 @@ function mergeReceipt(target: MutableDrawApplyReceipt, source: MutableDrawApplyR
     if (!target.deletedIds.includes(id)) target.deletedIds.push(id);
 }
 
+function layoutReceipt(api: ExcalidrawImperativeAPI, receipt: MutableDrawApplyReceipt) {
+  const composition = compositionElements(api, receipt);
+  if (composition.length === 0) return compactReceipt(receipt);
+  const [x, y, right, bottom] = getCommonBounds(composition);
+  const roots = visibleElements(composition);
+  return {
+    ...compactReceipt(receipt),
+    bounds: { x, y, width: right - x, height: bottom - y },
+    ...(roots.length > MAX_READ_SHAPES ? { layoutTruncated: true } : null),
+    layout: roots.slice(0, MAX_READ_SHAPES).map((element) => ({
+      id: element.id,
+      bounds: boundsOf(element, composition),
+    })),
+  };
+}
+
+function frameElements(
+  elements: readonly ExcalidrawElement[],
+  input: { readonly id: string; readonly title: string; readonly ids: readonly string[] },
+) {
+  const ids = new Set(input.ids);
+  const children = elements.filter(
+    (element) => !element.isDeleted && (ids.has(element.id) || isGeneratedLabelFor(element, ids)),
+  );
+  if (children.some((element) => element.frameId || element.type === "frame"))
+    throw new Error("Frame children must be unframed shapes; nested frames are not supported");
+  const [left, top, right, bottom] = getCommonBounds(children);
+  const frame = convertToExcalidrawElements(
+    [
+      {
+        type: "frame",
+        id: input.id,
+        name: input.title,
+        x: finite(left - 32, "frame x"),
+        y: finite(top - 32, "frame y"),
+        width: positive(right - left + 64, "frame width"),
+        height: positive(bottom - top + 64, "frame height"),
+        children: [],
+      },
+    ],
+    { regenerateIds: false },
+  );
+  const childIds = new Set(children.map(({ id }) => id));
+  return [
+    ...frame,
+    ...elements.map((element) =>
+      childIds.has(element.id) ? newElementWith(element, { frameId: input.id }) : element,
+    ),
+  ];
+}
+
+/** One-shot layout of NEW content only. The native scene remains the only graph authority. */
+function createFlowElements(
+  existing: readonly ExcalidrawElement[],
+  operation: Extract<PreparedOperation, { type: "flow" }>,
+  viewport: ElementBounds,
+) {
+  let created: readonly ExcalidrawElement[] = [];
+  let cursor = 0;
+  const horizontal = operation.direction === "right";
+  for (const node of operation.nodes) {
+    let elements: readonly ExcalidrawElement[] = createElements(
+      {
+        type: "geo",
+        ...node,
+        x: 0,
+        y: 0,
+        width: 220,
+        height: 80,
+      },
+      node.id,
+    );
+    elements = styleElements(elements, new Set([node.id]), {
+      fontFamily: "sans-serif",
+      fontSize: 20,
+      roughness: 0,
+      roundness: "round",
+    });
+    elements = fitGeneratedText(elements);
+    const root = elements.find(({ id }) => id === node.id)!;
+    const bounds = boundsOf(root, elements);
+    elements = moveRelated(
+      elements,
+      new Set([node.id]),
+      horizontal ? cursor : -bounds.width / 2,
+      horizontal ? -bounds.height / 2 : cursor,
+    );
+    created = [...created, ...elements];
+    cursor += (horizontal ? bounds.width : bounds.height) + 80;
+  }
+  for (let index = 0; index < operation.edgeIds.length; index += 1) {
+    created = connectElements(created, {
+      type: "connect",
+      id: operation.edgeIds[index]!,
+      fromId: operation.nodes[index]!.id,
+      toId: operation.nodes[index + 1]!.id,
+      routing: "straight",
+    });
+  }
+  created = normalizeCreatedDiagramOrder(created, new Set(created.map(({ id }) => id)));
+  if (operation.frame)
+    created = frameElements(created, {
+      ...operation.frame,
+      ids: visibleElements(created).map(({ id }) => id),
+    });
+  const [left, top, right, bottom] = getCommonBounds(created);
+  const width = right - left;
+  const height = bottom - top;
+  let delta = { x: 0, y: 0 };
+  if (operation.placement) {
+    const placement = operation.placement;
+    const anchor = existing.find(({ id }) => id === placement.relativeTo);
+    if (!anchor) throw new Error(`Relative placement target disappeared: ${placement.relativeTo}`);
+    const positioned = resolveRelativeShape(
+      { type: "geo", width, height, placement },
+      placement.relativeTo,
+      existing,
+    );
+    const target = { x: positioned.x, y: positioned.y, width, height };
+    // Slide outward on the requested side rather than moving any existing content.
+    const occupied = visibleElements(existing)
+      .filter(({ id }) => id !== anchor.id && id !== anchor.frameId)
+      .map((element) => boundsOf(element, existing));
+    for (let pass = 0; pass <= occupied.length; pass += 1) {
+      const collision = occupied.find((bounds) => boundsOverlap(target, bounds, 24));
+      if (!collision) break;
+      if (placement.side === "right") target.x = collision.x + collision.width + 24;
+      else if (placement.side === "left") target.x = collision.x - width - 24;
+      else if (placement.side === "below") target.y = collision.y + collision.height + 24;
+      else target.y = collision.y - height - 24;
+    }
+    delta = { x: target.x - left, y: target.y - top };
+  } else {
+    delta = collisionAwareMermaidDelta(created, existing, {
+      x: viewport.x + viewport.width / 2,
+      y: viewport.y + viewport.height / 2,
+    });
+  }
+  return created.map((element) =>
+    withPosition(
+      element,
+      finite(element.x + delta.x, "flow x"),
+      finite(element.y + delta.y, "flow y"),
+    ),
+  );
+}
+
+/** Plan once, reveal measured nodes in order, then their connections. No layout
+ * is recomputed between animation frames, and DrawStore owns rollback/persistence. */
+async function applyFlowAnimated(
+  api: ExcalidrawImperativeAPI,
+  operation: Extract<PreparedOperation, { type: "flow" }>,
+  options: { readonly delay: number; readonly signal?: AbortSignal; readonly fitCamera: boolean },
+): Promise<MutableDrawApplyReceipt> {
+  const before = api.getSceneElementsIncludingDeleted();
+  const created = createFlowElements(nonDeleted(api), operation, viewportBounds(api.getAppState()));
+  const ids = visibleElements(created).map(({ id }) => id);
+  const revealed = new Set(operation.frame ? [operation.frame.id] : []);
+  for (let index = 0; index < operation.nodes.length; index += 1) {
+    const node = operation.nodes[index]!;
+    revealed.add(node.id);
+    if (index === operation.nodes.length - 1) for (const id of ids) revealed.add(id);
+    api.updateScene({
+      elements: [
+        ...before,
+        ...created.filter(
+          (element) => revealed.has(element.id) || isGeneratedLabelFor(element, revealed),
+        ),
+      ],
+      appState: { selectedElementIds: { [node.id]: true } },
+      captureUpdate: CaptureUpdateAction.NEVER,
+    });
+    // Fit the final local stage once, rather than jumping as each node appears.
+    if (index === 0 && options.fitCamera) fitElements(api, created);
+    if (index < operation.nodes.length - 1) await playbackDelay(options.delay, options.signal);
+  }
+  return { createdIds: ids, updatedIds: [], deletedIds: [] };
+}
+
 function compactReceipt(receipt: MutableDrawApplyReceipt): MutableDrawApplyReceipt {
   return {
     createdIds: [...new Set(receipt.createdIds)],
@@ -1662,8 +1916,30 @@ function applyPreparedOperations(
   let selectedElementIds: Record<string, true> | undefined;
   let zoomIds: string[] | undefined;
   const createdDiagramIds = new Set<string>();
+  const changedIds = new Set<string>();
   for (const operation of prepared) {
+    const createdBefore = receipt.createdIds.length;
+    const updatedBefore = receipt.updatedIds.length;
     switch (operation.type) {
+      case "flow": {
+        const result = createFlowElements(
+          elements.filter((element) => !element.isDeleted),
+          operation,
+          viewportBounds(api.getAppState()),
+        );
+        elements = [...elements, ...result];
+        const ids = visibleElements(result).map(({ id }) => id);
+        receipt.createdIds.push(...ids);
+        if (highlightActive) selectedElementIds = Object.fromEntries(ids.map((id) => [id, true]));
+        break;
+      }
+      case "frame": {
+        elements = frameElements(elements, operation);
+        receipt.createdIds.push(operation.id);
+        receipt.updatedIds.push(...operation.ids);
+        if (highlightActive) selectedElementIds = { [operation.id]: true };
+        break;
+      }
       case "create":
         elements = [...elements, ...createElements(operation.shape, operation.id)];
         createdDiagramIds.add(operation.id);
@@ -1719,7 +1995,9 @@ function applyPreparedOperations(
         elements = elements.map((element) =>
           ids.has(element.id) || isGeneratedLabelFor(element, ids)
             ? newElementWith(element, { isDeleted: true })
-            : element,
+            : element.frameId && ids.has(element.frameId)
+              ? newElementWith(element, { frameId: null })
+              : element,
         );
         receipt.deletedIds.push(...ids);
         if (highlightActive) selectedElementIds = {};
@@ -1796,10 +2074,26 @@ function applyPreparedOperations(
         zoomIds = operation.ids.map(shapeId);
         break;
     }
+    // Structural helpers already measure only new content. Membership alone must
+    // not rewrap or recenter labels the user has edited.
+    if (operation.type !== "frame" && operation.type !== "flow") {
+      for (const id of receipt.createdIds.slice(createdBefore)) changedIds.add(id);
+      for (const id of receipt.updatedIds.slice(updatedBefore)) changedIds.add(id);
+    }
   }
-  elements = fitGeneratedText(elements);
-  elements = updateConnections(elements);
-  elements = fitGeneratedText(elements);
+  for (const element of elements)
+    if (element.frameId && changedIds.has(element.frameId)) changedIds.add(element.id);
+  for (const element of elements) {
+    if (
+      element.type === "arrow" &&
+      ((element.startBinding && changedIds.has(element.startBinding.elementId)) ||
+        (element.endBinding && changedIds.has(element.endBinding.elementId)))
+    )
+      changedIds.add(element.id);
+  }
+  elements = fitGeneratedText(elements, changedIds);
+  elements = updateConnections(elements, changedIds);
+  elements = fitGeneratedText(elements, changedIds);
   api.updateScene({
     elements,
     ...(selectedElementIds ? { appState: { selectedElementIds } } : null),
@@ -2010,10 +2304,16 @@ function wrapMeasuredText(value: string, maximumWidth: number, element: Excalidr
 }
 
 /** Fits every generated text kind before geometry, routing, selection fitting, or rendering. */
-function fitGeneratedText(elements: readonly ExcalidrawElement[]) {
+function fitGeneratedText(
+  elements: readonly ExcalidrawElement[],
+  changedIds?: ReadonlySet<string>,
+) {
   let fitted = [...elements];
   const textElements = fitted.filter(
-    (element): element is ExcalidrawTextElement => element.type === "text" && !element.isDeleted,
+    (element): element is ExcalidrawTextElement =>
+      element.type === "text" &&
+      !element.isDeleted &&
+      (!changedIds || changedIds.has(element.id) || isGeneratedLabelFor(element, changedIds)),
   );
   for (const original of textElements) {
     const current = elementMap(fitted).get(original.id);
@@ -2709,7 +3009,7 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
         prepared.some(changesLayout)
       )
         fitElements(api, compositionElements(api, receipt));
-      return receipt;
+      return layoutReceipt(api, receipt);
     },
     async applyAnimated({ operations }, options: DrawPlaybackOptions = {}) {
       const prepared = prepareOperations(api, operations);
@@ -2720,18 +3020,23 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
       };
       const requestedDelay = options.stepDelayMs ?? 160;
       const maxDuration = options.maxDurationMs ?? 3_500;
+      const stepCount = prepared.reduce(
+        (count, operation) => count + (operation.type === "flow" ? operation.nodes.length : 1),
+        0,
+      );
       const delay =
-        prepared.length <= 1
-          ? 0
-          : Math.max(0, Math.min(requestedDelay, maxDuration / (prepared.length - 1)));
+        stepCount <= 1 ? 0 : Math.max(0, Math.min(requestedDelay, maxDuration / (stepCount - 1)));
       const explicitCamera = prepared.some((operation) => operation.type === "zoom-to");
       for (let index = 0; index < prepared.length; index += 1) {
-        const step = applyPreparedOperations(
-          api,
-          [prepared[index]!],
-          CaptureUpdateAction.NEVER,
-          true,
-        );
+        const operation = prepared[index]!;
+        const step =
+          operation.type === "flow"
+            ? await applyFlowAnimated(api, operation, {
+                delay,
+                signal: options.signal,
+                fitCamera: !explicitCamera,
+              })
+            : applyPreparedOperations(api, [operation], CaptureUpdateAction.NEVER, true);
         mergeReceipt(receipt, step);
         if (!explicitCamera && changesLayout(prepared[index]!)) {
           const composition = compositionElements(api, receipt);
@@ -2755,17 +3060,7 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
         elements: api.getSceneElementsIncludingDeleted(),
         captureUpdate: CaptureUpdateAction.IMMEDIATELY,
       });
-      if (receipt.createdIds.length > 1) {
-        const createdIds = new Set(receipt.createdIds);
-        const elements = nonDeleted(api);
-        api.scrollToContent(
-          elements.filter(
-            (element) => createdIds.has(element.id) || isGeneratedLabelFor(element, createdIds),
-          ),
-          { animate: false, fitToViewport: true, viewportZoomFactor: 0.85 },
-        );
-      }
-      return receipt;
+      return layoutReceipt(api, receipt);
     },
     insertMermaid(diagram, options) {
       return insertMermaid(api, diagram, options);

@@ -59,6 +59,7 @@ export interface DrawShapeSummary {
   readonly connections?: readonly DrawShapeConnection[];
   readonly sourceLink?: DrawSourceLink;
   readonly diagramId?: string;
+  readonly frameId?: string;
   readonly semanticId?: string;
   readonly diagramRole?: DrawSemanticRole;
 }
@@ -175,7 +176,27 @@ export interface DrawStyleUpdate {
   readonly endArrowhead?: DrawArrowhead;
 }
 
+interface DrawFlowInput {
+  readonly nodes: readonly {
+    readonly id: string;
+    readonly text: string;
+    readonly geo?: DrawGeoType;
+  }[];
+  readonly direction?: "right" | "down";
+  readonly placement?: DrawRelativePlacement;
+  readonly connect?: boolean;
+  readonly frame?: { readonly id: string; readonly title: string };
+}
+
+interface DrawFrameInput {
+  readonly id: string;
+  readonly title: string;
+  readonly ids: readonly string[];
+}
+
 export type DrawOperation =
+  | ({ readonly type: "flow" } & DrawFlowInput)
+  | ({ readonly type: "frame" } & DrawFrameInput)
   | { readonly type: "create"; readonly shape: DrawCreateShape }
   | { readonly type: "create-relative"; readonly shape: DrawRelativeShape }
   | {
@@ -250,6 +271,10 @@ export interface DrawApplyReceipt {
   readonly createdIds: readonly string[];
   readonly updatedIds: readonly string[];
   readonly deletedIds: readonly string[];
+  /** Live resulting composition, including bound labels and connector endpoints. */
+  readonly bounds?: DrawBounds;
+  readonly layout?: readonly { readonly id: string; readonly bounds: DrawBounds }[];
+  readonly layoutTruncated?: boolean;
 }
 
 export interface DrawMermaidReceipt {

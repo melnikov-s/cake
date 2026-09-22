@@ -485,7 +485,18 @@ The window Store hierarchy mirrors the product surfaces:
   Cake sidebar may sit beside it, and Cake's authoritative `Chat` occupies the right drawer.
   Draw embeds Excalidraw as an editor, not as another agent runtime or conversation. Explicit
   `cake draw` operations use the existing renderer-request coordinator to inspect or edit the
-  invoking session's board. `draw.mermaid` is the authoritative structured-diagram boundary for
+  invoking session's board. Draw discovery is a compact index; `<command>.help` discloses one
+  exact schema on demand. `draw.flow` and `draw.frame` are compact structural authoring commands,
+  translated into the existing validated Apply invocation, not a second mutation transport.
+  The renderer adapter measures and places only new flow nodes, adds native bound arrows, and
+  optionally contains them in a native editable Excalidraw frame. Relative placement uses live
+  node/frame bounds and slides new content outward past collisions; it never relayouts existing
+  content. Frame membership is native `frameId` data, not a Cake-owned graph. Frames fit once;
+  they are not persistent layout constraints, cannot nest, and do not take ownership of future
+  nearby shapes. Each structural operation is one visible playback stage with the existing
+  serialized mutation, checkpoint, and durable-flush lifecycle. Flows plan once and reveal
+  measured nodes followed by connections within the shared bounded playback duration. There is no new renderer Store
+  state, timer, or durable layout specification. `draw.mermaid` remains the complete structured-diagram boundary for
   architecture, flow, sequence, class, state, and entity-relationship diagrams. A named conversion
   atomically creates or replaces one stable region while preserving unrelated artwork and persists
   editable native Excalidraw elements. The Excalidraw document remains the only diagram authority:
@@ -501,7 +512,9 @@ The window Store hierarchy mirrors the product surfaces:
   framing, then persisted once after playback. Automatic framing fits the batch's live changed
   elements, bound labels, and connector endpoints at no more than 100% zoom, not the last operation
   or unrelated page content. Explicit `zoom-to` takes precedence; style-only batches preserve the
-  camera. Camera changes commit before the completion receipt and saved snapshot. Opening or reading a board returns viewport,
+  camera. Camera changes commit before the completion receipt and saved snapshot. Apply receipts include
+  resulting composition bounds and compact per-shape layout, including connector endpoints,
+  without echoing a full scene or requiring another read. Opening or reading a board returns viewport,
   selection, shape bounds, and compact style summaries; later shapes can use relative placement
   against stable shape IDs so Pi can reason about layout without raw Excalidraw elements. Explicit
   semantic operations preserve existing IDs while changing geometry, text, colors, fill, strokes,
@@ -585,6 +598,10 @@ The window Store hierarchy mirrors the product surfaces:
   Plugins are a separate durable session-bound UI concept: generated React runs in the opaque-origin
   widget sandbox, mounts in the existing `composer.above` semantic slot, and stacks with installed
   extension companions. `SessionPluginStore` projects their Cake-owned application metadata.
+  `plugins.patch` shallow-merges object state inside the main-owned ApplicationState transaction,
+  validates the complete resulting preset, and preserves omitted actions and user-owned visibility.
+  Concurrent disjoint patches compose; conflicting fields use transaction order. Nested values
+  replace as units, null remains a value, and missing plugins or invalid states fail atomically.
   Plugin-private and named session-shared JSON state survive remounts and restarts, while ordinary
   React state remains mount-local. The sandbox's token-bound Plugin SDK routes `useCake()` calls
   through the owning Project Session's actual Cake operation registry and exposes focused

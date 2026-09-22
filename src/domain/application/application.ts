@@ -1,5 +1,6 @@
 import { DateTime, Effect, Schema } from "effect";
 import type { CakePrompts } from "./cake-prompts";
+import { jsonObjectSchema, type JsonObject } from "../../ipc/json-contract";
 import {
   ApplicationState as ApplicationStateSchema,
   type ApplicationState,
@@ -444,6 +445,41 @@ export const setSessionPluginState = Effect.fn("Application.setSessionPluginStat
           : Effect.succeed(plugin),
       );
       return yield* validate({ ...current, sessionPlugins: plugins });
+    }),
+  );
+});
+
+/** Shallow object patch, serialized with all application mutations; validate the complete result. */
+export const patchSessionPluginState = Effect.fn("Application.patchSessionPluginState")(function* (
+  sessionId: string,
+  pluginId: string,
+  patch: JsonObject,
+) {
+  const updatedAt = DateTime.formatIso(yield* DateTime.now);
+  const owner = yield* ApplicationStateOwner;
+  return yield* owner.transact((current) =>
+    Effect.gen(function* () {
+      const target = current.sessionPlugins.find(
+        (plugin) => plugin.sessionId === sessionId && plugin.id === pluginId,
+      );
+      if (!target)
+        return yield* new ApplicationPolicyError({ message: "Session Plugin not found" });
+      const previous = yield* Schema.decodeUnknownEffect(jsonObjectSchema)(target.state).pipe(
+        Effect.mapError(
+          () => new ApplicationPolicyError({ message: "Only object plugin state can be patched" }),
+        ),
+      );
+      const updated = yield* Schema.decodeUnknownEffect(SessionPlugin)({
+        ...target,
+        state: { ...previous, ...patch },
+        updatedAt,
+      }).pipe(Effect.mapError((cause) => new ApplicationPolicyError({ message: cause.message })));
+      return yield* validate({
+        ...current,
+        sessionPlugins: current.sessionPlugins.map((plugin) =>
+          plugin === target ? updated : plugin,
+        ),
+      });
     }),
   );
 });

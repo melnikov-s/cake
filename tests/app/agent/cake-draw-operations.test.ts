@@ -128,31 +128,65 @@ describe("Cake Draw operations", () => {
     expect(help.text).toContain("draw.apply");
     expect(help.text).toContain("draw.export");
     expect(help.text).toContain("draw.mermaid");
-    expect(help.text).toContain("draw.mermaid as the authoritative structured-diagram path");
-    expect(help.text).toContain("plain <br>, <br/>, or <br />");
-    expect(help.text).toContain("explicit direction");
-    expect(help.text).toContain("linear Mermaid routes");
-    expect(help.text).toContain("canonical shape:<id> form");
-    expect(help.text).toContain("nearest collision-free position");
-    expect(help.text).toContain("only render as an image are rejected");
-    expect(help.text).toContain("one visible stage of at most 8 operations");
-    expect(help.text).toContain("fits the complete changed composition");
-    expect(help.text).toContain("clips to the actual Draw pane");
-    expect(help.text).toContain("update changes position, size, endpoints");
-    expect(help.text).toContain("style applies colors, fill, stroke");
-    expect(help.text).toContain("sourceLink");
-    expect(help.text).toContain("Working Directory-relative path");
-    expect(help.text).toContain("Set update sourceLink to null to remove it");
-    expect(help.text).toContain("connectors behind nodes");
-    expect(help.text).toContain("do not emit redundant send-to-back cleanup operations");
-    expect(help.text).toContain("set-locked");
-    expect(help.text).toContain('"backgroundColor"');
-    expect(help.text).toContain('"fontFamily"');
-    expect(help.text).toContain('"format"');
-    expect(help.text).toContain('"path"');
-    expect(help.text).toContain("An existing target file is replaced");
-    expect(help.text).toContain("editable Excalidraw JSON");
-    expect(help.text).toContain("does not publish an artifact");
+    expect(help.text).toContain("draw.flow.help");
+    expect(help.text).toContain("draw.frame");
+    expect(help.text.length).toBeLessThan(3_000);
+    const flowHelp = await registry.invoke({ command: "draw.flow.help" }, context());
+    expect(flowHelp.text.length).toBeLessThan(4_500);
+    expect(flowHelp.text).toContain('"nodes"');
+    expect(flowHelp.text).toContain('"placement"');
+    expect(flowHelp.text).toContain("IDs must be new");
+    const applyHelp = await registry.invoke({ command: "draw.apply.help" }, context());
+    expect(applyHelp.text).toContain('"backgroundColor"');
+    expect(applyHelp.text).toContain('"sourceLink"');
+    expect(applyHelp.text).toContain('"set-locked"');
+    const mermaidHelp = await registry.invoke({ command: "draw.mermaid.help" }, context());
+    expect(mermaidHelp.text).toContain("only render as an image are rejected");
+  });
+
+  it("routes compact structural commands through the same validated Apply transaction", async () => {
+    const fake = control();
+    const registry = new CakeOperationRegistry(createCakeDrawOperations(fake));
+    const input = {
+      nodes: [
+        { id: "shape:a", text: "A" },
+        { id: "shape:b", text: "B" },
+      ],
+    };
+    await registry.invoke({ command: "draw.flow", input }, context());
+    expect(fake.request).toHaveBeenCalledWith(
+      { _tag: "Apply", operations: [{ type: "flow", ...input }] },
+      expect.any(AbortSignal),
+    );
+    await registry.invoke(
+      { command: "draw.frame", input: { id: "shape:f", title: "Frame", ids: ["shape:a"] } },
+      context(),
+    );
+    expect(fake.request).toHaveBeenLastCalledWith(
+      {
+        _tag: "Apply",
+        operations: [{ type: "frame", id: "shape:f", title: "Frame", ids: ["shape:a"] }],
+      },
+      expect.any(AbortSignal),
+    );
+    for (const invalid of [
+      { nodes: [] },
+      { nodes: Array.from({ length: 9 }, (_, i) => ({ id: `shape:n${i}`, text: "Node" })) },
+      { nodes: [{ id: "raw-id", text: "A" }] },
+      { ...input, sessionId: "other-session" },
+      { ...input, placement: { relativeTo: "shape:a", side: "below", gap: -1 } },
+      { nodes: [{ id: "shape:a", text: "A", sourceLink: { path: "../escape" } }] },
+    ])
+      await expect(
+        registry.invoke({ command: "draw.flow", input: invalid }, context()),
+      ).rejects.toThrow();
+    expect(fake.request).toHaveBeenCalledTimes(2);
+    const resolved = new CakeOperationRegistry(
+      createCakeDrawOperations(control({ canMutate: () => false })),
+    );
+    await expect(resolved.invoke({ command: "draw.flow", input }, context())).rejects.toThrow(
+      "SESSION_RESOLVED",
+    );
   });
 
   it("keeps caller identity out of the board metadata input", async () => {

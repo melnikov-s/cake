@@ -10,12 +10,23 @@ import type {
   BinaryFiles,
   ExcalidrawImperativeAPI,
 } from "@excalidraw/excalidraw/types";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDrawEditorAdapter,
   type DrawEditorAdapter,
 } from "../../../src/renderer/draw/DrawEditorAdapter";
 import { assertPersistableDrawDocument } from "../../../src/renderer/draw/DrawDocumentValidation";
+import { createStore } from "r-state-tree";
+import { Schema } from "effect";
+import { DrawControlInvocation, DrawControlResponse } from "../../../src/domain/draw/draw-control";
+import { DrawStore } from "../../../src/renderer/stores/DrawStore";
+import type { Client } from "../../../src/renderer/client/Client";
+import { mountWithClient } from "./mount-with-client";
+import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
+import {
+  createCakeDrawOperations,
+  type CakeDrawControl,
+} from "../../../src/services/pi/runtime/cake-draw-operations";
 
 vi.mock("@excalidraw/mermaid-to-excalidraw", () => ({
   parseMermaidToExcalidraw: vi.fn(async () => ({
@@ -116,6 +127,334 @@ describe("DrawEditorAdapter", () => {
       });
     harness = editorHarness();
     adapter = createDrawEditorAdapter(harness.api);
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it("authors measured flows, places subsequent stages against live user edits, and returns geometry", () => {
+    const first = adapter.apply({
+      operations: [
+        {
+          type: "flow",
+          nodes: [
+            {
+              id: "shape:a",
+              text: "A label that wraps across several lines without manual geometry",
+            },
+            { id: "shape:b", text: "Database", geo: "ellipse" },
+          ],
+          frame: { id: "shape:runtime", title: "Runtime" },
+        },
+      ],
+    });
+    expect(first.createdIds).toHaveLength(4);
+    expect(first.layout).toHaveLength(4);
+    const roots = adapter.read({ scope: "page" }).shapes;
+    const a = roots.find(({ id }) => id === "shape:a")!;
+    const b = roots.find(({ id }) => id === "shape:b")!;
+    expect(a.bounds!.y + a.bounds!.height + 79).toBeLessThanOrEqual(b.bounds!.y);
+    const frame = harness.elements().find(({ id }) => id === "shape:runtime")!;
+    expect(frame.type).toBe("frame");
+    expect(
+      harness
+        .elements()
+        .filter(({ id }) => id !== frame.id)
+        .every(({ frameId }) => frameId === frame.id),
+    ).toBe(true);
+    expect(harness.elements().findIndex(({ type }) => type === "arrow")).toBeLessThan(
+      harness.elements().findIndex(({ id }) => id === a.id),
+    );
+    // Simulate user-edited placement and a deliberately offset label; extending
+    // must not rerun layout or typography over this existing region.
+    harness.setElements(
+      harness.elements().map((element) => ({
+        ...element,
+        x: element.x + 140,
+        ...(element.type === "text" ? { y: element.y + 3 } : {}),
+      })),
+    );
+    const before = JSON.parse(JSON.stringify(harness.elements()));
+    const currentFrame = adapter.read({ scope: "page" }).shapes.find(({ id }) => id === frame.id)!;
+    const second = adapter.apply({
+      operations: [
+        {
+          type: "flow",
+          nodes: [{ id: "shape:c", text: "Next stage" }],
+          placement: { relativeTo: frame.id, side: "below" },
+        },
+      ],
+    });
+    expect(
+      harness
+        .elements()
+        .filter(
+          ({ id }) =>
+            first.createdIds.includes(id) ||
+            (before as ExcalidrawElement[]).some((element) => element.id === id),
+        ),
+    ).toEqual(before);
+    expect(second.layout![0]!.bounds.y).toBeCloseTo(
+      currentFrame.bounds!.y + currentFrame.bounds!.height + 80,
+    );
+    expect(second.bounds).toEqual(second.layout![0]!.bounds);
+    assertPersistableDrawDocument(adapter.snapshotDocument());
+    const snapshot = adapter.snapshotDocument();
+    expect(() =>
+      adapter.apply({
+        operations: [{ type: "flow", nodes: [{ id: "shape:c", text: "Replace?" }] }],
+      }),
+    ).toThrow("Duplicate");
+    expect(adapter.snapshotDocument()).toEqual(snapshot);
+  });
+
+  it("deterministically slides a new stage past obstructions without moving the anchor or obstacle", () => {
+    const existing = adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: { id: "shape:anchor", type: "geo", x: 0, y: 0, width: 100, height: 100 },
+        },
+        {
+          type: "create",
+          shape: { id: "shape:obstacle", type: "geo", x: 160, y: 0, width: 240, height: 100 },
+        },
+      ],
+    });
+    const before = adapter.read({ scope: "page" }).shapes;
+    const operation = {
+      type: "flow" as const,
+      nodes: [{ id: "shape:next", text: "Next" }],
+      placement: { relativeTo: "shape:anchor", side: "right" as const },
+    };
+    const receipt = adapter.apply({ operations: [operation] });
+    expect(receipt.bounds!.x).toBe(424);
+    for (const shape of before)
+      expect(adapter.read({ scope: "page" }).shapes.find(({ id }) => id === shape.id)).toEqual(
+        shape,
+      );
+    const other = editorHarness();
+    other.setElements(harness.elements().filter(({ id }) => existing.createdIds.includes(id)));
+    const replay = createDrawEditorAdapter(other.api).apply({ operations: [operation] });
+    expect(replay.layout).toEqual(receipt.layout);
+  });
+
+  it("fits editable frames once, moves members, preserves members on deletion, and validates the full batch", () => {
+    const flow = adapter.apply({
+      operations: [
+        {
+          type: "flow",
+          direction: "right",
+          nodes: [
+            { id: "shape:a", text: "A" },
+            { id: "shape:b", text: "B" },
+          ],
+        },
+      ],
+    });
+    const before = adapter.read({ scope: "page" }).shapes;
+    adapter.apply({
+      operations: [{ type: "frame", id: "shape:f", title: "Boundary", ids: flow.createdIds }],
+    });
+    for (const shape of before)
+      expect(adapter.read({ scope: "page" }).shapes.find(({ id }) => id === shape.id)).toEqual({
+        ...shape,
+        frameId: "shape:f",
+      });
+    const snapshot = adapter.snapshotDocument();
+    expect(() =>
+      adapter.apply({
+        operations: [
+          { type: "flow", nodes: [{ id: "shape:new", text: "New" }] },
+          { type: "frame", id: "shape:nested", title: "No", ids: ["shape:a"] },
+        ],
+      }),
+    ).toThrow("unframed");
+    expect(adapter.snapshotDocument()).toEqual(snapshot);
+    adapter.apply({ operations: [{ type: "move", ids: ["shape:f"], deltaX: 50, deltaY: 20 }] });
+    const moved = adapter.read({ scope: "page" }).shapes.find(({ id }) => id === "shape:a")!;
+    expect(moved.bounds!.x).toBeCloseTo(before.find(({ id }) => id === "shape:a")!.bounds!.x + 50);
+    adapter.apply({ operations: [{ type: "delete", ids: ["shape:f"] }] });
+    expect(adapter.read({ scope: "page" }).shapes).toHaveLength(before.length);
+    expect(
+      harness
+        .elements()
+        .filter((element) => !element.isDeleted)
+        .every(({ frameId }) => frameId === null),
+    ).toBe(true);
+  });
+
+  it("reroutes cross-frame connectors when their child endpoint moves with its frame", () => {
+    adapter.apply({
+      operations: [
+        {
+          type: "flow",
+          nodes: [{ id: "shape:inside", text: "Inside" }],
+          frame: { id: "shape:frame", title: "Boundary" },
+        },
+      ],
+    });
+    adapter.apply({
+      operations: [
+        {
+          type: "create",
+          shape: { type: "geo", id: "shape:outside", x: 1000, y: 0, width: 100, height: 100 },
+        },
+        {
+          type: "connect",
+          id: "shape:cross-frame",
+          fromId: "shape:inside",
+          toId: "shape:outside",
+          fromPort: "right",
+          toPort: "left",
+        },
+      ],
+    });
+    const connector = harness.elements().find(({ id }) => id === "shape:cross-frame")!;
+    expect(connector.frameId).toBeNull();
+    expect(harness.elements().indexOf(connector)).toBeLessThan(
+      harness.elements().findIndex(({ id }) => id === "shape:inside"),
+    );
+    const outside = adapter
+      .read({ scope: "page" })
+      .shapes.find(({ id }) => id === "shape:outside")!;
+    adapter.apply({
+      operations: [{ type: "move", ids: ["shape:frame"], deltaX: 100, deltaY: 20 }],
+    });
+    const moved = harness.elements().find(({ id }) => id === connector.id)!;
+    expect(moved.x).toBeCloseTo(connector.x + 100);
+    expect(moved.y).toBeCloseTo(connector.y + 20);
+    expect(adapter.read({ scope: "page" }).shapes.find(({ id }) => id === outside.id)).toEqual(
+      outside,
+    );
+  });
+
+  it("bounds large layout receipts without rejecting a maximum-size frame", async () => {
+    const { convertToExcalidrawElements } = await import("@excalidraw/excalidraw");
+    const ids = Array.from({ length: 500 }, (_, index) => `shape:n${index}`);
+    harness.setElements(
+      convertToExcalidrawElements(
+        ids.map((id, index) => ({
+          id,
+          type: "rectangle",
+          x: index * 20,
+          y: 0,
+          width: 10,
+          height: 10,
+        })),
+        { regenerateIds: false },
+      ),
+    );
+    const receipt = adapter.apply({
+      operations: [{ type: "frame", id: "shape:all", title: "All", ids }],
+    });
+    expect(receipt.layout).toHaveLength(200);
+    expect(receipt.layoutTruncated).toBe(true);
+    expect(receipt.bounds!.width).toBe(10_054);
+    expect(() =>
+      Schema.decodeUnknownSync(DrawControlResponse)({
+        ok: true,
+        kind: "applied",
+        boardId: "11111111-1111-4111-8111-111111111111",
+        checkpointId: "22222222-2222-4222-8222-222222222222",
+        receipt,
+        scene: adapter.read({ scope: "page" }),
+      }),
+    ).not.toThrow();
+  });
+
+  it("completes the real tool → validated Apply → DrawStore → native editor → durable receipt/undo workflow", async () => {
+    vi.useFakeTimers();
+    let board = {
+      id: "11111111-1111-4111-8111-111111111111",
+      sessionId: "session-1",
+      title: "Board",
+      revision: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    let persisted = adapter.snapshotDocument();
+    let saved = 0;
+    const { subject } = mountWithClient(createStore(DrawStore, { sessionId: board.sessionId }), {
+      draw: {
+        list: async () => [board],
+        read: async () => ({ board, snapshot: persisted }),
+        save: async (input: { snapshot: typeof persisted; expectedRevision: number }) => {
+          expect(input.expectedRevision).toBe(board.revision);
+          persisted = input.snapshot;
+          saved += 1;
+          board = { ...board, revision: board.revision + 1 };
+          return board;
+        },
+      },
+    } as unknown as Client);
+    await subject.initialize();
+    subject.attachEditor(adapter);
+    const request: CakeDrawControl["request"] = async (raw) => {
+      const invocation = Schema.decodeUnknownSync(DrawControlInvocation)(raw);
+      if (invocation._tag !== "Apply") throw new Error("Unexpected request");
+      const receipt = await subject.apply(invocation.operations);
+      return Schema.decodeUnknownSync(DrawControlResponse)({
+        ok: true,
+        kind: "applied",
+        boardId: board.id,
+        checkpointId: subject.lastCheckpointId,
+        receipt,
+        scene: await subject.read("page"),
+      });
+    };
+    const registry = new CakeOperationRegistry(
+      createCakeDrawOperations({ request, canMutate: () => true } as CakeDrawControl),
+    );
+    const mutation = registry.invoke(
+      {
+        command: "draw.flow",
+        input: {
+          nodes: [
+            { id: "shape:a", text: "Request" },
+            { id: "shape:b", text: "Service" },
+          ],
+          frame: { id: "shape:f", title: "Runtime" },
+        },
+      },
+      { signal: new AbortController().signal, toolCallId: "flow", runtime: {} },
+    );
+    await vi.runAllTimersAsync();
+    const result = await mutation;
+    expect(
+      harness.sceneUpdates().some((ids) => ids.includes("shape:a") && !ids.includes("shape:b")),
+    ).toBe(true);
+    expect(saved).toBe(1);
+    expect(result.text).toContain('"layout"');
+    expect(result.text).toContain('"bounds"');
+    expect(persisted).toEqual(adapter.snapshotDocument());
+    const beforeExtension = adapter.snapshotDocument();
+    await registry.invoke(
+      {
+        command: "draw.flow",
+        input: {
+          nodes: [{ id: "shape:c", text: "Storage" }],
+          placement: { relativeTo: "shape:f", side: "below" },
+        },
+      },
+      { signal: new AbortController().signal, toolCallId: "extend", runtime: {} },
+    );
+    expect(saved).toBe(2);
+    await subject.undo();
+    expect(saved).toBe(3);
+    expect(adapter.read({ scope: "page" }).shapes.map(({ id }) => id)).not.toContain("shape:c");
+    expect(persisted).toEqual(adapter.snapshotDocument());
+    // Undo restores the native membership and original positions, not a rebuilt graph.
+    const prior = beforeExtension as { elements: ExcalidrawElement[] };
+    expect(harness.elements().map(({ id, frameId }) => ({ id, frameId }))).toEqual(
+      prior.elements.map(({ id, frameId }) => ({ id, frameId })),
+    );
+    for (const element of harness.elements()) {
+      const original = prior.elements.find(({ id }) => id === element.id)!;
+      // Native restore normalizes arrow binding gaps by a subpixel. The fake API
+      // does not normalize during updateScene, unlike the real Electron editor.
+      expect(Math.abs(element.x - original.x)).toBeLessThan(element.type === "arrow" ? 1 : 0.001);
+      expect(Math.abs(element.y - original.y)).toBeLessThan(element.type === "arrow" ? 1 : 0.001);
+    }
   });
 
   it("inserts Mermaid as native editable elements centered in an empty viewport", async () => {

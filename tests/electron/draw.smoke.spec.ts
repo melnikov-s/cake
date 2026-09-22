@@ -148,6 +148,87 @@ async function launchFixture(
   return { application };
 }
 
+test("Cake Draw compact authoring preserves native edits, frames, receipts, and undo", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cake-draw-authoring-"));
+  const { application } = await launchFixture(root);
+  try {
+    const page = await application.firstWindow();
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+    await page.getByRole("button", { name: "Open Cake Draw" }).click();
+    const canvas = page.locator(".excalidraw__canvas.interactive");
+    await expect(canvas).toBeVisible({ timeout: 20_000 });
+    const first = await drawControl(application, {
+      _tag: "Apply",
+      operations: [
+        {
+          type: "flow",
+          nodes: [
+            { id: "shape:request", text: "Request" },
+            { id: "shape:service", text: "Service" },
+          ],
+          frame: { id: "shape:runtime", title: "Runtime" },
+        },
+      ],
+    });
+    if (first.kind !== "applied") throw new Error("Expected Apply receipt");
+    expectContained(first.scene);
+    expect(first.receipt.layout).toHaveLength(4);
+    expect(first.scene.shapes.filter(({ frameId }) => frameId === "shape:runtime")).toHaveLength(3);
+    const node = first.scene.shapes.find(({ id }) => id === "shape:request")!;
+    const box = (await canvas.boundingBox())!;
+    const scale = box.width / first.scene.viewportBounds.width;
+    const x = box.x + (node.bounds!.x - first.scene.viewportBounds.x + 12) * scale;
+    const y = box.y + (node.bounds!.y - first.scene.viewportBounds.y + 12) * scale;
+    // Real native pointer edit, not a test-only scene patch.
+    await page.mouse.click(box.x + 10, box.y + 10);
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 24, y + 12, { steps: 8 });
+    await page.mouse.up();
+    await expect
+      .poll(async () => {
+        const read = await drawControl(application, { _tag: "Read", scope: "page" });
+        if (read.kind !== "read") throw new Error("Expected scene");
+        return read.scene.shapes.find(({ id }) => id === node.id)!.bounds!.x;
+      })
+      .not.toBe(node.bounds!.x);
+    const edited = await drawControl(application, { _tag: "Read", scope: "page" });
+    if (edited.kind !== "read") throw new Error("Expected edited scene");
+    const extension = await drawControl(application, {
+      _tag: "Apply",
+      operations: [
+        {
+          type: "flow",
+          nodes: [{ id: "shape:storage", text: "Storage" }],
+          placement: { relativeTo: "shape:runtime", side: "below" },
+        },
+      ],
+    });
+    if (extension.kind !== "applied") throw new Error("Expected Apply receipt");
+    for (const shape of edited.scene.shapes)
+      expect(extension.scene.shapes.find(({ id }) => id === shape.id)).toEqual(shape);
+    const frame = edited.scene.shapes.find(({ id }) => id === "shape:runtime")!;
+    expect(extension.receipt.layout![0]!.bounds.y).toBeCloseTo(
+      frame.bounds!.y + frame.bounds!.height + 80,
+    );
+    const directory = join(root, "cake-home", "state", "draw-boards", "boards");
+    const file = (await readdir(directory))[0]!;
+    const saved = JSON.parse(await readFile(join(directory, file), "utf8")).data.snapshot;
+    expect(saved.elements.some((element: { id: string }) => element.id === "shape:storage")).toBe(
+      true,
+    );
+    await drawControl(application, { _tag: "Undo", checkpointId: extension.checkpointId });
+    const undone = await drawControl(application, { _tag: "Read", scope: "page" });
+    if (undone.kind !== "read") throw new Error("Expected restored scene");
+    expect(undone.scene.shapes).toEqual(edited.scene.shapes);
+  } finally {
+    await application.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 for (const windowWidth of [1024, 1440]) {
   test(`Cake Draw fits and renders the actual viewport at window width ${windowWidth}`, async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-draw-framing-"));
