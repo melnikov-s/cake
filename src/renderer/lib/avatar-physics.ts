@@ -23,6 +23,13 @@ export const restingAvatarPhysics = (): AvatarPhysics => ({
 const GRAVITY = 1800; // Screen pixels / second².
 const RESTITUTION = 0.38;
 
+/** A small upward tug and stretch make pickup spring off the perch. */
+export function grabAvatarPhysics(state: AvatarPhysics): void {
+  state.vy = Math.min(state.vy, -160);
+  state.squash = -0.12;
+  state.squashVelocity = 0;
+}
+
 /** Keep a quick mouse flick playful rather than launching the avatar off-screen. */
 export function releaseAvatarPhysics(state: AvatarPhysics): void {
   const speed = Math.hypot(state.vx, state.vy);
@@ -45,8 +52,9 @@ export function stepAvatarPhysics(
     const dt = Math.min(remaining, 1 / 120);
     remaining -= dt;
     if (held) {
-      state.vx += ((held.x - state.x) * 160 - state.vx * 24) * dt;
-      state.vy += ((held.y - state.y) * 160 - state.vy * 24) * dt;
+      // Underdamped so pickup and changes of direction have a soft rebound.
+      state.vx += ((held.x - state.x) * 160 - state.vx * 14) * dt;
+      state.vy += ((held.y - state.y) * 160 - state.vy * 14) * dt;
       state.x += state.vx * dt;
       state.y += state.vy * dt;
       if (state.y > 0) {
@@ -76,7 +84,7 @@ export function stepAvatarPhysics(
           state.vy += GRAVITY * afterContact;
         }
         strongestImpact = Math.max(strongestImpact, impact);
-        state.squash = Math.min(0.18, impact / 3500);
+        state.squash = Math.min(0.34, impact / 1800);
         state.squashVelocity = 0;
         // Even a straight drop gets a little off-balance landing wiggle.
         state.spin += Math.sign(state.vx || state.angle || 1) * Math.min(85, impact * 0.16);
@@ -93,8 +101,8 @@ export function stepAvatarPhysics(
         : 0;
     state.spin += ((lean - state.angle) * 110 - state.spin * 12) * dt;
     state.angle += state.spin * dt;
-    // Squash recovers through a small stretch, not a one-way scale tween.
-    state.squashVelocity += (-state.squash * 220 - state.squashVelocity * 14) * dt;
+    // A deeper landing compression rebounds through a visible stretch.
+    state.squashVelocity += (-state.squash * 220 - state.squashVelocity * 12) * dt;
     state.squash += state.squashVelocity * dt;
   }
   return strongestImpact;

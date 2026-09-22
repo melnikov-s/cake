@@ -1,12 +1,72 @@
 import { describe, expect, it } from "vitest";
 import {
   avatarPhysicsSettled,
+  grabAvatarPhysics,
   releaseAvatarPhysics,
   restingAvatarPhysics,
   stepAvatarPhysics,
 } from "../../../src/renderer/lib/avatar-physics";
 
 describe("avatar physics", () => {
+  it.each([1 / 30, 1 / 60, 1 / 144])(
+    "springs upward on pickup, stretches, and settles at the held target (dt=%s)",
+    (dt) => {
+      const state = restingAvatarPhysics();
+      grabAvatarPhysics(state);
+      expect(state.vy).toBe(-160);
+      expect(state.squash).toBe(-0.12);
+      let highest = 0;
+      let compressed = false;
+      for (let i = 0; i < Math.ceil(3 / dt); i++) {
+        expect(stepAvatarPhysics(state, dt, { x: 0, y: -8 })).toBe(0);
+        highest = Math.min(highest, state.y);
+        compressed ||= state.squash > 0.01;
+      }
+      expect(highest).toBeLessThan(-10);
+      expect(highest).toBeGreaterThan(-20);
+      expect(compressed).toBe(true);
+      expect(state.y).toBeCloseTo(-8, 1);
+      expect(state.vy).toBeCloseTo(0, 1);
+      expect(state.squash).toBeCloseTo(0, 3);
+    },
+  );
+
+  it.each([1 / 30, 1 / 60, 1 / 144])(
+    "has a bounded, visible rebound when the held target moves (dt=%s)",
+    (dt) => {
+      const state = { ...restingAvatarPhysics(), y: -8 };
+      let furthest = 0;
+      for (let i = 0; i < Math.ceil(3 / dt); i++) {
+        stepAvatarPhysics(state, dt, { x: 100, y: -120 });
+        furthest = Math.max(furthest, state.x);
+        expect(state.y).toBeLessThanOrEqual(0);
+      }
+      expect(furthest).toBeGreaterThan(108);
+      expect(furthest).toBeLessThan(125);
+      expect(state.x).toBeCloseTo(100, 1);
+      expect(state.y).toBeCloseTo(-120, 1);
+    },
+  );
+
+  it.each([1 / 30, 1 / 60, 1 / 144])(
+    "compresses deeply on landing then stretches without changing bounce energy (dt=%s)",
+    (dt) => {
+      const state = { ...restingAvatarPhysics(), y: -120 };
+      let compression = 0;
+      let stretch = 0;
+      for (let i = 0; i < Math.ceil(6 / dt); i++) {
+        stepAvatarPhysics(state, dt);
+        compression = Math.max(compression, state.squash);
+        stretch = Math.min(stretch, state.squash);
+      }
+      expect(compression).toBeGreaterThan(0.28);
+      expect(compression).toBeLessThanOrEqual(0.34);
+      expect(stretch).toBeLessThan(-0.025);
+      expect(stretch).toBeGreaterThan(-0.12);
+      expect(avatarPhysicsSettled(state)).toBe(true);
+    },
+  );
+
   it("follows the held target with spring lag and a bounded lean", () => {
     const state = restingAvatarPhysics();
     stepAvatarPhysics(state, 1 / 60, { x: 100, y: -120 });

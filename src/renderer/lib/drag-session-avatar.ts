@@ -1,5 +1,6 @@
 import {
   avatarPhysicsSettled,
+  grabAvatarPhysics,
   releaseAvatarPhysics,
   restingAvatarPhysics,
   stepAvatarPhysics,
@@ -61,6 +62,7 @@ export function dragSessionAvatar(
   const grab = () => {
     if (!pointer || held || !trigger) return;
     feedback.onGrab();
+    grabAvatarPhysics(state);
     suppressClick = true;
     trigger.setPointerCapture(pointer.id);
     host.dataset.physics = "held";

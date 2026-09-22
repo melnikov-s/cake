@@ -9,6 +9,7 @@ import {
 } from "../../lib/animate-session-avatar";
 import type { ProjectIcon, SessionLabelColor } from "../../../domain/application/application-data";
 import { cn } from "../../lib/utils";
+import { SmokePuffIcon } from "./icons";
 import { mergedSessionLabelColor } from "../../../utils/session-label-color";
 
 const styles = {
@@ -24,6 +25,8 @@ export interface AvatarProps extends HTMLAttributes<HTMLSpanElement> {
   labelColors?: readonly SessionLabelColor[];
   customIcon?: ProjectIcon;
   animated?: boolean;
+  /** Resolved sessions leave a small puff in place of their character. */
+  resolved?: boolean;
   /** Opt-in row feedback instead of idle animation; activationTarget is a NavItem. */
   interaction?: {
     target: RefObject<HTMLElement | null>;
@@ -38,13 +41,15 @@ export function Avatar({
   labelColors,
   customIcon,
   animated = false,
+  resolved = false,
   interaction,
   className,
   ...props
 }: AvatarProps) {
   const host = useRef<HTMLSpanElement>(null);
   const instanceId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const materialized = animated || Boolean(interaction);
+  const smoke = kind === "session" && resolved;
+  const materialized = !smoke && (animated || Boolean(interaction));
   const interactionTarget = interaction?.target;
   const activationTarget = interaction?.activationTarget;
   const avatar = useMemo(() => {
@@ -72,7 +77,7 @@ export function Avatar({
   }, [kind, seed, instanceId, materialized]);
 
   useEffect(() => {
-    if (kind !== "session" || !host.current) return;
+    if (kind !== "session" || smoke || !host.current) return;
     if (interactionTarget?.current && activationTarget?.current) {
       return interactWithSessionAvatar(
         host.current,
@@ -81,14 +86,15 @@ export function Avatar({
       );
     }
     if (animated) return animateSessionAvatar(host.current);
-  }, [animated, kind, avatar, interactionTarget, activationTarget]);
+  }, [animated, kind, smoke, avatar, interactionTarget, activationTarget]);
 
   return (
     <span
       ref={host}
       data-slot="avatar"
+      data-resolved={smoke || undefined}
       data-animated={
-        kind === "session"
+        kind === "session" && !smoke
           ? interaction
             ? "interaction"
             : animated
@@ -98,6 +104,7 @@ export function Avatar({
       }
       className={cn(
         "inline-grid size-5 shrink-0 place-items-center [&_svg]:size-full",
+        kind === "session" && "origin-bottom",
         kind === "session" &&
           (labelColors?.length
             ? "text-[attr(data-session-label-color_type(<color>))]"
@@ -107,7 +114,14 @@ export function Avatar({
       data-session-label-color={mergedSessionLabelColor(labelColors ?? [])}
       {...props}
     >
-      {kind === "project" && customIcon ? (
+      {smoke ? (
+        <span
+          data-slot="session-smoke"
+          className="block size-full motion-safe:animate-[session-smoke-puff_550ms_ease-out_both]"
+        >
+          <SmokePuffIcon />
+        </span>
+      ) : kind === "project" && customIcon ? (
         <img
           className="size-full object-contain"
           src={`data:${customIcon.mimeType};base64,${customIcon.data}`}
@@ -117,7 +131,11 @@ export function Avatar({
       ) : "uri" in avatar ? (
         <img className="size-full" src={avatar.uri} alt="" aria-hidden="true" />
       ) : (
-        <span className="contents" dangerouslySetInnerHTML={avatar} />
+        <span
+          data-slot="session-character"
+          className="block size-full origin-bottom motion-safe:animate-[session-avatar-appear_500ms_ease-out_both]"
+          dangerouslySetInnerHTML={avatar}
+        />
       )}
     </span>
   );

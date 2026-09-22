@@ -181,14 +181,21 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               <Avatar
                 interaction={avatarInteraction}
                 kind="session"
+                resolved={resolved}
                 seed={avatarSeed}
                 labelColors={labels.map((label) => label.color)}
-                title={labels.map((label) => label.name).join(", ") || "No labels"}
+                title={
+                  resolved
+                    ? "Resolved session"
+                    : labels.map((label) => label.name).join(", ") || "No labels"
+                }
                 role="img"
                 aria-label={
-                  labels.length
-                    ? `Labels: ${labels.map((label) => label.name).join(", ")}`
-                    : "No labels"
+                  resolved
+                    ? "Resolved session"
+                    : labels.length
+                      ? `Labels: ${labels.map((label) => label.name).join(", ")}`
+                      : "No labels"
                 }
               />
             )

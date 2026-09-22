@@ -611,20 +611,29 @@ export const App = observer(function App() {
   );
   const projectComposerLeadingAccessory = (paneSession: NonNullable<typeof session>) => {
     const summary = root.sessionCatalogStore.find(paneSession.sessionId);
-    return settings.appearance.sessionAvatarsEnabled && !summary?.resolved
-      ? {
-          visible: true,
-          content: (
-            <SessionAssistant
-              store={paneSession.sessionAssistantStore}
-              animated
-              seed={sidebar.sessionAvatarSeed(paneSession.sessionId)}
-              labels={sidebar.availableSessionLabels(paneSession.sessionId)}
-              value={sidebar.sessionLabelIds(paneSession.sessionId)}
-            />
-          ),
-        }
-      : undefined;
+    if (!settings.appearance.sessionAvatarsEnabled) return undefined;
+    return {
+      visible: true,
+      content: summary?.resolved ? (
+        <Avatar
+          kind="session"
+          seed={sidebar.sessionAvatarSeed(paneSession.sessionId)}
+          resolved
+          className="size-7"
+          role="img"
+          aria-label="Resolved session"
+          title="Resolved session"
+        />
+      ) : (
+        <SessionAssistant
+          store={paneSession.sessionAssistantStore}
+          animated
+          seed={sidebar.sessionAvatarSeed(paneSession.sessionId)}
+          labels={sidebar.availableSessionLabels(paneSession.sessionId)}
+          value={sidebar.sessionLabelIds(paneSession.sessionId)}
+        />
+      ),
+    };
   };
   const projectChatProps = (paneSession: NonNullable<typeof session>) => {
     const temporary = store.sessionRegistry.pendingSessions.isTemporary(paneSession.sessionId);

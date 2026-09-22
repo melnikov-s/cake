@@ -101,17 +101,33 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
     await expect(assistantTrigger).toHaveAttribute("aria-expanded", "true");
     await page.keyboard.press("Escape");
 
+    // Record the actual pointer-driven deformation, including brief contacts
+    // that can happen between Playwright polls.
+    await avatar.evaluate((element) => {
+      const observer = new MutationObserver(() => {
+        const phase = element.getAttribute("data-physics");
+        const [x, y] = getComputedStyle(element).scale.split(" ").map(Number);
+        if (phase === "held" && x !== undefined && x < 0.92)
+          element.setAttribute("data-pickup-stretched", "true");
+        if (phase === "falling" && y !== undefined && y < 0.8)
+          element.setAttribute("data-landing-compressed", "true");
+        if (!phase && element.hasAttribute("data-landing-compressed")) observer.disconnect();
+      });
+      observer.observe(element, { attributes: true, attributeFilter: ["style", "data-physics"] });
+    });
     const perch = (await avatar.boundingBox())!;
     const start = { x: perch.x + perch.width / 2, y: perch.y + perch.height / 2 };
     await page.mouse.move(start.x, start.y);
     await page.mouse.down();
     await expect(avatar).toHaveAttribute("data-physics", "held");
+    await expect(avatar).toHaveAttribute("data-pickup-stretched", "true");
     await page.mouse.move(start.x + 140, start.y - 120, { steps: 12 });
     await expect.poll(async () => (await avatar.boundingBox())!.y).toBeLessThan(perch.y - 90);
     await expect.poll(async () => (await avatar.boundingBox())!.x).toBeGreaterThan(perch.x + 100);
     await page.mouse.up();
     await expect(avatar).toHaveAttribute("data-physics", "falling");
     await expect(assistantTrigger).toHaveAttribute("aria-expanded", "false");
+    await expect(avatar).toHaveAttribute("data-landing-compressed", "true");
     await expect(avatar).not.toHaveAttribute("data-physics", /.+/, { timeout: 5000 });
     await expect
       .poll(async () => Math.abs((await avatar.boundingBox())!.x - perch.x))

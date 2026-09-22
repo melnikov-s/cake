@@ -32,6 +32,18 @@ function Icon({
   );
 }
 
+export const SmokePuffIcon = () => (
+  <Icon strokeWidth={1.5}>
+    <path
+      fill="currentColor"
+      fillOpacity={0.16}
+      d="M7 16.5a4 4 0 0 1-2-7.5A4.5 4.5 0 0 1 13.5 6a3.5 3.5 0 0 1 5.8 3.2A3.8 3.8 0 0 1 18 16.5H7Z"
+    />
+    <path d="M7 9a3 3 0 0 1 3 2m3.5-5a4 4 0 0 1 .5 2" />
+    <circle cx="10" cy="20" r="1" fill="currentColor" stroke="none" />
+    <circle cx="15" cy="19" r="0.75" fill="currentColor" stroke="none" />
+  </Icon>
+);
 export const FolderIcon = () => (
   <Icon>
     <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />

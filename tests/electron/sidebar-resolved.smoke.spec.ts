@@ -90,6 +90,8 @@ test("resolves and restores the selected project session in the desktop sidebar"
       .filter({ has: page.locator(".session-resolve-action") });
     await expect(selectedSession).toHaveCount(1);
     await expect(selectedSession.locator(".session-time")).toHaveCount(1);
+    await expect(selectedSession.locator(".dbga-hop")).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Ask session assistant" })).toBeVisible();
     await selectedSession.locator(".session-resolve-action").click();
 
     const resolvedLane = page.getByRole("region", { name: "Resolved sessions" });
@@ -99,7 +101,18 @@ test("resolves and restores the selected project session in the desktop sidebar"
     await resolvedToggle.click();
     await resolvedLane.getByRole("button", { name: "Expand project resolved" }).last().click();
     const resolvedSession = resolvedLane.locator(`.session-item[data-session-id="${sessionId}"]`);
+    await expect(resolvedSession.getByRole("img", { name: "Resolved session" })).toBeVisible();
+    await expect(resolvedSession.locator('[data-slot="session-smoke"]')).toBeVisible();
+    await expect(resolvedSession.locator("[data-animated]")).toHaveCount(0);
     await resolvedSession.locator(".session-row").click();
+    // The sidebar and composer both project the authoritative resolved state.
+    await expect(page.locator('[data-slot="session-smoke"]')).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Ask session assistant" })).toHaveCount(0);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    for (const puff of await page.locator('[data-slot="session-smoke"]').all()) {
+      await expect(puff).toHaveCSS("animation-name", "none");
+      await expect(puff).toBeVisible();
+    }
     await expect(page.getByTestId("resolved-session-notice")).toContainText(
       "Send a message to restore this session",
     );
@@ -111,11 +124,44 @@ test("resolves and restores the selected project session in the desktop sidebar"
 
     const restoreAction = resolvedSession.getByRole("button", { name: /^Restore / });
     await expect(restoreAction).toBeVisible();
+    await page.emulateMedia({ reducedMotion: "no-preference" });
     await restoreAction.click();
     await expect(restoreAction).toHaveCount(0);
+    await expect(page.locator('[data-slot="session-smoke"]')).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Ask session assistant" })).toBeVisible();
+    await expect(selectedSession.locator(".dbga-hop")).toHaveCount(1);
     await expect(
       page.locator(`[data-slot="sidebar"] [data-session-id='${sessionId}']`),
     ).toHaveCount(1);
+    const characters = page.locator('[data-slot="session-character"]');
+    await expect(characters).toHaveCount(2);
+    for (const character of await characters.all()) {
+      await expect(character).toHaveCSS("animation-name", "session-avatar-appear");
+      // Scrub the real CSS animation rather than depending on wall-clock timing.
+      const poses = await character.evaluate((element) => {
+        const animation = element.getAnimations()[0]!;
+        animation.pause();
+        const sample = (time: number) => {
+          animation.currentTime = time;
+          const style = getComputedStyle(element);
+          return { opacity: style.opacity, scale: new DOMMatrixReadOnly(style.transform).a };
+        };
+        const start = sample(0);
+        const overshoot = sample(250);
+        animation.finish();
+        return { start, overshoot, settled: sample(500) };
+      });
+      expect(poses.start.opacity).toBe("0");
+      expect(poses.start.scale).toBeLessThan(1);
+      expect(poses.overshoot.scale).toBeGreaterThan(1);
+      expect(poses.settled).toEqual({ opacity: "1", scale: 1 });
+    }
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    for (const character of await characters.all()) {
+      await expect(character).toHaveCSS("animation-name", "none");
+      await expect(character).toHaveCSS("opacity", "1");
+      await expect(character).toHaveCSS("transform", "none");
+    }
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

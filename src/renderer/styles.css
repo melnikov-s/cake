@@ -281,6 +281,39 @@
   }
 }
 
+@keyframes session-avatar-appear {
+  0% {
+    opacity: 0;
+    transform: translateY(3px) scale(0.25);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.12, 1.18);
+  }
+  75% {
+    transform: translateY(0) scale(1.05, 0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes session-smoke-puff {
+  0% {
+    opacity: 0;
+    transform: translateY(3px) scale(0.35);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(-1px) scale(1.15);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 @keyframes status-pulse {
   50% {
     opacity: 0.38;

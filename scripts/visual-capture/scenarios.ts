@@ -44,7 +44,7 @@ const assistantMarkdown = [
 const assistantMarkdownCode: VisualCaptureScenario = {
   name: "assistant-markdown-code",
   description: "Assistant Markdown with a highlighted TypeScript code block",
-  states: ["default", "hover", "quick-assistant", "assistant-chat"],
+  states: ["default", "hover", "quick-assistant", "assistant-chat", "resolved"],
   async seed(paths, theme) {
     const sessionId = "visual-assistant-markdown-code";
     const timestamp = new Date(0).toISOString();
@@ -152,6 +152,24 @@ const assistantMarkdownCode: VisualCaptureScenario = {
           '[data-streamdown="code-block-copy-button"]',
         );
         return button !== null && Number.parseFloat(getComputedStyle(button).opacity) === 1;
+      });
+      return;
+    }
+    if (state === "resolved") {
+      await page.locator(".session-item.active .session-resolve-action").click();
+      await page.getByRole("button", { name: "Expand Resolved", exact: true }).click();
+      const lane = page.getByRole("region", { name: "Resolved sessions" });
+      await lane
+        .getByRole("button", { name: "Expand visual-capture-project resolved" })
+        .last()
+        .click();
+      await lane.locator(".session-row").click();
+      await expect(page.locator('[data-slot="session-smoke"]')).toHaveCount(2);
+      await page.mouse.move(1, 1);
+      await page.locator('[data-slot="session-smoke"]').evaluateAll(async (puffs) => {
+        await Promise.all(
+          puffs.flatMap((puff) => puff.getAnimations().map((animation) => animation.finished)),
+        );
       });
       return;
     }
