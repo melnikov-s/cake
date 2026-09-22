@@ -310,7 +310,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       canSubmit: this.props.canSubmit,
       startSession: (input) => this.startSession(input),
       ensureSessionActive: this.props.ensureSessionActive,
-      backgroundActive: () => this.props.subagentCatalog.backgroundActive,
       composer: {
         projectPath: () => this.workspacePath,
         presentationMode: () => this.presentationMode,

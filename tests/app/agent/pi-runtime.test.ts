@@ -9,6 +9,7 @@ import {
   createCakeSessionRuntime,
   piRuntimeVersion,
   projectSessionCreateInputSchema,
+  subagentCompletionMessage,
   type CakeSessionRuntime,
   type CakeSessionRuntimeEvent,
 } from "../../../src/services/pi/runtime/cake-session-runtime";
@@ -1657,6 +1658,44 @@ describe("Pi 0.85.1 foundation contract", () => {
         state: "running",
       }),
     ]);
+  });
+
+  it("delivers only the final subagent report to parent model context", () => {
+    const message = subagentCompletionMessage({
+      handleId: crypto.randomUUID(),
+      task: "Audit the boundary",
+      status: "complete",
+      resolvedModel: {
+        requested: "current",
+        source: "current",
+        provider: "test",
+        modelId: "model",
+        thinkingLevel: "medium",
+        fallbacks: [],
+      },
+      fastMode: false,
+      streaming: false,
+      parts: [
+        {
+          id: "command-1",
+          kind: "command",
+          command: "inspect",
+          output: `verbose-tool-activity-${"x".repeat(30_000)}`,
+          excludeFromContext: false,
+          state: "success",
+        },
+        {
+          id: "answer-1",
+          kind: "text",
+          role: "assistant",
+          text: "Final assessment: keep parent and child lifecycles independent.",
+          status: "complete",
+        },
+      ],
+    });
+
+    expect(message).toContain("Final assessment: keep parent and child lifecycles independent.");
+    expect(message).not.toContain("verbose-tool-activity");
   });
 
   it("folds a hidden subagent completion into its durable background-start activity", () => {

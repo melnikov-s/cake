@@ -3,24 +3,26 @@ import {
   SessionManager,
   SettingsManager,
   createAgentSession,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import {
   registerAgentDirectoryExtensionProviders,
   registerPendingExtensionProviders,
 } from "./extension-providers";
-import type {
-  Attachment,
-  ChatConfiguration,
-  PiSettingUpdate,
-  ExtensionUiEvent,
-  ExtensionUiIntent,
-  ConversationSnapshot,
-  SessionUsage,
-  ThinkingLevel,
-  UiPart,
-  UtilityModel,
+import {
+  uiPartSchema,
+  type Attachment,
+  type ChatConfiguration,
+  type PiSettingUpdate,
+  type ExtensionUiEvent,
+  type ExtensionUiIntent,
+  type ConversationSnapshot,
+  type SessionUsage,
+  type ThinkingLevel,
+  type UiPart,
+  type UtilityModel,
 } from "../../../ipc/session-contract";
 import type { CakeModelPresetCatalog } from "../../../domain/model-presets/cake-model-selection";
 import {
@@ -28,9 +30,10 @@ import {
   type CrossSessionContextSnapshot,
 } from "../../../domain/conversations/cross-session-coordination";
 import type { PiPendingMessageReorder, PiPendingMessages } from "../conversation-data";
-import type {
-  ParallelSubagentInput as DomainParallelSubagentInput,
-  SubagentTaskInput as DomainSubagentTaskInput,
+import {
+  SubagentResult as subagentResultSchema,
+  type ParallelSubagentInput as DomainParallelSubagentInput,
+  type SubagentTaskInput as DomainSubagentTaskInput,
 } from "../../../domain/subagents/subagent-data";
 import { jsonValueSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
 import type {
@@ -49,7 +52,6 @@ import type { ProjectSessionPresentationMode } from "../../../domain/project-ses
 import { assertSessionPath } from "./session-path";
 import { cakeWorkspaceSessionDirectory, findSessionFile } from "./session-discovery";
 import {
-  formatUnknown,
   reviewRunEntrySchema,
   reviewRunEntryType,
   reviewRunPart,
@@ -93,6 +95,32 @@ export {
 
 export const piRuntimeVersion = "0.85.1" as const;
 
+const SUBAGENT_REPORT_LIMIT = 16_000;
+
+/** Formats the parent-facing report without copying verbose child tool activity into model context. */
+export function subagentCompletionMessage(value: JsonValue): string {
+  const decoded = Schema.decodeUnknownOption(subagentResultSchema)(value);
+  if (Option.isNone(decoded)) return "A background subagent finished, but its report was invalid.";
+
+  const result = decoded.value;
+  const finalAnswer = result.parts
+    .flatMap((part) => {
+      const parsed = Schema.decodeUnknownOption(uiPartSchema)(part);
+      return Option.isSome(parsed) &&
+        parsed.value.kind === "text" &&
+        parsed.value.role === "assistant"
+        ? [parsed.value.text.trim()]
+        : [];
+    })
+    .findLast(Boolean);
+  const heading = `Background subagent ${result.status}: ${result.task.slice(0, 500)}`;
+  const report = finalAnswer || result.error?.trim() || "No final report was produced.";
+  const available = Math.max(0, SUBAGENT_REPORT_LIMIT - heading.length - 2);
+  const bounded =
+    report.length > available ? `${report.slice(0, Math.max(0, available - 2))}…` : report;
+  return `${heading}\n\n${bounded}`;
+}
+
 export type CakeSessionRuntimeEvent =
   | { type: "snapshot"; requestId?: string; snapshot: ConversationSnapshot }
   | { type: "part-updated"; sessionId: string; part: UiPart }
@@ -113,6 +141,8 @@ export interface CakeSessionRuntimeOptions {
   additionalSystemPrompt?: string;
   /** Replaces Pi's normal prompt and disables context-file loading for an isolated runtime. */
   isolatedSystemPrompt?: string;
+  /** Explicit SDK tools available only to this runtime. */
+  customTools?: ToolDefinition[];
   tools?: string[];
   auxiliary?: boolean;
   /** Subset of builtin slash command names to advertise; defaults to all of them. */
@@ -410,6 +440,7 @@ export async function createCakeSessionRuntime(
     resourceLoader: capabilities.resourceLoader,
     settingsManager,
     sessionManager,
+    ...(options.customTools ? { customTools: options.customTools } : null),
   };
   const { session, extensionsResult, modelFallbackMessage } = await createAgentSession(
     options.tools ? { ...agentSessionOptions, tools: options.tools } : agentSessionOptions,
@@ -772,11 +803,13 @@ export async function createCakeSessionRuntime(
       await session.sendCustomMessage(
         {
           customType: "cake.subagent-completion",
-          content: `A background subagent completed. Use this result to continue the user's work:\n\n${formatUnknown(result, 24_000)}`,
+          content: subagentCompletionMessage(result),
           display: false,
+          // Keep the complete result for durable work-log reconstruction. The model receives only
+          // the compact final report above, so verbose tool activity cannot truncate the answer.
           details: result,
         },
-        { triggerTurn: true, deliverAs: "steer" },
+        { triggerTurn: true, deliverAs: "followUp" },
       );
     },
     compact: turnController.compact,

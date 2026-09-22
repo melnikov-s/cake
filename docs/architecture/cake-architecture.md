@@ -226,25 +226,31 @@ tool availability alone is not authorization. Subagent Sessions are hidden,
 parent-owned Cake Sessions, never Project Sessions: the tool contract cannot
 attach, fork, select visibility, or expose the backing Pi Session identity. Handles are
 parent-scoped and use isolated context. Cake exposes one general-purpose subagent
-rather than role profiles. It receives `read`, `bash`, `edit`, and `write`, but no Cake
-controls, recursive delegation, project context files, skills, extensions, prompt
-templates, or themes. Parallel delegation accepts at most eight tasks and runs at
+rather than role profiles. It receives `read`, `bash`, `edit`, `write`, and one
+bounded `message_parent` tool for substantive progress, blockers, or questions.
+That tool can queue an attributed message only to the owning parent; it cannot
+address another session or expose Cake controls. Subagents receive no recursive
+delegation, project context files, skills, extensions, prompt templates, or themes. Parallel delegation accepts at most eight tasks and runs at
 most four at once per Working Directory. A task acquires an active slot before Cake constructs its private Pi
 runtime. Cake resolves and validates every requested model against the parent
 session before constructing any child; parallel batches preflight atomically.
 A task may request Fast mode only for a model advertised by Cake as supporting
 it. That setting is scoped to the private runtime and is not persisted as a
-project-session preference. Foreground delegation keeps one streaming tool call
-open until the child returns, matching Pi's reference subagent behavior.
-Background execution is explicit: completion is persisted as a hidden custom Pi
-message and triggers or steers the parent unless an active wait already claimed
-the handle. Private runtimes omit project-session catalogs, model menus, command
+project-session preference. Delegation starts in the background by default so child execution never keeps the
+parent turn open. Foreground run, parallel, and wait operations are explicit
+synchronization barriers only. Completion is persisted as a hidden custom Pi
+message containing the durable full result for work-log reconstruction, while
+only the compact final assistant report enters parent model context. Delivery
+uses normal follow-up queuing and never steers or interrupts active parent work. Private runtimes omit project-session catalogs, model menus, command
 menus, session trees, artifact indexes, and automatic naming. Live activity is
 coalesced from child part events rather than rebuilding full session snapshots.
-Cancellation reaches active child work. Cake opens projected subagent parts through
-the shared `Chat` component and routes user prompts, steering, and abort intents
-through the parent-scoped handle; the renderer never receives or attaches to the
-private Pi Session identity. A completed handle remains available for follow-up
+Child cancellation reaches only the explicitly targeted child work. It marks the
+handle aborted but retains the private transcript, partial projected output, and
+follow-up capability until explicit close or parent release. Stopping or
+redirecting the parent does not cancel its subagents. Cake opens projected
+subagent parts through the shared `Chat` component and routes user prompts,
+steering, and abort intents through the parent-scoped handle; the renderer never
+receives or attaches to the private Pi Session identity. A completed handle remains available for follow-up
 until it is explicitly closed or its parent runtime is released. After release, the
 side chat remains a read-only projection reconstructed from the parent transcript.
 Closing a private parent also releases its private descendants. Cake projects live

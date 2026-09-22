@@ -144,9 +144,9 @@ export function createAgentControlOperations(
   const guidance = [
     "Subagents are private, hidden, bounded workers—not full Project Sessions. A request for a child session, related session, or Session Family member is not subagent delegation; use sessions.create-child instead.",
     "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
-    "Use subagents.run for ordinary single-task delegation so the result returns in the same tool call. Use subagents.start only for explicitly background work; Cake automatically delivers its completion, so do not poll it.",
-    "subagents.wait is an optional synchronization barrier for background work, not a required completion mechanism.",
-    "Each subagent has read, bash, edit, and write tools, but no Cake controls, project instructions, skills, or recursive delegation.",
+    "Use subagents.start for ordinary delegation so the parent turn remains independent and the user can continue messaging it. Start multiple handles for parallel work; Cake automatically queues each compact final report to the parent, so do not poll.",
+    "Use subagents.run, subagents.parallel, or subagents.wait only when the user explicitly requires the parent turn to block on delegated work.",
+    "Each subagent has read, bash, edit, write, and one bounded message_parent tool, but no Cake controls, project instructions, skills, or recursive delegation.",
     "Handles are parent-owned and remain available for follow-up until explicitly closed; parallel batches contain at most eight tasks.",
     "When model is omitted, a subagent inherits the calling session's current model, thinking level, and Fast mode setting.",
   ];
@@ -184,7 +184,9 @@ export function createAgentControlOperations(
     examples: [{ input: definition.example }],
     result:
       "A bounded handle, activity projection, or final delegated result with attributed usage.",
-    limitations: ["Subagents cannot use Cake application controls or delegate further work."],
+    limitations: [
+      "Subagents can message only their parent and cannot use Cake application controls or delegate further work.",
+    ],
     async execute(input, context) {
       const parent = parentSessionId();
       if (!parent) throw new Error("The parent Cake session is not ready");
@@ -202,7 +204,7 @@ export function createAgentControlOperations(
     operation({
       command: "subagents.run",
       summary:
-        "Run one isolated parent-owned subagent in the foreground, stream its activity, and return its final result.",
+        "Explicitly block the parent tool call while one isolated subagent runs and return its final result.",
       schema: subagentTaskSchema,
       example: {
         task: "Inspect the authentication flow",
@@ -214,7 +216,7 @@ export function createAgentControlOperations(
     operation({
       command: "subagents.start",
       summary:
-        "Explicitly start one isolated parent-owned subagent in the background. Cake automatically wakes the parent with its result unless the parent is already waiting on it.",
+        "Start one isolated parent-owned subagent asynchronously. Cake queues its compact final report to the parent without interrupting active work.",
       schema: subagentTaskSchema,
       example: {
         task: "Monitor the test run",
@@ -225,7 +227,8 @@ export function createAgentControlOperations(
     }),
     operation({
       command: "subagents.parallel",
-      summary: "Run up to eight bounded subagent tasks with workspace-wide bounded concurrency.",
+      summary:
+        "Explicitly block the parent while up to eight bounded subagent tasks run concurrently.",
       schema: parallelSubagentSchema,
       example: {
         tasks: [
@@ -257,7 +260,7 @@ export function createAgentControlOperations(
     operation({
       command: "subagents.wait",
       summary:
-        "Optionally wait for an explicitly backgrounded subagent. While this wait is active, its result returns through this call instead of triggering a separate parent turn.",
+        "Explicitly block the parent until a background subagent finishes; normally let Cake queue its report instead.",
       schema: handleSchema,
       example: { handleId: "00000000-0000-4000-8000-000000000000" },
       run: (input, parent, signal, onUpdate) =>

@@ -34,6 +34,7 @@ export const makeSubagentControl =
       parentSessionId,
       workingDirectory,
       options: options(),
+      runEffect: (effect) => runEffect(effect),
     });
     return {
       run: (input, parentSessionId, signal, onUpdate, anchorPartId) =>

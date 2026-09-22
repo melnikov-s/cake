@@ -96,6 +96,7 @@ interface Fixture {
   readonly active: Ref.Ref<number>;
   readonly maximumActive: Ref.Ref<number>;
   readonly completions: Ref.Ref<ReadonlyArray<unknown>>;
+  readonly parentMessages: Ref.Ref<ReadonlyArray<string>>;
 }
 
 const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.fn.Return<Fixture> {
@@ -106,11 +107,13 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
   const active = yield* Ref.make(0);
   const maximumActive = yield* Ref.make(0);
   const completions = yield* Ref.make<ReadonlyArray<unknown>>([]);
+  const parentMessages = yield* Ref.make<ReadonlyArray<string>>([]);
 
   const runtime = (options: CakeSessionRuntimeOptions): CakeSessionRuntime => {
     const sessionId = options.sessionId ?? "parent";
     const isParent = sessionId.startsWith("parent");
     let streaming = false;
+    let activeTurnIds: string[] = [];
     const snapshot = (): ConversationSnapshot => ({
       ...parentSnapshot,
       sessionId,
@@ -123,6 +126,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
       get streaming() {
         return streaming;
       },
+      executingTurnIds: () => activeTurnIds,
       getReviewParentContext: () => ({
         sessionId,
         sessionFile: `/sessions/${sessionId}.jsonl`,
@@ -141,8 +145,12 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
         queued: { steering: [], followUp: [] },
         abortedTurnIds: [],
       }),
-      prompt: async () => {
-        if (isParent) return;
+      prompt: async (text, _delivery, _attachments, _markdown, turnId) => {
+        if (isParent) {
+          await Effect.runPromise(Ref.update(parentMessages, (values) => [...values, text]));
+          return;
+        }
+        if (turnId) activeTurnIds = [...activeTurnIds, turnId];
         const gate = Deferred.makeUnsafe<void>();
         await Effect.runPromise(
           Ref.update(childGates, (values) => new Map(values).set(sessionId, gate)),
@@ -152,6 +160,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
         streaming = true;
         await Effect.runPromise(Queue.offer(childStarted, sessionId));
         await Effect.runPromise(Deferred.await(gate));
+        activeTurnIds = turnId ? activeTurnIds.filter((id) => id !== turnId) : activeTurnIds;
         streaming = false;
         await Effect.runPromise(Ref.update(active, (count) => count - 1));
         options.onEvent({ type: "streaming", sessionId, streaming: false });
@@ -159,6 +168,8 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
       setUserMessageMarkdown: async () => undefined,
       compact: async () => undefined,
       abort: async () => {
+        if (!isParent)
+          options.onEvent({ type: "part-removed", sessionId, partId: "partial-answer" });
         const gate = (await Effect.runPromise(Ref.get(childGates))).get(sessionId);
         if (gate) await Effect.runPromise(Deferred.succeed(gate, undefined));
       },
@@ -240,6 +251,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
     active,
     maximumActive,
     completions,
+    parentMessages,
   };
 });
 
@@ -258,6 +270,7 @@ const parent = (
       sessionId: parentSessionId,
     },
   },
+  runEffect: (effect) => Effect.runPromise(effect),
 });
 
 const completeChild = Effect.fn("SubagentsTest.completeChild")(function* (
@@ -461,7 +474,11 @@ describe("Subagents", () => {
           (options) => options.sessionId === childId,
         );
         assert.ok(childOptions);
-        assert.deepEqual(childOptions.tools, ["read", "bash", "edit", "write"]);
+        assert.deepEqual(childOptions.tools, ["read", "bash", "edit", "write", "message_parent"]);
+        assert.deepEqual(
+          childOptions.customTools?.map((tool) => tool.name),
+          ["message_parent"],
+        );
         assert.equal(childOptions.agentControl, undefined);
         assert.equal(childOptions.additionalSystemPrompt, undefined);
         assert.equal(childOptions.isolatedSystemPrompt, subagentSystemPrompt());
@@ -473,6 +490,41 @@ describe("Subagents", () => {
           true,
         );
         yield* subagents.close("parent", receipt.handleId);
+      });
+      yield* program.pipe(Effect.provide(fixture.layer));
+    }),
+  );
+
+  it.effect("gives the child one bounded tool for messaging its parent", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture();
+      const program = Effect.gen(function* () {
+        yield* subagents.start({ task: "Audit messaging" }, parent(fixture));
+        const childId = yield* Queue.take(fixture.childStarted);
+        const childOptions = (yield* Ref.get(fixture.constructedOptions)).find(
+          (options) => options.sessionId === childId,
+        );
+        const tool = childOptions?.customTools?.find(
+          (candidate) => candidate.name === "message_parent",
+        );
+        assert.ok(tool);
+
+        yield* Effect.promise(() =>
+          tool.execute(
+            "message-call",
+            { text: "I found a blocker in the queue policy." } as never,
+            undefined,
+            undefined,
+            {} as never,
+          ),
+        );
+
+        while ((yield* Ref.get(fixture.parentMessages)).length === 0) yield* Effect.yieldNow;
+        const messages = yield* Ref.get(fixture.parentMessages);
+        assert.equal(messages.length, 1);
+        assert.match(messages[0] ?? "", /Message from subagent/);
+        assert.match(messages[0] ?? "", /blocker in the queue policy/);
+        yield* completeChild(fixture, childId);
       });
       yield* program.pipe(Effect.provide(fixture.layer));
     }),
@@ -500,6 +552,47 @@ describe("Subagents", () => {
         assert.equal(JSON.stringify(result).includes(receipt.handleId), true);
         assert.equal(yield* Ref.get(fixture.constructions), 1);
         yield* subagents.close("parent", receipt.handleId);
+      });
+      yield* program.pipe(Effect.provide(fixture.layer));
+    }),
+  );
+
+  it.effect("preserves partial transcript history when an active child is aborted", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture();
+      const program = Effect.gen(function* () {
+        const receipt = yield* subagents.start({ task: "Keep partial work" }, parent(fixture));
+        const childId = yield* Queue.take(fixture.childStarted);
+        const childOptions = (yield* Ref.get(fixture.constructedOptions)).find(
+          (options) => options.sessionId === childId,
+        );
+        assert.ok(childOptions);
+        childOptions.onEvent({
+          type: "part-updated",
+          sessionId: childId,
+          part: {
+            id: "partial-answer",
+            kind: "text",
+            role: "assistant",
+            text: "Partial evidence gathered before cancellation.",
+            status: "streaming",
+          },
+        });
+        const coordinator = yield* SubagentCoordinator;
+        while (
+          (yield* SubscriptionRef.get(coordinator.state)).handles.get(receipt.handleId)?.parts
+            .length !== 1
+        )
+          yield* Effect.yieldNow;
+
+        yield* subagents.abort("parent", receipt.handleId);
+        yield* subagents.wait("parent", receipt.handleId);
+
+        const handle = (yield* SubscriptionRef.get(coordinator.state)).handles.get(
+          receipt.handleId,
+        );
+        assert.equal(handle?.result?.status, "aborted");
+        assert.match(JSON.stringify(handle?.result?.parts), /Partial evidence gathered/);
       });
       yield* program.pipe(Effect.provide(fixture.layer));
     }),

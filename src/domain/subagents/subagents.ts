@@ -33,6 +33,7 @@ import {
   CakeSessionRuntimes,
   type CakeSessionRuntimeAcquireOptions,
 } from "../../services/pi/CakeSessionRuntimes";
+import { createSubagentParentTool } from "../../services/pi/runtime/subagent-parent-tool";
 import { subagentSystemPrompt } from "../../services/pi/runtime/subagent-system-prompt";
 import {
   SubagentCoordinator,
@@ -53,12 +54,13 @@ const MAX_HANDLES_PER_PARENT = 8;
 const MAX_PRIVATE_RUNTIMES_PER_WORKING_DIRECTORY = 32;
 const WAIT_TIMEOUT = "5 minutes";
 
-const SUBAGENT_TOOLS = ["read", "bash", "edit", "write"] as const;
+const SUBAGENT_TOOLS = ["read", "bash", "edit", "write", "message_parent"] as const;
 
 export interface SubagentParentRuntime {
   readonly parentSessionId: string;
   readonly workingDirectory: string;
   readonly options: CakeSessionRuntimeAcquireOptions;
+  readonly runEffect: <A, E>(effect: Effect.Effect<A, E>) => Promise<A>;
 }
 
 const messageOf = (cause: unknown): string =>
@@ -80,6 +82,31 @@ const asError = (operation: string) =>
 const jsonValue = <A>(value: A): Schema.Schema.Type<typeof Schema.Json> =>
   Schema.decodeUnknownSync(Schema.Json)(JSON.parse(JSON.stringify(value)));
 const projectParts = (parts: ConversationSnapshot["parts"]) => parts.slice(-10_000).map(jsonValue);
+const projectedPartId = (part: Schema.Schema.Type<typeof Schema.Json>) => {
+  const decoded = Schema.decodeUnknownOption(Schema.Struct({ id: Schema.String }))(part);
+  return Option.isSome(decoded) ? decoded.value.id : undefined;
+};
+const preserveAbortedParts = (
+  existing: ReadonlyArray<Schema.Schema.Type<typeof Schema.Json>>,
+  final: ReadonlyArray<Schema.Schema.Type<typeof Schema.Json>>,
+) => {
+  const merged = [...existing];
+  const indexes = new Map(
+    merged.flatMap((part, index) => {
+      const id = projectedPartId(part);
+      return id === undefined ? [] : [[id, index] as const];
+    }),
+  );
+  for (const part of final) {
+    const id = projectedPartId(part);
+    const index = id === undefined ? undefined : indexes.get(id);
+    if (index === undefined) {
+      if (id !== undefined) indexes.set(id, merged.length);
+      merged.push(part);
+    } else merged[index] = part;
+  }
+  return merged.slice(-10_000);
+};
 const boundedError = (message: string) => message.slice(0, 16_384);
 
 const normalizeTask = Effect.fn("Subagents.normalizeTask")(function* (input: SubagentTaskInput) {
@@ -285,6 +312,7 @@ const snapshotResult = (
   status: SubagentResult["status"],
   error?: string,
 ): SubagentResult => {
+  const finalParts = projectParts(snapshot.parts);
   const result: SubagentResult = {
     handleId: handle.handleId,
     task: handle.task,
@@ -292,7 +320,7 @@ const snapshotResult = (
     resolvedModel: handle.resolvedModel,
     fastMode: handle.fastMode,
     streaming: snapshot.streaming,
-    parts: projectParts(snapshot.parts),
+    parts: status === "aborted" ? preserveAbortedParts(handle.parts, finalParts) : finalParts,
   };
   if (snapshot.usage !== undefined) Object.assign(result, { usage: jsonValue(snapshot.usage) });
   if (error !== undefined) Object.assign(result, { error: boundedError(error) });
@@ -417,15 +445,14 @@ const observeTurn = Effect.fn("Subagents.observeTurn")(function* (
             return { ...current, parts: [...byId.values()].slice(-10_000) };
           });
         else if (event.type === "part-removed")
-          yield* mutateHandle(handleId, (current) => ({
-            ...current,
-            parts: current.parts.filter((part) => {
-              const decoded = Schema.decodeUnknownOption(Schema.Struct({ id: Schema.String }))(
-                part,
-              );
-              return Option.isNone(decoded) || decoded.value.id !== event.partId;
-            }),
-          }));
+          yield* mutateHandle(handleId, (current) =>
+            current.status === "aborted"
+              ? current
+              : {
+                  ...current,
+                  parts: current.parts.filter((part) => projectedPartId(part) !== event.partId),
+                },
+          );
         else if (event.type === "streaming")
           yield* mutateHandle(handleId, (current) => ({
             ...current,
@@ -606,6 +633,14 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
     const parentHandle = yield* sessions
       .acquire(prepared.parent.options)
       .pipe(Effect.provideService(Scope.Scope, scope), asError("start"));
+    const parentMessage = (text: string) =>
+      prepared.parent.runEffect(
+        parentHandle
+          .followUp(
+            `Message from subagent ${handleId} (${prepared.input.task.slice(0, 500)}):\n\n${text}\n\nReply through this subagent's handle if a response is needed.`,
+          )
+          .pipe(asError("messageParent"), Effect.asVoid),
+      );
     const runtimeOptions: CakeSessionRuntimeAcquireOptions = {
       profile: { _tag: "SubagentSession" },
       runtime: {
@@ -617,6 +652,7 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         sessionId: crypto.randomUUID(),
         auxiliary: true,
         tools: [...prepared.tools],
+        customTools: [createSubagentParentTool({ send: parentMessage })],
         slashCommands: [],
         isolatedSystemPrompt: systemPrompt(prepared.input),
         requestUi: async () => undefined,

@@ -1,5 +1,4 @@
 import { Effect } from "effect";
-import * as subagents from "../subagents/subagents";
 import type { ChatConfiguration, PiSettingUpdate } from "../../ipc/session-contract";
 import { CakeSessionRuntimes, type CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
@@ -89,7 +88,6 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
 });
 
 export const abort = Effect.fn("SessionChats.abort")(function* (target: SessionChatTarget) {
-  yield* subagents.abortParentChildren(target.sessionId).pipe(asError("abort"));
   yield* abortConversation(acquire(target.sessionId)).pipe(asError("abort"));
 });
 
@@ -140,7 +138,6 @@ export const sendQueuedMessageNow = Effect.fn("SessionChats.sendQueuedMessageNow
   target: SessionChatTarget,
   partId?: string,
 ) {
-  yield* subagents.abortParentChildren(target.sessionId).pipe(asError("sendQueuedMessageNow"));
   return yield* useConversation(acquire(target.sessionId), (handle) =>
     handle.sendQueuedMessageNow(partId),
   ).pipe(Effect.map(projectQueuedMessages), asError("sendQueuedMessageNow"));
