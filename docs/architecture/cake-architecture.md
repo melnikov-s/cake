@@ -528,12 +528,12 @@ The window Store hierarchy mirrors the product surfaces:
   editable native Excalidraw elements. The Excalidraw document remains the only diagram authority:
   Cake tags converted elements with diagram and semantic identities rather than persisting a second
   graph or maintaining another diagram language. Every public shape identity has canonical
-  `shape:<id>` form and conversion returns stable semantic mappings. Generated labels are measured with their final font,
-  wrapping width, line height, and padding before routing or fitting: fixed-width containers wrap and
-  grow vertically, while auto-sized text uses a bounded width. Converted siblings reflow after their
-  measured size is final, and subgraph titles occupy a reserved title band above child nodes. Unsupported Mermaid markup, lossy image
-  diagram kinds, and pathological empty subgraph containers are rejected or constrained rather than
-  stored as poor canvas output. Manual agent edit batches are validated before mutation, presented on the
+  `shape:<id>` form and conversion returns stable semantic mappings. Mermaid skeletons become native
+  Excalidraw elements without Cake text fitting, sibling reflow, subgraph resizing, connector-label
+  positioning, or parallel-edge spreading. Cake validates native editability, remaps identities,
+  translates the entire diagram as a unit away from existing artwork, and fits the camera. The
+  converter retains authority over Mermaid geometry and text; lossy image diagram kinds are rejected.
+  Independently authored `draw.flow` and `draw.apply` shapes retain their measured layout behavior. Manual agent edit batches are validated before mutation, presented on the
   visible canvas operation by operation with active-shape focus and cumulative composition
   framing, then persisted once after playback. Automatic framing fits the batch's live changed
   elements, bound labels, and connector endpoints at no more than 100% zoom, not the last operation

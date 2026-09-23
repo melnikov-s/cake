@@ -468,7 +468,7 @@ describe("DrawEditorAdapter", () => {
     });
     expect(receipt.elementCount).toBe(3);
     expect(harness.elements()).toHaveLength(3);
-    expect(harness.elements().map(({ type }) => type)).toEqual(["arrow", "rectangle", "rectangle"]);
+    expect(harness.elements().map(({ type }) => type)).toEqual(["rectangle", "rectangle", "arrow"]);
     expect(harness.api.scrollToContent).toHaveBeenCalledWith(harness.elements(), {
       animate: false,
       fitToViewport: true,
@@ -528,81 +528,6 @@ describe("DrawEditorAdapter", () => {
     ]);
   });
 
-  it("orders Mermaid backgrounds, connectors, nodes, and their bound labels", async () => {
-    vi.mocked(parseMermaidToExcalidraw).mockResolvedValueOnce({
-      elements: [
-        {
-          id: "subgraph",
-          type: "rectangle",
-          x: 0,
-          y: 0,
-          width: 500,
-          height: 220,
-          groupIds: ["subgraph-group"],
-          label: { text: "System" },
-        },
-        {
-          id: "node-a",
-          type: "rectangle",
-          x: 40,
-          y: 70,
-          width: 120,
-          height: 80,
-          groupIds: ["subgraph-group"],
-          label: { text: "A" },
-        },
-        {
-          id: "node-b",
-          type: "rectangle",
-          x: 340,
-          y: 70,
-          width: 120,
-          height: 80,
-          groupIds: ["subgraph-group"],
-          label: { text: "B" },
-        },
-        {
-          id: "edge",
-          type: "arrow",
-          x: 160,
-          y: 110,
-          points: [
-            [0, 0],
-            [180, 0],
-          ],
-          label: { text: "request" },
-        },
-      ],
-    } as never);
-
-    await adapter.insertMermaid("flowchart LR\n  subgraph System\n  A --> B\n  end");
-
-    const elements = harness.elements();
-    const background = elements.find(
-      (element) =>
-        element.type === "rectangle" &&
-        element.customData?.cakeAutoSizeText === true &&
-        element.groupIds.includes("subgraph-group"),
-    )!;
-    const title = elements.find(
-      (element): element is Extract<ExcalidrawElement, { type: "text" }> =>
-        element.type === "text" && element.originalText === "System",
-    )!;
-    const nodes = elements.filter(
-      (element) => element.type === "rectangle" && element.id !== background.id,
-    );
-    expect(title.containerId).toBeNull();
-    expect(title.y + title.height).toBeLessThan(Math.min(...nodes.map(({ y }) => y)));
-    expect(background.y).toBeLessThanOrEqual(title.y);
-    expect(background.y + background.height).toBeGreaterThan(
-      Math.max(...nodes.map(({ y, height }) => y + height)),
-    );
-    const order = elements.map(({ id }) => id);
-    const arrow = elements.find(({ type }) => type === "arrow")!;
-    expect(order.indexOf(background.id)).toBeLessThan(order.indexOf(arrow.id));
-    expect(nodes.every(({ id }) => order.indexOf(arrow.id) < order.indexOf(id))).toBe(true);
-  });
-
   it("assigns shape IDs, preserves every binding, and supports read-to-apply edits", async () => {
     vi.mocked(parseMermaidToExcalidraw).mockResolvedValue({
       elements: [
@@ -657,16 +582,6 @@ describe("DrawEditorAdapter", () => {
     const scene = adapter.read({ scope: "page" });
     const rectangles = scene.shapes.filter(({ type }) => type === "rectangle");
     const arrow = scene.shapes.find(({ type }) => type === "arrow")!;
-    const importedOrder = harness.elements().map(({ id }) => id);
-    expect(importedOrder.indexOf(arrow.id)).toBeLessThan(
-      Math.min(...rectangles.map(({ id }) => importedOrder.indexOf(id))),
-    );
-    for (const element of harness.elements()) {
-      if (element.type === "text" && element.containerId)
-        expect(importedOrder.indexOf(element.id)).toBe(
-          importedOrder.indexOf(element.containerId) + 1,
-        );
-    }
     const source = rectangles.find(({ text }) => text === "Source")!;
     const target = rectangles.find(({ text }) => text === "Target")!;
     const receipt = adapter.apply({
@@ -692,80 +607,77 @@ describe("DrawEditorAdapter", () => {
     ).not.toThrow();
   });
 
-  it("normalizes safe HTML breaks, fits converted labels, and rejects other HTML", async () => {
-    vi.mocked(parseMermaidToExcalidraw).mockResolvedValue({
-      elements: [
-        {
-          id: "labelled",
-          type: "rectangle",
-          x: 0,
-          y: 0,
-          width: 40,
-          height: 20,
-          label: { text: "First\\nSecond line" },
-        },
-      ],
-    } as never);
-
-    await adapter.insertMermaid('flowchart LR\n  A["First<br/>Second line"]');
-
-    expect(parseMermaidToExcalidraw).toHaveBeenCalledWith(
-      'flowchart LR\n  A["First\\nSecond line"]',
-      expect.anything(),
-    );
-    const container = harness.elements().find(({ type }) => type === "rectangle")!;
-    const label = harness
-      .elements()
-      .find(
-        (element): element is Extract<ExcalidrawElement, { type: "text" }> =>
-          element.type === "text" && element.containerId === container.id,
-      )!;
-    expect(label.text).toBe("First\nSecond line");
-    expect(container.width).toBeGreaterThanOrEqual(label.width + 24);
-    expect(container.height).toBeGreaterThanOrEqual(label.height + 16);
-
-    await expect(
-      adapter.insertMermaid('flowchart LR\n  A["<strong>Unsafe</strong>"]'),
-    ).rejects.toThrow("other HTML markup is not supported");
-  });
-
-  it("reflows Mermaid siblings after measured labels widen their containers", async () => {
-    vi.mocked(parseMermaidToExcalidraw).mockResolvedValueOnce({
-      elements: [
-        {
-          id: "left",
-          type: "rectangle",
-          x: 0,
-          y: 0,
-          width: 100,
-          height: 60,
-          label: { text: "Short" },
-        },
-        {
-          id: "right",
-          type: "rectangle",
-          x: 150,
-          y: 0,
-          width: 100,
-          height: 60,
-          label: {
-            text: "A substantially longer sibling label that exceeds the converter skeleton width",
-          },
-        },
-      ],
-    } as never);
-
-    await adapter.insertMermaid("flowchart LR\n  A[Short] ~~~ B[Long label]");
-
-    const nodes = harness.elements().filter((element) => element.type === "rectangle");
-    expect(nodes).toHaveLength(2);
-    const [left, right] = nodes.sort((a, b) => a.x - b.x);
-    expect(left!.x + left!.width + 96).toBeLessThanOrEqual(right!.x);
-    const rightLabel = harness
-      .elements()
-      .find((element) => element.type === "text" && element.containerId === right!.id);
-    expect(right!.width).toBeGreaterThan(100);
-    expect(rightLabel?.width).toBeLessThan(right!.width);
+  it("keeps converter text, dimensions, sibling positions, and connector routes unchanged", async () => {
+    const skeletons = [
+      {
+        id: "left",
+        type: "rectangle",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 60,
+        label: { text: "Short" },
+      },
+      {
+        id: "right",
+        type: "rectangle",
+        x: 150,
+        y: 0,
+        width: 100,
+        height: 60,
+        label: { text: "A substantially longer sibling label" },
+      },
+      {
+        id: "edge-one",
+        type: "arrow",
+        x: 100,
+        y: 30,
+        points: [
+          [0, 0],
+          [50, 0],
+        ],
+        start: { id: "left" },
+        end: { id: "right" },
+        label: { text: "route" },
+      },
+      {
+        id: "edge-two",
+        type: "arrow",
+        x: 100,
+        y: 30,
+        points: [
+          [0, 0],
+          [50, 0],
+        ],
+        start: { id: "left" },
+        end: { id: "right" },
+      },
+    ];
+    vi.mocked(parseMermaidToExcalidraw).mockResolvedValueOnce({ elements: skeletons } as never);
+    const { convertToExcalidrawElements } = await import("@excalidraw/excalidraw");
+    const native = convertToExcalidrawElements(skeletons as never, { regenerateIds: false });
+    await adapter.insertMermaid("flowchart LR\n  left --> right");
+    const imported = harness.elements();
+    expect(imported.map(({ type }) => type)).toEqual(native.map(({ type }) => type));
+    for (let index = 0; index < native.length; index++) {
+      const source = native[index]!;
+      const actual = imported[index]!;
+      expect(actual).toMatchObject({
+        type: source.type,
+        x: source.x + imported[0]!.x - native[0]!.x,
+        y: source.y + imported[0]!.y - native[0]!.y,
+        width: source.width,
+        height: source.height,
+      });
+      if (source.type === "text" && actual.type === "text")
+        expect({ text: actual.text, originalText: actual.originalText }).toEqual({
+          text: source.text,
+          originalText: source.originalText,
+        });
+      if (source.type === "arrow" && actual.type === "arrow")
+        expect(actual.points).toEqual(source.points);
+    }
+    expect(imported.some(({ customData }) => customData?.cakeAutoSizeText)).toBe(false);
   });
 
   it("places a new Mermaid diagram away from existing content", async () => {
@@ -796,128 +708,6 @@ describe("DrawEditorAdapter", () => {
         : false,
     );
     expect(overlapsExisting).toBe(false);
-  });
-
-  it("orders Mermaid subgraph backgrounds, connectors, nodes, and labels by visual role", async () => {
-    vi.mocked(parseMermaidToExcalidraw).mockResolvedValue({
-      elements: [
-        {
-          id: "frame",
-          type: "frame",
-          x: -30,
-          y: -30,
-          width: 560,
-          height: 300,
-          children: ["cluster", "left", "right", "edge"],
-        },
-        {
-          id: "cluster",
-          type: "rectangle",
-          x: 0,
-          y: 0,
-          width: 500,
-          height: 240,
-          groupIds: ["subgraph_group_cluster"],
-          label: { text: "Services", verticalAlign: "top" },
-        },
-        {
-          id: "left",
-          type: "rectangle",
-          x: 60,
-          y: 80,
-          width: 120,
-          height: 70,
-          groupIds: ["subgraph_group_cluster"],
-          label: { text: "API" },
-        },
-        {
-          id: "right",
-          type: "rectangle",
-          x: 320,
-          y: 80,
-          width: 120,
-          height: 70,
-          groupIds: ["subgraph_group_cluster"],
-          label: { text: "Worker" },
-        },
-        {
-          id: "edge",
-          type: "arrow",
-          x: 180,
-          y: 115,
-          points: [
-            [0, 0],
-            [140, 0],
-          ],
-          start: { id: "left" },
-          end: { id: "right" },
-          label: { text: "dispatch" },
-        },
-      ],
-    } as never);
-
-    await adapter.insertMermaid("flowchart LR\n  subgraph Services\n  API --> Worker\n  end");
-
-    const elements = harness.elements();
-    const background = elements.find(
-      (element) =>
-        element.type === "rectangle" && element.groupIds.includes("subgraph_group_cluster"),
-    )!;
-    const frame = elements.find((element) => element.type === "frame")!;
-    const connector = elements.find((element) => element.type === "arrow")!;
-    const nodes = elements.filter(
-      (element) => element.type === "rectangle" && element.id !== background.id,
-    );
-    const order = elements.map(({ id }) => id);
-    expect(order.indexOf(frame.id)).toBeLessThan(order.indexOf(connector.id));
-    expect(order.indexOf(background.id)).toBeLessThan(order.indexOf(connector.id));
-    expect(nodes.every(({ id }) => order.indexOf(connector.id) < order.indexOf(id))).toBe(true);
-    for (const element of elements) {
-      if (element.type === "text" && element.containerId)
-        expect(order.indexOf(element.id)).toBe(order.indexOf(element.containerId) + 1);
-    }
-    expect(
-      connector.type === "arrow" && connector.startBinding && connector.endBinding,
-    ).toBeTruthy();
-    expect(background.boundElements?.every(({ id }) => order.includes(id))).toBe(true);
-    expect(
-      elements
-        .filter(({ frameId }) => frameId === frame.id)
-        .every(({ id }) => id !== frame.id && order.includes(id)),
-    ).toBe(true);
-  });
-
-  it("separates coincident parallel Mermaid connectors deterministically", async () => {
-    vi.mocked(parseMermaidToExcalidraw).mockResolvedValue({
-      elements: [
-        { id: "left", type: "rectangle", x: 0, y: 0, width: 100, height: 60 },
-        { id: "right", type: "rectangle", x: 300, y: 0, width: 100, height: 60 },
-        ...["first", "second"].map((id) => ({
-          id,
-          type: "arrow" as const,
-          x: 100,
-          y: 30,
-          points: [
-            [0, 0],
-            [200, 0],
-          ],
-          start: { id: "left" },
-          end: { id: "right" },
-        })),
-      ],
-    } as never);
-
-    await adapter.insertMermaid("flowchart LR\n  A --> B\n  A --> B");
-
-    const arrows = harness
-      .elements()
-      .filter(
-        (element): element is Extract<ExcalidrawElement, { type: "arrow" }> =>
-          element.type === "arrow",
-      );
-    expect(arrows).toHaveLength(2);
-    expect(arrows[0]!.points).not.toEqual(arrows[1]!.points);
-    expect(arrows.every(({ points }) => points.length === 4)).toBe(true);
   });
 
   it("rejects Mermaid diagram kinds that only convert to an image", async () => {

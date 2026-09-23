@@ -38,6 +38,11 @@ bound labels. Include internal arrows in the IDs. Moving a frame moves its
 members; deleting it leaves the members. Frames cannot nest. Containment is
 editable native membership, not a persistent constraint or a second Cake graph.
 Mermaid remains the complete-diagram path, not an incremental scene reconciler.
+`draw.mermaid` imports the official converter's native text, node dimensions, subgraph
+bounds, and connector routes without applying the measured layout used by `draw.flow`
+and `draw.apply`. Cake only maps semantic IDs, moves the whole diagram to free board
+space, persists it, and fits the camera. The Electron architecture fixture compares
+persisted element geometry with a separate unmodified converter run.
 
 After completing a step, patch only guide fields that changed:
 

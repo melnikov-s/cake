@@ -1,3 +1,4 @@
+import { drawMermaidArchitecture } from "../../tests/fixtures/draw-mermaid-architecture.ts";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -439,18 +440,7 @@ const drawMermaidArchitectureScenario: VisualCaptureScenario = {
         _tag: "Mermaid",
         id: "cake-desktop-architecture",
         replace: true,
-        diagram: `flowchart TB
-  subgraph renderer["Sandboxed Renderer"]
-    models["Renderer Models + Stores with measured labels"]
-    chat["Shared Chat and Conversation surfaces"]
-  end
-  subgraph main["Electron Main"]
-    services["Cake services"]
-    pi["Pi Runtime agent loop + transcript"]
-  end
-  models -->|typed RPC| services
-  chat --> services
-  services --> pi`,
+        diagram: drawMermaidArchitecture,
       },
     };
     await application.evaluate((_electron, input) => {

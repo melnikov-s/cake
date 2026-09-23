@@ -14,7 +14,6 @@ import {
   restore,
   viewportCoordsToSceneCoords,
 } from "@excalidraw/excalidraw";
-import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
 import type {
   Arrowhead,
   ExcalidrawElement,
@@ -62,10 +61,8 @@ const MAX_SUMMARY_TEXT_LENGTH = 4_000;
 const MAX_MERMAID_ELEMENTS = 1_000;
 const MERMAID_FONT_SIZE = 20;
 const MERMAID_INSERTION_GAP = 80;
-const MERMAID_PARALLEL_CONNECTOR_GAP = 18;
 const MERMAID_LABEL_HORIZONTAL_PADDING = 24;
 const MERMAID_LABEL_VERTICAL_PADDING = 16;
-const MERMAID_NODE_GAP = 96;
 
 const colorPalette = new Map([
   ["black", "#1b1b1f"],
@@ -2112,44 +2109,6 @@ function applyPreparedOperations(
   return compactReceipt(receipt);
 }
 
-const mermaidBreakPattern = /<br\s*\/?>/giu;
-const mermaidHtmlPattern = /<\/?[A-Za-z][^>\n]*>/u;
-
-function assertSupportedMermaidLabelMarkup(value: string) {
-  if (mermaidHtmlPattern.test(value))
-    throw new Error(
-      "Cake Draw Mermaid labels support plain text and line breaks (\\n, <br>, <br/>, or <br />); other HTML markup is not supported",
-    );
-  return value;
-}
-
-function normalizeMermaidSource(value: string) {
-  return assertSupportedMermaidLabelMarkup(value.replace(mermaidBreakPattern, "\\n"));
-}
-
-function normalizeConvertedMermaidLabel(value: string) {
-  return assertSupportedMermaidLabelMarkup(
-    value.replace(mermaidBreakPattern, "\n").replaceAll("\\n", "\n"),
-  );
-}
-
-function normalizeMermaidSkeletonLabels(
-  skeletons: readonly ExcalidrawElementSkeleton[],
-): ExcalidrawElementSkeleton[] {
-  return skeletons.map((skeleton) => {
-    const label = "label" in skeleton ? skeleton.label : undefined;
-    const normalized = {
-      ...skeleton,
-      ...(skeleton.type === "text"
-        ? { text: normalizeConvertedMermaidLabel(skeleton.text) }
-        : null),
-      ...(label ? { label: { ...label, text: normalizeConvertedMermaidLabel(label.text) } } : null),
-    };
-    // SAFETY: only the text fields of the converter's validated skeleton union are replaced.
-    return normalized as ExcalidrawElementSkeleton;
-  });
-}
-
 function namedDiagramShapeId(
   diagramId: string,
   role: DrawSemanticShapeMapping["role"],
@@ -2425,263 +2384,6 @@ function fitGeneratedText(
   return fitted;
 }
 
-function shiftMermaidRoot(
-  elements: readonly ExcalidrawElement[],
-  id: string,
-  dx: number,
-  dy: number,
-) {
-  return moveRelated(elements, new Set([id]), dx, dy);
-}
-
-/** Reflows converted nodes after final text measurement, then reserves a title band in subgraphs. */
-function reflowMeasuredMermaid(
-  elements: readonly ExcalidrawElement[],
-  backgrounds: ReadonlySet<string>,
-) {
-  let reflowed = [...elements];
-  const nodes = visibleElements(reflowed).filter(
-    (element) =>
-      !backgrounds.has(element.id) &&
-      element.type !== "arrow" &&
-      element.type !== "line" &&
-      element.type !== "text",
-  );
-  for (let pass = 0; pass < nodes.length; pass += 1) {
-    let moved = false;
-    for (let leftIndex = 0; leftIndex < nodes.length; leftIndex += 1) {
-      for (let rightIndex = leftIndex + 1; rightIndex < nodes.length; rightIndex += 1) {
-        const byId = elementMap(reflowed);
-        const left = byId.get(nodes[leftIndex]!.id);
-        const right = byId.get(nodes[rightIndex]!.id);
-        if (!left || !right) continue;
-        const leftBounds = boundsOf(left, reflowed);
-        const rightBounds = boundsOf(right, reflowed);
-        if (!boundsOverlap(leftBounds, rightBounds, MERMAID_NODE_GAP)) continue;
-        const originalLeft = nodes[leftIndex]!;
-        const originalRight = nodes[rightIndex]!;
-        const horizontal =
-          Math.abs(originalRight.x - originalLeft.x) >= Math.abs(originalRight.y - originalLeft.y);
-        let dx = 0;
-        let dy = 0;
-        if (horizontal) {
-          dx =
-            originalRight.x >= originalLeft.x
-              ? leftBounds.x + leftBounds.width + MERMAID_NODE_GAP - rightBounds.x
-              : leftBounds.x - MERMAID_NODE_GAP - (rightBounds.x + rightBounds.width);
-        } else {
-          dy =
-            originalRight.y >= originalLeft.y
-              ? leftBounds.y + leftBounds.height + MERMAID_NODE_GAP - rightBounds.y
-              : leftBounds.y - MERMAID_NODE_GAP - (rightBounds.y + rightBounds.height);
-        }
-        reflowed = shiftMermaidRoot(reflowed, right.id, dx, dy);
-        moved = true;
-      }
-    }
-    if (!moved) break;
-  }
-
-  const orderedBackgrounds = [...backgrounds].sort((left, right) => {
-    const byId = elementMap(reflowed);
-    const leftElement = byId.get(left);
-    const rightElement = byId.get(right);
-    return (
-      (leftElement?.width ?? 0) * (leftElement?.height ?? 0) -
-      (rightElement?.width ?? 0) * (rightElement?.height ?? 0)
-    );
-  });
-  for (const id of orderedBackgrounds) {
-    const byId = elementMap(reflowed);
-    const container = byId.get(id);
-    if (!container) continue;
-    const label = reflowed.find(
-      (element): element is ExcalidrawTextElement =>
-        element.type === "text" && element.containerId === id,
-    );
-    const groupIds = new Set(container.groupIds);
-    const children = visibleElements(reflowed).filter(
-      (element) =>
-        element.id !== id &&
-        !backgrounds.has(element.id) &&
-        element.type !== "arrow" &&
-        element.type !== "line" &&
-        (element.frameId === id || element.groupIds.some((groupId) => groupIds.has(groupId))),
-    );
-    if (children.length === 0) continue;
-    const [minX, minY, maxX, maxY] = getCommonBounds(children);
-    let nextLabel = label;
-    if (nextLabel) {
-      const maximumTitleWidth = Math.max(160, maxX - minX + 24);
-      const wrapped = wrapMeasuredText(
-        nextLabel.originalText || nextLabel.text,
-        maximumTitleWidth,
-        nextLabel,
-      );
-      const lines = wrapped.split("\n");
-      nextLabel = newElementWith(nextLabel, {
-        containerId: null,
-        customData: {
-          ...nextLabel.customData,
-          cakeGeneratedCompanionFor: id,
-          cakeGeneratedCompanionKind: "title",
-        },
-        text: wrapped,
-        originalText: nextLabel.originalText || nextLabel.text,
-        width: Math.ceil(Math.max(...lines.map((line) => measuredLineWidth(line, nextLabel!)))),
-        height: Math.ceil(lines.length * nextLabel.fontSize * (nextLabel.lineHeight || 1.25)),
-        autoResize: true,
-      });
-    }
-    const titleHeight = nextLabel?.height ?? 0;
-    const nextContainer = newElementWith(container, {
-      x: minX - 36,
-      y: minY - titleHeight - 48,
-      width: maxX - minX + 72,
-      height: maxY - minY + titleHeight + 84,
-      boundElements:
-        container.boundElements?.filter((binding) => binding.id !== nextLabel?.id) ?? null,
-    });
-    reflowed = reflowed.map((element) => {
-      if (element.id === id) return nextContainer;
-      if (nextLabel && element.id === nextLabel.id)
-        return newElementWith(nextLabel, {
-          x: nextContainer.x + 24,
-          y: nextContainer.y + 18,
-        });
-      return element;
-    });
-  }
-  const connectorLabels = reflowed.filter((element): element is ExcalidrawTextElement => {
-    if (element.type !== "text" || !element.containerId) return false;
-    const container = elementMap(reflowed).get(element.containerId);
-    return container?.type === "arrow" || container?.type === "line";
-  });
-  for (const label of connectorLabels) {
-    const connectorId = label.containerId!;
-    reflowed = reflowed.map((element) => {
-      if (element.id === connectorId)
-        return newElementWith(element, {
-          boundElements: element.boundElements?.filter(({ id }) => id !== label.id) ?? null,
-        });
-      if (element.id === label.id)
-        return newElementWith(label, {
-          containerId: null,
-          customData: {
-            ...label.customData,
-            cakeGeneratedCompanionFor: connectorId,
-            cakeGeneratedCompanionKind: "connector",
-          },
-        });
-      return element;
-    });
-  }
-  return fitGeneratedText(updateConnections(reflowed));
-}
-
-function assertUsableMermaidGeometry(elements: readonly ExcalidrawElement[]) {
-  const backgrounds = diagramBackgroundIds(elements, new Set(elements.map(({ id }) => id)));
-  for (const id of backgrounds) {
-    const container = elementMap(elements).get(id);
-    if (!container) continue;
-    const shortSide = Math.max(1, Math.min(container.width, container.height));
-    const longSide = Math.max(container.width, container.height);
-    if (longSide / shortSide > 20 || container.width * container.height > 100_000_000)
-      throw new Error(
-        "Mermaid subgraph layout is excessively sparse, usually because of cross-subgraph edges; simplify the subgraph boundaries or split the diagram",
-      );
-  }
-}
-
-function absoluteArrowPoints(element: Extract<ExcalidrawElement, { type: "arrow" }>) {
-  return element.points.map(([x, y]) => [element.x + x, element.y + y] as const);
-}
-
-function spreadOverlappingMermaidConnectors(elements: readonly ExcalidrawElement[]) {
-  const arrows = elements.filter(
-    (element): element is Extract<ExcalidrawElement, { type: "arrow" }> =>
-      element.type === "arrow" && !!element.startBinding && !!element.endBinding,
-  );
-  const groups = new Map<string, typeof arrows>();
-  for (const arrow of arrows) {
-    const route = absoluteArrowPoints(arrow)
-      .map(([x, y]) => `${Math.round(x / 4)},${Math.round(y / 4)}`)
-      .join(";");
-    const key = `${arrow.startBinding!.elementId}>${arrow.endBinding!.elementId}:${route}`;
-    groups.set(key, [...(groups.get(key) ?? []), arrow]);
-  }
-  let spread = [...elements];
-  for (const group of groups.values()) {
-    if (group.length < 2) continue;
-    const first = group[0]!;
-    const start = first.points[0]!;
-    const end = first.points.at(-1)!;
-    const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
-    if (length === 0) continue;
-    const normalX = -(end[1] - start[1]) / length;
-    const normalY = (end[0] - start[0]) / length;
-    group.forEach((arrow, index) => {
-      const offset = (index - (group.length - 1) / 2) * MERMAID_PARALLEL_CONNECTOR_GAP;
-      const sourcePoints = arrow.points;
-      const points =
-        sourcePoints.length === 2
-          ? [
-              sourcePoints[0]!,
-              [
-                sourcePoints[0]![0] +
-                  (sourcePoints[1]![0] - sourcePoints[0]![0]) / 3 +
-                  normalX * offset,
-                sourcePoints[0]![1] +
-                  (sourcePoints[1]![1] - sourcePoints[0]![1]) / 3 +
-                  normalY * offset,
-              ],
-              [
-                sourcePoints[0]![0] +
-                  ((sourcePoints[1]![0] - sourcePoints[0]![0]) * 2) / 3 +
-                  normalX * offset,
-                sourcePoints[0]![1] +
-                  ((sourcePoints[1]![1] - sourcePoints[0]![1]) * 2) / 3 +
-                  normalY * offset,
-              ],
-              sourcePoints[1]!,
-            ]
-          : sourcePoints.map((point, pointIndex) =>
-              pointIndex === 0 || pointIndex === sourcePoints.length - 1
-                ? point
-                : [point[0] + normalX * offset, point[1] + normalY * offset],
-            );
-      const minX = Math.min(...points.map((point) => point[0]));
-      const minY = Math.min(...points.map((point) => point[1]));
-      const maxX = Math.max(...points.map((point) => point[0]));
-      const maxY = Math.max(...points.map((point) => point[1]));
-      // SAFETY: every tuple is derived from a validated Excalidraw local point using finite arithmetic.
-      const normalizedPoints = points.map(
-        ([x, y]) => [x - minX, y - minY] as (typeof arrow.points)[number],
-      );
-      spread = spread.map((element) => {
-        if (element.id === arrow.id)
-          return newElementWith(arrow, {
-            x: arrow.x + minX,
-            y: arrow.y + minY,
-            points: normalizedPoints,
-            width: maxX - minX,
-            height: maxY - minY,
-          });
-        if (
-          element.type === "text" &&
-          (element.containerId === arrow.id || generatedCompanionFor(element) === arrow.id)
-        )
-          return newElementWith(element, {
-            x: element.x + normalX * offset,
-            y: element.y + normalY * offset,
-          });
-        return element;
-      });
-    });
-  }
-  return spread;
-}
-
 interface ElementBounds {
   readonly x: number;
   readonly y: number;
@@ -2750,8 +2452,7 @@ async function insertMermaid(
   diagram: string,
   options: { readonly id?: string; readonly replace?: boolean } = {},
 ): Promise<DrawMermaidReceipt> {
-  const normalizedDiagram = normalizeMermaidSource(diagram);
-  const { elements: parsedSkeletons, files } = await parseMermaidToExcalidraw(normalizedDiagram, {
+  const { elements: parsedSkeletons, files } = await parseMermaidToExcalidraw(diagram, {
     flowchart: { curve: "linear" },
     maxEdges: 500,
     maxTextSize: 50_000,
@@ -2765,8 +2466,7 @@ async function insertMermaid(
       "This Mermaid diagram cannot be converted to native editable shapes; use flowchart, sequenceDiagram, classDiagram, stateDiagram, or erDiagram",
     );
 
-  const skeletons = normalizeMermaidSkeletonLabels(parsedSkeletons);
-  const converted = convertToExcalidrawElements(skeletons, { regenerateIds: false });
+  const converted = convertToExcalidrawElements(parsedSkeletons, { regenerateIds: false });
   const allExisting = api.getSceneElementsIncludingDeleted();
   const existingRegion = options.id
     ? allExisting.filter((element) => diagramData(element)?.diagramId === options.id)
@@ -2780,21 +2480,7 @@ async function insertMermaid(
     : allExisting;
   const reservedIds = new Set(existing.map((element) => element.id));
   const remapped = remapMermaidElementIds(converted, reservedIds, options.id);
-  const backgrounds = diagramBackgroundIds(
-    remapped.elements,
-    new Set(remapped.elements.map(({ id }) => id)),
-  );
-  const autoSized = remapped.elements.map((element) =>
-    element.type === "text" || element.type === "arrow" || element.type === "line"
-      ? element
-      : newElementWith(element, {
-          customData: { ...element.customData, cakeAutoSizeText: true },
-        }),
-  );
-  let created = spreadOverlappingMermaidConnectors(
-    reflowMeasuredMermaid(fitGeneratedText(autoSized), backgrounds),
-  );
-  assertUsableMermaidGeometry(created);
+  let created = remapped.elements;
   if (options.id) {
     const finalBackgrounds = diagramBackgroundIds(created, new Set(created.map(({ id }) => id)));
     const groupSemantics = new Set(
@@ -2829,10 +2515,7 @@ async function insertMermaid(
   const positioned = created.map((element) =>
     newElementWith(element, { x: element.x + delta.x, y: element.y + delta.y }),
   );
-  const ordered = normalizeCreatedDiagramOrder(
-    [...existing, ...positioned],
-    new Set(positioned.map(({ id }) => id)),
-  );
+  const ordered = [...existing, ...positioned];
   const selectedElementIds = Object.fromEntries(
     positioned
       .filter((element) => !(element.type === "text" && element.containerId))

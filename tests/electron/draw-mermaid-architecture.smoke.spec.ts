@@ -1,3 +1,4 @@
+import { drawMermaidArchitecture } from "../fixtures/draw-mermaid-architecture";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -73,18 +74,10 @@ test("authors and restores a readable named Mermaid diagram in Electron", async 
           _tag: "Mermaid",
           id: "cake-desktop-architecture",
           replace: true,
-          diagram: `flowchart TB
-  subgraph renderer["Sandboxed Renderer"]
-    models["Renderer Models + Stores with measured replacement labels"]
-    chat["Shared Chat and Conversation surfaces"]
-  end
-  subgraph main["Electron Main"]
-    services["Cake services"]
-    pi["Pi Runtime agent loop + transcript"]
-  end
-  models -->|typed RPC| services
-  chat --> services
-  services --> pi`,
+          diagram: drawMermaidArchitecture.replace(
+            "measured labels",
+            "measured replacement labels",
+          ),
         },
       },
     );
@@ -99,8 +92,6 @@ test("authors and restores a readable named Mermaid diagram in Electron", async 
     const afterNavigation = await darkCanvasPixels(page);
     expect(afterNavigation).toBeGreaterThan(beforeNavigation * 0.7);
 
-    await application.close();
-    applicationClosed = true;
     const boardDirectory = join(paths.cakeHome, "state", "draw-boards", "boards");
     const boardFiles = await readdir(boardDirectory);
     expect(boardFiles).toHaveLength(1);
@@ -119,6 +110,7 @@ test("authors and restores a readable named Mermaid diagram in Electron", async 
       height: number;
       text?: string;
       originalText?: string;
+      points?: readonly (readonly [number, number])[];
       containerId?: string | null;
       frameId?: string | null;
       boundElements?: Array<{ id: string }> | null;
@@ -126,14 +118,11 @@ test("authors and restores a readable named Mermaid diagram in Electron", async 
       endBinding?: { elementId: string } | null;
       customData?: {
         cakeDiagram?: { diagramId: string; semanticId: string; role: string };
-        cakeGeneratedCompanionFor?: string;
-        cakeGeneratedCompanionKind?: string;
       };
     }>;
     const ids = new Set(elements.map(({ id }) => id));
     const isCompanion = (element: (typeof elements)[number]) =>
-      element.type === "text" &&
-      (!!element.containerId || !!element.customData?.cakeGeneratedCompanionFor);
+      element.type === "text" && !!element.containerId;
     const roots = elements.filter((element) => !isCompanion(element));
 
     expect(elements.length).toBeGreaterThan(8);
@@ -156,47 +145,49 @@ test("authors and restores a readable named Mermaid diagram in Electron", async 
       new Set(["group", "node", "edge"]),
     );
 
-    const nodes = roots.filter((element) => element.customData?.cakeDiagram?.role === "node");
-    for (let left = 0; left < nodes.length; left += 1) {
-      for (let right = left + 1; right < nodes.length; right += 1) {
-        const a = nodes[left]!;
-        const b = nodes[right]!;
-        const overlap =
-          a.x < b.x + b.width &&
-          a.x + a.width > b.x &&
-          a.y < b.y + b.height &&
-          a.y + a.height > b.y;
-        expect(overlap, `${a.id} overlaps ${b.id}`).toBe(false);
-      }
-    }
-    const titles = elements.filter(
-      (element) => element.customData?.cakeGeneratedCompanionKind === "title",
+    // The reference is the official converter + native skeleton conversion in a real Electron
+    // renderer, without Cake's ID mapping, placement, or Mermaid layout transforms.
+    await page.goto(`file://${join(repositoryRoot, "out", "renderer", "rpc-test-harness.html")}`);
+    await page.locator("html[data-rpc-ready=true]").waitFor();
+    const reference = await page.evaluate(
+      async (diagram) => {
+        const harness = Reflect.get(globalThis, "cakeRpcHarness") as {
+          mermaidReference(diagram: string): Promise<typeof elements>;
+        };
+        return harness.mermaidReference(diagram);
+      },
+      drawMermaidArchitecture.replace("measured labels", "measured replacement labels"),
     );
-    expect(titles).toHaveLength(2);
-    for (const title of titles) {
-      expect(
-        nodes.some(
-          (node) =>
-            title.x < node.x + node.width &&
-            title.x + title.width > node.x &&
-            title.y < node.y + node.height &&
-            title.y + title.height > node.y,
-        ),
-      ).toBe(false);
+    expect(reference).toHaveLength(elements.length);
+    const dx = elements[0]!.x - reference[0]!.x;
+    const dy = elements[0]!.y - reference[0]!.y;
+    for (let index = 0; index < reference.length; index++) {
+      const source = reference[index]!;
+      const imported = elements[index]!;
+      expect(imported, `converter element ${index} (${source.type})`).toMatchObject({
+        type: source.type,
+        width: source.width,
+        height: source.height,
+      });
+      // Native Excalidraw may fine-tune bound-label positions on scene restoration.
+      const tolerance = source.type === "text" ? 2 : 0.001;
+      expect(Math.abs(imported.x - source.x - dx)).toBeLessThan(tolerance);
+      expect(Math.abs(imported.y - source.y - dy)).toBeLessThan(tolerance);
+      if (source.type === "text")
+        expect([imported.text, imported.originalText]).toEqual([source.text, source.originalText]);
+      if (source.type === "arrow" || source.type === "line")
+        expect(imported).toMatchObject({ points: source.points });
     }
-    expect(
-      elements.some((element) => element.customData?.cakeGeneratedCompanionKind === "connector"),
-    ).toBe(true);
 
     for (const element of elements) {
       if (element.containerId) expect(ids.has(element.containerId)).toBe(true);
       if (element.frameId) expect(ids.has(element.frameId)).toBe(true);
-      if (element.customData?.cakeGeneratedCompanionFor)
-        expect(ids.has(element.customData.cakeGeneratedCompanionFor)).toBe(true);
       for (const binding of element.boundElements ?? []) expect(ids.has(binding.id)).toBe(true);
       if (element.startBinding) expect(ids.has(element.startBinding.elementId)).toBe(true);
       if (element.endBinding) expect(ids.has(element.endBinding.elementId)).toBe(true);
     }
+    await application.close();
+    applicationClosed = true;
   } finally {
     if (!applicationClosed) await application.close();
     await rm(root, { recursive: true, force: true });
