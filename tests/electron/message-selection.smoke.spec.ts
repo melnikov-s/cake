@@ -33,6 +33,7 @@ test("focuses annotation input and opens a responsive, resizable selection side 
     "```",
     "",
     "The unconfigured state stays empty.",
+    "The configuration is explicit and remains inspectable throughout the session. ".repeat(8),
   ].join("\n");
   await Promise.all([
     mkdir(userData, { recursive: true }),
@@ -176,6 +177,21 @@ test("focuses annotation input and opens a responsive, resizable selection side 
     await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Alt+Enter");
     await expect(fullscreen).toBeVisible();
     await fullscreen.getByRole("button", { name: "Exit fullscreen Cake" }).click();
+    await expect(fullscreen).toHaveCount(0);
+
+    // With no message hovered, the shortcut opens the current session's latest response.
+    await page.mouse.move(0, 0);
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Alt+Enter");
+    await expect(fullscreen).toContainText("The settings shape is explicit:");
+    await fullscreen.getByRole("button", { name: "Exit fullscreen Cake" }).click();
+    await expect(fullscreen).toHaveCount(0);
+
+    // Hovering a user message must not fall through to the latest assistant response.
+    await page
+      .locator('[data-slot="message-content"]')
+      .getByText("Show the settings shape")
+      .hover();
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Alt+Enter");
     await expect(fullscreen).toHaveCount(0);
 
     await code.scrollIntoViewIfNeeded();

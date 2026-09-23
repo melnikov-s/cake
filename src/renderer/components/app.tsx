@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
 import { SessionAssistant } from "@/components/session-assistant";
+import { FullscreenMessage } from "@/components/fullscreen-message";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { UiHintMode } from "@/components/ui/ui-hint-mode";
 import { IdeWorkspace } from "@/components/ide-workspace";
@@ -136,6 +137,24 @@ export const App = observer(function App() {
   const shellRef = useRef<HTMLElement>(null);
   const [commandPaneWidth, setCommandPaneWidth] = useState(420);
   const [resizingPanel, setResizingPanel] = useState(false);
+  const [fullscreenResponse, setFullscreenResponse] = useState<{
+    sessionId: string;
+    partId: string;
+  }>();
+  const currentChatSession = surface === "workbench" ? session : cakeChatSession;
+  const currentChatSessionId = currentChatSession?.sessionId;
+  useEffect(() => setFullscreenResponse(undefined), [currentChatSessionId]);
+  const fullscreenPart =
+    currentChatSession &&
+    fullscreenResponse &&
+    currentChatSession.sessionId === fullscreenResponse.sessionId
+      ? currentChatSession.conversationSessionStore.chatStore.parts.find(
+          (part) =>
+            part.id === fullscreenResponse.partId &&
+            part.kind === "text" &&
+            part.role === "assistant",
+        )
+      : undefined;
   const sidebarMax = Math.max(
     240,
     window.innerWidth - (store.commandPaneStore.pane ? commandPaneWidth : 0) - 360,
@@ -210,9 +229,25 @@ export const App = observer(function App() {
     const runAction = (action: CakeHotkeyActionId, target: EventTarget | null) => {
       if (action === "new-terminal-tab" && target instanceof Element && target.closest(".xterm"))
         return;
-      if (action === "open-hovered-message")
-        window.dispatchEvent(new CustomEvent(cakeHotkeyEventName, { detail: action }));
-      else root.handleHotkey(action);
+      if (action === "open-hovered-message") {
+        if (document.querySelector('[data-slot="message"]:hover')) {
+          window.dispatchEvent(new CustomEvent(cakeHotkeyEventName, { detail: action }));
+          return;
+        }
+        const current =
+          root.appShellStore.surface === "workbench"
+            ? root.projectWorkbenchStore.activeSession
+            : root.appShellStore.surface === "cake-chat" &&
+                root.appShellStore.selection.kind === "cake-chat" &&
+                root.appShellStore.selection.sessionId
+              ? root.cakeChatCollectionStore.registry.find(root.appShellStore.selection.sessionId)
+              : undefined;
+        const part = current?.conversationSessionStore.chatStore.parts.findLast(
+          (part) => part.kind === "text" && part.role === "assistant" && Boolean(part.text),
+        );
+        if (current && part)
+          setFullscreenResponse({ sessionId: current.sessionId, partId: part.id });
+      } else root.handleHotkey(action);
     };
     const runHotkey = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -1256,6 +1291,22 @@ export const App = observer(function App() {
       </ToastHost>
       {!terminal.docked && (
         <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
+      )}
+      {fullscreenPart?.kind === "text" && fullscreenPart.role === "assistant" && (
+        <FullscreenMessage
+          eyebrow="Full response"
+          title="Cake"
+          text={fullscreenPart.text}
+          markdown
+          streaming={fullscreenPart.status === "streaming"}
+          partId={fullscreenPart.id}
+          onOpenSourceLocation={
+            surface === "workbench" && session
+              ? projectTranscriptBehaviorFor(session).openSourceLocation
+              : undefined
+          }
+          onClose={() => setFullscreenResponse(undefined)}
+        />
       )}
       <UiHintMode store={root.uiHintModeStore} />
       {store.agentAvailability === "unavailable" && projectOpen.projectPath && (

@@ -174,8 +174,9 @@ export const hotkeyDefinitions: readonly HotkeyDefinition[] = [
   {
     id: "open-hovered-message",
     group: "Conversation",
-    label: "Open hovered message",
-    description: "Open the message currently under the pointer in a focused view.",
+    label: "Open message fullscreen",
+    description:
+      "Open the hovered response, or the current session's latest response when no message is hovered.",
     defaultBinding: isMacPlatform ? "Mod+Enter" : "Alt+Enter",
   },
 ];

@@ -322,7 +322,6 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
   >({});
   const messageRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const hoveredRef = useRef(false);
   const commentThreads = behavior.messageComments?.threadsForMessage(part.id) ?? [];
   const draftAnnotations = behavior.store.annotations.filter(
     (annotation) => annotation.messageId === part.id,
@@ -334,7 +333,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
   const closeFullscreen = useCallback(() => setFullscreen(false), []);
   useEffect(() => {
     const onHotkey = () => {
-      if (hoveredRef.current) openFullscreen();
+      if (messageRef.current?.matches(":hover")) openFullscreen();
     };
     window.addEventListener(cakeHotkeyEventName, onHotkey);
     return () => window.removeEventListener(cakeHotkeyEventName, onHotkey);
@@ -449,8 +448,6 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       ref={messageRef}
       part={part}
       contentRef={contentRef}
-      onMouseEnter={() => (hoveredRef.current = true)}
-      onMouseLeave={() => (hoveredRef.current = false)}
       onOpenSourceLocation={behavior.openSourceLocation}
     >
       {behavior.showAssistantFullscreen !== false && canOpenFullscreen && (
