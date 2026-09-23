@@ -68,6 +68,7 @@ type ObservedProjectSessionTarget = ProjectSessionTarget & { readonly workingDir
 interface ModelSource {
   readonly projection: RootProjection;
   readonly projectSessionCatalogQueries: () => ReadonlyArray<ProjectSessionCatalogQuery>;
+  readonly onProjectSessionTitleChanged?: (sessionId: string, title: string) => void;
   readonly cakeChatCatalogQueries?: () => ReadonlyArray<CakeChatCatalogQuery>;
   readonly loadedProjectSessions?: () => ReadonlyArray<ObservedProjectSessionTarget>;
   readonly loadedCakeChatIds?: () => ReadonlyArray<string>;
@@ -99,6 +100,7 @@ type ModelInput = {
   readonly worktrees?: WorktreeCatalog;
   readonly worktreeOperations?: WorktreeOperationCatalog;
   readonly projectSessionCatalogQueries?: ReadonlyArray<ProjectSessionCatalogQuery>;
+  readonly onProjectSessionTitleChanged?: (sessionId: string, title: string) => void;
   readonly cakeChatCatalog: CakeChatCatalog;
   readonly cakeChatCatalogQueries?: ReadonlyArray<CakeChatCatalogQuery>;
   readonly projectSessions: ReadonlyArray<{
@@ -236,8 +238,11 @@ export const createModelObserver = (
         key,
         input.sessionCatalog,
         (client) => client.projectSessions.observeCatalog(query),
-        (update: SessionCatalogUpdate) =>
-          applySessionCatalogGroupUpdate(input.sessionCatalog, query, update),
+        (update: SessionCatalogUpdate) => {
+          applySessionCatalogGroupUpdate(input.sessionCatalog, query, update);
+          if (update._tag === "Event" && update.event._tag === "TitleChanged" && !query.resolved)
+            input.onProjectSessionTitleChanged?.(update.event.sessionId, update.event.title);
+        },
         {
           replacementGroup: key,
           clear: () =>
@@ -420,6 +425,7 @@ export const createModelObserver = (
         worktrees: source.projection.worktrees,
         worktreeOperations: source.projection.worktreeOperations,
         projectSessionCatalogQueries: source.projectSessionCatalogQueries(),
+        onProjectSessionTitleChanged: source.onProjectSessionTitleChanged,
         cakeChatCatalog: source.projection.cakeChatCatalog,
         cakeChatCatalogQueries: source.cakeChatCatalogQueries?.(),
         projectSessions,
@@ -499,6 +505,8 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
     projection,
     projectSessionCatalogQueries: () =>
       root.sidebarStore.sessionListStore.projectSessionCatalogQueries,
+    onProjectSessionTitleChanged: (sessionId, title) =>
+      root.sessionRegistry.pendingSessions.applyLiveTitle(sessionId, title),
     cakeChatCatalogQueries: () => root.sidebarStore.sessionListStore.cakeChatCatalogQueries,
     loadedProjectSessions: () =>
       root.sessionRegistry.targets.map(({ sessionId, workspacePath }) => ({

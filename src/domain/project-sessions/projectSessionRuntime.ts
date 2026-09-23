@@ -684,7 +684,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             signal,
           ),
       },
-      sessionTitleChanged: (targetSessionId) =>
+      sessionTitleChanged: (targetSessionId, title) =>
         run(
           Effect.gen(function* () {
             const records = yield* worktrees.records();
@@ -692,11 +692,10 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
               records.find((record) => record.worktreePath === location.workingDirectory)
                 ?.projectPath ?? location.workingDirectory;
             yield* catalogs.publish({
-              _tag: "ProjectSessionChanged",
+              _tag: "ProjectSessionTitleChanged",
               sessionId: targetSessionId,
               projectPath,
-              workingDirectory: location.workingDirectory,
-              resolved: false,
+              title,
             });
           }),
         ),

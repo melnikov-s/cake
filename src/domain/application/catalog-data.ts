@@ -28,6 +28,10 @@ const SessionCatalogEvent = Schema.TaggedUnion({
   UpsertedBatch: { sessions: Schema.Array(ProjectSessionSummary) },
   Removed: { sessionId: ProjectSessionSummary.fields.sessionId },
   RemovedBatch: { sessionIds: Schema.Array(ProjectSessionSummary.fields.sessionId) },
+  TitleChanged: {
+    sessionId: ProjectSessionSummary.fields.sessionId,
+    title: ProjectSessionSummary.fields.title,
+  },
   StatusChanged: {
     sessionId: ProjectSessionSummary.fields.sessionId,
     resolved: Schema.Boolean,

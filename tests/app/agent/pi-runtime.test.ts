@@ -540,6 +540,12 @@ describe("Pi 0.85.1 foundation contract", () => {
       expect(autoLabelSession).toHaveBeenCalledWith(
         expect.objectContaining({ firstUserMessage: "Investigate session naming" }),
       );
+      await vi.waitFor(() =>
+        expect(sessionTitleChanged).toHaveBeenCalledWith(runtime.sessionId, "Generated title"),
+      );
+      expect(events.some((event) => event.type === "streaming" && event.streaming === false)).toBe(
+        false,
+      );
       releaseResponse();
       await prompt;
       await vi.waitFor(async () => {

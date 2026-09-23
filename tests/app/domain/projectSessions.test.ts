@@ -1400,6 +1400,38 @@ describe("Project Sessions domain", () => {
     );
   });
 
+  it.effect("projects a live title before the first assistant message creates a session file", () =>
+    Effect.gen(function* () {
+      const catalogs = yield* SessionCatalogChanges;
+      const updates = yield* projectSessionMetadata.observeCatalog({
+        projectPath: "/project",
+        resolved: false,
+      });
+      const ready = yield* Deferred.make<void>();
+      const fiber = yield* updates.pipe(
+        Stream.tap((update) =>
+          update.revision === 1 ? Deferred.succeed(ready, undefined) : Effect.void,
+        ),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* Deferred.await(ready);
+      yield* catalogs.publish({
+        _tag: "ProjectSessionTitleChanged",
+        projectPath: "/project",
+        sessionId: "not-yet-persisted",
+        title: "Generated title",
+      });
+      const observed = Array.from(yield* Fiber.join(fiber));
+      assert.deepEqual(observed[1], {
+        _tag: "Event",
+        revision: 2,
+        event: { _tag: "TitleChanged", sessionId: "not-yet-persisted", title: "Generated title" },
+      });
+    }).pipe(Effect.provide(makeLayer())),
+  );
+
   it.effect(
     "moves a resolved session in place without restarting the active metadata stream",
     () => {

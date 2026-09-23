@@ -1,7 +1,10 @@
 import { Effect, Queue, Stream } from "effect";
 import { createStore, mount, observable } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import type { DiscussionCatalogUpdate } from "../../../../src/domain/application/catalog-data";
+import type {
+  DiscussionCatalogUpdate,
+  SessionCatalogUpdate,
+} from "../../../../src/domain/application/catalog-data";
 import type { DiscussionSessionUpdate } from "../../../../src/domain/discussion-sessions/discussion-session-data";
 import {
   SessionChatError,
@@ -103,6 +106,40 @@ function baseClient(overrides: object = {}) {
 }
 
 describe("Project Session composition observer", () => {
+  it("delivers a title event to the pending projection before a file-backed catalog entry exists", async () => {
+    const updates = await Effect.runPromise(Queue.unbounded<SessionCatalogUpdate>());
+    const changed = vi.fn();
+    const projection = RootProjection.create();
+    const client = baseClient({
+      projectSessions: { observeCatalog: () => Stream.fromQueue(updates) },
+    });
+    const observer = createModelObserver(runtimeFor(client));
+    try {
+      observer.sync({
+        ...baseInput(projection),
+        projectSessions: [],
+        projectSessionCatalogQueries: [{ projectPath: "/project", resolved: false }],
+        onProjectSessionTitleChanged: changed,
+      });
+      await Effect.runPromise(
+        Queue.offer(updates, { _tag: "Snapshot", revision: 1, sessions: [] }),
+      );
+      await Effect.runPromise(
+        Queue.offer(updates, {
+          _tag: "Event",
+          revision: 2,
+          event: { _tag: "TitleChanged", sessionId: "new-session", title: "Generated title" },
+        }),
+      );
+      await vi.waitFor(() =>
+        expect(changed).toHaveBeenCalledWith("new-session", "Generated title"),
+      );
+      expect(projection.sessionCatalog.sessions).toHaveLength(0);
+    } finally {
+      observer.stop();
+      projection[Symbol.dispose]();
+    }
+  });
   it("starts the Conversation from the known target without waiting for aggregate side authorities", async () => {
     const updates = await Effect.runPromise(Queue.unbounded<ConversationUpdate>());
     const observes = vi.fn(() => Stream.fromQueue(updates));

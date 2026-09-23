@@ -99,6 +99,39 @@ describe("CatalogReducer", () => {
     catalog[Symbol.dispose]();
   });
 
+  it("updates an existing live title without inventing a file-backed session", () => {
+    const catalog = SessionCatalog.create({
+      sessions: [
+        {
+          sessionId: "existing",
+          title: "Old title",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          modifiedAt: "2026-01-01T00:00:00.000Z",
+          messageCount: 1,
+          resolved: false,
+          unread: false,
+          projectPath: "/project",
+          projectName: "Project",
+          workingDirectory: "/project",
+        },
+      ],
+    });
+    const query = { projectPath: "/project", resolved: false };
+    applySessionCatalogGroupUpdate(catalog, query, {
+      _tag: "Event",
+      revision: 2,
+      event: { _tag: "TitleChanged", sessionId: "existing", title: "New title" },
+    });
+    applySessionCatalogGroupUpdate(catalog, query, {
+      _tag: "Event",
+      revision: 3,
+      event: { _tag: "TitleChanged", sessionId: "unpersisted", title: "Early title" },
+    });
+    expect(catalog.sessions).toHaveLength(1);
+    expect(catalog.find("existing")?.title).toBe("New title");
+    catalog[Symbol.dispose]();
+  });
+
   it("does not let a late active-lane removal delete a resolved summary", () => {
     const catalog = SessionCatalog.create({
       sessions: [

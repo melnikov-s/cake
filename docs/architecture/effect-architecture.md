@@ -349,8 +349,9 @@ The IDs-only stream discovers session identities from filenames without statting
 transcripts; lifecycle workflows use it when they do not need display metadata. The catalog stream
 discovers sessions from filename and filesystem metadata, then opens each Pi JSONL transcript to
 derive its bounded title from the latest session-name entry or first user message. Pi is the sole
-durable title authority. Runtime title changes publish scoped catalog
-changes so active renderer projections update immediately. Cake's archive index stores
+durable title authority. Runtime title changes publish scoped title events so active
+renderer projections update immediately, including pending sessions whose first assistant
+message has not yet caused Pi to write a JSONL file. Cake's archive index stores
 routing metadata only; active and resolved catalogs derive titles from the transcript in either
 namespace. Resolution belongs to standalone sessions and family roots. Child transcripts stay
 in place and inherit the root's namespace through domain policy. Family catalog and conversation

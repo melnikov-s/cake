@@ -66,6 +66,25 @@ describe("ProjectPendingSessionsStore", () => {
     store[Symbol.dispose]();
   });
 
+  it("shows a live generated title during the first turn without replacing an explicit name", () => {
+    const { store } = fixture();
+    store.prepareStaged("/project", "new-session");
+    store.projectSubmission("new-session", "Investigate naming");
+    expect(store.summaries[0]?.title).toBe("Investigate naming");
+
+    store.applyLiveTitle("new-session", "Generated title");
+    expect(store.summaries[0]?.title).toBe("Generated title");
+    store.applyLiveTitle("new-session", "Later model response");
+    expect(store.summaries[0]?.title).toBe("Generated title");
+
+    store.prepareStaged("/project", "explicit-session");
+    store.conversation("explicit-session")!.setName("My name");
+    store.projectSubmission("explicit-session", "Investigate naming");
+    store.applyLiveTitle("explicit-session", "Unwanted title");
+    expect(store.conversation("explicit-session")?.title).toBe("My name");
+    store[Symbol.dispose]();
+  });
+
   it("owns staged, saved-draft, relocated, and materialized transitions", async () => {
     const { sessions, store, persistNow } = fixture();
     const session = store.prepareStaged("/project", "draft-1");

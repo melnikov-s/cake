@@ -441,6 +441,10 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
 ) {
   if (change._tag === "ProjectSessionRemoved")
     return { _tag: "Removed", sessionId: change.sessionId } as const;
+  if (change._tag === "ProjectSessionTitleChanged")
+    return change.projectPath === query.projectPath && !query.resolved
+      ? ({ _tag: "TitleChanged", sessionId: change.sessionId, title: change.title } as const)
+      : undefined;
   if (
     (change._tag === "ProjectSessionStatusChanged" || change._tag === "ProjectSessionChanged") &&
     change.projectPath === query.projectPath

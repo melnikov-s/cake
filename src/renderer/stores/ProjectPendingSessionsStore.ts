@@ -141,6 +141,13 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     addUnique(this.unlistedNewSessionIds, sessionId);
   }
 
+  /** Pi may name the live session before its first assistant message persists a JSONL file. */
+  applyLiveTitle(sessionId: string, title: string) {
+    const conversation = this.conversation(sessionId);
+    if (this.isTemporary(sessionId) && conversation && !conversation.name && !conversation.isDraft)
+      conversation.setName(title);
+  }
+
   materialize(sessionId: string, workingDirectory: string) {
     if (!this.temporarySessionIds.includes(sessionId))
       throw new Error("Only a successfully started renderer draft can be materialized.");
