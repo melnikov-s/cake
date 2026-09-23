@@ -14,6 +14,10 @@ import type { ArtifactRecord } from "../../../src/ipc/artifact-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { InlineWidgetStore } from "../../../src/renderer/stores/InlineWidgetStore";
 import type { ProjectSessionStore } from "../../../src/renderer/stores/ProjectSessionStore";
+import { ArtifactInteractionStore } from "../../../src/renderer/stores/ArtifactInteractionStore";
+import { SessionOperationCoordinatorStore } from "../../../src/renderer/stores/SessionOperationCoordinatorStore";
+import { TranscriptPart } from "../../../src/renderer/components/chat-transcript-part";
+import type { CanonicalTranscriptBehavior } from "../../../src/renderer/components/chat-message";
 import { FullscreenSurfaceFixture } from "./fullscreen-surface-fixture";
 import { mountWithClient } from "./mount-with-client";
 
@@ -214,6 +218,222 @@ describe("ArtifactHost", () => {
       ),
     );
     expect(container.querySelector('[data-artifact-id="moving-request"]')).toBeNull();
+  });
+
+  it("renders a tool-linked interview request in its transcript part and resolves it", async () => {
+    const request = {
+      protocol: "cake.request/v1" as const,
+      id: "linked-interview",
+      title: "Linked interview",
+      responseSchema: {
+        type: "object" as const,
+        properties: { region: { type: "string" as const } },
+      },
+      view: {
+        type: "form" as const,
+        fields: [
+          {
+            id: "region",
+            label: "Region",
+            type: "select" as const,
+            options: [{ value: "us-east-1", label: "US East" }],
+          },
+        ],
+      },
+      fallback: { markdown: "Choose a region." },
+    };
+    const artifact = record({
+      protocol: "cake.artifact/v1",
+      id: request.id,
+      sessionId: "session",
+      revision: 1,
+      kind: "request",
+      payload: { request },
+      fallback: request.fallback,
+      interaction: { mode: "request", responseSchema: request.responseSchema },
+    });
+    const respond = vi.fn(async () => ({ artifactRequestId: "artifact-request" }));
+    const { root: storeRoot, subject: interaction } = mountWithClient(
+      createStore(ArtifactInteractionStore, {
+        sessionContext: () => ({ sessionId: "session" }),
+        operations: createStore(SessionOperationCoordinatorStore, {}),
+        operationOwner: "test",
+        isStreaming: () => true,
+      }),
+      { artifacts: { respond } } as unknown as Client,
+    );
+    const behavior = {
+      store: {},
+      renderChat: () => null,
+      artifacts: { records: [], interaction },
+    } as unknown as CanonicalTranscriptBehavior;
+    const part = {
+      id: "tool-call",
+      kind: "tool" as const,
+      name: "cake",
+      command: "interview.open",
+      input: "",
+      artifactId: request.id,
+      state: "running" as const,
+    };
+    const render = () => root.render(<TranscriptPart part={part} behavior={behavior} />);
+
+    // Request artifacts are never in the session catalog, so the linked tool
+    // part must render from the live request itself.
+    act(() =>
+      interaction.receive({
+        type: "artifact-requested",
+        operationId: "operation",
+        artifactRequestId: "artifact-request",
+        record: artifact,
+      }),
+    );
+    act(render);
+    const form = container.querySelector<HTMLFormElement>(
+      '[data-artifact-id="linked-interview"] form',
+    );
+    expect(form).not.toBeNull();
+    await act(async () => {
+      form!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(respond).toHaveBeenCalledWith(
+      expect.objectContaining({
+        artifactRequestId: "artifact-request",
+        value: { region: "us-east-1" },
+      }),
+    );
+    expect(interaction.request).toBeUndefined();
+    act(render);
+    expect(container.querySelector('[data-artifact-id="linked-interview"]')?.textContent).toContain(
+      "Submitted",
+    );
+    storeRoot[Symbol.dispose]();
+  });
+
+  it("steps through a multi-question interview and submits only from the user's submit", () => {
+    const submit = vi.fn();
+    const request = {
+      protocol: "cake.request/v1" as const,
+      id: "stepped",
+      title: "Stepped interview",
+      responseSchema: { type: "object" as const },
+      view: {
+        type: "form" as const,
+        fields: [
+          {
+            id: "region",
+            label: "Region",
+            type: "select" as const,
+            options: [
+              { value: "us", label: "US" },
+              { value: "eu", label: "EU" },
+            ],
+          },
+          { id: "name", label: "Name", type: "text" as const },
+          { id: "notes", label: "Notes", type: "text" as const },
+        ],
+      },
+      fallback: { markdown: "Answer three questions." },
+    };
+    const artifact = record({
+      protocol: "cake.artifact/v1",
+      id: request.id,
+      sessionId: "session",
+      revision: 1,
+      kind: "request",
+      payload: { request },
+      fallback: request.fallback,
+      interaction: { mode: "request", responseSchema: request.responseSchema },
+    });
+    act(() => root.render(<ArtifactHost record={artifact} requested onSubmit={submit} />));
+    const button = (name: string) =>
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+        (candidate) => candidate.textContent === name,
+      );
+    const form = () => container.querySelector<HTMLFormElement>("form")!;
+    const pressEnter = () =>
+      act(() => form().dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+
+    expect(container.textContent).toContain("Question 1 of 3");
+    expect(container.querySelector('[role="radiogroup"][aria-label="Region"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("Name");
+    act(() => container.querySelector<HTMLInputElement>('input[value="eu"]')!.click());
+    // Enter advances rather than sending the interview.
+    pressEnter();
+    expect(submit).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Question 2 of 3");
+    const name = container.querySelector<HTMLInputElement>('input[type="text"]')!;
+    act(() => {
+      setInputValue(name, "Ada");
+      name.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => button("Back")!.click());
+    expect(container.querySelector<HTMLInputElement>('input[value="eu"]')!.checked).toBe(true);
+    act(() => button("Next")!.click());
+    act(() => button("Next")!.click());
+    expect(container.querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe("");
+    expect(button("Review")).toBeDefined();
+    act(() => button("Review")!.click());
+
+    expect(container.textContent).toContain("Review answers");
+    const answers = container.querySelector('dl[aria-label="Answers"]')!.textContent;
+    expect(answers).toContain("EU");
+    expect(answers).toContain("Ada");
+    expect(answers).toContain("No answer");
+    expect(submit).not.toHaveBeenCalled();
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Edit Name"]')!.click());
+    expect(container.textContent).toContain("Question 2 of 3");
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Review answers"]')!.click());
+    pressEnter();
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(submit).toHaveBeenCalledWith({ region: "eu", name: "Ada" });
+    // The settled form shows every question for the record.
+    expect(container.textContent).toContain("Submitted");
+    expect(container.querySelectorAll('input[type="text"]').length).toBeGreaterThanOrEqual(2);
+    expect(button("Next")).toBeUndefined();
+  });
+
+  it("submits only from the review page, which the progress bar can reach early", () => {
+    const submit = vi.fn();
+    const request = {
+      protocol: "cake.request/v1" as const,
+      id: "early",
+      title: "Early submit",
+      responseSchema: { type: "object" as const },
+      view: {
+        type: "form" as const,
+        fields: [
+          { id: "first", label: "First", type: "text" as const },
+          { id: "second", label: "Second", type: "text" as const },
+        ],
+      },
+      fallback: { markdown: "Two questions." },
+    };
+    const artifact = record({
+      protocol: "cake.artifact/v1",
+      id: request.id,
+      sessionId: "session",
+      revision: 1,
+      kind: "request",
+      payload: { request },
+      fallback: request.fallback,
+      interaction: { mode: "request", responseSchema: request.responseSchema },
+    });
+    act(() => root.render(<ArtifactHost record={artifact} requested onSubmit={submit} />));
+    const input = container.querySelector<HTMLInputElement>('input[type="text"]')!;
+    act(() => {
+      setInputValue(input, "only this");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const submitButton = () =>
+      [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+        (candidate) => candidate.textContent === "Submit",
+      );
+    expect(submitButton()).toBeUndefined();
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Review answers"]')!.click());
+    expect(container.textContent).toContain("Review answers");
+    act(() => submitButton()!.click());
+    expect(submit).toHaveBeenCalledWith({ first: "only this" });
   });
 
   it("renders select fields as radios and shows the submitted answers once", () => {

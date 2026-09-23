@@ -34,6 +34,14 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
    *  `artifactId:revision`, so a re-mounted form renders as submitted
    *  instead of offering a second submission. */
   readonly submittedAnswers = observable(new Map<string, JsonValue>());
+  /** Request artifacts are ephemeral: main never stores them in the artifact
+   *  catalog, so the renderer keeps each received request record for this
+   *  window's lifetime so its transcript tool part can render the form. */
+  private readonly requestRecords = observable(new Map<string, ArtifactRecord>());
+
+  requestRecord(artifactId: string): ArtifactRecord | undefined {
+    return this.requestRecords.get(artifactId);
+  }
 
   submittedAnswer(artifact: { id: string; revision: number }): JsonValue | undefined {
     return this.submittedAnswers.get(`${artifact.id}:${artifact.revision}`);
@@ -135,6 +143,7 @@ export class ArtifactInteractionStore extends Store<ArtifactInteractionStoreProp
       // cancellation) arrives. Replayed requests overwrite harmlessly.
       if (event.record.artifact.sessionId !== this.props.sessionContext()?.sessionId) return;
       this.request = event;
+      this.requestRecords.set(event.record.artifact.id, event.record);
       this.props.onRequestChanged?.(true);
       return;
     }

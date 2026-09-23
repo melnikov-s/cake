@@ -1,7 +1,8 @@
 import { Option, Schema } from "effect";
-import { useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { CheckIcon } from "@/components/ui/icons";
+import { StepProgress } from "@/components/ui/step-progress";
 import { cn } from "@/lib/utils";
 import type { JsonValue } from "../../ipc/json-contract";
 
@@ -52,11 +53,23 @@ function initialFormValues(fields: ReadonlyArray<ArtifactFormField>) {
   );
 }
 
+function answerText(field: ArtifactFormField, value: ArtifactFormValue | undefined) {
+  if (field.type === "checkbox") return value ? "Yes" : "No";
+  if (value === undefined || value === "" || Number.isNaN(value)) return undefined;
+  if (field.type === "select")
+    return listedOptions(field)?.find((option) => option.value === value)?.label ?? String(value);
+  return String(value);
+}
+
 /** Shared answer form for form artifacts and form-view request artifacts.
  *  Select fields render listed options as radio rows plus one deterministic
- *  freeform "Other" row (discarding a redundant listed Other option), the actions are the static Skip/Submit
- *  pair, and once an answer has been submitted the form stays visible but
- *  disabled with the submitted values so it cannot be submitted again. */
+ *  freeform "Other" row (discarding a redundant listed Other option).
+ *  Multi-question forms step through one question at a time with Back/Next
+ *  navigation and end on a review page, the only step that submits (the
+ *  progress bar can jump there early); Skip is available on every step and
+ *  nothing is sent until the user submits. Once an answer
+ *  has been submitted the form shows every question disabled with the
+ *  submitted values so it cannot be submitted again. */
 export function ArtifactForm({
   fields,
   requested,
@@ -75,11 +88,34 @@ export function ArtifactForm({
   );
   const [localAnswers, setLocalAnswers] = useState<Record<string, ArtifactFormValue> | null>(null);
   const [customRows, setCustomRows] = useState<ReadonlySet<string>>(new Set());
+  const [step, setStep] = useState(0);
+  const navigated = useRef(false);
+  const stepContent = useRef<HTMLDivElement>(null);
   const otherInputs = useRef(new Map<string, HTMLInputElement>());
   const group = useId();
   const answers = answersRecord(submittedAnswer) ?? localAnswers;
   const submitted = answers !== null;
   const shown = answers ?? values;
+  const stepped = !submitted && fields.length > 1;
+  const reviewing = stepped && step >= fields.length;
+  const visibleFields = !stepped ? fields : reviewing ? [] : fields.slice(step, step + 1);
+  const answered = (field: ArtifactFormField) =>
+    field.type === "checkbox"
+      ? shown[field.id] !== undefined
+      : answerText(field, shown[field.id]) !== undefined;
+  const goTo = (next: number) => {
+    navigated.current = true;
+    setStep(Math.max(0, Math.min(fields.length, next)));
+  };
+  useEffect(() => {
+    // Keep keyboard flow on the new question, but never steal focus on mount.
+    if (!navigated.current) return;
+    stepContent.current
+      ?.querySelector<HTMLElement>(
+        "input:checked, input:not([type=radio]), textarea, [data-step-focus]",
+      )
+      ?.focus();
+  }, [step]);
   const isCustomRow = (field: ArtifactFormField) => {
     if (customRows.has(field.id)) return true;
     const text = String(shown[field.id] ?? "");
@@ -93,11 +129,16 @@ export function ArtifactForm({
         : current,
     );
   };
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
+  const submitAll = () => {
     if (submitted) return;
     setLocalAnswers({ ...values });
     onSubmit?.(values);
+  };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    // Enter advances through questions; only the review page submits implicitly.
+    if (stepped && !reviewing) goTo(step + 1);
+    else submitAll();
   };
   return (
     <form className="grid gap-3" onSubmit={submit}>
@@ -107,133 +148,206 @@ export function ArtifactForm({
           Submitted
         </p>
       )}
-      {fields.map((field) =>
-        field.type === "checkbox" ? (
-          <label key={field.id} className="flex items-center gap-2.5 text-sm text-foreground">
-            <input
-              type="checkbox"
-              className="accent-primary"
-              disabled={submitted}
-              checked={Boolean(shown[field.id])}
-              onChange={(event) => setValues({ ...values, [field.id]: event.target.checked })}
-            />
-            {field.label}
-          </label>
-        ) : (
-          <div key={field.id} className="grid gap-1.5">
-            <label
-              className="text-xs font-medium text-muted-foreground"
-              htmlFor={`${group}-${field.id}`}
-            >
+      {stepped && (
+        <div className="grid gap-1.5">
+          <div className="flex items-center justify-between gap-2 pr-8 text-xs text-muted-foreground">
+            <span aria-live="polite">
+              {reviewing ? "Review answers" : `Question ${step + 1} of ${fields.length}`}
+            </span>
+            <span>
+              {fields.filter(answered).length} of {fields.length} answered
+            </span>
+          </div>
+          <StepProgress
+            count={fields.length + 1}
+            current={step}
+            completed={(index) => index < fields.length && answered(fields[index]!)}
+            label="Questions"
+            stepLabel={(index) =>
+              index === fields.length
+                ? "Review answers"
+                : `Question ${index + 1}: ${fields[index]!.label}`
+            }
+            onSelect={goTo}
+          />
+        </div>
+      )}
+      <div ref={stepContent} className="grid gap-3">
+        {reviewing && (
+          <dl className="grid gap-1.5" aria-label="Answers">
+            {fields.map((field, index) => {
+              const text = answerText(field, shown[field.id]);
+              return (
+                <div
+                  key={field.id}
+                  className="flex items-start gap-3 rounded-md border border-border px-3 py-2"
+                >
+                  <div className="grid min-w-0 flex-1 gap-0.5">
+                    <dt className="text-xs font-medium text-muted-foreground">{field.label}</dt>
+                    <dd
+                      className={cn(
+                        "text-sm break-words whitespace-pre-wrap",
+                        text === undefined ? "text-muted-foreground italic" : "text-foreground",
+                      )}
+                    >
+                      {text ?? "No answer"}
+                    </dd>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Edit ${field.label}`}
+                    onClick={() => goTo(index)}
+                  >
+                    Edit
+                  </Button>
+                </div>
+              );
+            })}
+          </dl>
+        )}
+        {visibleFields.map((field) =>
+          field.type === "checkbox" ? (
+            <label key={field.id} className="flex items-center gap-2.5 text-sm text-foreground">
+              <input
+                type="checkbox"
+                className="accent-primary"
+                disabled={submitted}
+                checked={Boolean(shown[field.id])}
+                onChange={(event) => setValues({ ...values, [field.id]: event.target.checked })}
+              />
               {field.label}
             </label>
-            {field.type === "textarea" ? (
-              <textarea
-                id={`${group}-${field.id}`}
-                className={cn(inputClassName, "min-h-28 resize-y py-2")}
-                placeholder={field.placeholder}
-                disabled={submitted}
-                value={String(shown[field.id] ?? "")}
-                onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
-              />
-            ) : field.type === "select" ? (
-              <div aria-label={field.label} className="grid gap-1" role="radiogroup">
-                {listedOptions(field)?.map((option) => (
-                  <label
-                    key={option.value}
+          ) : (
+            <div key={field.id} className="grid gap-1.5">
+              <label
+                className={cn(
+                  "font-medium",
+                  stepped ? "text-sm text-foreground" : "text-xs text-muted-foreground",
+                )}
+                htmlFor={`${group}-${field.id}`}
+              >
+                {field.label}
+              </label>
+              {field.type === "textarea" ? (
+                <textarea
+                  id={`${group}-${field.id}`}
+                  className={cn(inputClassName, "min-h-28 resize-y py-2")}
+                  placeholder={field.placeholder}
+                  disabled={submitted}
+                  value={String(shown[field.id] ?? "")}
+                  onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
+                />
+              ) : field.type === "select" ? (
+                <div aria-label={field.label} className="grid gap-1" role="radiogroup">
+                  {listedOptions(field)?.map((option) => (
+                    <label
+                      key={option.value}
+                      className={cn(
+                        radioRowClassName,
+                        "cursor-pointer",
+                        shown[field.id] === option.value ? "border-ring bg-muted" : "border-border",
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name={`${group}-${field.id}`}
+                        className="accent-primary outline-none"
+                        value={option.value}
+                        disabled={submitted}
+                        checked={shown[field.id] === option.value}
+                        onChange={() => {
+                          setCustomRows((rows) => {
+                            if (!rows.has(field.id)) return rows;
+                            const next = new Set(rows);
+                            next.delete(field.id);
+                            return next;
+                          });
+                          setValues({ ...values, [field.id]: option.value });
+                        }}
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                  <div
                     className={cn(
                       radioRowClassName,
-                      "cursor-pointer",
-                      shown[field.id] === option.value ? "border-ring bg-muted" : "border-border",
+                      isCustomRow(field) ? "border-ring bg-muted" : "border-border",
                     )}
                   >
                     <input
                       type="radio"
                       name={`${group}-${field.id}`}
                       className="accent-primary outline-none"
-                      value={option.value}
+                      aria-label="Other"
                       disabled={submitted}
-                      checked={shown[field.id] === option.value}
+                      checked={isCustomRow(field)}
                       onChange={() => {
-                        setCustomRows((rows) => {
-                          if (!rows.has(field.id)) return rows;
-                          const next = new Set(rows);
-                          next.delete(field.id);
-                          return next;
-                        });
-                        setValues({ ...values, [field.id]: option.value });
+                        selectCustomRow(field);
+                        otherInputs.current.get(field.id)?.focus();
                       }}
                     />
-                    <span>{option.label}</span>
-                  </label>
-                ))}
-                <div
-                  className={cn(
-                    radioRowClassName,
-                    isCustomRow(field) ? "border-ring bg-muted" : "border-border",
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name={`${group}-${field.id}`}
-                    className="accent-primary outline-none"
-                    aria-label="Other"
-                    disabled={submitted}
-                    checked={isCustomRow(field)}
-                    onChange={() => {
-                      selectCustomRow(field);
-                      otherInputs.current.get(field.id)?.focus();
-                    }}
-                  />
-                  <input
-                    type="text"
-                    aria-label={`${field.label} other option`}
-                    placeholder="Other…"
-                    className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-                    disabled={submitted}
-                    value={isCustomRow(field) ? String(shown[field.id] ?? "") : ""}
-                    onFocus={() => selectCustomRow(field)}
-                    onChange={(event) => {
-                      selectCustomRow(field);
-                      setValues((current) => ({ ...current, [field.id]: event.target.value }));
-                    }}
-                    ref={(element) => {
-                      if (element) otherInputs.current.set(field.id, element);
-                      else otherInputs.current.delete(field.id);
-                    }}
-                  />
+                    <input
+                      type="text"
+                      aria-label={`${field.label} other option`}
+                      placeholder="Other…"
+                      className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                      disabled={submitted}
+                      value={isCustomRow(field) ? String(shown[field.id] ?? "") : ""}
+                      onFocus={() => selectCustomRow(field)}
+                      onChange={(event) => {
+                        selectCustomRow(field);
+                        setValues((current) => ({ ...current, [field.id]: event.target.value }));
+                      }}
+                      ref={(element) => {
+                        if (element) otherInputs.current.set(field.id, element);
+                        else otherInputs.current.delete(field.id);
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <input
-                id={`${group}-${field.id}`}
-                type={field.type}
-                className={cn(inputClassName, "h-9 px-2.5")}
-                placeholder={field.placeholder}
-                disabled={submitted}
-                value={String(shown[field.id] ?? "")}
-                onChange={(event) =>
-                  setValues({
-                    ...values,
-                    [field.id]:
-                      field.type === "number" ? event.target.valueAsNumber : event.target.value,
-                  })
-                }
-              />
+              ) : (
+                <input
+                  id={`${group}-${field.id}`}
+                  type={field.type}
+                  className={cn(inputClassName, "h-9 px-2.5")}
+                  placeholder={field.placeholder}
+                  disabled={submitted}
+                  value={String(shown[field.id] ?? "")}
+                  onChange={(event) =>
+                    setValues({
+                      ...values,
+                      [field.id]:
+                        field.type === "number" ? event.target.valueAsNumber : event.target.value,
+                    })
+                  }
+                />
+              )}
+            </div>
+          ),
+        )}
+        {!submitted && (
+          <div
+            className={cn("flex items-center gap-2", stepped ? "justify-between" : "justify-end")}
+          >
+            {stepped && (
+              <Button variant="outline" disabled={step === 0} onClick={() => goTo(step - 1)}>
+                Back
+              </Button>
             )}
+            <div className="flex gap-2">
+              {requested && (
+                <Button variant="outline" onClick={onSkip}>
+                  Skip
+                </Button>
+              )}
+              <Button type="submit" data-step-focus>
+                {!stepped || reviewing ? "Submit" : step === fields.length - 1 ? "Review" : "Next"}
+              </Button>
+            </div>
           </div>
-        ),
-      )}
-      {!submitted && (
-        <div className="flex justify-end gap-2">
-          {requested && (
-            <Button variant="outline" onClick={onSkip}>
-              Skip
-            </Button>
-          )}
-          <Button type="submit">Submit</Button>
-        </div>
-      )}
+        )}
+      </div>
     </form>
   );
 }

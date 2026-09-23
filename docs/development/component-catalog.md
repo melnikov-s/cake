@@ -10,6 +10,7 @@ Authoritative primitives live in `src/renderer/components/ui/`.
 | `SortableItem`        | Native drag-and-drop wrapper for persistently ordered navigation items.                                                                                                   |
 | `Avatar`              | Deterministic project/session artwork, opt-in disposable avatar interactions, and reduced-motion-safe smoke/character entrance animations for resolution and restoration. |
 | `ThinkingBubble`      | Compact, reduced-motion-safe conversational processing indicator.                                                                                                         |
+| `StepProgress`        | Segmented progress for multi-step flows such as stepped interview forms; segments become jump targets when `onSelect` is supplied.                                        |
 
 ## Dismissible chips
 

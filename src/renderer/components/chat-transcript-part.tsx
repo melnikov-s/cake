@@ -171,8 +171,11 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
     );
   if (part.kind === "command") return <ShellCommand part={part} />;
   if (part.kind === "tool") {
+    // Request artifacts never enter the session artifact catalog; the live
+    // interaction Store is their only record source.
     const record = part.artifactId
-      ? behavior.artifacts?.records.find((candidate) => candidate.artifact.id === part.artifactId)
+      ? (behavior.artifacts?.interaction.requestRecord(part.artifactId) ??
+        behavior.artifacts?.records.find((candidate) => candidate.artifact.id === part.artifactId))
       : undefined;
     if (record && behavior.artifacts) {
       if (record.artifact.kind !== "request")
