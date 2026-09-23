@@ -1,6 +1,7 @@
 import { Store } from "r-state-tree";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
 import type { EditorLocation } from "../../ipc/editor-location";
+import type { EditorSelectionHighlights } from "../../ipc/editor-selection";
 import type { Attachment } from "../../ipc/session-contract";
 import type { EmbeddedEditorStateSnapshot, EmbeddedEditorStatus } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
@@ -18,6 +19,7 @@ export interface EmbeddedEditorStoreProps {
   chatSidebarWidth(): number;
   setChatSidebarWidth(width: number): void;
   annotations(): EditorAnnotationSnapshot | undefined;
+  selectionHighlights(): EditorSelectionHighlights;
   startCakeChat(prompt: string): Promise<void>;
   enterProjectSidebarMode(): void;
   leaveProjectSidebarMode(): void;
@@ -56,6 +58,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   private sentAnnotationsFingerprint: string | undefined;
   private syncingAnnotations = false;
   private annotationSyncPending = false;
+  private highlightSyncTail: Promise<void> = Promise.resolve();
 
   get vscode() {
     return ClientContext.consume(this)!.vscode;
@@ -101,6 +104,19 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     this.reaction(
       () => JSON.stringify(this.props.annotations()),
       () => void this.syncAnnotations(),
+    );
+    this.reaction(
+      () =>
+        JSON.stringify([
+          this.nativeViewReady,
+          this.props.projectPath(),
+          this.props.selectionHighlights(),
+        ]),
+      () => {
+        void this.syncSelectionHighlights().catch((error) => {
+          if (!this.signal.aborted) this.error = describeError(error).message;
+        });
+      },
     );
     this.reaction(
       () => JSON.stringify(this.nativeViewBounds),
@@ -167,15 +183,6 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     }
   }
 
-  /** Adopts an editor instance that main opened for an agent-directed action. */
-  showAgentEditor() {
-    const projectPath = this.props.projectPath();
-    if (!projectPath) return;
-    this.activate();
-    this.openedWorkspace = projectPath;
-    void this.syncAnnotations();
-  }
-
   private activate() {
     this.props.setPresentationMode("vscode");
     if (!this.visible) this.props.enterProjectSidebarMode();
@@ -221,6 +228,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       if (this.signal.aborted || this.props.projectPath() !== projectPath) return;
       this.openedWorkspace = projectPath;
       await this.syncAnnotations();
+      await this.syncSelectionHighlights();
     } catch (error) {
       if (this.signal.aborted) return;
       const described = describeError(error);
@@ -336,19 +344,28 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     }
   }
 
+  /** Serialize full replacements, reading the active Store only when each send starts. */
+  syncSelectionHighlights(): Promise<void> {
+    const pending = this.highlightSyncTail.then(async () => {
+      this.signal.throwIfAborted();
+      const projectPath = this.props.projectPath();
+      if (!projectPath || !this.nativeViewReady) return;
+      await this.vscode.updateSelectionHighlights(projectPath, this.props.selectionHighlights(), {
+        signal: this.signal,
+      });
+    });
+    this.highlightSyncTail = pending.catch(() => undefined);
+    return pending;
+  }
+
   async reveal(location: EditorLocation) {
     const projectPath = this.props.projectPath();
-    if (!projectPath || !this.visible) return;
+    if (!projectPath || !this.visible) throw new Error("Embedded VS Code is not visible");
     if (this.openedWorkspace !== projectPath) await this.open();
-    if (this.signal.aborted || this.props.projectPath() !== projectPath || !this.visible) return;
-    try {
-      await this.vscode.reveal(projectPath, location, { signal: this.signal });
-    } catch (error) {
-      if (this.signal.aborted) return;
-      const described = describeError(error);
-      this.error = described.message;
-      this.errorDetails = described.details;
-    }
+    this.signal.throwIfAborted();
+    if (this.props.projectPath() !== projectPath || !this.nativeViewReady)
+      throw new Error("Embedded VS Code changed before navigation completed");
+    return this.vscode.reveal(projectPath, location, { signal: this.signal });
   }
 
   /** Hides the native surface while retaining the current session's IDE preference. */

@@ -52,6 +52,13 @@ import { Browser } from "../../services/browser/Browser";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import type { Terminal } from "../../services/terminal/Terminal";
 import { toJsonValue } from "../../utils/to-json-value";
+import { agentEditorLocation } from "../../utils/agent-editor-location";
+import type { JsonObject } from "../../ipc/json-contract";
+import {
+  EditorSelectionOpenResult,
+  EditorSelectionState,
+  EditorSelectionUpdate,
+} from "../../ipc/editor-selection";
 
 const FamilyMessageInput = Schema.Struct({
   sessionId: Schema.optionalKey(
@@ -231,6 +238,21 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     return { sessionId: targetId, location: targetLocation };
   });
   const getRuntimeOptions = () => runtimeOptions;
+  const requestEditorControl = async (command: string, input: JsonObject, signal: AbortSignal) => {
+    const response = await runtimeIntegrations.requestApplicationControl(
+      { _tag: "InvokeAppControl", command, input },
+      signal,
+    );
+    const status = await run(
+      Schema.decodeUnknownEffect(
+        Schema.Struct({ ok: Schema.Boolean, error: Schema.optionalKey(Schema.String) }),
+      )(response),
+      { signal },
+    );
+    if (!status.ok)
+      throw new Error(status.error ?? "The owning renderer's VS Code controls are unavailable");
+    return response;
+  };
   const runtimeOptions: CakeSessionRuntimeAcquireOptions = {
     profile: { _tag: "ProjectSession" },
     onRelease: runtimeHost.releaseSession(sessionId),
@@ -735,9 +757,60 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           }
         : undefined,
       vscodeControl: {
-        enter: (signal) => run(vscode.enterProjectEditor(location.workingDirectory), { signal }),
-        open: (sourceLocation, signal) =>
-          run(vscode.openProjectLocation(location.workingDirectory, sourceLocation), { signal }),
+        enter: async (signal) => {
+          await requestEditorControl("vscode.enter", {}, signal);
+        },
+        open: async (sourceLocation, signal) => {
+          try {
+            const response = await requestEditorControl(
+              "vscode.open",
+              agentEditorLocation(sourceLocation),
+              signal,
+            );
+            const { selection } = await run(
+              Schema.decodeUnknownEffect(Schema.Struct({ selection: EditorSelectionOpenResult }))(
+                response,
+              ),
+              { signal },
+            );
+            return { status: "completed" as const, value: selection };
+          } catch (error) {
+            if (error instanceof Error && error.message.startsWith("VSCODE_MODE_REQUIRED:"))
+              return { status: "mode-required" as const };
+            throw error;
+          }
+        },
+        listSelections: async (signal) => {
+          const response = await requestEditorControl("vscode.selections.list", {}, signal);
+          return (
+            await run(
+              Schema.decodeUnknownEffect(Schema.Struct({ state: EditorSelectionState }))(response),
+              { signal },
+            )
+          ).state;
+        },
+        removeSelection: async (id, signal) => {
+          const response = await requestEditorControl("vscode.selections.remove", { id }, signal);
+          return (
+            await run(
+              Schema.decodeUnknownEffect(Schema.Struct({ update: EditorSelectionUpdate }))(
+                response,
+              ),
+              { signal },
+            )
+          ).update;
+        },
+        clearSelections: async (signal) => {
+          const response = await requestEditorControl("vscode.selections.clear", {}, signal);
+          return (
+            await run(
+              Schema.decodeUnknownEffect(Schema.Struct({ update: EditorSelectionUpdate }))(
+                response,
+              ),
+              { signal },
+            )
+          ).update;
+        },
         runScript: (source, input, signal) =>
           run(vscode.runProjectScript(location.workingDirectory, source, input), { signal }),
       },

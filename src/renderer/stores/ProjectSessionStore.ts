@@ -11,7 +11,6 @@ import type { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore"
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { ComposerDeliveryInput } from "./ConversationComposerStore";
-import type { EditorLocation } from "../../ipc/editor-location";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ConversationSessionStore } from "./ConversationSessionStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
@@ -25,6 +24,7 @@ import { StagedSessionCommandStore } from "./StagedSessionCommandStore";
 import { SessionAssistantStore } from "./SessionAssistantStore";
 import { ClientContext } from "./context/ClientContext";
 import { DrawStore } from "./DrawStore";
+import { EditorSelectionsStore, type EditorSelectionsStoreProps } from "./EditorSelectionsStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { SessionActivity } from "../lib/session-activity";
 import type { ProjectSessionPresentationMode } from "../../domain/project-sessions/project-session-presentation";
@@ -69,6 +69,8 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   retirement: WorktreeStoreProps["retirement"];
   onResolveWorktree: WorktreeStoreProps["onResolveWorkspace"];
   settings?(): AppearanceSettingsStore | undefined;
+  openEditorLocation: EditorSelectionsStoreProps["openLocation"];
+  refreshEditorHighlights: EditorSelectionsStoreProps["refreshHighlights"];
 }
 
 /** Owns the view and interaction workflow for one project Pi session. */
@@ -80,7 +82,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   private artifactRequestActive = false;
   private readSettledTurnRevision = 0;
   private pendingSideChatThreadId: string | undefined;
-  private pendingEditorLocation: EditorLocation | undefined;
 
   constructor(props: ProjectSessionStore["props"]) {
     super(props);
@@ -101,17 +102,15 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   showPresentation(mode: ProjectSessionPresentationMode) {
     this.presentationMode = mode;
-    if (mode !== "vscode") this.pendingEditorLocation = undefined;
   }
 
-  requestEditorLocation(location: EditorLocation) {
-    this.pendingEditorLocation = location;
-  }
-
-  takePendingEditorLocation() {
-    const location = this.pendingEditorLocation;
-    this.pendingEditorLocation = undefined;
-    return location;
+  @child
+  get editorSelectionsStore(): EditorSelectionsStore {
+    return createStore(EditorSelectionsStore, {
+      sessionId: this.sessionId,
+      openLocation: this.props.openEditorLocation,
+      refreshHighlights: this.props.refreshEditorHighlights,
+    });
   }
 
   toggleWorkspaceChatSidebar() {

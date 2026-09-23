@@ -17,6 +17,8 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 import type { WorktreeStoreProps } from "./WorktreeStore";
 import type { WorktreeLandingOperation } from "../../domain/worktrees/worktree-landing-data";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
+import type { EditorLocation } from "../../ipc/editor-location";
+import type { EditorSelectionReveal } from "../../ipc/editor-selection";
 
 export interface SessionRegistryStoreProps {
   catalog?: SessionCatalogStore;
@@ -50,6 +52,12 @@ export interface SessionRegistryStoreProps {
   retirement: WorktreeStoreProps["retirement"];
   onResolveWorktree: WorktreeStoreProps["onResolveWorkspace"];
   settings?(): AppearanceSettingsStore | undefined;
+  openEditorLocation(
+    sessionId: string,
+    location: EditorLocation,
+    signal: AbortSignal,
+  ): Promise<EditorSelectionReveal>;
+  refreshEditorHighlights(): Promise<void>;
 }
 
 /** Owns the keyed collection and stable identity of loaded Project Session Stores for a window. */
@@ -125,6 +133,9 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         retirement: this.props.retirement,
         onResolveWorktree: this.props.onResolveWorktree,
         settings: () => this.props.settings?.(),
+        openEditorLocation: (location, signal) =>
+          this.props.openEditorLocation(target.sessionId, location, signal),
+        refreshEditorHighlights: () => this.props.refreshEditorHighlights(),
       }),
     );
   }

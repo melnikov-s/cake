@@ -22,7 +22,7 @@ type AppControlHostOverrides = Partial<
   settings?: AppControlHost["settings"];
   projectSettings?: AppControlHost["projectSettings"];
   sessionLabels?: AppControlHost["sessionLabels"];
-  vscode?: AppControlHost["vscode"];
+  vscode?: Partial<AppControlHost["vscode"]>;
   worktrees?: AppControlHost["worktrees"];
 };
 
@@ -86,13 +86,18 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
         mutate: async () => undefined,
         setSessionLabels: async () => true,
       } satisfies AppControlHost["sessionLabels"]),
-    vscode:
-      overrides.vscode ??
-      ({
-        enter: async () => undefined,
-        open: async () => undefined,
-        performEditorAction: async () => null,
-      } satisfies AppControlHost["vscode"]),
+    vscode: {
+      enter: async () => undefined,
+      open: async () => ({
+        reveal: { outcome: { view: "file" }, locations: [] },
+        selectionIds: [],
+      }),
+      listSelections: () => ({ sessionId: "session-1", selections: [] }),
+      removeSelection: async () => ({ state: { sessionId: "session-1", selections: [] } }),
+      clearSelections: async () => ({ state: { sessionId: "session-1", selections: [] } }),
+      performEditorAction: async () => null,
+      ...overrides.vscode,
+    },
     ...(overrides.worktrees ? { worktrees: overrides.worktrees } : null),
     sessions: {
       contextSnapshot:
@@ -176,7 +181,10 @@ describe("AppControlBridge", () => {
 
   it("gives the session assistant parent-scoped embedded VS Code controls", async () => {
     const enter = vi.fn(async () => undefined);
-    const open = vi.fn(async () => undefined);
+    const open = vi.fn(async () => ({
+      reveal: { outcome: { view: "file" as const }, locations: [] },
+      selectionIds: [],
+    }));
     const performEditorAction = vi.fn(
       async (_source: AgentControlSource, action: VscodeEditorAction) => action,
     );

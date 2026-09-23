@@ -45,6 +45,11 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
       showChatSidebar: () => this.session?.showWorkspaceChatSidebar(),
       chatSidebarWidth: () => this.session?.workspaceChatSidebarWidth ?? 420,
       setChatSidebarWidth: (width) => this.session?.setWorkspaceChatSidebarWidth(width),
+      selectionHighlights: () => ({
+        locations:
+          this.session?.editorSelectionsStore.selections.map((selection) => selection.location) ??
+          [],
+      }),
       annotations: () => {
         const sessionId = this.props.activeSessionId();
         if (!sessionId) return undefined;
@@ -89,10 +94,10 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
     this.browserStore.suspend();
   }
 
-  private async flushDrawBeforeLeaving() {
-    if (this.session?.presentationMode !== "draw") return true;
+  private async flushDrawBeforeLeaving(session = this.session) {
+    if (session?.presentationMode !== "draw") return true;
     try {
-      await this.session.drawStore.flush();
+      await session.drawStore.flush();
       return true;
     } catch {
       return false;
@@ -113,8 +118,7 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
 
   restore() {
     if (this.props.activeSessionResolved() || !this.session) return;
-    if (this.session.presentationMode === "vscode")
-      void this.embeddedEditorStore.restore(this.session.takePendingEditorLocation());
+    if (this.session.presentationMode === "vscode") void this.embeddedEditorStore.restore();
     else if (this.session.presentationMode === "draw") void this.session.drawStore.initialize();
     else if (this.session.presentationMode === "browser") void this.browserStore.restore();
   }
@@ -186,10 +190,29 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
   }
 
   async openFile(location: EditorLocation) {
-    if (!this.canOpen() || !(await this.flushDrawBeforeLeaving())) return;
+    const session = this.session;
+    if (!session || !this.canOpen() || !(await this.flushDrawBeforeLeaving(session))) return;
+    if (this.session !== session || !this.canOpen()) return;
     this.props.dismissCommandPane();
     this.browserStore.suspend();
-    await this.embeddedEditorStore.show(location);
+    await session.editorSelectionsStore.open(location);
+  }
+
+  /** Native navigation callback for the source session's selection Store. */
+  async openSelectionLocation(sessionId: string, location: EditorLocation, signal: AbortSignal) {
+    signal.throwIfAborted();
+    const session = this.session;
+    if (!session || this.props.activeSessionId() !== sessionId || !this.canOpen())
+      throw new Error("VSCODE_MODE_REQUIRED: Select the calling session before opening code.");
+    await this.embeddedEditorStore.show();
+    signal.throwIfAborted();
+    if (this.session !== session || this.props.activeSessionId() !== sessionId || !this.canOpen())
+      throw new Error("The active session changed before VS Code navigation completed");
+    const result = await this.embeddedEditorStore.reveal(location);
+    signal.throwIfAborted();
+    if (this.session !== session || this.props.activeSessionId() !== sessionId || !this.canOpen())
+      throw new Error("The active session changed before VS Code navigation completed");
+    return result;
   }
 
   private canOpen() {
@@ -234,11 +257,6 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
     }
     if (event.type === "embedded-editor-toggle-sidebar") {
       if (event.workspacePath === this.props.projectPath()) this.props.toggleProjectSidebar();
-      return;
-    }
-    if (event.type === "embedded-editor-entered") {
-      if (event.workspacePath === this.props.projectPath())
-        this.embeddedEditorStore.showAgentEditor();
       return;
     }
     if (event.type === "browser-entered") {

@@ -36,6 +36,8 @@ describe("ProjectSessionStore", () => {
       createStore(ProjectSessionStore, {
         workspacePath: "/project",
         sessionId: "resolved-session",
+        openEditorLocation: async () => ({ outcome: { view: "file" }, locations: [] }),
+        refreshEditorHighlights: async () => undefined,
         model,
         discussionCatalog: models.discussionCatalog(model.sessionId),
         subagentCatalog: models.subagentCatalog(model.sessionId),
@@ -157,6 +159,8 @@ describe("ProjectSessionStore", () => {
         onWorktreeDiscarded: () => undefined,
         retirement: { prepare: async () => true },
         onResolveWorktree: () => undefined,
+        openEditorLocation: async () => ({ outcome: { view: "file" }, locations: [] }),
+        refreshEditorHighlights: async () => undefined,
       }),
       {} as Client,
     );
@@ -271,6 +275,8 @@ describe("ProjectSessionStore", () => {
         onWorktreeDiscarded: () => undefined,
         retirement: { prepare: async () => true },
         onResolveWorktree: () => undefined,
+        openEditorLocation: async () => ({ outcome: { view: "file" }, locations: [] }),
+        refreshEditorHighlights: async () => undefined,
       }),
       {} as Client,
     );

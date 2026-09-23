@@ -8,6 +8,8 @@ import type { ReviewsStore } from "../stores/ReviewsStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { Button } from "./ui/button";
 import { Chat } from "./chat";
+import { EditorSelectionPills } from "./editor-selection-pills";
+import type { EditorSelectionsStore } from "../stores/EditorSelectionsStore";
 import { EmbeddedEditorPane } from "./embedded-editor";
 import { SideChatLayout } from "./side-chat-layout";
 import { WorkspaceChatLayout } from "./workspace-chat-layout";
@@ -21,6 +23,7 @@ function anchorTitle(anchor: NonNullable<ReviewsStore["draftAnchor"]>) {
 
 export const IdeWorkspace = observer(function IdeWorkspace({
   editor,
+  selections,
   reviews,
   projectChat,
   sideChat,
@@ -38,6 +41,7 @@ export const IdeWorkspace = observer(function IdeWorkspace({
   transcriptBehavior,
 }: {
   editor: EmbeddedEditorStore;
+  selections: EditorSelectionsStore;
   reviews: ReviewsStore;
   projectChat: ChatStore;
   sideChat: SideChatStore;
@@ -97,7 +101,14 @@ export const IdeWorkspace = observer(function IdeWorkspace({
         store={chat}
         transcriptBehavior={transcriptBehavior}
         composerHeader={contextualChat ? undefined : projectComposerHeader}
-        composerContent={contextualChat ? undefined : projectComposerContent}
+        composerContent={
+          contextualChat ? undefined : (
+            <>
+              {projectComposerContent}
+              <EditorSelectionPills store={selections} />
+            </>
+          )
+        }
         composerLeadingAccessory={projectComposerLeadingAccessory}
       />
     </SideChatLayout>

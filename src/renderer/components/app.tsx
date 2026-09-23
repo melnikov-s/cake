@@ -896,6 +896,7 @@ export const App = observer(function App() {
         <StoreProvider key={session.sessionId} store={session}>
           <IdeWorkspace
             editor={store.presentationStore.embeddedEditorStore}
+            selections={session.editorSelectionsStore}
             reviews={reviews}
             projectSidebar={projectSidebar}
             projectSidebarVisible={!sidebarCollapsed}

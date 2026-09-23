@@ -1,6 +1,7 @@
 import { Context, Schema, type Effect, type Stream } from "effect";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
-import type { EditorLocation, EditorRevealOutcome } from "../../ipc/editor-location";
+import type { EditorLocation } from "../../ipc/editor-location";
+import type { EditorSelectionHighlights, EditorSelectionReveal } from "../../ipc/editor-selection";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
 
@@ -44,12 +45,6 @@ export type VscodeActionResult<Value> =
   | { readonly status: "completed"; readonly value: Value }
   | { readonly status: "mode-required" };
 
-/** A project location embedded VS Code opened, with the view it actually showed. */
-export interface OpenedProjectLocation {
-  readonly location: EditorLocation;
-  readonly outcome: EditorRevealOutcome;
-}
-
 export interface VsCodeServerService {
   readonly state: () => Effect.Effect<EmbeddedEditorState>;
   readonly stateChanges: () => Stream.Stream<EmbeddedEditorState>;
@@ -67,6 +62,12 @@ export interface VsCodeServerService {
   ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
   readonly reveal: (
     request: RevealInEmbeddedEditorInput,
+  ) => Effect.Effect<
+    EmbeddedEditorRequestIdentity & { readonly reveal: EditorSelectionReveal },
+    VsCodeServerError
+  >;
+  readonly updateSelectionHighlights: (
+    request: OpenEmbeddedEditorInput & { readonly highlights: EditorSelectionHighlights },
   ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
   readonly openSourceControl: (
     request: OpenEmbeddedEditorInput,
@@ -80,11 +81,6 @@ export interface VsCodeServerService {
   readonly updateAnnotations: (
     request: UpdateEmbeddedEditorAnnotationsInput,
   ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
-  readonly enterProjectEditor: (workingDirectory: string) => Effect.Effect<void, VsCodeServerError>;
-  readonly openProjectLocation: (
-    workingDirectory: string,
-    location: EditorLocation,
-  ) => Effect.Effect<VscodeActionResult<OpenedProjectLocation>, VsCodeServerError>;
   readonly runProjectScript: (
     workingDirectory: string,
     source: string,

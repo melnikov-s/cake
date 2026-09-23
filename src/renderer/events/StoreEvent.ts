@@ -58,7 +58,6 @@ export type StoreEvent =
   | { type: "terminal-exited"; terminalId: string; exitCode: number }
   | { type: "terminal-toggle-requested" }
   | { type: "embedded-editor-toggle-mode-requested" }
-  | { type: "embedded-editor-entered"; workspacePath: string }
   | {
       type: "embedded-editor-selection";
       workspacePath: string;
@@ -153,7 +152,6 @@ export function toStoreEvent(event: CakeEvent): StoreEvent | undefined {
     event.type === "embedded-editor-toggle-chat" ||
     event.type === "embedded-editor-toggle-sidebar" ||
     event.type === "embedded-editor-selection-cleared" ||
-    event.type === "embedded-editor-entered" ||
     event.type === "embedded-editor-annotation-requested" ||
     event.type === "embedded-editor-side-chat-requested" ||
     event.type === "browser-entered" ||

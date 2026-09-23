@@ -311,14 +311,20 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await projectSidebarResize.focus();
     await projectSidebarResize.press("ArrowRight");
     await expect(projectSidebarResize).toHaveAttribute("aria-valuenow", "308");
-    await expect(page.getByRole("button", { name: "Back to Agent" })).toHaveCount(0);
     await expect
       .poll(() => hasVsCodeTitleAction("Toggle Chat Sidebar"), { timeout: 20_000 })
       .toBe(true);
     await expect.poll(() => hasVsCodeTitleAction("Back to Agent"), { timeout: 20_000 }).toBe(true);
+    // A healthy editor has no status/error placeholder; the toolbar's Back action is separate.
+    await expect(page.locator(".embedded-editor-pane")).toBeEmpty();
+    await expect(page.getByRole("button", { name: "Back to agent", exact: true })).toBeVisible();
     await expect.poll(() => hasVsCodeTitleAction("Toggle Sessions Sidebar")).toBe(false);
     await expect.poll(isVsCodePrimarySidebarVisible, { timeout: 20_000 }).toBe(false);
-    await expect(page.getByRole("button", { name: /Remove src\/modelMeta\.ts/ })).toHaveCount(0);
+    await expect(
+      page
+        .locator('[aria-label="Editor selections"]')
+        .getByRole("button", { name: /Remove src\/modelMeta\.ts/ }),
+    ).toHaveCount(1);
     await expect
       .poll(() =>
         application.evaluate(async ({ webContents }) => {
@@ -378,8 +384,10 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
 
     await emitRendererEvent(application, {
-      type: "embedded-editor-entered",
-      workspacePath: project,
+      type: "project-session-control-requested",
+      sessionId,
+      controlRequestId: "00000000-0000-4000-8000-000000000031",
+      invocation: { _tag: "InvokeAppControl", command: "vscode.enter", input: {} },
     });
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
     expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);

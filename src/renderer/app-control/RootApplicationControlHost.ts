@@ -52,6 +52,12 @@ export interface RootApplicationControlCapabilities {
 export function createRootApplicationControlHost(
   capabilities: RootApplicationControlCapabilities,
 ): AppControlHost {
+  const selectionStore = (sessionId: string) => {
+    const session = capabilities.sessionRegistry.findSession(sessionId);
+    if (!session)
+      throw new Error("The owning session's selection Store is unavailable in this renderer");
+    return session.editorSelectionsStore;
+  };
   return {
     sessionCoordination: capabilities.sessionCoordinationStore,
     state: {
@@ -145,8 +151,16 @@ export function createRootApplicationControlHost(
     },
     vscode: {
       enter: (source) => capabilities.projectWorkbenchStore.showSessionEditor(source.sessionId),
-      open: (source, location) =>
-        capabilities.projectWorkbenchStore.showSessionEditor(source.sessionId, location),
+      open: (source, location) => {
+        const store = selectionStore(source.sessionId);
+        const session = capabilities.sessionRegistry.findSession(source.sessionId)!;
+        if (session.presentationMode !== "vscode")
+          throw new Error("VSCODE_MODE_REQUIRED: Call vscode.enter before opening code.");
+        return store.open(location);
+      },
+      listSelections: (source) => selectionStore(source.sessionId).list(),
+      removeSelection: (source, id) => selectionStore(source.sessionId).remove(id),
+      clearSelections: (source) => selectionStore(source.sessionId).clear(),
       performEditorAction: (source, action) =>
         capabilities.client.vscode.performEditorAction(
           capabilities.requireProjectSessionWorkingDirectory(source.sessionId),

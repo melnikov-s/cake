@@ -62,12 +62,6 @@ export const makeProjectSessionRuntimeMechanismTestLayer = (
       closeWorkingDirectory: () => Effect.void,
     }),
     Layer.mock(VsCodeServer, {
-      enterProjectEditor: () => Effect.void,
-      openProjectLocation: (_workingDirectory, location) =>
-        Effect.succeed({
-          status: "completed" as const,
-          value: { location, outcome: { view: "file" as const } },
-        }),
       runProjectScript: (_workingDirectory, _source, input) =>
         Effect.succeed({ status: "completed" as const, value: input }),
       backToAgentForWindow: () => false,

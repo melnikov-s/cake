@@ -1,5 +1,6 @@
-import { createStore, mount, toSnapshot } from "r-state-tree";
-import { describe, expect, it, vi } from "vitest";
+import { createStore, mount, toSnapshot, updateStore } from "r-state-tree";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { EditorSelectionsStore } from "../../../../src/renderer/stores/EditorSelectionsStore";
 import { workingDirectoryEditorLocation } from "../../../../src/ipc/editor-location";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { Conversation } from "../../../../src/renderer/models/Conversation";
@@ -67,11 +68,30 @@ function mountWorkbench(
   return { ...mounted, operations, selectSession };
 }
 
+const selectionStores: EditorSelectionsStore[] = [];
+afterEach(() => {
+  for (const store of selectionStores.splice(0)) store[Symbol.dispose]();
+});
+function emptySelections() {
+  const store = mount(
+    createStore(EditorSelectionsStore, {
+      sessionId: "session-1",
+      openLocation: async () => {
+        throw new Error("Unexpected editor navigation");
+      },
+      refreshHighlights: async () => undefined,
+    }),
+  );
+  selectionStores.push(store);
+  return store;
+}
+
 function loadedSessionStub(model: { sessionFile: string }, workspacePath = "/project") {
   return {
     sessionId: "session-1",
     workspacePath,
     model,
+    editorSelectionsStore: emptySelections(),
     presentationMode: "normal" as const,
     workspaceChatSidebarVisible: true,
     workspaceChatSidebarWidth: 420,
@@ -781,6 +801,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
     const session = {
       workspacePath: "/project",
       model: { sessionId: "session-1", sessionFile: "/sessions/session-1.jsonl" },
+      editorSelectionsStore: emptySelections(),
       presentationMode: "vscode" as const,
       workspaceChatSidebarVisible: true,
       workspaceChatSidebarWidth: 420,
@@ -882,6 +903,7 @@ describe("ProjectWorkbenchStore startup selection", () => {
       sessionId: "session-1",
       workspacePath: "/project",
       model: { sessionId: "session-1", sessionFile: "/session.jsonl" },
+      editorSelectionsStore: emptySelections(),
       presentationMode: "draw" as const,
       drawStore: { flush },
       showPresentation,
@@ -930,7 +952,8 @@ describe("ProjectWorkbenchStore startup selection", () => {
       find: vi.fn(() => ({ sessionId: "session-1", resolved: false })),
     } as unknown as SessionCatalogStore;
     const open = vi.fn(async () => undefined);
-    const reveal = vi.fn(async () => undefined);
+    const reveal = vi.fn(async () => ({ outcome: { view: "file" as const }, locations: [] }));
+    const updateSelectionHighlights = vi.fn(async () => undefined);
     const updateAnnotations = vi.fn(async () => undefined);
     const {
       root,
@@ -939,10 +962,18 @@ describe("ProjectWorkbenchStore startup selection", () => {
     } = mountWorkbench(
       registry,
       catalog,
-      { vscode: { open, reveal, updateAnnotations } } as unknown as Client,
+      {
+        vscode: { open, reveal, updateAnnotations, updateSelectionHighlights },
+      } as unknown as Client,
       "session-1",
     );
     store.projectOpenStore.projectPath = "/project";
+    updateStore(session.editorSelectionsStore, {
+      openLocation: (location, signal) =>
+        store.presentationStore.openSelectionLocation("session-1", location, signal),
+      refreshHighlights: () =>
+        store.presentationStore.embeddedEditorStore.syncSelectionHighlights(),
+    });
     const location = workingDirectoryEditorLocation({
       path: "src/app.ts",
       range: { start: { line: 4, column: 2 }, end: { line: 8, column: 7 } },

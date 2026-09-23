@@ -637,7 +637,8 @@ export interface CakeIpcClientService {
     | "reveal-in-embedded-editor"
     | "open-embedded-editor-source-control"
     | "perform-embedded-editor-action"
-    | "update-embedded-editor-annotations",
+    | "update-embedded-editor-annotations"
+    | "update-embedded-editor-selection-highlights",
     VsCodeServerError
   > & {
     readonly observeState: () => Stream.Stream<
@@ -750,7 +751,6 @@ export interface CakeIpcClientService {
         | "embedded-editor-toggle-chat"
         | "embedded-editor-toggle-sidebar"
         | "embedded-editor-selection-cleared"
-        | "embedded-editor-entered"
         | "embedded-editor-annotation-requested"
         | "embedded-editor-side-chat-requested"
         | "renderer-events-ready"
@@ -1244,6 +1244,9 @@ export const CakeIpcClientLive = Layer.effect(
         "update-embedded-editor-bounds": Effect.fn(
           "CakeIpcClient.vscode.update-embedded-editor-bounds",
         )((payload) => client("vscode.update-embedded-editor-bounds", payload)),
+        "update-embedded-editor-selection-highlights": Effect.fn(
+          "CakeIpcClient.vscode.update-embedded-editor-selection-highlights",
+        )((payload) => client("vscode.update-embedded-editor-selection-highlights", payload)),
         "reveal-in-embedded-editor": Effect.fn("CakeIpcClient.vscode.reveal-in-embedded-editor")(
           (payload) => client("vscode.reveal-in-embedded-editor", payload),
         ),

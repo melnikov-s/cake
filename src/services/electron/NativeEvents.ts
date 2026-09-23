@@ -50,7 +50,6 @@ export interface NativeEventsService {
       | "embedded-editor-toggle-chat"
       | "embedded-editor-toggle-sidebar"
       | "embedded-editor-selection-cleared"
-      | "embedded-editor-entered"
       | "embedded-editor-annotation-requested"
       | "embedded-editor-side-chat-requested"
       | "renderer-events-ready"

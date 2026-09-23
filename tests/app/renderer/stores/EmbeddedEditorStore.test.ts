@@ -22,7 +22,8 @@ function createHarness(annotations?: EditorAnnotationSnapshot) {
     updateBounds: vi.fn<(input: object, options?: object) => Promise<undefined>>(
       async () => undefined,
     ),
-    reveal: vi.fn(async () => undefined),
+    reveal: vi.fn(async () => ({ outcome: { view: "file" as const }, locations: [] })),
+    updateSelectionHighlights: vi.fn(async () => undefined),
     openSourceControl: vi.fn(async () => undefined),
     updateAnnotations: vi.fn(async () => undefined),
   };
@@ -50,6 +51,7 @@ function createHarness(annotations?: EditorAnnotationSnapshot) {
         chatSidebarWidth = width;
       },
       annotations: () => annotations,
+      selectionHighlights: () => ({ locations: [] }),
       startCakeChat,
       enterProjectSidebarMode,
       leaveProjectSidebarMode,
@@ -187,17 +189,6 @@ describe("EmbeddedEditorStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("adopts an agent-opened editor without opening it again", async () => {
-    const { client, root, store } = createHarness();
-
-    store.showAgentEditor();
-
-    expect(store.visible).toBe(true);
-    expect(client.getState).not.toHaveBeenCalled();
-    expect(client.open).not.toHaveBeenCalled();
-    root[Symbol.dispose]();
-  });
-
   it("tracks companion activity only for the active project", () => {
     const { root, store } = createHarness();
 
@@ -265,11 +256,13 @@ describe("EmbeddedEditorStore", () => {
   it("reveals through the client only while the IDE is visible", async () => {
     const { client, root, store } = createHarness();
 
-    await store.reveal({
-      kind: "working-directory",
-      path: "src/app.ts",
-      range: { start: { line: 3 } },
-    });
+    await expect(
+      store.reveal({
+        kind: "working-directory",
+        path: "src/app.ts",
+        range: { start: { line: 3 } },
+      }),
+    ).rejects.toThrow("not visible");
     expect(client.reveal).not.toHaveBeenCalled();
 
     const location = {

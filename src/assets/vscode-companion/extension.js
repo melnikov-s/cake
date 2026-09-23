@@ -23,7 +23,8 @@ const GIT_PROBE_TIMEOUT_MS = 2_000;
 let revealServer;
 let selectionSubscription;
 let selectionTimer;
-const revealDecorations = new Map();
+let selectionDecoration;
+let selectionLocations = [];
 let annotationSessionId;
 let annotations = [];
 let annotationEmitter;
@@ -252,35 +253,89 @@ function rangeFor(vscode, document, requestedRange) {
   return new vscode.Range(start, end.isBefore(start) ? start : end);
 }
 
-function revealEditorRanges(vscode, editor, requestedRanges) {
+function resolvedRanges(vscode, editor, requestedRanges) {
   const ranges = requestedRanges.map((range) => rangeFor(vscode, editor.document, range));
-  revealDecorations.get(editor)?.dispose();
-  revealDecorations.delete(editor);
-  editor.revealRange(ranges[0], vscode.TextEditorRevealType.InCenter);
-  // VS Code renders a decoration as one box per line, so a full border on a
-  // multi-line range draws a grid. A left-only border on whole-line boxes
-  // stacks into one continuous rule beside each revealed range.
-  const decoration = vscode.window.createTextEditorDecorationType({
-    isWholeLine: true,
-    borderWidth: "0 0 0 2px",
-    borderStyle: "solid",
-    borderColor: new vscode.ThemeColor("editorInfo.foreground"),
-  });
-  revealDecorations.set(editor, decoration);
-  editor.setDecorations(decoration, ranges);
+  if (ranges.length) editor.revealRange(ranges[0], vscode.TextEditorRevealType.InCenter);
+  return ranges.map((range) => ({
+    start: { line: range.start.line, column: range.start.character },
+    end: { line: range.end.line, column: range.end.character },
+  }));
 }
 
-async function visibleDiffEditor(vscode, target, side) {
+function gitRevision(uri) {
+  if (uri.scheme !== "git") return undefined;
+  try {
+    return JSON.parse(uri.query)?.ref;
+  } catch {
+    return undefined;
+  }
+}
+
+function matchingSelectionLocations(editor, editors) {
+  const uri = editor.document.uri;
+  const target = documentFilePath(uri);
+  if (!target) return [];
+  const absolutePath = path.resolve(target);
+  const relativePath = workspaceRelative(absolutePath);
+  // A diff's modified side has a file URI just like an ordinary tab. Its
+  // original side is visible in the same editor group, with the base in the
+  // Git URI. Distinguish the two instead of painting ordinary file tabs.
+  const original = editors.find(
+    (other) =>
+      other !== editor &&
+      other.viewColumn === editor.viewColumn &&
+      other.document.uri.scheme === "git" &&
+      documentFilePath(other.document.uri) &&
+      path.resolve(documentFilePath(other.document.uri)) === absolutePath,
+  );
+  const base = gitRevision(uri.scheme === "git" ? uri : (original?.document.uri ?? uri));
+  return selectionLocations.filter((location) => {
+    if (location.kind === "absolute-file" && location.view === "file" && uri.scheme === "file")
+      return path.resolve(location.path) === absolutePath && !base;
+    if (location.kind !== "working-directory" || location.path !== relativePath) return false;
+    if (location.view === "file") return uri.scheme === "file" && !base;
+    return (
+      location.view === "changes" &&
+      location.base === base &&
+      (location.side === "before" ? uri.scheme === "git" : uri.scheme === "file")
+    );
+  });
+}
+
+function applySelectionHighlights(vscode) {
+  if (!selectionDecoration) return;
+  const editors = vscode.window.visibleTextEditors;
+  for (const editor of editors) {
+    const ranges = matchingSelectionLocations(editor, editors).map((location) =>
+      rangeFor(vscode, editor.document, location.range),
+    );
+    editor.setDecorations(selectionDecoration, ranges);
+  }
+}
+
+function updateSelectionHighlights(vscode, payload) {
+  selectionLocations = Array.isArray(payload.locations) ? payload.locations : [];
+  applySelectionHighlights(vscode);
+}
+
+async function visibleDiffEditor(vscode, target, side, base) {
   const before = side === "before";
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const editor = vscode.window.visibleTextEditors.find((candidate) => {
-      const filePath = documentFilePath(candidate.document.uri);
+    const editors = vscode.window.visibleTextEditors;
+    const editor = editors.find((candidate) => {
+      const uri = candidate.document.uri;
+      const filePath = documentFilePath(uri);
+      if (!filePath || path.resolve(filePath) !== target) return false;
+      if (before) return gitRevision(uri) === base;
       return (
-        filePath &&
-        path.resolve(filePath) === target &&
-        (before
-          ? candidate.document.uri.scheme === "git"
-          : candidate.document.uri.scheme === "file")
+        uri.scheme === "file" &&
+        editors.some(
+          (other) =>
+            other.viewColumn === candidate.viewColumn &&
+            documentFilePath(other.document.uri) &&
+            path.resolve(documentFilePath(other.document.uri)) === target &&
+            gitRevision(other.document.uri) === base,
+        )
       );
     });
     if (editor) return editor;
@@ -597,6 +652,14 @@ async function activate(context) {
       opacity: "0.55",
     }),
   };
+  // Whole-line left rule avoids the per-line border grid on multi-line ranges.
+  selectionDecoration = vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    borderWidth: "0 0 0 2px",
+    borderStyle: "solid",
+    borderColor: new vscode.ThemeColor("editorInfo.foreground"),
+  });
+  context.subscriptions.push(selectionDecoration);
   annotationEmitter = new vscode.EventEmitter();
   const annotationCodeLensProvider = {
     onDidChangeCodeLenses: annotationEmitter.event,
@@ -647,6 +710,7 @@ async function activate(context) {
           await openSourceControl(vscode);
           await openWorkingTreeDiff(vscode, probe.api, targetUri, base);
           const requestedRanges = payload.ranges || (payload.range ? [payload.range] : []);
+          const locations = [];
           if (requestedRanges.length > 0) {
             const side = payload.side === "before" ? "before" : "after";
             await vscode.commands.executeCommand(
@@ -654,10 +718,20 @@ async function activate(context) {
                 ? "workbench.action.compareEditor.focusPrimarySide"
                 : "workbench.action.compareEditor.focusSecondarySide",
             );
-            const editor = await visibleDiffEditor(vscode, target, side);
-            if (editor) revealEditorRanges(vscode, editor, requestedRanges);
+            const editor = await visibleDiffEditor(vscode, target, side, base);
+            if (!editor) throw new Error("The requested diff editor side is unavailable");
+            locations.push(
+              ...resolvedRanges(vscode, editor, requestedRanges).map((range) => ({
+                kind: "working-directory",
+                path: workspaceRelative(target),
+                view: "changes",
+                side,
+                base,
+                range,
+              })),
+            );
           }
-          return { view: "changes" };
+          return { outcome: { view: "changes" }, locations };
         } catch {
           // Fall through to the ordinary source document when the diff editor
           // cannot open; the caller learns about it through the fallback.
@@ -703,8 +777,13 @@ async function activate(context) {
       preserveFocus: payload.preserveFocus ?? false,
       viewColumn: editorViewColumn(vscode, payload.group),
     });
-    if (requestedRanges.length > 0) revealEditorRanges(vscode, editor, requestedRanges);
-    return outcome;
+    const locations = resolvedRanges(vscode, editor, requestedRanges).map((range) => ({
+      kind: payload.kind,
+      path: payload.kind === "absolute-file" ? target : workspaceRelative(target),
+      view: "file",
+      range,
+    }));
+    return { outcome, locations };
   };
 
   revealServer = http.createServer((request, response) => {
@@ -736,7 +815,8 @@ async function activate(context) {
             .end(JSON.stringify(outcome));
           return;
         }
-        if (payload.type === "annotations") await updateAnnotations(vscode, payload);
+        if (payload.type === "selection-highlights") updateSelectionHighlights(vscode, payload);
+        else if (payload.type === "annotations") await updateAnnotations(vscode, payload);
         else if (payload.type === "open-source-control") await openSourceControl(vscode);
         else if (payload.type === "set-theme") await setTheme(vscode, payload);
         else throw new Error("The companion request type is unsupported");
@@ -755,8 +835,9 @@ async function activate(context) {
       dispose: () => {
         selectionSubscription?.dispose();
         if (selectionTimer) clearTimeout(selectionTimer);
-        for (const decoration of revealDecorations.values()) decoration.dispose();
-        revealDecorations.clear();
+        selectionLocations = [];
+        selectionDecoration?.dispose();
+        selectionDecoration = undefined;
         revealServer?.close();
         revealServer = undefined;
       },
@@ -782,12 +863,8 @@ async function activate(context) {
     vscode.commands.registerCommand("cake.toggleChatSidebar", () =>
       postBridge({ type: "toggle-chat-sidebar" }),
     ),
-    vscode.window.onDidChangeVisibleTextEditors((editors) => {
-      for (const [editor, decoration] of revealDecorations) {
-        if (editors.includes(editor)) continue;
-        decoration.dispose();
-        revealDecorations.delete(editor);
-      }
+    vscode.window.onDidChangeVisibleTextEditors(() => {
+      applySelectionHighlights(vscode);
       applyAnnotationDecorations(vscode);
       annotationEmitter.fire();
     }),
@@ -807,8 +884,9 @@ async function activate(context) {
 function deactivate() {
   selectionSubscription?.dispose();
   if (selectionTimer) clearTimeout(selectionTimer);
-  for (const decoration of revealDecorations.values()) decoration.dispose();
-  revealDecorations.clear();
+  selectionLocations = [];
+  selectionDecoration?.dispose();
+  selectionDecoration = undefined;
   revealServer?.close();
 }
 

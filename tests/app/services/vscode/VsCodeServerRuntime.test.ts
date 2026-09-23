@@ -237,39 +237,7 @@ describe("VsCodeServerRuntime startup", () => {
     expect(runtime["servers"].size).toBe(0);
   });
 
-  it("threads cancellation through visibility polling", async () => {
-    root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
-    let pollingStarted!: () => void;
-    const didStartPolling = new Promise<void>((resolvePromise) => {
-      pollingStarted = resolvePromise;
-    });
-    let pollingStopped = false;
-    runtime = createRuntime({
-      root,
-      pollUntil: (_key, _check, _interval, _timeout, _failure, signal) =>
-        new Promise((_resolve, reject) => {
-          pollingStarted();
-          signal?.addEventListener(
-            "abort",
-            () => {
-              pollingStopped = true;
-              reject(signal.reason);
-            },
-            { once: true },
-          );
-        }),
-    });
-    const controller = new AbortController();
-
-    const visible = runtime.waitUntilVisible(root, controller.signal);
-    await didStartPolling;
-    controller.abort();
-
-    await expect(visible).rejects.toBeDefined();
-    expect(pollingStopped).toBe(true);
-  });
-
-  it("returns the companion's reveal outcome so callers learn how the location was shown", async () => {
+  it("returns resolved reveal locations and transports location-only highlight replacements", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
     const received: unknown[] = [];
     const server = createServer((request, response) => {
@@ -279,7 +247,9 @@ describe("VsCodeServerRuntime startup", () => {
         received.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
         response
           .writeHead(200, { "content-type": "application/json" })
-          .end(JSON.stringify({ view: "file", fallback: "no-changes" }));
+          .end(
+            JSON.stringify({ outcome: { view: "file", fallback: "no-changes" }, locations: [] }),
+          );
       });
     });
     await new Promise<void>((resolvePromise) => server.listen(0, "127.0.0.1", resolvePromise));
@@ -304,9 +274,21 @@ describe("VsCodeServerRuntime startup", () => {
       view: "changes",
     });
 
-    expect(outcome).toEqual({ view: "file", fallback: "no-changes" });
+    expect(outcome).toEqual({ outcome: { view: "file", fallback: "no-changes" }, locations: [] });
+    const locations = [
+      {
+        kind: "working-directory" as const,
+        view: "file" as const,
+        path: "src/app.ts",
+        range: { start: { line: 1 }, end: { line: 3 } },
+      },
+    ];
+    await runtime.updateSelectionHighlights(root, { locations });
+    await runtime.updateSelectionHighlights(root, { locations: [] });
     expect(received).toEqual([
       { type: "reveal", kind: "working-directory", path: "src/app.ts", view: "changes" },
+      { type: "selection-highlights", locations },
+      { type: "selection-highlights", locations: [] },
     ]);
     await new Promise<void>((resolvePromise) => server.close(() => resolvePromise()));
   });

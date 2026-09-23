@@ -501,7 +501,7 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
       },
       reveal: (workingDirectory, location, options) => {
         const requestId = crypto.randomUUID();
-        return accepted(
+        return execute(
           "vscode.reveal-in-embedded-editor",
           (client) =>
             client.vscode["reveal-in-embedded-editor"]({
@@ -509,11 +509,20 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
               workspacePath: workingDirectory,
               location,
             }),
-          {
-            requestId,
-            workspacePath: workingDirectory,
-            location,
-          }.requestId,
+          options,
+        ).then((response) => response.reveal);
+      },
+      updateSelectionHighlights: (workingDirectory, highlights, options) => {
+        const requestId = crypto.randomUUID();
+        return accepted(
+          "vscode.update-embedded-editor-selection-highlights",
+          (client) =>
+            client.vscode["update-embedded-editor-selection-highlights"]({
+              requestId,
+              workspacePath: workingDirectory,
+              highlights,
+            }),
+          requestId,
           options,
         );
       },

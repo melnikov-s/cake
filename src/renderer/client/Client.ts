@@ -34,6 +34,7 @@ import type {
 } from "../../ipc/inline-widget-contract";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
+import type { EditorSelectionHighlights, EditorSelectionReveal } from "../../ipc/editor-selection";
 import type {
   Attachment,
   ApplicationState,
@@ -350,6 +351,11 @@ interface VsCodeCommands {
   reveal(
     workingDirectory: string,
     location: EditorLocation,
+    options?: ClientCommandOptions,
+  ): Promise<EditorSelectionReveal>;
+  updateSelectionHighlights(
+    workingDirectory: string,
+    highlights: EditorSelectionHighlights,
     options?: ClientCommandOptions,
   ): Promise<void>;
   openSourceControl(workingDirectory: string, options?: ClientCommandOptions): Promise<void>;

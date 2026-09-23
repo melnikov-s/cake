@@ -70,7 +70,13 @@ function createHost(
     },
     vscode: {
       enter: async () => undefined,
-      open: async () => undefined,
+      open: async () => ({
+        reveal: { outcome: { view: "file" }, locations: [] },
+        selectionIds: [],
+      }),
+      listSelections: () => ({ sessionId: "session-1", selections: [] }),
+      removeSelection: async () => ({ state: { sessionId: "session-1", selections: [] } }),
+      clearSelections: async () => ({ state: { sessionId: "session-1", selections: [] } }),
       performEditorAction: async () => null,
     },
     sessions: {

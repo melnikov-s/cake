@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import http from "node:http";
 import Module from "node:module";
@@ -5,6 +6,117 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+describe("companion rendering of Store-owned selections", () => {
+  const first = location("src/run.ts", 1);
+  const second = location("src/run.ts", 3);
+
+  it("renders all matching ranges from the collection without changing native text selections", async () => {
+    const editor = visibleEditor(FakeUri.file(`${WORKSPACE}/src/run.ts`));
+    window.visibleTextEditors = [editor];
+    const selection = editor.selection;
+    await send({ type: "selection-highlights", locations: [first, second] });
+    expect(editor.setDecorations).toHaveBeenLastCalledWith(selectionDecoration(), [
+      expect.objectContaining({ start: expect.objectContaining({ line: 1 }) }),
+      expect.objectContaining({ start: expect.objectContaining({ line: 3 }) }),
+    ]);
+    expect(editor.selection).toBe(selection);
+  });
+
+  it("renders one selection in every visible editor showing its document without duplicating state", async () => {
+    const left = visibleEditor(FakeUri.file(`${WORKSPACE}/src/run.ts`), 1);
+    const right = visibleEditor(FakeUri.file(`${WORKSPACE}/src/run.ts`), 2);
+    window.visibleTextEditors = [left, right];
+    await send({ type: "selection-highlights", locations: [first] });
+    for (const editor of [left, right]) {
+      expect(editor.setDecorations).toHaveBeenLastCalledWith(selectionDecoration(), [
+        expect.objectContaining({ start: expect.objectContaining({ line: 1 }) }),
+      ]);
+    }
+  });
+
+  it("reapplies highlights after a document is hidden and shown in a new editor instance", async () => {
+    const original = visibleEditor(FakeUri.file(`${WORKSPACE}/src/run.ts`));
+    window.visibleTextEditors = [original];
+    await send({ type: "selection-highlights", locations: [first] });
+    window.visibleTextEditors = [];
+    visibleTextEditorsListener([]);
+    const reopened = visibleEditor(FakeUri.file(`${WORKSPACE}/src/run.ts`));
+    window.visibleTextEditors = [reopened];
+    visibleTextEditorsListener([reopened]);
+    expect(reopened.setDecorations).toHaveBeenCalledWith(selectionDecoration(), [
+      expect.objectContaining({ start: expect.objectContaining({ line: 1 }) }),
+    ]);
+  });
+
+  it("replaces rendered highlights from the supplied list including individual and full removal", async () => {
+    const editor = visibleEditor(FakeUri.file(`${WORKSPACE}/src/run.ts`));
+    window.visibleTextEditors = [editor];
+    await send({ type: "selection-highlights", locations: [first, second] });
+    await send({ type: "selection-highlights", locations: [second] });
+    expect(editor.setDecorations).toHaveBeenLastCalledWith(selectionDecoration(), [
+      expect.objectContaining({ start: expect.objectContaining({ line: 3 }) }),
+    ]);
+    await send({ type: "selection-highlights", locations: [] });
+    expect(editor.setDecorations).toHaveBeenLastCalledWith(selectionDecoration(), []);
+  });
+
+  it("matches diff selections by document, side, and base without leaking to the ordinary file view", async () => {
+    const file = `${WORKSPACE}/src/run.ts`;
+    const before = visibleEditor(gitRevisionUri(file, "HEAD"), 1);
+    const after = visibleEditor(FakeUri.file(file), 1);
+    const ordinary = visibleEditor(FakeUri.file(file), 2);
+    const otherBase = visibleEditor(gitRevisionUri(file, "origin/main"), 3);
+    window.visibleTextEditors = [before, after, ordinary, otherBase];
+    await send({
+      type: "selection-highlights",
+      locations: [
+        { ...first, view: "changes", side: "before", base: "HEAD" },
+        { ...second, view: "changes", side: "after", base: "HEAD" },
+        location("src/run.ts", 0),
+      ],
+    });
+    expect(before.setDecorations.mock.lastCall?.[1]).toEqual([
+      expect.objectContaining({ start: expect.objectContaining({ line: 1 }) }),
+    ]);
+    expect(after.setDecorations.mock.lastCall?.[1]).toEqual([
+      expect.objectContaining({ start: expect.objectContaining({ line: 3 }) }),
+    ]);
+    expect(ordinary.setDecorations.mock.lastCall?.[1]).toEqual([
+      expect.objectContaining({ start: expect.objectContaining({ line: 0 }) }),
+    ]);
+    expect(otherBase.setDecorations.mock.lastCall?.[1]).toEqual([]);
+  });
+
+  it("returns resolved ranges from reveal without privately registering another selection", async () => {
+    const editor = visibleEditor(FakeUri.file(`${WORKSPACE}/src/run.ts`));
+    showTextDocument.mockResolvedValueOnce(editor);
+    const result = await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      ranges: [
+        { start: { line: 2, column: 999 }, end: { line: 99, column: 999 } },
+        { start: { line: 1 }, end: { line: 1 } },
+      ],
+    });
+    expect(result).toEqual({
+      outcome: { view: "file" },
+      locations: [location("src/run.ts", 2, 23, 4, 1), location("src/run.ts", 1, 0, 1, 0)],
+    });
+    expect(editor.setDecorations).not.toHaveBeenCalled();
+  });
+
+  it("replaces previous highlights using only locations, without session identity or selection IDs", async () => {
+    const editor = visibleEditor(FakeUri.file(`${WORKSPACE}/src/run.ts`));
+    window.visibleTextEditors = [editor];
+    await send({ type: "selection-highlights", locations: [first] });
+    await send({ type: "selection-highlights", locations: [second] });
+    expect(editor.setDecorations.mock.lastCall?.[1]).toEqual([
+      expect.objectContaining({ start: expect.objectContaining({ line: 3 }) }),
+    ]);
+    expect(revealDecorations).toHaveLength(1);
+  });
+});
 
 const WORKSPACE = "/workspace/project";
 const companionSource = join(import.meta.dirname, "../../../../src/assets/vscode-companion");
@@ -50,6 +162,9 @@ class FakeRange {
 class FakeSelection extends FakeRange {}
 
 interface FakeEditor {
+  viewColumn?: number;
+  revealRange?: ReturnType<typeof vi.fn>;
+  setDecorations?: ReturnType<typeof vi.fn>;
   document: {
     uri: FakeUri;
     lineCount: number;
@@ -99,6 +214,54 @@ const openTextDocument = vi.fn(async (uri: FakeUri) => ({
 }));
 const showTextDocument = vi.fn(async () => ({}));
 const revealDecorations: Array<{ dispose: ReturnType<typeof vi.fn> }> = [];
+function selectionDecoration() {
+  return revealDecorations[0];
+}
+function location(file: string, line: number, column = 0, endLine = line, endColumn = column) {
+  return {
+    kind: "working-directory",
+    path: file,
+    view: "file",
+    range: {
+      start: { line, column },
+      end: { line: endLine, column: endColumn },
+    },
+  };
+}
+function visibleEditor(uri: FakeUri, viewColumn = 1) {
+  return Object.assign(editorFor(uri, lines, [0, 0], [0, 1]), {
+    viewColumn,
+    revealRange: vi.fn(),
+    setDecorations: vi.fn(),
+  });
+}
+let receive: (
+  request: EventEmitter & { headers: Record<string, string>; method: string },
+  response: unknown,
+) => void;
+async function send(payload: object) {
+  const request = Object.assign(new EventEmitter(), {
+    headers: { "x-cake-token": "token" },
+    method: "POST",
+  });
+  const completed = new Promise<{ status: number; body: string }>((resolve) => {
+    let status = 0;
+    const response = {
+      writeHead(value: number) {
+        status = value;
+        return response;
+      },
+      end(body = "") {
+        resolve({ status, body });
+      },
+    };
+    receive(request, response);
+  });
+  request.emit("data", Buffer.from(JSON.stringify(payload)));
+  request.emit("end");
+  const result = await completed;
+  expect(result).toEqual({ status: 204, body: "" });
+}
 
 /**
  * Stand-in for the built-in Git extension's API for one repository. `status`
@@ -164,7 +327,10 @@ const fakeVscode = {
   },
   window,
   commands: {
-    executeCommand: vi.fn(async () => undefined),
+    executeCommand: vi.fn(async (command?: string): Promise<unknown> => {
+      void command;
+      return undefined;
+    }),
     registerCommand(id: string, handler: (...args: unknown[]) => unknown) {
       commands.set(id, handler);
       return { dispose() {} };
@@ -218,12 +384,15 @@ beforeAll(async () => {
     },
     destroy() {},
   })) as unknown as typeof http.request);
-  vi.spyOn(http, "createServer").mockImplementation((() => ({
-    on() {},
-    listen() {},
-    close() {},
-    address: () => undefined,
-  })) as unknown as typeof http.createServer);
+  vi.spyOn(http, "createServer").mockImplementation(((handler: typeof receive) => {
+    receive = handler;
+    return {
+      on() {},
+      listen() {},
+      close() {},
+      address: () => undefined,
+    };
+  }) as unknown as typeof http.createServer);
   const load = createRequire(import.meta.url);
   const extension = load(join(installRoot, "extension.js")) as {
     activate(context: { subscriptions: unknown[]; extensionPath: string }): Promise<void>;
@@ -237,12 +406,12 @@ afterAll(async () => {
   await rm(installRoot, { recursive: true, force: true });
 });
 
-afterEach(() => {
+afterEach(async () => {
   window.visibleTextEditors = [];
   visibleTextEditorsListener([]);
   posted.length = 0;
-  revealDecorations.length = 0;
   gitRepository = undefined;
+  await send({ type: "selection-highlights", locations: [] });
   vi.useRealTimers();
   showInformationMessage.mockClear();
   fakeVscode.commands.executeCommand.mockClear();
@@ -309,16 +478,10 @@ describe("companion editor reveals", () => {
 
     expect(leftEditor.selection).toBeUndefined();
     expect(rightEditor.selection).toBeUndefined();
-    expect(revealDecorations).toHaveLength(2);
-    expect(revealDecorations[0]?.dispose).not.toHaveBeenCalled();
-    expect(revealDecorations[1]?.dispose).not.toHaveBeenCalled();
-    expect(leftEditor.setDecorations).toHaveBeenCalledWith(revealDecorations[0], [
-      expect.anything(),
-      expect.anything(),
-    ]);
-    expect(rightEditor.setDecorations).toHaveBeenCalledWith(revealDecorations[1], [
-      expect.anything(),
-    ]);
+    expect(leftEditor.revealRange).toHaveBeenCalledOnce();
+    expect(rightEditor.revealRange).toHaveBeenCalledOnce();
+    expect(leftEditor.setDecorations).not.toHaveBeenCalled();
+    expect(rightEditor.setDecorations).not.toHaveBeenCalled();
   });
 
   it("opens a native diff and marks the requested range without selecting text", async () => {
@@ -344,7 +507,19 @@ describe("companion editor reveals", () => {
       range: { start: { line: 2 }, end: { line: 3 } },
     });
 
-    expect(outcome).toEqual({ view: "changes" });
+    expect(outcome).toEqual({
+      outcome: { view: "changes" },
+      locations: [
+        {
+          kind: "working-directory",
+          path: "src/run.ts",
+          view: "changes",
+          side: "before",
+          base: "HEAD",
+          range: { start: { line: 2, column: 0 }, end: { line: 3, column: 19 } },
+        },
+      ],
+    });
     expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith("workbench.view.scm");
     expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith(
       "vscode.diff",
@@ -378,6 +553,27 @@ describe("companion editor reveals", () => {
     expect(after.revealRange).toHaveBeenCalledOnce();
   });
 
+  it("falls back to a resolved file range when the requested diff side never appears", async () => {
+    vi.useFakeTimers();
+    gitRepository = fakeGitRepository({ diff: "@@ -1 +1 @@\n-old\n+new\n" });
+    const editor = visibleEditor(FakeUri.file(`${WORKSPACE}/src/run.ts`));
+    showTextDocument.mockResolvedValueOnce(editor);
+    const pending = commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      view: "changes",
+      side: "before",
+      range: { start: { line: 2 }, end: { line: 2 } },
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(pending).resolves.toEqual({
+      outcome: { view: "file", fallback: "git-unavailable" },
+      locations: [location("src/run.ts", 2, 0, 2, 23)],
+    });
+    expect(editor.revealRange).toHaveBeenCalledOnce();
+    expect(openTextDocument).toHaveBeenCalledOnce();
+  });
+
   it("does not trust a stale Source Control entry once the file's changes are committed", async () => {
     const changedPath = `${WORKSPACE}/src/run.ts`;
     // The Git extension's watcher has not refreshed since an external commit.
@@ -389,7 +585,7 @@ describe("companion editor reveals", () => {
       view: "changes",
     });
 
-    expect(outcome).toEqual({ view: "file", fallback: "no-changes" });
+    expect(outcome).toEqual({ outcome: { view: "file", fallback: "no-changes" }, locations: [] });
     expect(gitRepository.diffWith).toHaveBeenCalledWith("HEAD", changedPath);
     expect(fakeVscode.commands.executeCommand).not.toHaveBeenCalledWith(
       "vscode.diff",
@@ -421,7 +617,10 @@ describe("companion editor reveals", () => {
       range: { start: { line: 1 }, end: { line: 1 } },
     });
 
-    expect(outcome).toEqual({ view: "file", fallback: "no-changes" });
+    expect(outcome).toEqual({
+      outcome: { view: "file", fallback: "no-changes" },
+      locations: [location("src/run.ts", 1, 0, 1, 0)],
+    });
     expect(gitRepository.diffWith).toHaveBeenCalledWith("HEAD", changedPath);
     expect(gitRepository.status).not.toHaveBeenCalled();
     expect(fakeVscode.commands.executeCommand).not.toHaveBeenCalledWith(
@@ -450,7 +649,7 @@ describe("companion editor reveals", () => {
       base: "origin/main",
     });
 
-    expect(outcome).toEqual({ view: "changes" });
+    expect(outcome).toEqual({ outcome: { view: "changes" }, locations: [] });
     expect(gitRepository.diffWith).toHaveBeenCalledWith("origin/main", changedPath);
     expect(fakeVscode.commands.executeCommand).toHaveBeenCalledWith(
       "vscode.diff",
@@ -477,7 +676,7 @@ describe("companion editor reveals", () => {
       base: "nope",
     });
 
-    expect(outcome).toEqual({ view: "file", fallback: "unknown-base" });
+    expect(outcome).toEqual({ outcome: { view: "file", fallback: "unknown-base" }, locations: [] });
     expect(openTextDocument).toHaveBeenCalledOnce();
   });
 
@@ -511,7 +710,10 @@ describe("companion editor reveals", () => {
     expect(openTextDocument).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
 
-    await expect(pending).resolves.toEqual({ view: "file", fallback: "git-unavailable" });
+    await expect(pending).resolves.toEqual({
+      outcome: { view: "file", fallback: "git-unavailable" },
+      locations: [],
+    });
     expect(openTextDocument).toHaveBeenCalledOnce();
     expect(showTextDocument).toHaveBeenCalledOnce();
   });
@@ -525,8 +727,40 @@ describe("companion editor reveals", () => {
       view: "changes",
     });
 
-    expect(outcome).toEqual({ view: "file", fallback: "git-unavailable" });
+    expect(outcome).toEqual({
+      outcome: { view: "file", fallback: "git-unavailable" },
+      locations: [],
+    });
     expect(openTextDocument).toHaveBeenCalledOnce();
+  });
+
+  it("resolves symbols to clamped coordinates without decorating the editor", async () => {
+    const editor = visibleEditor(FakeUri.file(`${WORKSPACE}/src/run.ts`));
+    showTextDocument.mockResolvedValueOnce(editor);
+    fakeVscode.commands.executeCommand.mockImplementationOnce(async (command) => {
+      if (command !== "vscode.executeDocumentSymbolProvider") return undefined;
+      return [
+        {
+          name: "outer",
+          children: [
+            {
+              name: "run",
+              selectionRange: new FakeRange(new FakePosition(3, 2), new FakePosition(3, 999)),
+            },
+          ],
+        },
+      ];
+    });
+    const result = await commands.get("cake.reveal")!({
+      kind: "working-directory",
+      path: "src/run.ts",
+      symbol: "run",
+    });
+    expect(result).toEqual({
+      outcome: { view: "file" },
+      locations: [location("src/run.ts", 3, 2, 3, 19)],
+    });
+    expect(editor.setDecorations).not.toHaveBeenCalled();
   });
 
   it("reports a plain file view for ordinary reveals", async () => {
@@ -535,10 +769,10 @@ describe("companion editor reveals", () => {
       path: "src/run.ts",
     });
 
-    expect(outcome).toEqual({ view: "file" });
+    expect(outcome).toEqual({ outcome: { view: "file" }, locations: [] });
   });
 
-  it("replaces the previous reveal highlight within the same editor", async () => {
+  it("navigates successive reveals without replacing Store-supplied highlights", async () => {
     const editor = {
       document: {
         lineCount: lines.length,
@@ -561,10 +795,9 @@ describe("companion editor reveals", () => {
       range: { start: { line: 3 }, end: { line: 3 } },
     });
 
-    expect(revealDecorations).toHaveLength(2);
-    expect(revealDecorations[0]?.dispose).toHaveBeenCalledOnce();
-    expect(revealDecorations[1]?.dispose).not.toHaveBeenCalled();
-    expect(editor.setDecorations).toHaveBeenCalledTimes(2);
+    expect(revealDecorations).toHaveLength(1);
+    expect(editor.revealRange).toHaveBeenCalledTimes(2);
+    expect(editor.setDecorations).not.toHaveBeenCalled();
   });
 });
 

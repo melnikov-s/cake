@@ -271,11 +271,32 @@ export const makeVsCodeServerLive = (
           const resolved = yield* tryNative("reveal", () =>
             resolveEditorTarget(request.workspacePath, request.location),
           );
-          yield* tryNative("reveal", (signal) =>
+          const reveal = yield* tryNative("reveal", (signal) =>
             runtime.reveal(resolved.workspace, resolved.location, signal),
           );
-          return { requestId: request.requestId };
+          return { requestId: request.requestId, reveal };
         }),
+        updateSelectionHighlights: Effect.fn("VsCodeServer.updateSelectionHighlights")(
+          function* (request) {
+            yield* requireAllowed(request.workspacePath);
+            yield* tryNative("updateSelectionHighlights", async (signal) => {
+              // Revalidate paths at the native boundary; identity and collection policy stay in the Store.
+              const locations = await Promise.all(
+                request.highlights.locations.map(async (location) => {
+                  const resolved = await resolveEditorTarget(
+                    request.workspacePath,
+                    location.view === "file"
+                      ? { kind: location.kind, path: location.path, range: location.range }
+                      : location,
+                  );
+                  return { ...location, path: resolved.location.path };
+                }),
+              );
+              await runtime.updateSelectionHighlights(request.workspacePath, { locations }, signal);
+            });
+            return { requestId: request.requestId };
+          },
+        ),
         openSourceControl: Effect.fn("VsCodeServer.openSourceControl")(function* (request) {
           yield* requireAllowed(request.workspacePath);
           yield* tryNative("openSourceControl", (signal) =>
@@ -345,44 +366,6 @@ export const makeVsCodeServerLive = (
           );
           return { requestId: request.requestId };
         }),
-        enterProjectEditor: Effect.fn("VsCodeServer.enterProjectEditor")(
-          function* (workingDirectory) {
-            yield* requireAllowed(workingDirectory);
-            yield* tryNative("enterProjectEditor", async (signal) => {
-              signal.throwIfAborted();
-              const candidates = electron.windowsForWorkspace(workingDirectory);
-              const selected =
-                candidates.find(([, window]) => window.isFocused()) ?? candidates.at(0);
-              if (!selected) throw new Error("No Cake window has this project open");
-              const [ownerId, window] = selected;
-              await runtime.open(ownerId, () => window, workingDirectory, signal);
-              signal.throwIfAborted();
-              electron.sendTo(window.webContents, {
-                type: "embedded-editor-entered",
-                workspacePath: workingDirectory,
-              });
-              await runtime.waitUntilVisible(workingDirectory, signal);
-              signal.throwIfAborted();
-            });
-          },
-        ),
-        openProjectLocation: Effect.fn("VsCodeServer.openProjectLocation")(
-          function* (workingDirectory, location) {
-            yield* requireAllowed(workingDirectory);
-            return yield* tryNative("openProjectLocation", async (signal) => {
-              signal.throwIfAborted();
-              if (!(await runtime.isVisible(workingDirectory)))
-                return { status: "mode-required" as const };
-              const resolved = await resolveEditorTarget(workingDirectory, location);
-              signal.throwIfAborted();
-              const outcome = await runtime.reveal(resolved.workspace, resolved.location, signal);
-              return {
-                status: "completed" as const,
-                value: { location: resolved.location, outcome },
-              };
-            });
-          },
-        ),
         runProjectScript: Effect.fn("VsCodeServer.runProjectScript")(
           function* (workingDirectory, source, input) {
             yield* requireAllowed(workingDirectory);

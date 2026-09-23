@@ -13,7 +13,17 @@ import type { ProjectSessionPreview } from "../../domain/project-sessions/projec
 import type { ScheduledMessage } from "../../domain/scheduled-messages/scheduled-message-data";
 import { editorLocationFromPath, type EditorLocation } from "../../ipc/editor-location";
 import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
-import type { SourceLocation, SourcePosition } from "../../ipc/source-location";
+import {
+  EditorSelectionId,
+  type EditorSelectionOpenResult,
+  type EditorSelectionState,
+  type EditorSelectionUpdate,
+} from "../../ipc/editor-selection";
+import {
+  gitRevisionSchema,
+  type SourceLocation,
+  type SourcePosition,
+} from "../../ipc/source-location";
 import { parseCrossSessionMessage } from "../../domain/conversations/cross-session-coordination";
 import type {
   CoordinationMessage,
@@ -196,9 +206,15 @@ const appControlArgumentSchemas = {
     workingDirectory: bounded(1, 4_096),
     keepBranch: Schema.Boolean,
   }),
+  "vscode.selections.list": Schema.Struct({}),
+  "vscode.selections.remove": Schema.Struct({ id: EditorSelectionId }),
+  "vscode.selections.clear": Schema.Struct({}),
   "vscode.enter": Schema.Struct({}),
   "vscode.open": Schema.Struct({
     path: trimmed(1, 8_192),
+    view: Schema.optionalKey(Schema.Literal("changes")),
+    side: Schema.optionalKey(Schema.Literals(["before", "after"])),
+    base: Schema.optionalKey(gitRevisionSchema),
     group: Schema.optionalKey(
       Schema.Literals([
         "active",
@@ -278,7 +294,12 @@ type AppControlCommand = keyof typeof appControlArgumentSchemas;
 type VscodeOpenInput = (typeof appControlArgumentSchemas)["vscode.open"]["Type"];
 
 function sourceLocation(input: VscodeOpenInput): SourceLocation {
-  if (input.line === undefined) return { path: input.path };
+  const presentation = {
+    ...(input.view ? { view: input.view } : null),
+    ...(input.side ? { side: input.side } : null),
+    ...(input.base ? { base: input.base } : null),
+  };
+  if (input.line === undefined) return { path: input.path, ...presentation };
   const start: SourcePosition =
     input.column === undefined
       ? { line: input.line - 1 }
@@ -287,7 +308,7 @@ function sourceLocation(input: VscodeOpenInput): SourceLocation {
     input.endColumn === undefined
       ? { line: (input.endLine ?? input.line) - 1 }
       : { line: (input.endLine ?? input.line) - 1, column: input.endColumn - 1 };
-  return { path: input.path, range: { start, end } };
+  return { path: input.path, ...presentation, range: { start, end } };
 }
 
 function invocation<Command extends AppControlCommand>(command: Command) {
@@ -336,6 +357,9 @@ const appControlInvocationSchema = Schema.Union([
   invocation("worktrees.discard"),
   invocation("vscode.enter"),
   invocation("vscode.open"),
+  invocation("vscode.selections.list"),
+  invocation("vscode.selections.remove"),
+  invocation("vscode.selections.clear"),
   invocation("vscode.layout.set"),
   invocation("vscode.diff.open"),
   invocation("vscode.editor.status"),
@@ -411,6 +435,22 @@ interface SessionCoordinationHost {
   close(thread: CoordinationThread): void;
 }
 
+/**
+ * Session-local selection authority exposed through the application-control bridge.
+ * RootApplicationControlHost resolves source.sessionId to that ProjectSessionStore's
+ * EditorSelectionsStore. Never target whichever session happens to be focused.
+ * An unavailable source Store is an error, not a fallback to main-owned state.
+ */
+interface AppControlVscodeSelectionsHost {
+  open(source: AgentControlSource, location: EditorLocation): Promise<EditorSelectionOpenResult>;
+  listSelections(source: AgentControlSource): EditorSelectionState;
+  removeSelection(
+    source: AgentControlSource,
+    id: EditorSelectionId,
+  ): Promise<EditorSelectionUpdate>;
+  clearSelections(source: AgentControlSource): Promise<EditorSelectionUpdate>;
+}
+
 export interface AppControlHost {
   sessionCoordination: SessionCoordinationHost;
   state: {
@@ -452,9 +492,8 @@ export interface AppControlHost {
     mutate(scope: { projectPath?: string }, mutation: SessionLabelMutation): Promise<void>;
     setSessionLabels(sessionId: string, labelIds: readonly string[]): Promise<boolean>;
   };
-  vscode: {
+  vscode: AppControlVscodeSelectionsHost & {
     enter(source: AgentControlSource): Promise<void>;
-    open(source: AgentControlSource, location: EditorLocation): Promise<void>;
     performEditorAction(source: AgentControlSource, action: VscodeEditorAction): Promise<JsonValue>;
   };
   worktrees?: {
@@ -716,7 +755,18 @@ export type AppControlResult =
       sessionCount: number;
     }
   | { ok: true; command: "vscode.enter"; entered: true }
-  | { ok: true; command: "vscode.open"; opened: EditorLocation }
+  | {
+      ok: true;
+      command: "vscode.open";
+      opened: EditorLocation;
+      selection: EditorSelectionOpenResult;
+    }
+  | { ok: true; command: "vscode.selections.list"; state: EditorSelectionState }
+  | {
+      ok: true;
+      command: "vscode.selections.remove" | "vscode.selections.clear";
+      update: EditorSelectionUpdate;
+    }
   | {
       ok: true;
       command:
@@ -751,6 +801,24 @@ const createDraftSessionOperationSchema = Schema.Struct({
 });
 
 const sessionAssistantControlOperations = [
+  ...(
+    ["vscode.selections.list", "vscode.selections.remove", "vscode.selections.clear"] as const
+  ).map((command) => ({
+    ...operation(
+      command,
+      "vscode",
+      command === "vscode.selections.list"
+        ? "List the parent session's code-tour selections."
+        : command === "vscode.selections.remove"
+          ? "Remove one parent-session selection by ID."
+          : "Clear the parent session's code-tour selections.",
+      appControlArgumentSchemas[command],
+    ),
+    guidance: [
+      "Ranged opens accumulate session-local selections until explicitly removed or cleared. Clear the previous tour step before presenting another.",
+      "Selection state is ephemeral and not persisted across Cake restarts. List/remove/clear work while VS Code is hidden.",
+    ],
+  })),
   {
     ...operation(
       "vscode.enter",
@@ -784,7 +852,8 @@ const sessionAssistantControlOperations = [
         description: "Open a test beside the current editor.",
       },
     ],
-    result: "The project-relative or absolute local location opened in embedded VS Code.",
+    result:
+      "The opened location, resolved ranges and selection IDs. Selections accumulate until removed or cleared.",
   },
   {
     ...operation(
@@ -1401,6 +1470,9 @@ export class AppControlBridge {
     if (
       invocation.name === "vscode.enter" ||
       invocation.name === "vscode.open" ||
+      invocation.name === "vscode.selections.list" ||
+      invocation.name === "vscode.selections.remove" ||
+      invocation.name === "vscode.selections.clear" ||
       invocation.name === "vscode.layout.set" ||
       invocation.name === "vscode.diff.open" ||
       invocation.name === "vscode.editor.status" ||
@@ -1417,6 +1489,24 @@ export class AppControlBridge {
         await this.host.vscode.enter(source);
         return { ok: true, command: invocation.name, entered: true };
       }
+      if (invocation.name === "vscode.selections.list")
+        return {
+          ok: true,
+          command: invocation.name,
+          state: this.host.vscode.listSelections(source),
+        };
+      if (invocation.name === "vscode.selections.remove")
+        return {
+          ok: true,
+          command: invocation.name,
+          update: await this.host.vscode.removeSelection(source, invocation.arguments.id),
+        };
+      if (invocation.name === "vscode.selections.clear")
+        return {
+          ok: true,
+          command: invocation.name,
+          update: await this.host.vscode.clearSelections(source),
+        };
       if (invocation.name === "vscode.open") {
         const input = invocation.arguments;
         const location = {
@@ -1425,8 +1515,8 @@ export class AppControlBridge {
           ...(input.preview !== undefined ? { preview: input.preview } : null),
           ...(input.preserveFocus !== undefined ? { preserveFocus: input.preserveFocus } : null),
         } satisfies EditorLocation;
-        await this.host.vscode.open(source, location);
-        return { ok: true, command: invocation.name, opened: location };
+        const selection = await this.host.vscode.open(source, location);
+        return { ok: true, command: invocation.name, opened: location, selection };
       }
       const action: VscodeEditorAction =
         invocation.name === "vscode.layout.set"

@@ -6,7 +6,13 @@ import {
   type SourceLocation,
   type SourcePosition,
 } from "../../../ipc/source-location";
-import type { OpenedProjectLocation, VscodeActionResult } from "../../vscode/VsCodeServer";
+import type { VscodeActionResult } from "../../vscode/VsCodeServer";
+import type { EditorSelectionOpenResult } from "../../../ipc/editor-selection";
+import { agentEditorLocation } from "../../../utils/agent-editor-location";
+import {
+  createCakeVscodeSelectionOperations,
+  type VscodeSelectionControl,
+} from "./cake-vscode-selection-operations";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 import { createCakeVscodeDebugOperations } from "./cake-vscode-debug-operations";
 
@@ -41,12 +47,12 @@ const vscodeScriptInputSchema = Schema.Struct({
 type VscodeOpenInput = typeof vscodeOpenInputSchema.Type;
 type VscodeScriptInput = typeof vscodeScriptInputSchema.Type;
 
-export interface VscodeControl {
+export interface VscodeControl extends VscodeSelectionControl {
   enter(signal: AbortSignal): Promise<void>;
   open(
     location: EditorLocation,
     signal: AbortSignal,
-  ): Promise<VscodeActionResult<OpenedProjectLocation>>;
+  ): Promise<VscodeActionResult<EditorSelectionOpenResult>>;
   runScript(
     source: string,
     input: JsonValue,
@@ -72,35 +78,7 @@ function sourceLocation(input: VscodeOpenInput): SourceLocation {
   return { path: input.path, ...presentation, range: { start, end } };
 }
 
-interface AgentLocation {
-  path: string;
-  line?: number;
-  column?: number;
-  endLine?: number;
-  endColumn?: number;
-  view?: "changes";
-  side?: "before" | "after";
-  base?: string;
-}
-
-function agentLocation(location: EditorLocation): JsonObject {
-  const result: AgentLocation = {
-    path: location.path,
-    ...(location.kind === "working-directory" && location.view ? { view: location.view } : null),
-    ...(location.kind === "working-directory" && location.side ? { side: location.side } : null),
-    ...(location.kind === "working-directory" && location.base ? { base: location.base } : null),
-  };
-  if (!location.range) return { ...result };
-  result.line = location.range.start.line + 1;
-  if (location.range.start.column !== undefined) result.column = location.range.start.column + 1;
-  if (location.range.end !== undefined) {
-    result.endLine = location.range.end.line + 1;
-    if (location.range.end.column !== undefined) result.endColumn = location.range.end.column + 1;
-  }
-  return { ...result };
-}
-
-type RevealFallback = NonNullable<OpenedProjectLocation["outcome"]["fallback"]>;
+type RevealFallback = NonNullable<EditorSelectionOpenResult["reveal"]["outcome"]["fallback"]>;
 
 function revealFallbackWarning(fallback: RevealFallback, base: string | undefined): string {
   const opened = "VS Code opened the file itself because";
@@ -116,14 +94,18 @@ function revealFallbackWarning(fallback: RevealFallback, base: string | undefine
   }
 }
 
-function openedResult(opened: OpenedProjectLocation): JsonObject {
-  const { fallback } = opened.outcome;
-  const base = opened.location.kind === "working-directory" ? opened.location.base : undefined;
+function openedResult(location: EditorLocation, opened: EditorSelectionOpenResult): JsonObject {
+  const { fallback } = opened.reveal.outcome;
+  const base = location.kind === "working-directory" ? location.base : undefined;
+  const warning = [fallback ? revealFallbackWarning(fallback, base) : undefined, opened.warning]
+    .filter(Boolean)
+    .join(" ");
   return {
     opened: true,
-    location: agentLocation(opened.location),
-    view: opened.outcome.view,
-    ...(fallback ? { warning: revealFallbackWarning(fallback, base) } : null),
+    location: agentEditorLocation(opened.reveal.locations[0] ?? location),
+    view: opened.reveal.outcome.view,
+    selectionIds: [...opened.selectionIds],
+    ...(warning ? { warning } : null),
   };
 }
 
@@ -134,7 +116,7 @@ function modeRequired() {
       code: "VSCODE_MODE_REQUIRED",
       currentMode: "chat",
       retryable: true,
-      recovery: "Call vscode.enter, then retry the same operation.",
+      recovery: "Select the calling session, call vscode.enter, then retry the same operation.",
     },
   } as const;
 }
@@ -168,6 +150,9 @@ export function createCakeVscodeOperations(control: VscodeControl): CakeOperatio
         "Use vscode.open whenever showing code or directing the user's attention, including tours and walkthroughs; pass a source range when specific code should be highlighted.",
         "Do not recreate source opening or selection with vscode.script.run; reserve scripts for layout or interactions that vscode.open cannot express.",
         "Use filesystem tools to read or edit files; vscode.open is the visual presentation operation.",
+        "Ranged opens accumulate session-local selection pills. They remain until removed/cleared or the session Store/window closes, and are not persisted across Cake restarts.",
+        "Use vscode.selections.list to inspect IDs, vscode.selections.remove for one selection, or vscode.selections.clear before the next tour step.",
+        "Opening code requires the calling session to be selected; background sessions never replace the active session's highlights.",
         "Paths may be relative to the Project Session's Working Directory or absolute local file paths.",
         "Opening an absolute path does not add it to the project or change the Working Directory.",
         "Explain the location in the normal Cake conversation. Do not duplicate the explanation inside the editor.",
@@ -206,14 +191,14 @@ export function createCakeVscodeOperations(control: VscodeControl): CakeOperatio
         { input: { path: "/tmp/cake.log" }, description: "Open an absolute local file." },
       ],
       result:
-        "The normalized project-relative or absolute local location, the view VS Code actually showed (changes or file), and a warning when a changes request fell back to the file, or VSCODE_MODE_REQUIRED when VS Code mode is inactive.",
+        "The resolved location, selectionIds (empty for file-only navigation), the actual view, and any diff fallback or highlight warning; or VSCODE_MODE_REQUIRED when the calling session is not selected in VS Code mode.",
       limitations: ["Call vscode.enter before using this operation."],
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry parsed this value with vscodeOpenInputSchema.
         const location = editorLocationFromPath(sourceLocation(input as VscodeOpenInput));
         const result = await control.open(location, context.signal);
         if (result.status === "mode-required") return modeRequired();
-        return openedResult(result.value);
+        return openedResult(location, result.value);
       },
     },
     {
@@ -251,6 +236,7 @@ export function createCakeVscodeOperations(control: VscodeControl): CakeOperatio
         return { ok: true, result: result.value };
       },
     },
+    ...createCakeVscodeSelectionOperations(control),
     ...createCakeVscodeDebugOperations(control),
   ];
 }

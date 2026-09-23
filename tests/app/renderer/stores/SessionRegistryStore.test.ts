@@ -54,6 +54,8 @@ function registryFixture(
         prepare: async () => true,
       },
       onResolveWorktree: () => undefined,
+      openEditorLocation: async () => ({ outcome: { view: "file" }, locations: [] }),
+      refreshEditorHighlights: async () => undefined,
     }),
     snapshot ? { snapshot } : undefined,
   );

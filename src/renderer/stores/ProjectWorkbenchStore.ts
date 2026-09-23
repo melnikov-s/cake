@@ -1,5 +1,4 @@
 import { Store, batch, child, createStore, effect as reactiveEffect } from "r-state-tree";
-import type { EditorLocation } from "../../ipc/editor-location";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import type { StoreEvent } from "../events/StoreEvent";
 import type {
@@ -376,17 +375,15 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   /** Switches a session to VS Code without changing the window's focused conversation. */
-  async showSessionEditor(sessionId: string, location?: EditorLocation) {
+  async showSessionEditor(sessionId: string) {
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session || this.props.catalog.find(sessionId)?.resolved)
       throw new Error("Cake could not open VS Code for that Project Session");
     if (this.activeSessionId === sessionId) {
-      if (location) await this.presentationStore.openFile(location);
-      else await this.presentationStore.openIde();
+      await this.presentationStore.openIde();
       return;
     }
     session.showPresentation("vscode");
-    if (location) session.requestEditorLocation(location);
   }
 
   private showTemporarySession(

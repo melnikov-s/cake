@@ -11,6 +11,26 @@ Authoritative primitives live in `src/renderer/components/ui/`.
 | `Avatar`              | Deterministic project/session artwork, opt-in disposable avatar interactions, and reduced-motion-safe smoke/character entrance animations for resolution and restoration. |
 | `ThinkingBubble`      | Compact, reduced-motion-safe conversational processing indicator.                                                                                                         |
 
+## Dismissible chips
+
+`DismissibleChip` composes sibling `Chip` and `IconButton` controls for separate
+primary and dismiss actions (never nested buttons). Supply `removeLabel` for the
+dismiss button's accessible name and tooltip; both controls respect `disabled`.
+VS Code selection pills use the primary action to reveal a range and the dismiss
+action to remove just that range. Example:
+
+```tsx
+<DismissibleChip
+  aria-label="Reveal src/app.ts line 12"
+  title="src/app.ts:12"
+  removeLabel="Remove src/app.ts line 12"
+  onClick={reveal}
+  onRemove={remove}
+>
+  app.ts:12
+</DismissibleChip>
+```
+
 ## Popover motion
 
 `PopoverContent` supports opt-in `motion="bouncy"`, used by `AvatarLabelPicker`.

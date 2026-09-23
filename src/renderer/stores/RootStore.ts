@@ -577,6 +577,14 @@ export class RootStore extends Store<{
       catalog: this.sessionCatalogStore,
       operations: this.sessionOperationCoordinator,
       reviews: () => this.reviewsStore,
+      openEditorLocation: (sessionId, location, signal) =>
+        this.projectWorkbenchStore.presentationStore.openSelectionLocation(
+          sessionId,
+          location,
+          signal,
+        ),
+      refreshEditorHighlights: () =>
+        this.projectWorkbenchStore.presentationStore.embeddedEditorStore.syncSelectionHighlights(),
       sessionModel: (sessionId, workingDirectory) =>
         this.props.projection.projectConversation(sessionId, workingDirectory),
       discussionCatalog: (sessionId) => this.props.projection.discussionCatalog(sessionId),

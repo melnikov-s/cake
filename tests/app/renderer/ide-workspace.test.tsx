@@ -45,6 +45,7 @@ import type { MessageCommentsStore } from "../../../src/renderer/stores/MessageC
 import type { ProjectSessionStore } from "../../../src/renderer/stores/ProjectSessionStore";
 import type { ReviewsStore } from "../../../src/renderer/stores/ReviewsStore";
 import { SideChatStore } from "../../../src/renderer/stores/SideChatStore";
+import { EditorSelectionsStore } from "../../../src/renderer/stores/EditorSelectionsStore";
 
 const configuration = {
   session: {
@@ -115,6 +116,7 @@ describe("IdeWorkspace", () => {
   let projectChat: ChatStore;
   let threadChat: ChatStore;
   let sideChat: SideChatStore;
+  let selections: EditorSelectionsStore;
 
   const editor = {
     chatSidebarVisible: true,
@@ -136,6 +138,13 @@ describe("IdeWorkspace", () => {
   } as unknown as ReviewsStore;
 
   beforeEach(() => {
+    selections = mount(
+      createStore(EditorSelectionsStore, {
+        sessionId: "session-1",
+        openLocation: async () => ({ outcome: { view: "file" }, locations: [] }),
+        refreshHighlights: async () => undefined,
+      }),
+    );
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     document.execCommand = vi.fn(() => false);
     // Selection markers measure the anchored text range; jsdom has no layout.
@@ -167,6 +176,7 @@ describe("IdeWorkspace", () => {
   });
 
   afterEach(() => {
+    selections[Symbol.dispose]();
     act(() => root.unmount());
     sideChat[Symbol.dispose]();
     threadChat[Symbol.dispose]();
@@ -192,6 +202,7 @@ describe("IdeWorkspace", () => {
     act(() =>
       root.render(
         <IdeWorkspace
+          selections={selections}
           editor={editor}
           reviews={reviews}
           projectChat={projectChat}

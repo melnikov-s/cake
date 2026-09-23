@@ -8,11 +8,8 @@ import { dirname, join } from "node:path";
 import { WebContentsView, BrowserWindow } from "electron";
 import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
-import {
-  editorRevealOutcomeSchema,
-  type EditorLocation,
-  type EditorRevealOutcome,
-} from "../../ipc/editor-location";
+import { EditorSelectionReveal, type EditorSelectionHighlights } from "../../ipc/editor-selection";
+import type { EditorLocation } from "../../ipc/editor-location";
 import { jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
 import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
 import cakeIconMarkup from "../../assets/cake-icon.svg?raw";
@@ -266,6 +263,7 @@ type CompanionRequest =
   | ({ type: "reveal" } & EditorLocation)
   | { type: "open-source-control" }
   | ({ type: "annotations" } & EditorAnnotationSnapshot)
+  | ({ type: "selection-highlights" } & EditorSelectionHighlights)
   | { type: "set-theme"; theme: "light" | "dark" }
   | { type: "script"; source: string; input: JsonValue }
   | { type: "editor-action"; action: VscodeEditorAction };
@@ -662,7 +660,7 @@ export class VsCodeServerRuntime {
     workspacePath: string,
     location: EditorLocation,
     signal?: AbortSignal,
-  ): Promise<EditorRevealOutcome> {
+  ): Promise<EditorSelectionReveal> {
     const resolved = await realpath(workspacePath);
     const instance = this.servers.get(resolved);
     if (!instance) throw new Error("The embedded editor is not running for this project yet");
@@ -676,28 +674,34 @@ export class VsCodeServerRuntime {
       COMPANION_REQUEST_TIMEOUT,
       signal,
     );
-    return Schema.decodeUnknownSync(editorRevealOutcomeSchema)(response);
+    return Schema.decodeUnknownSync(EditorSelectionReveal)(response);
+  }
+
+  /** Complete presentation replacement; main retains no selection state. */
+  async updateSelectionHighlights(
+    workingDirectory: string,
+    highlights: EditorSelectionHighlights,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const resolved = await realpath(workingDirectory);
+    const instance = this.servers.get(resolved);
+    if (!instance) throw new Error("The embedded editor is not running for this project yet");
+    const port = await this.waitForCompanionPort(resolved, signal);
+    this.touch(instance);
+    await postJsonResult(
+      port,
+      "/",
+      { type: "selection-highlights", locations: highlights.locations },
+      this.bridgeToken,
+      COMPANION_REQUEST_TIMEOUT,
+      signal,
+    );
   }
 
   /** Reports whether this workspace currently has a visible embedded editor surface. */
   async isVisible(workspacePath: string) {
     const resolved = await realpath(workspacePath);
     return this.isResolvedWorkspaceVisible(resolved);
-  }
-
-  /** Waits for the renderer to acknowledge agent-directed entry into VS Code mode. */
-  async waitUntilVisible(workspacePath: string, signal?: AbortSignal) {
-    signal?.throwIfAborted();
-    const resolved = await realpath(workspacePath);
-    signal?.throwIfAborted();
-    await this.props.pollUntil(
-      `visible:${resolved}`,
-      () => (this.isResolvedWorkspaceVisible(resolved) ? true : undefined),
-      25,
-      COMPANION_START_TIMEOUT,
-      "Cake did not finish entering VS Code mode",
-      signal,
-    );
   }
 
   private isResolvedWorkspaceVisible(workspacePath: string) {

@@ -17,6 +17,7 @@ type VsCodeOperation = keyof Pick<
   | "open-embedded-editor-source-control"
   | "perform-embedded-editor-action"
   | "update-embedded-editor-annotations"
+  | "update-embedded-editor-selection-highlights"
 >;
 
 const vscodeRpc = <Type extends VsCodeOperation>(type: Type) =>
@@ -40,5 +41,6 @@ export const VsCodeRpc = RpcGroup.make(
   vscodeRpc("open-embedded-editor-source-control"),
   vscodeRpc("perform-embedded-editor-action"),
   vscodeRpc("update-embedded-editor-annotations"),
+  vscodeRpc("update-embedded-editor-selection-highlights"),
   Rpc.make("vscode.observeEvents", { success: embeddedEditorEventSchema, stream: true }),
 );

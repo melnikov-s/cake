@@ -4,6 +4,7 @@ import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { editorLocationSchema } from "./editor-location";
 import { editorAnnotationSnapshotSchema } from "./editor-annotation";
 import { vscodeEditorActionSchema } from "./vscode-editor-action";
+import { EditorSelectionHighlights, EditorSelectionReveal } from "./editor-selection";
 import {
   compiledInlineWidgetSchema,
   inlineWidgetCapabilitySchema,
@@ -186,10 +187,6 @@ const cakeEventSchemas = {
     type: Schema.Literal("embedded-editor-selection-cleared"),
     workspacePath: stringMax(4_096),
   }),
-  "embedded-editor-entered": Schema.Struct({
-    type: Schema.Literal("embedded-editor-entered"),
-    workspacePath: stringMax(4_096),
-  }),
   "embedded-editor-annotation-requested": Schema.Struct({
     type: Schema.Literal("embedded-editor-annotation-requested"),
     ...embeddedEditorExplicitSelectionFields,
@@ -258,7 +255,6 @@ export const embeddedEditorEventSchema = Schema.Union([
   cakeEventSchemas["embedded-editor-toggle-chat"],
   cakeEventSchemas["embedded-editor-toggle-sidebar"],
   cakeEventSchemas["embedded-editor-selection-cleared"],
-  cakeEventSchemas["embedded-editor-entered"],
   cakeEventSchemas["embedded-editor-annotation-requested"],
   cakeEventSchemas["embedded-editor-side-chat-requested"],
 ]);
@@ -293,7 +289,6 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["embedded-editor-toggle-chat"],
   cakeEventSchemas["embedded-editor-toggle-sidebar"],
   cakeEventSchemas["embedded-editor-selection-cleared"],
-  cakeEventSchemas["embedded-editor-entered"],
   cakeEventSchemas["embedded-editor-annotation-requested"],
   cakeEventSchemas["embedded-editor-side-chat-requested"],
   cakeEventSchemas["browser-entered"],
@@ -431,6 +426,11 @@ export const cakeRpcPayloadSchemas = {
     ...requestBase,
     workspacePath: stringMax(4_096),
     action: vscodeEditorActionSchema,
+  }),
+  "update-embedded-editor-selection-highlights": Schema.Struct({
+    ...requestBase,
+    workspacePath: stringMax(4_096),
+    highlights: EditorSelectionHighlights,
   }),
   "update-embedded-editor-annotations": Schema.Struct({
     ...requestBase,
@@ -742,7 +742,8 @@ export const cakeRpcSuccessSchemas = {
   "set-vscode-server-path": cakeRpcResultSchemas["application-state-updated"],
   "open-embedded-editor": cakeRpcResultSchemas.accepted,
   "update-embedded-editor-bounds": cakeRpcResultSchemas.accepted,
-  "reveal-in-embedded-editor": cakeRpcResultSchemas.accepted,
+  "reveal-in-embedded-editor": Schema.Struct({ ...requestBase, reveal: EditorSelectionReveal }),
+  "update-embedded-editor-selection-highlights": cakeRpcResultSchemas.accepted,
   "open-embedded-editor-source-control": cakeRpcResultSchemas.accepted,
   "perform-embedded-editor-action": Schema.Struct({
     ...requestBase,

@@ -56,8 +56,6 @@ export const editorRevealOutcomeSchema = Schema.Struct({
   fallback: Schema.optionalKey(Schema.Literals(["no-changes", "unknown-base", "git-unavailable"])),
 });
 
-export type EditorRevealOutcome = typeof editorRevealOutcomeSchema.Type;
-
 /** Classifies a user-facing path while keeping project source locations Working Directory-relative. */
 export function editorLocationFromPath(location: SourceLocation): EditorLocation {
   const path = location.path.trim();
