@@ -427,12 +427,14 @@ export async function createCakeSessionRuntime(
         : SessionManager.continueRecent(options.cwd, sessionDir)));
   // Extension providers must exist before createAgentSession resolves the
   // initial model, or a default or resumed model on one of them falls back.
-  // An auxiliary session loads no extensions of its own, so it takes the
-  // agent directory's providers directly: a model that works in the main chat
-  // must work in its side chats.
-  const providerErrors = options.auxiliary
-    ? await registerAgentDirectoryExtensionProviders(agentDir, modelRuntime)
-    : await registerPendingExtensionProviders(capabilities.resourceLoader, modelRuntime);
+  // Auxiliary sessions and Cake Chat load no extensions of their own (their
+  // resource loaders run with `noExtensions`), so they take the agent
+  // directory's providers directly: a model that works in a Project Session
+  // must work in its side chats and in Cake Chat.
+  const providerErrors =
+    options.auxiliary || options.globalControl
+      ? await registerAgentDirectoryExtensionProviders(agentDir, modelRuntime)
+      : await registerPendingExtensionProviders(capabilities.resourceLoader, modelRuntime);
   const agentSessionOptions = {
     cwd: options.cwd,
     agentDir,

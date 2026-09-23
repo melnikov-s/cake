@@ -56,7 +56,10 @@ async function createProject(extensionHome: "project" | "agent-directory" = "pro
   return directory;
 }
 
-async function openRuntime(directory: string, options: { auxiliary?: boolean } = {}) {
+async function openRuntime(
+  directory: string,
+  options: { auxiliary?: boolean; cakeChat?: boolean } = {},
+) {
   const runtime = await createCakeSessionRuntime({
     cwd: directory,
     agentDir: join(directory, "agent"),
@@ -66,6 +69,9 @@ async function openRuntime(directory: string, options: { auxiliary?: boolean } =
     requestUi: async () => undefined,
     onEvent: () => undefined,
     ...(options.auxiliary ? { auxiliary: true, tools: ["read"] } : {}),
+    ...(options.cakeChat
+      ? { globalControl: { tools: [], invoke: async () => ({ ok: true }) } }
+      : {}),
   });
   runtimes.push(runtime);
   return runtime;
@@ -85,6 +91,22 @@ describe("extension provider model resolution", () => {
       expect(snapshot.diagnostics.filter((line) => /Using|Could not restore/.test(line))).toEqual(
         [],
       );
+    } finally {
+      delete process.env.OPENAI_API_KEY;
+    }
+  });
+
+  it("gives a Cake Chat session the agent directory's extension providers", async () => {
+    // Cake Chat binds no extension behavior (`noExtensions`), but a model from
+    // an extension-registered provider must still resolve there.
+    const directory = await createProject("agent-directory");
+    process.env.OPENAI_API_KEY = "fallback-bait";
+    try {
+      const runtime = await openRuntime(directory, { cakeChat: true });
+      const snapshot = await runtime.snapshot();
+
+      expect(snapshot.model).toMatchObject({ provider: "fixture-provider", id: "fixture-model" });
+      await expect(runtime.setModel("fixture-provider", "fixture-model")).resolves.toBeUndefined();
     } finally {
       delete process.env.OPENAI_API_KEY;
     }
