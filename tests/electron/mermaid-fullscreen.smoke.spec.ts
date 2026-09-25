@@ -117,6 +117,7 @@ test("stacks a Mermaid diagram's fullscreen view above a fullscreen reader", asy
     await expect(reader).toBeVisible();
 
     const diagramBlock = reader.locator('[data-streamdown="mermaid-block"]');
+    await expect(diagramBlock.locator('[data-streamdown="mermaid"] svg')).toBeVisible();
     const diagramFullscreen = diagramBlock.locator('button[title="View fullscreen"]');
     await expect(diagramFullscreen).toHaveCSS("opacity", "0");
     await diagramBlock.hover();
@@ -125,6 +126,7 @@ test("stacks a Mermaid diagram's fullscreen view above a fullscreen reader", asy
 
     const overlay = page.getByRole("dialog", { name: "Mermaid" });
     await expect(overlay).toBeVisible();
+    await expect(overlay.locator("svg").filter({ hasText: "Renderer" })).toBeVisible();
 
     // The overlay must actually paint above the reader, not behind it.
     const diagramIsTopmost = await overlay.evaluate((surface) => {

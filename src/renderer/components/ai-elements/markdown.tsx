@@ -498,7 +498,11 @@ function MarkdownRenderer({
     if (!(target instanceof Element)) return;
     const button = target.closest<HTMLButtonElement>('button[title="View fullscreen"]');
     const block = button?.closest<HTMLElement>('[data-streamdown="mermaid-block"]');
-    const svg = block?.querySelector<SVGSVGElement>("svg");
+    // The block's action bar (with icon SVGs) precedes the chart, so select the
+    // rendered diagram explicitly rather than the first SVG in the block.
+    const svg = block?.querySelector<SVGSVGElement>(
+      '[data-streamdown="mermaid"] [role="img"] > svg',
+    );
     if (!button || !block || !svg) return;
 
     // Streamdown owns its fullscreen state inside the parsed Markdown block. A

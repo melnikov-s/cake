@@ -100,13 +100,20 @@ describe("Markdown", () => {
       <div>
         {children}
         <div data-streamdown="mermaid-block">
-          <button title="View fullscreen" type="button">
-            Open
-          </button>
+          <div data-streamdown="mermaid-block-actions">
+            <button title="Copy Code" type="button">
+              <svg aria-label="Copy icon" viewBox="0 0 24 24" />
+            </button>
+            <button title="View fullscreen" type="button">
+              <svg aria-label="Fullscreen icon" viewBox="0 0 24 24" />
+            </button>
+          </div>
           <div data-streamdown="mermaid">
-            <svg aria-label="Rendered diagram" viewBox="0 0 10 10">
-              <circle cx="5" cy="5" r="4" />
-            </svg>
+            <div role="img" aria-label="Mermaid chart">
+              <svg aria-label="Rendered diagram" viewBox="0 0 10 10">
+                <circle cx="5" cy="5" r="4" />
+              </svg>
+            </div>
           </div>
         </div>
       </div>
