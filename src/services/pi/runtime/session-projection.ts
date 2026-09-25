@@ -411,6 +411,14 @@ function partsFromMessage(
             kind: "text",
             role: "assistant",
             entryId,
+            // Live parts use stream ids and settled parts use entry ids. Pi keeps
+            // the assistant message timestamp from stream start through
+            // persistence, so it lets the renderer keep one mounted message
+            // (and any open fullscreen view) across the settled snapshot.
+            renderKey:
+              typeof requestedAt === "number" && Number.isFinite(requestedAt)
+                ? `assistant-${requestedAt}-text-${index}`
+                : undefined,
             text,
             status: streaming
               ? "streaming"

@@ -22,6 +22,21 @@ export function errorNoticeFollowsUser(items: TranscriptItem[], index: number) {
   );
 }
 
+/**
+ * React keys for transcript items. Assistant text prefers its render key so the
+ * live streamed message stays mounted when the settled snapshot replaces its
+ * stream id with an entry id; duplicate render keys fall back to item ids.
+ */
+export function transcriptItemKeys(items: readonly TranscriptItem[]): string[] {
+  const used = new Set<string>();
+  return items.map((item) => {
+    const renderKey = item.kind === "text" ? item.renderKey : undefined;
+    const key = renderKey && !used.has(renderKey) ? renderKey : item.id;
+    used.add(key);
+    return key;
+  });
+}
+
 export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   let activity: UiPart[] = [];

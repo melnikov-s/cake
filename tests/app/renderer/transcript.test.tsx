@@ -21,6 +21,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
     props: {
       className?: string;
       data: Array<{ id: string }>;
+      computeItemKey?: (index: number, item: { id: string }) => React.Key;
       itemContent: (index: number, item: { id: string }) => React.ReactNode;
       customScrollParent?: HTMLElement;
     },
@@ -44,7 +45,9 @@ vi.mock("@/components/ai-elements/conversation", () => ({
     return (
       <div className={props.className}>
         {props.data.map((item, index) => (
-          <React.Fragment key={item.id}>{props.itemContent(index, item)}</React.Fragment>
+          <React.Fragment key={props.computeItemKey?.(index, item) ?? item.id}>
+            {props.itemContent(index, item)}
+          </React.Fragment>
         ))}
       </div>
     );
@@ -2005,6 +2008,50 @@ describe("Transcript scrolling", () => {
       document.body.querySelector('[data-slot="side-panel"][aria-label="Side chat"]'),
     ).toBeNull();
     threadChat[Symbol.dispose]();
+  });
+
+  it("keeps a fullscreen response open when the settled snapshot replaces its live part", () => {
+    const text = "Streaming response. ".repeat(30);
+    const live: UiPart = {
+      id: "stream-1-text-0",
+      kind: "text",
+      role: "assistant",
+      renderKey: "assistant-100-text-0",
+      text,
+      status: "streaming",
+    };
+    const render = (parts: UiPart[], isStreaming: boolean) =>
+      root.render(
+        <FullscreenSurfaceFixture>
+          <TestTranscript sessionId="session-1" store={storeWith(parts, isStreaming)} />
+        </FullscreenSurfaceFixture>,
+      );
+
+    act(() => render([live], true));
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="View response fullscreen"]')!
+        .click(),
+    );
+    const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+
+    act(() =>
+      render(
+        [
+          {
+            ...live,
+            id: "entry-assistant-1-text-0",
+            entryId: "assistant-1",
+            text: `${text}Done.`,
+            status: "complete",
+          },
+        ],
+        false,
+      ),
+    );
+    expect(document.body.querySelector('[role="dialog"]')).toBe(dialog);
+    expect(dialog?.textContent).toContain("Done.");
   });
 
   it("offers fullscreen for assistant responses with at least 500 characters", () => {

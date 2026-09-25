@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { UiPart } from "../../../src/ipc/session-contract";
-import { groupTranscriptParts } from "../../../src/renderer/components/chat-transcript-items";
+import {
+  groupTranscriptParts,
+  transcriptItemKeys,
+} from "../../../src/renderer/components/chat-transcript-items";
 
 function tool(id: string, origin?: "compacted"): UiPart {
   return { id, kind: "tool", name: "read", input: id, state: "success", origin };
@@ -46,5 +49,27 @@ describe("groupTranscriptParts", () => {
     expect(groupTranscriptParts([command])).toMatchObject([
       { kind: "activity-group", parts: [{ id: "old-command", origin: "compacted" }] },
     ]);
+  });
+});
+
+describe("transcriptItemKeys", () => {
+  const text = (id: string, renderKey?: string): UiPart => ({
+    id,
+    kind: "text",
+    role: "assistant",
+    renderKey,
+    text: id,
+    status: "complete",
+  });
+
+  it("keys assistant text by render key and falls back to ids for duplicates", () => {
+    expect(
+      transcriptItemKeys([
+        text("entry-a-text-0", "assistant-1-text-0"),
+        text("entry-b-text-0", "assistant-1-text-0"),
+        text("entry-c-text-0"),
+        tool("tool-1"),
+      ]),
+    ).toEqual(["assistant-1-text-0", "entry-b-text-0", "entry-c-text-0", "tool-1"]);
   });
 });

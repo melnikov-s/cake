@@ -436,7 +436,13 @@ function richMarkdownFeatures(source: string, normalizeLatexDelimiters = true) {
 }
 
 export function Markdown(props: MarkdownProps) {
-  const features = richMarkdownFeatures(props.children, props.normalizeLatexDelimiters);
+  // Streaming content defers LaTeX normalization until it settles, but plugin
+  // selection must not change at that moment: swapping renderers would remount
+  // the Markdown and dismiss an open Mermaid fullscreen view.
+  const features = richMarkdownFeatures(
+    props.children,
+    props.streaming || props.normalizeLatexDelimiters !== false,
+  );
   const RichMarkdown = features.math
     ? features.mermaid
       ? MathAndMermaidMarkdown

@@ -235,6 +235,8 @@ export const uiPartSchema = Schema.Union([
     kind: Schema.Literal("text"),
     role: Schema.Literals(["user", "assistant"]),
     entryId: Schema.optional(stringRange(1, 256)),
+    /** Presentation identity shared by a live streamed part and its settled durable projection. */
+    renderKey: Schema.optional(stringRange(1, 256)),
     text: boundedText,
     status: Schema.Literals(["streaming", "complete", "error"]),
     renderAs: Schema.optional(Schema.Literal("markdown")),

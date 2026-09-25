@@ -37,6 +37,7 @@ import {
   type TranscriptSelectionCapture,
 } from "./chat-transcript-parts";
 import { ChatTranscriptItem } from "./chat-transcript-item";
+import { transcriptItemKeys } from "./chat-transcript-items";
 
 export {
   captureMessageSelection,
@@ -141,6 +142,7 @@ export const ChatTranscript = observer(function ChatTranscript({
     ...(hasWorkLogChanges ? [{ kind: "changed-files" as const, id: "changed-files" }] : []),
     ...(showAssistantLoading ? [{ kind: "loading-state" as const, id: "loading-state" }] : []),
   ];
+  const itemKeys = transcriptItemKeys(items);
   const transcriptBehavior = useMemo<CanonicalTranscriptBehavior>(
     () => ({
       store,
@@ -322,7 +324,7 @@ export const ChatTranscript = observer(function ChatTranscript({
   );
   const renderItem = (item: TranscriptItem, index: number) => (
     <ChatTranscriptItem
-      key={item.id}
+      key={itemKeys[index]}
       item={item}
       index={index}
       errorFollowsUser={errorNoticeFollowsUser(items, index)}
@@ -365,7 +367,7 @@ export const ChatTranscript = observer(function ChatTranscript({
                 customScrollParent={scroller}
                 data={items}
                 context={{ footer, error }}
-                computeItemKey={(_index, item) => item.id}
+                computeItemKey={(index, item) => itemKeys[index] ?? item.id}
                 initialTopMostItemIndex={openingItemLocation}
                 followOutput={false}
                 totalListHeightChanged={handleTotalHeightChange}

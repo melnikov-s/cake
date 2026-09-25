@@ -1098,6 +1098,41 @@ describe("Pi 0.85.1 foundation contract", () => {
     expect(afterTool[0]).toMatchObject({ id: "stream-2-text-0", text: "Here is the result." });
   });
 
+  it("shares one assistant text render key between live and settled projections", () => {
+    const project = createLiveMessageProjector();
+    const message = {
+      role: "assistant",
+      content: [{ type: "text", text: "Hello" }],
+      api: "anthropic-messages",
+      provider: "anthropic",
+      model: "fixture",
+      usage: zeroUsage,
+      stopReason: "stop",
+      timestamp: 1234,
+    };
+    project({ type: "message_start", message } as unknown as AgentSessionEvent);
+    const [live] = project({
+      type: "message_update",
+      message,
+      assistantMessageEvent: { type: "text_delta", delta: "Hello" },
+    } as unknown as AgentSessionEvent);
+    const [settled] = projectSessionEntries([
+      {
+        type: "message",
+        id: "assistant-1",
+        parentId: null,
+        timestamp: new Date(0).toISOString(),
+        message,
+      },
+    ] as never);
+
+    expect(live).toMatchObject({ id: "stream-1-text-0", renderKey: "assistant-1234-text-0" });
+    expect(settled).toMatchObject({
+      id: "entry-assistant-1-text-0",
+      renderKey: "assistant-1234-text-0",
+    });
+  });
+
   it("marks only the tool call receiving argument deltas as input streaming", () => {
     const project = createLiveMessageProjector();
     const message = {
