@@ -40,10 +40,27 @@ describe("ComposerDraftStore", () => {
     expect(store.text).toBe("");
     expect(store.attachments).toEqual([]);
     expect(store.annotationDraft.annotations).toEqual([]);
-    expect(store.editorContextAttachment).toEqual(context);
+    expect(store.editorContextAttachment).toBeUndefined();
+    expect(store.visibleAttachments).toEqual([]);
 
     store.clear();
     expect(store.editorContextAttachment).toBeUndefined();
+    store[Symbol.dispose]();
+  });
+
+  it("restores consumed source context on a failed submission", () => {
+    const store = mount(createStore(ComposerDraftStore, {}));
+    const context = {
+      kind: "source" as const,
+      name: "active.ts",
+      location: { path: "src/active.ts", range: { start: { line: 1 }, end: { line: 2 } } },
+    };
+    store.setEditorContextAttachment(context);
+    const submitted = store.submissionAttachments;
+    store.clearForSubmit();
+    expect(store.visibleAttachments).toEqual([]);
+    store.restoreAfterFailure("Explain this", submitted);
+    expect(store.visibleAttachments).toEqual([context]);
     store[Symbol.dispose]();
   });
 

@@ -105,6 +105,7 @@ async function fixture() {
   return {
     application,
     page,
+    project,
     command,
     pills,
     open,
@@ -131,7 +132,7 @@ test.beforeEach(() => {
   test.setTimeout(60_000);
 });
 
-test("agent selections appear above the IDE project-chat input and pill clicks reveal the exact range", async () => {
+test("agent selections appear outside the input above the composer and clicks reveal the exact range", async () => {
   const h = await fixture();
   try {
     await h.open();
@@ -142,8 +143,9 @@ test("agent selections appear above the IDE project-chat input and pill clicks r
       .poll(() => editorState(h.application))
       .toMatchObject({ tabs: ["a.ts"], text: expect.stringContaining("line100") });
     const pillBounds = await h.pills.boundingBox();
-    const inputBounds = await h.page.getByLabel("Message", { exact: true }).boundingBox();
-    expect(pillBounds!.y + pillBounds!.height).toBeLessThanOrEqual(inputBounds!.y);
+    const composerBounds = await h.page.locator("form").boundingBox();
+    expect(pillBounds!.y + pillBounds!.height).toBeLessThanOrEqual(composerBounds!.y);
+    await expect(h.page.locator("form").locator('[aria-label="Editor selections"]')).toHaveCount(0);
     await expect(h.pills.getByRole("button", { name: /^Reveal / })).toHaveCount(2);
   } finally {
     await h.close();
@@ -183,6 +185,37 @@ test("switching files and showing the same document in two editors retains one p
     await h.open("src/a.ts", 100, { group: "one", preview: false });
     await expect.poll(() => editorState(h.application)).toMatchObject({ tabs: ["a.ts", "a.ts"] });
     await expect(h.pills.getByRole("button", { name: /^Reveal / })).toHaveCount(2);
+  } finally {
+    await h.close();
+  }
+});
+
+test("a user-selected source opens on click, appears in the sent message, and leaves the composer", async () => {
+  const h = await fixture();
+  try {
+    await h.open("src/b.ts", 20);
+    await expect.poll(() => editorState(h.application)).toMatchObject({ tabs: ["b.ts"] });
+    await emitRendererEvent(h.application, {
+      type: "embedded-editor-selection",
+      workspacePath: h.project,
+      path: "src/a.ts",
+      startLine: 3,
+      endLine: 4,
+    });
+    const source = h.page.getByRole("button", { name: /Open src\/a\.ts#L4-L5 in VS Code/ });
+    await expect(source).toBeVisible();
+    await expect(h.page.getByRole("button", { name: "Open in VS Code" })).toHaveCount(0);
+    const input = h.page.getByLabel("Message", { exact: true });
+    await input.fill("What is this selection?");
+    await h.page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(
+      h.page.locator("form").getByRole("button", { name: /Open src\/a\.ts/ }),
+    ).toHaveCount(0);
+    await expect(h.page.getByText("What is this selection?", { exact: true })).toBeVisible();
+    await expect(source).toBeVisible();
+    await expect.poll(() => editorState(h.application)).toMatchObject({ tabs: ["b.ts"] });
+    await source.click();
+    await expect.poll(() => editorState(h.application)).toMatchObject({ tabs: ["a.ts"] });
   } finally {
     await h.close();
   }

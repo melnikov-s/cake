@@ -121,6 +121,8 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
             mediaType: "text/plain",
             attachmentKind: "source",
             location: attachment.location,
+            selectedText: attachment.selectedText,
+            comment: attachment.comment,
           },
         ];
       if (attachment.kind === "browser")

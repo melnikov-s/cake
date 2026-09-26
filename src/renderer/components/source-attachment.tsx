@@ -1,5 +1,6 @@
 import type { SourceLocation } from "../../ipc/source-location";
 import { formatSourceLocation } from "../../utils/source-location";
+import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
 import { CloseIcon } from "./ui/icons";
@@ -24,8 +25,8 @@ export function SourceAttachment({
     start?.column !== undefined && end?.column !== undefined
       ? `${attachment.location.path}:${start.line + 1}:${start.column + 1}-${end.line + 1}:${end.column + 1}`
       : formatSourceLocation(attachment.location);
-  return (
-    <div className="group relative w-full rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
+  const content = (
+    <>
       <span className="block truncate pr-8 font-mono text-xs font-medium" title={label}>
         {label}
       </span>
@@ -35,18 +36,27 @@ export function SourceAttachment({
         </pre>
       ) : null}
       {attachment.comment ? (
-        <p className="mt-2 whitespace-pre-wrap text-xs text-foreground">{attachment.comment}</p>
+        <span className="mt-2 block whitespace-pre-wrap text-xs text-foreground">
+          {attachment.comment}
+        </span>
       ) : null}
+    </>
+  );
+  const surface = "w-full rounded-lg border border-border bg-muted/40 px-3 py-2 text-left text-sm";
+  return (
+    <div className="relative w-full">
       {onOpen ? (
         <Button
-          className="mt-2"
-          variant="outline"
-          size="sm"
+          className={cn(surface, "h-auto block whitespace-normal font-normal hover:bg-muted/70")}
+          variant="ghost"
+          aria-label={`Open ${label} in VS Code`}
           onClick={() => onOpen(attachment.location)}
         >
-          Open in VS Code
+          {content}
         </Button>
-      ) : null}
+      ) : (
+        <div className={surface}>{content}</div>
+      )}
       {onRemove ? (
         <IconButton
           className="absolute right-2 top-1.5"

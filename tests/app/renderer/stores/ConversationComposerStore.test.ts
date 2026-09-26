@@ -246,6 +246,28 @@ describe("ConversationComposerStore", () => {
     model[Symbol.dispose]();
   });
 
+  it("submits selected source context once and removes it from the next draft", async () => {
+    const prompt = vi.fn(async () => undefined);
+    const client = { sessionChats: { prompt } } as unknown as Client;
+    const model = Conversation.create({ sessionId: "session-1" });
+    const root = mount(createStore(HarnessStore, { client, model, existing: true }));
+    const context = {
+      kind: "source" as const,
+      name: "active.ts",
+      location: { path: "src/active.ts", range: { start: { line: 3 }, end: { line: 4 } } },
+    };
+    root.composer.draftStore.setEditorContextAttachment(context);
+    root.composer.draftStore.setText("What is this?");
+
+    await root.composer.submit();
+
+    expect(prompt).toHaveBeenCalledWith(expect.objectContaining({ attachments: [context] }));
+    expect(root.composer.draftStore.visibleAttachments).toEqual([]);
+    expect(root.composer.draftStore.editorContextAttachment).toBeUndefined();
+    root[Symbol.dispose]();
+    model[Symbol.dispose]();
+  });
+
   it("preserves the next message's context when an in-flight send fails", async () => {
     let rejectPrompt!: (error: Error) => void;
     const prompt = vi.fn(

@@ -140,11 +140,12 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
     this.attachments.splice(index, 1);
   }
 
-  /** Clears content consumed by an ordinary send while retaining automatic editor context. */
+  /** Consume the draft's editor context without changing the selection in VS Code. */
   clearForSubmit() {
     this.text = "";
     this.attachments.splice(0);
     this.annotationDraft.clear();
+    this.editorContextAttachment = undefined;
   }
 
   clear() {

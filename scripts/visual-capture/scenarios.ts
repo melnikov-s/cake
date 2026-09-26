@@ -1,11 +1,12 @@
 import { drawMermaidArchitecture } from "../../tests/fixtures/draw-mermaid-architecture.ts";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type { VisualCaptureTheme } from "./arguments.ts";
 import type { CakeArtifactV1 } from "../../src/ipc/artifact-contract.ts";
 import type { CakeEvent } from "../../src/ipc/cake-rpc-contract.ts";
+import { emitRendererEvent } from "../../tests/electron/main-harness.ts";
 
 interface ScenarioFixturePaths {
   readonly cakeHome: string;
@@ -682,7 +683,156 @@ export default function Plugin() { const cake = useCake(); const [state, setStat
   },
 };
 
+let sourceSelectionProject = "";
+
+const sourceSelectionScenario: VisualCaptureScenario = {
+  name: "source-selection",
+  description: "IDE source context in the composer and in a submitted message",
+  states: ["draft", "sent"],
+  async seed(paths, theme) {
+    sourceSelectionProject = paths.project;
+    const sessionId = "visual-source-selection";
+    const timestamp = new Date(0).toISOString();
+    const directory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    await Promise.all([
+      mkdir(paths.userData, { recursive: true }),
+      mkdir(join(paths.project, "src"), { recursive: true }),
+      mkdir(directory, { recursive: true }),
+      mkdir(join(paths.cakeHome, "state"), { recursive: true }),
+    ]);
+    await writeFile(join(paths.project, "src", "example.ts"), "export const answer = 42;\n");
+    await writeFile(
+      join(paths.userData, "window-state.json"),
+      JSON.stringify({
+        projectPath: paths.project,
+        selectedSessionId: sessionId,
+        activeConversation: { kind: "project-session", workspacePath: paths.project, sessionId },
+        recentProjectPaths: [paths.project],
+        draft: "",
+        draftsBySession: {},
+        theme,
+      }),
+    );
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        projects: [
+          {
+            path: paths.project,
+            name: "source-selection",
+            addedAt: timestamp,
+            lastOpenedAt: timestamp,
+          },
+        ],
+        trustedProjectPaths: [paths.project],
+      }),
+    );
+    const attachment = {
+      kind: "source" as const,
+      name: "src/example.ts",
+      location: {
+        path: "src/example.ts",
+        range: { start: { line: 0 }, end: { line: 0 } },
+      },
+    };
+    await writeFile(
+      join(directory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+      `${[
+        { type: "session", version: 3, id: sessionId, timestamp, cwd: paths.project },
+        {
+          type: "message",
+          id: "user-1",
+          parentId: null,
+          timestamp,
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "Show me the source context" }],
+            timestamp: 0,
+          },
+        },
+        {
+          type: "message",
+          id: "user-2",
+          parentId: "user-1",
+          timestamp,
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `What does this line do?\n\n<cake-source-attachment>${JSON.stringify(attachment)}</cake-source-attachment>`,
+              },
+            ],
+            timestamp: 1,
+          },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n")}\n`,
+    );
+  },
+  async prepare(page, state, application) {
+    if (!application) throw new Error("The source selection scenario requires Electron");
+    const sessionId = "visual-source-selection";
+    await page.getByLabel("Message", { exact: true }).waitFor({ state: "visible" });
+    await page
+      .locator("article")
+      .getByText("Show me the source context", { exact: true })
+      .waitFor({ state: "visible" });
+    await emitRendererEvent(application, {
+      type: "project-session-control-requested",
+      sessionId,
+      controlRequestId: randomUUID(),
+      invocation: { _tag: "InvokeAppControl", command: "vscode.enter", input: {} },
+    });
+    await page.getByRole("region", { name: "VS Code workspace" }).waitFor({ state: "visible" });
+    await page.locator("aside article").first().waitFor({ state: "visible" });
+    if (state === "draft") {
+      await emitRendererEvent(application, {
+        type: "project-session-control-requested",
+        sessionId,
+        controlRequestId: randomUUID(),
+        invocation: {
+          _tag: "InvokeAppControl",
+          command: "vscode.open",
+          input: {
+            path: "src/example.ts",
+            line: 1,
+            endLine: 1,
+          },
+        },
+      });
+      await page.locator('[aria-label="Editor selections"]').waitFor({ state: "visible" });
+      await emitRendererEvent(application, {
+        type: "embedded-editor-selection",
+        workspacePath: sourceSelectionProject,
+        path: "src/example.ts",
+        startLine: 0,
+        endLine: 0,
+      });
+      await page
+        .locator("form")
+        .getByRole("button", { name: /Open src\/example\.ts/ })
+        .waitFor({ state: "visible" });
+      await page.getByLabel("Message", { exact: true }).fill("Could you explain this selection?");
+      await page.locator("aside article").last().scrollIntoViewIfNeeded();
+    } else {
+      await expect(page.getByText("What does this line do?", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: /Open src\/example\.ts/ })).toBeVisible();
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+  },
+  region(page) {
+    return page.locator("aside").last();
+  },
+};
+
 export const visualCaptureScenarios = [
+  sourceSelectionScenario,
   sessionPluginsScenario,
   assistantMarkdownCode,
   requestExplanationScenario,

@@ -100,15 +100,19 @@ export const IdeWorkspace = observer(function IdeWorkspace({
         className="h-full"
         store={chat}
         transcriptBehavior={transcriptBehavior}
-        composerHeader={contextualChat ? undefined : projectComposerHeader}
-        composerContent={
+        composerHeader={
           contextualChat ? undefined : (
             <>
-              {projectComposerContent}
-              <EditorSelectionPills store={selections} />
+              {(selections.selections.length > 0 || selections.error) && (
+                <div className="px-4 pb-2">
+                  <EditorSelectionPills store={selections} />
+                </div>
+              )}
+              {projectComposerHeader}
             </>
           )
         }
+        composerContent={contextualChat ? undefined : projectComposerContent}
         composerLeadingAccessory={projectComposerLeadingAccessory}
       />
     </SideChatLayout>
