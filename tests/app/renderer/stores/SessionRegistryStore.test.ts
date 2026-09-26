@@ -99,6 +99,24 @@ describe("SessionRegistryStore materialization", () => {
     fixture.dispose();
   });
 
+  it("indexes all realized keyed Stores for subsequent session switches", () => {
+    const fixture = registryFixture();
+    const first = fixture.registry.load("session-1", "/project");
+    const second = fixture.registry.load("session-2", "/project");
+    const snapshot = toSnapshot(fixture.registry);
+    fixture.dispose();
+
+    const restored = registryFixture(snapshot);
+    const firstRestored = restored.registry.findSession("session-1");
+    const sessionsGetter = vi.spyOn(restored.registry, "sessions", "get");
+    const secondRestored = restored.registry.findSession("session-2");
+    expect(secondRestored?.sessionId).toBe("session-2");
+    expect(sessionsGetter).not.toHaveBeenCalled();
+    expect(firstRestored).not.toBe(first);
+    expect(secondRestored).not.toBe(second);
+    restored.dispose();
+  });
+
   it("restores pending lifecycles and keyed loaded Store state from a window snapshot", async () => {
     const fixture = registryFixture();
     const staged = fixture.registry.pendingSessions.prepareStaged("/project", "staged");

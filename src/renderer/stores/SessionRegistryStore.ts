@@ -160,9 +160,11 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     if (cached) return cached;
     const index = this.targets.findIndex((target) => target.sessionId === sessionId);
     if (index < 0) return undefined;
-    const session = this.sessions[index];
-    if (session) this.sessionsById.set(sessionId, session);
-    return session;
+    // Resolving the keyed child array realizes all of its Stores. Index them all
+    // so switching to another already-loaded session does not reconcile the
+    // entire child array again on its first lookup.
+    for (const session of this.sessions) this.sessionsById.set(session.sessionId, session);
+    return this.sessionsById.get(sessionId);
   }
 
   load(sessionId: string, workingDirectory: string) {

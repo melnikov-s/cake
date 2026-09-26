@@ -51,14 +51,16 @@ export class SessionObservationRetentionStore extends Store<SessionObservationRe
   }
 
   private trim() {
-    const loadedIds = new Set(this.props.sessions().map((session) => session.sessionId));
+    const sessionsById = new Map(
+      this.props.sessions().map((session) => [session.sessionId, session]),
+    );
     for (let index = this.recentSessionIds.length - 1; index >= 0; index -= 1) {
       const sessionId = this.recentSessionIds[index]!;
-      if (loadedIds.has(sessionId) && this.materializedSessionIds.includes(sessionId)) continue;
+      if (sessionsById.has(sessionId) && this.materializedSessionIds.includes(sessionId)) continue;
       this.recentSessionIds.splice(index, 1);
     }
     const idleIds = this.recentSessionIds.filter((sessionId) => {
-      const session = this.props.sessions().find((candidate) => candidate.sessionId === sessionId)!;
+      const session = sessionsById.get(sessionId)!;
       return (
         !this.props.isActive(sessionId) && !this.props.isVisible?.(sessionId) && !isRunning(session)
       );

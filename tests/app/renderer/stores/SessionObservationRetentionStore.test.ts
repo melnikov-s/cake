@@ -1,5 +1,5 @@
 import { createStore, mount, observable, type StoreSnapshot } from "r-state-tree";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ProjectSessionStore } from "../../../../src/renderer/stores/ProjectSessionStore";
 import { SessionObservationRetentionStore } from "../../../../src/renderer/stores/SessionObservationRetentionStore";
 
@@ -41,6 +41,25 @@ describe("SessionObservationRetentionStore", () => {
     store.retain("two");
     expect(store.sessions.map((item) => item.sessionId)).toEqual(["two"]);
 
+    store[Symbol.dispose]();
+  });
+
+  it("resolves the loaded collection once when trimming several recent sessions", () => {
+    const sessions = observable(
+      Array.from({ length: 5 }, (_, index) => session(`session-${index}`)),
+    );
+    const readSessions = vi.fn(() => sessions);
+    const store = mount(
+      createStore(SessionObservationRetentionStore, {
+        sessions: readSessions,
+        isActive: () => false,
+      }),
+    );
+    for (const item of sessions) store.materialize(item.sessionId);
+
+    readSessions.mockClear();
+    store.retain("session-0");
+    expect(readSessions.mock.calls.length).toBeLessThanOrEqual(2);
     store[Symbol.dispose]();
   });
 
