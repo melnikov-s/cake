@@ -1,5 +1,6 @@
 /* Adapted from Vercel AI Elements prompt-input.tsx at 0c1f5e8c75273f0e95c8faa031544a8aa2bb1a5b (Apache-2.0). Removed AI SDK and upload hooks. */
 import type { ComponentProps } from "react";
+import { Textarea } from "../ui/textarea";
 import { cn } from "@/lib/utils";
 
 export function Composer({ className, ...props }: ComponentProps<"form">) {
@@ -16,10 +17,11 @@ export function Composer({ className, ...props }: ComponentProps<"form">) {
 
 export function ComposerInput({ className, ...props }: ComponentProps<"textarea">) {
   return (
-    <textarea
+    <Textarea
+      dictation
       rows={1}
       className={cn(
-        "min-h-10 max-h-80 w-full resize-none overflow-y-auto bg-transparent px-2 py-2 text-sm leading-6 outline-none [field-sizing:content] placeholder:text-muted-foreground",
+        "min-h-10 max-h-80 w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent px-2 py-2 text-sm leading-6 outline-none focus-visible:ring-0 [field-sizing:content] placeholder:text-muted-foreground",
         className,
       )}
       {...props}

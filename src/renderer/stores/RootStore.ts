@@ -1,3 +1,5 @@
+import { DictationStore } from "./DictationStore";
+import { microphone } from "../dictation/microphone";
 import { Store, child, createStore, untracked } from "r-state-tree";
 import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
 import { decodeArtifactLineageId } from "../../domain/artifacts/artifact-lineage";
@@ -817,8 +819,14 @@ export class RootStore extends Store<{
   }
 
   @child
+  get dictationStore(): DictationStore {
+    return createStore(DictationStore, { client: this.client.dictation, microphone });
+  }
+
+  @child
   get settingsStore(): SettingsStore {
     return createStore(SettingsStore, {
+      dictation: this.dictationStore,
       operations: this.sessionOperationCoordinator,
       activeSession: () => {
         const active = this.appShellStore.activeConversation;

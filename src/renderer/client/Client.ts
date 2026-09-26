@@ -474,6 +474,7 @@ interface InlineWidgetCommands {
 
 /** Permanent renderer-facing Promise API grouped by semantic Cake capability. */
 export interface Client {
+  readonly dictation: CommandGroup<CakeIpcClientService["dictation"]>;
   readonly application: CommandGroup<CakeIpcClientService["application"]>;
   readonly windowState: CommandGroup<CakeIpcClientService["windowState"]>;
   readonly models: {

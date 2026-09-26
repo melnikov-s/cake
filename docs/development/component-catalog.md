@@ -12,6 +12,18 @@ Authoritative primitives live in `src/renderer/components/ui/`.
 | `ThinkingBubble`      | Compact, reduced-motion-safe conversational processing indicator.                                                                                                         |
 | `StepProgress`        | Segmented progress for multi-step flows such as stepped interview forms; segments become jump targets when `onSelect` is supplied.                                        |
 
+## Dictation-enabled writing fields
+
+`Textarea` accepts `dictation` to opt a Cake-owned prose field into the window's
+`DictationStore`. `ComposerInput` opts in for all shared Chat consumers. Leave it
+unset for paths, search, code, and configuration syntax. Embedded surfaces never
+participate. Existing keyboard and controlled-value handlers remain authoritative.
+
+`DictationIndicator` is the shared silent, non-interactive status attached to the
+focused field: Preparing, Listening, Finishing, or a failure. It composes the
+shared spinner and microphone icon and never takes focus. See
+[local dictation](dictation.md) for lifecycle and installation details.
+
 ## Dismissible chips
 
 `DismissibleChip` composes sibling `Chip` and `IconButton` controls for separate

@@ -50,6 +50,44 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
       .catch((error: unknown) => Promise.reject(clientError(operation, error, options?.signal)));
 
   return {
+    dictation: {
+      install: (options) =>
+        run(
+          "dictation.install",
+          withClient((client) => client.dictation.install()),
+          options,
+        ),
+      setModelPath: (path, options) =>
+        run(
+          "dictation.setModelPath",
+          withClient((client) => client.dictation.setModelPath(path)),
+          options,
+        ),
+      remove: (options) =>
+        run(
+          "dictation.remove",
+          withClient((client) => client.dictation.remove()),
+          options,
+        ),
+      prepare: (options) =>
+        run(
+          "dictation.prepare",
+          withClient((client) => client.dictation.prepare()),
+          options,
+        ),
+      release: (options) =>
+        run(
+          "dictation.release",
+          withClient((client) => client.dictation.release()),
+          options,
+        ),
+      transcribe: (audio, options) =>
+        run(
+          "dictation.transcribe",
+          withClient((client) => client.dictation.transcribe(audio)),
+          options,
+        ),
+    },
     application: {
       getHomeDirectory: (options) =>
         run(

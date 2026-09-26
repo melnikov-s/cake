@@ -144,6 +144,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
             <label className="grid gap-2">
               <span className="text-xs font-semibold text-foreground">Setup instructions</span>
               <Textarea
+                dictation
                 rows={5}
                 maxLength={16_384}
                 placeholder="Dependencies are not installed in fresh worktrees. Run pnpm install only if you need them."

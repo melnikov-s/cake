@@ -1,3 +1,4 @@
+import { createDictationStore } from "../../../helpers/dictation";
 import { createStore, mount } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
@@ -7,6 +8,7 @@ function createSettingsStore() {
   const operations = mount(createStore(SessionOperationCoordinatorStore));
   return mount(
     createStore(SettingsStore, {
+      dictation: createDictationStore(),
       operations,
       activeSession: () => undefined,
       workbenchError: () => undefined,

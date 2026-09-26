@@ -1,4 +1,6 @@
 import { resolve } from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
@@ -7,7 +9,24 @@ const manualReload = process.env.CAKE_MANUAL_RELOAD === "1";
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [
+      externalizeDepsPlugin(),
+      {
+        name: "cake-native-dictation",
+        async writeBundle() {
+          const { stdout, stderr } = await promisify(execFile)(
+            process.execPath,
+            [
+              resolve(import.meta.dirname, "scripts/build-dictation.mjs"),
+              resolve(import.meta.dirname, "out/main/native"),
+            ],
+            { maxBuffer: 8 * 1024 * 1024 },
+          );
+          if (stdout) console.log(stdout.trim());
+          if (stderr) console.warn(stderr.trim());
+        },
+      },
+    ],
     build: {
       rollupOptions: {
         input: {

@@ -90,6 +90,7 @@ export const TreeNavigationDialog = observer(function TreeNavigationDialog({
               <label className="mt-3 block text-sm font-medium">
                 Summary focus
                 <Textarea
+                  dictation
                   className="mt-1.5 min-h-24 resize-y"
                   value={prompt.customInstructions}
                   onChange={(event) => store.setNavigationInstructions(event.target.value)}

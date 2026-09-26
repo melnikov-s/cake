@@ -114,6 +114,18 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     label: "Application",
     items: [
       {
+        page: "dictation",
+        label: "Dictation",
+        description: "Local speech to text",
+        settings: [
+          {
+            label: "Dictation mode",
+            targetId: "dictation-title",
+            keywords: "voice microphone speech Parakeet download model",
+          },
+        ],
+      },
+      {
         page: "prompts",
         label: "Cake prompts",
         description: "Automatic workflow messages",

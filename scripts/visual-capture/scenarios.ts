@@ -567,6 +567,21 @@ const cakePromptsSettingsScenario: VisualCaptureScenario = {
   },
 };
 
+const dictationSettingsScenario: VisualCaptureScenario = {
+  name: "dictation-settings",
+  description: "Local Parakeet installation and focus-driven dictation settings",
+  states: ["default"],
+  seed: assistantMarkdownCode.seed,
+  async prepare(page) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /Dictation Local speech to text/ }).click();
+    await page.getByRole("heading", { name: "Dictation", exact: true }).waitFor();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+  },
+  region: cakePromptsSettingsScenario.region,
+};
+
 export const sessionPluginsScenario: VisualCaptureScenario = {
   name: "session-plugins",
   description: "Session Plugin controls and generated theme bridge above ordinary chat",
@@ -839,6 +854,7 @@ export const visualCaptureScenarios = [
   drawMermaidArchitectureScenario,
   drawCompositionScenario,
   cakePromptsSettingsScenario,
+  dictationSettingsScenario,
 ] as const;
 
 export function findVisualCaptureScenario(name: string) {

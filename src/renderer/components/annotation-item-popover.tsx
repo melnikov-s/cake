@@ -129,6 +129,7 @@ export const AnnotationItemPopover = observer(function AnnotationItemPopover({
           }}
         >
           <Textarea
+            dictation
             ref={textareaRef}
             rows={2}
             aria-label="Edit annotation comment"

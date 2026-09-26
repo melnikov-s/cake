@@ -47,6 +47,7 @@ export function SettingsPromptField({
         </Button>
       </div>
       <Textarea
+        dictation
         aria-label={label}
         className="min-h-36 w-full font-mono text-xs"
         value={draft}

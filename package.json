@@ -6,6 +6,7 @@
   "main": "out/main/main.js",
   "scripts": {
     "build": "electron-vite build",
+    "build:dictation": "node scripts/build-dictation.mjs",
     "dev": "electron-vite dev --watch",
     "dev:agent": "electron-vite dev --watch --remoteDebuggingPort 9222",
     "dev:manual": "CAKE_MANUAL_RELOAD=1 electron-vite dev --watch",
@@ -23,6 +24,7 @@
     "build:start": "pnpm build && pnpm start",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:dictation:native": "swift run --package-path native/dictation -c release dictation-protocol-tests",
     "test:electron": "electron-vite build --logLevel warn && playwright test",
     "typecheck": "tsc --noEmit",
     "visual:capture": "node --experimental-strip-types --no-warnings=ExperimentalWarning scripts/visual-capture/cli.ts"

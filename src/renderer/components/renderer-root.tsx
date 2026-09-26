@@ -29,33 +29,35 @@ export const RendererRoot = observer(function RendererRoot({
     <RendererErrorBoundary>
       <StrictMode>
         <StoreProvider store={rootStore}>
-          <StoreProvider store={rootStore.fullscreenSurfaceStore}>
-            <MarkdownLinkProvider
-              actions={{
-                openExternalUrl,
-                openSession,
-                loadWorkspaceImage: (path, signal) => {
-                  if (!activeWorkingDirectory)
-                    return Promise.reject(new Error("No active project Working Directory"));
-                  return rootStore.client.filesystem.readImage(activeWorkingDirectory, path, {
-                    signal,
-                  });
-                },
-                renderArtifactReference: (reference) => (
-                  <ArtifactReferencePreview
-                    reference={formatArtifactRef(parseArtifactRef(reference))}
-                    store={rootStore.artifactReferencePreviewStore}
-                    sessions={rootStore.sessionCatalogStore}
-                    activeSessionId={activeSessionId}
-                    onOpen={(lineageId) =>
-                      rootStore.showArtifactLibrary(activeSessionId, lineageId)
-                    }
-                  />
-                ),
-              }}
-            >
-              <App />
-            </MarkdownLinkProvider>
+          <StoreProvider store={rootStore.dictationStore}>
+            <StoreProvider store={rootStore.fullscreenSurfaceStore}>
+              <MarkdownLinkProvider
+                actions={{
+                  openExternalUrl,
+                  openSession,
+                  loadWorkspaceImage: (path, signal) => {
+                    if (!activeWorkingDirectory)
+                      return Promise.reject(new Error("No active project Working Directory"));
+                    return rootStore.client.filesystem.readImage(activeWorkingDirectory, path, {
+                      signal,
+                    });
+                  },
+                  renderArtifactReference: (reference) => (
+                    <ArtifactReferencePreview
+                      reference={formatArtifactRef(parseArtifactRef(reference))}
+                      store={rootStore.artifactReferencePreviewStore}
+                      sessions={rootStore.sessionCatalogStore}
+                      activeSessionId={activeSessionId}
+                      onOpen={(lineageId) =>
+                        rootStore.showArtifactLibrary(activeSessionId, lineageId)
+                      }
+                    />
+                  ),
+                }}
+              >
+                <App />
+              </MarkdownLinkProvider>
+            </StoreProvider>
           </StoreProvider>
         </StoreProvider>
       </StrictMode>

@@ -9,3 +9,5 @@ test-results/
 .visual-captures/
 *.log
 .DS_Store
+native/dictation/.build/
+native/dictation/.swiftpm/

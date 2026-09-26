@@ -1,3 +1,8 @@
+import type {
+  DictationAudio,
+  DictationError,
+  DictationState,
+} from "../../domain/dictation/dictation-data";
 import { Context, Effect, Layer, type Schema, type Stream } from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 import type { RpcClientError } from "effect/unstable/rpc";
@@ -193,6 +198,17 @@ type ModelPresetResolutionError =
   | TransportError;
 
 export interface CakeIpcClientService {
+  readonly dictation: {
+    readonly observeState: () => Stream.Stream<DictationState, TransportError>;
+    readonly install: () => Effect.Effect<void, DictationError | TransportError>;
+    readonly setModelPath: (path: string) => Effect.Effect<void, DictationError | TransportError>;
+    readonly remove: () => Effect.Effect<void, DictationError | TransportError>;
+    readonly prepare: () => Effect.Effect<void, DictationError | TransportError>;
+    readonly release: () => Effect.Effect<void, DictationError | TransportError>;
+    readonly transcribe: (
+      audio: DictationAudio,
+    ) => Effect.Effect<string, DictationError | TransportError>;
+  };
   readonly application: {
     readonly getHomeDirectory: () => Effect.Effect<string, TransportError>;
     readonly getState: () => Effect.Effect<RendererApplicationState, TransportError>;
@@ -785,6 +801,27 @@ export const CakeIpcClientLive = Layer.effect(
   Effect.gen(function* () {
     const client = yield* RpcClient.make(CakeRpc, { flatten: true, spanPrefix: "CakeIpcClient" });
     return CakeIpcClient.of({
+      dictation: {
+        observeState: () => client("dictation.observeState", undefined),
+        install: Effect.fn("CakeIpcClient.dictation.install")(() =>
+          client("dictation.install", undefined),
+        ),
+        setModelPath: Effect.fn("CakeIpcClient.dictation.setModelPath")((path) =>
+          client("dictation.setModelPath", { path }),
+        ),
+        remove: Effect.fn("CakeIpcClient.dictation.remove")(() =>
+          client("dictation.remove", undefined),
+        ),
+        prepare: Effect.fn("CakeIpcClient.dictation.prepare")(() =>
+          client("dictation.prepare", undefined),
+        ),
+        release: Effect.fn("CakeIpcClient.dictation.release")(() =>
+          client("dictation.release", undefined),
+        ),
+        transcribe: Effect.fn("CakeIpcClient.dictation.transcribe")((audio) =>
+          client("dictation.transcribe", audio),
+        ),
+      },
       application: {
         getHomeDirectory: Effect.fn("CakeIpcClient.application.getHomeDirectory")(() =>
           client("application.getHomeDirectory", undefined),

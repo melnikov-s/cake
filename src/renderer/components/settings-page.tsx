@@ -1,3 +1,4 @@
+import { SettingsDictationSection } from "./settings-dictation-section";
 import { useEffect, useState } from "react";
 import { observer } from "r-state-tree/react";
 import { Button } from "./ui/button";
@@ -168,34 +169,38 @@ export const SettingsPage = observer(function SettingsPage({
           <div className="mb-8">
             <span className="text-xs font-medium text-accent">Cake / Pi</span>
             <h2 className="mt-1 text-2xl font-bold text-foreground">
-              {activePage === "models"
-                ? "Models"
-                : activePage === "providers"
-                  ? "Providers"
-                  : activePage === "agent"
-                    ? "Agent"
-                    : activePage === "runtime"
-                      ? "Execution & resources"
-                      : activePage === "network"
-                        ? "Network & privacy"
-                        : activePage === "labels"
-                          ? "Session labels"
-                          : activePage === "prompts"
-                            ? "Cake prompts"
-                            : activePage === "appearance"
-                              ? "Appearance"
-                              : activePage === "hotkeys"
-                                ? "Hotkeys"
-                                : "VS Code"}
+              {activePage === "dictation"
+                ? "Dictation"
+                : activePage === "models"
+                  ? "Models"
+                  : activePage === "providers"
+                    ? "Providers"
+                    : activePage === "agent"
+                      ? "Agent"
+                      : activePage === "runtime"
+                        ? "Execution & resources"
+                        : activePage === "network"
+                          ? "Network & privacy"
+                          : activePage === "labels"
+                            ? "Session labels"
+                            : activePage === "prompts"
+                              ? "Cake prompts"
+                              : activePage === "appearance"
+                                ? "Appearance"
+                                : activePage === "hotkeys"
+                                  ? "Hotkeys"
+                                  : "VS Code"}
             </h2>
             <p className="mt-1.5 text-xs text-muted-foreground">
-              {activePage === "hotkeys"
-                ? "Customize Cake's application shortcuts. Changes take effect immediately."
-                : activePage === "labels"
-                  ? "Create the labels available across all projects."
-                  : activePage === "prompts"
-                    ? "Customize the messages Cake automatically sends while completing workflows."
-                    : "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects."}
+              {activePage === "dictation"
+                ? "Local speech to text for Cake's writing surfaces."
+                : activePage === "hotkeys"
+                  ? "Customize Cake's application shortcuts. Changes take effect immediately."
+                  : activePage === "labels"
+                    ? "Create the labels available across all projects."
+                    : activePage === "prompts"
+                      ? "Customize the messages Cake automatically sends while completing workflows."
+                      : "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects."}
             </p>
           </div>
           {error && (
@@ -863,6 +868,7 @@ export const SettingsPage = observer(function SettingsPage({
           {activePage === "providers" && (
             <SettingsProvidersSection providers={providers} providerGroups={providerGroups} />
           )}
+          {activePage === "dictation" && <SettingsDictationSection store={settings.dictation} />}
           {activePage === "appearance" && <SettingsAppearanceSection appearance={appearance} />}
           {activePage === "hotkeys" && <SettingsHotkeysSection hotkeys={settings.hotkeys} />}
           {activePage === "editor" && (

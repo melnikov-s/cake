@@ -1,3 +1,4 @@
+import { createDictationStore } from "../../../helpers/dictation";
 import { Effect, Stream } from "effect";
 import { child, createStore, mount, Store } from "r-state-tree";
 import { describe, expect, it } from "vitest";
@@ -31,6 +32,7 @@ class HarnessStore extends Store {
 
   @child get settings() {
     return createStore(SettingsStore, {
+      dictation: createDictationStore(),
       operations: {} as never,
       activeSession: () => undefined,
       workbenchError: () => undefined,

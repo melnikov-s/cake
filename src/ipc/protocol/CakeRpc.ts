@@ -1,3 +1,4 @@
+import { DictationRpc } from "./DictationRpc";
 import { ApplicationRpc } from "./ApplicationRpc";
 import { ArtifactRpc } from "./ArtifactRpc";
 import { BrowserRpc } from "./BrowserRpc";
@@ -25,6 +26,7 @@ import { WorkspaceRpc } from "./WorkspaceRpc";
 export { FoundationFailure } from "./FoundationRpc";
 
 export const CakeRpc = ApplicationRpc.merge(
+  DictationRpc,
   ArtifactRpc,
   BrowserRpc,
   CakeChatRpc,

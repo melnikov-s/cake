@@ -1,5 +1,7 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import { forwardRef, type TextareaHTMLAttributes } from "react";
+import { forwardRef, useRef, useImperativeHandle, type TextareaHTMLAttributes } from "react";
+import { useDictationInput } from "../../dictation/use-dictation-input";
+import { DictationIndicator } from "./dictation-indicator";
 import { cn } from "@/lib/utils";
 
 const textareaVariants = cva(
@@ -24,13 +26,59 @@ const textareaVariants = cva(
 );
 
 export interface TextareaProps
-  extends TextareaHTMLAttributes<HTMLTextAreaElement>, VariantProps<typeof textareaVariants> {}
+  extends TextareaHTMLAttributes<HTMLTextAreaElement>, VariantProps<typeof textareaVariants> {
+  /** Opt in only Cake-owned prose fields; never code, paths or embedded surfaces. */
+  dictation?: boolean;
+}
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
-  { className, size, font, ...props },
+  {
+    className,
+    size,
+    font,
+    dictation = false,
+    onFocus,
+    onBlur,
+    onChange,
+    onSelect,
+    onKeyDown,
+    ...props
+  },
   ref,
 ) {
+  const input = useRef<HTMLTextAreaElement | null>(null);
+  useImperativeHandle(ref, () => {
+    if (!input.current) throw new Error("Textarea ref is not mounted");
+    return input.current;
+  });
+  const voice = useDictationInput(dictation && !props.disabled && !props.readOnly, input);
   return (
-    <textarea ref={ref} className={cn(textareaVariants({ size, font }), className)} {...props} />
+    <>
+      <textarea
+        ref={input}
+        className={cn(textareaVariants({ size, font }), className)}
+        {...props}
+        onFocus={(event) => {
+          onFocus?.(event);
+          voice.onFocus();
+        }}
+        onBlur={(event) => {
+          voice.onBlur();
+          onBlur?.(event);
+        }}
+        onChange={(event) => {
+          onChange?.(event);
+          voice.onChange();
+        }}
+        onSelect={(event) => {
+          voice.onSelect();
+          onSelect?.(event);
+        }}
+        onKeyDown={(event) => {
+          if (!voice.onKeyDown(event, !!onKeyDown)) onKeyDown?.(event);
+        }}
+      />
+      {voice.store && <DictationIndicator store={voice.store} targetId={voice.id} anchor={input} />}
+    </>
   );
 });

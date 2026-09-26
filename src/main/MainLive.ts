@@ -1,4 +1,5 @@
-import { homedir } from "node:os";
+import { makeDictationLive } from "../services/dictation/DictationLive";
+import { homedir, release } from "node:os";
 import { join } from "node:path";
 import type { App } from "electron";
 import { Effect, Layer } from "effect";
@@ -57,6 +58,7 @@ export interface MainLiveOptions {
   readonly application: App;
   readonly paths: CakePaths;
   readonly userData: string;
+  readonly dictationHelperPath: string;
   readonly cakeIconPath: string;
   readonly annotationMenuIconPath: string;
   readonly chatMenuIconPath: string;
@@ -115,6 +117,13 @@ export const makeMainLive = (options: MainLiveOptions) => {
     Layer.provide(Layer.mergeAll(BootstrapLive, GitLive, StorageLive)),
   );
   const NativeFoundationLive = Layer.mergeAll(
+    makeDictationLive(
+      join(options.userData, "dictation"),
+      process.platform === "darwin" &&
+        process.arch === "arm64" &&
+        Number.parseInt(release(), 10) >= 23,
+      options.dictationHelperPath,
+    ),
     makeElectronLive({
       application: options.application,
       cakeIconPath: options.cakeIconPath,

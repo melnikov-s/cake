@@ -32,6 +32,13 @@ function Icon({
   );
 }
 
+export const MicrophoneIcon = () => (
+  <Icon size={14}>
+    <rect x="9" y="2" width="6" height="12" rx="3" />
+    <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" />
+  </Icon>
+);
+
 export const FolderIcon = () => (
   <Icon>
     <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />

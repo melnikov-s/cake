@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { Cause, Effect, Exit, ManagedRuntime, Schema } from "effect";
 import { app, nativeTheme } from "electron";
 import { cakeEventSchema, type CakeEvent } from "../ipc/cake-rpc-contract";
@@ -37,6 +38,10 @@ const MainLive = makeMainLive({
   application: app,
   paths,
   userData: app.getPath("userData"),
+  dictationHelperPath:
+    process.env.CAKE_ELECTRON_SMOKE === "1" && process.env.CAKE_SMOKE_DICTATION_HELPER
+      ? process.env.CAKE_SMOKE_DICTATION_HELPER
+      : join(import.meta.dirname, "native", "cake-dictation"),
   cakeIconPath,
   annotationMenuIconPath,
   chatMenuIconPath,

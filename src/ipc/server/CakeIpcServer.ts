@@ -1,3 +1,4 @@
+import { dictationHandlers } from "./DictationHandlers";
 import { Layer } from "effect";
 import { RpcServer } from "effect/unstable/rpc";
 import { CakeRpc } from "../protocol/CakeRpc";
@@ -32,6 +33,7 @@ export const makeCakeIpcServerLive = (
   cakeChatConfiguration: CakeChatRuntimeConfiguration,
 ) => {
   const handlers = CakeRpc.toLayer({
+    ...dictationHandlers,
     ...applicationStateHandlers,
     ...artifactHandlers,
     ...browserHandlers,

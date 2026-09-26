@@ -1,3 +1,4 @@
+import { observeDictation } from "./observers/dictation";
 import { Schema } from "effect";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -51,6 +52,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   const stopObservingApplicationState = observeApplicationState(runtime, rootStore);
   const stopObservingAgentAvailability = observeAgentAvailability(runtime, rootStore);
   const stopObservingVsCodeState = observeVsCodeState(runtime, rootStore);
+  const stopObservingDictation = observeDictation(runtime, rootStore.dictationStore);
   const persistence = new WindowStatePersistence(client, (error) =>
     rootStore.toastStore.show({
       tone: "error",
@@ -94,6 +96,7 @@ async function bootstrap(bridge: NonNullable<typeof window.cake>) {
       disposeStaleAssetRecovery();
       persistence?.[Symbol.dispose]();
       stopObservingEvents();
+      stopObservingDictation();
       stopObservingVsCodeState();
       stopObservingAgentAvailability();
       stopObservingApplicationState();

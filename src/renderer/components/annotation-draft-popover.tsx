@@ -109,6 +109,7 @@ export function AnnotationDraftPopover({
         }}
       >
         <Textarea
+          dictation
           ref={textareaRef}
           autoFocus
           rows={1}
