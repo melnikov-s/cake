@@ -771,6 +771,7 @@ export const App = observer(function App() {
             session={session}
             inlineWidgets={root.inlineWidgetStore}
             onOpenSourceLocation={projectTranscriptBehavior.openSourceLocation}
+            showSelectionContextMenu={projectTranscriptBehavior.showSelectionContextMenu}
             onOpenLibrary={(lineageId) => root.showArtifactLibrary(session.sessionId, lineageId)}
           >
             {children}
@@ -1196,6 +1197,9 @@ export const App = observer(function App() {
                 session={paneSession}
                 inlineWidgets={root.inlineWidgetStore}
                 onOpenSourceLocation={projectTranscriptBehaviorFor(paneSession).openSourceLocation}
+                showSelectionContextMenu={
+                  projectTranscriptBehaviorFor(paneSession).showSelectionContextMenu
+                }
                 onOpenLibrary={(lineageId) =>
                   root.showArtifactLibrary(paneSession.sessionId, lineageId)
                 }

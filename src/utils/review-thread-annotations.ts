@@ -13,7 +13,7 @@ export function reviewThreadAnnotations(
   return {
     sessionId,
     annotations: threads.flatMap((thread) => {
-      if (thread.anchor.view === "message") return [];
+      if (thread.anchor.view !== "file" && thread.anchor.view !== undefined) return [];
       const startLine = sourceLine(thread.anchor.start);
       const endLine = Math.max(startLine, sourceLine(thread.anchor.end));
       const firstComment =

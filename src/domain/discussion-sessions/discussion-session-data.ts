@@ -20,7 +20,7 @@ const DiscussionPoint = Schema.Struct({
 });
 export const DiscussionAnchor = Schema.Struct({
   path: boundedPath,
-  view: Schema.optionalKey(Schema.Literals(["file", "message", "session"])),
+  view: Schema.optionalKey(Schema.Literals(["file", "message", "session", "artifact"])),
   start: DiscussionPoint,
   end: DiscussionPoint,
   selectedText: boundedText,

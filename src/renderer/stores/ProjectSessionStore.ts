@@ -148,7 +148,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       .filter(
         (thread) =>
           thread.status === "open" &&
-          (thread.anchor.view === "message" || thread.anchor.view === "session") &&
+          (thread.anchor.view === "message" ||
+            thread.anchor.view === "artifact" ||
+            thread.anchor.view === "session") &&
           !isSessionAssistantThread(thread),
       )
       .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
@@ -275,7 +277,12 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     this.conversationSessionStore.sideChatStore.open({
       key: `discussion:${thread.id}`,
       title: "Side chat",
-      eyebrow: () => (thread.anchor.view === "message" ? "Selection" : "Session"),
+      eyebrow: () =>
+        thread.anchor.view === "artifact"
+          ? "Artifact selection"
+          : thread.anchor.view === "message"
+            ? "Selection"
+            : "Session",
       chatStore,
     });
     return true;

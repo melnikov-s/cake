@@ -287,10 +287,12 @@ export function reviewSidecarSystemPrompt(
     `A read-only projection of the parent conversation is available at ${parentTranscriptPath}. Read or search it only when the anchor and local context are insufficient. Never modify this projection or any Cake session files.`,
     "The user's immediately preceding message is the sidecar-chat question to address. You have read-only file tools and must not modify the workspace.",
   ];
-  if (thread.anchor.view === "message")
+  if (thread.anchor.view === "message" || thread.anchor.view === "artifact")
     return [
       ...common,
-      "This discussion is attached to an earlier assistant message. Answer the user's question directly and concisely; when relevant, distinguish the passage's original meaning from later changes.",
+      thread.anchor.view === "artifact"
+        ? `This discussion is attached to a selection in the session artifact ${thread.anchor.path}. Answer the user's question directly and concisely.`
+        : "This discussion is attached to an earlier assistant message. Answer the user's question directly and concisely; when relevant, distinguish the passage's original meaning from later changes.",
       thread.anchor.entryId ? `Anchored Pi entry: ${thread.anchor.entryId}` : "",
       `Selected passage:\n\n> ${thread.anchor.selectedText.replaceAll("\n", "\n> ")}`,
       thread.anchor.contextBefore ? `Nearby text before:\n${thread.anchor.contextBefore}` : "",

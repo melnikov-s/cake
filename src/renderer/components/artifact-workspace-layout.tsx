@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { ArtifactHost } from "@/components/artifact-host";
+import { ArtifactSelectionSurface } from "@/components/artifact-selection-surface";
 import { AccessoryPanelLayout } from "@/components/ui/accessory-panel-layout";
 import { Button } from "@/components/ui/button";
 import { ArtifactIcon, BackIcon, CopyIcon, ForwardIcon } from "@/components/ui/icons";
@@ -23,12 +24,17 @@ export const ArtifactWorkspaceLayout = observer(function ArtifactWorkspaceLayout
   inlineWidgets,
   onOpenSourceLocation,
   onOpenLibrary,
+  showSelectionContextMenu,
   children,
 }: {
   session: ProjectSessionStore;
   inlineWidgets: InlineWidgetStore;
   onOpenSourceLocation?(location: SourceLocation): void;
   onOpenLibrary(lineageId: string): void;
+  showSelectionContextMenu?(input: {
+    canChat: boolean;
+    canAnnotate: boolean;
+  }): Promise<"chat-about-selection" | "add-annotation" | undefined>;
   children: ReactNode;
 }) {
   const workspace = session.sessionArtifactsStore;
@@ -211,11 +217,26 @@ export const ArtifactWorkspaceLayout = observer(function ArtifactWorkspaceLayout
                     )}
                   </section>
                 )}
-                <ArtifactHost
-                  record={selected}
-                  inlineWidgets={inlineWidgets}
-                  onOpenSourceLocation={onOpenSourceLocation}
-                />
+                {showSelectionContextMenu ? (
+                  <ArtifactSelectionSurface
+                    key={selected.artifact.id}
+                    session={session}
+                    artifactId={selected.artifact.id}
+                    showContextMenu={showSelectionContextMenu}
+                  >
+                    <ArtifactHost
+                      record={selected}
+                      inlineWidgets={inlineWidgets}
+                      onOpenSourceLocation={onOpenSourceLocation}
+                    />
+                  </ArtifactSelectionSurface>
+                ) : (
+                  <ArtifactHost
+                    record={selected}
+                    inlineWidgets={inlineWidgets}
+                    onOpenSourceLocation={onOpenSourceLocation}
+                  />
+                )}
               </div>
             </div>
           ) : (

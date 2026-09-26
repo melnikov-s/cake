@@ -191,7 +191,9 @@ export const makeReviewStorageLive = (
                   ? `Assistant message: ${thread.anchor.messageId ?? "unknown"}${thread.anchor.entryId ? ` · Pi entry ${thread.anchor.entryId}` : ""}`
                   : thread.anchor.view === "session"
                     ? "Session-level side chat"
-                    : `Code: ${thread.anchor.path} · diff rows ${thread.anchor.start.diffLine}-${thread.anchor.end.diffLine}`,
+                    : thread.anchor.view === "artifact"
+                      ? `Artifact selection: ${thread.anchor.path}`
+                      : `Code: ${thread.anchor.path} · diff rows ${thread.anchor.start.diffLine}-${thread.anchor.end.diffLine}`,
                 thread.anchor.selectedText
                   ? `> ${thread.anchor.selectedText.replaceAll("\n", "\n> ")}`
                   : "",

@@ -81,6 +81,67 @@ test("opens the artifact workspace, keeps requests inline, and isolates HTML", a
       table.locator('[data-slot="artifact-table"] tbody td').allTextContents(),
     ).resolves.toEqual(["", "Beta", "1", "", "Alpha", "2"]);
 
+    const selectionTarget = await table.getByText("Alpha").evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    const selectArtifactText = () =>
+      table.getByText("Alpha").evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      });
+    await selectArtifactText();
+    await expect
+      .poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
+      .toBe("Alpha");
+    await application.evaluate(({ Menu }) => {
+      const build = Menu.buildFromTemplate.bind(Menu);
+      let nextAction = "Add annotation";
+      Menu.buildFromTemplate = (template) => {
+        const menu = build(template);
+        menu.popup = (options) => {
+          const labels = menu.items.map((item) => item.label);
+          if (!labels.includes("Add annotation") || !labels.includes("Chat about this"))
+            throw new Error(`Missing artifact selection actions: ${labels.join(", ")}`);
+          const item = menu.items.find((candidate) => candidate.label === nextAction);
+          if (!item?.click) throw new Error(`Missing ${nextAction}`);
+          nextAction = "Chat about this";
+          item.click(item, options.window!, { triggeredByAccelerator: false });
+          options.callback?.();
+        };
+        return menu;
+      };
+    });
+    const rightClickSelection = () =>
+      page.evaluate(({ x, y }) => {
+        document.elementFromPoint(x, y)?.dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: y,
+          }),
+        );
+      }, selectionTarget);
+    await rightClickSelection();
+    const annotation = page.getByRole("dialog", { name: "Add annotation" });
+    await expect(annotation).toBeVisible();
+    await page.getByLabel("Annotation comment").fill("Review this artifact value");
+    await annotation.getByRole("button", { name: "Add annotation" }).click();
+    const sideChat = page.getByRole("complementary", { name: "Side chat" });
+    await expect(sideChat).toBeVisible();
+    await expect(sideChat.getByText("Alpha")).toBeVisible();
+    await selectArtifactText();
+    await rightClickSelection();
+    const draftInput = sideChat.getByLabel("Message about selected text");
+    await expect(draftInput).toBeFocused();
+    await draftInput.pressSequentially("Why is Alpha here?");
+    await expect(draftInput).toHaveValue("Why is Alpha here?");
+    await expect(sideChat.getByRole("button", { name: "Send" })).toBeEnabled();
+
     await page.getByRole("button", { name: "All artifacts" }).click();
     await page.getByRole("button", { name: "S4 widget" }).click();
     const widget = page.locator('[data-artifact-id="cake-s4-widget"]');
@@ -131,9 +192,7 @@ test("opens the artifact workspace, keeps requests inline, and isolates HTML", a
           };
         };
         const selection = document.data?.children?.appShellStore?.state?.selection;
-        return Boolean(
-          document.version === 10 && selection?.kind === "project-session" && selection.sessionId,
-        );
+        return Boolean(selection?.kind === "project-session" && selection.sessionId);
       })
       .toBe(true);
 

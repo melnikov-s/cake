@@ -16,6 +16,7 @@ export interface MessageCommentsStoreProps {
 
 export interface MessageSelectionAnchor {
   messageId: string;
+  artifactId?: string;
   entryId?: string;
   selectedText: string;
   startOffset: number;
@@ -127,15 +128,17 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
     const context = this.props.context();
     if (!context || (!body.trim() && annotations.length === 0)) return undefined;
     const anchor: ReviewAnchor = {
-      path: `session:${context.sessionId}/message/${selection.messageId}`,
-      view: "message",
+      path: selection.artifactId
+        ? `session:${context.sessionId}/artifact/${selection.artifactId}`
+        : `session:${context.sessionId}/message/${selection.messageId}`,
+      view: selection.artifactId ? "artifact" : "message",
       start: { diffLine: 0 },
       end: { diffLine: 0 },
       selectedText: selection.selectedText,
       contextBefore: selection.contextBefore,
       contextAfter: selection.contextAfter,
       diff: "",
-      messageId: selection.messageId,
+      messageId: selection.artifactId ? undefined : selection.messageId,
       entryId: selection.entryId,
       startOffset: selection.startOffset,
       endOffset: selection.endOffset,

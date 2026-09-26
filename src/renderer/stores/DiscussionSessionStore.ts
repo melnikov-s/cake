@@ -98,7 +98,7 @@ export class DiscussionSessionStore extends Store<DiscussionSessionStoreProps> {
         inputLabel: () =>
           this.isSessionAssistant
             ? "Message session assistant"
-            : this.thread.anchor.view === "message"
+            : this.thread.anchor.view === "message" || this.thread.anchor.view === "artifact"
               ? "Reply to selection side chat"
               : this.thread.anchor.view === "session"
                 ? "Reply to side chat"

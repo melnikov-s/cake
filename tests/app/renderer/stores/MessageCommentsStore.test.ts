@@ -59,6 +59,20 @@ describe("MessageCommentsStore", () => {
       ],
     );
     expect(store.annotationDraft.annotations).toEqual([]);
+
+    store.prepareDraft({ ...selection, artifactId: "cake-s4-table" });
+    store.draftChatStore.setDraft("Why is this value here?");
+    await store.draftChatStore.submit();
+    expect(createThread).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        view: "artifact",
+        path: "session:parent-1/artifact/cake-s4-table",
+        selectedText: "Original selection",
+        messageId: undefined,
+      }),
+      "Why is this value here?",
+      [],
+    );
     store[Symbol.dispose]();
   });
 });
