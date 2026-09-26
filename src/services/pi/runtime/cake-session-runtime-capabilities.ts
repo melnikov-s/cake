@@ -482,6 +482,16 @@ export async function createCakeSessionRuntimeCapabilities(input: {
       };
     const operations: CakeOperationDefinition[] = [
       {
+        command: "app.user-selection",
+        topic: "app",
+        summary: "Read the text currently highlighted by the user in the Cake window.",
+        inputSchema: empty,
+        examples: [{}],
+        result: "The currently selected text, or no text if nothing is highlighted in Cake.",
+        execute: (_input, context) =>
+          api().invokeAppControl("app.user-selection", {}, context.signal),
+      },
+      {
         command: "app.state",
         topic: "app",
         summary: "Inspect the invoking Cake window's current selection and session summaries.",
@@ -1360,6 +1370,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
         (!(
           [
             "app.state",
+            "app.user-selection",
             "app.split",
             "settings.sections",
             "settings.get",

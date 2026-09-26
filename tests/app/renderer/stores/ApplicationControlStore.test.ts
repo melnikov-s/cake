@@ -29,6 +29,7 @@ function createHost(
     } as unknown as AppControlHost["sessionCoordination"],
     state: {
       currentSelection: () => ({ kind: "workbench" }),
+      userSelection: () => null,
       projects: overrides.projects ?? (() => []),
       sessions: () => [],
       cakeChatSessions: overrides.cakeChatSessions ?? (() => []),

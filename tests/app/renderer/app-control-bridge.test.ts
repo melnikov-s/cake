@@ -33,6 +33,7 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
       mount(createStore(SessionCoordinationStore, { sessionById: () => undefined })),
     state: {
       currentSelection: overrides.currentSelection ?? (() => ({ kind: "workbench" })),
+      userSelection: overrides.userSelection ?? (() => null),
       projects: overrides.projects ?? (() => []),
       sessions: overrides.sessions ?? (() => []),
       cakeChatSessions: overrides.cakeChatSessions ?? (() => []),
@@ -373,6 +374,23 @@ describe("AppControlBridge", () => {
       sessionId: "chat-new",
     });
     expect(splitView).toHaveBeenCalledWith(source, "right");
+  });
+
+  it("reads the current user-highlighted text without retaining a stale selection", async () => {
+    let selectedText: string | null = "highlighted passage";
+    const bridge = new AppControlBridge(createHost({ userSelection: () => selectedText }));
+
+    await expect(bridge.invoke({ name: "app.user-selection", arguments: {} })).resolves.toEqual({
+      ok: true,
+      command: "app.user-selection",
+      text: "highlighted passage",
+    });
+    selectedText = null;
+    await expect(bridge.invoke({ name: "app.user-selection", arguments: {} })).resolves.toEqual({
+      ok: true,
+      command: "app.user-selection",
+      text: null,
+    });
   });
 
   it("reports the complete current Cake selection", async () => {

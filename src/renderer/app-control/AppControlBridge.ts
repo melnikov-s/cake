@@ -81,6 +81,7 @@ const sessionResolutionSchema = Schema.Struct({
 });
 const appControlArgumentSchemas = {
   "app.state": emptyArgumentsSchema,
+  "app.user-selection": emptyArgumentsSchema,
   "app.split": Schema.Struct({ direction: Schema.Literals(["right", "down"]) }),
   "settings.sections": emptyArgumentsSchema,
   "settings.get": CakeSettingsGetInput,
@@ -320,6 +321,7 @@ function invocation<Command extends AppControlCommand>(command: Command) {
 
 const appControlInvocationSchema = Schema.Union([
   invocation("app.state"),
+  invocation("app.user-selection"),
   invocation("app.split"),
   invocation("settings.sections"),
   invocation("settings.get"),
@@ -455,6 +457,7 @@ export interface AppControlHost {
   sessionCoordination: SessionCoordinationHost;
   state: {
     currentSelection(): AppControlSelection;
+    userSelection(): string | null;
     sessionLayout?(source?: AgentControlSource): {
       focusedSessionId?: string;
       originSessionId?: string;
@@ -615,6 +618,7 @@ interface CoordinationThreadView {
 
 export type AppControlResult =
   | { ok: true; command: "app.state"; state: AppControlState }
+  | { ok: true; command: "app.user-selection"; text: string | null }
   | { ok: true; command: "settings.sections"; sections: typeof cakeSettingsSections }
   | {
       ok: true;
@@ -916,6 +920,15 @@ const sessionAssistantControlOperations = [
 ] as const;
 
 const modelControlOperations = [
+  {
+    ...operation(
+      "app.user-selection",
+      "app",
+      "Read the text currently highlighted by the user in the Cake window.",
+      appControlArgumentSchemas["app.user-selection"],
+    ),
+    result: "The currently selected text, or no text if nothing is highlighted in Cake.",
+  },
   operation(
     "app.state",
     "app",
@@ -1450,6 +1463,8 @@ export class AppControlBridge {
     if (invocation.name === "sessions.resolve") return this.resolveSessions(invocation.arguments);
     if (invocation.name === "app.state")
       return { ok: true, command: invocation.name, state: this.getAppState(source) };
+    if (invocation.name === "app.user-selection")
+      return { ok: true, command: invocation.name, text: this.host.state.userSelection() };
     if (invocation.name === "app.split") {
       if (!source)
         return {

@@ -61,6 +61,7 @@ export function createRootApplicationControlHost(
   return {
     sessionCoordination: capabilities.sessionCoordinationStore,
     state: {
+      userSelection: () => window.getSelection()?.toString().slice(0, 48_000) || null,
       currentSelection: () => {
         const selection = capabilities.appShellStore.selection;
         if (selection.kind === "project-session") {
