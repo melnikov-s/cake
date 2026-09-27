@@ -46,16 +46,19 @@ test("icon buttons reveal their tooltip bubble on hover and hide on leave", asyn
       timeout: 20_000,
     });
 
+    const modifier = /Mac/.test(await page.evaluate(() => navigator.userAgent)) ? "⌘" : "Ctrl+";
     const sidebarToggle = page.locator('[aria-label="Toggle sidebar"]').first();
     await sidebarToggle.hover();
-    await expect(page.getByRole("tooltip")).toHaveText("Toggle sidebar", { timeout: 2_000 });
+    await expect(page.getByRole("tooltip")).toHaveText(`Toggle sidebar (${modifier}B)`, {
+      timeout: 2_000,
+    });
 
     await page.mouse.move(400, 300);
     await expect(page.getByRole("tooltip")).toHaveCount(0);
 
-    const settingsToggle = page.locator('button[aria-label="Open settings"]').first();
-    await settingsToggle.hover();
-    await expect(page.getByRole("tooltip")).toHaveText("Open settings", { timeout: 2_000 });
+    const newChat = page.locator('button.icon-button[aria-label="New Cake Chat"]');
+    await newChat.hover();
+    await expect(page.getByRole("tooltip")).toHaveText("New Cake Chat", { timeout: 2_000 });
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

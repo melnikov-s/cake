@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ResizeHandle } from "@/components/ui/resize-handle";
-import { formatHotkey } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import type { TerminalStore } from "../stores/TerminalStore";
 import type { WorkingDirectoryRetirementStore } from "../stores/WorkingDirectoryRetirementStore";
@@ -125,7 +124,8 @@ export const QuakeTerminal = observer(function QuakeTerminal({
             })}
             <IconButton
               className="size-7 shrink-0"
-              tooltip={`New terminal tab (${formatHotkey(store.newTabHotkey)})`}
+              tooltip="New terminal tab"
+              hotkey="new-terminal-tab"
               disabled={!target}
               onClick={() => void store.newTab()}
             >
@@ -144,7 +144,7 @@ export const QuakeTerminal = observer(function QuakeTerminal({
               <DockBottomIcon />
             </IconButton>
           )}
-          <IconButton tooltip="Hide terminal" onClick={() => store.hide()}>
+          <IconButton tooltip="Hide terminal" hotkey="toggle-terminal" onClick={() => store.hide()}>
             <CloseIcon size={16} />
           </IconButton>
         </header>

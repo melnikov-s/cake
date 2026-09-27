@@ -358,6 +358,7 @@ export const App = observer(function App() {
             data-slot="header-sidebar-toggle"
             data-cake-hint-key="s"
             tooltip="Toggle sidebar"
+            hotkey="toggle-sidebar"
             onClick={toggleSidebar}
           >
             <SidebarIcon />
@@ -366,7 +367,8 @@ export const App = observer(function App() {
         <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
         <IconButton
           data-cake-hint-key="t"
-          tooltip={`Terminal (${terminal.toggleAcceleratorHint})`}
+          tooltip="Terminal"
+          hotkey="toggle-terminal"
           disabled={!terminal.available}
           aria-pressed={paneSession.sessionId === cakeChatCollection.sessionId && terminal.open}
           onClick={() => {
@@ -527,6 +529,7 @@ export const App = observer(function App() {
               )}
               data-slot="header-sidebar-toggle"
               tooltip="Toggle sidebar"
+              hotkey="toggle-sidebar"
               onClick={toggleSidebar}
             >
               <SidebarIcon />
@@ -547,6 +550,7 @@ export const App = observer(function App() {
             data-slot="header-sidebar-toggle"
             data-cake-hint-key="s"
             tooltip="Toggle sidebar"
+            hotkey="toggle-sidebar"
             onClick={toggleSidebar}
           >
             <SidebarIcon />
@@ -555,6 +559,7 @@ export const App = observer(function App() {
         <IconButton
           data-cake-hint-key="r"
           tooltip="Session tree"
+          hotkey="toggle-session-tree"
           aria-pressed={focused && store.commandPaneStore.pane === "tree"}
           onClick={() => {
             focusPane();
@@ -589,6 +594,7 @@ export const App = observer(function App() {
         <IconButton
           data-cake-hint-key="v"
           tooltip="Open VS Code"
+          hotkey="open-editor"
           onClick={() => {
             focusPane();
             void store.presentationStore.openIde();
@@ -600,6 +606,7 @@ export const App = observer(function App() {
           <IconButton
             data-cake-hint-key="d"
             tooltip="Open workspace changes in VS Code"
+            hotkey="open-changes"
             onClick={() => {
               focusPane();
               void store.presentationStore.openWorkspaceChanges();
@@ -610,7 +617,8 @@ export const App = observer(function App() {
         )}
         <IconButton
           data-cake-hint-key="t"
-          tooltip={`Terminal (${terminal.toggleAcceleratorHint})`}
+          tooltip="Terminal"
+          hotkey="toggle-terminal"
           disabled={!terminal.available}
           aria-pressed={focused && terminal.open}
           onClick={() => {
@@ -634,7 +642,6 @@ export const App = observer(function App() {
       treeOpen={store.commandPaneStore.pane === "tree"}
       terminalAvailable={terminal.available}
       terminalOpen={terminal.open}
-      terminalAcceleratorHint={terminal.toggleAcceleratorHint}
       onToggleTree={() => {
         void store.presentationStore.backToAgent().then(() => {
           if (store.activeSession?.presentationMode === "normal")
@@ -985,6 +992,7 @@ export const App = observer(function App() {
             data-slot="workspace-settings"
             data-cake-hint-key="g"
             tooltip="Open settings"
+            hotkey="open-settings"
             onClick={() => root.showSettings()}
           >
             <SettingsIcon />
@@ -1012,6 +1020,7 @@ export const App = observer(function App() {
                 data-slot="header-sidebar-toggle"
                 data-cake-hint-key="s"
                 tooltip="Toggle sidebar"
+                hotkey="toggle-sidebar"
                 onClick={toggleSidebar}
               >
                 <SidebarIcon />
@@ -1053,7 +1062,8 @@ export const App = observer(function App() {
               {terminal.available && (
                 <IconButton
                   data-cake-hint-key="t"
-                  tooltip={`Terminal (${terminal.toggleAcceleratorHint})`}
+                  tooltip="Terminal"
+                  hotkey="toggle-terminal"
                   aria-pressed={terminal.open}
                   onClick={() => void terminal.toggle()}
                 >

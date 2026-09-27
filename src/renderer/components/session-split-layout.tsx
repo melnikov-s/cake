@@ -135,6 +135,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
             <IconButton
               data-cake-hint-key="h"
               tooltip="Split right"
+              hotkey="split-right"
               disabled={!store.canSplit}
               onClick={() => onSplit("x")}
             >
@@ -143,6 +144,7 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
             <IconButton
               data-cake-hint-key="j"
               tooltip="Split down"
+              hotkey="split-down"
               disabled={!store.canSplit}
               onClick={() => onSplit("y")}
             >

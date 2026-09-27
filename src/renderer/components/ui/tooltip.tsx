@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 
 /** Hover/focus delay before the tooltip appears; far snappier than native titles. */
 const TOOLTIP_DELAY_MS = 120;
@@ -27,10 +28,12 @@ export function TooltipBubble({
   label,
   anchor,
   placement = "below",
+  wrap = false,
 }: {
   label: string;
   anchor: HTMLElement;
   placement?: "above" | "below";
+  wrap?: boolean;
 }) {
   const bubbleRef = useRef<HTMLSpanElement>(null);
   const [position, setPosition] = useState<{ top: number; left: number }>();
@@ -60,7 +63,10 @@ export function TooltipBubble({
     <span
       ref={bubbleRef}
       role="tooltip"
-      className="pointer-events-none fixed z-[1000] max-w-[280px] overflow-hidden truncate whitespace-nowrap rounded-md bg-primary px-2 py-1 text-[11px] font-medium leading-tight text-primary-foreground shadow-md select-none"
+      className={cn(
+        "pointer-events-none fixed z-[1000] max-w-[280px] overflow-hidden rounded-md bg-primary px-2 py-1 text-[11px] font-medium leading-tight text-primary-foreground shadow-md select-none",
+        wrap ? "whitespace-normal" : "truncate whitespace-nowrap",
+      )}
       style={position ? { top: position.top, left: position.left } : { visibility: "hidden" }}
     >
       {label}

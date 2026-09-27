@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { observer, StoreProvider } from "r-state-tree/react";
 import type { RootStore } from "../stores/RootStore";
 import { App } from "./app";
+import { IconButtonHotkeyProvider } from "./ui/icon-button";
 import { MarkdownLinkProvider } from "./ai-elements/markdown";
 import { RendererErrorBoundary } from "./renderer-error-boundary";
 import { ArtifactReferencePreview } from "./artifact-reference-preview";
@@ -55,7 +56,11 @@ export const RendererRoot = observer(function RendererRoot({
                   ),
                 }}
               >
-                <App />
+                <IconButtonHotkeyProvider
+                  bindingFor={(id) => rootStore.settingsStore.hotkeys.bindingFor(id)}
+                >
+                  <App />
+                </IconButtonHotkeyProvider>
               </MarkdownLinkProvider>
             </StoreProvider>
           </StoreProvider>

@@ -91,12 +91,18 @@ export const Sidebar = observer(function Sidebar({
       )}
     >
       <div className="flex h-[46px] shrink-0 items-center gap-1 pl-[103px] pr-3 [app-region:drag]">
-        <IconButton data-cake-hint-key="s" tooltip="Toggle sidebar" onClick={onToggle}>
+        <IconButton
+          data-cake-hint-key="s"
+          tooltip="Toggle sidebar"
+          hotkey="toggle-sidebar"
+          onClick={onToggle}
+        >
           <SidebarIcon />
         </IconButton>
         <IconButton
           data-cake-hint-key="b"
           tooltip="Back"
+          hotkey="history-back"
           disabled={!shell.canGoBack}
           onClick={onGoBack}
           ariaLabel="Go back in session history"
@@ -106,6 +112,7 @@ export const Sidebar = observer(function Sidebar({
         <IconButton
           data-cake-hint-key="f"
           tooltip="Forward"
+          hotkey="history-forward"
           disabled={!shell.canGoForward}
           onClick={onGoForward}
           ariaLabel="Go forward in session history"

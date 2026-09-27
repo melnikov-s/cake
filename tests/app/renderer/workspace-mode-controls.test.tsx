@@ -51,7 +51,6 @@ describe("WorkspaceModeControls", () => {
           treeOpen={false}
           terminalAvailable
           terminalOpen={false}
-          terminalAcceleratorHint="⌘J"
           {...callbacks}
         />,
       ),
@@ -72,7 +71,7 @@ describe("WorkspaceModeControls", () => {
       "Session tree",
       "Work log display options",
       ...expectedModes,
-      "Terminal (⌘J)",
+      "Terminal",
     ]);
   });
 

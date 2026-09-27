@@ -43,6 +43,7 @@ export const DrawBoardToolbar = observer(function DrawBoardToolbar({
             data-slot="header-sidebar-toggle"
             data-cake-hint-key="s"
             tooltip="Toggle sidebar"
+            hotkey="toggle-sidebar"
             onClick={onToggleSidebar}
           >
             <SidebarIcon />
@@ -50,6 +51,7 @@ export const DrawBoardToolbar = observer(function DrawBoardToolbar({
           <IconButton
             data-cake-hint-key="b"
             tooltip="Back"
+            hotkey="history-back"
             disabled={!canGoBack}
             onClick={onGoBack}
             ariaLabel="Go back in session history"
@@ -59,6 +61,7 @@ export const DrawBoardToolbar = observer(function DrawBoardToolbar({
           <IconButton
             data-cake-hint-key="f"
             tooltip="Forward"
+            hotkey="history-forward"
             disabled={!canGoForward}
             onClick={onGoForward}
             ariaLabel="Go forward in session history"

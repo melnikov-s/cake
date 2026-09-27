@@ -18,7 +18,6 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   treeOpen,
   terminalAvailable,
   terminalOpen,
-  terminalAcceleratorHint,
   onToggleTree,
   onBackToAgent,
   onOpenDraw,
@@ -31,7 +30,6 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   treeOpen: boolean;
   terminalAvailable: boolean;
   terminalOpen: boolean;
-  terminalAcceleratorHint: string;
   onToggleTree(): void;
   onBackToAgent(): void;
   onOpenDraw(): void;
@@ -62,7 +60,13 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
       );
 
     return (
-      <IconButton key={target} data-cake-hint-key="v" tooltip="Open VS Code" onClick={onOpenIde}>
+      <IconButton
+        key={target}
+        data-cake-hint-key="v"
+        tooltip="Open VS Code"
+        hotkey="open-editor"
+        onClick={onOpenIde}
+      >
         <VsCodeIcon />
       </IconButton>
     );
@@ -73,6 +77,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
       <IconButton
         data-cake-hint-key="r"
         tooltip="Session tree"
+        hotkey="toggle-session-tree"
         aria-pressed={treeOpen}
         onClick={onToggleTree}
       >
@@ -84,7 +89,8 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
       {(["draw", "browser", "vscode"] as const).map(modeControl)}
       <IconButton
         data-cake-hint-key="t"
-        tooltip={`Terminal (${terminalAcceleratorHint})`}
+        tooltip="Terminal"
+        hotkey="toggle-terminal"
         disabled={!terminalAvailable}
         aria-pressed={terminalOpen}
         onClick={onToggleTerminal}
