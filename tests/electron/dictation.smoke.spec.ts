@@ -209,6 +209,31 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await expect(
       page.getByText("Please change this implementation carefully.", { exact: true }),
     ).toBeVisible();
+    const details = page.getByRole("dialog", { name: "Annotation details" });
+    await details.getByRole("button", { name: "Edit annotation" }).click();
+    const edit = page.getByLabel("Edit annotation comment");
+    await expect(edit).toBeFocused();
+    await expect(page.getByRole("button", { name: "Stop dictation" })).toBeVisible();
+    await edit.press("Escape");
+    await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+    await expect(edit).toBeFocused();
+    await expect(details).toBeVisible();
+    await edit.pressSequentially(" typed instead");
+    await expect(edit).toHaveValue(/ typed instead$/);
+    await edit.press("Escape");
+    await expect(edit).toHaveCount(0);
+    await expect(details).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(details).toHaveCount(0);
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /Dictation Local speech to text/ }).click();
+    await page.getByRole("switch", { name: "Dictation mode" }).click();
+    await sample.focus();
+    await expect(page.getByRole("button", { name: "Stop dictation" })).toBeVisible();
+    await page.getByRole("button", { name: "Stop dictation" }).click();
+    await expect(sample).toBeFocused();
+    await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+    await expect(page.getByRole("switch", { name: "Dictation mode" })).not.toBeChecked();
   } finally {
     await application.close();
     await rm(root, { recursive: true, force: true });

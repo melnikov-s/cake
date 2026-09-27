@@ -3,10 +3,11 @@ import { createPortal } from "react-dom";
 import { observer } from "r-state-tree/react";
 import type { DictationStore } from "../../stores/DictationStore";
 import { LoadingSpinner } from "./loading-state";
-import { MicrophoneIcon } from "./icons";
+import { CloseIcon, MicrophoneIcon } from "./icons";
+import { IconButton } from "./icon-button";
 import { cn } from "../../lib/utils";
 
-/** Non-interactive, silent status anchored to the writing field that owns focus. */
+/** Silent status and dismiss action anchored to the writing field that owns focus. */
 export const DictationIndicator = observer(function DictationIndicator({
   store,
   targetId,
@@ -48,7 +49,7 @@ export const DictationIndicator = observer(function DictationIndicator({
       data-slot="dictation-indicator"
       style={position}
       className={cn(
-        "pointer-events-none fixed z-[100] flex max-w-80 items-center gap-1.5 rounded-md border border-border bg-popover px-2 py-1 text-[11px] text-popover-foreground shadow-sm",
+        "fixed z-[100] flex max-w-80 items-center gap-1.5 rounded-md border border-border bg-popover px-2 py-1 text-[11px] text-popover-foreground shadow-sm",
         phase === "error" && "text-destructive",
       )}
     >
@@ -58,6 +59,25 @@ export const DictationIndicator = observer(function DictationIndicator({
         <MicrophoneIcon />
       )}
       {store.label}
+      <IconButton
+        className="ml-1 size-5"
+        tooltip="Stop dictation"
+        ariaLabel="Stop dictation"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          event.stopPropagation();
+          void store.setEnabled(false);
+          anchor.current?.focus();
+        }}
+        onClick={() => void store.setEnabled(false)}
+      >
+        <CloseIcon size={12} />
+      </IconButton>
     </div>,
     document.body,
   );

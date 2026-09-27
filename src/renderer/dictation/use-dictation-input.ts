@@ -102,6 +102,12 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
         store?.restart(id);
     },
     onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>, submitHandled: boolean): boolean {
+      if (enabled && store?.enabled && store.activeTargetId === id && event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        void store.setEnabled(false);
+        return true;
+      }
       if (
         !enabled ||
         !store?.enabled ||
