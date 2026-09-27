@@ -74,6 +74,24 @@ describe("focus-driven dictation workflow", () => {
     expect(store.phase).toBe("listening");
   });
 
+  it("bounds processed microphone peaks before sending PCM to the native engine", async () => {
+    const { store, requests, captures, target } = fixture();
+    store.focus(target("chat"));
+    await store.setEnabled(true);
+    const samples = new Float32Array(12_800);
+    samples.set([1.5, -1.5, Number.POSITIVE_INFINITY, Number.NaN, 0.25]);
+    captures[0]!.push(samples);
+    const bytes = Uint8Array.from(atob(requests[0]!.audio.pcm), (character) =>
+      character.charCodeAt(0),
+    );
+    const view = new DataView(bytes.buffer);
+    expect([0, 1, 2, 3, 4].map((index) => view.getFloat32(index * 4, true))).toEqual([
+      1, -1, 0, 0, 0.25,
+    ]);
+    requests[0]!.reply.resolve("");
+    await drain();
+  });
+
   it("inserts progressive results but discards the old tail on focus change", async () => {
     const { store, requests, captures, target } = fixture();
     const chat = target("chat"),

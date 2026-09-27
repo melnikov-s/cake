@@ -92,7 +92,9 @@ export function encodePcm(chunks: readonly Float32Array[]): string {
   let index = 0;
   for (const chunk of chunks)
     for (const value of chunk) {
-      view.setFloat32(index, value, true);
+      // Browser audio processing can produce peaks outside [-1, 1]; keep the
+      // native engine's bounded PCM contract without rejecting the recording.
+      view.setFloat32(index, Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0, true);
       index += 4;
     }
   let binary = "";
