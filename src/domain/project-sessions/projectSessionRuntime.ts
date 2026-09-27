@@ -1,6 +1,16 @@
 import * as sessionFamilies from "../session-families/sessionFamilies";
 import * as projectSessionLocations from "./projectSessionLocations";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
+import * as worktreeLandings from "../worktrees/worktreeLandings";
+import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
+import { WorktreeLandingAgent } from "../../services/worktrees/WorktreeLandingAgent";
+import { WorktreeLandingCompletion } from "../../services/worktrees/WorktreeLandingCompletion";
+import * as projectSessionCreation from "./projectSessionCreation";
+import * as savedDrafts from "./savedDrafts";
+import { SavedDraftStorage } from "../../services/storage/SavedDraftStorage";
+import * as projectSessionContinuations from "./projectSessionContinuations";
+import * as projectSessionOperations from "./projectSessionOperations";
+import * as sessionChats from "../conversations/sessionChats";
 import { Effect, Option, Schema, Schedule } from "effect";
 import {
   deleteSessionPlugin,
@@ -22,7 +32,6 @@ import {
   selectInitialSessionLabels,
   utilityModelSelection,
 } from "../utility-work/utilityWork";
-import { Electron } from "../../services/electron/Electron";
 import type { PiModels } from "../../services/pi/PiModels";
 import {
   CakeSessionRuntimes,
@@ -39,6 +48,7 @@ import * as projectSessionLifecycle from "./projectSessionLifecycle";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
+import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { resolutionNamespace } from "./projectSessionResolution";
 import {
   SessionFamilyStorage,
@@ -98,18 +108,21 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const access = yield* ProjectAccess;
   const application = yield* ApplicationState;
   const archive = yield* SessionArchiveStorage;
+  const artifactStorage = yield* Effect.serviceOption(ArtifactStorage);
+  const savedDraftStorage = yield* Effect.serviceOption(SavedDraftStorage);
+  const landingCoordinator = yield* Effect.serviceOption(WorktreeLandingCoordinator);
+  const landingAgent = yield* Effect.serviceOption(WorktreeLandingAgent);
+  const landingCompletion = yield* Effect.serviceOption(WorktreeLandingCompletion);
   const configuration = yield* ProjectSessionConfiguration;
-  const electron = yield* Electron;
   const runtimeHost = yield* ProjectSessionRuntimeHost;
   const sessions = yield* CakeSessionRuntimes;
   const families = yield* SessionFamilyStorage;
   const catalogs = yield* SessionCatalogChanges;
   const browser = yield* Effect.serviceOption(Browser);
-  const vscode = yield* VsCodeServer;
+  const vscode = yield* Effect.serviceOption(VsCodeServer);
   const worktrees = yield* ManagedWorktrees;
   const context = yield* Effect.context<
     | ApplicationState
-    | Electron
     | PiModels
     | CakeSessionRuntimes
     | ProjectAccess
@@ -122,7 +135,6 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     | SubagentEnvironment
     | ManagedWorktrees
     | Terminal
-    | VsCodeServer
   >();
   const run = makePiCallbackExecutor(context);
   const agentControl = makeSubagentControl({
@@ -239,6 +251,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   });
   const getRuntimeOptions = () => runtimeOptions;
   const requestEditorControl = async (command: string, input: JsonObject, signal: AbortSignal) => {
+    if (Option.isNone(vscode)) throw new Error("VS Code is unavailable in this host");
     const response = await runtimeIntegrations.requestApplicationControl(
       { _tag: "InvokeAppControl", command, input },
       signal,
@@ -369,12 +382,41 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             }),
           ).then(() => undefined),
         createSession: (input, signal) =>
-          runtimeIntegrations.requestApplicationControl(
-            { _tag: "CreateSession", ...input },
-            signal,
-          ),
-        createDraftSession: (input, signal) =>
-          runtimeIntegrations.requestApplicationControl({ _tag: "CreateDraft", ...input }, signal),
+          run(
+            Effect.scoped(
+              projectSessionCreation.createPrompted({
+                ...input,
+                projectPath: location.projectPath,
+              }),
+            ),
+            {
+              signal,
+            },
+          ).then(toJsonValue),
+        createDraftSession: async (input, signal) => {
+          if (Option.isNone(savedDraftStorage))
+            throw new Error("Saved Draft storage is unavailable");
+          const record = await run(
+            savedDrafts
+              .create({
+                projectPath: location.projectPath,
+                title: input.name,
+                text: input.initialPrompt,
+                attachments: [],
+                configuration: input.model,
+              })
+              .pipe(Effect.provideService(SavedDraftStorage, savedDraftStorage.value)),
+            { signal },
+          );
+          return toJsonValue({
+            ok: true,
+            command: "sessions.create-draft",
+            workspacePath: record.projectPath,
+            sessionId: record.sessionId,
+            title: record.title,
+            status: "saved-draft",
+          });
+        },
         createChildSession: async (input, signal) => {
           const result = await run(
             Effect.scoped(
@@ -426,34 +468,111 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             ),
             { signal },
           );
-          if (result.launch.status === "failed") return toJsonValue(result);
-          const presentation = await runtimeIntegrations
-            .requestApplicationControl(
-              {
-                _tag: "ProjectChildSession",
-                childSessionId: result.childSessionId,
-                title: input.title,
-                familyId: result.familyId,
-                familyChildOrder: result.familyChildOrder,
-                familyDepth: result.familyDepth,
-                workingDirectory: result.workingDirectory,
-                placement: input.placement,
-              },
-              signal,
-            )
-            .catch((error) => ({
-              ok: false,
-              error: error instanceof Error ? error.message : String(error),
-            }));
-          return toJsonValue({ ...result, presentation });
+          // Pane placement is a best-effort client request, not an admission dependency.
+          if (result.launch.status !== "failed" && input.placement !== "none")
+            void runtimeIntegrations
+              .requestApplicationControl(
+                {
+                  _tag: "ProjectChildSession",
+                  childSessionId: result.childSessionId,
+                  title: input.title,
+                  familyId: result.familyId,
+                  familyChildOrder: result.familyChildOrder,
+                  familyDepth: result.familyDepth,
+                  workingDirectory: result.workingDirectory,
+                  placement: input.placement,
+                },
+                signal,
+              )
+              .catch(() => undefined);
+          return toJsonValue(result);
         },
         forkSession: family
           ? undefined
-          : (input) =>
-              runtimeIntegrations.requestApplicationControl(
-                { _tag: "ForkSession", ...input },
-                new AbortController().signal,
-              ),
+          : async (input) => {
+              const destinationWorkingDirectory =
+                input.destinationWorkingDirectory ?? location.workingDirectory;
+              if (Option.isNone(artifactStorage))
+                throw new Error("Artifact storage is unavailable");
+              const result = await run(
+                Effect.scoped(
+                  projectSessionContinuations
+                    .fork({
+                      target: { sessionId, workingDirectory: location.workingDirectory },
+                      entryId: input.entryId,
+                      destinationWorkingDirectory,
+                      resolveSource: input.resolveSource,
+                    })
+                    .pipe(Effect.provideService(ArtifactStorage, artifactStorage.value)),
+                ),
+              );
+              await run(
+                Effect.scoped(
+                  Effect.gen(function* () {
+                    const destination = (yield* projectSessionLocations.locations()).find(
+                      (candidate) =>
+                        candidate.workingDirectory === destinationWorkingDirectory &&
+                        candidate.projectPath === location.projectPath,
+                    );
+                    if (!destination)
+                      return yield* compositionError(
+                        "fork",
+                        "Destination Working Directory unavailable",
+                      );
+                    yield* projectSessionOperations.acquireTarget(
+                      destination,
+                      result.sessionId,
+                      false,
+                    );
+                  }),
+                ),
+              );
+              if (input.title)
+                await run(
+                  Effect.scoped(
+                    projectSessionOperations.rename(
+                      {
+                        sessionId: result.sessionId,
+                        workingDirectory: destinationWorkingDirectory,
+                      },
+                      input.title,
+                    ),
+                  ),
+                );
+              if (input.prompt)
+                await run(
+                  Effect.scoped(
+                    sessionChats.deliver(
+                      {
+                        sessionId: result.sessionId,
+                        text: input.prompt,
+                        attachments: [],
+                        renderUserMessageAsMarkdown: false,
+                      },
+                      "prompt",
+                    ),
+                  ),
+                );
+              if (input.placement !== "none")
+                void runtimeIntegrations
+                  .requestApplicationControl(
+                    {
+                      _tag: "PresentForkSession",
+                      sourceSessionId: sessionId,
+                      forkSessionId: result.sessionId,
+                      workingDirectory: destinationWorkingDirectory,
+                      placement: input.placement,
+                    },
+                    new AbortController().signal,
+                  )
+                  .catch(() => undefined);
+              return toJsonValue({
+                ok: true,
+                sessionId: result.sessionId,
+                placement: input.placement,
+                sourceResolved: input.resolveSource,
+              });
+            },
         pendingMessages: (targetSessionId, signal) =>
           run(
             Effect.scoped(
@@ -494,32 +613,53 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           ),
         mergeSession: async (targetSessionId, signal) => {
           const target = await run(worktreeOperationTarget(targetSessionId), { signal });
-          return runtimeIntegrations.requestApplicationControl(
-            {
-              _tag: "InvokeAppControl",
-              command: "worktrees.merge",
-              input: {
-                sessionId: target.sessionId,
-                workingDirectory: target.location.workingDirectory,
-              },
-            },
-            signal,
+          if (
+            Option.isNone(landingCoordinator) ||
+            Option.isNone(landingAgent) ||
+            Option.isNone(landingCompletion)
+          )
+            throw new Error("Managed Worktree landing is unavailable");
+          const operationId = crypto.randomUUID();
+          await run(
+            Effect.scoped(
+              worktreeLandings
+                .start({
+                  operationId,
+                  workspacePath: target.location.workingDirectory,
+                  sessionId: target.sessionId,
+                  strategy: "preserve",
+                  allowDirtyTarget: false,
+                  commitBeforeLanding: true,
+                  resolveAfterLanding: false,
+                })
+                .pipe(
+                  Effect.provideService(WorktreeLandingCoordinator, landingCoordinator.value),
+                  Effect.provideService(WorktreeLandingAgent, landingAgent.value),
+                  Effect.provideService(WorktreeLandingCompletion, landingCompletion.value),
+                ),
+            ),
+            { signal },
           );
+          return toJsonValue({
+            ok: true,
+            command: "worktrees.merge",
+            operationId,
+            sessionId: target.sessionId,
+            workingDirectory: target.location.workingDirectory,
+          });
         },
         discardSession: async (targetSessionId, keepBranch, signal) => {
           const target = await run(worktreeOperationTarget(targetSessionId), { signal });
-          return runtimeIntegrations.requestApplicationControl(
-            {
-              _tag: "InvokeAppControl",
-              command: "worktrees.discard",
-              input: {
-                sessionId: target.sessionId,
-                workingDirectory: target.location.workingDirectory,
-                keepBranch,
-              },
-            },
+          await run(managedWorktrees.discard(target.location.workingDirectory, keepBranch), {
             signal,
-          );
+          });
+          return toJsonValue({
+            ok: true,
+            command: "worktrees.discard",
+            sessionId: target.sessionId,
+            workingDirectory: target.location.workingDirectory,
+            keepBranch,
+          });
         },
         routeFamilyMessage: (
           command,
@@ -811,10 +951,13 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             )
           ).update;
         },
-        runScript: (source, input, signal) =>
-          run(vscode.runProjectScript(location.workingDirectory, source, input), { signal }),
+        runScript: async (source, input, signal) => {
+          if (Option.isNone(vscode)) throw new Error("VS Code is unavailable in this host");
+          return run(vscode.value.runProjectScript(location.workingDirectory, source, input), {
+            signal,
+          });
+        },
       },
-      openExternal: (url) => run(electron.openExternal(url)),
     },
   };
   return runtimeOptions;

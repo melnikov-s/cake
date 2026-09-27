@@ -87,23 +87,16 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
     try {
       const selected = await this.client.filesystem.chooseAttachments({ signal: this.signal });
       if (this.signal.aborted) return;
-      const fileMentions = selected
-        .filter((item): item is Extract<Attachment, { kind: "file" }> => item.kind === "file")
-        .map((item) =>
-          /[\s"]/.test(item.path)
-            ? `@"${item.path.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`
-            : `@${item.path}`,
-        );
-      if (fileMentions.length)
-        this.text = `${this.text}${this.text.length > 0 && !/\s$/.test(this.text) ? " " : ""}${fileMentions.join(" ")}`;
-      const images = selected.filter(
-        (item): item is Extract<Attachment, { kind: "image" }> => item.kind === "image",
-      );
       this.attachments.push(
-        ...images.filter(
+        ...selected.filter(
           (item) =>
+            "name" in item &&
             !this.attachments.some(
-              (current) => current.kind === "image" && current.name === item.name,
+              (current) =>
+                current.kind === item.kind &&
+                "name" in current &&
+                current.name === item.name &&
+                (current.kind !== "file" || (item.kind === "file" && current.path === item.path)),
             ),
         ),
       );

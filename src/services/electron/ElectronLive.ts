@@ -14,7 +14,6 @@ import {
   type MenuItemConstructorOptions,
   type WebContents,
 } from "electron";
-import type { CakeEvent } from "../../ipc/cake-rpc-contract";
 import { decodeDrawExportData, drawExportExtension, drawExportFilters } from "./DrawExportFile";
 import { shouldAllowNavigation } from "./navigation-policy";
 import {
@@ -23,7 +22,9 @@ import {
   ElectronError,
   type ElectronWindowLifecycle,
 } from "./Electron";
-import { NativeEvents, type FocusedCakeEvent } from "./NativeEvents";
+import { ClientConnections } from "../clients/ClientConnections";
+import { ClientEvents } from "../clients/ClientEvents";
+import { ClientWorkspaces } from "../clients/ClientWorkspaces";
 
 const TRAFFIC_LIGHT_X = 18;
 const TRAFFIC_LIGHT_DIAMETER = 14;
@@ -56,15 +57,18 @@ const iconMenuEntry = ({ icon: iconPath, ...entry }: IconMenuEntry) => {
   return { ...entry, icon } satisfies MenuItemConstructorOptions;
 };
 
-export const makeElectronLive = (options: ElectronLiveOptions) => {
+const makeElectronService = (
+  options: ElectronLiveOptions,
+  clientEvents: ClientEvents["Service"],
+  clientWorkspaces: ClientWorkspaces["Service"],
+  connections: ClientConnections["Service"],
+) => {
   const windows = new Map<number, BrowserWindow>();
-  const windowWorkspaces = new Map<number, string>();
   const fullscreenSurfaces = new Map<number, Set<string>>();
   const fullscreenSurfaceListeners = new Set<
     (state: { readonly connectionId: number; readonly open: boolean }) => void
   >();
   const openSessionContextMenus = new Set<Menu>();
-  const nativeEventListeners = new Map<number, Set<(event: CakeEvent) => void>>();
   let applicationQuitting = false;
   let stopped = false;
   let windowLifecycle: ElectronWindowLifecycle | undefined;
@@ -74,31 +78,10 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
   };
 
   const requireRendererConnection = (connectionId: number): WebContents => {
-    const sender = webContents.fromId(connectionId);
+    const nativeId = connections.nativeId(connectionId);
+    const sender = nativeId === undefined ? undefined : webContents.fromId(nativeId);
     if (!sender || sender.isDestroyed()) throw new Error("Renderer connection is no longer active");
     return sender;
-  };
-
-  const subscribeNativeEvents = (
-    connectionId: number,
-    listener: (event: CakeEvent) => void,
-  ): (() => void) => {
-    const listeners = nativeEventListeners.get(connectionId) ?? new Set();
-    listeners.add(listener);
-    nativeEventListeners.set(connectionId, listeners);
-    return () => {
-      listeners.delete(listener);
-      if (listeners.size === 0) nativeEventListeners.delete(connectionId);
-    };
-  };
-
-  const sendTo = (target: WebContents, event: CakeEvent) => {
-    if (target.isDestroyed()) return;
-    for (const listener of nativeEventListeners.get(target.id) ?? []) listener(event);
-  };
-
-  const broadcast = (event: CakeEvent) => {
-    for (const window of windows.values()) sendTo(window.webContents, event);
   };
 
   const centerTrafficLights = (window: BrowserWindow, titleBarHeight: number) => {
@@ -111,11 +94,19 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
     else await window.loadFile(options.rendererPath);
   };
 
+  const connectionForWindow = (window: BrowserWindow) => {
+    const id = connections.forNative(window.webContents.id);
+    if (id === undefined) throw new Error("Window client connection missing");
+    return id;
+  };
   const closeFullscreenSurfaceForWindow = (window: BrowserWindow) => {
-    const surfaceIds = fullscreenSurfaces.get(window.webContents.id);
+    const surfaceIds = fullscreenSurfaces.get(connectionForWindow(window));
     const surfaceId = surfaceIds ? Array.from(surfaceIds).at(-1) : undefined;
     if (!surfaceId) return false;
-    sendTo(window.webContents, { type: "fullscreen-surface-close-requested", surfaceId });
+    clientEvents.sendTo(connectionForWindow(window), {
+      type: "fullscreen-surface-close-requested",
+      surfaceId,
+    });
     return true;
   };
 
@@ -158,7 +149,8 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         : browserWindowOptions),
       ...(process.env.CAKE_ELECTRON_SMOKE === "1" ? { show: false } : null),
     });
-    const ownerId = window.webContents.id;
+    const nativeId = window.webContents.id;
+    const ownerId = connections.desktop(nativeId);
     windows.set(window.id, window);
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("before-input-event", (event, input) => {
@@ -167,7 +159,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
       if (process.platform !== "darwin" || !input.meta || input.code !== "Backquote") return;
       event.preventDefault();
       if (input.type !== "keyDown" || input.isAutoRepeat) return;
-      sendTo(window.webContents, {
+      clientEvents.sendTo(connectionForWindow(window), {
         type: "application-hotkey-input",
         key: input.key,
         code: input.code,
@@ -225,24 +217,27 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         event.preventDefault();
         return;
       }
-      if (lifecycle().backToAgentForWindow(ownerId)) {
+      if (lifecycle().backToAgentForWindow(nativeId)) {
         centerTrafficLights(window, CAKE_TITLE_BAR_HEIGHT);
         event.preventDefault();
       }
     });
     window.on("closed", () => {
-      const workingDirectory = windowWorkspaces.get(ownerId);
+      const workingDirectory = clientWorkspaces.workspaceForConnection(ownerId);
       windows.delete(window.id);
-      windowWorkspaces.delete(ownerId);
+      clientWorkspaces.releaseConnection(ownerId);
+      connections.release(ownerId);
       fullscreenSurfaces.delete(ownerId);
-      nativeEventListeners.delete(ownerId);
       if (applicationQuitting) return;
-      lifecycle().onWindowClosed(ownerId, workingDirectory);
+      lifecycle().onWindowClosed(ownerId, workingDirectory, nativeId);
     });
     void loadRenderer(window);
     return window;
   };
 
+  const onActivate = () => {
+    if (!stopped && windows.size === 0) createWindow();
+  };
   const configureApplicationBranding = () => {
     const windowMenuTail: MenuItemConstructorOptions[] =
       process.platform === "darwin"
@@ -298,6 +293,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         {
           label: "Window",
           submenu: [
+            { label: "New Cake Window", click: () => createWindow() },
             { role: "minimize" },
             { role: "zoom" },
             { type: "separator" },
@@ -308,7 +304,9 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
                 const target =
                   focused && windows.has(focused.id) ? focused : [...windows.values()].at(-1);
                 if (target)
-                  sendTo(target.webContents, { type: "embedded-editor-toggle-mode-requested" });
+                  clientEvents.sendTo(connectionForWindow(target), {
+                    type: "embedded-editor-toggle-mode-requested",
+                  });
               },
             },
             {
@@ -322,7 +320,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
                   focused && windows.has(focused.id) ? focused : [...windows.values()].at(-1);
                 if (!target) return;
                 if (process.platform === "darwin" && event.triggeredByAccelerator) {
-                  sendTo(target.webContents, {
+                  clientEvents.sendTo(connectionForWindow(target), {
                     type: "application-hotkey-input",
                     key: "`",
                     code: "Backquote",
@@ -335,7 +333,9 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
                   });
                   return;
                 }
-                sendTo(target.webContents, { type: "terminal-toggle-requested" });
+                clientEvents.sendTo(connectionForWindow(target), {
+                  type: "terminal-toggle-requested",
+                });
               },
             },
             ...windowMenuTail,
@@ -498,12 +498,12 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
                 { type: "separator" },
                 {
                   label: "Reword",
-                  enabled: lifecycle().hasUtilityModel(),
+                  enabled: lifecycle().canRewordSelection(),
                   click: () => finish("reword"),
                 },
                 {
                   label: "Reword with Prompt…",
-                  enabled: lifecycle().hasUtilityModel(),
+                  enabled: lifecycle().canRewordSelection(),
                   click: () => finish("reword-with-prompt"),
                 },
                 { type: "separator" },
@@ -627,39 +627,27 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
     ),
     setFullscreenSurfaceOpen: Effect.fn("Electron.setFullscreenSurfaceOpen")(
       function* (connectionId, request) {
-        const sender = yield* Effect.try({
+        yield* Effect.try({
           try: () => requireRendererConnection(connectionId),
           catch: electronError,
         });
-        let surfaceIds = fullscreenSurfaces.get(sender.id);
+        let surfaceIds = fullscreenSurfaces.get(connectionId);
         const wasOpen = Boolean(surfaceIds?.size);
         if (request.open) {
           if (!surfaceIds) {
             surfaceIds = new Set();
-            fullscreenSurfaces.set(sender.id, surfaceIds);
+            fullscreenSurfaces.set(connectionId, surfaceIds);
           }
           surfaceIds.add(request.surfaceId);
         } else if (surfaceIds) {
           surfaceIds.delete(request.surfaceId);
-          if (surfaceIds.size === 0) fullscreenSurfaces.delete(sender.id);
+          if (surfaceIds.size === 0) fullscreenSurfaces.delete(connectionId);
         }
-        const open = Boolean(fullscreenSurfaces.get(sender.id)?.size);
+        const open = Boolean(fullscreenSurfaces.get(connectionId)?.size);
         if (open !== wasOpen)
-          for (const listener of fullscreenSurfaceListeners)
-            listener({ connectionId: sender.id, open });
+          for (const listener of fullscreenSurfaceListeners) listener({ connectionId, open });
         return { requestId: request.requestId };
       },
-    ),
-    openExternal: Effect.fn("Electron.openExternal")((url) =>
-      Effect.tryPromise({
-        try: async () => {
-          const protocol = new URL(url).protocol;
-          if (protocol !== "https:" && protocol !== "http:")
-            throw new Error("External URL must use HTTP or HTTPS");
-          await shell.openExternal(url);
-        },
-        catch: electronError,
-      }),
     ),
     start: Effect.fn("Electron.start")((nextLifecycle) =>
       Effect.sync(() => {
@@ -673,6 +661,7 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         )
           options.application.dock.hide();
         configureApplicationBranding();
+        options.application.on("activate", onActivate);
         createWindow();
       }),
     ),
@@ -681,117 +670,47 @@ export const makeElectronLive = (options: ElectronLiveOptions) => {
         if (stopped) return;
         stopped = true;
         applicationQuitting = true;
+        options.application.removeListener("activate", onActivate);
         for (const menu of openSessionContextMenus) menu.closePopup();
         openSessionContextMenus.clear();
         // The initial Electron quit is prevented so Effect can finalize first. Destroy the
         // renderer windows now so RPC transports and native views cannot retain the runtime.
-        for (const window of windows.values()) if (!window.isDestroyed()) window.destroy();
-        nativeEventListeners.clear();
+        for (const window of windows.values()) {
+          clientWorkspaces.releaseConnection(connectionForWindow(window));
+          if (!window.isDestroyed()) window.destroy();
+        }
         fullscreenSurfaceListeners.clear();
-        windowWorkspaces.clear();
         fullscreenSurfaces.clear();
         windows.clear();
         windowLifecycle = undefined;
       }),
     ),
-    sendTo,
-    broadcast,
     fullscreenSurfaceChanges,
     requireRendererConnection,
-    workspaceForConnection: (connectionId) => windowWorkspaces.get(connectionId),
-    associateWorkspace: (connectionId, workingDirectory) =>
-      windowWorkspaces.set(connectionId, workingDirectory),
-    forgetWorkspace: (workingDirectory) => {
-      for (const [connectionId, current] of windowWorkspaces)
-        if (current === workingDirectory) windowWorkspaces.delete(connectionId);
-    },
     windowsForWorkspace: (workingDirectory) =>
       [...windows.values()].flatMap((window) =>
-        windowWorkspaces.get(window.webContents.id) === workingDirectory && !window.isDestroyed()
-          ? [[window.webContents.id, window] as const]
+        clientWorkspaces.workspaceForConnection(connectionForWindow(window)) === workingDirectory &&
+        !window.isDestroyed()
+          ? [[connectionForWindow(window), window] as const]
           : [],
       ),
     centerTrafficLights,
   });
 
-  const observe = (connectionId: number, initial: CakeEvent) =>
-    Stream.callback<CakeEvent>((queue) =>
-      Effect.acquireRelease(
-        Effect.sync(() => {
-          const unsubscribe = subscribeNativeEvents(connectionId, (event) => {
-            Queue.offerUnsafe(queue, event);
-          });
-          Queue.offerUnsafe(queue, initial);
-          return unsubscribe;
-        }),
-        (unsubscribe) => Effect.sync(unsubscribe),
-      ),
-    );
-  const focused = <Types extends CakeEvent["type"]>(
-    connectionId: number,
-    channel: Extract<CakeEvent, { type: "renderer-events-ready" }>["channel"],
-    ...types: ReadonlyArray<Types>
-  ): Stream.Stream<FocusedCakeEvent<Types | "renderer-events-ready">> => {
-    const accepted = new Set<CakeEvent["type"]>(["renderer-events-ready", ...types]);
-    return observe(connectionId, { type: "renderer-events-ready", channel }).pipe(
-      Stream.filter((event): event is FocusedCakeEvent<Types | "renderer-events-ready"> =>
-        accepted.has(event.type),
-      ),
-    );
-  };
-  const nativeEvents = NativeEvents.of({
-    application: (connectionId) =>
-      focused(
-        connectionId,
-        "application",
-        "changelog-snapshot",
-        "complete",
-        "fatal",
-        "notification",
-        "extension-ui-intent",
-        "project-session-control-requested",
-        "draw-control-requested",
-        "application-hotkey-input",
-        "browser-entered",
-        "browser-state-changed",
-        "browser-element-selected",
-      ),
-    artifacts: (connectionId) =>
-      focused(
-        connectionId,
-        "artifacts",
-        "artifact-updated",
-        "artifact-catalog-invalidated",
-        "artifact-requested",
-        "ui-request",
-      ),
-    terminals: (connectionId) => focused(connectionId, "terminals", "terminal-toggle-requested"),
-    vscode: (connectionId) =>
-      focused(
-        connectionId,
-        "vscode",
-        "embedded-editor-toggle-mode-requested",
-        "embedded-editor-selection",
-        "embedded-editor-back-to-agent",
-        "embedded-editor-annotation-opened",
-        "embedded-editor-toggle-chat",
-        "embedded-editor-toggle-sidebar",
-        "embedded-editor-selection-cleared",
-        "embedded-editor-annotation-requested",
-        "embedded-editor-side-chat-requested",
-      ),
-    surfaces: (connectionId) =>
-      focused(connectionId, "surfaces", "fullscreen-surface-close-requested"),
-  });
-
-  return Layer.merge(
-    Layer.effect(
-      Electron,
-      Effect.acquireRelease(Effect.succeed(service), () => service.stop()),
-    ),
-    Layer.succeed(NativeEvents, nativeEvents),
-  );
+  return service;
 };
+
+export const makeElectronLive = (options: ElectronLiveOptions) =>
+  Layer.effect(
+    Electron,
+    Effect.gen(function* () {
+      const clientEvents = yield* ClientEvents;
+      const clientWorkspaces = yield* ClientWorkspaces;
+      const connections = yield* ClientConnections;
+      const service = makeElectronService(options, clientEvents, clientWorkspaces, connections);
+      return yield* Effect.acquireRelease(Effect.succeed(service), () => service.stop());
+    }),
+  );
 
 type SuccessTranscriptMenu = {
   readonly action?: "chat-about-selection" | "add-annotation";

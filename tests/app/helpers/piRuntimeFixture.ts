@@ -70,8 +70,6 @@ export function fakeRuntime(
     applyConfiguration: async () => undefined,
     setPiSetting: async () => undefined,
     recordReviewRun: () => undefined,
-    login: async () => undefined,
-    logout: async () => undefined,
     rename: async () => undefined,
     fork: async () => ({
       sessionId: "fork",

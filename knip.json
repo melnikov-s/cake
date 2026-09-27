@@ -1,6 +1,11 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/renderer/index.html", "src/assets/vscode-companion/extension.js"],
+  "entry": [
+    "src/renderer/index.html",
+    "src/assets/vscode-companion/extension.js",
+    "src/server/main.ts",
+    "tests/integration/fixtures/headless-backend.ts"
+  ],
   "ignoreDependencies": ["vscode"],
   "ignoreBinaries": ["swift"],
   "ignoreExportsUsedInFile": false

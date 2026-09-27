@@ -144,6 +144,7 @@ function mountStore(input: {
         source: { kind: "project-session", sessionId, title: "Project session" },
       }),
       forkProjectSession: async () => ({ ok: true, sessionId: "forked" }),
+      presentForkSession: async () => ({ ok: true, sessionId: "forked" }),
       openProjectChildSession:
         input.openProjectChildSession ?? (async () => ({ ok: true, childSessionId: "child" })),
       reportProjectError,

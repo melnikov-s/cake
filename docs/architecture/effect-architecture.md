@@ -30,7 +30,7 @@ flowchart LR
   end
 
   subgraph Main[Electron main process]
-    Server[CakeIpcServer]
+    Server[CakeRpcServer]
     Domain[Cake domain operations]
     Services[Outside-world Services]
     Server --> Domain
@@ -67,7 +67,7 @@ Primary Services are:
 - `Terminal`;
 - `Electron`;
 - `InlineWidgets`;
-- `CakeIpcClient` in the renderer and `CakeIpcServer` in main.
+- `CakeIpcClient` in the renderer and `CakeRpcServer` in main.
 
 Cake does not introduce generic abstractions for dependencies it has chosen
 concretely. In particular, `VsCodeServer` exposes VS Code-specific behavior;
@@ -157,19 +157,35 @@ construct RPC requests or subscribe directly to main-process event sources.
 
 ### Main runtime
 
-Main creates one production `ManagedRuntime` from `MainLive`. Its Layer graph
-provides all privileged Services and `CakeIpcServer`.
+Electron main creates one production `ManagedRuntime` from the saved host selection.
+Local mode uses `MainLive`; remote mode uses `RemoteMainLive`, acquiring only actual
+native capabilities and device-local presentation storage, with no Pi/backend workers.
+Host changes require confirmed relaunch. The remote renderer's single runtime composes
+the existing network and preload clients behind typed group routing; Stores remain
+transport-independent. Both local Electron and the standalone Node host acquire the same `makeBackendLive` graph;
+there is no second local/headless implementation or per-endpoint runtime registry.
 
 ```text
 MainLive
-├── PlatformLive                 # immutable Effect platform and process configuration
-├── StorageLive                  # focused storage and application-state capabilities
-├── NativeServicesLive           # Electron, Git/worktrees, project access, terminal, VS Code
-├── PiLive                       # Pi sessions, models, resources, and availability
-├── SessionWorkflowsLive         # session environments, runtime hosts, coordinators
-├── BackgroundWorkersLive        # scheduled delivery and Session Family recovery
-└── RpcLive                      # the Electron Effect RPC server
+├── BackendLive
+│   ├── FoundationLive           # platform, storage, Pi, Git/worktrees, projects, client state
+│   ├── HostLive                 # optional real native capabilities supplied by Electron
+│   ├── SessionWorkflowsLive     # session environments, runtime hosts, coordinators
+│   ├── InitializedLive          # application state and registered-project access
+│   └── BackgroundWorkersLive    # scheduled delivery and Session Family recovery
+├── SharingLive                  # live desktop-local attachment to that backend Context
+└── RpcLive                      # the host-supplied Electron Effect RPC endpoint
 ```
+
+The Node host supplies `Layer.empty` for native capabilities and can explicitly enable
+the standalone backend WebSocket endpoint and basic browser asset serving. The
+backend owns VS Code servers and companion commands; the network listener forwards
+only a live desktop's lease-scoped code-server workbench, while `RemoteMainLive`
+owns native views without acquiring a backend. URL opening and rendered-widget
+capture are optional at their use boundary and fail explicitly when absent;
+ordinary Project Session acquisition needs none of them. Terminal ownership is in the backend but PTYs are
+lazy. Window persistence, attachment dialogs, native views and protocol serving
+remain in the Electron host.
 
 Project Session lifecycle is free domain policy in `projectSessionLifecycle`, not a capability or
 Layer in this graph. These are ownership-oriented capability groups, not separate runtimes or
@@ -188,11 +204,15 @@ children. Native close-veto callbacks that require an
 immediate result remain synchronous, and synchronous manager notifications are
 queued into their owning Layer's ordered Effect consumer.
 
-`src/main/MainLive.ts` is the production Layer composition root. It assembles the named
-capability and feature groups above without adding forwarding Services. `src/main/main.ts` is the
-process entry point: it supplies Electron/assets/configuration, creates the one `ManagedRuntime`
-from `MainLive`, and starts `MainApplication`. Ordinary Layers and their built-in memoization are
-the composition mechanism. Cake does not introduce an OpenCode-style custom Layer graph until
+`src/backend/BackendLive.ts` is the shared production backend composition root.
+It initializes durable application state and registered-project access before
+starting workers or admitting host endpoints. `src/main/MainLive.ts` adds actual
+native capabilities and IPC to that one graph. `src/main/main.ts` supplies
+Electron/assets/configuration, creates the one `ManagedRuntime`, and starts
+`MainApplication`. `src/server/main.ts` uses `NodeRuntime.runMain` with the same
+backend Layer, explicit `CAKE_HOME`, and signal-owned shutdown; its process Scope
+owns workers and runtime finalization. See [headless backend development](../development/headless-backend.md).
+Ordinary Layers and their built-in memoization are the composition mechanism. Cake does not introduce an OpenCode-style custom Layer graph until
 concrete composition or replacement problems justify it.
 
 A minimal bootstrap Layer can start the application shell without loading
@@ -201,7 +221,9 @@ project resources, VS Code Server, terminals, or Project Session runtimes.
 ### Renderer runtime
 
 Each renderer window has one small runtime providing `CakeIpcClient` over the
-validated preload transport. `Client` and the renderer runtime's narrow
+validated preload transport. The basic browser entry uses the same renderer runtime
+boundary over the pinned Effect RPC socket protocol and shared schemas instead;
+connection hooks project actual connected/disconnected state into its tab-owned shell. `Client` and the renderer runtime's narrow
 Stream observation helper are the only ordinary application paths that execute
 that client. The
 runtime is created once, lives for the window, and is disposed on window
@@ -213,7 +235,11 @@ focused Store observation, native-event Streams, and the RPC smoke harness
 all use that execution boundary. It forwards cancellation without translating
 failures; command error presentation remains in `Client`, and the
 runtime's Stream observation helper retries each failed Stream independently
-with an Effect Schedule.
+with an Effect Schedule. Browser observations reconnect through fresh snapshots;
+command execution has no retry/replay policy. A failed submission receipt is reported
+as uncertain until the user deliberately reconciles it. The browser Client rejects
+unsupported native/window/auth operations before dispatch and routes external links
+to its local host. Browser bootstrap never attaches WindowStatePersistence.
 
 ESLint restricts Effect execution APIs to the explicit boundary files listed in
 `eslint.config.js`. The main process entry point executes `MainApplication` and
@@ -282,7 +308,24 @@ The protocol provides:
 - server handlers and Layers;
 - RPC middleware and correlation metadata.
 
-Cake supplies only the Electron-specific RPC transport:
+`CakeRpcServer` constructs the shared handler/middleware endpoint and requires a
+host-supplied `RpcServer.Protocol`. Electron's `MainLive` supplies its IPC protocol.
+The endpoint acquires no backend Layers: additional endpoint Scopes can consume
+an already-acquired backend Context without owning its lifetime. Closing an
+endpoint interrupts its requests and observations, not the backend's owning Scope.
+The standalone Node host now supplies an opt-in WebSocket listener using the pinned
+Node socket server and Effect RPC socket protocol. `BackendRpcServer` composes the
+backend-capable shared handlers; it requires no Electron or WindowStateStorage.
+Desktop-only groups remain in the complete local `CakeRpc`. The network protocol
+replaces untrusted connection/correlation headers case-insensitively and cleans up
+connection-owned state on socket loss. `ClientConnections` allocates process-wide logical
+IDs across sockets and IPC, independently of native WebContents IDs. Native adapters
+resolve the explicit mapping only at their boundary. Desktop Settings can attach/remove
+that same network listener at runtime through a local-only `DesktopSharing` capability;
+its process Scope, not the calling RPC Scope, owns the attachment. Listener closure does not close the backend
+or stop accepted turns. Reconnection re-observes snapshots without replaying mutations.
+
+The desktop continues to use its Electron-specific RPC transport:
 
 ```text
 Effect RPC client protocol
@@ -779,7 +822,7 @@ src/
 ├── ipc/
 │   ├── protocol/             # Shared Effect RPC groups and Schemas
 │   ├── client/               # CakeIpcClient and renderer transport Layer
-│   ├── server/               # CakeIpcServer handlers and main transport Layer
+│   ├── server/               # CakeRpcServer endpoint and shared handlers
 │   └── transport/            # Electron RPC protocol adapters
 ├── main/
 │   ├── main.ts              # Electron process entry point and sole production runtime
@@ -814,8 +857,8 @@ renderer components → renderer Stores and Models
 renderer Stores → Client
 renderer observers → Runtime and their Model or Store owners
 Runtime → CakeIpcClient
-Client → CakeIpcClient ↔ shared RPC protocol ↔ CakeIpcServer
-CakeIpcServer → domain operations → Services
+Client → CakeIpcClient ↔ shared RPC protocol ↔ CakeRpcServer
+CakeRpcServer → domain operations → Services
 ```
 
 Services do not import Cake domain modules. Domain modules do not import

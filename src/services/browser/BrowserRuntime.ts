@@ -35,6 +35,8 @@ type BrowserRuntimeEvent =
 
 export interface BrowserRuntimeOptions {
   readonly emit: (ownerId: number, event: BrowserRuntimeEvent) => void;
+  /** Remote desktops never move an agent's Chromium view to another window implicitly. */
+  readonly allowOwnerTransfer?: boolean;
 }
 
 /** Imperative Electron adapter kept behind the scoped Browser Service. */
@@ -88,6 +90,8 @@ export class BrowserRuntime {
       }
       signal?.throwIfAborted();
     } else if (entry.ownerId !== ownerId) {
+      if (this.options.allowOwnerTransfer === false)
+        throw new Error("Browser view belongs to another window");
       detach(entry.window, entry.view);
       if (this.activeByOwner.get(entry.ownerId) === sessionId)
         this.activeByOwner.delete(entry.ownerId);
@@ -114,6 +118,10 @@ export class BrowserRuntime {
     return this.snapshot(this.require(sessionId));
   }
 
+  stateForOwner(ownerId: number, sessionId: string): BrowserState {
+    return this.snapshot(this.requireOwner(ownerId, sessionId));
+  }
+
   updateBounds(ownerId: number, bounds: BrowserBounds): BrowserState {
     const previous = this.boundsByOwner.get(ownerId);
     this.boundsByOwner.set(
@@ -127,15 +135,20 @@ export class BrowserRuntime {
     return this.snapshot(entry);
   }
 
-  async navigate(sessionId: string, url: string, signal?: AbortSignal): Promise<BrowserState> {
-    const entry = this.require(sessionId);
+  async navigate(
+    ownerId: number,
+    sessionId: string,
+    url: string,
+    signal?: AbortSignal,
+  ): Promise<BrowserState> {
+    const entry = this.requireOwner(ownerId, sessionId);
     await entry.view.webContents.loadURL(normalizeUrl(url));
     signal?.throwIfAborted();
     return this.snapshot(entry);
   }
 
-  action(sessionId: string, action: BrowserAction): BrowserState {
-    const entry = this.require(sessionId);
+  action(ownerId: number, sessionId: string, action: BrowserAction): BrowserState {
+    const entry = this.requireOwner(ownerId, sessionId);
     const contents = entry.view.webContents;
     if (action === "back" && contents.canGoBack()) contents.goBack();
     else if (action === "forward" && contents.canGoForward()) contents.goForward();
@@ -144,13 +157,17 @@ export class BrowserRuntime {
     return this.snapshot(entry);
   }
 
-  async inspect(sessionId: string): Promise<BrowserState> {
-    const entry = this.require(sessionId);
+  async inspect(ownerId: number, sessionId: string): Promise<BrowserState> {
+    const entry = this.requireOwner(ownerId, sessionId);
     const revision = ++entry.inspectionRevision;
     entry.inspecting = true;
     this.emitState(entry);
     void this.completeInspection(entry, revision);
     return this.snapshot(entry);
+  }
+
+  owner(sessionId: string): number {
+    return this.require(sessionId).ownerId;
   }
 
   async sendCdp(sessionId: string, method: string, params: JsonObject): Promise<JsonValue> {
@@ -242,6 +259,12 @@ export class BrowserRuntime {
   private require(sessionId: string) {
     const entry = this.entries.get(sessionId);
     if (!entry || entry.view.webContents.isDestroyed()) throw new Error("Browser mode is not open");
+    return entry;
+  }
+
+  private requireOwner(ownerId: number, sessionId: string) {
+    const entry = this.require(sessionId);
+    if (entry.ownerId !== ownerId) throw new Error("Browser view belongs to another window");
     return entry;
   }
 

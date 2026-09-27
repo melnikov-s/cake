@@ -2,15 +2,24 @@ import { Effect } from "effect";
 import * as sessionChats from "../../domain/conversations/sessionChats";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import { SessionChatRpc } from "../protocol/SessionChatRpc";
+import { SessionChatError } from "../../domain/conversations/conversation-data";
+import { admitTurnAttachments } from "./AttachmentUploadHandlers";
 
 const deliverFromRenderer = (
   input: Parameters<typeof sessionChats.deliver>[0],
   delivery: Parameters<typeof sessionChats.deliver>[1],
 ) =>
   Effect.flatMap(RendererConnection, ({ connectionId }) =>
-    sessionChats
-      .bindRenderer(input.sessionId, connectionId)
-      .pipe(Effect.andThen(sessionChats.deliver(input, delivery))),
+    sessionChats.bindRenderer(input.sessionId, connectionId).pipe(
+      Effect.andThen(
+        admitTurnAttachments(input).pipe(
+          Effect.mapError(
+            (error) => new SessionChatError({ operation: "deliver", message: error.message }),
+          ),
+          Effect.flatMap((admitted) => sessionChats.deliver(admitted, delivery)),
+        ),
+      ),
+    ),
   );
 
 export const sessionChatHandlers = SessionChatRpc.of({
@@ -29,7 +38,13 @@ export const sessionChatHandlers = SessionChatRpc.of({
     sessionChats.sendQueuedMessageNow(target, partId),
   "sessionChats.compact": ({ instructions, ...target }) =>
     sessionChats.compact(target, instructions),
-  "sessionChats.editMessage": sessionChats.editMessage,
+  "sessionChats.editMessage": (input) =>
+    admitTurnAttachments(input).pipe(
+      Effect.mapError(
+        (error) => new SessionChatError({ operation: "editMessage", message: error.message }),
+      ),
+      Effect.flatMap(sessionChats.editMessage),
+    ),
   "sessionChats.setUserMessageMarkdown": ({ entryId, renderAsMarkdown, ...target }) =>
     sessionChats.setUserMessageMarkdown(target, entryId, renderAsMarkdown),
   "sessionChats.applyConfiguration": ({ configuration, ...target }) =>
@@ -39,7 +54,4 @@ export const sessionChatHandlers = SessionChatRpc.of({
   "sessionChats.setThinkingLevel": ({ level, ...target }) =>
     sessionChats.setThinkingLevel(target, level),
   "sessionChats.setFastMode": ({ enabled, ...target }) => sessionChats.setFastMode(target, enabled),
-  "sessionChats.login": ({ provider, authType, ...target }) =>
-    sessionChats.login(target, provider, authType),
-  "sessionChats.logout": ({ provider, ...target }) => sessionChats.logout(target, provider),
 });

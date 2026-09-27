@@ -3,16 +3,14 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, request as httpRequest, type Server as HttpServer } from "node:http";
 import net from "node:net";
-import { copyFile, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { WebContentsView, BrowserWindow } from "electron";
 import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
 import { EditorSelectionReveal, type EditorSelectionHighlights } from "../../ipc/editor-selection";
 import type { EditorLocation } from "../../ipc/editor-location";
 import { jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
 import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
-import cakeIconMarkup from "../../assets/cake-icon.svg?raw";
 import {
   downloadFile,
   extractArchive,
@@ -33,153 +31,11 @@ const START_TIMEOUT = 45_000;
 const COMPANION_START_TIMEOUT = 5_000;
 const COMPANION_SCRIPT_TIMEOUT = 30_000;
 const COMPANION_REQUEST_TIMEOUT = 5_000;
+const NETWORK_EDITOR_REQUIREMENT =
+  "Remote embedded VS Code requires code-server installed on the backend. Set CAKE_VSCODE_SERVER_PATH there to its executable path.";
 const COMPANION_SCRIPT_RESULT_BYTES = 256_000;
 /** Explicit selections carry up to 48k of source plus context and a note, JSON-escaped. */
 const BRIDGE_MESSAGE_BYTES = 256_000;
-const VSCODE_BACKGROUND = { dark: "#121519", light: "#f5f7f9" } as const;
-const WORKBENCH_LAYOUT_READY_TIMEOUT_MS = 10_000;
-// VS Code exposes editor-title actions to extensions, but those disappear when no
-// file is open and it has no public top-level title-bar contribution point. Cake
-// owns this managed web surface, so install its shell controls alongside the
-// corresponding native title-bar controls and keep them present across rerenders.
-const VSCODE_SHELL_CONTROL_PREFIX = "__CAKE_SHELL_CONTROL__";
-
-function waitForWorkbenchLayoutScript(theme: "light" | "dark") {
-  const themeClass = theme === "dark" ? "vs-dark" : "vs";
-  return `new Promise((resolve) => {
-    let timeout;
-    const matches = () => {
-      const workbench = document.querySelector(".monaco-workbench.${themeClass}");
-      const sidebar = document.querySelector(".monaco-workbench .part.sidebar");
-      if (!(workbench instanceof HTMLElement) || !(sidebar instanceof HTMLElement)) return false;
-      const bounds = sidebar.getBoundingClientRect();
-      return bounds.width === 0 || bounds.height === 0;
-    };
-    const observer = new MutationObserver(() => {
-      if (!matches()) return;
-      observer.disconnect();
-      clearTimeout(timeout);
-      resolve(true);
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class", "style"],
-      childList: true,
-      subtree: true,
-    });
-    timeout = setTimeout(() => {
-      observer.disconnect();
-      resolve(false);
-    }, ${WORKBENCH_LAYOUT_READY_TIMEOUT_MS});
-    if (matches()) {
-      observer.disconnect();
-      clearTimeout(timeout);
-      resolve(true);
-    }
-  })`;
-}
-
-function projectSidebarVisibilityScript(visible: boolean) {
-  return `(() => {
-    window.__cakeProjectSidebarVisible = ${JSON.stringify(visible)};
-    const control = document.getElementById("cake-toggle-project-sidebar");
-    if (!control) return;
-    control.style.display = window.__cakeProjectSidebarVisible ? "none" : "flex";
-  })()`;
-}
-
-function vscodeShellControlsScript(workspacePath: string, projectSidebarVisible: boolean) {
-  return `(() => {
-    const cakeIconMarkup = ${JSON.stringify(cakeIconMarkup)};
-    const controlPrefix = ${JSON.stringify(VSCODE_SHELL_CONTROL_PREFIX)};
-    const workspace = ${JSON.stringify(workspacePath)};
-    window.__cakeProjectSidebarVisible = ${JSON.stringify(projectSidebarVisible)};
-    const controls = [
-      ["cake-back-to-agent", "Cake: Back to Agent", "cake", "back-to-agent", "start"],
-      [
-        "cake-toggle-project-sidebar",
-        "Cake: Toggle Sessions Sidebar",
-        "layout-sidebar-left",
-        "toggle-project-sidebar",
-        "start",
-      ],
-      [
-        "cake-toggle-chat-sidebar",
-        "Cake: Toggle Chat Sidebar",
-        "layout-sidebar-right",
-        "toggle-chat-sidebar",
-        "end",
-      ],
-    ];
-    const install = () => {
-      const actions = document.querySelector(
-        ".part.titlebar .titlebar-right .action-toolbar-container .actions-container",
-      );
-      const commandCenter = document.querySelector(".part.titlebar .command-center");
-      const navigationActions = commandCenter?.querySelector(
-        ":scope > .monaco-toolbar > .monaco-action-bar > .actions-container",
-      );
-      if (!(actions instanceof HTMLElement)) return;
-      const projectSidebarActions =
-        navigationActions instanceof HTMLElement ? navigationActions : actions;
-      const secondarySidebarAction = actions.querySelector(
-        '[aria-label*="Toggle Secondary Side Bar"], [title*="Toggle Secondary Side Bar"]',
-      );
-      secondarySidebarAction?.closest(".action-item")?.remove();
-      for (const [id, label, icon, type, placement] of controls) {
-        const existing = document.getElementById(id);
-        if (existing) {
-          if (id === "cake-toggle-project-sidebar") {
-            existing.style.display = window.__cakeProjectSidebarVisible ? "none" : "flex";
-            if (
-              existing.parentElement !== projectSidebarActions ||
-              projectSidebarActions.firstElementChild !== existing
-            ) {
-              projectSidebarActions.prepend(existing);
-            }
-          }
-          continue;
-        }
-        const item = document.createElement("li");
-        item.id = id;
-        item.className = "action-item";
-        if (id === "cake-toggle-project-sidebar") {
-          item.style.display = window.__cakeProjectSidebarVisible ? "none" : "flex";
-        }
-        const action = document.createElement("a");
-        action.className = icon === "cake" ? "action-label" : "action-label codicon codicon-" + icon;
-        if (icon === "cake") {
-          action.innerHTML = cakeIconMarkup + "<span>Back to Agent</span>";
-          action.style.alignItems = "center";
-          action.style.color = "var(--vscode-titleBar-activeForeground)";
-          action.style.gap = "6px";
-          action.style.padding = "0 8px";
-        }
-        action.href = "#";
-        action.addEventListener("click", (event) => {
-          event.preventDefault();
-          if (type === "toggle-project-sidebar") item.style.display = "none";
-          console.debug(controlPrefix + JSON.stringify({ type, workspace }));
-        });
-        action.setAttribute("role", "button");
-        action.setAttribute("aria-label", label);
-        action.title = label;
-        item.append(action);
-        if (id === "cake-toggle-project-sidebar") projectSidebarActions.prepend(item);
-        else if (placement === "start") actions.prepend(item);
-        else actions.append(item);
-      }
-    };
-    install();
-    if (!window.__cakeShellControlsObserver) {
-      window.__cakeShellControlsObserver = new MutationObserver(install);
-      window.__cakeShellControlsObserver.observe(document.documentElement, {
-        childList: true,
-        subtree: true,
-      });
-    }
-  })()`;
-}
 const editorPreferencesSchema = Schema.StructWithRest(
   Schema.Struct({
     "security.workspace.trust.enabled": Schema.optionalKey(Schema.Boolean),
@@ -269,7 +125,8 @@ type CompanionRequest =
   | { type: "editor-action"; action: VscodeEditorAction };
 
 interface BroadcastTarget {
-  broadcast(
+  sendTo(
+    connectionId: number,
     event:
       | {
           type: "embedded-editor-selection";
@@ -308,12 +165,12 @@ export interface VsCodeServerRuntimeProps extends BroadcastTarget {
   root: string;
   /** Parsed companion manifest, serialized as the extension's package.json. */
   companionManifest: CompanionManifest;
-  /** Path to the companion extension main script (copied verbatim). */
-  companionMain: string;
+  /** Bundled companion extension source, written verbatim beside the backend. */
+  companionSource: string;
   /** Raw theme files contributed by the companion, written under its extension root. */
   companionThemes: Array<{ path: string; content: string }>;
   customPath(): string | undefined;
-  preferredTheme(): Promise<"light" | "dark">;
+
   /** Forks/replaces one idle eviction in the owning Effect Scope. */
   scheduleIdleEviction(key: string): void;
   cancelIdleEviction(key: string): void;
@@ -335,8 +192,8 @@ export interface VsCodeServerRuntimeProps extends BroadcastTarget {
 }
 
 /**
- * One openvscode-server process serving one workspace folder. The process is
- * shared by every Cake surface that opens that folder.
+ * One VS Code server process per workspace. Its single desktop lease may change
+ * owners while the idle process is retained; companion UI state is not multi-view.
  */
 export interface ServerInstance {
   workspacePath: string;
@@ -349,20 +206,18 @@ export interface ServerInstance {
   viewers: number;
 }
 
-/** The native view one Cake window shows for its current workspace. */
-interface ViewEntry {
-  workspacePath: string;
-  view: WebContentsView;
-}
-
-type ViewBounds = {
+/** One desktop's exclusive lease. Companion extension hosts cannot disambiguate multiple viewers. */
+export interface VsCodeLease {
+  readonly id: string;
+  readonly connectionId: number;
+  readonly workspacePath: string;
+  readonly presentedWorkspacePath: string;
+  readonly url: string;
+  /** Revokes all HTTP requests and sockets attached to this lease. Never serialized. */
+  readonly revocation: AbortController;
+  readonly flavor: ServerFlavor;
   visible: boolean;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  projectSidebarWidth: number;
-};
+}
 
 /** The sideloaded companion extension's package.json contract. */
 export interface CompanionManifest {
@@ -384,35 +239,23 @@ export interface CompanionManifest {
 }
 
 /**
- * Owns the embedded VS Code editor: resolving or downloading openvscode-server,
- * sideloading the Cake companion extension, running at most one server per
- * workspace folder (shared across sessions of that folder), attaching views to
- * the single application window, and relaying bridge traffic between the
- * companion extension and renderer stores.
+ * Backend process and companion authority. Native presentation lives in VsCodeViewsRuntime.
+ * A workspace has at most one desktop lease; other clients cannot steal its companion events.
  */
 export class VsCodeServerRuntime {
   status: EmbeddedEditorStatus = "missing";
   message: string | undefined;
   private props: VsCodeServerRuntimeProps;
   private servers = new Map<string, ServerInstance>();
-  private views = new Map<number, ViewEntry>();
-  /** One window's in-flight `open`; later opens for that window wait so it never owns two views. */
-  private openings = new Map<number, Promise<void>>();
-  /**
-   * Latest renderer-owned rect, retained when it arrives before the native view
-   * exists. A hidden report without geometry keeps the previous rect.
-   */
-  private requestedBounds = new Map<number, ViewBounds>();
-  /** Windows whose Cake renderer currently owns the viewport with a fullscreen surface. */
-  private fullscreenWindows = new Set<number>();
+  private leases = new Map<number, VsCodeLease>();
   private companionPorts = new Map<string, number>();
   /** Maps canonical server workspaces back to the project path Cake presents to the renderer. */
   private presentedWorkspacePaths = new Map<string, string>();
   private bridge: HttpServer | undefined;
   private bridgePort: number | undefined;
   private readonly bridgeToken = randomBytes(32).toString("hex");
-  /** Theme last pushed to running companions; duplicated pushes are skipped. */
-  private pushedTheme: "light" | "dark" | undefined;
+  /** Per-workspace desktop theme; duplicate companion pushes are skipped. */
+  private themes = new Map<string, "light" | "dark">();
   private disposed = false;
 
   constructor(props: VsCodeServerRuntimeProps) {
@@ -487,169 +330,97 @@ export class VsCodeServerRuntime {
     await rm(archivePath, { force: true });
   }
 
-  /**
-   * Shows the embedded editor for `workspacePath` in one window. Reuses the
-   * running server for that folder when one exists, replacing whatever this
-   * window was previously showing. Opens for the same window run one at a
-   * time: a concurrent second open would otherwise attach its own view and
-   * orphan the first one in the window.
-   */
-  open(
-    webContentsId: number,
-    getWindow: () => BrowserWindow | null,
+  /** Backend lease only. The native host decides when and where to attach its view. */
+  async acquire(
+    connectionId: number,
     workspacePath: string,
+    theme: "light" | "dark",
     signal?: AbortSignal,
-  ): Promise<void> {
-    const previous = this.openings.get(webContentsId) ?? Promise.resolve();
-    const current = previous
-      .catch(() => undefined)
-      .then(() => this.openNext(webContentsId, getWindow, workspacePath, signal));
-    const settled = current.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.openings.set(webContentsId, settled);
-    void settled.then(() => {
-      if (this.openings.get(webContentsId) === settled) this.openings.delete(webContentsId);
-    });
-    return current;
-  }
-
-  private async openNext(
-    webContentsId: number,
-    getWindow: () => BrowserWindow | null,
-    workspacePath: string,
-    signal?: AbortSignal,
-  ) {
+    networkViewer = false,
+  ): Promise<VsCodeLease> {
     signal?.throwIfAborted();
-    let binary: string;
-    try {
-      binary = await this.ensureInstalled();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.setStatus(
-        error instanceof VsCodeServerNotInstalledError ? "missing" : "failed",
-        message,
-      );
-      throw error;
-    }
+    if (this.disposed) throw new Error("The VS Code runtime has been disposed");
     const resolved = await realpath(workspacePath);
     signal?.throwIfAborted();
-    this.presentedWorkspacePaths.set(resolved, workspacePath);
+    const existing = [...this.leases.values()].find((lease) => lease.workspacePath === resolved);
+    if (existing && existing.connectionId !== connectionId)
+      throw new Error(
+        "This workspace's VS Code editor is already open in another desktop. Close that Cake window or switch its editor to another workspace before opening it here.",
+      );
+    if (existing) {
+      await this.setTheme(connectionId, theme, signal);
+      return existing;
+    }
+    if (!this.servers.has(resolved)) this.themes.set(resolved, theme);
+    const binary = networkViewer
+      ? await resolveServerBinary(this.props.root, this.props.customPath()).catch(
+          (error: unknown) => {
+            if (error instanceof VsCodeServerNotInstalledError)
+              throw new Error(NETWORK_EDITOR_REQUIREMENT);
+            throw error;
+          },
+        )
+      : await this.ensureInstalled();
+    if (networkViewer && serverFlavor(binary) !== "codeserver")
+      throw new Error(NETWORK_EDITOR_REQUIREMENT);
     const instance = await this.serverFor(resolved, binary, signal);
     signal?.throwIfAborted();
-
-    const window = getWindow();
-    if (!window || window.isDestroyed())
-      throw new Error("The editor window is no longer available");
-
-    const previous = this.views.get(webContentsId);
-    if (previous && previous.workspacePath === resolved) {
-      this.touch(instance);
-      return;
-    }
-    if (previous) {
-      this.releaseViewer(previous.workspacePath);
-      detachView(window, previous.view);
-    }
-    const theme = await this.props.preferredTheme();
-    const view = new WebContentsView({
-      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: false },
-    });
-    // Chromium otherwise clears a new WebContentsView to white before VS Code
-    // has restored its theme. Keep that first paint consistent with Cake.
-    view.setBackgroundColor(VSCODE_BACKGROUND[theme]);
-    view.webContents.on("console-message", (event) => {
-      if (!event.message.startsWith(VSCODE_SHELL_CONTROL_PREFIX)) return;
-      event.preventDefault();
-      this.handleBridgeMessage(
-        Buffer.from(event.message.slice(VSCODE_SHELL_CONTROL_PREFIX.length), "utf8"),
-      );
-    });
-    this.views.set(webContentsId, { workspacePath: resolved, view });
-    this.applyRequestedBounds(webContentsId, view);
+    this.releaseConnection(connectionId);
+    const authSuffix = instance.flavor === "openvscode" ? `/?tkn=${instance.token}` : "/";
+    const lease: VsCodeLease = {
+      id: randomBytes(32).toString("hex"),
+      connectionId,
+      workspacePath: resolved,
+      presentedWorkspacePath: workspacePath,
+      url: `http://127.0.0.1:${instance.port}${authSuffix}`,
+      revocation: new AbortController(),
+      flavor: instance.flavor,
+      visible: false,
+    };
+    this.leases.set(connectionId, lease);
+    this.presentedWorkspacePaths.set(resolved, workspacePath);
     instance.viewers += 1;
     this.cancelEviction(instance);
-
+    this.touch(instance);
     try {
-      const authSuffix = instance.flavor === "openvscode" ? `/?tkn=${instance.token}` : "/";
-      await view.webContents.loadURL(`http://127.0.0.1:${instance.port}${authSuffix}`);
-      signal?.throwIfAborted();
-      // loadURL resolves before the asynchronously bootstrapped workbench applies
-      // its saved theme and before Cake's companion closes VS Code's primary sidebar.
-      // Keep the unattached native view out of sight until both are reflected in the DOM.
-      await view.webContents.executeJavaScript(waitForWorkbenchLayoutScript(theme));
-      signal?.throwIfAborted();
-      await view.webContents.executeJavaScript(
-        vscodeShellControlsScript(
-          workspacePath,
-          (this.requestedBounds.get(webContentsId)?.x ?? 0) > 0,
-        ),
+      // A retained code-server may no longer have an extension host. Prepare its
+      // persisted theme before attaching a new viewer; never wait for a companion
+      // that can only start after the returned endpoint is presented.
+      await this.ensureEditorPreferences(
+        join(this.props.root, "user-data", workspaceHash(resolved)),
+        theme,
       );
+      this.themes.set(resolved, theme);
       signal?.throwIfAborted();
+      return lease;
     } catch (error) {
-      this.views.delete(webContentsId);
-      this.releaseViewer(resolved);
-      detachView(window, view);
+      this.releaseLease(connectionId, lease.id);
       throw error;
     }
-    window.contentView.addChildView(view);
-    // A newer rect may have arrived while loadURL was pending.
-    this.applyRequestedBounds(webContentsId, view);
-    this.touch(instance);
   }
 
-  /**
-   * Positions or hides the native view for one window. Bounds are DIPs relative
-   * to the content area. A hidden report without geometry (the surface is
-   * unmounted) keeps the last rect so the workbench stays laid out and showing
-   * it again only flips visibility instead of resizing from an empty view.
-   */
-  updateBounds(webContentsId: number, requested: ViewBounds) {
-    const previousBounds = this.requestedBounds.get(webContentsId);
-    const bounds: ViewBounds =
-      hasGeometry(requested) || !previousBounds
-        ? requested
-        : { ...previousBounds, visible: requested.visible };
-    const projectSidebarWasVisible = (previousBounds?.x ?? 0) > 0;
-    const projectSidebarVisible = bounds.x > 0;
-    this.requestedBounds.set(webContentsId, bounds);
-    const entry = this.views.get(webContentsId);
-    if (!entry) return;
-    if (projectSidebarWasVisible !== projectSidebarVisible)
-      void entry.view.webContents
-        .executeJavaScript(projectSidebarVisibilityScript(projectSidebarVisible))
-        .catch(() => undefined);
-    this.applyRequestedBounds(webContentsId, entry.view);
-    const instance = this.servers.get(entry.workspacePath);
-    if (instance) this.touch(instance);
+  leaseFor(connectionId: number) {
+    return this.leases.get(connectionId);
   }
 
-  /** Temporarily suppresses the native editor without changing its retained renderer bounds. */
-  setFullscreenSurfaceOpen(webContentsId: number, open: boolean) {
-    if (open) this.fullscreenWindows.add(webContentsId);
-    else this.fullscreenWindows.delete(webContentsId);
-    const entry = this.views.get(webContentsId);
-    if (entry) this.applyRequestedBounds(webContentsId, entry.view);
+  releaseLease(connectionId: number, leaseId: string) {
+    if (this.leases.get(connectionId)?.id === leaseId) this.releaseConnection(connectionId);
   }
 
-  private applyRequestedBounds(webContentsId: number, view: WebContentsView) {
-    const bounds = this.requestedBounds.get(webContentsId);
-    if (!bounds) {
-      // Nothing has been reported for this window yet; never draw an unplaced view.
-      view.setVisible(false);
-      return;
-    }
-    view.setVisible(
-      !this.fullscreenWindows.has(webContentsId) && bounds.visible && hasGeometry(bounds),
-    );
-    if (!hasGeometry(bounds)) return;
-    view.setBounds({
-      x: Math.round(bounds.x),
-      y: Math.round(bounds.y),
-      width: Math.round(bounds.width),
-      height: Math.round(bounds.height),
-    });
+  releaseConnection(connectionId: number) {
+    const lease = this.leases.get(connectionId);
+    if (!lease) return;
+    this.leases.delete(connectionId);
+    lease.revocation.abort();
+    // A retained process outlives its disconnected extension host. The next
+    // viewer must register its own companion before accepting editor actions.
+    this.companionPorts.delete(lease.workspacePath);
+    this.releaseViewer(lease.workspacePath);
+  }
+
+  setVisible(connectionId: number, visible: boolean) {
+    const lease = this.leases.get(connectionId);
+    if (lease) lease.visible = visible;
   }
 
   /**
@@ -705,10 +476,8 @@ export class VsCodeServerRuntime {
   }
 
   private isResolvedWorkspaceVisible(workspacePath: string) {
-    return [...this.views.entries()].some(
-      ([ownerId, entry]) =>
-        entry.workspacePath === workspacePath &&
-        this.requestedBounds.get(ownerId)?.visible === true,
+    return [...this.leases.values()].some(
+      (lease) => lease.workspacePath === workspacePath && lease.visible,
     );
   }
 
@@ -779,30 +548,13 @@ export class VsCodeServerRuntime {
     await postJson(port, "/", { type: "annotations", ...snapshot }, this.bridgeToken, signal);
   }
 
-  /**
-   * Pushes Cake's current theme to every running embedded editor. Skipped when
-   * the preference is unchanged; servers started later pick the theme up from
-   * their seeded preferences.
-   */
-  async updateTheme(signal?: AbortSignal) {
-    signal?.throwIfAborted();
-    const theme = await this.props.preferredTheme();
-    signal?.throwIfAborted();
-    if (theme === this.pushedTheme) return;
-    this.pushedTheme = theme;
-    const pushes: Array<Promise<void>> = [];
-    for (const [workspacePath, port] of this.companionPorts) {
-      const instance = this.servers.get(workspacePath);
-      if (!instance) continue;
-      this.touch(instance);
-      pushes.push(
-        postJson(port, "/", { type: "set-theme", theme }, this.bridgeToken, signal).catch(() => {
-          signal?.throwIfAborted();
-          // A stopping companion misses this push; the theme is applied on next start.
-        }),
-      );
-    }
-    await Promise.all(pushes);
+  async setTheme(connectionId: number, theme: "light" | "dark", signal?: AbortSignal) {
+    const lease = this.leases.get(connectionId);
+    if (!lease) return;
+    if (this.themes.get(lease.workspacePath) === theme) return;
+    const port = await this.waitForCompanionPort(lease.workspacePath, signal);
+    await postJson(port, "/", { type: "set-theme", theme }, this.bridgeToken, signal);
+    this.themes.set(lease.workspacePath, theme);
   }
 
   private waitForCompanionPort(workspacePath: string, signal?: AbortSignal) {
@@ -824,55 +576,31 @@ export class VsCodeServerRuntime {
       });
   }
 
-  /** Converts a native window-close request into Back to Agent while the editor is visible. */
-  backToAgentForWindow(webContentsId: number) {
-    const entry = this.views.get(webContentsId);
-    const bounds = this.requestedBounds.get(webContentsId);
-    if (!entry || !bounds?.visible) return false;
-    this.updateBounds(webContentsId, { ...bounds, visible: false });
-    this.props.broadcast({
-      type: "embedded-editor-back-to-agent",
-      workspacePath: this.presentedWorkspacePaths.get(entry.workspacePath) ?? entry.workspacePath,
-    });
-    return true;
-  }
-
-  /** Detaches one window's view and lets its former server go idle. */
-  closeForWindow(webContentsId: number) {
-    this.fullscreenWindows.delete(webContentsId);
-    this.requestedBounds.delete(webContentsId);
-    const entry = this.views.get(webContentsId);
-    if (!entry) return;
-    this.views.delete(webContentsId);
-    this.releaseViewer(entry.workspacePath);
-    const window = BrowserWindow.getAllWindows().find(
-      (candidate) => candidate.webContents.id === webContentsId,
-    );
-    if (window) detachView(window, entry.view);
-  }
-
   disposeAll() {
     this.disposed = true;
-    for (const [, entry] of this.views) entry.view.setVisible(false);
-    this.views.clear();
-    this.openings.clear();
-    this.requestedBounds.clear();
-    this.fullscreenWindows.clear();
+    for (const lease of this.leases.values()) lease.revocation.abort();
+    this.leases.clear();
     this.companionPorts.clear();
     this.presentedWorkspacePaths.clear();
+    this.themes.clear();
     this.bridge?.close();
+    this.bridge?.closeAllConnections();
     this.bridge = undefined;
     this.bridgePort = undefined;
   }
 
   /** Returns the running server for a folder or shares one Effect-owned in-flight start. */
-  private serverFor(
+  private async serverFor(
     resolvedWorkspace: string,
     binary: string,
     signal?: AbortSignal,
   ): Promise<ServerInstance> {
     const existing = this.servers.get(resolvedWorkspace);
-    if (existing) return Promise.resolve(existing);
+    if (existing?.binary === binary) return existing;
+    // A retained local openvscode process cannot serve a remote desktop. Also
+    // honor a newly selected binary instead of silently reusing the old process.
+    if (existing) await this.props.evictServer(this.serverCacheKey(existing));
+    signal?.throwIfAborted();
     return this.props.acquireServer(resolvedWorkspace, binary, signal);
   }
 
@@ -891,7 +619,7 @@ export class VsCodeServerRuntime {
     const token = randomBytes(24).toString("hex");
     const userDataDir = join(this.props.root, "user-data", workspaceHash(workspacePath));
     await mkdir(userDataDir, { recursive: true });
-    await this.ensureEditorPreferences(userDataDir);
+    await this.ensureEditorPreferences(userDataDir, this.themes.get(workspacePath) ?? "dark");
     const flavor = serverFlavor(binary);
 
     signal?.throwIfAborted();
@@ -906,6 +634,8 @@ export class VsCodeServerRuntime {
             `127.0.0.1:${port}`,
             "--auth",
             "none",
+            "--disable-update-check",
+            "--disable-telemetry",
             "--disable-workspace-trust",
             "--extensions-dir",
             extensionDir,
@@ -981,6 +711,7 @@ export class VsCodeServerRuntime {
     child.stderr?.pause();
 
     this.servers.set(workspacePath, instance);
+    this.scheduleEviction(instance);
     this.setStatus("ready");
     return instance;
   }
@@ -1019,15 +750,12 @@ export class VsCodeServerRuntime {
     this.cancelEviction(instance);
     this.companionPorts.delete(instance.workspacePath);
     this.presentedWorkspacePaths.delete(instance.workspacePath);
-    const affectedViewers = [...this.views.entries()].filter(
-      ([, entry]) => entry.workspacePath === instance.workspacePath,
-    );
-    for (const [webContentsId] of affectedViewers) this.views.delete(webContentsId);
-    for (const [webContentsId, entry] of affectedViewers) {
-      const window = BrowserWindow.getAllWindows().find(
-        (candidate) => candidate.webContents.id === webContentsId,
-      );
-      if (window) detachView(window, entry.view);
+    this.themes.delete(instance.workspacePath);
+    for (const [connectionId, lease] of this.leases) {
+      if (lease.workspacePath === instance.workspacePath) {
+        this.leases.delete(connectionId);
+        lease.revocation.abort();
+      }
     }
   }
 
@@ -1098,6 +826,10 @@ export class VsCodeServerRuntime {
       this.companionPorts.set(message.value.workspace, message.value.port);
       return;
     }
+    const lease = [...this.leases.values()].find(
+      (item) => item.workspacePath === message.value.workspace,
+    );
+    if (!lease) return;
     const presentedWorkspace =
       this.presentedWorkspacePaths.get(message.value.workspace) ?? message.value.workspace;
     if (
@@ -1111,12 +843,11 @@ export class VsCodeServerRuntime {
           : message.value.type === "toggle-project-sidebar"
             ? "embedded-editor-toggle-sidebar"
             : "embedded-editor-toggle-chat";
-      this.props.broadcast({ type, workspacePath: presentedWorkspace });
+      this.props.sendTo(lease.connectionId, { type, workspacePath: presentedWorkspace });
       return;
     }
     if (message.value.type === "open-annotation") {
-      this.focusCakeWindow(message.value.workspace);
-      this.props.broadcast({
+      this.props.sendTo(lease.connectionId, {
         type: "embedded-editor-annotation-opened",
         workspacePath: presentedWorkspace,
         sessionId: message.value.sessionId,
@@ -1125,14 +856,14 @@ export class VsCodeServerRuntime {
       return;
     }
     if (message.value.type === "selection-cleared") {
-      this.props.broadcast({
+      this.props.sendTo(lease.connectionId, {
         type: "embedded-editor-selection-cleared",
         workspacePath: presentedWorkspace,
       });
       return;
     }
     if (message.value.type === "selection") {
-      this.props.broadcast({
+      this.props.sendTo(lease.connectionId, {
         type: "embedded-editor-selection",
         workspacePath: presentedWorkspace,
         path: message.value.path,
@@ -1142,7 +873,6 @@ export class VsCodeServerRuntime {
       return;
     }
     // Explicit selection actions hand the user over to Cake's composer, so focus follows.
-    this.focusCakeWindow(message.value.workspace);
     const selection: EmbeddedEditorExplicitSelection = {
       path: message.value.path,
       startLine: message.value.startLine,
@@ -1154,7 +884,7 @@ export class VsCodeServerRuntime {
       contextAfter: message.value.contextAfter,
     };
     if (message.value.type === "add-annotation") {
-      this.props.broadcast({
+      this.props.sendTo(lease.connectionId, {
         type: "embedded-editor-annotation-requested",
         workspacePath: presentedWorkspace,
         ...selection,
@@ -1162,23 +892,14 @@ export class VsCodeServerRuntime {
       });
       return;
     }
-    this.props.broadcast({
+    this.props.sendTo(lease.connectionId, {
       type: "embedded-editor-side-chat-requested",
       workspacePath: presentedWorkspace,
       ...selection,
     });
   }
 
-  private focusCakeWindow(workspacePath: string) {
-    for (const [webContentsId, entry] of this.views) {
-      if (entry.workspacePath !== workspacePath) continue;
-      BrowserWindow.getAllWindows()
-        .find((candidate) => candidate.webContents.id === webContentsId)
-        ?.webContents.focus();
-    }
-  }
-
-  private async ensureEditorPreferences(userDataDir: string) {
+  private async ensureEditorPreferences(userDataDir: string, theme: "light" | "dark" = "dark") {
     const userDir = join(userDataDir, "User");
     const settingsPath = join(userDir, "settings.json");
     await mkdir(userDir, { recursive: true });
@@ -1205,7 +926,7 @@ export class VsCodeServerRuntime {
     // The embedded editor is a Cake-managed surface: it always follows the app's
     // appearance, so an earlier pick (or a stale value from a previous mode) is
     // replaced with the current preference on every start.
-    const themeLabel = (await this.props.preferredTheme()) === "dark" ? "Cake Dark" : "Cake Light";
+    const themeLabel = theme === "dark" ? "Cake Dark" : "Cake Light";
     if (settings["workbench.colorTheme"] !== themeLabel) {
       updates.push({ key: "workbench.colorTheme", value: themeLabel });
     }
@@ -1238,7 +959,7 @@ export class VsCodeServerRuntime {
       join(extensionRoot, "package.json"),
       `${JSON.stringify(this.props.companionManifest, null, 2)}\n`,
     );
-    await copyFile(this.props.companionMain, join(extensionRoot, "extension.js"));
+    await writeFile(join(extensionRoot, "extension.js"), this.props.companionSource);
     for (const theme of this.props.companionThemes) {
       const relative = theme.path.replace(/^\.?\//, "");
       const target = join(extensionRoot, ...relative.split("/"));
@@ -1293,21 +1014,8 @@ export class VsCodeServerRuntime {
   }
 }
 
-function hasGeometry(bounds: ViewBounds) {
-  return bounds.width > 0 && bounds.height > 0;
-}
-
 function workspaceHash(workspacePath: string) {
   return createHash("sha256").update(workspacePath).digest("hex").slice(0, 16);
-}
-
-function detachView(window: BrowserWindow, view: WebContentsView) {
-  if (window.isDestroyed()) return;
-  try {
-    window.contentView.removeChildView(view);
-  } catch {
-    // The view was already detached with its window.
-  }
 }
 
 async function postJson(

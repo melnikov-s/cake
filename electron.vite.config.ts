@@ -5,10 +5,14 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 
+import { buildIdentity } from "./scripts/build-identity.mjs";
+const buildDefine = { __CAKE_BUILD_ID__: JSON.stringify(buildIdentity()) };
+
 const manualReload = process.env.CAKE_MANUAL_RELOAD === "1";
 
 export default defineConfig({
   main: {
+    define: buildDefine,
     plugins: [
       externalizeDepsPlugin(),
       {
@@ -49,6 +53,7 @@ export default defineConfig({
     },
   },
   renderer: {
+    define: buildDefine,
     root: resolve(import.meta.dirname, "src/renderer"),
     server: { hmr: !manualReload },
     esbuild: {

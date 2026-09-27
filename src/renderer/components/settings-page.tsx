@@ -1,4 +1,5 @@
 import { SettingsDictationSection } from "./settings-dictation-section";
+import { SettingsDesktopHostSection } from "./settings-desktop-host-section";
 import { useEffect, useState } from "react";
 import { observer } from "r-state-tree/react";
 import { Button } from "./ui/button";
@@ -36,6 +37,7 @@ function projectTrust(value: string) {
   throw new Error("Unsupported project trust mode");
 }
 import { SettingsToggle } from "./settings/settings-toggle";
+import { SettingsDesktopSharingSection } from "./settings-desktop-sharing-section";
 import { SettingsAppearanceSection } from "./settings-appearance-section";
 import { SettingsEmbeddedEditorSection } from "./settings-embedded-editor-section";
 import { SettingsHotkeysSection } from "./settings-hotkeys-section";
@@ -639,6 +641,12 @@ export const SettingsPage = observer(function SettingsPage({
 
           {activePage === "network" && (
             <>
+              {settings.desktopConnection && (
+                <SettingsDesktopHostSection connection={settings.desktopConnection} />
+              )}
+              {!settings.desktopConnection?.remote && (
+                <SettingsDesktopSharingSection sharing={settings.desktopSharing} />
+              )}
               <section className="border-t border-border py-5" aria-labelledby="network-title">
                 <header className="mb-4">
                   <div>

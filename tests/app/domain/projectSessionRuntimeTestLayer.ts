@@ -1,5 +1,4 @@
 import { Effect, Layer } from "effect";
-import { Electron } from "../../../src/services/electron/Electron";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import type { ProjectSessionRuntimeIntegrations } from "../../../src/services/pi/ProjectSessionIntegrationHost";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
@@ -27,7 +26,7 @@ const defaultIntegrations: ProjectSessionRuntimeIntegrations = {
   },
 };
 
-export const makeProjectSessionRuntimeMechanismTestLayer = (
+export const makeHeadlessProjectSessionRuntimeMechanismTestLayer = (
   integrations: ProjectSessionRuntimeIntegrations = defaultIntegrations,
 ) =>
   Layer.mergeAll(
@@ -45,26 +44,8 @@ export const makeProjectSessionRuntimeMechanismTestLayer = (
       releaseSession: () => Effect.void,
     }),
     Layer.mock(PiModels, {}),
-    Layer.mock(Electron, {
-      openExternal: () => Effect.void,
-      sendTo: () => undefined,
-      broadcast: () => undefined,
-      requireRendererConnection: () => {
-        throw new Error("Unexpected renderer connection");
-      },
-      workspaceForConnection: () => undefined,
-      associateWorkspace: () => undefined,
-      forgetWorkspace: () => undefined,
-      windowsForWorkspace: () => [],
-      centerTrafficLights: () => undefined,
-    }),
     Layer.mock(Terminal, {
       closeWorkingDirectory: () => Effect.void,
-    }),
-    Layer.mock(VsCodeServer, {
-      runProjectScript: (_workingDirectory, _source, input) =>
-        Effect.succeed({ status: "completed" as const, value: input }),
-      backToAgentForWindow: () => false,
     }),
     Layer.mock(SubagentEnvironment, {
       location: (workingDirectory) =>
@@ -76,6 +57,18 @@ export const makeProjectSessionRuntimeMechanismTestLayer = (
         }),
     }),
     SubagentCoordinatorLive,
+  );
+
+export const makeProjectSessionRuntimeMechanismTestLayer = (
+  integrations: ProjectSessionRuntimeIntegrations = defaultIntegrations,
+) =>
+  Layer.mergeAll(
+    makeHeadlessProjectSessionRuntimeMechanismTestLayer(integrations),
+    Layer.mock(VsCodeServer, {
+      runProjectScript: (_workingDirectory, _source, input) =>
+        Effect.succeed({ status: "completed" as const, value: input }),
+      leaseFor: () => undefined,
+    }),
   );
 
 export const makeProjectSessionRuntimeTestLayer = (

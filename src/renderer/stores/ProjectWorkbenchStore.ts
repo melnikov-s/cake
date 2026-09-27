@@ -210,6 +210,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!this.isActiveSession(sessionId)) return false;
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session) return false;
+    if (this.sessionRegistry.pendingSessions.savedRecord(sessionId)?.status === "activating")
+      return false;
     if (this.sessionRegistry.pendingSessions.isTemporary(sessionId)) return true;
     const command = session.conversationSessionStore.composerStore.draftStore.text
       .trim()

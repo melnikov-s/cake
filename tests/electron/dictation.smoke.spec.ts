@@ -148,7 +148,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await expect(page.getByLabel("Use an existing Core ML Parakeet model folder")).toHaveValue("");
     await configure({ ready: true, hold: true });
     await page.getByRole("button", { name: "Back to chat" }).click();
-    await page.locator(`[data-session-id="${sessionId}"]`).click();
+    await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await composer.click();
     await composer.pressSequentially("Typed first. ");
@@ -166,7 +166,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await configure({ ready: true, text: "Discard this tail" });
     await page.getByRole("button", { name: "Back to chat" }).click();
-    await page.locator(`[data-session-id="${sessionId}"]`).click();
+    await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
     await expect(composer).toHaveValue("Typed first. Spoken next.");
     // Select transcript prose and exercise the real native context-menu path.
     await configure({ ready: true, hold: true });

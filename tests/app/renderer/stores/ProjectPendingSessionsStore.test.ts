@@ -1,4 +1,5 @@
-import { createStore, effect, mount } from "r-state-tree";
+import { createStore, mount } from "r-state-tree";
+import type { SavedDraft } from "../../../../src/domain/project-sessions/saved-draft-data";
 import { describe, expect, it, vi } from "vitest";
 import { ProjectPendingSessionsStore } from "../../../../src/renderer/stores/ProjectPendingSessionsStore";
 import type { ProjectSessionStore } from "../../../../src/renderer/stores/ProjectSessionStore";
@@ -16,6 +17,54 @@ interface PendingSessionStub {
 function fixture() {
   const sessions = new Map<string, PendingSessionStub>();
   const persistNow = vi.fn(async () => undefined);
+  const records = new Map<string, SavedDraft>();
+  const savedDrafts = {
+    list: async () => [...records.values()],
+    create: async (input: {
+      sessionId?: string;
+      projectPath: string;
+      title: string;
+      text: string;
+      attachments: readonly SavedDraft["attachments"][number][];
+      configuration?: SavedDraft["configuration"];
+      labelIds?: readonly string[];
+    }) => {
+      const record: SavedDraft = {
+        ...input,
+        sessionId: input.sessionId ?? crypto.randomUUID(),
+        workingDirectory: input.projectPath,
+        attachments: [...input.attachments],
+        labelIds: [...(input.labelIds ?? [])],
+        resolved: false,
+        createdAt: "2026-01-01",
+        modifiedAt: "2026-01-01",
+        revision: 1,
+        status: "saved",
+      };
+      records.set(record.sessionId, record);
+      return record;
+    },
+    update: async (record: SavedDraft, expectedRevision: number) => {
+      if (records.get(record.sessionId)?.revision !== expectedRevision)
+        throw new Error("Revision conflict");
+      const next: SavedDraft = { ...record, revision: expectedRevision + 1 };
+      records.set(record.sessionId, next);
+      return next;
+    },
+    remove: async (sessionId: string) => {
+      records.delete(sessionId);
+    },
+    recoverUncertain: async (sessionId: string) => {
+      const current = records.get(sessionId)!;
+      const record = { ...current, status: "saved" as const, revision: current.revision + 1 };
+      records.set(sessionId, record);
+      return record;
+    },
+    activate: async ({ sessionId }: { sessionId: string }) => {
+      const record = records.get(sessionId)!;
+      return { record, workingDirectory: record.workingDirectory };
+    },
+  };
   const prepareIdentity = (sessionId: string, workingDirectory: string) => {
     const existing = sessions.get(sessionId);
     if (existing) return existing as unknown as ProjectSessionStore;
@@ -29,6 +78,7 @@ function fixture() {
   };
   const store = mount(
     createStore(ProjectPendingSessionsStore, {
+      savedDrafts,
       session: (sessionId) => sessions.get(sessionId) as unknown as ProjectSessionStore | undefined,
       prepareIdentity,
       relocateIdentity: (sessionId, workingDirectory) => {
@@ -49,10 +99,68 @@ function fixture() {
       projectName: (workingDirectory) => workingDirectory,
     }),
   );
-  return { sessions, store, persistNow };
+  return { sessions, store, persistNow, records };
 }
 
 describe("ProjectPendingSessionsStore", () => {
+  it("relocates an activated Draft from another client to its authoritative Working Directory", () => {
+    const { sessions, store } = fixture();
+    const id = "00000000-0000-4000-8000-000000000001";
+    const saved: SavedDraft = {
+      sessionId: id,
+      projectPath: "/project",
+      workingDirectory: "/project",
+      title: "Shared task",
+      text: "First turn",
+      attachments: [],
+      labelIds: [],
+      resolved: false,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      modifiedAt: "2026-01-01T00:00:00.000Z",
+      revision: 1,
+      status: "saved",
+    };
+    store.applySavedDraftSnapshot([saved]);
+    expect(store.isTemporary(id)).toBe(true);
+    expect(sessions.get(id)?.workspacePath).toBe("/project");
+    store.applySavedDraftSnapshot([
+      { ...saved, status: "activated", workingDirectory: "/worktrees/task", revision: 3 },
+    ]);
+    expect(sessions.get(id)?.workspacePath).toBe("/worktrees/task");
+    expect(store.isTemporary(id)).toBe(false);
+    store[Symbol.dispose]();
+  });
+  it("writes saved Draft title, resolved state and labels through shared revision CAS", async () => {
+    const { store, records } = fixture();
+    const id = "00000000-0000-4000-8000-000000000001";
+    const saved: SavedDraft = {
+      sessionId: id,
+      projectPath: "/project",
+      workingDirectory: "/project",
+      title: "Original",
+      text: "Start",
+      attachments: [],
+      labelIds: [],
+      resolved: false,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      modifiedAt: "2026-01-01T00:00:00.000Z",
+      revision: 1,
+      status: "saved",
+    };
+    records.set(id, saved);
+    store.applySavedDraftSnapshot([saved]);
+    await store.updateSavedMetadata(id, { title: "Renamed", resolved: true, labelIds: ["label"] });
+    expect(records.get(id)).toMatchObject({
+      title: "Renamed",
+      resolved: true,
+      labelIds: ["label"],
+      revision: 2,
+    });
+    expect(store.conversation(id)?.title).toBe("Renamed");
+    expect(store.conversation(id)?.resolved).toBe(true);
+    store[Symbol.dispose]();
+  });
+
   it("releases a staged session while it submits and restores it after cancellation", () => {
     const { store } = fixture();
     store.prepareStaged("/project", "session-1");
@@ -86,7 +194,7 @@ describe("ProjectPendingSessionsStore", () => {
   });
 
   it("owns staged, saved-draft, relocated, and materialized transitions", async () => {
-    const { sessions, store, persistNow } = fixture();
+    const { sessions, store, persistNow, records } = fixture();
     const session = store.prepareStaged("/project", "draft-1");
     const pendingConversation = store.conversation("draft-1")!;
     expect(pendingConversation).toBeInstanceOf(PendingConversationStore);
@@ -106,18 +214,11 @@ describe("ProjectPendingSessionsStore", () => {
     expect(pendingConversation.name).toBe("Planned work");
     expect(session.workspacePath).toBe("/worktree");
     expect(sessions.get("draft-1")?.stagedCommandStore.load).toHaveBeenCalledWith("/worktree");
-    expect(persistNow).toHaveBeenCalledOnce();
-
-    let projectedResolved = false;
-    const stopProjection = effect(() => {
-      projectedResolved = store.summaries[0]?.resolved ?? false;
-    });
-    pendingConversation.setDraftResolved(true);
-    expect(projectedResolved).toBe(true);
-    stopProjection();
-
-    const prompt = pendingConversation.activateDraft();
-    expect(prompt?.text).toBe("Do this later");
+    expect(persistNow).not.toHaveBeenCalled();
+    expect(records.get("draft-1")?.text).toBe("Do this later");
+    await store.updateDraft("draft-1", "Updated from client", []);
+    expect(store.savedRecord("draft-1")?.revision).toBe(2);
+    expect(records.get("draft-1")?.text).toBe("Updated from client");
     expect(store.isTemporary("draft-1")).toBe(true);
     expect(store.materialize("draft-1", "/worktree")).toBe(session);
     expect(store.isTemporary("draft-1")).toBe(false);

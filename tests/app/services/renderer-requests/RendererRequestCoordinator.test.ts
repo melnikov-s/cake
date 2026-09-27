@@ -1,29 +1,50 @@
+import {
+  ClientConnections,
+  ClientConnectionsLive,
+} from "../../../../src/services/clients/ClientConnections";
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Context, Effect, Exit, Fiber, Layer, Queue, References, Stream } from "effect";
-import { describe, expect, vi } from "vitest";
+import { describe, expect } from "vitest";
 import { observeControls } from "../../../../src/domain/cake-chats/cakeChatOperations";
 import type { CakeEvent } from "../../../../src/ipc/cake-rpc-contract";
 import {
   RendererRequestCoordinator,
   RendererRequestCoordinatorLive,
 } from "../../../../src/services/renderer-requests/RendererRequestCoordinator";
-import { Electron, type ElectronService } from "../../../../src/services/electron/Electron";
+import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
+import { ClientEventsLive } from "../../../../src/services/clients/ClientEventsLive";
 
 const makeFixture = Effect.gen(function* () {
   const events = yield* Queue.unbounded<CakeEvent>();
-  const electron = Layer.mock(Electron, {
-    sendTo: (_target, event) => Queue.offerUnsafe(events, event),
-    broadcast: () => {},
-    requireRendererConnection: vi.fn<ElectronService["requireRendererConnection"]>(),
-    workspaceForConnection: () => undefined,
-    associateWorkspace: () => {},
-    forgetWorkspace: () => {},
-    windowsForWorkspace: () => [],
-    centerTrafficLights: () => {},
-  });
-  const context = yield* Layer.build(RendererRequestCoordinatorLive.pipe(Layer.provide(electron)));
-  return { coordinator: Context.get(context, RendererRequestCoordinator), events };
+  const context = yield* Layer.build(
+    RendererRequestCoordinatorLive.pipe(
+      Layer.provideMerge(Layer.merge(ClientConnectionsLive, ClientEventsLive)),
+    ),
+  );
+  const clientEvents = Context.get(context, ClientEvents);
+  const ready = yield* Queue.unbounded<void>();
+  for (const connectionId of [11, 22, 31, 32, 35, 37, 41, 42]) {
+    for (const stream of [
+      clientEvents.application(connectionId),
+      clientEvents.artifacts(connectionId),
+    ]) {
+      yield* stream.pipe(
+        Stream.runForEach((event: CakeEvent) =>
+          event.type === "renderer-events-ready"
+            ? Queue.offer(ready, undefined)
+            : Queue.offer(events, event),
+        ),
+        Effect.forkScoped,
+      );
+      yield* Queue.take(ready);
+    }
+  }
+  return {
+    coordinator: Context.get(context, RendererRequestCoordinator),
+    clients: Context.get(context, ClientConnections),
+    events,
+  };
 });
 
 const createDraft = {
@@ -33,7 +54,115 @@ const createDraft = {
 };
 
 describe("RendererRequestCoordinator", () => {
-  it.effect("publishes and completes a correlated Project Session request", () =>
+  it.effect(
+    "remote browser only accepts the bound desktop reply; no desktop and cancellation settle without a stale result",
+    () =>
+      Effect.gen(function* () {
+        const { coordinator, clients, events } = yield* makeFixture;
+        const controller = new AbortController();
+        const request = () =>
+          coordinator.requestBrowserNative(
+            "project-1",
+            {
+              operation: "cdp",
+              workspacePath: "/projects/cake",
+              method: "Runtime.evaluate",
+              params: {},
+            },
+            controller.signal,
+          );
+        expect((yield* request().pipe(Effect.exit))._tag).toBe("Failure");
+        const browserViewer = clients.socket();
+        yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-1" }, browserViewer);
+        expect((yield* request().pipe(Effect.exit))._tag).toBe("Failure");
+        yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-1" }, 11);
+        const pending = yield* request().pipe(Effect.forkChild({ startImmediately: true }));
+        const event = yield* Queue.take(events);
+        if (event.type !== "browser-native-requested")
+          throw new Error(`Unexpected event ${event.type}`);
+        expect(event.operation).toBe("cdp");
+        expect(
+          (yield* coordinator
+            .respondBrowserNative(22, "project-1", event.requestId, {
+              status: "completed",
+              value: "forged",
+            })
+            .pipe(Effect.exit))._tag,
+        ).toBe("Failure");
+        expect(
+          (yield* coordinator
+            .respondBrowserNative(11, "wrong-session", event.requestId, {
+              status: "completed",
+              value: "forged",
+            })
+            .pipe(Effect.exit))._tag,
+        ).toBe("Failure");
+        yield* coordinator.respondBrowserNative(11, "project-1", event.requestId, {
+          status: "completed",
+          value: "real",
+        });
+        expect(yield* Fiber.join(pending)).toEqual({ status: "completed", value: "real" });
+        expect(
+          (yield* coordinator
+            .respondBrowserNative(11, "project-1", event.requestId, {
+              status: "completed",
+              value: "late",
+            })
+            .pipe(Effect.exit))._tag,
+        ).toBe("Failure");
+        const interrupted = yield* request().pipe(Effect.forkChild({ startImmediately: true }));
+        const second = yield* Queue.take(events);
+        if (second.type !== "browser-native-requested") throw new Error("Browser request missing");
+        controller.abort();
+        expect((yield* Fiber.await(interrupted))._tag).toBe("Failure");
+        expect(
+          (yield* coordinator
+            .respondBrowserNative(11, "project-1", second.requestId, {
+              status: "completed",
+              value: "late",
+            })
+            .pipe(Effect.exit))._tag,
+        ).toBe("Failure");
+      }),
+  );
+
+  it.effect("preview leases require the bound desktop and revoke with session and connection", () =>
+    Effect.gen(function* () {
+      const { coordinator, clients } = yield* makeFixture;
+      const released: string[] = [];
+      yield* coordinator.setPreviewBridge({
+        acquire: (_connectionId, _sessionId, port) =>
+          Effect.succeed({ port, endpoint: `/preview/${"a".repeat(64)}/`, secret: "b".repeat(64) }),
+        releaseSession: (id) =>
+          Effect.sync(() => {
+            released.push(`session:${id}`);
+          }),
+        releaseConnection: (id) =>
+          Effect.sync(() => {
+            released.push(`connection:${id}`);
+          }),
+      });
+      const viewer = clients.socket();
+      yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "session" }, viewer);
+      expect(
+        (yield* coordinator.acquirePreview(viewer, "session", 5173).pipe(Effect.exit))._tag,
+      ).toBe("Failure");
+      yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "session" }, 11);
+      expect((yield* coordinator.acquirePreview(22, "session", 5173).pipe(Effect.exit))._tag).toBe(
+        "Failure",
+      );
+      expect(yield* coordinator.acquirePreview(11, "session", 5173)).toEqual({
+        port: 5173,
+        endpoint: `/preview/${"a".repeat(64)}/`,
+        secret: "b".repeat(64),
+      });
+      yield* coordinator.releaseSession({ _tag: "ProjectSession", sessionId: "session" });
+      yield* coordinator.releaseConnection(11);
+      expect(released).toEqual(["session:session", "connection:11"]);
+    }),
+  );
+
+  it.effect("renderer_requests_use_transport_neutral_events", () =>
     Effect.gen(function* () {
       const { coordinator, events } = yield* makeFixture;
       yield* coordinator.registerProjectSession("project-1", "/projects/cake");
@@ -232,6 +361,8 @@ describe("RendererRequestCoordinator", () => {
         .pipe(Effect.forkChild);
       const event = yield* Queue.take(events);
       assert.equal(event.type, "ui-request");
+      // A later binding change must not redirect a pending request's recipient.
+      yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-1" }, 32);
 
       const wrongRenderer = yield* coordinator
         .respondUi(32, "project-1", {
@@ -394,6 +525,47 @@ describe("RendererRequestCoordinator", () => {
         receipt: { createdIds: [], updatedIds: ["shape:one"], deletedIds: [] },
         scene,
       });
+    }),
+  );
+
+  it.effect(
+    "rejects publication to a disconnected event recipient without leaving a pending request",
+    () =>
+      Effect.gen(function* () {
+        const { coordinator } = yield* makeFixture;
+        yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-1" }, 99);
+        const failed = yield* coordinator
+          .requestProjectControl("project-1", createDraft, new AbortController().signal)
+          .pipe(Effect.exit);
+        expect(Exit.isFailure(failed)).toBe(true);
+        yield* coordinator.releaseConnection(99);
+      }),
+  );
+
+  it.effect("rejects requests when only an unrelated recipient event channel is active", () =>
+    Effect.gen(function* () {
+      const context = yield* Layer.build(
+        RendererRequestCoordinatorLive.pipe(
+          Layer.provideMerge(Layer.merge(ClientConnectionsLive, ClientEventsLive)),
+        ),
+      );
+      const coordinator = Context.get(context, RendererRequestCoordinator);
+      const clientEvents = Context.get(context, ClientEvents);
+      const received = yield* Queue.unbounded<CakeEvent>();
+      yield* clientEvents.terminals(99).pipe(
+        Stream.runForEach((event) => Queue.offer(received, event)),
+        Effect.forkScoped,
+      );
+      expect(yield* Queue.take(received)).toEqual({
+        type: "renderer-events-ready",
+        channel: "terminals",
+      });
+      yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-1" }, 99);
+      const failure = yield* coordinator
+        .requestProjectControl("project-1", createDraft, new AbortController().signal)
+        .pipe(Effect.flip);
+      expect(failure.operation).toBe("publishProjectEvent");
+      yield* coordinator.releaseConnection(99);
     }),
   );
 

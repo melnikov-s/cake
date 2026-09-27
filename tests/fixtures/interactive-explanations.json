@@ -169,7 +169,7 @@
               "symbol": "compileInlineWidget"
             },
             {
-              "path": "src/services/widgets/inline-widget-protocol.ts",
+              "path": "src/services/electron/inline-widget-protocol.ts",
               "symbol": "handleInlineWidgetScheme"
             },
             { "path": "src/renderer/components/widget-artifact.tsx", "symbol": "WidgetArtifact" }
@@ -256,7 +256,7 @@
               "symbol": "widgetModulePlugin"
             },
             {
-              "path": "src/services/widgets/inline-widget-protocol.ts",
+              "path": "src/services/electron/inline-widget-protocol.ts",
               "symbol": "inlineWidgetContentSecurityPolicy"
             }
           ]

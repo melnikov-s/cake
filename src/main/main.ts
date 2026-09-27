@@ -1,4 +1,6 @@
 import { join } from "node:path";
+import { loadDesktopHost, installDesktopSocketOrigin } from "../services/electron/DesktopHostLive";
+import { makeRemoteMainLive } from "./RemoteMainLive";
 import { Cause, Effect, Exit, ManagedRuntime, Schema } from "effect";
 import { app, nativeTheme } from "electron";
 import { cakeEventSchema, type CakeEvent } from "../ipc/cake-rpc-contract";
@@ -6,26 +8,26 @@ import type { JsonValue } from "../ipc/json-contract";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { DrawControlInvocation } from "../domain/draw/draw-control";
 import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
-import { Electron } from "../services/electron/Electron";
+import { ClientEvents } from "../services/clients/ClientEvents";
 import {
   registerInlineWidgetScheme,
-  revokeInlineWidget,
-} from "../services/widgets/inline-widget-protocol";
+  handleInlineWidgetScheme,
+} from "../services/electron/inline-widget-protocol";
+import { revokeInlineWidget } from "../services/widgets/inline-widget-document-registry";
 import { InlineWidgets } from "../services/widgets/InlineWidgets";
 import { RenderedWidgetCapture } from "../services/widgets/RenderedWidgetCapture";
 import { ArtifactLineageId } from "../domain/artifacts/artifact-lineage";
 import { ArtifactStorage } from "../services/storage/ArtifactStorage";
-import { registerExtensionCompanionScheme } from "../services/pi/runtime/extension-companion-protocol";
+import {
+  registerExtensionCompanionScheme,
+  handleExtensionCompanionScheme,
+} from "../services/electron/extension-companion-protocol";
 import { resolveCakePaths } from "../config/CakePaths";
 import { MainApplication } from "./MainApplication";
 import { makeMainLive } from "./MainLive";
 import cakeIconPath from "../assets/cake.png?asset";
 import annotationMenuIconPath from "../assets/menu-annotation.png?asset";
 import chatMenuIconPath from "../assets/menu-chat.png?asset";
-import companionManifest from "../assets/vscode-companion/companion-manifest.json";
-import companionExtensionMain from "../assets/vscode-companion/extension.js?asset";
-import cakeLightThemeSource from "../assets/vscode-companion/themes/cake-light-color-theme.json?raw";
-import cakeDarkThemeSource from "../assets/vscode-companion/themes/cake-dark-color-theme.json?raw";
 
 app.setName("Cake");
 registerInlineWidgetScheme();
@@ -34,7 +36,8 @@ if (process.env.CAKE_ELECTRON_USER_DATA)
   app.setPath("userData", process.env.CAKE_ELECTRON_USER_DATA);
 
 const paths = resolveCakePaths();
-const MainLive = makeMainLive({
+const selectedHost = loadDesktopHost(app.getPath("userData"));
+const mainOptions = {
   application: app,
   paths,
   userData: app.getPath("userData"),
@@ -45,18 +48,17 @@ const MainLive = makeMainLive({
   cakeIconPath,
   annotationMenuIconPath,
   chatMenuIconPath,
-  companionManifest,
-  companionMain: companionExtensionMain,
-  companionThemes: [
-    { path: "./themes/cake-light-color-theme.json", content: cakeLightThemeSource },
-    { path: "./themes/cake-dark-color-theme.json", content: cakeDarkThemeSource },
-  ],
-  preferredTheme: async () => (nativeTheme.shouldUseDarkColors ? "dark" : "light"),
-  onThemeUpdated: (listener) => {
+  preferredTheme: async (): Promise<"light" | "dark"> =>
+    nativeTheme.shouldUseDarkColors ? "dark" : "light",
+  onThemeUpdated: (listener: () => void) => {
     nativeTheme.on("updated", listener);
     return () => nativeTheme.off("updated", listener);
   },
-});
+};
+const MainLive =
+  selectedHost.kind === "remote"
+    ? makeRemoteMainLive(mainOptions, selectedHost)
+    : makeMainLive(mainOptions);
 
 const initializeDeveloperTools =
   process.env.ELECTRON_RENDERER_URL && process.env.CAKE_ELECTRON_SMOKE !== "1"
@@ -71,7 +73,20 @@ const initializeDeveloperTools =
     : undefined;
 
 const mainRuntime = ManagedRuntime.make(MainLive);
-const mainProgram = MainApplication({ application: app, initializeDeveloperTools });
+const mainProgram = Effect.promise(() => app.whenReady()).pipe(
+  Effect.tap(() => Effect.sync(() => installDesktopSocketOrigin(selectedHost))),
+  Effect.andThen(
+    MainApplication({
+      application: app,
+      initializeDeveloperTools,
+      initializeNativeProtocols: () => {
+        const endpoint = selectedHost.kind === "remote" ? selectedHost.url : undefined;
+        handleInlineWidgetScheme(endpoint);
+        handleExtensionCompanionScheme(endpoint);
+      },
+    }),
+  ),
+);
 void mainRuntime
   .runPromiseExit(
     mainProgram.pipe(
@@ -95,7 +110,19 @@ void mainRuntime
     }
   });
 
-if (process.env.CAKE_ELECTRON_SMOKE === "1") {
+if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "remote") {
+  Object.assign(globalThis, {
+    cakeSmokeRemoteCaptureWidget(widget: { token: string; url: string }) {
+      return mainRuntime.runPromise(
+        Effect.flatMap(RenderedWidgetCapture, (capture) =>
+          capture.capture("remote-smoke", widget, new AbortController().signal),
+        ),
+      );
+    },
+  });
+}
+
+if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
   const reportSmokeFailure = (operation: string, defect: Error) => {
     console.error(`[cake.smoke] ${operation} failed`, defect);
   };
@@ -104,7 +131,13 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1") {
       return mainRuntime.runPromise(
         Effect.gen(function* () {
           const request = yield* Schema.decodeUnknownEffect(DrawControlInvocation)(invocation);
-          const coordinator = yield* RendererRequestCoordinator;
+          const coordinator = yield* Effect.serviceOption(RendererRequestCoordinator).pipe(
+            Effect.flatMap((service) =>
+              service._tag === "Some"
+                ? Effect.succeed(service.value)
+                : Effect.die("Local-only smoke hook"),
+            ),
+          );
           return yield* coordinator.requestDrawControl(
             sessionId,
             request,
@@ -116,8 +149,10 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1") {
     cakeSmokeEmitRendererEvent(input: CakeEvent) {
       void mainRuntime
         .runPromise(
-          Effect.flatMap(Electron, (electron) =>
-            Effect.sync(() => electron.broadcast(Schema.decodeUnknownSync(cakeEventSchema)(input))),
+          Effect.flatMap(ClientEvents, (clientEvents) =>
+            Effect.sync(() =>
+              clientEvents.broadcast(Schema.decodeUnknownSync(cakeEventSchema)(input)),
+            ),
           ),
         )
         .catch((defect) => reportSmokeFailure("emit renderer event", defect));
@@ -132,9 +167,27 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1") {
     }) {
       return mainRuntime.runPromise(
         Effect.gen(function* () {
-          const widgets = yield* InlineWidgets;
-          const captures = yield* RenderedWidgetCapture;
-          const artifacts = yield* ArtifactStorage;
+          const widgets = yield* Effect.serviceOption(InlineWidgets).pipe(
+            Effect.flatMap((service) =>
+              service._tag === "Some"
+                ? Effect.succeed(service.value)
+                : Effect.die("Local-only smoke hook"),
+            ),
+          );
+          const captures = yield* Effect.serviceOption(RenderedWidgetCapture).pipe(
+            Effect.flatMap((service) =>
+              service._tag === "Some"
+                ? Effect.succeed(service.value)
+                : Effect.die("Local-only smoke hook"),
+            ),
+          );
+          const artifacts = yield* Effect.serviceOption(ArtifactStorage).pipe(
+            Effect.flatMap((service) =>
+              service._tag === "Some"
+                ? Effect.succeed(service.value)
+                : Effect.die("Local-only smoke hook"),
+            ),
+          );
           const lineageId = yield* Schema.decodeUnknownEffect(ArtifactLineageId)(input.artifactId);
           const before = yield* artifacts.read(lineageId);
           const compiled = yield* widgets.compile({
@@ -191,8 +244,10 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1") {
     cakeSmokeResetPi() {
       void mainRuntime
         .runPromise(
-          Effect.flatMap(AgentAvailability, (availability) =>
-            availability.setGlobal({ state: "unavailable", reason: "Pi runtime stopped" }),
+          Effect.flatMap(Effect.serviceOption(AgentAvailability), (service) =>
+            service._tag === "None"
+              ? Effect.die("Local-only smoke hook")
+              : service.value.setGlobal({ state: "unavailable", reason: "Pi runtime stopped" }),
           ),
         )
         .catch((defect) => reportSmokeFailure("reset Pi availability", defect));

@@ -10,7 +10,7 @@ import type { CakeArtifactV1 } from "../../../../src/ipc/artifact-contract";
 import type { CakeEvent } from "../../../../src/ipc/cake-rpc-contract";
 import { makeArtifactProjectionLive } from "../../../../src/services/artifacts/ArtifactProjectionLive";
 import { WorkspaceFileExport } from "../../../../src/services/filesystem/WorkspaceFileExport";
-import { Electron } from "../../../../src/services/electron/Electron";
+import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
 import { PiModels } from "../../../../src/services/pi/PiModels";
 import type { ProjectSessionRuntimeIntegrations } from "../../../../src/services/pi/ProjectSessionIntegrationHost";
 import { ProjectSessionRuntimeHost } from "../../../../src/services/pi/ProjectSessionRuntimeHost";
@@ -81,19 +81,11 @@ const makeHarness = async () => {
     ),
     makeSessionFamilyStorageLive(join(root, "session-families.json")).pipe(Layer.provide(platform)),
     makeArtifactProjectionLive(join(root, "projection-cache")).pipe(Layer.provide(platform)),
-    Layer.mock(Electron, {
+    Layer.mock(ClientEvents, {
+      sendTo: () => false,
       broadcast: (event) => {
         events.push(event);
       },
-      sendTo: () => undefined,
-      requireRendererConnection: () => {
-        throw new Error("No renderer connection in this test");
-      },
-      workspaceForConnection: () => undefined,
-      associateWorkspace: () => undefined,
-      forgetWorkspace: () => undefined,
-      windowsForWorkspace: () => [],
-      centerTrafficLights: () => undefined,
     }),
     Layer.mock(RendererRequestCoordinator, {
       registerProjectSession: () => Effect.void,

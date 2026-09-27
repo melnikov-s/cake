@@ -1,6 +1,5 @@
 import { Context, Effect, Layer, Scope } from "effect";
 import * as projectSessionOperations from "../domain/project-sessions/projectSessionOperations";
-import type { Electron } from "../services/electron/Electron";
 import type { PiModels } from "../services/pi/PiModels";
 import type { CakeSessionRuntimes } from "../services/pi/CakeSessionRuntimes";
 import type { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
@@ -12,7 +11,6 @@ import type { SessionArchiveStorage } from "../services/storage/SessionArchiveSt
 import type { SessionFamilyStorage } from "../services/storage/SessionFamilyStorage";
 import type { SubagentCoordinator } from "../services/subagents/SubagentCoordinator";
 import type { SubagentEnvironment } from "../services/subagents/SubagentEnvironment";
-import type { VsCodeServer } from "../services/vscode/VsCodeServer";
 import type { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import type { Terminal } from "../services/terminal/Terminal";
 import {
@@ -35,7 +33,6 @@ export const WorktreeLandingAgentLive = Layer.effect(
     const context = yield* Effect.context<
       | Scope.Scope
       | ApplicationState
-      | Electron
       | ManagedWorktrees
       | PiModels
       | CakeSessionRuntimes
@@ -48,7 +45,6 @@ export const WorktreeLandingAgentLive = Layer.effect(
       | SubagentCoordinator
       | SubagentEnvironment
       | Terminal
-      | VsCodeServer
     >();
     const dependencies = Context.omit(Scope.Scope)(context);
     return WorktreeLandingAgent.of({

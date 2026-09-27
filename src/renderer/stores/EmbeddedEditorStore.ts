@@ -227,6 +227,8 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
       await this.vscode.open(projectPath, { signal: this.signal });
       if (this.signal.aborted || this.props.projectPath() !== projectPath) return;
       this.openedWorkspace = projectPath;
+      // Reopening after a disconnected native view must resend even unchanged geometry.
+      await this.pushNativeViewBounds();
       await this.syncAnnotations();
       await this.syncSelectionHighlights();
     } catch (error) {
@@ -239,22 +241,16 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
 
   /** Asks Cake Chat, in a fresh global session, to install and verify a VS Code server. */
   async askCakeToSetUp() {
-    const platform = /Mac/.test(navigator.userAgent)
-      ? "macOS"
-      : /Linux/.test(navigator.userAgent)
-        ? "Linux"
-        : "Windows";
     const prompt = [
-      "Cake's embedded VS Code editor could not find a VS Code server binary on this machine.",
-      `Platform: ${platform}.`,
+      "Set up Cake's embedded VS Code editor on the Cake backend. It may be remote; first determine the backend's actual operating system, not the viewing device's.",
       this.props.projectPath() ? `Project: ${this.props.projectPath()}.` : undefined,
       "",
       "Please set one up for me:",
-      "- On macOS, install code-server via Homebrew (`brew install code-server`) and verify it with `code-server --version`. Cake auto-detects /opt/homebrew/bin/code-server, /usr/local/bin/code-server, and /usr/bin/code-server once installed.",
-      "- On Linux, no install is needed: Cake downloads openvscode-server automatically; if that download failed, diagnose the network or proxy problem.",
-      "- If I already have a compatible server binary somewhere else, tell me where to point CAKE_VSCODE_SERVER_PATH (note: that environment variable must be set before launching Cake).",
+      "- Install code-server on the backend and verify it with `code-server --version`. On macOS, Homebrew (`brew install code-server`) works. Cake auto-detects /opt/homebrew/bin/code-server, /usr/local/bin/code-server, and /usr/bin/code-server.",
+      "- Remote desktops require code-server; the managed openvscode-server download is supported only for local desktop viewing.",
+      "- If code-server is installed elsewhere, set CAKE_VSCODE_SERVER_PATH before launching the Cake backend, not on the remote viewing device.",
       "",
-      "When you're done, tell me to click the retry button in Cake's project browser.",
+      "When you're done, tell me to reopen VS Code in Cake.",
     ]
       .filter((line) => line !== undefined)
       .join("\n");
@@ -374,6 +370,16 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     this.visible = false;
     this.lastActivePath = undefined;
     this.activeContextAttachment = undefined;
+  }
+
+  /** The backend revoked this window's lease; a reconnect never replays its open. */
+  disconnected() {
+    this.openedWorkspace = undefined;
+    this.sentAnnotationsFingerprint = undefined;
+    this.lastActivePath = undefined;
+    this.activeContextAttachment = undefined;
+    if (this.visible)
+      this.error = "Connection lost. Return to agent and reopen VS Code after reconnecting.";
   }
 
   /** Explicitly returns the selected session to Agent presentation. */

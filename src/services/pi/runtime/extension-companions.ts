@@ -12,7 +12,7 @@ import {
 import {
   publishExtensionCompanionModule,
   type ExtensionCompanionModulePublication,
-} from "./extension-companion-protocol";
+} from "./extension-companion-module-registry";
 
 export const cakeCompanionStateChannel = "cake:companion:state";
 export const cakeCompanionActionChannel = "cake:companion:action";

@@ -6,6 +6,7 @@ import { cakeRequestV1Schema } from "../../ipc/request-contract";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { ArtifactForm } from "./artifact-form";
 import { RequestWidget } from "./request-widget";
+import { Callout } from "./ui/callout";
 
 export function RequestArtifact({
   artifact,
@@ -37,7 +38,15 @@ export function RequestArtifact({
         onSkip={onSkip}
       />
     );
-  if (!inlineWidgets) return <Markdown>{request.fallback.markdown}</Markdown>;
+  if (!inlineWidgets)
+    return (
+      <div className="grid gap-2">
+        <Callout>
+          Interactive widgets are unavailable in this client. Showing the supplied text fallback.
+        </Callout>
+        <Markdown>{request.fallback.markdown}</Markdown>
+      </div>
+    );
   return (
     <RequestWidget
       artifact={artifact}

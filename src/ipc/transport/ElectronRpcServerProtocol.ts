@@ -1,5 +1,6 @@
 import { Effect, Layer, Option, Queue, Result } from "effect";
 import { ipcMain, webContents, type IpcMainEvent } from "electron";
+import { ClientConnections } from "../../services/clients/ClientConnections";
 import { RpcServer } from "effect/unstable/rpc";
 import type { FromClientEncoded } from "effect/unstable/rpc/RpcMessage";
 import {
@@ -17,7 +18,8 @@ interface IncomingMessage {
 function withTrustedMetadata(connectionId: number, message: FromClientEncoded): FromClientEncoded {
   if (message._tag !== "Request") return message;
   const headers = message.headers.filter(
-    ([name]) => name !== rendererConnectionHeader && name !== correlationIdHeader,
+    ([name]) =>
+      name.toLowerCase() !== rendererConnectionHeader && name.toLowerCase() !== correlationIdHeader,
   );
   return {
     ...message,
@@ -32,18 +34,19 @@ function withTrustedMetadata(connectionId: number, message: FromClientEncoded): 
 export const ElectronRpcServerProtocolLive = Layer.effect(
   RpcServer.Protocol,
   Effect.gen(function* () {
+    const connections = yield* ClientConnections;
     const incoming = yield* Queue.unbounded<IncomingMessage>();
     const disconnects = yield* Queue.unbounded<number>();
     const connectionIds = new Set<number>();
     const watchedConnections = new Set<number>();
 
     const onRequest = (event: IpcMainEvent, input: unknown) => {
-      const connectionId = event.sender.id;
       const decoded = parseRendererRpcMessage(input);
       if (Result.isFailure(decoded)) {
         console.error("[cake.rpc] Rejected malformed renderer transport message", decoded.failure);
         return;
       }
+      const connectionId = connections.desktop(event.sender.id);
       const message = decoded.success;
       connectionIds.add(connectionId);
       if (!watchedConnections.has(connectionId)) {
@@ -51,6 +54,7 @@ export const ElectronRpcServerProtocolLive = Layer.effect(
         event.sender.once("destroyed", () => {
           connectionIds.delete(connectionId);
           watchedConnections.delete(connectionId);
+          connections.release(connectionId);
           Queue.offerUnsafe(disconnects, connectionId);
         });
       }
@@ -75,7 +79,8 @@ export const ElectronRpcServerProtocolLive = Layer.effect(
       disconnects,
       send: (connectionId, response) =>
         Effect.sync(() => {
-          const target = webContents.fromId(connectionId);
+          const nativeId = connections.nativeId(connectionId);
+          const target = nativeId === undefined ? undefined : webContents.fromId(nativeId);
           if (target && !target.isDestroyed()) target.send(rpcResponseChannel, response);
         }),
       end: (connectionId) =>

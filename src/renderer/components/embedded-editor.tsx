@@ -17,17 +17,15 @@ const StatusCard = observer(function StatusCard({ store }: { store: EmbeddedEdit
       </strong>
       {setupRequired ? (
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Run a real VS Code server for this project inside Cake, with full language services, your
-          extension workspace, and the command palette. On Mac, Cake needs code-server installed
-          locally (Homebrew works well).
+          The editor runs on Cake’s backend, which may be a remote machine. Remote desktops require
+          code-server installed there. A local Linux backend can also use Cake’s managed
+          openvscode-server download.
         </p>
       ) : null}
       {store.statusMessage ? (
         <p className="font-mono text-xs text-muted-foreground">{store.statusMessage}</p>
       ) : null}
-      {!setupRequired && store.error ? (
-        <p className="font-mono text-xs text-destructive">{store.error}</p>
-      ) : null}
+      {store.error ? <p className="font-mono text-xs text-destructive">{store.error}</p> : null}
       <div className="flex flex-wrap items-center gap-2 pt-1">
         {setupRequired ? (
           <>

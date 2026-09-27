@@ -15,7 +15,10 @@ import {
 } from "../../ipc/artifact-contract";
 import type { CakeEvent } from "../../ipc/cake-rpc-contract";
 import { compileInlineWidget } from "../widgets/inline-widget-service";
-import { publishInlineWidget, revokeInlineWidget } from "../widgets/inline-widget-protocol";
+import {
+  publishInlineWidget,
+  revokeInlineWidget,
+} from "../widgets/inline-widget-document-registry";
 import {
   runInlineWidgetGeneration,
   runInlineWidgetRepair,
@@ -153,7 +156,6 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly artifactRepository?: ArtifactRepositoryPort;
   readonly importWorkspaceFile?: (input: ImportWorkspaceFileInput) => Promise<CakeArtifactV1>;
   readonly reviewRepository?: ReviewRepositoryPort;
-  readonly openExternal?: (url: string) => Promise<void>;
   readonly enterEditor?: (signal: AbortSignal) => Promise<void>;
   readonly openInEditor?: (
     location: SourceLocation,

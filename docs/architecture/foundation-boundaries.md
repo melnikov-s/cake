@@ -16,7 +16,7 @@ Effect RPC connects them through shared Effect Schemas.
 ```text
 renderer Store → Client Promise adapter
 → CakeIpcClient → Effect RPC over preload/Electron transport
-→ CakeIpcServer
+→ CakeRpcServer
 → Cake domain Effect operation
 → outside-world Services
 ```

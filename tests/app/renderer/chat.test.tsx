@@ -486,7 +486,9 @@ describe("Chat", () => {
     expect(container.textContent).toContain("src/main.ts#L3-L4");
 
     await act(async () => {
-      container.querySelector<HTMLButtonElement>("button:not([aria-label])")!.click();
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Open src/main.ts#L3-L4 in VS Code"]')!
+        .click();
     });
     expect(openSourceLocation).toHaveBeenCalledWith(source.location);
     await act(async () => {

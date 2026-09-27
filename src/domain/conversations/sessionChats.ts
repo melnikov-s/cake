@@ -12,7 +12,6 @@ import {
 import {
   abort as abortConversation,
   applyConfiguration as applyConversationConfiguration,
-  authenticate as authenticateConversation,
   compact as compactConversation,
   deliver as deliverConversation,
   editMessage as editConversationMessage,
@@ -45,9 +44,10 @@ const acquire = Effect.fn("SessionChats.acquire")(function* (sessionId: string) 
 });
 
 /**
- * Routes a primary session's renderer-facing UI requests to the prompting
- * window. Auxiliary profiles (Discussion and Subagent Sessions) never raise
- * renderer requests, so they have nothing to bind.
+ * Deliberate primary-session submission updates its current renderer binding.
+ * An eligible desktop controls subsequent device requests; browser submissions
+ * cannot displace an existing desktop. Pending requests keep their dispatched
+ * recipient. Auxiliary profiles never raise renderer requests.
  */
 export const bindRenderer = Effect.fn("SessionChats.bindRenderer")(function* (
   sessionId: string,
@@ -217,25 +217,4 @@ export const setPiSetting = Effect.fn("SessionChats.setPiSetting")(function* (
   update: PiSettingUpdate,
 ) {
   yield* setConversationPiSetting(acquire(target.sessionId), update).pipe(asError("setPiSetting"));
-});
-
-export const login = Effect.fn("SessionChats.login")(function* (
-  target: SessionChatTarget,
-  provider: string,
-  authType: "api_key" | "oauth",
-) {
-  yield* authenticateConversation(acquire(target.sessionId), {
-    _tag: "Login",
-    provider,
-    authType,
-  }).pipe(asError("login"));
-});
-
-export const logout = Effect.fn("SessionChats.logout")(function* (
-  target: SessionChatTarget,
-  provider: string,
-) {
-  yield* authenticateConversation(acquire(target.sessionId), { _tag: "Logout", provider }).pipe(
-    asError("logout"),
-  );
 });

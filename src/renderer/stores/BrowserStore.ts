@@ -140,7 +140,22 @@ export class BrowserStore extends Store<BrowserStoreProps> {
     this.address = address;
     this.addressEditing = false;
     try {
-      this.applyState(await this.browser.navigate(sessionId, address, { signal: this.signal }));
+      let target = address;
+      if (address.startsWith("backend://")) {
+        const preview = new URL(address);
+        if (
+          preview.hostname !== "localhost" ||
+          preview.username ||
+          preview.password ||
+          !preview.port
+        )
+          throw new Error("Backend previews require backend://localhost:<port>/");
+        const endpoint = await this.browser.preview(sessionId, Number(preview.port), {
+          signal: this.signal,
+        });
+        target = new URL(preview.pathname.slice(1) + preview.search + preview.hash, endpoint).href;
+      }
+      this.applyState(await this.browser.navigate(sessionId, target, { signal: this.signal }));
     } catch (error) {
       if (!this.signal.aborted) this.setError(error);
     }

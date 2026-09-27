@@ -36,17 +36,47 @@ export interface BrowserService {
     connectionId: number,
     input: { readonly sessionId: string; readonly url?: string },
   ) => Effect.Effect<BrowserState, BrowserError>;
-  readonly state: (sessionId: string) => Effect.Effect<BrowserState, BrowserError>;
+  readonly state: (
+    connectionId: number,
+    sessionId: string,
+  ) => Effect.Effect<BrowserState, BrowserError>;
   readonly updateBounds: (
     connectionId: number,
     bounds: BrowserBounds,
   ) => Effect.Effect<BrowserState, BrowserError>;
-  readonly navigate: (sessionId: string, url: string) => Effect.Effect<BrowserState, BrowserError>;
+  readonly navigate: (
+    connectionId: number,
+    sessionId: string,
+    url: string,
+  ) => Effect.Effect<BrowserState, BrowserError>;
   readonly action: (
+    connectionId: number,
     sessionId: string,
     action: BrowserAction,
   ) => Effect.Effect<BrowserState, BrowserError>;
-  readonly inspect: (sessionId: string) => Effect.Effect<BrowserState, BrowserError>;
+  readonly inspect: (
+    connectionId: number,
+    sessionId: string,
+  ) => Effect.Effect<BrowserState, BrowserError>;
+  /** Native endpoint used only by the bound remote desktop recipient. */
+  readonly nativeEnter: (
+    connectionId: number,
+    sessionId: string,
+    workingDirectory: string,
+  ) => Effect.Effect<void, BrowserError>;
+  readonly nativeCdp: (
+    connectionId: number,
+    sessionId: string,
+    method: string,
+    params: JsonObject,
+  ) => Effect.Effect<BrowserActionResult<JsonValue>, BrowserError>;
+  readonly nativeEvents: (
+    connectionId: number,
+    sessionId: string,
+    methods: ReadonlyArray<string>,
+    limit: number,
+    clear: boolean,
+  ) => Effect.Effect<BrowserActionResult<JsonValue>, BrowserError>;
   readonly enterProjectBrowser: (
     sessionId: string,
     workingDirectory: string,

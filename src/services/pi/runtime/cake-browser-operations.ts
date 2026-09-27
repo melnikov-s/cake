@@ -56,7 +56,8 @@ export function createCakeBrowserOperations(control: BrowserControl): CakeOperat
       topic: "browser",
       summary: "Enter Browser Mode for the calling Project Session.",
       guidance: [
-        "Use Browser Mode to run, inspect, and interact with local web applications while the user watches.",
+        "Use Browser Mode to run, inspect, and interact with web applications while the user watches. The Chromium view is on the desktop even when this session runs on a remote backend.",
+        "Desktop localhost is desktop-local. For a backend-loopback development service, the desktop user enters backend://localhost:<port>/ in the Browser address; the resulting isolated preview URL can then be inspected with CDP.",
         "The embedded browser has a persistent Cake profile, so cookies and site storage survive restarts.",
       ],
       inputSchema: browserEnterInputSchema,

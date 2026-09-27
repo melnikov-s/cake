@@ -4,18 +4,16 @@ import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer } from "effect";
 import { describe, expect, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/domain/application/application-data";
-import type { ApplicationState as ApplicationStateValue } from "../../../src/domain/application/application-data";
-import type { WorktreeRecord } from "../../../src/domain/worktrees/managed-worktree-data";
+import { DesktopSharing } from "../../../src/services/electron/DesktopSharing";
 import { MainApplication } from "../../../src/main/MainApplication";
 import { Electron, type ElectronWindowLifecycle } from "../../../src/services/electron/Electron";
-import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { RewordingRequests } from "../../../src/services/projects/RewordingRequests";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
-import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { VsCodeViews } from "../../../src/services/vscode/VsCodeViews";
 
 class TestApplication extends EventEmitter {
   readonly quit = vi.fn(() => this.emit("before-quit", { preventDefault: vi.fn() }));
@@ -47,10 +45,8 @@ class TestApplication extends EventEmitter {
 }
 
 const testLayer = (input?: {
+  readonly keepsProcessAlive?: () => boolean;
   readonly stop?: () => void;
-  readonly applicationState?: ApplicationStateValue;
-  readonly worktrees?: ReadonlyArray<WorktreeRecord>;
-  readonly allow?: (path: string) => void;
   readonly start?: (lifecycle: ElectronWindowLifecycle) => void;
   readonly closeTerminalOwner?: (ownerId: number) => void;
   readonly closeEditorForWindow?: (ownerId: number) => void;
@@ -58,28 +54,23 @@ const testLayer = (input?: {
   readonly disposeRewordingOwner?: (ownerId: number) => void;
   readonly releaseRendererConnection?: (ownerId: number) => void;
 }) => {
-  const state = input?.applicationState ?? defaultApplicationState();
+  const state = defaultApplicationState();
   return Layer.mergeAll(
+    Layer.mock(DesktopSharing, { keepsProcessAlive: input?.keepsProcessAlive ?? (() => false) }),
     Layer.mock(ApplicationState, {
-      initialize: () => Effect.succeed(state),
       snapshot: () => state,
     }),
     Layer.mock(Electron, {
       start: (lifecycle) => Effect.sync(() => input?.start?.(lifecycle)),
       stop: () => Effect.sync(() => input?.stop?.()),
-      sendTo: () => {},
-      broadcast: () => {},
       requireRendererConnection: () => {
         throw new Error("No renderer connection in this test");
       },
-      workspaceForConnection: () => undefined,
-      associateWorkspace: () => {},
-      forgetWorkspace: () => {},
       windowsForWorkspace: () => [],
       centerTrafficLights: () => {},
     }),
     Layer.mock(ProjectAccess, {
-      allow: (path) => Effect.sync(() => input?.allow?.(path)),
+      allow: () => Effect.void,
       clearOwner: (ownerId) => Effect.sync(() => input?.clearOwner?.(ownerId)),
       rememberSessionLocation: () => Effect.void,
     }),
@@ -92,13 +83,11 @@ const testLayer = (input?: {
       releaseConnection: (ownerId) =>
         Effect.sync(() => input?.releaseRendererConnection?.(ownerId)),
     }),
-    Layer.mock(ManagedWorktrees, { records: () => Effect.succeed(input?.worktrees ?? []) }),
-    Layer.mock(CakeSessionRuntimes, {}),
     Layer.mock(Terminal, {
       closeOwner: (ownerId) => Effect.sync(() => input?.closeTerminalOwner?.(ownerId)),
     }),
-    Layer.mock(VsCodeServer, {
-      refreshStatus: () => Effect.void,
+    Layer.mock(VsCodeServer, { leaseFor: () => undefined, releaseConnection: () => Effect.void }),
+    Layer.mock(VsCodeViews, {
       closeForWindow: (ownerId) => Effect.sync(() => input?.closeEditorForWindow?.(ownerId)),
       backToAgentForWindow: () => false,
     }),
@@ -113,6 +102,46 @@ const program = (application: TestApplication, layer = testLayer()) =>
   }).pipe(Effect.provide(layer));
 
 describe("MainApplication", () => {
+  it.effect(
+    "remote native menus defer reword validation to the backend, not absent local state",
+    () =>
+      Effect.gen(function* () {
+        for (const mode of ["remote", "local-unconfigured", "local-configured"] as const) {
+          const application = new TestApplication();
+          const started = yield* Deferred.make<ElectronWindowLifecycle>();
+          const native = Layer.mock(Electron, {
+            start: (lifecycle) => Deferred.succeed(started, lifecycle).pipe(Effect.asVoid),
+            stop: () => Effect.void,
+            requireRendererConnection: () => {
+              throw new Error("Unexpected native connection lookup");
+            },
+            windowsForWorkspace: () => [],
+            centerTrafficLights: () => {},
+          });
+          const state = {
+            ...defaultApplicationState(),
+            utilityModel:
+              mode === "local-configured"
+                ? { provider: "fixture", modelId: "model", thinkingLevel: "off" as const }
+                : undefined,
+          };
+          const layer =
+            mode === "remote"
+              ? native
+              : Layer.merge(native, Layer.mock(ApplicationState, { snapshot: () => state }));
+          const fiber = yield* Effect.forkChild(
+            MainApplication({ application, initializeNativeProtocols: () => {} }).pipe(
+              Effect.provide(layer),
+            ),
+          );
+          const lifecycle = yield* Deferred.await(started);
+          expect(lifecycle.canRewordSelection()).toBe(mode !== "local-unconfigured");
+          application.requestQuit();
+          yield* Fiber.join(fiber);
+        }
+      }),
+  );
+
   it.effect("starts after Electron is ready and stops on a quit request", () =>
     Effect.gen(function* () {
       const application = new TestApplication();
@@ -138,48 +167,20 @@ describe("MainApplication", () => {
     }),
   );
 
-  it.effect("restores access to registered Projects and their managed worktrees", () =>
+  it.effect("desktop_window_close_keeps_enabled_server_alive_until_explicit_quit", () =>
     Effect.gen(function* () {
       const application = new TestApplication();
-      const allow = vi.fn();
-      const state: ApplicationStateValue = {
-        ...defaultApplicationState(),
-        projects: [
-          {
-            path: "/projects/cake",
-            name: "cake",
-            addedAt: "2026-01-01T00:00:00.000Z",
-            lastOpenedAt: "2026-01-01T00:00:00.000Z",
-          },
-        ],
-      };
-      const layer = testLayer({
-        applicationState: state,
-        allow,
-        worktrees: [
-          {
-            projectPath: "/projects/cake",
-            worktreePath: "/worktrees/cake-feature",
-            branch: "feature",
-            baseBranch: "main",
-            createdAt: "2026-01-01T00:00:00.000Z",
-          },
-          {
-            projectPath: "/projects/not-registered",
-            worktreePath: "/worktrees/not-registered",
-            branch: "other",
-            baseBranch: "main",
-            createdAt: "2026-01-01T00:00:00.000Z",
-          },
-        ],
-      });
-      const fiber = yield* Effect.forkChild(program(application, layer));
+      const stop = vi.fn();
+      const fiber = yield* Effect.forkChild(
+        program(application, testLayer({ stop, keepsProcessAlive: () => true })),
+      );
       yield* Effect.promise(() => application.waitForListener("window-all-closed"));
       application.emit("window-all-closed");
+      expect(application.quit).not.toHaveBeenCalled();
+      expect(stop).not.toHaveBeenCalled();
+      application.requestQuit();
       yield* Fiber.join(fiber);
-      expect(allow).toHaveBeenCalledWith("/projects/cake");
-      expect(allow).toHaveBeenCalledWith("/worktrees/cake-feature");
-      expect(allow).not.toHaveBeenCalledWith("/worktrees/not-registered");
+      expect(stop).toHaveBeenCalledOnce();
     }),
   );
 
@@ -211,10 +212,10 @@ describe("MainApplication", () => {
         ),
       );
       yield* Deferred.await(started);
-      lifecycle?.onWindowClosed(17, "/projects/cake");
+      lifecycle?.onWindowClosed(17, "/projects/cake", 42);
       yield* Deferred.await(cleaned);
       expect(operations.toSorted()).toEqual(
-        ["terminal:17", "editor:17", "access:17", "rewording:17", "requests:17"].toSorted(),
+        ["terminal:17", "editor:42", "access:17", "rewording:17", "requests:17"].toSorted(),
       );
       application.emit("window-all-closed");
       yield* Fiber.join(fiber);

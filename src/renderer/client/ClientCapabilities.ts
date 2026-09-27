@@ -1,4 +1,4 @@
-import type { Effect } from "effect";
+import { Effect } from "effect";
 import type { CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import type { Client, ClientCommandOptions } from "./Client";
 
@@ -407,6 +407,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
       },
     },
     browser: {
+      preview: (sessionId, port, options) =>
+        execute(
+          "browser.acquire-browser-preview",
+          (client) => client.browser["acquire-browser-preview"]({ sessionId, port }),
+          options,
+        ).then((lease) => lease.endpoint),
       open: (sessionId, url, options) => {
         const requestId = crypto.randomUUID();
         return execute(
@@ -485,7 +491,18 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
         return accepted(
           "vscode.open-embedded-editor",
           (client) =>
-            client.vscode["open-embedded-editor"]({ requestId, workspacePath: workingDirectory }),
+            Effect.gen(function* () {
+              const theme = yield* client.vscodeViews.preferredTheme();
+              const lease = yield* client.vscode.acquire({
+                requestId,
+                workspacePath: workingDirectory,
+                theme,
+              });
+              yield* client.vscodeViews
+                .open({ workspacePath: workingDirectory, url: lease.endpoint, theme })
+                .pipe(Effect.onError(() => client.vscode.release(lease.id).pipe(Effect.ignore)));
+              return { requestId };
+            }),
           { requestId, workspacePath: workingDirectory }.requestId,
           options,
         );
@@ -494,7 +511,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
         const requestId = crypto.randomUUID();
         return accepted(
           "vscode.update-embedded-editor-bounds",
-          (client) => client.vscode["update-embedded-editor-bounds"]({ requestId, ...input }),
+          (client) =>
+            Effect.gen(function* () {
+              yield* client.vscodeViews.updateBounds({ requestId, ...input });
+              yield* client.vscode.setVisible(input.visible);
+              return { requestId };
+            }),
           { requestId, ...input }.requestId,
           options,
         );

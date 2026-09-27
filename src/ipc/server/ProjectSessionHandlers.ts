@@ -8,6 +8,7 @@ import * as projectSessionLifecycle from "../../domain/project-sessions/projectS
 import { ProjectSessionRpc } from "../protocol/ProjectSessionRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
+import { admitTurnAttachments } from "./AttachmentUploadHandlers";
 
 const withConnection = <A, E, R>(operation: (connectionId: number) => Effect.Effect<A, E, R>) =>
   Effect.flatMap(RendererConnection, ({ connectionId }) => operation(connectionId));
@@ -40,13 +41,20 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
     withConnection((connectionId) =>
       activateWorkingDirectory(connectionId, input.workingDirectory).pipe(
         Effect.andThen(bindRenderer(connectionId, input.sessionId)),
-        Effect.andThen(projectSessionOperations.start(input)),
+        Effect.andThen(
+          admitTurnAttachments(input).pipe(
+            Effect.mapError(
+              (error) => new ProjectSessionError({ operation: "start", message: error.message }),
+            ),
+            Effect.flatMap(projectSessionOperations.start),
+          ),
+        ),
       ),
     ),
   "projectSessions.open": (target) =>
     withConnection((connectionId) =>
-      bindRenderer(connectionId, target.sessionId).pipe(
-        Effect.andThen(projectSessionMetadata.open(target)),
+      projectSessionMetadata.open(target).pipe(
+        Effect.tap(() => bindRenderer(connectionId, target.sessionId)),
         Effect.tap(() =>
           target.workingDirectory
             ? activateWorkingDirectory(connectionId, target.workingDirectory)

@@ -182,8 +182,6 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
       notifySubagentCompletion: async (result) => {
         await Effect.runPromise(Ref.update(completions, (values) => [...values, result]));
       },
-      login: async () => undefined,
-      logout: async () => undefined,
       rename: async () => undefined,
       fork: async () => ({
         sessionId: "fork",

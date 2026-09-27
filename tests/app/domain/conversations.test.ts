@@ -55,8 +55,6 @@ const makeHandle = (deliveries: string[], isStreaming: () => boolean): CakeSessi
   setFastMode: () => Effect.void,
   setThinkingLevel: () => Effect.void,
   setPiSetting: () => Effect.void,
-  login: () => Effect.void,
-  logout: () => Effect.void,
   navigate: () => Effect.void,
   compact: () => Effect.void,
   rename: () => Effect.void,

@@ -108,6 +108,12 @@ export const ProjectSessionControlInvocation = Schema.TaggedUnion({
     placement: Schema.Literals(["none", "right", "down"]),
     destinationWorkingDirectory: Schema.optionalKey(boundedPath),
   },
+  PresentForkSession: {
+    sourceSessionId: boundedId,
+    forkSessionId: boundedId,
+    workingDirectory: boundedPath,
+    placement: Schema.Literals(["right", "down"]),
+  },
   ProjectChildSession: {
     childSessionId: boundedId,
     title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(500)),

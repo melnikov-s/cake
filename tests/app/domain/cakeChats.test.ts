@@ -1,3 +1,4 @@
+import { ClientConnectionsLive } from "../../../src/services/clients/ClientConnections";
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
@@ -21,7 +22,7 @@ import type {
   CakeSessionRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-session-runtime";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { Electron } from "../../../src/services/electron/Electron";
+import { ClientEventsLive } from "../../../src/services/clients/ClientEventsLive";
 import { RendererRequestCoordinatorLive } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
@@ -160,12 +161,6 @@ const makeLayer = (
       operations.push("setting");
     },
     recordReviewRun: () => undefined,
-    login: async () => {
-      operations.push("login");
-    },
-    logout: async () => {
-      operations.push("logout");
-    },
     rename: async () => undefined,
     fork: async () => ({ sessionId: "fork", sessionFile: "/fork.jsonl", artifactPointers: [] }),
     toolCompact: async () => ({
@@ -189,19 +184,9 @@ const makeLayer = (
       }),
     changelog: () => Effect.succeed("# Changelog"),
   };
-  const electron = Layer.mock(Electron, {
-    sendTo: () => {},
-    broadcast: () => {},
-    requireRendererConnection: () => {
-      throw new Error("Unexpected renderer event");
-    },
-    workspaceForConnection: () => undefined,
-    associateWorkspace: () => {},
-    forgetWorkspace: () => {},
-    windowsForWorkspace: () => [],
-    centerTrafficLights: () => {},
-  });
-  const rendererRequests = RendererRequestCoordinatorLive.pipe(Layer.provide(electron));
+  const rendererRequests = RendererRequestCoordinatorLive.pipe(
+    Layer.provide(Layer.merge(ClientConnectionsLive, ClientEventsLive)),
+  );
   return {
     layer: Layer.mergeAll(
       Layer.succeed(ApplicationState, application),
@@ -368,8 +353,6 @@ describe("Cake Chats domain", () => {
       yield* sessionChats.setThinkingLevel(target, "high");
       yield* sessionChats.setFastMode(target, true);
       yield* sessionChats.setPiSetting(target, { key: "retryEnabled", value: false });
-      yield* sessionChats.login(target, "fixture-provider", "api_key");
-      yield* sessionChats.logout(target, "fixture-provider");
       yield* sessionChats.listQueuedMessages(target);
       yield* sessionChats.clearQueue(target);
       yield* sessionChats.cancelSteering(target);
@@ -386,8 +369,6 @@ describe("Cake Chats domain", () => {
         "thinking",
         "fast",
         "setting",
-        "login",
-        "logout",
         "list-queue",
         "clear-queue",
         "cancel-steering",

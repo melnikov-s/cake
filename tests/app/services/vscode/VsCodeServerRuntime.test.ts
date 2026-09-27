@@ -31,20 +31,18 @@ type RuntimeProps = ConstructorParameters<typeof VsCodeServerRuntime>[0];
 
 interface RuntimeOverrides {
   root: string;
-  companionMain?: string;
+  companionSource?: string;
   companionThemes?: RuntimeProps["companionThemes"];
-  preferredTheme?: RuntimeProps["preferredTheme"];
-  broadcast?: RuntimeProps["broadcast"];
+  sendTo?: RuntimeProps["sendTo"];
   pollUntil?: RuntimeProps["pollUntil"];
   spawnServer?: RuntimeProps["spawnServer"];
 }
 
 function createRuntime({
   root,
-  companionMain = "/unused/companion.js",
+  companionSource = "module.exports = {};\n",
   companionThemes = [],
-  preferredTheme = async () => "dark" as const,
-  broadcast = () => undefined,
+  sendTo = () => undefined,
   pollUntil = async (_key, check, _interval, _timeout, failure) => {
     const value = check();
     if (value !== undefined) return value;
@@ -56,11 +54,10 @@ function createRuntime({
     root,
     ...(spawnServer ? { spawnServer } : null),
     companionManifest,
-    companionMain,
+    companionSource,
     companionThemes,
     customPath: () => undefined,
-    preferredTheme,
-    broadcast,
+    sendTo,
     stateChanged: () => undefined,
     scheduleIdleEviction: () => undefined,
     cancelIdleEviction: () => undefined,
@@ -73,6 +70,19 @@ function createRuntime({
   return runtime;
 }
 
+function seedLease(runtime: VsCodeServerRuntime, connectionId: number, workspacePath: string) {
+  runtime["leases"].set(connectionId, {
+    id: "lease",
+    connectionId,
+    workspacePath,
+    presentedWorkspacePath: workspacePath,
+    url: "http://127.0.0.1:4321/",
+    revocation: new AbortController(),
+    flavor: "codeserver",
+    visible: true,
+  });
+}
+
 describe("VsCodeServerRuntime startup", () => {
   let root: string | undefined;
   let runtime: VsCodeServerRuntime | undefined;
@@ -82,98 +92,9 @@ describe("VsCodeServerRuntime startup", () => {
     if (root) await rm(root, { recursive: true, force: true });
   });
 
-  it("retains bounds reported before the native view exists", () => {
-    runtime = createRuntime({ root: "/unused" });
-    const view = {
-      setVisible: vi.fn(),
-      setBounds: vi.fn(),
-      webContents: {
-        isDestroyed: vi.fn(() => false),
-        isLoadingMainFrame: vi.fn(() => true),
-      },
-    };
-
-    runtime.updateBounds(17, {
-      visible: true,
-      x: 10.4,
-      y: 62.2,
-      width: 901.8,
-      height: 700.6,
-      projectSidebarWidth: 292,
-    });
-    runtime["applyRequestedBounds"](17, view as never);
-
-    expect(view.setVisible).toHaveBeenCalledWith(true);
-    expect(view.setBounds).toHaveBeenCalledWith({ x: 10, y: 62, width: 902, height: 701 });
-  });
-
-  it("suppresses the native view while a fullscreen Cake surface is open", () => {
-    runtime = createRuntime({ root: "/unused" });
-    const view = {
-      setVisible: vi.fn(),
-      setBounds: vi.fn(),
-      webContents: { executeJavaScript: vi.fn(async () => undefined) },
-    };
-    runtime["views"].set(17, { workspacePath: "/real/project", view: view as never });
-    runtime.updateBounds(17, {
-      visible: true,
-      x: 320,
-      y: 0,
-      width: 900,
-      height: 700,
-      projectSidebarWidth: 320,
-    });
-
-    runtime.setFullscreenSurfaceOpen(17, true);
-    expect(view.setVisible).toHaveBeenLastCalledWith(false);
-
-    runtime.updateBounds(17, {
-      visible: true,
-      x: 300,
-      y: 0,
-      width: 920,
-      height: 700,
-      projectSidebarWidth: 300,
-    });
-    expect(view.setVisible).toHaveBeenLastCalledWith(false);
-
-    runtime.setFullscreenSurfaceOpen(17, false);
-    expect(view.setVisible).toHaveBeenLastCalledWith(true);
-    expect(view.setBounds).toHaveBeenLastCalledWith({ x: 300, y: 0, width: 920, height: 700 });
-  });
-
-  it("routes a native close back to the agent while the editor view is visible", () => {
-    const broadcast = vi.fn();
-    runtime = createRuntime({ root: "/unused", broadcast });
-    const view = {
-      setVisible: vi.fn(),
-      setBounds: vi.fn(),
-      webContents: { executeJavaScript: vi.fn(async () => undefined) },
-    };
-    runtime["views"].set(17, { workspacePath: "/real/project", view: view as never });
-    runtime["presentedWorkspacePaths"].set("/real/project", "/linked/project");
-    runtime.updateBounds(17, {
-      visible: true,
-      x: 0,
-      y: 0,
-      width: 900,
-      height: 700,
-      projectSidebarWidth: 292,
-    });
-
-    expect(runtime.backToAgentForWindow(17)).toBe(true);
-    expect(view.setVisible).toHaveBeenLastCalledWith(false);
-    expect(broadcast).toHaveBeenCalledWith({
-      type: "embedded-editor-back-to-agent",
-      workspacePath: "/linked/project",
-    });
-    expect(runtime.backToAgentForWindow(17)).toBe(false);
-  });
-
   it("kills a spawned server when startup is canceled", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
-    const companionMain = join(root, "companion.js");
-    await writeFile(companionMain, "module.exports = {};\n");
+    const companionSource = "module.exports = {};\n";
     let spawned!: () => void;
     const didSpawn = new Promise<void>((resolvePromise) => {
       spawned = resolvePromise;
@@ -190,7 +111,7 @@ describe("VsCodeServerRuntime startup", () => {
       spawned();
       return child;
     });
-    runtime = createRuntime({ root, companionMain, spawnServer: spawnServer as never });
+    runtime = createRuntime({ root, companionSource, spawnServer: spawnServer as never });
     const controller = new AbortController();
 
     const starting = runtime.startServer(root, "/fake/code-server", controller.signal);
@@ -204,8 +125,7 @@ describe("VsCodeServerRuntime startup", () => {
 
   it("does not register a server that becomes ready after runtime disposal", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
-    const companionMain = join(root, "companion.js");
-    await writeFile(companionMain, "module.exports = {};\n");
+    const companionSource = "module.exports = {};\n";
     let spawned!: () => void;
     const didSpawn = new Promise<void>((resolvePromise) => {
       spawned = resolvePromise;
@@ -220,7 +140,7 @@ describe("VsCodeServerRuntime startup", () => {
     child.kill = vi.fn(() => true);
     runtime = createRuntime({
       root,
-      companionMain,
+      companionSource,
       spawnServer: vi.fn(() => {
         spawned();
         return child;
@@ -335,28 +255,28 @@ describe("VsCodeServerRuntime startup", () => {
 
   it("observes the listening message before pausing output", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
-    const companionMain = join(root, "companion.js");
+    const companionSource = "module.exports = {};\n";
     const binary = join(root, "fake-code-server");
-    await writeFile(companionMain, "module.exports = {};\n");
     await writeFile(
       binary,
       '#!/bin/sh\necho "HTTP server listening on http://127.0.0.1"\nsleep 30\n',
     );
     await chmod(binary, 0o755);
 
-    runtime = createRuntime({ root, companionMain });
+    runtime = createRuntime({ root, companionSource });
     await expect(runtime["serverFor"](root, binary)).resolves.toBeDefined();
     expect(runtime.status).toBe("ready");
   });
 
   it("relays VS Code title-bar and active-context events to the renderer", () => {
-    const broadcast = vi.fn();
-    runtime = createRuntime({ root: "/unused", broadcast });
+    const sendTo = vi.fn();
+    runtime = createRuntime({ root: "/unused", sendTo });
+    seedLease(runtime, 17, "/project");
 
     runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "toggle-chat-sidebar", workspace: "/project" })),
     );
-    expect(broadcast).toHaveBeenCalledWith({
+    expect(sendTo).toHaveBeenCalledWith(17, {
       type: "embedded-editor-toggle-chat",
       workspacePath: "/project",
     });
@@ -364,7 +284,7 @@ describe("VsCodeServerRuntime startup", () => {
     runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "toggle-project-sidebar", workspace: "/project" })),
     );
-    expect(broadcast).toHaveBeenCalledWith({
+    expect(sendTo).toHaveBeenCalledWith(17, {
       type: "embedded-editor-toggle-sidebar",
       workspacePath: "/project",
     });
@@ -372,7 +292,7 @@ describe("VsCodeServerRuntime startup", () => {
     runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "back-to-agent", workspace: "/project" })),
     );
-    expect(broadcast).toHaveBeenCalledWith({
+    expect(sendTo).toHaveBeenCalledWith(17, {
       type: "embedded-editor-back-to-agent",
       workspacePath: "/project",
     });
@@ -387,18 +307,19 @@ describe("VsCodeServerRuntime startup", () => {
         }),
       ),
     );
-    expect(broadcast).toHaveBeenCalledWith({
+    expect(sendTo).toHaveBeenCalledWith(17, {
       type: "embedded-editor-annotation-opened",
       workspacePath: "/project",
       sessionId: "session-a",
       threadId: "thread-a",
     });
 
+    seedLease(runtime, 17, "/real/project");
     runtime["presentedWorkspacePaths"].set("/real/project", "/linked/project");
     runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "selection-cleared", workspace: "/real/project" })),
     );
-    expect(broadcast).toHaveBeenCalledWith({
+    expect(sendTo).toHaveBeenCalledWith(17, {
       type: "embedded-editor-selection-cleared",
       workspacePath: "/linked/project",
     });
@@ -414,7 +335,7 @@ describe("VsCodeServerRuntime startup", () => {
         }),
       ),
     );
-    expect(broadcast).toHaveBeenCalledWith({
+    expect(sendTo).toHaveBeenCalledWith(17, {
       type: "embedded-editor-selection",
       workspacePath: "/linked/project",
       path: "src/main.ts",
@@ -424,8 +345,10 @@ describe("VsCodeServerRuntime startup", () => {
   });
 
   it("relays explicit selection actions with their source and note to the renderer", () => {
-    const broadcast = vi.fn();
-    runtime = createRuntime({ root: "/unused", broadcast });
+    const sendTo = vi.fn();
+    runtime = createRuntime({ root: "/unused", sendTo });
+    seedLease(runtime, 17, "/project");
+    seedLease(runtime, 17, "/real/project");
     runtime["presentedWorkspacePaths"].set("/real/project", "/linked/project");
     const selection = {
       workspace: "/real/project",
@@ -442,7 +365,7 @@ describe("VsCodeServerRuntime startup", () => {
     runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "add-annotation", ...selection, comment: "Why?" })),
     );
-    expect(broadcast).toHaveBeenLastCalledWith({
+    expect(sendTo).toHaveBeenLastCalledWith(17, {
       type: "embedded-editor-annotation-requested",
       workspacePath: "/linked/project",
       path: "src/main.ts",
@@ -459,14 +382,15 @@ describe("VsCodeServerRuntime startup", () => {
     runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "add-annotation", ...selection })),
     );
-    expect(broadcast).toHaveBeenLastCalledWith(
+    expect(sendTo).toHaveBeenLastCalledWith(
+      17,
       expect.not.objectContaining({ comment: expect.anything() }),
     );
 
     runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "ask-in-side-chat", ...selection })),
     );
-    expect(broadcast).toHaveBeenLastCalledWith({
+    expect(sendTo).toHaveBeenLastCalledWith(17, {
       type: "embedded-editor-side-chat-requested",
       workspacePath: "/linked/project",
       path: "src/main.ts",
@@ -480,11 +404,11 @@ describe("VsCodeServerRuntime startup", () => {
     });
 
     // An empty selection is never an explicit action; the schema rejects it.
-    broadcast.mockClear();
+    sendTo.mockClear();
     runtime["handleBridgeMessage"](
       Buffer.from(JSON.stringify({ type: "ask-in-side-chat", ...selection, selectedText: "" })),
     );
-    expect(broadcast).not.toHaveBeenCalled();
+    expect(sendTo).not.toHaveBeenCalled();
   });
 
   it("applies Cake's theme on every start while preserving other user settings", async () => {
@@ -529,9 +453,9 @@ describe("VsCodeServerRuntime startup", () => {
       "extensions.ignoreRecommendations": true,
     });
 
-    const lightRuntime = createRuntime({ root, preferredTheme: async () => "light" });
+    const lightRuntime = createRuntime({ root });
     runtime = lightRuntime;
-    await lightRuntime["ensureEditorPreferences"](join(root, "profile-light"));
+    await lightRuntime["ensureEditorPreferences"](join(root, "profile-light"), "light");
     expect(
       JSON.parse(await readFile(join(root, "profile-light", "User", "settings.json"), "utf8"))[
         "workbench.colorTheme"
@@ -541,11 +465,10 @@ describe("VsCodeServerRuntime startup", () => {
 
   it("writes the companion's contributed theme files into the extension directory", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
-    const companionMain = join(root, "companion.js");
-    await writeFile(companionMain, "module.exports = {};\n");
+    const companionSource = "module.exports = {};\n";
     runtime = createRuntime({
       root,
-      companionMain,
+      companionSource,
       companionThemes: [
         { path: "./themes/cake-light-color-theme.json", content: "{}\n" },
         { path: "./themes/cake-dark-color-theme.json", content: "{\n}\n" },
@@ -574,9 +497,8 @@ describe("VsCodeServerRuntime startup", () => {
 
   it("preserves user extensions while canonicalizing the Cake companion registry entry", async () => {
     root = await mkdtemp(join(tmpdir(), "cake-vscode-runtime-"));
-    const companionMain = join(root, "companion.js");
-    await writeFile(companionMain, "module.exports = {};\n");
-    runtime = createRuntime({ root, companionMain });
+    const companionSource = "module.exports = {};\n";
+    runtime = createRuntime({ root, companionSource });
     const extensionsRoot = join(root, "extensions");
     await mkdir(join(extensionsRoot, "github.copilot"), { recursive: true });
     await mkdir(join(extensionsRoot, "esbenp.prettier-vscode"), { recursive: true });
@@ -674,8 +596,8 @@ describe("VsCodeServerRuntime startup", () => {
     const companionPort = (server.address() as AddressInfo).port;
 
     try {
-      let preference: "light" | "dark" = "dark";
-      runtime = createRuntime({ root, preferredTheme: async () => preference });
+      runtime = createRuntime({ root });
+      seedLease(runtime, 17, "/project");
       runtime["servers"].set("/project", {
         workspacePath: "/project",
         child: { kill: () => undefined, removeAllListeners: () => undefined } as never,
@@ -688,12 +610,11 @@ describe("VsCodeServerRuntime startup", () => {
       });
       runtime["companionPorts"].set("/project", companionPort);
 
-      await runtime.updateTheme();
-      await runtime.updateTheme();
+      await runtime.setTheme(17, "dark");
+      await runtime.setTheme(17, "dark");
       expect(received).toEqual([{ type: "set-theme", theme: "dark" }]);
 
-      preference = "light";
-      await runtime.updateTheme();
+      await runtime.setTheme(17, "light");
       expect(received).toEqual([
         { type: "set-theme", theme: "dark" },
         { type: "set-theme", theme: "light" },

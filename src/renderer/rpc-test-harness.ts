@@ -189,14 +189,6 @@ function invokeSmokeCommand(
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["install-embedded-editor"])(
         payload,
       ).pipe(Effect.flatMap(client.vscode["install-embedded-editor"]));
-    case "open-embedded-editor":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["open-embedded-editor"])(
-        payload,
-      ).pipe(Effect.flatMap(client.vscode["open-embedded-editor"]));
-    case "update-embedded-editor-bounds":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["update-embedded-editor-bounds"])(
-        payload,
-      ).pipe(Effect.flatMap(client.vscode["update-embedded-editor-bounds"]));
     case "reveal-in-embedded-editor":
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["reveal-in-embedded-editor"])(
         payload,

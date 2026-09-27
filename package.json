@@ -5,8 +5,11 @@
   "type": "module",
   "main": "out/main/main.js",
   "scripts": {
-    "build": "electron-vite build",
+    "build": "electron-vite build && pnpm build:browser",
     "build:dictation": "node scripts/build-dictation.mjs",
+    "build:server": "node scripts/build-server.mjs && vite build --config vite.browser.config.ts",
+    "build:browser": "vite build --config vite.browser.config.ts",
+    "start:server": "node out/server/main.mjs",
     "dev": "electron-vite dev --watch",
     "dev:agent": "electron-vite dev --watch --remoteDebuggingPort 9222",
     "dev:manual": "CAKE_MANUAL_RELOAD=1 electron-vite dev --watch",

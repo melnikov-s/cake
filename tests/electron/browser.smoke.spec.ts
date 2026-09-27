@@ -169,6 +169,29 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
       page.locator(".workbench-composer").getByRole("button", { name: /#target/ }),
     ).toBeVisible();
     await expect(page.getByLabel("Message", { exact: true })).toBeVisible();
+
+    // Local desktop mode intentionally permits explicitly reopening the same session in another
+    // native window; the new owner can then navigate the transferred view.
+    await application.evaluate(({ Menu }) => {
+      const item = Menu.getApplicationMenu()
+        ?.items.flatMap((entry) => entry.submenu?.items ?? [])
+        .find((entry) => entry.label === "New Cake Window");
+      if (!item) throw new Error("New Cake Window menu item missing");
+      item.click({}, undefined);
+    });
+    await expect.poll(() => application.windows().length).toBe(3);
+    const second = application
+      .windows()
+      .find((window) => window !== page && window.url().includes("index.html"));
+    if (!second) throw new Error("Second desktop window missing");
+    await expect(second.locator(".transcript").getByText("Test the app")).toBeVisible();
+    const secondAddress = second.getByLabel("Browser address");
+    if (!(await secondAddress.isVisible()))
+      await second.getByRole("button", { name: "Open Browser Mode" }).click();
+    await expect(secondAddress).toBeVisible();
+    await secondAddress.fill(origin);
+    await secondAddress.press("Enter");
+    await expect.poll(browserState(`${origin}/`)).toMatchObject({ title: "Local app" });
   } finally {
     await application.close();
     server.close();

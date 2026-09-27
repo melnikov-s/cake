@@ -173,7 +173,6 @@ export interface CakeSessionRuntimeOptions {
     revision: number;
     title?: string;
   }): Promise<CakeArtifactV1>;
-  openExternal?(url: string): Promise<void>;
   reviewContextPath?(sessionId: string): string;
   utilityModel?(): UtilityModel | undefined;
   modelPresets?(): CakeModelPresetCatalog;
@@ -356,8 +355,6 @@ export interface CakeSessionRuntime {
   callCakeOperation?(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
   dispatchExtensionCompanionAction?(id: string, action: string, value: JsonValue): Promise<void>;
   refreshModels?(): Promise<void>;
-  login(provider: string, authType: "api_key" | "oauth"): Promise<void>;
-  logout(provider: string): Promise<void>;
   rename(name: string): Promise<void>;
   fork(
     entryId: string,
@@ -500,10 +497,7 @@ export async function createCakeSessionRuntime(
     settingsManager,
     session,
     state: configurationState,
-    requestUi: options.requestUi,
     emitSnapshot: () => emitSnapshot(),
-    emitAuthNotice: (tone, title, detail) =>
-      emitPart({ id: "auth-status", kind: "notice", tone, title, detail }),
     cancelResponseRetries: recovery.cancelResponseRetries,
     reportAgentAction: capabilities.reportAgentAction,
   });
@@ -873,8 +867,6 @@ export async function createCakeSessionRuntime(
     },
     dispatchExtensionCompanionAction: resources.dispatchCompanionAction,
     refreshModels: configuration.refreshModels,
-    login: configuration.login,
-    logout: configuration.logout,
     async rename(name) {
       await continuations.rename(name);
     },

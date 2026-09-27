@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -10,7 +10,7 @@ test("restores, edits, resolves, and activates a project draft session", async (
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
   const cakeHome = join(temporaryRoot, "cake-home");
-  const sessionId = "draft-session";
+  const sessionId = "00000000-0000-4000-8000-000000000001";
   await Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]);
   await writeFile(
     join(userData, "window-state.json"),
@@ -67,6 +67,18 @@ test("restores, edits, resolves, and activates a project draft session", async (
   try {
     const page = await application.firstWindow();
     await expect(page.getByText("Original plan", { exact: true })).toBeVisible({ timeout: 20_000 });
+    const savedDraftFile = join(cakeHome, "state", "saved-drafts.json");
+    await expect
+      .poll(async () => {
+        try {
+          return JSON.parse(await readFile(savedDraftFile, "utf8")).records[0]?.sessionId;
+        } catch {
+          return undefined;
+        }
+      })
+      .toBe(sessionId);
+    const migratedWindow = JSON.parse(await readFile(join(userData, "window-state.json"), "utf8"));
+    expect(JSON.stringify(migratedWindow)).not.toContain("Original plan");
     await expect(page.getByText("Draft", { exact: true })).toBeVisible();
     const draftSidebarItem = page.locator(`[data-session-id="${sessionId}"]`);
     await expect(draftSidebarItem.getByText("main", { exact: true })).toHaveCount(0);
@@ -127,11 +139,17 @@ test("restores, edits, resolves, and activates a project draft session", async (
     await composer.fill("Edited plan");
     await page.getByRole("button", { name: "Save draft" }).click();
     await expect(page.getByText("Edited plan", { exact: true })).toBeVisible();
+    await expect
+      .poll(async () => JSON.parse(await readFile(savedDraftFile, "utf8")).records[0]?.text)
+      .toBe("Edited plan");
     await expect(page.getByLabel("Message")).toHaveCount(0);
 
     await page.getByRole("button", { name: "Current checkout" }).click();
     await page.getByRole("button", { name: "Activate draft" }).click();
     await expect(page.getByText("Draft", { exact: true })).toHaveCount(0);
+    await expect
+      .poll(async () => JSON.parse(await readFile(savedDraftFile, "utf8")).records[0]?.status)
+      .toBe("activated");
     await expect(
       page.locator('[data-slot="message-content"]', { hasText: "Edited plan" }),
     ).toBeVisible();

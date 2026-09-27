@@ -428,6 +428,7 @@ const DrawControlFailureCode = Schema.Literals([
   "REQUEST_CANCELLED",
   "APPLY_OUTCOME_UNKNOWN",
   "INVALID_REQUEST",
+  "CAPABILITY_UNAVAILABLE",
 ]);
 type DrawControlFailureCode = typeof DrawControlFailureCode.Type;
 

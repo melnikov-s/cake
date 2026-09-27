@@ -199,7 +199,8 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   showSettings() {
     this.markDepartingProjectSession();
     this.selection = { kind: "settings" };
-    this.activeConversation = undefined;
+    // Settings temporarily overlays the current chat. Keep its identity so
+    // Back to chat can restore a local or migrated saved Draft precisely.
   }
 
   private markDepartingProjectSession(nextSessionId?: string) {

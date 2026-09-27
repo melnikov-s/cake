@@ -2355,29 +2355,6 @@ describe("S1 Pi runtime", () => {
     expect(context?.systemPrompt).not.toContain("private-skill");
   });
 
-  it("opens the OpenAI Codex browser login URL", async () => {
-    const directory = await createTemporaryDirectory();
-    const openExternal = vi.fn(async () => undefined);
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir: join(directory, "agent"),
-      sessionDir: join(directory, "sessions"),
-      trusted: false,
-      requestUi: async (request) => (request.kind === "select" ? "browser" : undefined),
-      openExternal,
-      onEvent: () => undefined,
-    });
-    runtimes.push(runtime);
-
-    await expect(runtime.login("openai-codex", "oauth")).rejects.toThrow(
-      "Authentication cancelled",
-    );
-    expect(openExternal).toHaveBeenCalledOnce();
-    expect(openExternal).toHaveBeenCalledWith(
-      expect.stringMatching(/^https:\/\/auth\.openai\.com\/oauth\/authorize\?/),
-    );
-  });
-
   it("reports environment OpenAI credentials as externally managed", async () => {
     const directory = await createTemporaryDirectory();
     const previousKey = process.env.OPENAI_API_KEY;
@@ -2399,7 +2376,6 @@ describe("S1 Pi runtime", () => {
         authSource: "environment",
         authLabel: "OPENAI_API_KEY",
       });
-      await expect(runtime.logout("openai")).rejects.toThrow("managed outside Cake");
     } finally {
       if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
       else process.env.OPENAI_API_KEY = previousKey;

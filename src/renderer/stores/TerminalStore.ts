@@ -110,6 +110,18 @@ export class TerminalStore extends Store<{
     this.open = false;
   }
 
+  /** Socket-owned PTYs are closed on disconnect; restarting is always deliberate. */
+  disconnected() {
+    this.entries = this.entries.map((entry) => ({
+      ...entry,
+      terminalId: undefined,
+      shell: undefined,
+      opening: false,
+      error: "Connection lost. The remote shell was closed; restart it after reconnecting.",
+    }));
+    this.orphanEvents.clear();
+  }
+
   dock() {
     this.docked = true;
   }

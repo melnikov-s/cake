@@ -89,16 +89,4 @@ export const SessionChatRpc = RpcGroup.make(
     payload: { ...SessionChatTarget.fields, enabled: Schema.Boolean },
     error: SessionChatError,
   }),
-  Rpc.make("sessionChats.login", {
-    payload: {
-      ...SessionChatTarget.fields,
-      provider: Schema.String,
-      authType: Schema.Literals(["api_key", "oauth"]),
-    },
-    error: SessionChatError,
-  }),
-  Rpc.make("sessionChats.logout", {
-    payload: { ...SessionChatTarget.fields, provider: Schema.String },
-    error: SessionChatError,
-  }),
 );

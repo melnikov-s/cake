@@ -3,10 +3,26 @@ import type {
   DictationError,
   DictationState,
 } from "../../domain/dictation/dictation-data";
+import type {
+  DesktopHostError,
+  DesktopHostSelection,
+} from "../../domain/application/desktop-host-data";
+import type {
+  AcquireEditor,
+  EditorBounds,
+  EditorEndpoint,
+  EditorLease,
+} from "../protocol/VsCodeRpc";
+import type { BackendConnectionError } from "../protocol/BackendConnectionRpc";
 import { Context, Effect, Layer, type Schema, type Stream } from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 import type { RpcClientError } from "effect/unstable/rpc";
 import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
+import {
+  NativePreviewTunnelRpc,
+  type NativePreviewInput,
+} from "../protocol/NativePreviewTunnelRpc";
+import type { NativePreviewError } from "../../services/browser/NativePreviewTunnels";
 import type { SessionPluginMutationError } from "../protocol/ApplicationRpc";
 import type { ArtifactError } from "../../domain/artifacts/artifact-data";
 import type { ArtifactNotFound, ArtifactNotLinked } from "../../domain/artifacts/artifactWorkflows";
@@ -34,8 +50,18 @@ import type {
 } from "../../services/storage/ArtifactStorage";
 import type { PiSettingsError } from "../../services/pi/PiSettings";
 import type { SessionFamilyStorageError } from "../../services/storage/SessionFamilyStorage";
+import type { SavedDraft } from "../../domain/project-sessions/saved-draft-data";
+import type { SavedDraftError } from "../../services/storage/SavedDraftStorage";
+import type { SavedDraftCreateInput, SavedDraftActivateInput } from "../protocol/SavedDraftRpc";
+import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
+import type {
+  DesktopSharingError,
+  DesktopSharingInput,
+  DesktopSharingState,
+} from "../../domain/application/desktop-sharing-data";
 import type { ElectronError } from "../../services/electron/Electron";
 import type { InlineWidgetError } from "../../services/widgets/InlineWidgets";
+import type { RenderedWidgetCaptureError } from "../../services/widgets/RenderedWidgetCapture";
 import type { JsonObject, JsonValue } from "../json-contract";
 import type { TerminalError } from "../../services/terminal/Terminal";
 import type {
@@ -49,6 +75,7 @@ import type { ManagedWorktreeError } from "../../services/worktrees/ManagedWorkt
 import type { VsCodeServerError } from "../../services/vscode/VsCodeServer";
 import type { BrowserError } from "../../services/browser/Browser";
 import type { WorkspaceFileError } from "../../services/filesystem/WorkspaceFiles";
+import type { AttachmentUploadError } from "../../services/filesystem/AttachmentUploads";
 import type { ProjectError } from "../../domain/projects/project-error";
 import type {
   CakeEvent as CakeEventEnvelope,
@@ -208,6 +235,23 @@ export interface CakeIpcClientService {
     readonly transcribe: (
       audio: DictationAudio,
     ) => Effect.Effect<string, DictationError | TransportError>;
+  };
+  readonly desktopHost: {
+    readonly current: () => Effect.Effect<DesktopHostSelection, TransportError>;
+    readonly select: (
+      selection: DesktopHostSelection,
+    ) => Effect.Effect<boolean, DesktopHostError | TransportError>;
+  };
+  readonly backendConnection: {
+    readonly connect: (input: {
+      buildId: string;
+    }) => Effect.Effect<{ readonly buildId: string }, BackendConnectionError | TransportError>;
+  };
+  readonly desktopSharing: {
+    readonly configure: (
+      input: DesktopSharingInput,
+    ) => Effect.Effect<DesktopSharingState, DesktopSharingError | TransportError>;
+    readonly observe: () => Stream.Stream<DesktopSharingState, TransportError>;
   };
   readonly application: {
     readonly getHomeDirectory: () => Effect.Effect<string, TransportError>;
@@ -473,6 +517,36 @@ export interface CakeIpcClientService {
       readonly response: DrawControlResponse;
     }) => Effect.Effect<void, DrawControlRpcError | TransportError>;
   };
+  readonly savedDrafts: {
+    readonly list: () => Effect.Effect<ReadonlyArray<SavedDraft>, SavedDraftError | TransportError>;
+    readonly observe: () => Stream.Stream<
+      ReadonlyArray<SavedDraft>,
+      SavedDraftError | TransportError
+    >;
+    readonly create: (
+      input: typeof SavedDraftCreateInput.Type,
+    ) => Effect.Effect<SavedDraft, SavedDraftError | ManagedWorktreeError | TransportError>;
+    readonly update: (
+      record: SavedDraft,
+      expectedRevision: number,
+    ) => Effect.Effect<SavedDraft, SavedDraftError | ManagedWorktreeError | TransportError>;
+    readonly remove: (
+      sessionId: string,
+      expectedRevision: number,
+    ) => Effect.Effect<void, SavedDraftError | TransportError>;
+    readonly recoverUncertain: (
+      sessionId: string,
+      expectedRevision: number,
+    ) => Effect.Effect<SavedDraft, SavedDraftError | TransportError>;
+    readonly activate: (input: typeof SavedDraftActivateInput.Type) => Effect.Effect<
+      {
+        readonly record: SavedDraft;
+        readonly workingDirectory: string;
+        readonly managedWorktree?: WorktreeRecord;
+      },
+      SavedDraftError | ProjectSessionError | ManagedWorktreeError | TransportError
+    >;
+  };
   readonly scheduledMessages: {
     readonly observe: (
       targetSessionId: string,
@@ -580,8 +654,16 @@ export interface CakeIpcClientService {
     | "set-fullscreen-surface-open",
     ElectronError
   >;
+  readonly attachmentUploads: RpcOperations<
+    "upload-open" | "upload-chunk" | "upload-finish" | "upload-discard",
+    AttachmentUploadError
+  >;
   readonly filesystem: RpcOperations<
-    "choose-attachments" | "suggest-files" | "read-workspace-file" | "read-workspace-image",
+    | "choose-attachments"
+    | "read-selected-file"
+    | "suggest-files"
+    | "read-workspace-file"
+    | "read-workspace-image",
     WorkspaceFileError
   >;
   readonly workspaces: RpcOperations<
@@ -641,15 +723,38 @@ export interface CakeIpcClientService {
     | "update-browser-bounds"
     | "navigate-browser"
     | "browser-action"
-    | "inspect-browser-element",
+    | "inspect-browser-element"
+    | "native-browser-enter"
+    | "native-browser-cdp"
+    | "native-browser-events"
+    | "respond-browser-native"
+    | "acquire-browser-preview",
     BrowserError
-  >;
+  > & {
+    readonly "open-native-preview": (
+      input: NativePreviewInput,
+    ) => Effect.Effect<{ readonly endpoint: string }, NativePreviewError | TransportError>;
+  };
+  readonly vscodeViews: {
+    readonly preferredTheme: () => Effect.Effect<
+      "light" | "dark",
+      VsCodeServerError | TransportError
+    >;
+    readonly open: (
+      input: typeof EditorEndpoint.Type,
+    ) => Effect.Effect<void, VsCodeServerError | TransportError>;
+    readonly updateBounds: (
+      input: typeof EditorBounds.Type,
+    ) => Effect.Effect<void, VsCodeServerError | TransportError>;
+    readonly close: () => Effect.Effect<void, VsCodeServerError | TransportError>;
+    readonly focusCake: () => Effect.Effect<void, VsCodeServerError | TransportError>;
+    readonly observeThemes: () => Stream.Stream<"light" | "dark", TransportError>;
+    readonly observeEvents: CakeIpcClientService["events"]["vscode"];
+  };
   readonly vscode: RpcOperations<
     | "get-embedded-editor-state"
     | "set-vscode-server-path"
     | "install-embedded-editor"
-    | "open-embedded-editor"
-    | "update-embedded-editor-bounds"
     | "reveal-in-embedded-editor"
     | "open-embedded-editor-source-control"
     | "perform-embedded-editor-action"
@@ -657,6 +762,14 @@ export interface CakeIpcClientService {
     | "update-embedded-editor-selection-highlights",
     VsCodeServerError
   > & {
+    readonly acquire: (
+      input: typeof AcquireEditor.Type,
+    ) => Effect.Effect<EditorLease, VsCodeServerError | TransportError>;
+    readonly release: (leaseId: string) => Effect.Effect<void, TransportError>;
+    readonly setVisible: (visible: boolean) => Effect.Effect<void, TransportError>;
+    readonly setTheme: (
+      theme: "light" | "dark",
+    ) => Effect.Effect<void, VsCodeServerError | TransportError>;
     readonly observeState: () => Stream.Stream<
       (typeof cakeRpcSuccessSchemas)["get-embedded-editor-state"]["Type"],
       TransportError
@@ -723,7 +836,8 @@ export interface CakeIpcClientService {
       revision: ArtifactRevisionNumber,
     ) => Effect.Effect<ArtifactProjectionMetadata, ArtifactOperationFailure>;
   };
-  readonly widgets: RpcOperations<"compile-inline-widget", InlineWidgetError>;
+  readonly widgets: RpcOperations<"compile-inline-widget", InlineWidgetError> &
+    RpcOperations<"capture-native-widget" | "respond-widget-capture", RenderedWidgetCaptureError>;
   readonly events: {
     readonly application: () => Stream.Stream<
       FocusedCakeEvent<
@@ -731,9 +845,12 @@ export interface CakeIpcClientService {
         | "complete"
         | "fatal"
         | "notification"
+        | "provider-auth-notice"
         | "extension-ui-intent"
         | "project-session-control-requested"
         | "draw-control-requested"
+        | "browser-native-requested"
+        | "widget-capture-requested"
         | "application-hotkey-input"
         | "browser-entered"
         | "browser-state-changed"
@@ -799,7 +916,10 @@ export class CakeIpcClient extends Context.Service<CakeIpcClient, CakeIpcClientS
 export const CakeIpcClientLive = Layer.effect(
   CakeIpcClient,
   Effect.gen(function* () {
-    const client = yield* RpcClient.make(CakeRpc, { flatten: true, spanPrefix: "CakeIpcClient" });
+    const client = yield* RpcClient.make(CakeRpc.merge(NativePreviewTunnelRpc), {
+      flatten: true,
+      spanPrefix: "CakeIpcClient",
+    });
     return CakeIpcClient.of({
       dictation: {
         observeState: () => client("dictation.observeState", undefined),
@@ -822,6 +942,11 @@ export const CakeIpcClientLive = Layer.effect(
           client("dictation.transcribe", audio),
         ),
       },
+      desktopHost: {
+        current: () => client("desktopHost.current", undefined),
+        select: (input) => client("desktopHost.select", input),
+      },
+      backendConnection: { connect: (input) => client("backendConnection.connect", input) },
       application: {
         getHomeDirectory: Effect.fn("CakeIpcClient.application.getHomeDirectory")(() =>
           client("application.getHomeDirectory", undefined),
@@ -1032,6 +1157,30 @@ export const CakeIpcClientLive = Layer.effect(
           client("drawControl.respond", input),
         ),
       },
+      savedDrafts: {
+        list: Effect.fn("CakeIpcClient.savedDrafts.list")(() => client("savedDrafts.list", {})),
+        observe: () => client("savedDrafts.observe", {}),
+        create: Effect.fn("CakeIpcClient.savedDrafts.create")((input) =>
+          client("savedDrafts.create", input),
+        ),
+        update: Effect.fn("CakeIpcClient.savedDrafts.update")((record, expectedRevision) =>
+          client("savedDrafts.update", { record, expectedRevision }),
+        ),
+        remove: Effect.fn("CakeIpcClient.savedDrafts.remove")((sessionId, expectedRevision) =>
+          client("savedDrafts.remove", { sessionId, expectedRevision }),
+        ),
+        recoverUncertain: Effect.fn("CakeIpcClient.savedDrafts.recoverUncertain")(
+          (sessionId, expectedRevision) =>
+            client("savedDrafts.recoverUncertain", {
+              sessionId,
+              expectedRevision,
+              confirmedNoTurn: true,
+            }),
+        ),
+        activate: Effect.fn("CakeIpcClient.savedDrafts.activate")((input) =>
+          client("savedDrafts.activate", input),
+        ),
+      },
       scheduledMessages: {
         observe: (targetSessionId) => client("scheduledMessages.observe", { targetSessionId }),
         list: Effect.fn("CakeIpcClient.scheduledMessages.list")((targetSessionId) =>
@@ -1106,6 +1255,10 @@ export const CakeIpcClientLive = Layer.effect(
         ),
       },
 
+      desktopSharing: {
+        configure: (input) => client("desktopSharing.configure", input),
+        observe: () => client("desktopSharing.observe", undefined),
+      },
       electron: {
         "choose-project": Effect.fn("CakeIpcClient.electron.choose-project")((payload) =>
           client("electron.choose-project", payload),
@@ -1135,7 +1288,24 @@ export const CakeIpcClientLive = Layer.effect(
           "CakeIpcClient.electron.set-fullscreen-surface-open",
         )((payload) => client("electron.set-fullscreen-surface-open", payload)),
       },
+      attachmentUploads: {
+        "upload-open": Effect.fn("CakeIpcClient.attachmentUploads.open")((payload) =>
+          client("attachmentUploads.open", payload),
+        ),
+        "upload-chunk": Effect.fn("CakeIpcClient.attachmentUploads.chunk")((payload) =>
+          client("attachmentUploads.chunk", payload),
+        ),
+        "upload-finish": Effect.fn("CakeIpcClient.attachmentUploads.finish")((payload) =>
+          client("attachmentUploads.finish", payload),
+        ),
+        "upload-discard": Effect.fn("CakeIpcClient.attachmentUploads.discard")((payload) =>
+          client("attachmentUploads.discard", payload),
+        ),
+      },
       filesystem: {
+        "read-selected-file": Effect.fn("CakeIpcClient.filesystem.read-selected-file")((payload) =>
+          client("filesystem.read-selected-file", payload),
+        ),
         "choose-attachments": Effect.fn("CakeIpcClient.filesystem.choose-attachments")((payload) =>
           client("filesystem.choose-attachments", payload),
         ),
@@ -1263,8 +1433,39 @@ export const CakeIpcClientLive = Layer.effect(
         "inspect-browser-element": Effect.fn("CakeIpcClient.browser.inspect-browser-element")(
           (payload) => client("browser.inspect-browser-element", payload),
         ),
+        "native-browser-enter": Effect.fn("CakeIpcClient.browser.native-browser-enter")((payload) =>
+          client("browser.native-browser-enter", payload),
+        ),
+        "native-browser-cdp": Effect.fn("CakeIpcClient.browser.native-browser-cdp")((payload) =>
+          client("browser.native-browser-cdp", payload),
+        ),
+        "native-browser-events": Effect.fn("CakeIpcClient.browser.native-browser-events")(
+          (payload) => client("browser.native-browser-events", payload),
+        ),
+        "respond-browser-native": Effect.fn("CakeIpcClient.browser.respond-browser-native")(
+          (payload) => client("browser.respond-browser-native", payload),
+        ),
+        "acquire-browser-preview": Effect.fn("CakeIpcClient.browser.acquire-browser-preview")(
+          (payload) => client("browser.acquire-browser-preview", payload),
+        ),
+        "open-native-preview": Effect.fn("CakeIpcClient.browser.open-native-preview")((payload) =>
+          client("browser.open-native-preview", payload),
+        ),
+      },
+      vscodeViews: {
+        preferredTheme: () => client("vscodeViews.preferredTheme", undefined),
+        open: (input) => client("vscodeViews.open", input),
+        updateBounds: (input) => client("vscodeViews.updateBounds", input),
+        close: () => client("vscodeViews.close", undefined),
+        focusCake: () => client("vscodeViews.focusCake", undefined),
+        observeThemes: () => client("vscodeViews.observeThemes", undefined),
+        observeEvents: () => client("vscodeViews.observeEvents", undefined),
       },
       vscode: {
+        acquire: (input) => client("vscode.acquire", input),
+        release: (leaseId) => client("vscode.release", { leaseId }),
+        setVisible: (visible) => client("vscode.setVisible", { visible }),
+        setTheme: (theme) => client("vscode.setTheme", { theme }),
         observeState: () => client("vscode.observeState", undefined),
         "get-embedded-editor-state": Effect.fn("CakeIpcClient.vscode.get-embedded-editor-state")(
           (payload) => client("vscode.get-embedded-editor-state", payload),
@@ -1275,12 +1476,6 @@ export const CakeIpcClientLive = Layer.effect(
         "install-embedded-editor": Effect.fn("CakeIpcClient.vscode.install-embedded-editor")(
           (payload) => client("vscode.install-embedded-editor", payload),
         ),
-        "open-embedded-editor": Effect.fn("CakeIpcClient.vscode.open-embedded-editor")((payload) =>
-          client("vscode.open-embedded-editor", payload),
-        ),
-        "update-embedded-editor-bounds": Effect.fn(
-          "CakeIpcClient.vscode.update-embedded-editor-bounds",
-        )((payload) => client("vscode.update-embedded-editor-bounds", payload)),
         "update-embedded-editor-selection-highlights": Effect.fn(
           "CakeIpcClient.vscode.update-embedded-editor-selection-highlights",
         )((payload) => client("vscode.update-embedded-editor-selection-highlights", payload)),
@@ -1356,6 +1551,12 @@ export const CakeIpcClientLive = Layer.effect(
       widgets: {
         "compile-inline-widget": Effect.fn("CakeIpcClient.widgets.compile-inline-widget")(
           (payload) => client("widgets.compile-inline-widget", payload),
+        ),
+        "capture-native-widget": Effect.fn("CakeIpcClient.widgets.capture-native-widget")(
+          (payload) => client("widgets.capture-native-widget", payload),
+        ),
+        "respond-widget-capture": Effect.fn("CakeIpcClient.widgets.respond-widget-capture")(
+          (payload) => client("widgets.respond-widget-capture", payload),
         ),
       },
       foundation: {

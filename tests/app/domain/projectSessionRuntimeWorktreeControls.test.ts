@@ -12,6 +12,9 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { WorktreeLandingCoordinatorLive } from "../../../src/services/worktrees/WorktreeLandingCoordinator";
+import { WorktreeLandingAgent } from "../../../src/services/worktrees/WorktreeLandingAgent";
+import { WorktreeLandingCompletion } from "../../../src/services/worktrees/WorktreeLandingCompletion";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 
@@ -89,6 +92,17 @@ describe("Project Session runtime worktree controls", () => {
     };
     const environment = Layer.mergeAll(
       makeProjectSessionRuntimeMechanismTestLayer(integrations),
+      WorktreeLandingCoordinatorLive,
+      Layer.mock(WorktreeLandingAgent, { promptAndWait: () => Effect.void }),
+      Layer.mock(WorktreeLandingCompletion, {
+        resolveWorkingDirectory: (workingDirectory) =>
+          Effect.succeed({
+            projectPath: "/project",
+            workingDirectory,
+            resolvedSessionIds: [],
+            failures: [],
+          }),
+      }),
       familyStorageHarness().layer,
       SessionCatalogChanges.layer,
       Layer.mock(CakeSessionRuntimes, {}),
@@ -96,6 +110,7 @@ describe("Project Session runtime worktree controls", () => {
         locate: () => Effect.succeed("active" as const),
       }),
       Layer.mock(ApplicationState, {
+        transact: (transition) => transition(defaultApplicationState()),
         snapshot: () => ({
           ...defaultApplicationState(),
           projects: [
@@ -117,6 +132,25 @@ describe("Project Session runtime worktree controls", () => {
       }),
       Layer.mock(ManagedWorktrees, {
         records: () => Effect.succeed(worktreeRecords),
+        status: (workspacePath) =>
+          Effect.succeed({
+            record:
+              worktreeRecords.find((record) => record.worktreePath === workspacePath) ??
+              worktreeRecords[0]!,
+            targetBranch: "main",
+            dirtyCount: 0,
+            aheadCount: 1,
+            behindCount: 0,
+            merged: false,
+            targetDirty: false,
+            targetOnBranch: true,
+            merging: false,
+            rebasing: false,
+            squashMessageReady: false,
+          }),
+        prepareLanding: () => Effect.void,
+        land: () => Effect.succeed({ outcome: "landed" as const }),
+        discard: () => Effect.void,
         proposeSquashMessage: () => Effect.void,
       }),
     );
@@ -147,6 +181,7 @@ describe("Project Session runtime worktree controls", () => {
       assert.ok(rootDiscard);
       const signal = new AbortController().signal;
       yield* Effect.promise(() => rootMerge(isolatedChildId, signal));
+      // A valid discard runs through the backend worktree domain (not renderer control).
       yield* Effect.promise(() => rootDiscard(isolatedChildId, true, signal));
 
       yield* Effect.promise(() =>
@@ -179,27 +214,7 @@ describe("Project Session runtime worktree controls", () => {
         assert.rejects(childMerge(sharedChildId, signal), /immediate child of the calling session/),
       );
 
-      assert.deepEqual(invocations, [
-        {
-          _tag: "InvokeAppControl",
-          command: "worktrees.merge",
-          input: { sessionId: isolatedChildId, workingDirectory: isolatedChildPath },
-        },
-        {
-          _tag: "InvokeAppControl",
-          command: "worktrees.discard",
-          input: {
-            sessionId: isolatedChildId,
-            workingDirectory: isolatedChildPath,
-            keepBranch: true,
-          },
-        },
-        {
-          _tag: "InvokeAppControl",
-          command: "worktrees.merge",
-          input: { sessionId: isolatedChildId, workingDirectory: isolatedChildPath },
-        },
-      ]);
+      assert.deepEqual(invocations, []);
     }).pipe(Effect.provide(environment));
   });
 });

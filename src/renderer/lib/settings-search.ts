@@ -94,6 +94,11 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
         page: "network",
         label: "Network & privacy",
         settings: [
+          {
+            label: "Browser sharing",
+            targetId: "setting-browser-sharing",
+            keywords: "server http desktop enable port network",
+          },
           { label: "Transport", targetId: "setting-transport", keywords: "websocket sse" },
           { label: "HTTP idle timeout", targetId: "setting-http-idle-timeout" },
           { label: "Default project trust", targetId: "setting-default-project-trust" },

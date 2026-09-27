@@ -122,6 +122,27 @@ const cakeEventSchemas = {
     title: ipcProjectionString(256),
     message: ipcProjectionString(2_048),
   }),
+  "provider-auth-notice": Schema.Struct({
+    type: Schema.Literal("provider-auth-notice"),
+    provider: bounded(1, 256),
+    sessionId: Schema.optionalKey(bounded(1, 256)),
+    notice: Schema.Union([
+      Schema.Struct({
+        type: Schema.Literals(["info", "progress"]),
+        message: stringMax(8_192),
+      }),
+      Schema.Struct({
+        type: Schema.Literal("auth_url"),
+        url: bounded(1, 16_384),
+        instructions: Schema.optionalKey(stringMax(8_192)),
+      }),
+      Schema.Struct({
+        type: Schema.Literal("device_code"),
+        verificationUri: bounded(1, 16_384),
+        userCode: bounded(1, 1_024),
+      }),
+    ]),
+  }),
   "extension-ui-intent": Schema.Struct({
     type: Schema.Literal("extension-ui-intent"),
     sessionId: stringMax(256),
@@ -133,6 +154,13 @@ const cakeEventSchemas = {
   "draw-control-requested": DrawControlRequest.pipe(
     Schema.fieldsAssign({ type: Schema.Literal("draw-control-requested") }),
   ),
+  "widget-capture-requested": Schema.Struct({
+    type: Schema.Literal("widget-capture-requested"),
+    requestId: uuid,
+    sessionId: stringMax(256),
+    widget: Schema.Struct({ token: stringMax(64), url: stringMax(512) }),
+    pluginState: Schema.optional(jsonValueSchema),
+  }),
   "terminal-data": Schema.Struct({
     type: Schema.Literal("terminal-data"),
     terminalId: uuid,
@@ -196,6 +224,18 @@ const cakeEventSchemas = {
     type: Schema.Literal("embedded-editor-side-chat-requested"),
     ...embeddedEditorExplicitSelectionFields,
   }),
+  "browser-native-requested": Schema.Struct({
+    type: Schema.Literal("browser-native-requested"),
+    requestId: uuid,
+    sessionId: bounded(1, 256),
+    operation: Schema.Literals(["enter", "cdp", "events"]),
+    workspacePath: stringMax(4_096),
+    method: Schema.optionalKey(bounded(1, 256)),
+    params: Schema.optionalKey(jsonValueSchema),
+    methods: Schema.optionalKey(Schema.Array(bounded(1, 256)).check(Schema.isMaxLength(100))),
+    limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 500 }))),
+    clear: Schema.optionalKey(Schema.Boolean),
+  }),
   "browser-entered": Schema.Struct({
     type: Schema.Literal("browser-entered"),
     sessionId: bounded(1, 256),
@@ -222,10 +262,13 @@ export const applicationEventSchema = Schema.Union([
   cakeEventSchemas.complete,
   cakeEventSchemas.fatal,
   cakeEventSchemas.notification,
+  cakeEventSchemas["provider-auth-notice"],
   cakeEventSchemas["extension-ui-intent"],
   cakeEventSchemas["project-session-control-requested"],
   cakeEventSchemas["draw-control-requested"],
+  cakeEventSchemas["widget-capture-requested"],
   cakeEventSchemas["application-hotkey-input"],
+  cakeEventSchemas["browser-native-requested"],
   cakeEventSchemas["browser-entered"],
   cakeEventSchemas["browser-state-changed"],
   cakeEventSchemas["browser-element-selected"],
@@ -275,9 +318,11 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["complete"],
   cakeEventSchemas["fatal"],
   cakeEventSchemas["notification"],
+  cakeEventSchemas["provider-auth-notice"],
   cakeEventSchemas["extension-ui-intent"],
   cakeEventSchemas["project-session-control-requested"],
   cakeEventSchemas["draw-control-requested"],
+  cakeEventSchemas["widget-capture-requested"],
   cakeEventSchemas["terminal-data"],
   cakeEventSchemas["terminal-exited"],
   cakeEventSchemas["terminal-toggle-requested"],
@@ -291,6 +336,7 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["embedded-editor-selection-cleared"],
   cakeEventSchemas["embedded-editor-annotation-requested"],
   cakeEventSchemas["embedded-editor-side-chat-requested"],
+  cakeEventSchemas["browser-native-requested"],
   cakeEventSchemas["browser-entered"],
   cakeEventSchemas["browser-state-changed"],
   cakeEventSchemas["browser-element-selected"],
@@ -391,28 +437,6 @@ export const cakeRpcPayloadSchemas = {
   "install-embedded-editor": Schema.Struct({
     ...requestBase,
   }),
-  "open-embedded-editor": Schema.Struct({
-    ...requestBase,
-    workspacePath: stringMax(4_096),
-  }),
-  "update-embedded-editor-bounds": Schema.Struct({
-    ...requestBase,
-    visible: Schema.Boolean,
-    x: Schema.Number,
-    y: Schema.Number,
-    width: Schema.Number.check(
-      Schema.isGreaterThanOrEqualTo(0),
-      Schema.isLessThanOrEqualTo(100_000),
-    ),
-    height: Schema.Number.check(
-      Schema.isGreaterThanOrEqualTo(0),
-      Schema.isLessThanOrEqualTo(100_000),
-    ),
-    projectSidebarWidth: Schema.Number.check(
-      Schema.isGreaterThanOrEqualTo(0),
-      Schema.isLessThanOrEqualTo(100_000),
-    ),
-  }),
   "reveal-in-embedded-editor": Schema.Struct({
     ...requestBase,
     workspacePath: stringMax(4_096),
@@ -472,7 +496,45 @@ export const cakeRpcPayloadSchemas = {
     ...requestBase,
     sessionId: bounded(1, 256),
   }),
+  "native-browser-enter": Schema.Struct({
+    sessionId: bounded(1, 256),
+    workspacePath: stringMax(4_096),
+  }),
+  "native-browser-cdp": Schema.Struct({
+    sessionId: bounded(1, 256),
+    method: bounded(1, 256),
+    params: jsonValueSchema,
+  }),
+  "native-browser-events": Schema.Struct({
+    sessionId: bounded(1, 256),
+    methods: Schema.Array(bounded(1, 256)).check(Schema.isMaxLength(100)),
+    limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 500 })),
+    clear: Schema.Boolean,
+  }),
+  "acquire-browser-preview": Schema.Struct({
+    sessionId: bounded(1, 256),
+    port: Schema.Int.check(Schema.isBetween({ minimum: 1024, maximum: 9999 })),
+  }),
+  "respond-browser-native": Schema.Struct({
+    requestId: uuid,
+    sessionId: bounded(1, 256),
+    result: Schema.Union([
+      Schema.Struct({ status: Schema.Literal("completed"), value: jsonValueSchema }),
+      Schema.Struct({ status: Schema.Literal("mode-required") }),
+      Schema.Struct({ status: Schema.Literal("failed"), message: stringMax(2_000) }),
+    ]),
+  }),
   "choose-attachments": Schema.Struct({}),
+  "read-selected-file": Schema.Struct({ path: bounded(1, 4_096), offset: nonNegativeInt }),
+  "upload-open": Schema.Struct({
+    kind: Schema.Literals(["file", "image"]),
+    name: bounded(1, 512),
+    mimeType: Schema.optionalKey(stringMax(128)),
+    size: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 15_000_000 })),
+  }),
+  "upload-chunk": Schema.Struct({ id: uuid, offset: nonNegativeInt, data: bounded(1, 262_144) }),
+  "upload-finish": Schema.Struct({ id: uuid }),
+  "upload-discard": Schema.Struct({ id: uuid }),
   "suggest-files": Schema.Struct({
     workspacePath: stringMax(4_096),
     prefix: stringMax(4_096),
@@ -489,6 +551,27 @@ export const cakeRpcPayloadSchemas = {
     language: inlineWidgetLanguageSchema,
     capability: inlineWidgetCapabilitySchema,
     source: inlineWidgetSourceSchema,
+  }),
+  "capture-native-widget": Schema.Struct({
+    sessionId: stringMax(256),
+    widget: Schema.Struct({ token: stringMax(64), url: stringMax(512) }),
+    pluginState: Schema.optional(jsonValueSchema),
+  }),
+  "respond-widget-capture": Schema.Struct({
+    requestId: uuid,
+    sessionId: stringMax(256),
+    result: Schema.Union([
+      Schema.Struct({
+        ok: Schema.Literal(true),
+        pngBase64: stringMax(11_000_000),
+        diagnostics: Schema.Array(stringMax(2_000)).check(Schema.isMaxLength(100)),
+      }),
+      Schema.Struct({
+        ok: Schema.Literal(false),
+        kind: Schema.Literals(["widget", "cancelled", "infrastructure"]),
+        message: stringMax(2_000),
+      }),
+    ]),
   }),
   "set-utility-model": Schema.Struct({
     model: Schema.optional(utilityModelSchema),
@@ -638,6 +721,16 @@ const cakeRpcResultSchemas = {
     customPath: Schema.optional(stringMax(4_096)),
   }),
   "browser-state-loaded": Schema.Struct(browserStateFields),
+  "browser-native-accepted": Schema.Struct({}),
+  "browser-preview-acquired": Schema.Struct({
+    port: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
+    endpoint: bounded(1, 128),
+    secret: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
+  }),
+  "browser-native-result": Schema.Union([
+    Schema.Struct({ status: Schema.Literal("completed"), value: jsonValueSchema }),
+    Schema.Struct({ status: Schema.Literal("mode-required") }),
+  ]),
   "terminal-opened": Schema.Struct({
     ...requestBase,
     terminalId: uuid,
@@ -647,6 +740,12 @@ const cakeRpcResultSchemas = {
     ...requestBase,
     runningProgramCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   }),
+  "selected-file": Schema.Struct({
+    data: stringMax(262_144),
+    size: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 8 * 1024 * 1024 })),
+  }),
+  "upload-opened": Schema.Struct({ id: uuid }),
+  "upload-finished": Schema.Struct({ reference: stringMax(64) }),
   "attachments-chosen": Schema.Struct({
     attachments: Schema.Array(attachmentSchema).check(Schema.isMaxLength(20)),
   }),
@@ -659,6 +758,11 @@ const cakeRpcResultSchemas = {
   "workspace-image": Schema.Struct({
     data: stringMax(11_184_812),
     mimeType: bounded(1, 128),
+  }),
+  "widget-capture-accepted": Schema.Struct({}),
+  "native-widget-captured": Schema.Struct({
+    pngBase64: stringMax(11_000_000),
+    diagnostics: Schema.Array(stringMax(2_000)),
   }),
   "inline-widget-compiled": Schema.Struct({
     widget: compiledInlineWidgetSchema,
@@ -707,6 +811,11 @@ export const cakeRpcSuccessSchemas = {
   "show-project-context-menu": cakeRpcResultSchemas["project-context-menu-closed"],
   "set-fullscreen-surface-open": cakeRpcResultSchemas.accepted,
   "choose-attachments": cakeRpcResultSchemas["attachments-chosen"],
+  "read-selected-file": cakeRpcResultSchemas["selected-file"],
+  "upload-open": cakeRpcResultSchemas["upload-opened"],
+  "upload-chunk": Schema.Void,
+  "upload-finish": cakeRpcResultSchemas["upload-finished"],
+  "upload-discard": Schema.Void,
   "suggest-files": cakeRpcResultSchemas["file-suggestions"],
   "read-workspace-file": cakeRpcResultSchemas["workspace-file"],
   "read-workspace-image": cakeRpcResultSchemas["workspace-image"],
@@ -740,8 +849,6 @@ export const cakeRpcSuccessSchemas = {
   "get-embedded-editor-state": cakeRpcResultSchemas["embedded-editor-state-loaded"],
   "install-embedded-editor": cakeRpcResultSchemas.accepted,
   "set-vscode-server-path": cakeRpcResultSchemas["application-state-updated"],
-  "open-embedded-editor": cakeRpcResultSchemas.accepted,
-  "update-embedded-editor-bounds": cakeRpcResultSchemas.accepted,
   "reveal-in-embedded-editor": Schema.Struct({ ...requestBase, reveal: EditorSelectionReveal }),
   "update-embedded-editor-selection-highlights": cakeRpcResultSchemas.accepted,
   "open-embedded-editor-source-control": cakeRpcResultSchemas.accepted,
@@ -756,10 +863,17 @@ export const cakeRpcSuccessSchemas = {
   "navigate-browser": cakeRpcResultSchemas["browser-state-loaded"],
   "browser-action": cakeRpcResultSchemas["browser-state-loaded"],
   "inspect-browser-element": cakeRpcResultSchemas["browser-state-loaded"],
+  "native-browser-enter": cakeRpcResultSchemas["browser-native-accepted"],
+  "native-browser-cdp": cakeRpcResultSchemas["browser-native-result"],
+  "native-browser-events": cakeRpcResultSchemas["browser-native-result"],
+  "respond-browser-native": cakeRpcResultSchemas["browser-native-accepted"],
+  "acquire-browser-preview": cakeRpcResultSchemas["browser-preview-acquired"],
   "respond-artifact": cakeRpcResultSchemas["artifact-response-accepted"],
   "respond-ui": cakeRpcResultSchemas["ui-response-accepted"],
   "export-artifacts": cakeRpcResultSchemas["artifacts-exported"],
   "compile-inline-widget": cakeRpcResultSchemas["inline-widget-compiled"],
+  "capture-native-widget": cakeRpcResultSchemas["native-widget-captured"],
+  "respond-widget-capture": cakeRpcResultSchemas["widget-capture-accepted"],
 } as const;
 
 export type CakeRpcOperation = keyof typeof cakeRpcPayloadSchemas;

@@ -1,4 +1,4 @@
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import {
   ArtifactLineageId,
   ArtifactRevisionNumber,
@@ -7,7 +7,7 @@ import {
   parseArtifactRef,
 } from "../../domain/artifacts/artifact-lineage";
 import * as artifactWorkflows from "../../domain/artifacts/artifactWorkflows";
-import { Electron } from "../electron/Electron";
+import { ClientEvents } from "../clients/ClientEvents";
 import { ArtifactStorage } from "../storage/ArtifactStorage";
 import { ReviewStorage } from "../storage/ReviewStorage";
 import type { DrawBoardStorage } from "../storage/DrawBoardStorage";
@@ -18,7 +18,10 @@ import type { SessionArchiveStorage } from "../storage/SessionArchiveStorage";
 import { RendererRequestCoordinator } from "../renderer-requests/RendererRequestCoordinator";
 import { ProjectSessionIntegrationHost } from "./ProjectSessionIntegrationHost";
 import { PiModels } from "./PiModels";
-import { RenderedWidgetCapture } from "../widgets/RenderedWidgetCapture";
+import {
+  RenderedWidgetCapture,
+  RenderedWidgetCaptureError,
+} from "../widgets/RenderedWidgetCapture";
 import { generateReviewedWidget } from "../../domain/widgets/widgetGenerationReview";
 import { importWorkspaceFile } from "../artifacts/importWorkspaceFile";
 import { ArtifactProjection } from "../artifacts/ArtifactProjection";
@@ -53,9 +56,8 @@ export const makeProjectSessionRuntimeHostLive = (
   | ArtifactProjection
   | ArtifactStorage
   | DrawBoardStorage
-  | Electron
+  | ClientEvents
   | PiModels
-  | RenderedWidgetCapture
   | RendererRequestCoordinator
   | ReviewStorage
   | SessionArchiveStorage
@@ -68,18 +70,17 @@ export const makeProjectSessionRuntimeHostLive = (
       const artifacts = yield* ArtifactStorage;
       const artifactProjection = yield* ArtifactProjection;
       const families = yield* SessionFamilyStorage;
-      const electron = yield* Electron;
+      const clientEvents = yield* ClientEvents;
       const reviews = yield* ReviewStorage;
       const rendererRequests = yield* RendererRequestCoordinator;
       const models = yield* PiModels;
-      const widgetCapture = yield* RenderedWidgetCapture;
+      const widgetCapture = yield* Effect.serviceOption(RenderedWidgetCapture);
       const workspaceFileExport = yield* WorkspaceFileExport;
       const adapterContext = yield* Effect.context<
         | ArtifactProjection
         | ArtifactStorage
         | DrawBoardStorage
         | PiModels
-        | RenderedWidgetCapture
         | RendererRequestCoordinator
         | SessionArchiveStorage
         | SessionFamilyStorage
@@ -184,7 +185,7 @@ export const makeProjectSessionRuntimeHostLive = (
           agentDir: options.agentDirectory,
           sessionDir: options.sessionDirectory,
           widgetSessionDir: options.widgetSessionDirectory,
-          emit: electron.broadcast,
+          emit: clientEvents.broadcast,
           execute: (effect, signal) => runAdapter(effect, signal ? { signal } : undefined),
           requestUi: (request) => runAdapter(rendererRequests.requestUi(sessionId, request)),
           requestArtifact: (record, signal) =>
@@ -214,10 +215,25 @@ export const makeProjectSessionRuntimeHostLive = (
           },
           runReviewedWidget: generateReviewedWidget,
           captureWidget: (targetSessionId, widget, signal, pluginState) =>
-            runAdapter(widgetCapture.capture(targetSessionId, widget, signal, pluginState), {
-              signal,
-            }),
+            runAdapter(
+              Option.isSome(widgetCapture)
+                ? widgetCapture.value.capture(targetSessionId, widget, signal, pluginState)
+                : Effect.fail(
+                    new RenderedWidgetCaptureError({
+                      kind: "infrastructure",
+                      message: "Rendered widget capture is unavailable in this host",
+                    }),
+                  ),
+              { signal },
+            ),
           requireVisionModel: async (model) => {
+            if (Option.isNone(widgetCapture))
+              throw new RenderedWidgetCaptureError({
+                kind: "infrastructure",
+                message: "Rendered widget capture is unavailable in this host",
+              });
+            if (widgetCapture.value.preflight)
+              await runAdapter(widgetCapture.value.preflight(sessionId));
             if (!model)
               throw new Error(
                 "widgets.present requires the active session to use a configured vision-capable model",
@@ -361,7 +377,7 @@ export const makeProjectSessionRuntimeHostLive = (
                       : { mode: "pinned", revision: parsed.revision },
                   ),
                 );
-                electron.broadcast({
+                clientEvents.broadcast({
                   type: "artifact-catalog-invalidated",
                   lineageId: parsed.lineageId,
                 });
@@ -374,7 +390,7 @@ export const makeProjectSessionRuntimeHostLive = (
                 yield* provideArtifactServices(
                   artifactWorkflows.unlinkEffectiveSessionArtifact(targetSessionId, lineageId),
                 );
-                electron.broadcast({ type: "artifact-catalog-invalidated", lineageId });
+                clientEvents.broadcast({ type: "artifact-catalog-invalidated", lineageId });
                 yield* artifactProjection.cleanupLineage(targetSessionId, lineageId);
               }),
           },

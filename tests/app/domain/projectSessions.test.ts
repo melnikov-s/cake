@@ -164,8 +164,6 @@ const fakeRuntime = (
   applyConfiguration: async () => onOperation?.("configuration"),
   setPiSetting: async () => onOperation?.("setting"),
   recordReviewRun: () => undefined,
-  login: async () => onOperation?.("login"),
-  logout: async () => onOperation?.("logout"),
   rename: async (name) => onRename?.(name),
   fork: async (_entryId, title) => {
     onForkTitle?.(title);
@@ -462,20 +460,14 @@ const makeLayer = (
     }),
     Layer.mock(PiModels, {}),
     Layer.mock(Electron, {
-      openExternal: () => Effect.void,
-      sendTo: vi.fn(),
-      broadcast: vi.fn(),
       requireRendererConnection: vi.fn(),
-      workspaceForConnection: vi.fn(),
-      associateWorkspace: vi.fn(),
-      forgetWorkspace: vi.fn(),
       windowsForWorkspace: () => [],
       centerTrafficLights: vi.fn(),
     }),
     Layer.mock(VsCodeServer, {
       runProjectScript: (_workingDirectory, _source, input) =>
         Effect.succeed({ status: "completed" as const, value: input }),
-      backToAgentForWindow: () => false,
+      leaseFor: () => undefined,
     }),
     Layer.mock(SubagentEnvironment, {
       location: (workingDirectory) =>
@@ -2563,8 +2555,6 @@ describe("Project Sessions domain", () => {
         yield* sessionChats.setThinkingLevel(target, "high");
         yield* sessionChats.setFastMode(target, true);
         yield* sessionChats.setPiSetting(target, { key: "retryEnabled", value: false });
-        yield* sessionChats.login(target, "fixture-provider", "api_key");
-        yield* sessionChats.logout(target, "fixture-provider");
         yield* sessionChats.listQueuedMessages(target);
         yield* sessionChats.clearQueue(target);
         yield* sessionChats.cancelSteering(target);
@@ -2581,8 +2571,6 @@ describe("Project Sessions domain", () => {
           "thinking",
           "fast",
           "setting",
-          "login",
-          "logout",
           "list-queue",
           "clear-queue",
           "cancel-steering",

@@ -1,6 +1,6 @@
 import { Effect, Stream } from "effect";
 import { Electron } from "../../services/electron/Electron";
-import { NativeEvents } from "../../services/electron/NativeEvents";
+import { ClientEvents } from "../../services/clients/ClientEvents";
 import { ElectronRpc } from "../protocol/ElectronRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 
@@ -52,7 +52,7 @@ export const electronHandlers = ElectronRpc.of({
     Stream.unwrap(
       Effect.gen(function* () {
         const connection = yield* RendererConnection;
-        return (yield* NativeEvents).surfaces(connection.connectionId);
+        return (yield* ClientEvents).surfaces(connection.connectionId);
       }),
     ),
 });

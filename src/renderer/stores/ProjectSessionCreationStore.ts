@@ -185,7 +185,35 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     );
   }
 
+  async activateSavedDraft(sessionId: string, choice?: WorktreeDraftChoice) {
+    const saved = this.pending.savedRecord(sessionId);
+    if (saved?.status !== "saved") return false;
+    if (choice?.kind === "draft") return false;
+    if (choice) this.configureDraftActivation(sessionId, choice);
+    if (!(await this.prepare(sessionId, saved.text))) return false;
+    const prepared = this.request(sessionId);
+    if (!prepared) return false;
+    const authority = this.pending.props.savedDrafts;
+    if (!authority) throw new Error("Saved Draft authority is unavailable");
+    const activated = await authority.activate(
+      {
+        sessionId,
+        expectedRevision: saved.revision,
+        workingDirectory: prepared.path,
+      },
+      { signal: this.signal },
+    );
+    this.pending.markActivated(activated.record);
+    if (this.pending.isTemporary(sessionId))
+      this.pending.materialize(sessionId, activated.workingDirectory);
+    return true;
+  }
+
   async start(sessionId: string, input: ComposerDeliveryInput) {
+    if (this.pending.savedRecord(sessionId)?.status === "activating")
+      throw new Error("This saved Draft is already starting; check the transcript before retrying");
+    if (this.pending.isDraft(sessionId))
+      throw new Error("Activate this saved Draft before sending a new message");
     const pending = this.request(sessionId);
     if (!pending) return false;
     this.pending.projectSubmission(sessionId, input.text);

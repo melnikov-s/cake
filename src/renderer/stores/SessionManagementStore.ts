@@ -27,6 +27,15 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   async renameSession(sessionId: string, name: string) {
     const title = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
     if (!title || this.signal.aborted) return;
+    if (this.props.registry.pendingSessions.savedRecord(sessionId)?.status === "activating") return;
+    if (this.props.registry.pendingSessions.isDraft(sessionId)) {
+      try {
+        await this.props.registry.pendingSessions.updateSavedMetadata(sessionId, { title });
+      } catch (error) {
+        if (!this.signal.aborted) this.props.reportError(error);
+      }
+      return;
+    }
     if (this.props.registry.pendingSessions.isTemporary(sessionId)) {
       this.props.registry.pendingSessions.conversation(sessionId)?.setName(title);
       return;
@@ -44,6 +53,17 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   async resolveSession(sessionId: string, resolved: boolean) {
     const session = this.props.catalog.find(sessionId);
     if (!session || this.signal.aborted) return false;
+    if (this.props.registry.pendingSessions.savedRecord(sessionId)?.status === "activating")
+      return false;
+    if (this.props.registry.pendingSessions.isDraft(sessionId)) {
+      try {
+        await this.props.registry.pendingSessions.updateSavedMetadata(sessionId, { resolved });
+        return !this.signal.aborted;
+      } catch (error) {
+        if (!this.signal.aborted) this.props.reportError(error);
+        return false;
+      }
+    }
     if (this.props.registry.pendingSessions.conversation(sessionId)?.setDraftResolved(resolved))
       return true;
     if (resolved && this.props.registry.pendingSessions.isTemporary(sessionId)) {
@@ -85,6 +105,8 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
           pendingSession.workspacePath)
         : undefined);
     if (!projectPath || session?.resolved || this.signal.aborted) return false;
+    if (this.props.registry.pendingSessions.savedRecord(sessionId)?.status === "activating")
+      return false;
     if (this.transitioningSessionIds.has(sessionId)) return false;
     const project = this.props.projects.find(projectPath);
     if (!project) return false;
@@ -98,6 +120,12 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
 
     this.transitioningSessionIds.add(sessionId);
     try {
+      if (this.props.registry.pendingSessions.isDraft(sessionId)) {
+        await this.props.registry.pendingSessions.updateSavedMetadata(sessionId, {
+          labelIds: [...labelIds],
+        });
+        return !this.signal.aborted;
+      }
       if (this.props.registry.pendingSessions.isTemporary(sessionId)) {
         await this.props.registry.pendingSessions.setLabels(sessionId, labelIds);
         return !this.signal.aborted;

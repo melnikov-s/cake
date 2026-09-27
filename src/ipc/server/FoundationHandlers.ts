@@ -1,8 +1,7 @@
 import { Duration, Effect, Stream } from "effect";
 import * as projects from "../../domain/projects/projects";
-import { NativeEvents } from "../../services/electron/NativeEvents";
+import { ClientEvents } from "../../services/clients/ClientEvents";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
-import { WindowStateStorage } from "../../services/storage/WindowStateStorage";
 import { FoundationFailure, FoundationRpc } from "../protocol/FoundationRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 
@@ -18,15 +17,12 @@ export const makeFoundationHandlers = (homeDirectory: string) => {
         yield* access.allow(homeDirectory);
         return homeDirectory;
       }),
-    "windowState.load": () => Effect.flatMap(WindowStateStorage, (storage) => storage.load()),
-    "windowState.save": ({ snapshot }) =>
-      Effect.flatMap(WindowStateStorage, (storage) => storage.save(snapshot)),
     "projects.observeCatalog": () => Stream.unwrap(projects.observeCatalog()),
     "application.observeEvents": () =>
       Stream.unwrap(
         Effect.gen(function* () {
           const connection = yield* RendererConnection;
-          return (yield* NativeEvents).application(connection.connectionId);
+          return (yield* ClientEvents).application(connection.connectionId);
         }),
       ),
     "foundation.typedFailure": () =>

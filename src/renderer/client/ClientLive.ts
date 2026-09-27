@@ -3,6 +3,7 @@ import { CakeIpcClient, type CakeIpcClientService } from "../../ipc/client/CakeI
 import { makeClientCapabilities } from "./ClientCapabilities";
 import type { Runtime } from "../runtime";
 import { ClientError, type Client, type ClientCommandOptions } from "./Client";
+import type { Attachment } from "../../ipc/session-contract";
 
 const errorTag = (error: unknown): string | undefined => {
   if (!Predicate.isObject(error) || !("_tag" in error)) return undefined;
@@ -35,7 +36,95 @@ const clientError = (operation: string, error: unknown, signal?: AbortSignal): C
 };
 
 /** Builds the Promise command adapter over the window's single renderer runtime. */
-export function makeClient(runtime: Pick<Runtime, "execute">): Client {
+export function makeClient(
+  runtime: Pick<Runtime, "execute">,
+  host?:
+    | { kind: "browser"; connected(): boolean; openExternalUrl(url: string): Promise<void> }
+    | {
+        kind: "remote";
+        connected(): boolean;
+        uncertain(operation: string): void;
+        blocked(): boolean;
+      },
+): Client {
+  const withAttachments = <Success, Failure>(
+    client: CakeIpcClientService,
+    attachments: ReadonlyArray<Attachment> | undefined,
+    send: (attachments: ReadonlyArray<Attachment>) => Effect.Effect<Success, Failure>,
+  ) =>
+    Effect.gen(function* () {
+      if (host?.kind !== "remote" || !attachments?.length) return yield* send(attachments ?? []);
+      const ids: string[] = [];
+      const prepare = Effect.gen(function* () {
+        const prepared: Attachment[] = [];
+        // Only selected device files and image bytes cross this boundary. Source/browser
+        // references retain their existing backend semantics and require no upload.
+        for (const attachment of attachments) {
+          if (attachment.kind !== "file" && attachment.kind !== "image") {
+            prepared.push(attachment);
+            continue;
+          }
+          const image = attachment.kind === "image";
+          const size = image
+            ? Math.floor((attachment.data.length * 3) / 4) -
+              (attachment.data.endsWith("==") ? 2 : attachment.data.endsWith("=") ? 1 : 0)
+            : (yield* client.filesystem["read-selected-file"]({ path: attachment.path, offset: 0 }))
+                .size;
+          const { id } = yield* client.attachmentUploads["upload-open"](
+            image
+              ? { kind: "image", name: attachment.name, size, mimeType: attachment.mimeType }
+              : { kind: "file", name: attachment.name, size },
+          );
+          ids.push(id);
+          if (image) {
+            for (let offset = 0; offset < size;) {
+              const data = attachment.data.slice((offset / 3) * 4, (offset / 3) * 4 + 262_144);
+              yield* client.attachmentUploads["upload-chunk"]({ id, offset, data });
+              offset +=
+                Math.floor((data.length * 3) / 4) -
+                (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0);
+            }
+          } else {
+            for (let offset = 0; offset < size;) {
+              const { data, size: currentSize } = yield* client.filesystem["read-selected-file"]({
+                path: attachment.path,
+                offset,
+              });
+              if (currentSize !== size) throw new Error("Selected file changed during transfer");
+              yield* client.attachmentUploads["upload-chunk"]({ id, offset, data });
+              offset +=
+                Math.floor((data.length * 3) / 4) -
+                (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0);
+            }
+          }
+          const { reference } = yield* client.attachmentUploads["upload-finish"]({ id });
+          prepared.push(
+            image
+              ? {
+                  kind: "image",
+                  name: attachment.name,
+                  mimeType: attachment.mimeType,
+                  data: reference,
+                }
+              : { kind: "file", name: attachment.name, path: reference },
+          );
+        }
+        return prepared;
+      });
+      const prepared = yield* prepare.pipe(
+        Effect.onError(() =>
+          Effect.forEach(
+            ids,
+            (id) => client.attachmentUploads["upload-discard"]({ id }).pipe(Effect.ignore),
+            { discard: true },
+          ),
+        ),
+      );
+      // Never replay a turn on unknown receipt. A failure before send leaves the
+      // original draft intact; disconnected or rejected unadmitted uploads expire.
+      return yield* send(prepared);
+    });
+
   const withClient = <Success, Failure>(
     operation: (client: CakeIpcClientService) => Effect.Effect<Success, Failure>,
   ): Effect.Effect<Success, Failure, CakeIpcClient> => Effect.flatMap(CakeIpcClient, operation);
@@ -44,11 +133,109 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
     operation: string,
     effect: Effect.Effect<Success, Failure, CakeIpcClient>,
     options?: ClientCommandOptions,
-  ): Promise<Success> =>
-    runtime
-      .execute(effect, options?.signal)
-      .catch((error: unknown) => Promise.reject(clientError(operation, error, options?.signal)));
+  ): Promise<Success> => {
+    if (host?.kind === "browser") {
+      if (
+        /^(dictation|desktopHost|backendConnection|desktopSharing|electron|windowState|vscode|browser|terminals|widgets|inlineWidgets|filesystem|managedWorktrees|draw|discussionSessions|subagents)\./.test(
+          operation,
+        ) ||
+        /^(models|sessionChats)\.(login|logout)$/.test(operation)
+      )
+        return Promise.reject(
+          new ClientError(
+            "unsupported",
+            operation,
+            "This operation is available only in the desktop app",
+            operation,
+          ),
+        );
+      if (!host.connected())
+        return Promise.reject(
+          new ClientError("transport", operation, "Disconnected. No command was sent.", operation),
+        );
+    }
+    const native =
+      /^(dictation|desktopHost|windowState|electron)\./.test(operation) ||
+      operation === "filesystem.choose-attachments" ||
+      (operation.startsWith("browser.") && operation !== "browser.acquire-browser-preview");
+    const readOnly =
+      /\.(get|list|read|inspect|catalog|effective|detail|history|compare|reference|load|suggest)/i.test(
+        operation,
+      ) ||
+      /^(backendConnection\.connect|projectSessions\.open|cakeChats\.open|modelPresets\.resolve)$/.test(
+        operation,
+      );
+    const stop = /\.(abort|cancel)/i.test(operation);
+    if (host?.kind === "remote" && !native) {
+      if (operation.startsWith("desktopSharing."))
+        return Promise.reject(
+          new ClientError(
+            "unsupported",
+            operation,
+            "This integration is not available with a remote backend yet",
+            operation,
+          ),
+        );
+      if (
+        operation !== "backendConnection.connect" &&
+        (!host.connected() || (host.blocked() && !readOnly && !stop))
+      )
+        return Promise.reject(
+          new ClientError(
+            "rejected",
+            operation,
+            host.blocked()
+              ? "A command's delivery is uncertain. Check refreshed state and acknowledge before sending more commands."
+              : "Disconnected. No command was sent.",
+            operation,
+          ),
+        );
+    }
+    return runtime.execute(effect, options?.signal).catch((error: unknown) => {
+      const failure = clientError(operation, error, options?.signal);
+      if (
+        host?.kind === "remote" &&
+        !native &&
+        !readOnly &&
+        !stop &&
+        (failure.kind === "transport" ||
+          failure.kind === "unexpected" ||
+          failure.kind === "interrupted")
+      )
+        host.uncertain(operation);
+      throw failure;
+    });
+  };
+  const capabilities = makeClientCapabilities((operation, command, options) =>
+    run(operation, withClient(command), options),
+  );
+  if (host?.kind === "browser")
+    capabilities.electron.openExternalUrl = (url) => host.openExternalUrl(url);
 
+  if (host?.kind === "remote") {
+    const open = capabilities.electron.openExternalUrl;
+    capabilities.electron.openExternalUrl = (url, options) => {
+      if (!/^https?:\/\//i.test(url) && !/^mailto:/i.test(url))
+        return Promise.reject(
+          new ClientError(
+            "unsupported",
+            "electron.openExternalUrl",
+            "Remote files and custom-protocol links cannot be opened on this device",
+            "Remote path blocked",
+          ),
+        );
+      return open(url, options);
+    };
+    capabilities.electron.chooseProject = () =>
+      Promise.reject(
+        new ClientError(
+          "unsupported",
+          "electron.chooseProject",
+          "Register remote projects on the server",
+          "Local folder selection cannot select server paths",
+        ),
+      );
+  }
   return {
     dictation: {
       install: (options) =>
@@ -85,6 +272,36 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
         run(
           "dictation.transcribe",
           withClient((client) => client.dictation.transcribe(audio)),
+          options,
+        ),
+    },
+    desktopHost: {
+      current: (options) =>
+        run(
+          "desktopHost.current",
+          withClient((client) => client.desktopHost.current()),
+          options,
+        ),
+      select: (selection, options) =>
+        run(
+          "desktopHost.select",
+          withClient((client) => client.desktopHost.select(selection)),
+          options,
+        ),
+    },
+    backendConnection: {
+      connect: (input, options) =>
+        run(
+          "backendConnection.connect",
+          withClient((client) => client.backendConnection.connect(input)),
+          options,
+        ),
+    },
+    desktopSharing: {
+      configure: (input, options) =>
+        run(
+          "desktopSharing.configure",
+          withClient((client) => client.desktopSharing.configure(input)),
           options,
         ),
     },
@@ -287,6 +504,44 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           options,
         ),
     },
+    savedDrafts: {
+      list: (options) =>
+        run(
+          "savedDrafts.list",
+          withClient((client) => client.savedDrafts.list()),
+          options,
+        ),
+      create: (input, options) =>
+        run(
+          "savedDrafts.create",
+          withClient((client) => client.savedDrafts.create(input)),
+          options,
+        ),
+      update: (record, expectedRevision, options) =>
+        run(
+          "savedDrafts.update",
+          withClient((client) => client.savedDrafts.update(record, expectedRevision)),
+          options,
+        ),
+      remove: (sessionId, expectedRevision, options) =>
+        run(
+          "savedDrafts.remove",
+          withClient((client) => client.savedDrafts.remove(sessionId, expectedRevision)),
+          options,
+        ),
+      recoverUncertain: (sessionId, expectedRevision, options) =>
+        run(
+          "savedDrafts.recoverUncertain",
+          withClient((client) => client.savedDrafts.recoverUncertain(sessionId, expectedRevision)),
+          options,
+        ),
+      activate: (input, options) =>
+        run(
+          "savedDrafts.activate",
+          withClient((client) => client.savedDrafts.activate(input)),
+          options,
+        ),
+    },
     scheduledMessages: {
       list: (targetSessionId, options) =>
         run(
@@ -343,7 +598,11 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
       start: (input, options) =>
         run(
           "projectSessions.start",
-          withClient((client) => client.projectSessions.start(input)),
+          withClient((client) =>
+            withAttachments(client, input.attachments, (attachments) =>
+              client.projectSessions.start({ ...input, attachments }),
+            ),
+          ),
           options,
         ),
       open: (target, options) =>
@@ -425,19 +684,31 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
       prompt: (input, options) =>
         run(
           "sessionChats.prompt",
-          withClient((client) => client.sessionChats.prompt(input)),
+          withClient((client) =>
+            withAttachments(client, input.attachments, (attachments) =>
+              client.sessionChats.prompt({ ...input, attachments }),
+            ),
+          ),
           options,
         ),
       steer: (input, options) =>
         run(
           "sessionChats.steer",
-          withClient((client) => client.sessionChats.steer(input)),
+          withClient((client) =>
+            withAttachments(client, input.attachments, (attachments) =>
+              client.sessionChats.steer({ ...input, attachments }),
+            ),
+          ),
           options,
         ),
       followUp: (input, options) =>
         run(
           "sessionChats.followUp",
-          withClient((client) => client.sessionChats.followUp(input)),
+          withClient((client) =>
+            withAttachments(client, input.attachments, (attachments) =>
+              client.sessionChats.followUp({ ...input, attachments }),
+            ),
+          ),
           options,
         ),
       abort: (target, options) =>
@@ -491,7 +762,11 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
       editMessage: (input, options) =>
         run(
           "sessionChats.editMessage",
-          withClient((client) => client.sessionChats.editMessage(input)),
+          withClient((client) =>
+            withAttachments(client, input.attachments, (attachments) =>
+              client.sessionChats.editMessage({ ...input, attachments }),
+            ),
+          ),
           options,
         ),
       setUserMessageMarkdown: (input, options) =>
@@ -553,7 +828,11 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
       start: (input, options) =>
         run(
           "cakeChats.start",
-          withClient((client) => client.cakeChats.start(input)),
+          withClient((client) =>
+            withAttachments(client, input.attachments, (attachments) =>
+              client.cakeChats.start({ ...input, attachments }),
+            ),
+          ),
           options,
         ),
       rename: (input, options) =>
@@ -645,9 +924,7 @@ export function makeClient(runtime: Pick<Runtime, "execute">): Client {
           options,
         ),
     },
-    ...makeClientCapabilities((operation, command, options) =>
-      run(operation, withClient(command), options),
-    ),
+    ...capabilities,
     foundation: {
       typedFailure: (options) =>
         run(

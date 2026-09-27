@@ -1,8 +1,12 @@
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, Layer, Ref, Stream } from "effect";
+import { Deferred, Effect, Fiber, Layer, Ref } from "effect";
 import { describe, expect, vi } from "vitest";
 import { defaultApplicationState } from "../../../../src/domain/application/application-data";
-import { Electron } from "../../../../src/services/electron/Electron";
+import {
+  ClientConnections,
+  ClientConnectionsLive,
+} from "../../../../src/services/clients/ClientConnections";
+import { ClientEventsLive } from "../../../../src/services/clients/ClientEventsLive";
 import { ProjectAccess } from "../../../../src/services/projects/ProjectAccess";
 import { ApplicationState } from "../../../../src/services/storage/ApplicationState";
 import { VsCodeServer } from "../../../../src/services/vscode/VsCodeServer";
@@ -14,6 +18,7 @@ import type { CompanionManifest } from "../../../../src/services/vscode/VsCodeSe
 
 const native = vi.hoisted(() => ({
   releaseServer: vi.fn(),
+  releaseConnection: vi.fn(),
   startServer: vi.fn(),
 }));
 
@@ -42,13 +47,30 @@ vi.mock("../../../../src/services/vscode/VsCodeServerRuntime", () => ({
       return { status: "ready" as const };
     }
 
-    open(
-      _webContentsId: number,
-      _getWindow: () => unknown,
+    async acquire(
+      connectionId: number,
       workspacePath: string,
+      _theme: "light" | "dark",
       signal?: AbortSignal,
     ) {
-      return this.props.acquireServer(workspacePath, "/fake/vscode", signal);
+      await this.props.acquireServer(workspacePath, "/fake/vscode", signal);
+      return {
+        connectionId,
+        workspacePath,
+        id: "lease",
+        url: "http://127.0.0.1:4321/",
+        revocation: new AbortController(),
+        flavor: "codeserver",
+        presentedWorkspacePath: workspacePath,
+        visible: false,
+      };
+    }
+    leaseFor() {
+      return undefined;
+    }
+    releaseLease() {}
+    releaseConnection(connectionId: number) {
+      native.releaseConnection(connectionId);
     }
 
     startServer(workspacePath: string, binary: string, signal?: AbortSignal) {
@@ -59,7 +81,6 @@ vi.mock("../../../../src/services/vscode/VsCodeServerRuntime", () => ({
       native.releaseServer(instance);
     }
 
-    setFullscreenSurfaceOpen() {}
     disposeAll() {}
   },
 }));
@@ -82,31 +103,86 @@ const liveLayer = () =>
   makeVsCodeServerLive({
     root: "/tmp/cake-vscode-test",
     companionManifest,
-    companionMain: "",
+    companionSource: "",
     companionThemes: [],
-    preferredTheme: () => Promise.resolve("light"),
-    onThemeUpdated: () => () => {},
   }).pipe(
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ApplicationState, { snapshot: defaultApplicationState }),
-        Layer.mock(Electron, {
-          broadcast: () => {},
-          sendTo: () => {},
-          fullscreenSurfaceChanges: () => Stream.empty,
-          requireRendererConnection: () => Object.assign(Object.create(null), { id: 1 }),
-          workspaceForConnection: () => undefined,
-          associateWorkspace: () => {},
-          forgetWorkspace: () => {},
-          windowsForWorkspace: () => [],
-          centerTrafficLights: () => {},
-        }),
+        ClientEventsLive,
         Layer.mock(ProjectAccess, { isAllowed: () => Effect.succeed(true) }),
       ),
     ),
+    Layer.provideMerge(ClientConnectionsLive),
   );
 
 describe("VsCodeServerLive server acquisition", () => {
+  it.effect(
+    "rejects editor actions without a viewer before reading the workspace or waiting for a companion",
+    () =>
+      Effect.gen(function* () {
+        const id = (yield* ClientConnections).desktop(94);
+        const server = yield* VsCodeServer;
+        const request = { requestId: "no-viewer", workspacePath: "/nonexistent-server-workspace" };
+        for (const action of [
+          server.openSourceControl(id, request),
+          server.reveal(id, {
+            ...request,
+            location: { kind: "working-directory", path: "file.ts" },
+          }),
+          server.performEditorAction(id, { ...request, action: { type: "editor.status" } }),
+          server.updateSelectionHighlights(id, { ...request, highlights: { locations: [] } }),
+          server.updateAnnotations(id, {
+            ...request,
+            snapshot: { sessionId: "session", annotations: [] },
+          }),
+        ]) {
+          const failure = yield* action.pipe(Effect.flip);
+          expect(failure.operation).toBe("requireViewer");
+          expect(failure.message).toContain("does not own");
+        }
+      }).pipe(Effect.provide(liveLayer())),
+  );
+  it.effect("rejects a browser observer without acquiring any editor process", () =>
+    Effect.gen(function* () {
+      native.startServer.mockClear();
+      const connections = yield* ClientConnections;
+      const id = connections.socket();
+      const server = yield* VsCodeServer;
+      const failure = yield* server
+        .acquire(id, { requestId: "browser", workspacePath: "/workspace", theme: "dark" })
+        .pipe(Effect.flip);
+      expect(failure.message).toContain("connected desktop");
+      expect(native.startServer).not.toHaveBeenCalled();
+    }).pipe(Effect.provide(liveLayer())),
+  );
+
+  it.effect("releases an acquisition whose logical desktop disconnects during startup", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      let finish!: () => void;
+      native.releaseConnection.mockClear();
+      native.startServer.mockReset().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finish = () => resolve({ workspacePath: "/workspace" });
+            Deferred.doneUnsafe(started, Effect.void);
+          }),
+      );
+      const connections = yield* ClientConnections;
+      const id = connections.desktop(93);
+      const server = yield* VsCodeServer;
+      const opening = yield* server
+        .acquire(id, { requestId: "disconnect", workspacePath: "/workspace", theme: "dark" })
+        .pipe(Effect.flip, Effect.forkChild);
+      yield* Deferred.await(started);
+      connections.release(id);
+      finish();
+      expect((yield* Fiber.join(opening)).message).toContain("disconnected");
+      expect(native.releaseConnection).toHaveBeenCalledWith(id);
+    }).pipe(Effect.provide(liveLayer())),
+  );
+
   it.effect("retries a failed server start for the same workspace", () =>
     Effect.gen(function* () {
       native.releaseServer.mockReset();
@@ -117,15 +193,20 @@ describe("VsCodeServerLive server acquisition", () => {
 
       const { cachedResult, failure, result } = yield* Effect.gen(function* () {
         const vscode = yield* VsCodeServer;
-        const request = { requestId: "open-1", workspacePath: "/workspace" };
-        const failure = yield* vscode.open(1, request).pipe(Effect.flip);
-        const result = yield* vscode.open(1, request);
-        const cachedResult = yield* vscode.open(1, request);
+        const connectionId = (yield* ClientConnections).desktop(91);
+        const request = {
+          requestId: "open-1",
+          workspacePath: "/workspace",
+          theme: "dark" as const,
+        };
+        const failure = yield* vscode.acquire(connectionId, request).pipe(Effect.flip);
+        const result = yield* vscode.acquire(connectionId, request);
+        const cachedResult = yield* vscode.acquire(connectionId, request);
         return { cachedResult, failure, result };
       }).pipe(Effect.provide(liveLayer()));
 
-      expect(failure.operation).toBe("open");
-      expect(result).toEqual({ requestId: "open-1" });
+      expect(failure.operation).toBe("acquire");
+      expect(result).toMatchObject({ id: "lease", workspacePath: "/workspace" });
       expect(cachedResult).toEqual(result);
       expect(native.startServer).toHaveBeenCalledTimes(2);
       expect(native.releaseServer).toHaveBeenCalledOnce();

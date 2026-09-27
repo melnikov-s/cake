@@ -907,7 +907,12 @@ export function imageContent(attachments: Attachment[]) {
 
 export function promptText(text: string, attachments: Attachment[]) {
   const additions = attachments.flatMap((item) => {
-    if (item.kind === "file") return [`@${item.path}`];
+    if (item.kind === "file")
+      return [
+        /\s|"/.test(item.path)
+          ? `@"${item.path.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`
+          : `@${item.path}`,
+      ];
     const encoded = JSON.stringify(item).replaceAll("<", "\\u003c");
     if (item.kind === "source")
       return [`<cake-source-attachment>${encoded}</cake-source-attachment>`];

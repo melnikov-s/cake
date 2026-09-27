@@ -582,6 +582,34 @@ const dictationSettingsScenario: VisualCaptureScenario = {
   region: cakePromptsSettingsScenario.region,
 };
 
+const serverClientSettingsScenario: VisualCaptureScenario = {
+  name: "server-client-settings",
+  description: "Real local backend selection and browser sharing controls in Network & privacy",
+  states: ["backend", "sharing"],
+  seed: (paths, theme) => cakePromptsSettingsScenario.seed(paths, theme),
+  async prepare(page, state) {
+    await page
+      .getByRole("button", { name: "Open settings", exact: true })
+      .waitFor({ timeout: 20_000 });
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.waitForTimeout(1_000);
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    const network = page.getByRole("button", { name: "Network & privacy" });
+    await network.waitFor({ state: "visible", timeout: 20_000 });
+    await network.click();
+    const section =
+      state === "backend"
+        ? page.getByRole("region", { name: "Cake backend" })
+        : page.locator("#setting-browser-sharing");
+    await section.waitFor({ state: "visible", timeout: 20_000 });
+    await section.scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+  },
+  region(page) {
+    return page.locator("#settings-content-scroll");
+  },
+};
+
 export const sessionPluginsScenario: VisualCaptureScenario = {
   name: "session-plugins",
   description: "Session Plugin controls and generated theme bridge above ordinary chat",
@@ -855,6 +883,7 @@ export const visualCaptureScenarios = [
   drawCompositionScenario,
   cakePromptsSettingsScenario,
   dictationSettingsScenario,
+  serverClientSettingsScenario,
 ] as const;
 
 export function findVisualCaptureScenario(name: string) {

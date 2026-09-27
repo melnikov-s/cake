@@ -1,5 +1,9 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
+import {
+  SavedDraft,
+  type SavedDraft as SavedDraftValue,
+} from "../../domain/project-sessions/saved-draft-data";
 
 const WINDOW_STATE_DOCUMENT_VERSION = 12;
 const WINDOW_STATE_DOCUMENT_NAME = "window-state.json";
@@ -148,6 +152,123 @@ export class WindowStateStorage extends Context.Service<
     ) => Effect.Effect<void, WindowStateEncodeError | WindowStateWriteError>;
   }
 >()("cake/services/storage/WindowStateStorage") {}
+
+/* Saved Drafts predate backend authority. Only explicit saved records migrate;
+ * unsent composer text and staged navigation stay window-local. Callers must
+ * persist the stripped snapshot only after all imports have committed. */
+export interface SavedDraftExtraction {
+  readonly records: ReadonlyArray<SavedDraftValue>;
+  readonly windowSnapshot: Schema.Schema.Type<typeof Schema.Json>;
+}
+export const extractSavedDrafts = (
+  snapshot: Schema.Schema.Type<typeof Schema.Json>,
+): SavedDraftExtraction => {
+  const root = decodeJsonRecord(snapshot);
+  const children = decodeJsonRecord(root?.children);
+  const registry = decodeJsonRecord(children?.sessionRegistry);
+  const registryChildren = decodeJsonRecord(registry?.children);
+  const pending = decodeJsonRecord(registryChildren?.pendingSessions);
+  const pendingChildren = decodeJsonRecord(pending?.children);
+  const conversations = Array.isArray(pendingChildren?.conversations)
+    ? pendingChildren.conversations
+    : [];
+  const targetsValue = decodeJsonRecord(registry?.state)?.targets;
+  const targets = Array.isArray(targetsValue) ? targetsValue : [];
+  const records: SavedDraftValue[] = [];
+  const migratedIds = new Set<string>();
+  for (const item of conversations) {
+    const conversation = decodeJsonRecord(item);
+    const sessionId = decodeString(conversation?.key);
+    const state = decodeJsonRecord(conversation?.state);
+    const prompt = decodeJsonRecord(state?.draftPrompt);
+    const target = targets
+      .map(decodeJsonRecord)
+      .find((candidate) => candidate?.sessionId === sessionId);
+    const projectPath = decodeString(target?.workspacePath);
+    if (!sessionId || !projectPath || !prompt) continue;
+    const legacyConfiguration = decodeJsonRecord(state?.configuration);
+    const candidate = {
+      sessionId,
+      projectPath,
+      workingDirectory: projectPath,
+      title: decodeString(state?.name) ?? decodeString(state?.fallbackTitle) ?? "New chat",
+      text: decodeString(prompt.text) ?? "",
+      attachments: prompt.attachments ?? [],
+      ...(legacyConfiguration
+        ? {
+            configuration: {
+              provider: legacyConfiguration.provider,
+              modelId: legacyConfiguration.modelId,
+              thinkingLevel: legacyConfiguration.thinkingLevel ?? "off",
+              fastMode: legacyConfiguration.fastMode ?? false,
+            },
+          }
+        : null),
+      labelIds: state?.labelIds ?? [],
+      resolved: prompt.resolved === true,
+      createdAt: decodeString(state?.createdAt) ?? new Date(0).toISOString(),
+      modifiedAt: decodeString(state?.modifiedAt) ?? new Date(0).toISOString(),
+      revision: 1,
+      status: "saved",
+    };
+    const decoded = Schema.decodeUnknownResult(SavedDraft)(candidate);
+    if (decoded._tag !== "Success") continue;
+    records.push(decoded.success);
+    migratedIds.add(sessionId);
+  }
+  if (
+    !migratedIds.size ||
+    !root ||
+    !children ||
+    !registry ||
+    !registryChildren ||
+    !pending ||
+    !pendingChildren
+  )
+    return { records, windowSnapshot: snapshot };
+  const pendingState = decodeJsonRecord(pending.state) ?? {};
+  const registryState = decodeJsonRecord(registry.state) ?? {};
+  const filterIds = (value: Schema.Schema.Type<typeof Schema.Json> | undefined) =>
+    decodeStringArray(value).filter((id) => !migratedIds.has(id));
+  const windowSnapshot = {
+    ...root,
+    children: {
+      ...children,
+      sessionRegistry: {
+        ...registry,
+        state: {
+          ...registryState,
+          targets: targets.filter(
+            (item) => !migratedIds.has(decodeString(decodeJsonRecord(item)?.sessionId) ?? ""),
+          ),
+        },
+        children: {
+          ...registryChildren,
+          pendingSessions: {
+            ...pending,
+            state: {
+              ...pendingState,
+              conversationIds: filterIds(pendingState.conversationIds),
+              temporarySessionIds: filterIds(pendingState.temporarySessionIds),
+              stagedSessionIds: filterIds(pendingState.stagedSessionIds),
+            },
+            children: {
+              ...pendingChildren,
+              conversations: conversations.filter(
+                (item) => !migratedIds.has(decodeString(decodeJsonRecord(item)?.key) ?? ""),
+              ),
+            },
+          },
+        },
+      },
+    },
+  };
+  const decodedSnapshot = Schema.decodeUnknownResult(Schema.Json)(windowSnapshot);
+  return {
+    records,
+    windowSnapshot: decodedSnapshot._tag === "Success" ? decodedSnapshot.success : snapshot,
+  };
+};
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 const writeError = (stage: AtomicFileStage, cause: unknown) =>

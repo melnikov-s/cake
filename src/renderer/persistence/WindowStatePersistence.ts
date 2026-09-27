@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { onSnapshot, toSnapshot, type Store } from "r-state-tree";
 import { jsonValueSchema } from "../../ipc/json-contract";
 import type { Client } from "../client/Client";
+import { extractSavedDrafts } from "../../services/storage/WindowStateStorage";
 
 /** One-way mounted Store snapshot persistence owned by the renderer window. */
 export class WindowStatePersistence implements Disposable {
@@ -14,6 +15,7 @@ export class WindowStatePersistence implements Disposable {
   constructor(
     private readonly client: Client,
     private readonly reportError: (error: unknown) => void,
+    private readonly savedDraftsReady = false,
   ) {}
 
   observe(root: Store) {
@@ -50,9 +52,13 @@ export class WindowStatePersistence implements Disposable {
     const snapshot = Schema.decodeUnknownSync(jsonValueSchema)(
       JSON.parse(JSON.stringify(toSnapshot(root))),
     );
+    // After migration commits, this window persists only unsent navigation/composer state.
+    const windowSnapshot = this.savedDraftsReady
+      ? extractSavedDrafts(snapshot).windowSnapshot
+      : snapshot;
     this.saveQueue = this.saveQueue
       .then(() => {
-        if (!this.disposed) return this.client.windowState.save(snapshot);
+        if (!this.disposed) return this.client.windowState.save(windowSnapshot);
       })
       .catch((error) => {
         if (!this.disposed) this.reportError(error);

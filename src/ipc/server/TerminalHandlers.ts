@@ -1,6 +1,6 @@
 import { Effect, Stream } from "effect";
 import * as workingDirectoryTerminals from "../../domain/terminals/workingDirectoryTerminals";
-import { NativeEvents } from "../../services/electron/NativeEvents";
+import { nativeTerminalEvents } from "./ClientEventHandlers";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import { TerminalRpc } from "../protocol/TerminalRpc";
 
@@ -32,8 +32,7 @@ export const terminalHandlers = TerminalRpc.of({
       Effect.gen(function* () {
         const connection = yield* RendererConnection;
         const terminalEvents = yield* workingDirectoryTerminals.events(connection.connectionId);
-        const nativeEvents = (yield* NativeEvents).terminals(connection.connectionId);
-        return Stream.merge(terminalEvents, nativeEvents);
+        return Stream.merge(terminalEvents, nativeTerminalEvents());
       }),
     ),
 });

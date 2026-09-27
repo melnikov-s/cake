@@ -8,7 +8,7 @@ import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
-import { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore";
+import { ProjectPendingSessionsStore, type SavedDraftClient } from "./ProjectPendingSessionsStore";
 import { ProjectSessionStore, type SessionTarget } from "./ProjectSessionStore";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
@@ -22,6 +22,7 @@ import type { EditorSelectionReveal } from "../../ipc/editor-selection";
 
 export interface SessionRegistryStoreProps {
   catalog?: SessionCatalogStore;
+  savedDrafts?: SavedDraftClient;
   sessionModel(sessionId: string, workingDirectory: string): Conversation;
   discussionCatalog(sessionId: string): DiscussionCatalog;
   subagentCatalog(sessionId: string): SubagentCatalog;
@@ -43,6 +44,7 @@ export interface SessionRegistryStoreProps {
   openModelPresetSettings?(): void;
   newSessionConfiguration?(sessionId: string): ChatConfiguration | undefined;
   startNewSession?(sessionId: string, input: ComposerDeliveryInput): Promise<boolean>;
+  activateSavedDraft?(sessionId: string, choice?: WorktreeDraftChoice): Promise<boolean>;
   ensureSessionActive?(sessionId: string): boolean | Promise<boolean>;
   configureDraftActivation?(sessionId: string, choice: WorktreeDraftChoice): void;
   sessionCreationChoice?(sessionId: string): WorktreeDraftChoice;
@@ -69,6 +71,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   get pendingSessions(): ProjectPendingSessionsStore {
     return createStore(ProjectPendingSessionsStore, {
       catalog: this.props.catalog,
+      savedDrafts: this.props.savedDrafts,
       session: (sessionId) => this.findSession(sessionId),
       prepareIdentity: (sessionId, workingDirectory) =>
         this.prepareIdentity(sessionId, workingDirectory),
@@ -121,6 +124,8 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         newSessionConfiguration: () => this.props.newSessionConfiguration?.(target.sessionId),
         startNewSession: (input) =>
           this.props.startNewSession?.(target.sessionId, input) ?? Promise.resolve(false),
+        activateSavedDraft: (choice) =>
+          this.props.activateSavedDraft?.(target.sessionId, choice) ?? Promise.resolve(false),
         ensureSessionActive: () => this.props.ensureSessionActive?.(target.sessionId) ?? true,
         configureDraftActivation: (choice) =>
           this.props.configureDraftActivation?.(target.sessionId, choice),

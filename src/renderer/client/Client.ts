@@ -179,6 +179,7 @@ interface BrowserCommands {
     options?: ClientCommandOptions,
   ): Promise<BrowserStateSnapshot>;
   inspect(sessionId: string, options?: ClientCommandOptions): Promise<BrowserStateSnapshot>;
+  preview(sessionId: string, port: number, options?: ClientCommandOptions): Promise<string>;
 }
 
 interface FilesystemCommands {
@@ -475,6 +476,8 @@ interface InlineWidgetCommands {
 /** Permanent renderer-facing Promise API grouped by semantic Cake capability. */
 export interface Client {
   readonly dictation: CommandGroup<CakeIpcClientService["dictation"]>;
+  readonly desktopHost: CommandGroup<CakeIpcClientService["desktopHost"]>;
+  readonly backendConnection: CommandGroup<CakeIpcClientService["backendConnection"]>;
   readonly application: CommandGroup<CakeIpcClientService["application"]>;
   readonly windowState: CommandGroup<CakeIpcClientService["windowState"]>;
   readonly models: {
@@ -494,6 +497,7 @@ export interface Client {
   readonly sessionChats: CommandGroup<CakeIpcClientService["sessionChats"]>;
   readonly projectSessions: CommandGroup<CakeIpcClientService["projectSessions"]>;
   readonly projectWorkflow: CommandGroup<CakeIpcClientService["projectWorkflow"]>;
+  readonly savedDrafts: CommandGroup<CakeIpcClientService["savedDrafts"]>;
   readonly scheduledMessages: CommandGroup<CakeIpcClientService["scheduledMessages"]>;
   readonly cakeChats: CommandGroup<CakeIpcClientService["cakeChats"]>;
   readonly discussionSessions: CommandGroup<CakeIpcClientService["discussionSessions"]>;
@@ -501,6 +505,7 @@ export interface Client {
   readonly drawControl: CommandGroup<CakeIpcClientService["drawControl"]>;
   readonly subagents: CommandGroup<CakeIpcClientService["subagents"]>;
   readonly electron: ElectronCommands;
+  readonly desktopSharing: CommandGroup<CakeIpcClientService["desktopSharing"]>;
   readonly filesystem: FilesystemCommands;
   readonly workspaces: WorkspaceCommands;
   readonly managedWorktrees: ManagedWorktreeCommands;
@@ -512,7 +517,12 @@ export interface Client {
   readonly foundation: CommandGroup<CakeIpcClientService["foundation"]>;
 }
 
-export type ClientErrorKind = "interrupted" | "transport" | "rejected" | "unexpected";
+export type ClientErrorKind =
+  | "interrupted"
+  | "transport"
+  | "rejected"
+  | "unexpected"
+  | "unsupported";
 
 export class ClientError extends Error {
   readonly _tag = "ClientError";

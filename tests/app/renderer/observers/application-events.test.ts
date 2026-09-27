@@ -20,6 +20,49 @@ const runtimeFor = (client: CakeIpcClientService): Runtime => {
 };
 
 describe("observeApplicationEvents", () => {
+  it.each([undefined, "session-1"])(
+    "keeps auth details in the provider Store (session %s)",
+    async (sessionId) => {
+      const receiveAuthNotice = vi.fn();
+      const show = vi.fn();
+      const enqueue = vi.fn();
+      const event = {
+        type: "provider-auth-notice" as const,
+        provider: "test-provider",
+        ...(sessionId ? { sessionId } : {}),
+        notice: {
+          type: "device_code" as const,
+          verificationUri: "https://auth.example/device",
+          userCode: "SECRET-CODE",
+        },
+      };
+      const client = {
+        events: { application: () => Stream.concat(Stream.make(event), Stream.never) },
+      } as unknown as CakeIpcClientService;
+      const root = {
+        settingsStore: { providers: { receiveAuthNotice } },
+        toastStore: { show },
+        notificationStore: { enqueue },
+      } as unknown as RootStore;
+      const cancel = observeApplicationEvents(runtimeFor(client), root);
+      try {
+        await vi.waitFor(() => expect(receiveAuthNotice).toHaveBeenCalledWith(event));
+        expect(enqueue).not.toHaveBeenCalled();
+        if (sessionId) {
+          expect(show).toHaveBeenCalledWith({
+            title: "Provider authentication",
+            message: "Open Settings → Providers to continue authentication on this device.",
+            coalesceKey: "provider-auth:test-provider",
+          });
+        } else {
+          expect(show).not.toHaveBeenCalled();
+        }
+      } finally {
+        cancel();
+      }
+    },
+  );
+
   it("delivers notification events through macOS native notifications", async () => {
     const enqueue = vi.fn(async () => undefined);
     const showToast = vi.fn();

@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+export const extensionCompanionScheme = "cake-extension";
+
 interface ModuleEntry {
   readonly source: string;
   references: number;
@@ -36,4 +38,26 @@ export class ExtensionCompanionModuleRegistry {
   source(token: string): string | undefined {
     return this.modules.get(token)?.source;
   }
+}
+
+// One process-local authority; identical modules are retained until every
+// publishing generation releases its reference. Host adapters only read it.
+const modules = new ExtensionCompanionModuleRegistry();
+
+export interface ExtensionCompanionModulePublication extends PublishedExtensionCompanionModule {
+  readonly url: string;
+}
+
+export function publishExtensionCompanionModule(
+  source: string,
+): ExtensionCompanionModulePublication {
+  const publication = modules.publish(source);
+  return {
+    ...publication,
+    url: `${extensionCompanionScheme}://module/${publication.token}`,
+  };
+}
+
+export function extensionCompanionModuleSource(token: string): string | undefined {
+  return modules.source(token);
 }

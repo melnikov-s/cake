@@ -9,8 +9,6 @@ const path = require("node:path");
 const BRIDGE_PORT = Number(process.env.CAKE_BRIDGE_PORT || 0);
 const BRIDGE_TOKEN = process.env.CAKE_BRIDGE_TOKEN || "";
 const WORKSPACE = process.env.CAKE_WORKSPACE_PATH || "";
-const HELLO_RETRIES = 5;
-const HELLO_RETRY_DELAY_MS = 2_000;
 const MAX_SELECTION_LENGTH = 48_000;
 const MAX_CONTEXT_LENGTH = 8_000;
 const MAX_COMMENT_LENGTH = 16_000;
@@ -50,14 +48,12 @@ function postBridge(payload) {
   request.end(body);
 }
 
-function postHello(attempt) {
+function postHello() {
   const address = revealServer && revealServer.address();
   if (!address || address.port === undefined) return;
+  // Cake binds the bridge before launching code-server. Re-registering later
+  // can steal the address from a newer viewer's extension host after reconnect.
   postBridge({ type: "hello", port: address.port });
-  if (attempt > 1) {
-    const timer = setTimeout(() => postHello(attempt - 1), HELLO_RETRY_DELAY_MS);
-    timer.unref();
-  }
 }
 
 function workspaceRelative(filePath) {
@@ -876,7 +872,7 @@ async function activate(context) {
     postBridge({ type: "selection-cleared" });
   });
   revealServer.listen(0, "127.0.0.1", () => {
-    postHello(HELLO_RETRIES);
+    postHello();
     postBridge({ type: "selection-cleared" });
   });
 }

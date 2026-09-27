@@ -109,6 +109,25 @@ describe("EmbeddedEditorStore", () => {
     root[Symbol.dispose]();
   });
 
+  it("invalidates disconnected presentation without replaying its open, then resends geometry and annotations on explicit reopen", async () => {
+    const { client, root, store } = createHarness({ sessionId: "session", annotations: [] });
+    store.setMeasuredBounds(surfaceRect);
+    await store.show();
+    expect(store.nativeViewReady).toBe(true);
+    expect(client.updateAnnotations).toHaveBeenCalledTimes(1);
+    store.disconnected();
+    expect(store.nativeViewReady).toBe(false);
+    expect(store.error).toContain("Connection lost");
+    expect(client.open).toHaveBeenCalledTimes(1);
+    await store.show();
+    expect(store.error).toBeUndefined();
+    expect(store.nativeViewReady).toBe(true);
+    expect(client.open).toHaveBeenCalledTimes(2);
+    expect(client.updateBounds).toHaveBeenLastCalledWith(shownBounds, expect.any(Object));
+    expect(client.updateAnnotations).toHaveBeenCalledTimes(2);
+    root[Symbol.dispose]();
+  });
+
   it("positions the native view while the workbench is still loading and draws it once open", async () => {
     const { client, root, store } = createHarness();
     let finishOpen!: () => void;
@@ -304,14 +323,15 @@ describe("EmbeddedEditorStore", () => {
     root[Symbol.dispose]();
   });
 
-  it("asks Cake Chat to set up a VS Code server with platform and project context", async () => {
+  it("asks Cake Chat to install on the actual backend with project context", async () => {
     const { root, store, startCakeChat } = createHarness();
 
     await store.askCakeToSetUp();
 
     expect(startCakeChat).toHaveBeenCalledTimes(1);
     const prompt = startCakeChat.mock.calls[0]?.[0] ?? "";
-    expect(prompt).toContain("Platform: ");
+    expect(prompt).toContain("backend's actual operating system");
+    expect(prompt).toContain("Remote desktops require code-server");
     expect(prompt).toContain("Project: /tmp/project");
     expect(store.error).toBeUndefined();
     root[Symbol.dispose]();

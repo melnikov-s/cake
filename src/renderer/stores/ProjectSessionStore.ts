@@ -58,6 +58,7 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   openModelPresetSettings(): void;
   newSessionConfiguration(): ChatConfiguration | undefined;
   startNewSession(input: ComposerDeliveryInput): Promise<boolean>;
+  activateSavedDraft(choice?: WorktreeDraftChoice): Promise<boolean>;
   ensureSessionActive(): boolean | Promise<boolean>;
   configureDraftActivation(choice: WorktreeDraftChoice): void;
   sessionCreationChoice(): WorktreeDraftChoice;
@@ -332,8 +333,13 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           await this.props.pendingSessions.updateDraft(sessionId, text, attachments);
           return true;
         },
-        activateDraftSession: (sessionId) =>
-          this.props.pendingSessions.conversation(sessionId)?.activateDraft(),
+        activateSavedDraftSession: (choice) => this.props.activateSavedDraft(choice),
+        activateDraftSession: (sessionId) => {
+          const record = this.props.pendingSessions.savedRecord(sessionId);
+          return record?.status === "saved"
+            ? { text: record.text, attachments: [...record.attachments], resolved: record.resolved }
+            : undefined;
+        },
         applyGeneratedDraftName: (sessionId, title) =>
           this.props.pendingSessions.conversation(sessionId)?.applyGeneratedDraftName(title),
         configureDraftActivation: (choice) => this.props.configureDraftActivation(choice),

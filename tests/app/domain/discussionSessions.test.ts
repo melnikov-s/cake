@@ -140,8 +140,6 @@ const makeLayer = (options: { readonly assistant?: boolean } = {}) => {
       applyConfiguration: async () => undefined,
       setPiSetting: async () => undefined,
       recordReviewRun: () => undefined,
-      login: async () => undefined,
-      logout: async () => undefined,
       rename: async () => undefined,
       fork: async () => ({ sessionId: "fork", sessionFile: "/fork.jsonl", artifactPointers: [] }),
       toolCompact: async () => ({ sessionId: "toolCompact", sessionFile: "/toolCompact.jsonl" }),

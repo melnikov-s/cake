@@ -1,8 +1,7 @@
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
-import type { WebContents } from "electron";
 import { Effect, Stream } from "effect";
 import type { cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
-import { Electron } from "../../services/electron/Electron";
+import { ClientWorkspaces } from "../../services/clients/ClientWorkspaces";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { PiAgentResources } from "../../services/pi/PiAgentResources";
 import { AgentAvailability } from "../../services/pi/AgentAvailability";
@@ -79,17 +78,6 @@ const requireAllowed = Effect.fn("Projects.requireAllowed")(function* (workingDi
     });
 });
 
-const requireConnection = Effect.fn("Projects.requireConnection")(function* (
-  connectionId: number,
-  operation: string,
-): Effect.fn.Return<WebContents, ProjectError, Electron> {
-  const electron = yield* Electron;
-  return yield* Effect.try({
-    try: () => electron.requireRendererConnection(connectionId),
-    catch: (cause) => projectError(operation, cause),
-  });
-});
-
 /** Restores authorization for previously user-registered Projects without inspecting sessions. */
 export const initializeRegisteredProjectAccess = Effect.fn(
   "Projects.initializeRegisteredProjectAccess",
@@ -129,10 +117,9 @@ export const rewordComposerSelection = Effect.fn("Projects.rewordComposerSelecti
   request: Payload<"reword-composer-selection">,
 ) {
   const application = yield* ApplicationState;
-  const electron = yield* Electron;
+  const clientWorkspaces = yield* ClientWorkspaces;
   const configuration = yield* ProjectConfiguration;
   const requests = yield* RewordingRequests;
-  const sender = yield* requireConnection(connectionId, "rewordComposerSelection");
   const utilityModel = application.snapshot().utilityModel;
   if (!utilityModel)
     return yield* new ProjectError({
@@ -140,12 +127,12 @@ export const rewordComposerSelection = Effect.fn("Projects.rewordComposerSelecti
       message: "Configure a utility model in Settings before rewording text",
     });
 
-  const controller = yield* requests.acquire(sender.id);
+  const controller = yield* requests.acquire(connectionId);
   const operation = Effect.gen(function* () {
     const workingDirectory = yield* resolveAllowedWorkingDirectory(
       "rewordComposerSelection",
       request.workspacePath,
-      electron.workspaceForConnection(sender.id),
+      clientWorkspaces.workspaceForConnection(connectionId),
     );
     const signal = AbortSignal.any([
       controller.signal,
@@ -172,7 +159,7 @@ export const rewordComposerSelection = Effect.fn("Projects.rewordComposerSelecti
         );
     return { text };
   });
-  return yield* operation.pipe(Effect.ensuring(requests.release(sender.id, controller)));
+  return yield* operation.pipe(Effect.ensuring(requests.release(connectionId, controller)));
 });
 
 export const generateSessionTitle = Effect.fn("Projects.generateSessionTitle")(function* (
@@ -428,7 +415,7 @@ export const remove = Effect.fn("Projects.remove")(function* (
 ) {
   yield* requireAllowed(request.path);
   const access = yield* ProjectAccess;
-  const electron = yield* Electron;
+  const clientWorkspaces = yield* ClientWorkspaces;
   const integrations = yield* ProjectSessionRuntimeHost;
   const terminal = yield* Terminal;
   const worktrees = yield* ManagedWorktrees;
@@ -447,7 +434,7 @@ export const remove = Effect.fn("Projects.remove")(function* (
     yield* mapProjectError("removeProject", terminal.closeWorkingDirectory(workingDirectory));
     yield* mapProjectError("removeProject", access.revoke(workingDirectory));
     yield* mapProjectError("removeProject", integrations.stopWorkingDirectory(workingDirectory));
-    electron.forgetWorkspace(workingDirectory);
+    clientWorkspaces.forgetWorkspace(workingDirectory);
   }
   yield* mapProjectError("removeProject", access.forgetWorkingDirectories(workingDirectories));
   return { state: yield* mapProjectError("removeProject", removeProject(request.path)) };
@@ -511,10 +498,9 @@ export const activateWorkingDirectory = Effect.fn("Projects.activateWorkingDirec
   connectionId: number,
   workingDirectory: string,
 ) {
-  const electron = yield* Electron;
-  const sender = yield* requireConnection(connectionId, "activateWorkingDirectory");
+  const clientWorkspaces = yield* ClientWorkspaces;
   yield* requireAllowed(workingDirectory);
-  electron.associateWorkspace(sender.id, workingDirectory);
+  clientWorkspaces.associateWorkspace(connectionId, workingDirectory);
 });
 
 export const restartPi = Effect.fn("Projects.restartPi")(function* (
@@ -546,20 +532,19 @@ export const inspect = Effect.fn("Projects.inspect")(function* (
 ) {
   const access = yield* ProjectAccess;
   const application = yield* ApplicationState;
-  const electron = yield* Electron;
-  const sender = yield* requireConnection(connectionId, "inspectWorkspace");
+  const clientWorkspaces = yield* ClientWorkspaces;
   yield* requireAllowed(request.path);
   const inspection = yield* inspectPiWorkspace(request.path).pipe(
     Effect.mapError((cause) => projectError("inspectWorkspace", cause)),
   );
   const trustRequired =
     inspection.trustRequired && !application.snapshot().trustedProjectPaths.includes(request.path);
-  yield* mapProjectError("inspectWorkspace", access.clearOwner(sender.id));
-  electron.associateWorkspace(sender.id, request.path);
+  yield* mapProjectError("inspectWorkspace", access.clearOwner(connectionId));
+  clientWorkspaces.associateWorkspace(connectionId, request.path);
   if (trustRequired)
     yield* mapProjectError(
       "inspectWorkspace",
-      access.requestTrust(sender.id, request.requestId, request.path),
+      access.requestTrust(connectionId, request.requestId, request.path),
     );
   return {
     requestId: request.requestId,
@@ -573,11 +558,10 @@ export const respondTrust = Effect.fn("Projects.respondTrust")(function* (
   request: Payload<"respond-workspace-trust">,
 ) {
   const access = yield* ProjectAccess;
-  const sender = yield* requireConnection(connectionId, "respondTrust");
   yield* requireAllowed(request.path);
   yield* mapProjectError(
     "respondTrust",
-    access.consumeTrustRequest(sender.id, request.requestId, request.path),
+    access.consumeTrustRequest(connectionId, request.requestId, request.path),
   );
   if (request.approved) yield* mapProjectError("respondTrust", trustProject(request.path));
   return { requestId: request.requestId };

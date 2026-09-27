@@ -1,11 +1,16 @@
-import { Store, batch, child, createStore, observable, snapshot } from "r-state-tree";
+import { Store, batch, child, createStore, observable, snapshot, untracked } from "r-state-tree";
 import { SESSION_TITLE_MAX_LENGTH, type Attachment } from "../../ipc/session-contract";
 import type { ProjectSessionStore } from "./ProjectSessionStore";
+import type { SavedDraft } from "../../domain/project-sessions/saved-draft-data";
+import type { Client } from "../client/Client";
 import type { SessionCatalogStore, PendingSessionSummary } from "./SessionCatalogStore";
+
+export type SavedDraftClient = Client["savedDrafts"];
 import { PendingConversationStore } from "./PendingConversationStore";
 
 export interface ProjectPendingSessionsStoreProps {
   catalog?: SessionCatalogStore;
+  savedDrafts?: SavedDraftClient;
   session(sessionId: string): ProjectSessionStore | undefined;
   prepareIdentity(sessionId: string, workingDirectory: string): ProjectSessionStore;
   relocateIdentity(sessionId: string, workingDirectory: string): ProjectSessionStore;
@@ -36,6 +41,8 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
   /** Unsent, unsaved project chats retained by independent session panes. */
   @snapshot private readonly stagedSessionIds: string[] = observable([]);
   private readonly submittingSessionIds: string[] = observable([]);
+  private readonly savedRecords: Record<string, SavedDraft> = observable({});
+  private loadRevision = 0;
 
   @child
   get conversations(): PendingConversationStore[] {
@@ -50,6 +57,9 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
 
   get summaries(): readonly PendingSessionSummary[] {
     const visibleIds = new Set([
+      ...Object.keys(this.savedRecords).filter(
+        (id) => this.savedRecords[id]?.status !== "activated",
+      ),
       ...this.conversations
         .filter((conversation) => conversation.isDraft)
         .map(({ sessionId }) => sessionId),
@@ -189,26 +199,128 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
   }
 
   isDraft(sessionId: string) {
-    return this.conversation(sessionId)?.isDraft ?? false;
+    return this.savedRecords[sessionId]?.status === "saved";
   }
 
   async createDraft(sessionId: string, text: string, attachments: Attachment[]) {
     if (!this.temporarySessionIds.includes(sessionId))
       throw new Error("Only a new session can be saved as a draft");
-    const session = this.props.session(sessionId)!;
+    const session = this.props.session(sessionId);
+    if (!session) throw new Error("Cake could not find that new session");
     const projectPath =
       this.props.catalog?.projectOfManagedWorktree(session.workspacePath) ?? session.workspacePath;
+    const conversation = this.ensureConversation(sessionId);
+    const record = await this.authority.create(
+      {
+        sessionId,
+        projectPath,
+        title: conversation.title,
+        text,
+        attachments,
+        ...(conversation.configuration ? { configuration: conversation.configuration } : null),
+        labelIds: [...conversation.labelIds],
+      },
+      { signal: this.signal },
+    );
     this.relocate(sessionId, projectPath);
-    this.ensureConversation(sessionId).createDraft(text, attachments);
+    this.applySavedRecord(record);
     removeValue(this.stagedSessionIds, sessionId);
-    await this.props.persistNow();
+  }
+
+  async updateSavedMetadata(
+    sessionId: string,
+    changes: Partial<Pick<SavedDraft, "title" | "resolved" | "labelIds">>,
+  ) {
+    const record = this.savedRecords[sessionId];
+    if (record?.status !== "saved") throw new Error("Cake could not find that saved Draft");
+    try {
+      const updated = await this.authority.update({ ...record, ...changes }, record.revision, {
+        signal: this.signal,
+      });
+      this.applySavedRecord(updated);
+    } catch (error) {
+      await this.refreshSavedDrafts();
+      throw error;
+    }
   }
 
   async updateDraft(sessionId: string, text: string, attachments: Attachment[]) {
-    const conversation = this.conversation(sessionId);
-    if (!conversation?.updateDraft(text, attachments))
-      throw new Error("Cake could not find that draft session");
-    await this.props.persistNow();
+    const record = this.savedRecords[sessionId];
+    if (!record) throw new Error("Cake could not find that saved Draft");
+    const updated = await this.authority.update({ ...record, text, attachments }, record.revision, {
+      signal: this.signal,
+    });
+    this.applySavedRecord(updated);
+  }
+
+  savedRecord(sessionId: string) {
+    return this.savedRecords[sessionId];
+  }
+
+  markActivated(record: SavedDraft) {
+    this.savedRecords[record.sessionId] = record;
+  }
+
+  async recoverUncertain(sessionId: string) {
+    const record = this.savedRecords[sessionId];
+    if (record?.status !== "activating") return;
+    const recovered = await this.authority.recoverUncertain(sessionId, record.revision, {
+      signal: this.signal,
+    });
+    this.applySavedRecord(recovered);
+  }
+
+  async refreshSavedDrafts() {
+    if (!this.props.savedDrafts) return;
+    const revision = ++this.loadRevision;
+    const records = await this.authority.list({ signal: this.signal });
+    if (this.signal.aborted || revision !== this.loadRevision) return;
+    this.applySavedDraftSnapshot(records);
+  }
+
+  applySavedDraftSnapshot(records: ReadonlyArray<SavedDraft>) {
+    // In-flight list requests cannot overwrite a newer pushed snapshot.
+    ++this.loadRevision;
+    batch(() => {
+      for (const record of records) {
+        const existing = this.savedRecords[record.sessionId];
+        if (existing && existing.revision > record.revision) continue;
+        this.applySavedRecord(record);
+      }
+      const ids = new Set(records.map((record) => record.sessionId));
+      for (const id of Object.keys(this.savedRecords)) if (!ids.has(id)) this.removeSavedRecord(id);
+    });
+  }
+
+  private get authority() {
+    if (!this.props.savedDrafts) throw new Error("Saved Draft authority is unavailable");
+    return this.props.savedDrafts;
+  }
+
+  private applySavedRecord(record: SavedDraft) {
+    this.savedRecords[record.sessionId] = record;
+    if (record.status === "activated") {
+      if (this.isTemporary(record.sessionId))
+        this.materialize(record.sessionId, record.workingDirectory);
+      return;
+    }
+    if (!this.props.session(record.sessionId)) this.prepare(record.projectPath, record.sessionId);
+    const conversation = this.ensureConversation(record.sessionId);
+    conversation.name = record.title;
+    conversation.draftPrompt = {
+      text: record.text,
+      attachments: [...record.attachments],
+      resolved: record.resolved,
+    };
+    conversation.configuration = record.configuration;
+    conversation.labelIds = record.labelIds;
+    conversation.createdAt = record.createdAt;
+    conversation.modifiedAt = record.modifiedAt;
+  }
+
+  private removeSavedRecord(sessionId: string) {
+    delete this.savedRecords[sessionId];
+    if (this.isTemporary(sessionId)) this.props.removeSession(sessionId);
   }
 
   async setLabels(sessionId: string, labelIds: readonly string[]) {
@@ -220,9 +332,10 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
   }
 
   async deleteResolvedDraft(sessionId: string) {
-    if (!this.conversation(sessionId)?.resolved) return false;
-    this.props.removeSession(sessionId);
-    await this.props.persistNow();
+    const record = this.savedRecords[sessionId];
+    if (!record?.resolved) return false;
+    await this.authority.remove(sessionId, record.revision, { signal: this.signal });
+    this.removeSavedRecord(sessionId);
     return true;
   }
 
@@ -269,8 +382,12 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     super(props);
     this.reaction(
       () => this.props.catalog?.authoritativeSessionIds ?? [],
-      (sessionIds) => this.reconcileAuthoritativeSessions(sessionIds),
+      (sessionIds) => {
+        this.reconcileAuthoritativeSessions(sessionIds);
+        untracked(() => void this.refreshSavedDrafts());
+      },
     );
+    this.effect(() => untracked(() => void this.refreshSavedDrafts()));
   }
 }
 

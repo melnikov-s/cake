@@ -33,8 +33,8 @@ The following pieces are independently useful and should be reused rather than c
   must not become a second artifact repository.
 - **Compiler and sandbox.** `src/services/widgets/inline-widget-service.ts` limits source to 1 MiB,
   uses esbuild, requires a default-exported React component, and rejects imports except React and
-  the explicit D3 allowlist. `src/services/widgets/inline-widget-protocol.ts` serves an in-memory
-  compiled document at a per-compilation `cake-widget:` capability URL with `default-src 'none'`,
+  the explicit D3 allowlist. `src/services/widgets/inline-widget-document-registry.ts` owns transient
+  publications; `src/services/electron/inline-widget-protocol.ts` serves an in-memory compiled document at a per-compilation `cake-widget:` capability URL with `default-src 'none'`,
   no forms/navigation/base URL, no `connect-src` override (so fetch/XHR/WebSocket inherit
   `default-src 'none'`), and only inline script/style. The current CSP is **not complete network
   isolation**: it explicitly permits `img-src data: https:` and `media-src data: https:`, so

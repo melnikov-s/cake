@@ -4,95 +4,77 @@ import type { EditorLocation } from "../../ipc/editor-location";
 import type { EditorSelectionHighlights, EditorSelectionReveal } from "../../ipc/editor-selection";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
+import type { VsCodeLease } from "./VsCodeServerRuntime";
 
 interface EmbeddedEditorState {
   readonly status: "missing" | "downloading" | "starting" | "ready" | "failed";
   readonly message?: string;
   readonly customPath?: string;
 }
-
-interface EmbeddedEditorRequestIdentity {
+interface RequestIdentity {
   readonly requestId: string;
 }
-
-interface OpenEmbeddedEditorInput extends EmbeddedEditorRequestIdentity {
+interface WorkspaceRequest extends RequestIdentity {
   readonly workspacePath: string;
-}
-
-interface UpdateEmbeddedEditorBoundsInput extends EmbeddedEditorRequestIdentity {
-  readonly visible: boolean;
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-  readonly projectSidebarWidth: number;
-}
-
-interface RevealInEmbeddedEditorInput extends OpenEmbeddedEditorInput {
-  readonly location: EditorLocation;
-}
-
-interface UpdateEmbeddedEditorAnnotationsInput extends OpenEmbeddedEditorInput {
-  readonly snapshot: EditorAnnotationSnapshot;
 }
 
 export class VsCodeServerError extends Schema.TaggedError<VsCodeServerError>()(
   "VsCodeServerError",
   { operation: Schema.String, message: Schema.String },
 ) {}
-
 export type VscodeActionResult<Value> =
   | { readonly status: "completed"; readonly value: Value }
   | { readonly status: "mode-required" };
 
-export interface VsCodeServerService {
-  readonly state: () => Effect.Effect<EmbeddedEditorState>;
-  readonly stateChanges: () => Stream.Stream<EmbeddedEditorState>;
-  readonly refreshStatus: () => Effect.Effect<void, VsCodeServerError>;
-  readonly install: (
-    request: EmbeddedEditorRequestIdentity,
-  ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
-  readonly open: (
-    connectionId: number,
-    request: OpenEmbeddedEditorInput,
-  ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
-  readonly updateBounds: (
-    connectionId: number,
-    request: UpdateEmbeddedEditorBoundsInput,
-  ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
-  readonly reveal: (
-    request: RevealInEmbeddedEditorInput,
-  ) => Effect.Effect<
-    EmbeddedEditorRequestIdentity & { readonly reveal: EditorSelectionReveal },
-    VsCodeServerError
-  >;
-  readonly updateSelectionHighlights: (
-    request: OpenEmbeddedEditorInput & { readonly highlights: EditorSelectionHighlights },
-  ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
-  readonly openSourceControl: (
-    request: OpenEmbeddedEditorInput,
-  ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
-  readonly performEditorAction: (
-    request: OpenEmbeddedEditorInput & { readonly action: VscodeEditorAction },
-  ) => Effect.Effect<
-    EmbeddedEditorRequestIdentity & { readonly result: JsonValue },
-    VsCodeServerError
-  >;
-  readonly updateAnnotations: (
-    request: UpdateEmbeddedEditorAnnotationsInput,
-  ) => Effect.Effect<EmbeddedEditorRequestIdentity, VsCodeServerError>;
-  readonly runProjectScript: (
-    workingDirectory: string,
-    source: string,
-    input: JsonValue,
-  ) => Effect.Effect<VscodeActionResult<JsonValue>, VsCodeServerError>;
-  readonly closeForWindow: (ownerId: number) => Effect.Effect<void>;
-  /** Immediate native close-veto callback; Electron requires the boolean synchronously. */
-  readonly backToAgentForWindow: (ownerId: number) => boolean;
-  readonly updateTheme: () => Effect.Effect<void, VsCodeServerError>;
-}
-
-/** Owns openvscode-server processes, native editor views, and companion-extension traffic. */
-export class VsCodeServer extends Context.Service<VsCodeServer, VsCodeServerService>()(
-  "cake/services/vscode/VsCodeServer",
-) {}
+/** Backend-owned process, install, companion and exclusive desktop lease authority. */
+export class VsCodeServer extends Context.Service<
+  VsCodeServer,
+  {
+    readonly state: () => Effect.Effect<EmbeddedEditorState>;
+    readonly stateChanges: () => Stream.Stream<EmbeddedEditorState>;
+    readonly refreshStatus: () => Effect.Effect<void, VsCodeServerError>;
+    readonly install: (
+      request: RequestIdentity,
+    ) => Effect.Effect<RequestIdentity, VsCodeServerError>;
+    readonly acquire: (
+      connectionId: number,
+      request: WorkspaceRequest & { readonly theme: "light" | "dark" },
+    ) => Effect.Effect<VsCodeLease, VsCodeServerError>;
+    readonly leaseFor: (connectionId: number) => VsCodeLease | undefined;
+    readonly releaseConnection: (connectionId: number) => Effect.Effect<void>;
+    readonly releaseLease: (connectionId: number, leaseId: string) => Effect.Effect<void>;
+    readonly setVisible: (connectionId: number, visible: boolean) => Effect.Effect<void>;
+    readonly setTheme: (
+      connectionId: number,
+      theme: "light" | "dark",
+    ) => Effect.Effect<void, VsCodeServerError>;
+    readonly reveal: (
+      connectionId: number,
+      request: WorkspaceRequest & { readonly location: EditorLocation },
+    ) => Effect.Effect<
+      RequestIdentity & { readonly reveal: EditorSelectionReveal },
+      VsCodeServerError
+    >;
+    readonly updateSelectionHighlights: (
+      connectionId: number,
+      request: WorkspaceRequest & { readonly highlights: EditorSelectionHighlights },
+    ) => Effect.Effect<RequestIdentity, VsCodeServerError>;
+    readonly openSourceControl: (
+      connectionId: number,
+      request: WorkspaceRequest,
+    ) => Effect.Effect<RequestIdentity, VsCodeServerError>;
+    readonly performEditorAction: (
+      connectionId: number,
+      request: WorkspaceRequest & { readonly action: VscodeEditorAction },
+    ) => Effect.Effect<RequestIdentity & { readonly result: JsonValue }, VsCodeServerError>;
+    readonly updateAnnotations: (
+      connectionId: number,
+      request: WorkspaceRequest & { readonly snapshot: EditorAnnotationSnapshot },
+    ) => Effect.Effect<RequestIdentity, VsCodeServerError>;
+    readonly runProjectScript: (
+      workingDirectory: string,
+      source: string,
+      input: JsonValue,
+    ) => Effect.Effect<VscodeActionResult<JsonValue>, VsCodeServerError>;
+  }
+>()("cake/services/vscode/VsCodeServer") {}

@@ -49,7 +49,7 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
             const operation = providers.providerOperation(provider.id);
             return (
               <article
-                className="flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/50 p-3"
+                className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-muted/50 p-3"
                 key={provider.id}
               >
                 <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -118,6 +118,61 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
                     ))
                   )}
                 </div>
+                {providers.authNotices[provider.id] && (
+                  <div className="w-full basis-full break-all rounded-lg border border-border bg-card p-3 text-xs text-foreground">
+                    {providers.authNotices[provider.id]?.type === "auth_url" ? (
+                      <>
+                        <p className="mb-2 break-normal">
+                          {providers.authNotices[provider.id]?.instructions ??
+                            "Complete sign-in on this device. If redirected to a server callback URL, paste that URL into the authentication form."}
+                        </p>
+                        <p className="select-text font-mono">
+                          {providers.authNotices[provider.id]?.url}
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          className="mt-2"
+                          onClick={() =>
+                            void providers.openAuthUrl(
+                              providers.authNotices[provider.id]?.url ?? "",
+                            )
+                          }
+                        >
+                          Open sign-in page on this device
+                        </Button>
+                      </>
+                    ) : providers.authNotices[provider.id]?.type === "device_code" ? (
+                      <>
+                        <p className="mb-2">
+                          Open the verification page on this device and enter this code:
+                        </p>
+                        <p className="select-text font-mono">
+                          {providers.authNotices[provider.id]?.userCode}
+                        </p>
+                        <p className="select-text font-mono">
+                          {providers.authNotices[provider.id]?.verificationUri}
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          className="mt-2"
+                          onClick={() =>
+                            void providers.openAuthUrl(
+                              providers.authNotices[provider.id]?.verificationUri ?? "",
+                            )
+                          }
+                        >
+                          Open verification page on this device
+                        </Button>
+                      </>
+                    ) : (
+                      <p className="select-text">{providers.authNotices[provider.id]?.message}</p>
+                    )}
+                  </div>
+                )}
               </article>
             );
           })}

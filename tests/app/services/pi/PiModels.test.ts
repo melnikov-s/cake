@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { it } from "@effect/vitest";
 import { Cache, Deferred, Effect, Fiber, Ref } from "effect";
-import { describe, it as vitestIt } from "vitest";
+import { describe, it as vitestIt, vi } from "vitest";
 import {
   makePiModelsLayer,
   PiModels,
@@ -9,6 +12,7 @@ import {
 } from "../../../../src/services/pi/PiModels";
 import type { PiModel } from "../../../../src/services/pi/model-data";
 import {
+  makePiModelsLive,
   makeSessionlessRuntimeCache,
   projectModelCatalog,
 } from "../../../../src/services/pi/live/PiModelsLive";
@@ -61,6 +65,30 @@ const resolveError = (models: ReadonlyArray<PiModel>, input = selection) =>
   Effect.flip(resolve(models, input));
 
 describe("PiModels", () => {
+  vitestIt("refuses to remove an externally managed environment credential", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cake-provider-auth-"));
+    vi.stubEnv("OPENAI_API_KEY", "test-external-credential");
+    try {
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const models = yield* PiModels;
+          return yield* Effect.exit(models.logout("openai"));
+        }).pipe(Effect.provide(makePiModelsLive(directory))),
+      );
+      assert.equal(result._tag, "Failure");
+      if (result._tag === "Failure") {
+        assert.match(String(result.cause), /managed outside Cake/);
+      }
+      assert.doesNotMatch(
+        await readFile(join(directory, "auth.json"), "utf8"),
+        /test-external-credential/,
+      );
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   vitestIt("projects the controlled Pi provider catalog", async () => {
     const projected = await projectModelCatalog(
       {

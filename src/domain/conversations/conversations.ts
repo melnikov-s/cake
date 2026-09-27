@@ -257,19 +257,6 @@ export const setPiSetting = Effect.fn("Conversations.setPiSetting")(function* <E
   yield* use(acquisition, (handle) => handle.setPiSetting(update));
 });
 
-export const authenticate = Effect.fn("Conversations.authenticate")(function* <E, R>(
-  acquisition: Effect.Effect<CakeSessionHandle, E, R>,
-  operation:
-    | { readonly _tag: "Login"; readonly provider: string; readonly authType: "api_key" | "oauth" }
-    | { readonly _tag: "Logout"; readonly provider: string },
-) {
-  yield* use(acquisition, (handle) =>
-    operation._tag === "Login"
-      ? handle.login(operation.provider, operation.authType)
-      : handle.logout(operation.provider),
-  );
-});
-
 /** Detaches RPC-decoded attachments from their input arrays before passing them to Pi. */
 export const projectAttachments = (values: ReadonlyArray<Attachment>): ReadonlyArray<Attachment> =>
   values.map((value): Attachment => {

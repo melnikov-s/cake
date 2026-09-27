@@ -1,13 +1,6 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { ProjectCatalogUpdate } from "../../domain/application/catalog-data";
-import {
-  WindowStateEncodeError,
-  WindowStateMalformedDocumentError,
-  WindowStateReadError,
-  WindowStateUnsupportedVersionError,
-  WindowStateWriteError,
-} from "../../services/storage/WindowStateStorage";
 import { applicationEventSchema } from "../cake-rpc-contract";
 
 export class FoundationFailure extends Schema.TaggedError<FoundationFailure>()(
@@ -15,32 +8,14 @@ export class FoundationFailure extends Schema.TaggedError<FoundationFailure>()(
   { message: Schema.String },
 ) {}
 
-const WindowStateLoadError = Schema.Union([
-  WindowStateReadError,
-  WindowStateMalformedDocumentError,
-  WindowStateUnsupportedVersionError,
-  WindowStateEncodeError,
-  WindowStateWriteError,
-]);
-
-const WindowStateSaveError = Schema.Union([WindowStateEncodeError, WindowStateWriteError]);
+export const ApplicationEventsRpc = RpcGroup.make(
+  Rpc.make("application.observeEvents", { success: applicationEventSchema, stream: true }),
+);
 
 export const FoundationRpc = RpcGroup.make(
   Rpc.make("application.getHomeDirectory", { success: Schema.String }),
-  Rpc.make("windowState.load", {
-    success: Schema.Json,
-    error: WindowStateLoadError,
-  }),
-  Rpc.make("windowState.save", {
-    payload: { snapshot: Schema.Json },
-    error: WindowStateSaveError,
-  }),
   Rpc.make("projects.observeCatalog", {
     success: ProjectCatalogUpdate,
-    stream: true,
-  }),
-  Rpc.make("application.observeEvents", {
-    success: applicationEventSchema,
     stream: true,
   }),
   Rpc.make("foundation.typedFailure", { error: FoundationFailure }),
@@ -60,4 +35,4 @@ export const FoundationRpc = RpcGroup.make(
   Rpc.make("foundation.activeRequests", {
     success: Schema.Struct({ delays: Schema.Int, streams: Schema.Int }),
   }),
-);
+).merge(ApplicationEventsRpc);

@@ -1,3 +1,4 @@
+import { DesktopConnectionStatus } from "./desktop-connection-status";
 import { StrictMode } from "react";
 import { observer, StoreProvider } from "r-state-tree/react";
 import type { RootStore } from "../stores/RootStore";
@@ -59,7 +60,14 @@ export const RendererRoot = observer(function RendererRoot({
                 <IconButtonHotkeyProvider
                   bindingFor={(id) => rootStore.settingsStore.hotkeys.bindingFor(id)}
                 >
-                  <App />
+                  <div className="flex h-full min-h-0 flex-col">
+                    {rootStore.desktopConnection && (
+                      <DesktopConnectionStatus connection={rootStore.desktopConnection} />
+                    )}
+                    <div className="min-h-0 flex-1">
+                      <App />
+                    </div>
+                  </div>
                 </IconButtonHotkeyProvider>
               </MarkdownLinkProvider>
             </StoreProvider>

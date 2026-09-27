@@ -4,6 +4,15 @@ import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
+export interface ProviderAuthNotice {
+  readonly type: "info" | "progress" | "auth_url" | "device_code";
+  readonly message?: string;
+  readonly url?: string;
+  readonly instructions?: string;
+  readonly verificationUri?: string;
+  readonly userCode?: string;
+}
+
 export interface ProviderSettingsStoreProps {
   operations: SessionOperationCoordinatorStore;
 }
@@ -13,6 +22,8 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   readonly providerOperations: Record<string, { provider: string; kind: "login" | "logout" }> =
     observable({});
   readonly catalogModels: ModelOption[] = observable([]);
+  /** Ephemeral, initiating-device presentation only; never persisted with Pi credentials. */
+  readonly authNotices: Record<string, ProviderAuthNotice> = observable({});
   loadingModels = true;
   loadingSettings = true;
   piSettings: PiSettings | undefined;
@@ -77,8 +88,46 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     }
   }
 
+  receiveAuthNotice(event: { readonly provider: string; readonly notice: ProviderAuthNotice }) {
+    if (!this.signal.aborted) this.authNotices[event.provider] = event.notice;
+  }
+
+  /** Auth dialogs use an operation scope, not the currently selected Pi session. */
+  authNoticeForRequest(request: {
+    sessionId: string;
+    title: string;
+  }): ProviderAuthNotice | undefined {
+    if (!/^provider-settings:\d+:[^:]+$/.test(request.sessionId)) return undefined;
+    return Object.entries(this.authNotices).find(
+      ([provider]) => request.title === `Provider authentication · ${provider}`,
+    )?.[1];
+  }
+
+  async openAuthUrl(url: string) {
+    if (this.signal.aborted) return;
+    try {
+      const parsed = new URL(url);
+      if (!["https:", "http:"].includes(parsed.protocol))
+        throw new Error("Invalid authentication URL");
+      // A callback listener started by Pi is on the backend, not this device.
+      if (
+        parsed.hostname === "localhost" ||
+        parsed.hostname.endsWith(".localhost") ||
+        /^127(?:\.\d{1,3}){3}$/.test(parsed.hostname) ||
+        parsed.hostname === "[::1]"
+      )
+        throw new Error(
+          "This callback belongs to the server. Paste the resulting code or redirect URL into the authentication form instead.",
+        );
+      await this.client.electron.openExternalUrl(url, { signal: this.signal });
+    } catch (error) {
+      if (!this.signal.aborted) this.reportError(error);
+    }
+  }
+
   async authenticate(provider: string, authType: "api_key" | "oauth") {
     if (this.providerOperation(provider) || this.signal.aborted) return;
+    delete this.authNotices[provider];
     const operationId = this.startOperation();
     this.providerOperations[operationId] = { provider, kind: "login" };
     try {
@@ -94,6 +143,7 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
 
   async logout(provider: string) {
     if (this.providerOperation(provider) || this.signal.aborted) return;
+    delete this.authNotices[provider];
     const operationId = this.startOperation();
     this.providerOperations[operationId] = { provider, kind: "logout" };
     try {

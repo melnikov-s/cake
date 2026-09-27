@@ -1,9 +1,6 @@
 import { readFile, realpath, stat } from "node:fs/promises";
-import { basename, extname, isAbsolute, relative, resolve } from "node:path";
-import { BrowserWindow, dialog } from "electron";
+import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { Effect, Layer } from "effect";
-import type { Attachment } from "../../ipc/session-contract";
-import { Electron } from "../electron/Electron";
 import { ProjectAccess } from "../projects/ProjectAccess";
 import { suggestProjectFiles } from "../pi/runtime/session-discovery";
 import { WorkspaceFileError, WorkspaceFiles } from "./WorkspaceFiles";
@@ -29,50 +26,21 @@ export const makeWorkspaceFilesLive = (agentDirectory: string) =>
   Layer.effect(
     WorkspaceFiles,
     Effect.gen(function* () {
-      const electron = yield* Electron;
       const access = yield* ProjectAccess;
 
       const requireAllowed = (workingDirectory: string) =>
-        access.isAllowed(workingDirectory)
-          ? Effect.void
-          : new WorkspaceFileError({
-              operation: "authorizeWorkingDirectory",
-              message: "Project path was not selected by the user",
-            });
-
-      const chooseAttachments = Effect.fn("WorkspaceFiles.chooseAttachments")(function* (
-        connectionId: number,
-      ) {
-        const sender = yield* Effect.try({
-          try: () => electron.requireRendererConnection(connectionId),
-          catch: (cause) => workspaceFilesError("chooseAttachments", cause),
-        });
-        const owner = BrowserWindow.fromWebContents(sender);
-        if (!owner) return { attachments: [] };
-        const result = yield* Effect.tryPromise({
-          try: () => dialog.showOpenDialog(owner, { properties: ["openFile", "multiSelections"] }),
-          catch: (cause) => workspaceFilesError("chooseAttachments", cause),
-        });
-        if (result.canceled) return { attachments: [] };
-        const attachments = yield* Effect.tryPromise({
-          try: () =>
-            Promise.all(
-              result.filePaths.slice(0, 20).map(async (path): Promise<Attachment> => {
-                const mimeType = imageMimeTypes.get(extname(path).toLowerCase());
-                return mimeType
-                  ? {
-                      kind: "image",
-                      name: basename(path),
-                      mimeType,
-                      data: (await readFile(path)).toString("base64"),
-                    }
-                  : { kind: "file", name: basename(path), path };
-              }),
-            ),
-          catch: (cause) => workspaceFilesError("chooseAttachments", cause),
-        });
-        return { attachments };
-      });
+        access.isAllowed(workingDirectory).pipe(
+          Effect.flatMap((allowed) =>
+            allowed
+              ? Effect.void
+              : Effect.fail(
+                  new WorkspaceFileError({
+                    operation: "authorizeWorkingDirectory",
+                    message: "Project path was not selected by the user",
+                  }),
+                ),
+          ),
+        );
 
       const suggestFiles = Effect.fn("WorkspaceFiles.suggestFiles")(
         function* (_connectionId, request) {
@@ -103,7 +71,12 @@ export const makeWorkspaceFilesLive = (agentDirectory: string) =>
               const workspace = await realpath(request.workspacePath);
               const target = await realpath(resolve(workspace, request.path));
               const relativePath = relative(workspace, target);
-              if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath))
+              if (
+                !relativePath ||
+                relativePath === ".." ||
+                relativePath.startsWith(`..${sep}`) ||
+                isAbsolute(relativePath)
+              )
                 throw new Error("File is outside the selected project");
               const value = await readFile(target, "utf8");
               if (value.length > 2_000_000) throw new Error("File is too large to display");
@@ -128,7 +101,12 @@ export const makeWorkspaceFilesLive = (agentDirectory: string) =>
               const workspace = await realpath(request.workspacePath);
               const target = await realpath(resolve(workspace, request.path));
               const relativePath = relative(workspace, target);
-              if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath))
+              if (
+                !relativePath ||
+                relativePath === ".." ||
+                relativePath.startsWith(`..${sep}`) ||
+                isAbsolute(relativePath)
+              )
                 throw new Error("Image is outside the selected project");
               const mimeType = imageMimeTypes.get(extname(target).toLowerCase());
               if (!mimeType) throw new Error("Workspace image type is not supported");
@@ -148,7 +126,6 @@ export const makeWorkspaceFilesLive = (agentDirectory: string) =>
       );
 
       return WorkspaceFiles.of({
-        chooseAttachments,
         suggestFiles,
         readFile: readWorkspaceFile,
         readImage: readWorkspaceImage,

@@ -1,6 +1,5 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { ProjectError } from "../../domain/projects/project-error";
-import { WorkspaceFileError } from "../../services/filesystem/WorkspaceFiles";
 import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
 
 const workspaceRpc = <Type extends keyof typeof cakeRpcPayloadSchemas>(
@@ -14,26 +13,6 @@ const workspaceRpc = <Type extends keyof typeof cakeRpcPayloadSchemas>(
   });
 
 export const WorkspaceRpc = RpcGroup.make(
-  Rpc.make("filesystem.choose-attachments", {
-    payload: cakeRpcPayloadSchemas["choose-attachments"],
-    success: cakeRpcSuccessSchemas["choose-attachments"],
-    error: WorkspaceFileError,
-  }),
-  Rpc.make("filesystem.suggest-files", {
-    payload: cakeRpcPayloadSchemas["suggest-files"],
-    success: cakeRpcSuccessSchemas["suggest-files"],
-    error: WorkspaceFileError,
-  }),
-  Rpc.make("filesystem.read-workspace-file", {
-    payload: cakeRpcPayloadSchemas["read-workspace-file"],
-    success: cakeRpcSuccessSchemas["read-workspace-file"],
-    error: WorkspaceFileError,
-  }),
-  Rpc.make("filesystem.read-workspace-image", {
-    payload: cakeRpcPayloadSchemas["read-workspace-image"],
-    success: cakeRpcSuccessSchemas["read-workspace-image"],
-    error: WorkspaceFileError,
-  }),
   workspaceRpc("workspaces.reword-composer-selection", "reword-composer-selection"),
   workspaceRpc("workspaces.generate-session-title", "generate-session-title"),
   workspaceRpc("workspaces.set-utility-model", "set-utility-model"),

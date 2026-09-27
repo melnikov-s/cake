@@ -11,10 +11,16 @@ import {
 import type { CakeChatControlRequest } from "../../domain/cake-chats/cake-chat-data";
 import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
-import type { CakeEvent, cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
+import { cakeRpcPayloadSchemas, type CakeEvent } from "../../ipc/cake-rpc-contract";
 import type { JsonValue } from "../../ipc/json-contract";
 import { DrawControlResponse, type DrawControlInvocation } from "../../domain/draw/draw-control";
-import { Electron } from "../electron/Electron";
+import { ClientConnections } from "../clients/ClientConnections";
+import { ClientEvents } from "../clients/ClientEvents";
+import {
+  RenderedWidgetCaptureError,
+  type RenderedWidgetCaptureResult,
+} from "../widgets/RenderedWidgetCapture";
+import type { CompiledInlineWidget } from "../../ipc/inline-widget-contract";
 
 interface RendererUiRequest {
   readonly kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
@@ -65,6 +71,19 @@ type PendingRequest =
       readonly completion: Deferred.Deferred<JsonValue | undefined>;
     }
   | {
+      readonly _tag: "BrowserNative";
+      readonly method?: string;
+      readonly sessionId: string;
+      readonly connectionId: number;
+      readonly completion: Deferred.Deferred<JsonValue | undefined>;
+    }
+  | {
+      readonly _tag: "WidgetCapture";
+      readonly sessionId: string;
+      readonly connectionId: number;
+      readonly completion: Deferred.Deferred<JsonValue | undefined>;
+    }
+  | {
       readonly _tag: "DrawControl";
       readonly sessionId: string;
       readonly connectionId: number;
@@ -110,6 +129,74 @@ export interface RendererRequestCoordinatorService {
     invocation: { readonly name: string; readonly arguments: JsonValue },
     signal: AbortSignal,
   ) => Effect.Effect<JsonValue, RendererRequestCoordinatorError>;
+  readonly requireDesktopRecipient: (
+    sessionId: string,
+  ) => Effect.Effect<void, RendererRequestCoordinatorError>;
+  readonly setPreviewBridge: (bridge: {
+    acquire(
+      connectionId: number,
+      sessionId: string,
+      port: number,
+    ): Effect.Effect<{ port: number; endpoint: string; secret: string }, { message: string }>;
+    releaseSession(sessionId: string): Effect.Effect<void>;
+    releaseConnection(connectionId: number): Effect.Effect<void>;
+  }) => Effect.Effect<void>;
+  readonly acquirePreview: (
+    connectionId: number,
+    sessionId: string,
+    port: number,
+  ) => Effect.Effect<
+    { port: number; endpoint: string; secret: string },
+    RendererRequestCoordinatorError
+  >;
+  readonly requireDesktopConnection: (
+    sessionId: string,
+    connectionId: number,
+  ) => Effect.Effect<void, RendererRequestCoordinatorError>;
+  readonly requestBrowserNative: (
+    sessionId: string,
+    request: Omit<
+      Extract<CakeEvent, { readonly type: "browser-native-requested" }>,
+      "type" | "requestId" | "sessionId"
+    >,
+    signal: AbortSignal,
+  ) => Effect.Effect<JsonValue, RendererRequestCoordinatorError>;
+  readonly hasPendingBrowserScreenshot: (
+    requestId: string,
+    sessionId: string,
+  ) => Effect.Effect<boolean>;
+  readonly respondBrowserNative: (
+    connectionId: number,
+    sessionId: string,
+    requestId: string,
+    result: (typeof cakeRpcPayloadSchemas)["respond-browser-native"]["Type"]["result"],
+  ) => Effect.Effect<void, RendererRequestCoordinatorError>;
+  readonly requestWidgetCapture: (
+    sessionId: string,
+    widget: CompiledInlineWidget,
+    signal: AbortSignal,
+    pluginState?: JsonValue,
+  ) => Effect.Effect<RenderedWidgetCaptureResult, RenderedWidgetCaptureError>;
+  readonly hasPendingWidgetCapture: (
+    requestId: string,
+    sessionId: string,
+  ) => Effect.Effect<boolean>;
+  readonly respondWidgetCapture: (
+    connectionId: number,
+    sessionId: string,
+    requestId: string,
+    result:
+      | {
+          readonly ok: true;
+          readonly pngBase64: string;
+          readonly diagnostics: ReadonlyArray<string>;
+        }
+      | {
+          readonly ok: false;
+          readonly kind: RenderedWidgetCaptureError["kind"];
+          readonly message: string;
+        },
+  ) => Effect.Effect<void, RendererRequestCoordinatorError>;
   readonly requestDrawControl: (
     sessionId: string,
     invocation: DrawControlInvocation,
@@ -162,6 +249,17 @@ const coordinatorError = (operation: string, message: string) =>
 
 const cancellationValue = (pending: PendingRequest, stopped: boolean): JsonValue | undefined => {
   if (pending._tag === "Ui" || pending._tag === "Artifact") return undefined;
+  if (pending._tag === "BrowserNative")
+    return {
+      status: "failed",
+      message: stopped ? "The Project Session stopped" : "The browser recipient disconnected",
+    };
+  if (pending._tag === "WidgetCapture")
+    return {
+      ok: false,
+      kind: "infrastructure",
+      message: stopped ? "The Project Session stopped" : "The capture recipient disconnected",
+    };
   if (pending._tag === "ProjectControl")
     return {
       ok: false,
@@ -191,11 +289,15 @@ const cancellationValue = (pending: PendingRequest, stopped: boolean): JsonValue
 export const RendererRequestCoordinatorLive: Layer.Layer<
   RendererRequestCoordinator,
   never,
-  Electron
+  ClientEvents | ClientConnections
 > = Layer.effect(
   RendererRequestCoordinator,
   Effect.gen(function* () {
-    const electron = yield* Electron;
+    const clientEvents = yield* ClientEvents;
+    const connections = yield* ClientConnections;
+    let previewBridge:
+      | Parameters<RendererRequestCoordinatorService["setPreviewBridge"]>[0]
+      | undefined;
     const bindings = new Map<string, number>();
     const projectWorkingDirectories = new Map<string, string>();
     const pending = new Map<string, PendingRequest>();
@@ -206,12 +308,19 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
     const runTransition = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       transitionLock.withPermits(1)(Effect.uninterruptible(effect));
 
-    const requireBinding = (target: SessionTarget) => {
+    const requireBinding = (target: SessionTarget, desktopOnly = false) => {
       const connectionId = bindings.get(targetKey(target));
       if (connectionId === undefined)
         throw coordinatorError(
           "request",
-          `No renderer is associated with ${target._tag} ${target.sessionId}`,
+          desktopOnly
+            ? `No eligible desktop controls ${target._tag} ${target.sessionId}`
+            : `No renderer is associated with ${target._tag} ${target.sessionId}`,
+        );
+      if (desktopOnly && connections.kind(connectionId) === "browser")
+        throw coordinatorError(
+          "request",
+          "This operation requires a desktop renderer; it is unavailable in basic browser chat.",
         );
       return connectionId;
     };
@@ -295,7 +404,10 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
 
     const publishProjectEvent = (connectionId: number, event: CakeEvent) =>
       Effect.try({
-        try: () => electron.sendTo(electron.requireRendererConnection(connectionId), event),
+        try: () => {
+          if (!clientEvents.sendTo(connectionId, event))
+            throw new Error("Renderer connection has no active event subscription");
+        },
         catch: (cause) =>
           coordinatorError(
             "publishProjectEvent",
@@ -335,7 +447,221 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
 
     const bind = Effect.fn("RendererRequestCoordinator.bind")(
       (target: SessionTarget, connectionId: number) =>
-        runTransition(Effect.sync(() => bindings.set(targetKey(target), connectionId))),
+        runTransition(
+          Effect.sync(() => {
+            const current = bindings.get(targetKey(target));
+            // Single-user, multiple views: an explicit desktop open/start/prompt designates
+            // the controller for NEW device requests. Browser chat cannot take that role.
+            // Pending requests retain the recipient captured at dispatch, even after a rebind.
+            if (
+              connections.kind(connectionId) === "browser" &&
+              current !== undefined &&
+              connections.kind(current) === "desktop"
+            )
+              return;
+            bindings.set(targetKey(target), connectionId);
+          }),
+        ),
+    );
+
+    const requireDesktopRecipient = Effect.fn("RendererRequestCoordinator.requireDesktopRecipient")(
+      (sessionId: string) =>
+        Effect.try({
+          try: () => {
+            requireBinding({ _tag: "ProjectSession", sessionId }, true);
+          },
+          catch: (cause) =>
+            cause instanceof RendererRequestCoordinatorError
+              ? cause
+              : coordinatorError("requireDesktopRecipient", String(cause)),
+        }),
+    );
+
+    const acquirePreview = Effect.fn("RendererRequestCoordinator.acquirePreview")(function* (
+      connectionId: number,
+      sessionId: string,
+      port: number,
+    ) {
+      yield* requireDesktopConnection(sessionId, connectionId);
+      if (!previewBridge)
+        return yield* coordinatorError("acquirePreview", "Preview forwarding is unavailable");
+      return yield* previewBridge
+        .acquire(connectionId, sessionId, port)
+        .pipe(Effect.mapError((error) => coordinatorError("acquirePreview", error.message)));
+    });
+
+    const requireDesktopConnection = Effect.fn(
+      "RendererRequestCoordinator.requireDesktopConnection",
+    )((sessionId: string, connectionId: number) =>
+      Effect.try({
+        try: () => {
+          if (requireBinding({ _tag: "ProjectSession", sessionId }, true) !== connectionId)
+            throw coordinatorError(
+              "requireDesktopConnection",
+              "Desktop renderer does not own this Project Session",
+            );
+        },
+        catch: (cause) =>
+          cause instanceof RendererRequestCoordinatorError
+            ? cause
+            : coordinatorError("requireDesktopConnection", String(cause)),
+      }),
+    );
+
+    const requestBrowserNative = Effect.fn("RendererRequestCoordinator.requestBrowserNative")(
+      function* (sessionId, request, signal) {
+        if (signal.aborted)
+          return yield* coordinatorError("requestBrowserNative", "Browser request cancelled");
+        const connectionId = yield* Effect.try({
+          try: () => requireBinding({ _tag: "ProjectSession", sessionId }, true),
+          catch: (cause) =>
+            cause instanceof RendererRequestCoordinatorError
+              ? cause
+              : coordinatorError("requestBrowserNative", String(cause)),
+        });
+        const requestId = crypto.randomUUID();
+        const completion = yield* Deferred.make<JsonValue | undefined>();
+        const entry: PendingRequest = {
+          _tag: "BrowserNative",
+          method: request.method,
+          sessionId,
+          connectionId,
+          completion,
+        };
+        pending.set(requestId, entry);
+        yield* publishProjectEvent(connectionId, {
+          type: "browser-native-requested",
+          requestId,
+          sessionId,
+          ...request,
+        }).pipe(Effect.tapError(() => Effect.sync(() => pending.delete(requestId))));
+        const value = yield* awaitPending(requestId, entry, signal, 15_000);
+        if (signal.aborted)
+          return yield* coordinatorError("requestBrowserNative", "Browser request cancelled");
+        if (value === undefined)
+          return yield* coordinatorError(
+            "requestBrowserNative",
+            "Desktop browser request timed out",
+          );
+        return value;
+      },
+    );
+
+    const respondBrowserNative = Effect.fn("RendererRequestCoordinator.respondBrowserNative")(
+      (connectionId, sessionId, requestId, result) =>
+        runTransition(
+          Effect.gen(function* () {
+            const request = validateResponse(
+              "respondBrowserNative",
+              requestId,
+              "BrowserNative",
+              connectionId,
+              sessionId,
+            );
+            if (!request)
+              return yield* coordinatorError(
+                "respondBrowserNative",
+                "Browser request is no longer pending",
+              );
+            yield* completeUnlocked(requestId, result);
+          }),
+        ),
+    );
+
+    const requestWidgetCapture = Effect.fn("RendererRequestCoordinator.requestWidgetCapture")(
+      function* (
+        sessionId: string,
+        widget: CompiledInlineWidget,
+        signal: AbortSignal,
+        pluginState?: JsonValue,
+      ) {
+        const fail = (message: string) =>
+          new RenderedWidgetCaptureError({ kind: "infrastructure", message });
+        if (signal.aborted)
+          return yield* new RenderedWidgetCaptureError({
+            kind: "cancelled",
+            message: "Widget review was cancelled",
+          });
+        const connectionId = yield* Effect.try({
+          try: () => requireBinding({ _tag: "ProjectSession", sessionId }, true),
+          catch: (cause) => fail(cause instanceof Error ? cause.message : String(cause)),
+        });
+        const requestId = crypto.randomUUID();
+        const completion = yield* Deferred.make<JsonValue | undefined>();
+        const entry: PendingRequest = {
+          _tag: "WidgetCapture",
+          sessionId,
+          connectionId,
+          completion,
+        };
+        pending.set(requestId, entry);
+        yield* publishProjectEvent(connectionId, {
+          type: "widget-capture-requested",
+          requestId,
+          sessionId,
+          widget,
+          pluginState,
+        }).pipe(
+          Effect.tapError(() => Effect.sync(() => pending.delete(requestId))),
+          Effect.mapError((cause) => fail(cause.message)),
+        );
+        const value = yield* awaitPending(requestId, entry, signal, 25_000);
+        if (signal.aborted)
+          return yield* new RenderedWidgetCaptureError({
+            kind: "cancelled",
+            message: "Widget review was cancelled",
+          });
+        if (value === undefined) return yield* fail("Desktop widget capture timed out");
+        const decoded = yield* Schema.decodeUnknownEffect(
+          cakeRpcPayloadSchemas["respond-widget-capture"],
+        )({ requestId, sessionId, result: value }).pipe(
+          Effect.mapError(() => fail("Invalid desktop capture response")),
+        );
+        if (!decoded.result.ok) {
+          return yield* new RenderedWidgetCaptureError({
+            kind: decoded.result.kind,
+            message: decoded.result.message,
+          });
+        }
+        return { pngBase64: decoded.result.pngBase64, diagnostics: decoded.result.diagnostics };
+      },
+    );
+
+    const respondWidgetCapture = Effect.fn("RendererRequestCoordinator.respondWidgetCapture")(
+      (
+        connectionId: number,
+        sessionId: string,
+        requestId: string,
+        result:
+          | {
+              readonly ok: true;
+              readonly pngBase64: string;
+              readonly diagnostics: ReadonlyArray<string>;
+            }
+          | {
+              readonly ok: false;
+              readonly kind: RenderedWidgetCaptureError["kind"];
+              readonly message: string;
+            },
+      ) =>
+        runTransition(
+          Effect.gen(function* () {
+            const request = validateResponse(
+              "respondWidgetCapture",
+              requestId,
+              "WidgetCapture",
+              connectionId,
+              sessionId,
+            );
+            if (!request) return;
+            yield* completeUnlocked(
+              requestId,
+              result.ok
+                ? { ok: true, pngBase64: result.pngBase64, diagnostics: [...result.diagnostics] }
+                : { ok: false, kind: result.kind, message: result.message },
+            );
+          }),
+        ),
     );
 
     const requestUiForConnection = Effect.fn("RendererRequestCoordinator.requestUiForConnection")(
@@ -427,7 +753,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       ) {
         if (signal.aborted) return { ok: false, error: "The request was cancelled." };
         const connectionId = yield* Effect.try({
-          try: () => requireBinding({ _tag: "ProjectSession", sessionId }),
+          try: () => requireBinding({ _tag: "ProjectSession", sessionId }, true),
           catch: (cause) =>
             cause instanceof RendererRequestCoordinatorError
               ? cause
@@ -473,7 +799,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
             error: "The Cake Chat request was cancelled.",
           };
         const connectionId = yield* Effect.try({
-          try: () => requireBinding({ _tag: "CakeChatSession", sessionId }),
+          try: () => requireBinding({ _tag: "CakeChatSession", sessionId }, true),
           catch: (cause) =>
             cause instanceof RendererRequestCoordinatorError
               ? cause
@@ -545,6 +871,12 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
                 ? cause
                 : coordinatorError("requestDrawControl", String(cause)),
           });
+          if (connections.kind(connectionId) === "browser")
+            return DrawControlResponse.make({
+              ok: false,
+              code: "CAPABILITY_UNAVAILABLE",
+              message: "Draw editing is unavailable in basic browser chat.",
+            });
           const drawRequestId = crypto.randomUUID();
           const completion = yield* Deferred.make<JsonValue | undefined>();
           const entry: PendingRequest = {
@@ -710,8 +1042,10 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
         runTransition(
           Effect.gen(function* () {
             bindings.delete(targetKey(target));
-            if (target._tag === "ProjectSession")
+            if (target._tag === "ProjectSession") {
               projectWorkingDirectories.delete(target.sessionId);
+              if (previewBridge) yield* previewBridge.releaseSession(target.sessionId);
+            }
             yield* cancelMatchingUnlocked(
               (request) =>
                 request.sessionId === target.sessionId &&
@@ -734,6 +1068,8 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
           bindings.delete(targetKey({ _tag: "ProjectSession", sessionId }));
           projectWorkingDirectories.delete(sessionId);
         }
+        if (previewBridge)
+          for (const sessionId of sessionIds) yield* previewBridge.releaseSession(sessionId);
         yield* cancelMatching(
           (request) => request._tag !== "CakeChatControl" && sessionIds.has(request.sessionId),
           true,
@@ -747,6 +1083,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
           Effect.gen(function* () {
             for (const [key, boundConnectionId] of bindings)
               if (boundConnectionId === connectionId) bindings.delete(key);
+            if (previewBridge) yield* previewBridge.releaseConnection(connectionId);
             yield* cancelMatchingUnlocked(
               (request) => request.connectionId === connectionId,
               false,
@@ -772,6 +1109,31 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       requestProjectControl,
       requestCakeChatControl,
       requestDrawControl,
+      requestWidgetCapture,
+      requestBrowserNative,
+      respondBrowserNative,
+      hasPendingBrowserScreenshot: (requestId, sessionId) =>
+        Effect.sync(() => {
+          const request = pending.get(requestId);
+          return (
+            request?._tag === "BrowserNative" &&
+            request.sessionId === sessionId &&
+            request.method === "Page.captureScreenshot"
+          );
+        }),
+      requireDesktopRecipient,
+      requireDesktopConnection,
+      setPreviewBridge: (bridge) =>
+        Effect.sync(() => {
+          previewBridge = bridge;
+        }),
+      acquirePreview,
+      respondWidgetCapture,
+      hasPendingWidgetCapture: (requestId, sessionId) =>
+        Effect.sync(() => {
+          const request = pending.get(requestId);
+          return request?._tag === "WidgetCapture" && request.sessionId === sessionId;
+        }),
       cakeChatControlSnapshots: (connectionId) =>
         SubscriptionRef.changes(cakeChatRequests).pipe(
           Stream.map((requests) =>

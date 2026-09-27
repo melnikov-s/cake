@@ -19,6 +19,10 @@ import { AppControlOperationStore } from "./AppControlOperationStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 type ForkSessionInvocation = Extract<ProjectSessionControlInvocation, { _tag: "ForkSession" }>;
+type PresentForkSessionInvocation = Extract<
+  ProjectSessionControlInvocation,
+  { _tag: "PresentForkSession" }
+>;
 type ProjectChildSessionInvocation = Extract<
   ProjectSessionControlInvocation,
   { _tag: "ProjectChildSession" }
@@ -37,6 +41,7 @@ export class ApplicationControlStore extends Store<{
   cakeChatRequests(): readonly CakeChatControlRequest[];
   projectContext(sessionId: string): ProjectControlContext;
   forkProjectSession(sessionId: string, invocation: ForkSessionInvocation): Promise<JsonValue>;
+  presentForkSession(invocation: PresentForkSessionInvocation): Promise<JsonValue>;
   openProjectChildSession(
     parentSessionId: string,
     invocation: ProjectChildSessionInvocation,
@@ -107,6 +112,12 @@ export class ApplicationControlStore extends Store<{
     const invocation = request.invocation;
     if (invocation._tag === "ForkSession") {
       return this.props.forkProjectSession(request.sessionId, invocation).catch((error) => ({
+        ok: false,
+        error: errorMessage(error),
+      }));
+    }
+    if (invocation._tag === "PresentForkSession") {
+      return this.props.presentForkSession(invocation).catch((error) => ({
         ok: false,
         error: errorMessage(error),
       }));

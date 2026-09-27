@@ -1,5 +1,6 @@
 import { DictationStore } from "./DictationStore";
 import { microphone } from "../dictation/microphone";
+import type { DesktopConnectionStore } from "./DesktopConnectionStore";
 import { Store, child, createStore, untracked } from "r-state-tree";
 import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
 import { decodeArtifactLineageId } from "../../domain/artifacts/artifact-lineage";
@@ -46,6 +47,7 @@ import { ProjectRemovalStore } from "./ProjectRemovalStore";
 
 export class RootStore extends Store<{
   client: Client;
+  desktopConnection?: DesktopConnectionStore;
   projection: RootProjection;
   flushWindowState(): Promise<void>;
 }> {
@@ -58,6 +60,10 @@ export class RootStore extends Store<{
       activeSessionId: () => this.projectWorkbenchStore.activeSessionId,
       openActiveDraw: () => this.projectWorkbenchStore.presentationStore.openDraw(),
     });
+  }
+
+  get desktopConnection() {
+    return this.props.desktopConnection;
   }
 
   get projectCatalogModel() {
@@ -577,6 +583,7 @@ export class RootStore extends Store<{
   get sessionRegistry(): SessionRegistryStore {
     return createStore(SessionRegistryStore, {
       catalog: this.sessionCatalogStore,
+      savedDrafts: this.client.savedDrafts,
       operations: this.sessionOperationCoordinator,
       reviews: () => this.reviewsStore,
       openEditorLocation: (sessionId, location, signal) =>
@@ -614,6 +621,8 @@ export class RootStore extends Store<{
         this.projectWorkbenchStore.sessionCreationStore.request(sessionId)?.configuration,
       startNewSession: (sessionId, input) =>
         this.projectWorkbenchStore.sessionCreationStore.start(sessionId, input),
+      activateSavedDraft: (sessionId, choice) =>
+        this.projectWorkbenchStore.sessionCreationStore.activateSavedDraft(sessionId, choice),
       ensureSessionActive: (sessionId) => {
         if (!this.sessionCatalogStore.find(sessionId)?.resolved) return true;
         return this.projectWorkbenchStore.sessionManagementStore.resolveSession(sessionId, false);
@@ -827,6 +836,7 @@ export class RootStore extends Store<{
   get settingsStore(): SettingsStore {
     return createStore(SettingsStore, {
       dictation: this.dictationStore,
+      desktopConnection: this.props.desktopConnection,
       operations: this.sessionOperationCoordinator,
       activeSession: () => {
         const active = this.appShellStore.activeConversation;
@@ -993,6 +1003,7 @@ export class RootStore extends Store<{
       },
       forkProjectSession: (sourceSessionId, invocation) =>
         this.projectSessionPlacementStore.fork(sourceSessionId, invocation),
+      presentForkSession: (invocation) => this.projectSessionPlacementStore.presentFork(invocation),
       openProjectChildSession: (parentSessionId, invocation) =>
         this.projectSessionPlacementStore.openChild(parentSessionId, invocation),
       reportProjectError: (error, context) => this.projectWorkbenchStore.setError(error, context),

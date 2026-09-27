@@ -23,6 +23,10 @@ const terminalRpc = <Type extends TerminalOperation>(type: Type) =>
     error: TerminalError,
   });
 
+export const TerminalEventsRpc = RpcGroup.make(
+  Rpc.make("terminals.observeEvents", { success: terminalEventSchema, stream: true }),
+);
+
 export const TerminalRpc = RpcGroup.make(
   terminalRpc("open-terminal"),
   terminalRpc("get-terminal-status"),
@@ -30,5 +34,4 @@ export const TerminalRpc = RpcGroup.make(
   terminalRpc("resize-terminal"),
   terminalRpc("close-terminal"),
   terminalRpc("close-working-directory-terminals"),
-  Rpc.make("terminals.observeEvents", { success: terminalEventSchema, stream: true }),
-);
+).merge(TerminalEventsRpc);

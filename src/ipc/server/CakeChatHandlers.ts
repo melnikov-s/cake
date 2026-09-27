@@ -8,6 +8,7 @@ import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeC
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { CakeChatRpc } from "../protocol/CakeChatRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
+import { admitTurnAttachments } from "./AttachmentUploadHandlers";
 
 const withConnection = <A, E, R>(operation: (connectionId: number) => Effect.Effect<A, E, R>) =>
   Effect.flatMap(RendererConnection, ({ connectionId }) => operation(connectionId));
@@ -29,23 +30,26 @@ export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration
       cakeChatMetadata.inspect(sessionId, configuration.location),
     "cakeChats.open": (target) =>
       withConnection((connectionId) =>
-        bindRenderer(connectionId, target.sessionId).pipe(
-          Effect.andThen(cakeChatOperations.open(target, configuration)),
+        cakeChatOperations.open(target, configuration).pipe(
+          Effect.tap(() => bindRenderer(connectionId, target.sessionId)),
           Effect.asVoid,
         ),
       ),
     "cakeChats.observeControls": (target) =>
       Stream.unwrap(
-        withConnection((connectionId) =>
-          bindRenderer(connectionId, target.sessionId).pipe(
-            Effect.andThen(cakeChatOperations.observeControls(target, connectionId)),
-          ),
-        ),
+        withConnection((connectionId) => cakeChatOperations.observeControls(target, connectionId)),
       ),
     "cakeChats.start": (input) =>
       withConnection((connectionId) =>
         bindRenderer(connectionId, input.sessionId).pipe(
-          Effect.andThen(cakeChatOperations.start(input, configuration)),
+          Effect.andThen(
+            admitTurnAttachments(input).pipe(
+              Effect.mapError(
+                (error) => new CakeChatError({ operation: "start", message: error.message }),
+              ),
+              Effect.flatMap((admitted) => cakeChatOperations.start(admitted, configuration)),
+            ),
+          ),
         ),
       ),
     "cakeChats.rename": ({ name, ...target }) =>

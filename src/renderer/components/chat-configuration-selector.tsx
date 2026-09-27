@@ -32,7 +32,9 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
         activePreset={configuration.activePreset}
         value={effectiveConfiguration}
         error={configuration.error}
-        openPresetSettings={() => configuration.openPresetSettings()}
+        openPresetSettings={
+          configuration.canOpenPresetSettings ? () => configuration.openPresetSettings() : undefined
+        }
         onSelect={(next) => {
           if (
             selectedModel &&

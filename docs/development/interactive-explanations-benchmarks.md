@@ -144,7 +144,7 @@ a node-and-edge map.
   document, and `WidgetArtifact` runs it in an `allow-scripts` iframe and checks
   its tokenized messages.
   Sources: `src/services/widgets/inline-widget-service.ts#compileInlineWidget`,
-  `src/services/widgets/inline-widget-protocol.ts#handleInlineWidgetScheme`,
+  `src/services/electron/inline-widget-protocol.ts#handleInlineWidgetScheme`,
   `src/renderer/components/widget-artifact.tsx#WidgetArtifact`.
 
 **Relationships that must remain true**
@@ -218,7 +218,7 @@ code or coordinates need be exposed in the visual.
   explicit inline script/style and data/HTTPS media cases.
   Sources: `src/services/widgets/inline-widget-service.ts#compileInlineWidget`,
   `src/services/widgets/inline-widget-service.ts#widgetModulePlugin`,
-  `src/services/widgets/inline-widget-protocol.ts#inlineWidgetContentSecurityPolicy`.
+  `src/services/electron/inline-widget-protocol.ts#inlineWidgetContentSecurityPolicy`.
 - `WidgetArtifact` invokes the window-owned `InlineWidgetStore` to compile and
   repair, renders the result in `sandbox="allow-scripts"`, validates tokenized
   `postMessage` events, and can place the same widget in `FullscreenSurface`.

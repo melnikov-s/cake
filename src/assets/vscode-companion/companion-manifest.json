@@ -53,23 +53,23 @@
       "editor/context": [
         {
           "command": "cake.addAnnotation",
-          "when": "editorHasSelection && (resourceScheme == file || resourceScheme == git)",
+          "when": "editorHasSelection && (resourceScheme == file || resourceScheme == vscode-remote || resourceScheme == git)",
           "group": "cake@1"
         },
         {
           "command": "cake.askInSideChat",
-          "when": "editorHasSelection && (resourceScheme == file || resourceScheme == git)",
+          "when": "editorHasSelection && (resourceScheme == file || resourceScheme == vscode-remote || resourceScheme == git)",
           "group": "cake@2"
         }
       ],
       "commandPalette": [
         {
           "command": "cake.addAnnotation",
-          "when": "editorHasSelection && (resourceScheme == file || resourceScheme == git)"
+          "when": "editorHasSelection && (resourceScheme == file || resourceScheme == vscode-remote || resourceScheme == git)"
         },
         {
           "command": "cake.askInSideChat",
-          "when": "editorHasSelection && (resourceScheme == file || resourceScheme == git)"
+          "when": "editorHasSelection && (resourceScheme == file || resourceScheme == vscode-remote || resourceScheme == git)"
         }
       ]
     }

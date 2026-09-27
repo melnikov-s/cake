@@ -61,6 +61,18 @@ Every durable concept has one authority.
 | Blocking structured requests                                                  | `cake.request/v1` plus the active Pi tool call                                         | Render one inline interaction and return one validated value                                                                   |
 | Session Plugins                                                               | Cake application metadata, keyed by Cake Session and plugin ID                         | Persist validated presets or generated source, JSON state, and user-owned visibility; mount controls in semantic session slots |
 
+Single-user multi-view routing keeps these authorities separate: connected relevant
+views observe the scoped Pi transcript and shared Cake state, while an actionable
+device request goes to exactly one currently designated eligible Electron desktop
+for the session. Explicit desktop session activation or submission can change the
+controller for new requests; passive observation and browser chat cannot steal a
+desktop controller. Pending replies retain their actual dispatched recipient,
+even if the controller changes. Without a desktop, native actions fail explicitly;
+server-owned work continues across disconnect. Direct provider-auth interactions
+remain targeted to their requesting connection, not transcript fanout. This is
+not multiplayer authorization or immutable per-turn originating-client affinity;
+multiplayer ownership is deferred, with no Pi SDK change required.
+
 Do not introduce a second transcript database, reconstruct Pi state into a
 competing domain model, or mutate Pi JSONL with ad hoc file operations. Main
 keeps Project, Working Directory, lifecycle, Conversation, Discussion,
@@ -129,9 +141,22 @@ project tools.
 
 ## Process boundaries
 
-Cake is one logical application split by Electron privilege boundaries. Main
-and each renderer window have separate process-local Effect runtimes joined by
-Effect RPC over a narrow Electron transport.
+Cake's desktop is one logical application split by Electron privilege boundaries.
+Main and each renderer window have separate process-local Effect runtimes joined by
+Effect RPC over a narrow Electron transport. Its backend graph also runs in a
+standalone Node host without Electron or a connected client. That host can explicitly
+enable a loopback-default WebSocket endpoint for backend chat/catalog RPC, attached
+to its already-acquired backend. A second explicit opt-in serves basic browser chat
+on that same HTTP/WebSocket endpoint. Desktop Settings can also attach/remove this
+listener alongside IPC without restarting or acquiring a second backend. A process-wide
+client allocator keeps logical identities distinct from native window and socket IDs.
+Electron can instead select an existing standalone backend with a confirmed relaunch.
+Its remote-native graph acquires only native windows, IPC, client event state and
+host-scoped device presentation storage; it does not acquire a shadow backend.
+The full desktop renderer routes domain groups over WebSocket and native groups
+over preload. Both backend hosts use the same backend composition and Pi runtime authority. See
+[`headless-backend.md`](../development/headless-backend.md) for the full-trust exposure
+policy, desktop toggle, configuration, and endpoint lifetimes.
 
 ### Electron main
 
@@ -160,6 +185,17 @@ apply validated updates to their Model or Store owners and retain their own
 cancellation handles. Ordinary
 Stores and Models do not import Effect, construct transport envelopes, or import
 privileged implementations.
+
+The browser entry composes the same Chat/ChatStore, configuration, transcript and
+question surfaces inside a limited shell. `BrowserNavigationStore` owns tab-local
+selection/loaded identities; `BrowserSessionStore` owns session opening and delivery
+uncertainty, with drafts owned by its shared ChatStore. The browser bootstrap attaches
+only backend catalog/conversation/event observers. It does not restore native modes or
+attach desktop window persistence. Navigation and drafts are memory-only and independent
+between tabs. Socket reconnection reacquires authoritative snapshots, never replays a
+mutation, and leaves accepted backend turns running. Unsupported native commands reject
+locally at Client; external URLs open on the viewing device. See the headless development
+guide for browser limitations and unacknowledged-send behavior.
 
 Every cross-process request, success, typed failure, and stream element is
 parsed by shared Effect Schemas at the receiving boundary. Raw Pi event and

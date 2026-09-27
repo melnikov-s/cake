@@ -15,7 +15,7 @@ const protocol = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock("../../../../src/services/pi/runtime/extension-companion-protocol", () => ({
+vi.mock("../../../../src/services/pi/runtime/extension-companion-module-registry", () => ({
   publishExtensionCompanionModule: protocol.publish,
 }));
 

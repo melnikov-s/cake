@@ -46,6 +46,7 @@ import { BrowserWorkspace } from "@/components/browser-workspace";
 import { SettingsPage } from "@/components/settings-page";
 import { ToastHost } from "@/components/toast-host";
 import { WorktreePill } from "@/components/worktree-pill";
+import { SavedDraftRecovery } from "@/components/saved-draft-recovery";
 import { WorkLogControls } from "@/components/work-log-controls";
 import { WorkspaceModeControls } from "@/components/workspace-mode-controls";
 import { SideChatsMenu } from "@/components/side-chats-menu";
@@ -467,6 +468,23 @@ export const App = observer(function App() {
     <>
       {projectExtensionCompanions(session)}
       {projectSessionPlugins(session)}
+      {store.sessionRegistry.pendingSessions.savedRecord(session.sessionId)?.status ===
+        "activating" && (
+        <SavedDraftRecovery
+          disabled={root.desktopConnection?.connected === false}
+          recover={() =>
+            void store.sessionRegistry.pendingSessions
+              .recoverUncertain(session.sessionId)
+              .catch((error: unknown) =>
+                root.toastStore.show({
+                  tone: "error",
+                  title: "Could not recover saved Draft",
+                  message: error instanceof Error ? error.message : String(error),
+                }),
+              )
+          }
+        />
+      )}
       <WorktreePill
         creation={store.sessionCreationStore.worktrees}
         actions={session.worktreeStore}
@@ -1277,6 +1295,8 @@ export const App = observer(function App() {
             key={extensionUi.request.uiRequestId}
             request={extensionUi.request}
             extensionUi={extensionUi}
+            authNotice={root.settingsStore.providers.authNoticeForRequest(extensionUi.request)}
+            openAuthUrl={(url) => void root.settingsStore.providers.openAuthUrl(url)}
           />
         </DialogBackdrop>
       )}

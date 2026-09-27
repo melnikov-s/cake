@@ -29,6 +29,17 @@ describe("AppShellStore session history", () => {
     shell[Symbol.dispose]();
   });
 
+  it("retains the last conversation when Settings temporarily overlays a saved Draft", () => {
+    const shell = createShell();
+    shell.selectProjectSession("saved-draft");
+    shell.showSettings();
+    expect(shell.selection).toEqual({ kind: "settings" });
+    expect(shell.activeConversation).toEqual({ kind: "project-session", sessionId: "saved-draft" });
+    shell.selectProjectSession(shell.activeConversation!.sessionId);
+    expect(shell.selection).toEqual({ kind: "project-session", sessionId: "saved-draft" });
+    shell[Symbol.dispose]();
+  });
+
   it("notifies a Project Session when navigating away from it", () => {
     const departed: string[] = [];
     const shell = createShell((sessionId) => departed.push(sessionId));

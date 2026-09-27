@@ -1,20 +1,18 @@
 import type { Event } from "electron";
 import { Cause, Deferred, Effect, Option, Queue, Stream } from "effect";
-import { initialize } from "../domain/application/application";
-import { initializeRegisteredProjectAccess } from "../domain/projects/projects";
 import * as workingDirectoryTerminals from "../domain/terminals/workingDirectoryTerminals";
+import { DesktopSharing } from "../services/electron/DesktopSharing";
 import { Electron } from "../services/electron/Electron";
 import { Browser } from "../services/browser/Browser";
 import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
-import type { CakeSessionRuntimes } from "../services/pi/CakeSessionRuntimes";
 import { ProjectAccess } from "../services/projects/ProjectAccess";
 import { RewordingRequests } from "../services/projects/RewordingRequests";
 import { ApplicationState } from "../services/storage/ApplicationState";
-import type { Terminal } from "../services/terminal/Terminal";
+import { Terminal } from "../services/terminal/Terminal";
 import { VsCodeServer } from "../services/vscode/VsCodeServer";
-import type { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
-import { handleInlineWidgetScheme } from "../services/widgets/inline-widget-protocol";
-import { handleExtensionCompanionScheme } from "../services/pi/runtime/extension-companion-protocol";
+import { VsCodeViews } from "../services/vscode/VsCodeViews";
+import { handleInlineWidgetScheme } from "../services/electron/inline-widget-protocol";
+import { handleExtensionCompanionScheme } from "../services/electron/extension-companion-protocol";
 
 interface MainApplicationElectron {
   on(event: "before-quit", listener: (event: Event) => void): void;
@@ -33,17 +31,6 @@ export interface MainApplicationOptions {
   readonly initializeDeveloperTools?: () => Promise<void>;
 }
 
-type MainApplicationServices =
-  | ApplicationState
-  | Electron
-  | CakeSessionRuntimes
-  | ProjectAccess
-  | RendererRequestCoordinator
-  | RewordingRequests
-  | Terminal
-  | VsCodeServer
-  | ManagedWorktrees;
-
 /** Owns Electron startup, native callbacks, and process-lifetime shutdown. */
 export const MainApplication = Effect.fn("MainApplication")(function* ({
   application,
@@ -54,7 +41,7 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
     handleExtensionCompanionScheme();
   },
   initializeDeveloperTools,
-}: MainApplicationOptions): Effect.fn.Return<void, unknown, MainApplicationServices> {
+}: MainApplicationOptions): Effect.fn.Return<void, unknown, Electron> {
   yield* Effect.annotateCurrentSpan({
     "cake.application": "main",
     "cake.process": "electron-main",
@@ -62,31 +49,46 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
 
   const program = Effect.scoped(
     Effect.gen(function* () {
-      const applicationState = yield* ApplicationState;
+      const applicationState = yield* Effect.serviceOption(ApplicationState);
+      const sharing = yield* Effect.serviceOption(DesktopSharing);
       const browser = yield* Effect.serviceOption(Browser);
       const electron = yield* Electron;
-      const rendererRequests = yield* RendererRequestCoordinator;
-      const access = yield* ProjectAccess;
-      const rewordingRequests = yield* RewordingRequests;
-      const vscode = yield* VsCodeServer;
+      const rendererRequests = yield* Effect.serviceOption(RendererRequestCoordinator);
+      const access = yield* Effect.serviceOption(ProjectAccess);
+      const rewordingRequests = yield* Effect.serviceOption(RewordingRequests);
+      const vscode = yield* Effect.serviceOption(VsCodeServer);
+      const vscodeViews = yield* Effect.serviceOption(VsCodeViews);
+      const terminal = yield* Effect.serviceOption(Terminal);
       const windowClosed = yield* Queue.unbounded<{
+        readonly nativeId: number;
         readonly ownerId: number;
         readonly workingDirectory: string | undefined;
       }>();
       const handleWindowClosed = Effect.fn("MainApplication.handleWindowClosed")(function* ({
         ownerId,
+        nativeId,
       }: {
+        readonly nativeId: number;
         readonly ownerId: number;
         readonly workingDirectory: string | undefined;
       }) {
         yield* Effect.all(
           [
-            workingDirectoryTerminals.closeOwner(ownerId),
+            Option.isSome(terminal)
+              ? workingDirectoryTerminals
+                  .closeOwner(ownerId)
+                  .pipe(Effect.provideService(Terminal, terminal.value))
+              : Effect.void,
             Option.isSome(browser) ? browser.value.closeForWindow(ownerId) : Effect.void,
-            vscode.closeForWindow(ownerId),
-            access.clearOwner(ownerId),
-            rewordingRequests.disposeOwner(ownerId),
-            rendererRequests.releaseConnection(ownerId),
+            Option.isSome(vscode) ? vscode.value.releaseConnection(ownerId) : Effect.void,
+            Option.isSome(vscodeViews) ? vscodeViews.value.closeForWindow(nativeId) : Effect.void,
+            Option.isSome(access) ? access.value.clearOwner(ownerId) : Effect.void,
+            Option.isSome(rewordingRequests)
+              ? rewordingRequests.value.disposeOwner(ownerId)
+              : Effect.void,
+            Option.isSome(rendererRequests)
+              ? rendererRequests.value.releaseConnection(ownerId)
+              : Effect.void,
           ],
           { concurrency: "unbounded", discard: true },
         );
@@ -118,7 +120,8 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
         () => Effect.sync(() => application.removeListener("before-quit", onBeforeQuit)),
       );
       const onWindowAllClosed = () => {
-        if (platform !== "darwin") application.quit();
+        if (platform !== "darwin" && !(Option.isSome(sharing) && sharing.value.keepsProcessAlive()))
+          application.quit();
       };
       yield* Effect.acquireRelease(
         Effect.sync(() => application.on("window-all-closed", onWindowAllClosed)),
@@ -138,17 +141,20 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
           ),
           Effect.withSpan("MainApplication.initializeDeveloperTools"),
         );
-      yield* initialize();
-      yield* initializeRegisteredProjectAccess();
-      yield* vscode.refreshStatus();
       yield* Effect.sync(initializeNativeProtocols);
       yield* electron.start({
-        backToAgentForWindow: vscode.backToAgentForWindow,
-        onWindowClosed: (ownerId, workingDirectory) => {
-          Queue.offerUnsafe(windowClosed, { ownerId, workingDirectory });
+        backToAgentForWindow: (id) =>
+          Option.isSome(vscodeViews) && vscodeViews.value.backToAgentForWindow(id),
+        onWindowClosed: (ownerId, workingDirectory, nativeId) => {
+          Queue.offerUnsafe(windowClosed, { ownerId, workingDirectory, nativeId });
         },
-        allowProjectPath: access.allow,
-        hasUtilityModel: () => Boolean(applicationState.snapshot().utilityModel),
+        allowProjectPath: (path) =>
+          Option.isSome(access) ? access.value.allow(path) : Effect.void,
+        // A remote native host has no application-state authority. Keep the action available;
+        // the actual backend reword operation validates its own utility-model configuration.
+        canRewordSelection: () =>
+          Option.isNone(applicationState) ||
+          Boolean(applicationState.value.snapshot().utilityModel),
       });
       yield* Effect.logInfo("Cake main application started");
       yield* Deferred.await(shutdownRequested);

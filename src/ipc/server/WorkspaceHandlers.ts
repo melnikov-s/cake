@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 import * as projects from "../../domain/projects/projects";
-import { WorkspaceFiles } from "../../services/filesystem/WorkspaceFiles";
 import { WorkspaceRpc } from "../protocol/WorkspaceRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 
@@ -8,22 +7,6 @@ const withConnection = <A, E, R>(operation: (connectionId: number) => Effect.Eff
   Effect.flatMap(RendererConnection, ({ connectionId }) => operation(connectionId));
 
 export const workspaceHandlers = WorkspaceRpc.of({
-  "filesystem.choose-attachments": (request) =>
-    withConnection((connectionId) =>
-      Effect.flatMap(WorkspaceFiles, (service) => service.chooseAttachments(connectionId, request)),
-    ),
-  "filesystem.suggest-files": (request) =>
-    withConnection((connectionId) =>
-      Effect.flatMap(WorkspaceFiles, (service) => service.suggestFiles(connectionId, request)),
-    ),
-  "filesystem.read-workspace-file": (request) =>
-    withConnection((connectionId) =>
-      Effect.flatMap(WorkspaceFiles, (service) => service.readFile(connectionId, request)),
-    ),
-  "filesystem.read-workspace-image": (request) =>
-    withConnection((connectionId) =>
-      Effect.flatMap(WorkspaceFiles, (service) => service.readImage(connectionId, request)),
-    ),
   "workspaces.reword-composer-selection": (request) =>
     withConnection((connectionId) => projects.rewordComposerSelection(connectionId, request)),
   "workspaces.generate-session-title": (request) =>

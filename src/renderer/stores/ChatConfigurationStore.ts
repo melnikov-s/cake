@@ -20,7 +20,7 @@ export interface ChatConfigurationStoreProps {
   };
   operationOwner?: string;
   presets(): readonly ModelPreset[];
-  openPresetSettings(): void;
+  openPresetSettings?(): void;
   /** True while the chat is a deferred new session with no runtime yet. */
   deferredNewSession?(): boolean;
   /** The configuration the first prompt will carry (pending override or default preset). */
@@ -163,8 +163,12 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     await this.selectConfiguration(preset);
   }
 
+  get canOpenPresetSettings() {
+    return Boolean(this.props.openPresetSettings);
+  }
+
   openPresetSettings() {
-    this.props.openPresetSettings();
+    this.props.openPresetSettings?.();
   }
 
   async selectThinkingLevel(level: ThinkingLevel) {

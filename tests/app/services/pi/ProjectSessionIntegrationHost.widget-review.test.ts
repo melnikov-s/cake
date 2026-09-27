@@ -4,6 +4,7 @@ import { generateReviewedWidget } from "../../../../src/domain/widgets/widgetGen
 import { ProjectSessionIntegrationHost } from "../../../../src/services/pi/ProjectSessionIntegrationHost";
 import type { InlineWidgetGenerationRequest } from "../../../../src/domain/widgets/widgetGenerationReview";
 import { RenderedWidgetCaptureError } from "../../../../src/services/widgets/RenderedWidgetCapture";
+import { inlineWidgetDocument } from "../../../../src/services/widgets/inline-widget-document-registry";
 
 const source = (name: string) =>
   `\`\`\`cake-react\nexport default function ${name}(){ return <div>${name}</div> }\n\`\`\``;
@@ -19,6 +20,7 @@ function host(options: {
   const calls: string[] = [];
   const generationInputs: unknown[] = [];
   const captureStates: unknown[] = [];
+  const capturedTokens: string[] = [];
   const reviewContexts: string[] = [];
   let token = 0;
   const integration = new ProjectSessionIntegrationHost({
@@ -51,6 +53,8 @@ function host(options: {
     },
     captureWidget: async (_sessionId, widget, _signal, pluginState) => {
       captureStates.push(pluginState);
+      capturedTokens.push(widget.token);
+      expect(inlineWidgetDocument(widget.token)).toMatch(/^<html>\w+<\/html>$/);
       calls.push(`capture:${widget.token.slice(-1)}`);
       if (options.captureError) throw options.captureError;
       return { pngBase64: "cG5n", diagnostics: ["widget=560x480"] };
@@ -70,7 +74,7 @@ function host(options: {
       };
     },
   });
-  return { integration, calls, generationInputs, captureStates, reviewContexts };
+  return { integration, calls, generationInputs, captureStates, capturedTokens, reviewContexts };
 }
 
 const request = (signal?: AbortSignal): InlineWidgetGenerationRequest => ({
@@ -127,6 +131,8 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     const fixture = host({ reviews: [source("Second"), "ACCEPT_CURRENT"] });
     const result = await generate(fixture.integration, request());
     expect(result.source).toContain("function Second");
+    expect(fixture.capturedTokens).toHaveLength(2);
+    for (const token of fixture.capturedTokens) expect(inlineWidgetDocument(token)).toBeUndefined();
     expect(fixture.calls).toEqual([
       "vision:vision",
       "generate",
@@ -161,6 +167,8 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     await expect(generate(fixture.integration, request())).rejects.toThrow("renderer disconnected");
     expect(fixture.calls.some((call) => call.startsWith("repair"))).toBe(false);
     expect(fixture.calls).not.toContain("review");
+    expect(fixture.capturedTokens).toHaveLength(1);
+    for (const token of fixture.capturedTokens) expect(inlineWidgetDocument(token)).toBeUndefined();
   });
 
   it("aborts active specialist review and never returns publishable source", async () => {

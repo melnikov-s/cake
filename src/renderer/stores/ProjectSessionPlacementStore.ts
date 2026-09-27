@@ -97,6 +97,20 @@ export class ProjectSessionPlacementStore extends Store<ProjectSessionPlacementS
     };
   }
 
+  async presentFork(
+    input: Extract<ProjectSessionControlInvocation, { _tag: "PresentForkSession" }>,
+  ): Promise<JsonValue> {
+    this.props.registry.load(input.forkSessionId, input.workingDirectory);
+    const paneId = this.props.layout.showChildSession(
+      input.sourceSessionId,
+      input.forkSessionId,
+      input.placement === "right" ? "x" : "y",
+    );
+    if (!paneId) throw new Error("Cake could not open the fork beside its source session.");
+    this.present(input.forkSessionId);
+    return { ok: true, sessionId: input.forkSessionId, paneId, placement: input.placement };
+  }
+
   async openChild(
     parentSessionId: string,
     input: Extract<ProjectSessionControlInvocation, { _tag: "ProjectChildSession" }>,

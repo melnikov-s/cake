@@ -53,6 +53,7 @@ export interface ConversationComposerStoreProps {
     attachments: Attachment[],
   ): boolean | Promise<boolean | void>;
   activateDraftSession?(sessionId: string): PendingSessionPrompt | undefined;
+  activateSavedDraftSession?(choice?: WorktreeDraftChoice): Promise<boolean>;
   applyGeneratedDraftName?(sessionId: string, title: string): void;
   configureDraftActivation?(choice: WorktreeDraftChoice): void;
   sessionCreationChoice?(): WorktreeDraftChoice;
@@ -207,6 +208,8 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
   }
 
   async activateDraftSession(choice?: WorktreeDraftChoice): Promise<boolean> {
+    if (this.props.activateSavedDraftSession && this.pendingSessionDraftStore.prompt)
+      return this.props.activateSavedDraftSession(choice);
     const staged = this.pendingSessionDraftStore.takeForActivation(choice);
     if (!staged) return false;
     this.draftStore.restore(staged.text, staged.attachments);

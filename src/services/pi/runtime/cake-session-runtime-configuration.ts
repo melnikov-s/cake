@@ -25,7 +25,6 @@ import {
 } from "../fast-mode";
 import { projectModelCatalog } from "../live/PiModelsLive";
 import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
-import type { RuntimeUiRequest } from "./runtime-ui-request";
 import { applyRuntimePiSetting } from "./settings-translation";
 
 export interface CakeSessionRuntimeConfigurationState {
@@ -77,8 +76,6 @@ export interface CakeSessionRuntimeConfiguration {
   syncFastMode(): Promise<void>;
   setPiSetting(update: PiSettingUpdate): Promise<void>;
   refreshModels(): Promise<void>;
-  login(provider: string, authType: "api_key" | "oauth"): Promise<void>;
-  logout(provider: string): Promise<void>;
   setOperationModel(selection: CakeModelSelection): Promise<ExplicitCakeModelSelection>;
 }
 
@@ -88,9 +85,7 @@ export function createCakeSessionRuntimeConfiguration(input: {
   settingsManager: SettingsManager;
   session: AgentSession;
   state: CakeSessionRuntimeConfigurationState;
-  requestUi(request: RuntimeUiRequest): Promise<string | undefined>;
   emitSnapshot(): Promise<void>;
-  emitAuthNotice(tone: "info" | "error", title: string, detail: string): void;
   cancelResponseRetries(): void;
   reportAgentAction(action: "set-model", detail: string): Promise<void>;
 }): CakeSessionRuntimeConfiguration {
@@ -100,9 +95,7 @@ export function createCakeSessionRuntimeConfiguration(input: {
     settingsManager,
     session,
     state,
-    requestUi,
     emitSnapshot,
-    emitAuthNotice,
     cancelResponseRetries,
     reportAgentAction,
   } = input;
@@ -205,65 +198,6 @@ export function createCakeSessionRuntimeConfiguration(input: {
     },
     async refreshModels() {
       await modelRuntime.refresh({ allowNetwork: false });
-      await emitSnapshot();
-    },
-    async login(provider, authType) {
-      await modelRuntime.login(provider, authType, {
-        async prompt(prompt) {
-          const value = await requestUi({
-            kind: prompt.type,
-            title: "Provider authentication",
-            message: prompt.message,
-            placeholder: "placeholder" in prompt ? prompt.placeholder : undefined,
-            options:
-              prompt.type === "select"
-                ? prompt.options.map((option) => ({ id: option.id, label: option.label }))
-                : undefined,
-            signal: prompt.signal,
-          });
-          if (value === undefined) throw new Error("Authentication cancelled");
-          return value;
-        },
-        notify(event) {
-          const detail =
-            event.type === "auth_url"
-              ? event.url
-              : event.type === "device_code"
-                ? `${event.verificationUri}\nCode: ${event.userCode}`
-                : event.message;
-          emitAuthNotice("info", "Authentication", detail);
-          const url =
-            event.type === "auth_url"
-              ? event.url
-              : event.type === "device_code"
-                ? event.verificationUri
-                : undefined;
-          if (url && options.openExternal) {
-            void options.openExternal(url).catch((error) => {
-              emitAuthNotice(
-                "error",
-                "Could not open authentication",
-                `${error instanceof Error ? error.message : String(error)}\n${detail}`,
-              );
-            });
-          }
-        },
-      });
-      await emitSnapshot();
-    },
-    async logout(provider) {
-      const status = modelRuntime.getProviderAuthStatus(provider);
-      if (
-        status.configured &&
-        status.source &&
-        status.source !== "stored" &&
-        status.source !== "runtime"
-      ) {
-        throw new Error(
-          `${status.label ?? provider} is managed outside Cake. Remove that credential source and restart Cake to disconnect it.`,
-        );
-      }
-      await modelRuntime.logout(provider);
       await emitSnapshot();
     },
     setOperationModel,

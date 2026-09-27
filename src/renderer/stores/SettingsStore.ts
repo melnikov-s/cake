@@ -1,4 +1,5 @@
 import type { DictationStore } from "./DictationStore";
+import type { DesktopConnectionStore } from "./DesktopConnectionStore";
 import { Store, child, createStore } from "r-state-tree";
 import type {
   CakeSettingsSectionId,
@@ -7,6 +8,7 @@ import type {
 } from "../../domain/application/cake-settings-data";
 import type { ApplicationState } from "../../ipc/session-contract";
 import { hotkeyDefinitions } from "../lib/hotkeys";
+import { DesktopSharingSettingsStore } from "./DesktopSharingSettingsStore";
 import { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ModelPresetSettingsStore } from "./ModelPresetSettingsStore";
 import { ProviderSettingsStore } from "./ProviderSettingsStore";
@@ -34,6 +36,7 @@ export type SettingsPageId =
 
 export interface SettingsStoreProps {
   dictation: DictationStore;
+  desktopConnection?: DesktopConnectionStore;
   operations: SessionOperationCoordinatorStore;
   activeSession(): ProjectSessionStore | CakeChatSessionStore | undefined;
   workbenchError(): string | undefined;
@@ -42,7 +45,13 @@ export interface SettingsStoreProps {
 /** Coordinates the focused workflows presented by the settings surface. */
 export class SettingsStore extends Store<SettingsStoreProps> {
   activePage: SettingsPageId = "models";
+  get desktopConnection() {
+    return this.props.desktopConnection;
+  }
 
+  @child get desktopSharing(): DesktopSharingSettingsStore {
+    return createStore(DesktopSharingSettingsStore);
+  }
   @child get appearance(): AppearanceSettingsStore {
     return createStore(AppearanceSettingsStore);
   }

@@ -1,7 +1,6 @@
 import { Effect, Stream } from "effect";
 import * as artifacts from "../../domain/artifacts/artifacts";
-import { Electron } from "../../services/electron/Electron";
-import { NativeEvents } from "../../services/electron/NativeEvents";
+import { ClientEvents } from "../../services/clients/ClientEvents";
 import { ArtifactRpc } from "../protocol/ArtifactRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 
@@ -26,7 +25,7 @@ export const artifactHandlers = ArtifactRpc.of({
   "artifacts.restore": (request) =>
     Effect.gen(function* () {
       const result = yield* artifacts.restore(request);
-      (yield* Electron).broadcast({
+      (yield* ClientEvents).broadcast({
         type: "artifact-catalog-invalidated",
         lineageId: request.lineageId,
       });
@@ -35,7 +34,7 @@ export const artifactHandlers = ArtifactRpc.of({
   "artifacts.link": (request) =>
     Effect.gen(function* () {
       const result = yield* artifacts.link(request);
-      (yield* Electron).broadcast({
+      (yield* ClientEvents).broadcast({
         type: "artifact-catalog-invalidated",
         lineageId: request.lineageId,
       });
@@ -44,7 +43,7 @@ export const artifactHandlers = ArtifactRpc.of({
   "artifacts.unlink": (request) =>
     Effect.gen(function* () {
       yield* artifacts.unlink(request);
-      (yield* Electron).broadcast({
+      (yield* ClientEvents).broadcast({
         type: "artifact-catalog-invalidated",
         lineageId: request.lineageId,
       });
@@ -52,7 +51,7 @@ export const artifactHandlers = ArtifactRpc.of({
   "artifacts.setSelection": (request) =>
     Effect.gen(function* () {
       const result = yield* artifacts.setSelection(request);
-      (yield* Electron).broadcast({
+      (yield* ClientEvents).broadcast({
         type: "artifact-catalog-invalidated",
         lineageId: request.lineageId,
       });
@@ -63,7 +62,7 @@ export const artifactHandlers = ArtifactRpc.of({
     Stream.unwrap(
       Effect.gen(function* () {
         const connection = yield* RendererConnection;
-        return (yield* NativeEvents).artifacts(connection.connectionId);
+        return (yield* ClientEvents).artifacts(connection.connectionId);
       }),
     ),
 });

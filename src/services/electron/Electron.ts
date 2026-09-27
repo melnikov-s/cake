@@ -1,10 +1,6 @@
 import { Context, Schema, type Effect, type Stream } from "effect";
 import type { BrowserWindow, WebContents } from "electron";
-import type {
-  CakeEvent,
-  cakeRpcPayloadSchemas,
-  cakeRpcSuccessSchemas,
-} from "../../ipc/cake-rpc-contract";
+import type { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../../ipc/cake-rpc-contract";
 
 export const CAKE_TITLE_BAR_HEIGHT = 46;
 export const VSCODE_TITLE_BAR_HEIGHT = 35;
@@ -20,9 +16,13 @@ type Success<Type extends keyof typeof cakeRpcSuccessSchemas> =
 
 export interface ElectronWindowLifecycle {
   readonly backToAgentForWindow: (ownerId: number) => boolean;
-  readonly onWindowClosed: (ownerId: number, workingDirectory: string | undefined) => void;
+  readonly onWindowClosed: (
+    ownerId: number,
+    workingDirectory: string | undefined,
+    nativeId: number,
+  ) => void;
   readonly allowProjectPath: (path: string) => Effect.Effect<void>;
-  readonly hasUtilityModel: () => boolean;
+  readonly canRewordSelection: () => boolean;
 }
 
 interface FullscreenSurfaceState {
@@ -70,14 +70,8 @@ export interface ElectronService {
   readonly fullscreenSurfaceChanges: () => Stream.Stream<FullscreenSurfaceState>;
 
   readonly start: (lifecycle: ElectronWindowLifecycle) => Effect.Effect<void>;
-  readonly openExternal: (url: string) => Effect.Effect<void, ElectronError>;
   readonly stop: () => Effect.Effect<void>;
-  readonly sendTo: (target: WebContents, event: CakeEvent) => void;
-  readonly broadcast: (event: CakeEvent) => void;
   readonly requireRendererConnection: (connectionId: number) => WebContents;
-  readonly workspaceForConnection: (connectionId: number) => string | undefined;
-  readonly associateWorkspace: (connectionId: number, workingDirectory: string) => void;
-  readonly forgetWorkspace: (workingDirectory: string) => void;
   readonly windowsForWorkspace: (
     workingDirectory: string,
   ) => ReadonlyArray<readonly [connectionId: number, window: BrowserWindow]>;

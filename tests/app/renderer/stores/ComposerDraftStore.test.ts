@@ -1,8 +1,42 @@
-import { createStore, mount, toSnapshot } from "r-state-tree";
-import { describe, expect, it } from "vitest";
+import { child, createStore, mount, Store, toSnapshot } from "r-state-tree";
+import { describe, expect, it, vi } from "vitest";
+import type { Client } from "../../../../src/renderer/client/Client";
 import { ComposerDraftStore } from "../../../../src/renderer/stores/ComposerDraftStore";
+import { ClientContext } from "../../../../src/renderer/stores/context/ClientContext";
+
+class AttachmentHarnessStore extends Store<{ client: Client }> {
+  [ClientContext.provide]() {
+    return this.props.client;
+  }
+
+  @child get draft() {
+    return createStore(ComposerDraftStore, {});
+  }
+}
 
 describe("ComposerDraftStore", () => {
+  it("keeps two chosen local files with the same basename as removable attachments", async () => {
+    const first = { kind: "file" as const, name: "notes.txt", path: "/one/notes.txt" };
+    const second = { kind: "file" as const, name: "notes.txt", path: "/two/notes.txt" };
+    const chooseAttachments = vi
+      .fn()
+      .mockResolvedValueOnce([first])
+      .mockResolvedValueOnce([second]);
+    const harness = mount(
+      createStore(AttachmentHarnessStore, {
+        client: { filesystem: { chooseAttachments } } as unknown as Client,
+      }),
+    );
+    harness.draft.setText("Compare these");
+    await harness.draft.addAttachments();
+    await harness.draft.addAttachments();
+    expect(harness.draft.text).toBe("Compare these");
+    expect(harness.draft.submissionAttachments).toEqual([first, second]);
+    harness.draft.removeAttachment(0);
+    expect(harness.draft.submissionAttachments).toEqual([second]);
+    harness[Symbol.dispose]();
+  });
+
   it("owns text, attachments, annotations, editor context, focus, and coherent clearing", () => {
     const store = mount(createStore(ComposerDraftStore, {}));
     const context = {
