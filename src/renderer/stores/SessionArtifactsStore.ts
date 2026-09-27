@@ -132,8 +132,10 @@ export class SessionArtifactsStore extends Store<{
 
   toggle() {
     if (this.open) this.close();
-    else {
-      this.selectedArtifactId = undefined;
+    else if (this.records.length === 1) {
+      this.openArtifact(this.records[0]!.artifact.id);
+    } else {
+      this.showList();
       this.open = true;
     }
   }

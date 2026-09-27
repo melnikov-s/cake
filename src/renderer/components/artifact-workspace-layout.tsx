@@ -4,7 +4,7 @@ import { ArtifactHost } from "@/components/artifact-host";
 import { ArtifactSelectionSurface } from "@/components/artifact-selection-surface";
 import { AccessoryPanelLayout } from "@/components/ui/accessory-panel-layout";
 import { Button } from "@/components/ui/button";
-import { ArtifactIcon, BackIcon, CopyIcon, ForwardIcon } from "@/components/ui/icons";
+import { ArtifactIcon, BackIcon, CopyIcon, ForwardIcon, InfoIcon } from "@/components/ui/icons";
 import { Badge } from "@/components/ui/badge";
 import { Callout } from "@/components/ui/callout";
 import { Select } from "@/components/ui/select";
@@ -39,6 +39,7 @@ export const ArtifactWorkspaceLayout = observer(function ArtifactWorkspaceLayout
 }) {
   const workspace = session.sessionArtifactsStore;
   const [copied, setCopied] = useState<string>();
+  const [showInfo, setShowInfo] = useState(false);
   const selected = workspace.selectedRecord;
   const association = workspace.selectedAssociation;
   const lineage = association?.lineage;
@@ -80,6 +81,15 @@ export const ArtifactWorkspaceLayout = observer(function ArtifactWorkspaceLayout
                   <BackIcon /> All artifacts
                 </Button>
                 <span className="ml-auto flex items-center gap-1">
+                  {association && (
+                    <IconButton
+                      tooltip={showInfo ? "Hide artifact info" : "Show artifact info"}
+                      aria-pressed={showInfo}
+                      onClick={() => setShowInfo((visible) => !visible)}
+                    >
+                      <InfoIcon />
+                    </IconButton>
+                  )}
                   <IconButton
                     tooltip="Previous artifact"
                     disabled={!workspace.hasPrevious}
@@ -97,7 +107,7 @@ export const ArtifactWorkspaceLayout = observer(function ArtifactWorkspaceLayout
                 </span>
               </div>
               <div className="min-h-0 overflow-auto p-4">
-                {association && lineage && lineageId && revisionNumber && exactRef && (
+                {showInfo && association && lineage && lineageId && revisionNumber && exactRef && (
                   <section className="mb-4 rounded-xl border border-border bg-card/65 p-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge>

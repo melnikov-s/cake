@@ -79,6 +79,52 @@ describe("SessionArtifactsStore", () => {
     second.root[Symbol.dispose]();
   });
 
+  it("opens the sole artifact directly, but keeps the list for multiple artifacts", async () => {
+    const first = effective("session-1", 1, "One");
+    const second = {
+      ...effective("session-1", 1, "Two"),
+      revision: {
+        ...first.revision,
+        lineageId: "other" as typeof first.revision.lineageId,
+        snapshot: { ...first.revision.snapshot, id: "other", title: "Two" },
+      },
+      link: { ...first.link, lineageId: "other" as typeof first.link.lineageId },
+      stableRef: "cake://artifact/other",
+      exactRef: "cake://artifact/other@r1",
+    };
+    let values = [first];
+    const client = {
+      artifacts: {
+        effective: vi.fn(async () => values),
+        history: vi.fn(async () => ({ items: [], offset: 0, limit: 50, total: 0, hasMore: false })),
+      },
+    } as unknown as Client;
+    const { root, subject } = mountWithClient(
+      createStore(SessionArtifactsStore, {
+        sessionId: "session-1",
+        model: ArtifactCatalog.create(),
+        isActive: () => true,
+      }),
+      client,
+    );
+    await flush();
+    subject.toggle();
+    expect(subject.selectedRecord?.artifact.title).toBe("One");
+    expect(client.artifacts.history).toHaveBeenCalledOnce();
+    subject.close();
+    subject.toggle();
+    expect(subject.selectedRecord?.artifact.title).toBe("One");
+
+    values = [first, second];
+    await subject.refresh();
+    subject.close();
+    subject.toggle();
+    expect(subject.open).toBe(true);
+    expect(subject.selectedRecord).toBeUndefined();
+    expect(client.artifacts.history).toHaveBeenCalledTimes(2);
+    root[Symbol.dispose]();
+  });
+
   it("surfaces authoritative load failures without replacing current data", async () => {
     const client = {
       artifacts: { effective: vi.fn(async () => Promise.reject(new Error("catalog unavailable"))) },
