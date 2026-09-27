@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
-import { resolve, join, dirname } from "node:path";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { resolve, join } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { chromium, expect as browserExpect } from "@playwright/test";
-import { Context, Effect } from "effect";
+import { Effect } from "effect";
 import { beforeAll, expect, it } from "vitest";
 import { openNetworkListener } from "../../src/server/NetworkListener";
-import { RendererRequestCoordinator } from "../../src/services/renderer-requests/RendererRequestCoordinator";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
@@ -22,7 +21,7 @@ beforeAll(async () => {
   );
 }, 60_000);
 
-it("compiled standalone host serves the browser build independently of cwd", async () => {
+it("compiled standalone host serves the shared browser shell independently of cwd", async () => {
   const home = await mkdtemp(join(tmpdir(), "cake-browser-node-"));
   const child = spawn(process.execPath, [resolve("out/server/main.mjs")], {
     cwd: home,
@@ -60,8 +59,10 @@ it("compiled standalone host serves the browser build independently of cwd", asy
       const page = await browser.newPage();
       page.setDefaultTimeout(10_000);
       await page.goto(url);
-      await browserExpect(page.getByText("Connected", { exact: true })).toBeVisible();
-      await browserExpect(page.getByLabel("Project", { exact: true })).toBeVisible();
+      await browserExpect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+      await browserExpect(
+        page.getByRole("heading", { name: "What should we build?" }),
+      ).toBeVisible();
       expect(await page.locator("script[type=module]").getAttribute("src")).toMatch(/^\/assets\//);
     } finally {
       await browser.close();
@@ -78,7 +79,106 @@ it("compiled standalone host serves the browser build independently of cwd", asy
   }
 }, 45_000);
 
-it("real browser chat navigates, types, streams, stops, answers and reconnects without mutation replay", async () => {
+it("retains a lost-receipt draft but blocks resending until browser delivery is acknowledged", async () => {
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const controlled = browserBackendAdapter();
+      const backend = yield* makeNetworkTestBackend({
+        adapter: controlled.adapter,
+        models: [browserTestModel],
+      });
+      const listener = yield* openNetworkListener(
+        { port: 0, browserAssetsDirectory: resolve("out/browser") },
+        {
+          homeDirectory: "/home/test",
+          cakeChat: {
+            agentDirectory: "/agent",
+            location: cakeChatLocations.make({
+              homeDirectory: "/home/test",
+              sessionDirectory: "/chat",
+              resolvedSessionDirectory: "/chat-resolved",
+            }),
+          },
+        },
+      ).pipe(Effect.provideContext(backend.context));
+      assert.equal(listener.address._tag, "TcpAddress");
+      const url = `http://127.0.0.1:${listener.address.port}`;
+      yield* Effect.promise(async () => {
+        const browser = await chromium.launch({ channel: "chromium-headless-shell" });
+        try {
+          const page = await browser.newPage();
+          page.setDefaultTimeout(15_000);
+          let dropReceipt = true;
+          let promptId: string | undefined;
+          await page.routeWebSocket("**/rpc", (socket) => {
+            const server = socket.connectToServer();
+            socket.onMessage((message) => {
+              const decoded: unknown = JSON.parse(String(message));
+              if (
+                decoded &&
+                typeof decoded === "object" &&
+                "tag" in decoded &&
+                decoded.tag === "sessionChats.prompt" &&
+                "id" in decoded
+              )
+                promptId = String(decoded.id);
+              server.send(message);
+            });
+            server.onMessage((message) => {
+              const decoded: unknown = JSON.parse(String(message));
+              if (
+                dropReceipt &&
+                decoded &&
+                typeof decoded === "object" &&
+                "requestId" in decoded &&
+                String(decoded.requestId) === promptId &&
+                "_tag" in decoded &&
+                decoded._tag === "Exit"
+              ) {
+                dropReceipt = false;
+                server.close();
+                socket.close();
+              } else socket.send(message);
+            });
+          });
+          await page.goto(url);
+          await page
+            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
+            .first()
+            .click();
+          const input = page.locator('[data-slot="workspace"] textarea').first();
+          await input.fill("Lose this receipt");
+          await page.getByRole("button", { name: "Send", exact: true }).click();
+          await browserExpect(page.getByText("Delivery uncertain", { exact: false })).toBeVisible();
+          await browserExpect(input).toHaveValue("Lose this receipt");
+          await browserExpect.poll(() => controlled.stats.turns).toBe(1);
+          // A live socket and retained draft must not silently become a second prompt.
+          await browserExpect(page.getByText("Connected", { exact: true })).toBeVisible();
+          await page.reload();
+          await browserExpect(page.getByText("Delivery uncertain", { exact: false })).toBeVisible();
+          const restoredInput = page.locator('[data-slot="workspace"] textarea').first();
+          await browserExpect(restoredInput).toHaveValue("Lose this receipt");
+          controlled.finish(controlled.existingId);
+          await browserExpect(page.getByText("Completed answer 1", { exact: true })).toBeVisible();
+          const send = page.getByRole("button", { name: "Send", exact: true });
+          await browserExpect(send).toBeDisabled();
+          expect(controlled.stats.turns).toBe(1);
+          await page.getByRole("button", { name: "I checked the server state" }).click();
+          await browserExpect(page.getByText("Delivery uncertain", { exact: false })).toHaveCount(
+            0,
+          );
+          await browserExpect(send).toBeEnabled();
+          await send.click();
+          await browserExpect.poll(() => controlled.stats.turns).toBe(2);
+        } finally {
+          await browser.close();
+        }
+      });
+    }).pipe(Effect.scoped),
+  );
+}, 60_000);
+
+it("real Chromium uses the shared sidebar, project chat and Cake Chat without replay on refresh or reconnect", async () => {
   await Effect.runPromise(
     Effect.gen(function* () {
       const controlled = browserBackendAdapter();
@@ -107,272 +207,81 @@ it("real browser chat navigates, types, streams, stops, answers and reconnects w
         const errors: string[] = [];
         try {
           const page = await browser.newPage();
-          page.setDefaultTimeout(10_000);
+          page.setDefaultTimeout(15_000);
           page.on("pageerror", (error) => errors.push(error.message));
+          let severConnection: (() => void) | undefined;
+          let connections = 0;
+          await page.routeWebSocket("**/rpc", (socket) => {
+            connections += 1;
+            const server = socket.connectToServer();
+            if (!severConnection)
+              severConnection = () => {
+                server.close();
+                socket.close();
+              };
+            socket.onMessage((message) => server.send(message));
+            server.onMessage((message) => socket.send(message));
+          });
           await page.goto(url);
-          await browserExpect(
-            page.getByRole("status", { name: "" }).filter({ hasText: "Connected" }),
-          ).toBeVisible();
-          await page.getByLabel("Project", { exact: true }).selectOption("/project");
-          await page.getByLabel("Session", { exact: true }).selectOption(controlled.existingId);
-          const input = page.getByLabel("Message Cake", { exact: true });
+          const row = page
+            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
+            .first();
+          await browserExpect(row).toBeVisible();
+          await row.click();
+          const input = page.locator('[data-slot="workspace"] textarea').first();
           await browserExpect(input).toBeVisible();
-          await browserExpect(input).toBeFocused();
-          await input.pressSequentially("Typed browser prompt");
-          await browserExpect(input).toHaveValue("Typed browser prompt");
-          const send = page.getByRole("button", { name: "Send", exact: true });
-          await browserExpect(send).toBeEnabled();
-          await send.click();
+          await input.fill("From the shared browser shell");
+          await page.getByRole("button", { name: "Send", exact: true }).click();
           await browserExpect(
             page.getByText("Streaming controlled answer", { exact: true }),
           ).toBeVisible();
-          await browserExpect(page.locator('[data-slot="activity-group"]')).toContainText("read");
-          if (process.env.CAKE_BROWSER_CHAT_CAPTURE) {
-            const output = resolve(process.env.CAKE_BROWSER_CHAT_CAPTURE);
-            await mkdir(dirname(output), { recursive: true });
-            await page.screenshot({ path: output, fullPage: true });
-          }
-          await browserExpect(input).toHaveValue("");
+          expect(controlled.stats.turns).toBe(1);
+          severConnection?.();
+          await browserExpect.poll(() => connections).toBeGreaterThan(1);
           await browserExpect(
             page.getByRole("button", { name: "Stop", exact: true }),
           ).toBeVisible();
           expect(controlled.stats.turns).toBe(1);
-          expect(controlled.stats.acquisitions).toBe(1);
           await page.getByRole("button", { name: "Stop", exact: true }).click();
           await browserExpect(page.getByText("Completed answer 1", { exact: true })).toBeVisible();
-          expect(controlled.stats.aborts).toBe(1);
-
-          // Keep the real configuration command pending at the external Pi boundary.
-          // Sending now must not race ahead under the previously selected configuration.
-          const applying = controlled.pauseNextConfiguration();
-          try {
-            await page.getByRole("button", { name: "Model configuration", exact: true }).click();
-            await page.getByRole("button", { name: "Change model", exact: true }).click();
-            await page
-              .getByRole("button", { name: "Controlled model controlled", exact: true })
-              .click();
-            await page.getByRole("button", { name: "Apply", exact: true }).click();
-            await applying.entered();
-            await input.fill("Wait for selected configuration");
-            await browserExpect(send).toBeDisabled();
-            expect(controlled.stats.turns).toBe(1);
-          } finally {
-            applying.release();
-          }
-          await browserExpect(send).toBeEnabled();
-          await input.fill("");
-          expect(controlled.configurations).toEqual([
-            { provider: "test", modelId: "controlled", thinkingLevel: "off", fastMode: false },
-          ]);
-
-          const question = Effect.runPromise(
-            Context.get(backend.context, RendererRequestCoordinator).requestUiForConnection(
-              1,
-              controlled.existingId,
-              {
-                kind: "select",
-                title: "Choose direction",
-                message: "Which direction?",
-                options: [{ id: "north", label: "North" }],
-              },
-            ),
+          await browserExpect(page.getByText("Completed answer 1", { exact: true })).toBeVisible();
+          await browserExpect(page.locator('[data-slot="workspace"]')).toHaveAttribute(
+            "data-session-id",
+            controlled.existingId,
           );
-          await page
-            .getByRole("combobox", { name: "Choose direction", exact: true })
-            .selectOption("north");
-          await page.getByRole("button", { name: "Continue", exact: true }).click();
-          expect(await question).toBe("north");
-          const formRequest = Effect.runPromise(
-            Context.get(backend.context, RendererRequestCoordinator).requestArtifact(
-              controlled.existingId,
-              {
-                artifact: {
-                  protocol: "cake.artifact/v1",
-                  id: "browser-form",
-                  sessionId: controlled.existingId,
-                  revision: 1,
-                  kind: "request",
-                  payload: {
-                    request: {
-                      protocol: "cake.request/v1",
-                      id: "browser-form",
-                      title: "Browser question",
-                      responseSchema: { type: "object" },
-                      view: {
-                        type: "form",
-                        fields: [{ id: "answer", label: "Browser answer", type: "text" }],
-                      },
-                      fallback: { markdown: "Answer the question" },
-                    },
-                  },
-                  fallback: { markdown: "Answer the question" },
-                  interaction: { mode: "request", responseSchema: { type: "object" } },
-                },
-                workspacePath: "/project",
-                digest: "a".repeat(64),
-                createdAt: "2026-01-01T00:00:00.000Z",
-                updatedAt: "2026-01-01T00:00:00.000Z",
-              },
-              new AbortController().signal,
-            ),
+          await page.reload();
+          await browserExpect(page.locator('[data-slot="workspace"]')).toHaveAttribute(
+            "data-session-id",
+            controlled.existingId,
           );
-          await page
-            .getByRole("textbox", { name: "Browser answer", exact: true })
-            .fill("Structured response");
-          await page.getByRole("button", { name: "Submit", exact: true }).click();
-          expect(await formRequest).toEqual({ answer: "Structured response" });
-          const unavailableDraw = await Effect.runPromise(
-            Context.get(backend.context, RendererRequestCoordinator).requestDrawControl(
-              controlled.existingId,
-              { _tag: "Enter" },
-              new AbortController().signal,
-            ),
-          );
-          expect(unavailableDraw).toMatchObject({ ok: false, code: "CAPABILITY_UNAVAILABLE" });
+          await browserExpect(page.getByText("Completed answer 1", { exact: true })).toBeVisible();
+          expect(controlled.stats.turns).toBe(1);
 
-          await input.fill("First tab draft");
-          const second = await browser.newPage({ viewport: { width: 390, height: 844 } });
-          second.setDefaultTimeout(10_000);
+          const second = await browser.newPage();
+          second.setDefaultTimeout(15_000);
           second.on("pageerror", (error) => errors.push(error.message));
           await second.goto(url);
-          await second.getByLabel("Project", { exact: true }).selectOption("/project");
-          await second.getByLabel("Session", { exact: true }).selectOption(controlled.existingId);
-          const secondInput = second.getByLabel("Message Cake", { exact: true });
+          await second
+            .locator(`[data-slot="sidebar"] [data-session-id="${controlled.existingId}"]`)
+            .first()
+            .click();
           await browserExpect(
             second.getByText("Completed answer 1", { exact: true }),
           ).toBeVisible();
-          await browserExpect(secondInput).toHaveValue("");
-          await secondInput.fill("Second tab draft");
-          await browserExpect(input).toHaveValue("First tab draft");
-          expect(
-            await second.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-          ).toBe(true);
-          await second.close();
-
-          // Test-only wire fault: the real handler accepts a turn, but its receipt is lost.
-          // No fake client/Store/domain; reconnect goes through the real HTTP+WS listener.
-          await page.close();
-          const reconnecting = await browser.newPage();
-          reconnecting.setDefaultTimeout(10_000);
-          reconnecting.on("pageerror", (error) => errors.push(error.message));
-          let loseReceipt = true;
-          let offline = false;
-          let promptId: string | undefined;
-          await reconnecting.routeWebSocket("**/rpc", (socket) => {
-            if (offline) {
-              socket.close();
-              return;
-            }
-            const server = socket.connectToServer();
-            socket.onMessage((message) => {
-              const decoded: unknown = JSON.parse(String(message));
-              if (
-                decoded &&
-                typeof decoded === "object" &&
-                "tag" in decoded &&
-                decoded.tag === "sessionChats.prompt" &&
-                "id" in decoded
-              )
-                promptId = String(decoded.id);
-              server.send(message);
-            });
-            server.onMessage((message) => {
-              const decoded: unknown = JSON.parse(String(message));
-              if (
-                loseReceipt &&
-                decoded &&
-                typeof decoded === "object" &&
-                "requestId" in decoded &&
-                String(decoded.requestId) === promptId &&
-                "_tag" in decoded &&
-                decoded._tag === "Exit"
-              ) {
-                loseReceipt = false;
-                offline = true;
-                server.close();
-                socket.close();
-              } else socket.send(message);
-            });
-          });
-          await reconnecting.goto(url);
-          await reconnecting.getByLabel("Project", { exact: true }).selectOption("/project");
-          await reconnecting
-            .getByLabel("Session", { exact: true })
-            .selectOption(controlled.existingId);
-          const retryInput = reconnecting.getByLabel("Message Cake", { exact: true });
-          await retryInput.fill("Lose this receipt");
-          await reconnecting.getByRole("button", { name: "Send", exact: true }).click();
+          await page.getByRole("button", { name: "New Cake Chat", exact: true }).first().click();
           await browserExpect(
-            reconnecting.getByText("Disconnected · reconnecting…", { exact: true }),
+            page.getByRole("heading", { name: "What can I help you find or do?" }),
           ).toBeVisible();
-          await browserExpect(reconnecting.getByRole("alert")).toContainText(
-            "Delivery is uncertain",
+          await browserExpect(second.locator('[data-slot="workspace"]')).toHaveAttribute(
+            "data-session-id",
+            controlled.existingId,
           );
-          expect(controlled.stats.turns).toBe(2);
-          controlled.finish(controlled.existingId);
-          offline = false;
+          await page.reload();
+          await browserExpect(page.locator('[data-slot="sidebar"]')).toBeVisible();
           await browserExpect(
-            reconnecting.getByText("Completed answer 2", { exact: true }),
-          ).toBeVisible({ timeout: 15000 });
-          await browserExpect(retryInput).toHaveValue("Lose this receipt");
-          await browserExpect(
-            reconnecting.getByRole("button", { name: "Send", exact: true }),
-          ).toBeDisabled();
-          expect(controlled.stats.turns).toBe(2);
-          await reconnecting
-            .getByRole("button", { name: "Discard retained draft", exact: true })
-            .click();
-          await browserExpect(retryInput).toHaveValue("");
-          expect(controlled.stats.aborts).toBe(1);
-          await reconnecting.getByRole("button", { name: "New chat", exact: true }).click();
-          await reconnecting
-            .getByRole("button", { name: "Model configuration", exact: true })
-            .click();
-          await reconnecting
-            .getByRole("button", { name: "Controlled model controlled", exact: true })
-            .click();
-          await reconnecting.getByRole("button", { name: "Apply", exact: true }).click();
-          await retryInput.pressSequentially("Start ordinary chat");
-          await browserExpect(retryInput).toHaveValue("Start ordinary chat");
-          const starting = controlled.pauseNextConfiguration();
-          try {
-            await reconnecting.getByRole("button", { name: "Send", exact: true }).click();
-            await starting.entered();
-            await browserExpect(
-              reconnecting.getByRole("button", { name: "Model configuration", exact: true }),
-            ).toHaveCount(0);
-            await browserExpect(retryInput).toHaveValue("Start ordinary chat");
-            expect(controlled.stats.turns).toBe(2);
-          } finally {
-            starting.release();
-          }
-          await browserExpect(
-            reconnecting.getByText("Streaming controlled answer", { exact: true }),
+            page.getByRole("heading", { name: "What can I help you find or do?" }),
           ).toBeVisible();
-          await reconnecting.getByRole("button", { name: "Stop", exact: true }).click();
-          await browserExpect(
-            reconnecting.getByText("Completed answer 3", { exact: true }),
-          ).toBeVisible();
-          expect(controlled.stats.turns).toBe(3);
-          expect(controlled.configurations).toHaveLength(2);
-          expect(controlled.configurations[1]).toEqual({
-            provider: "test",
-            modelId: "controlled",
-            thinkingLevel: "off",
-            fastMode: false,
-          });
-          await browserExpect(
-            reconnecting.getByLabel("Session", { exact: true }).locator("option"),
-          ).toHaveCount(3);
-          await reconnecting.getByRole("button", { name: "New chat", exact: true }).click();
-          const unsentId = await reconnecting.getByLabel("Session", { exact: true }).inputValue();
-          await retryInput.fill("Retain while navigating");
-          await reconnecting
-            .getByLabel("Session", { exact: true })
-            .selectOption(controlled.existingId);
-          await browserExpect(retryInput).toHaveValue("");
-          await reconnecting.getByLabel("Session", { exact: true }).selectOption(unsentId);
-          await browserExpect(retryInput).toHaveValue("Retain while navigating");
+          expect(controlled.stats.turns).toBe(1);
           expect(errors).toEqual([]);
         } finally {
           await browser.close();

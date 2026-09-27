@@ -36,6 +36,23 @@ export interface EmbeddedEditorViewport {
 
 const EMPTY_VIEWPORT: EmbeddedEditorViewport = { x: 0, y: 0, width: 0, height: 0 };
 
+// Syntax guard only; this is not editor-origin isolation or permission to embed.
+const validLeaseEndpoint = (endpoint: string) => {
+  try {
+    const url = new URL(endpoint);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash &&
+      /^\/editor\/[1-9][0-9]*\/[a-f0-9]{64}\/$/.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+};
+
 /**
  * Owns the embedded VS Code workflow: IDE-mode visibility, install/launch
  * status, native view bounds reporting, and source reveal intents.
@@ -52,6 +69,10 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   activeContextAttachment: Extract<Attachment, { kind: "source" }> | undefined;
   /** Rect the mounted editor surface last measured; undefined while it is unmounted. */
   measuredBounds: EmbeddedEditorViewport | undefined;
+  /** Isolated-origin, connection-scoped network editor; native viewers have no endpoint. */
+  browserEditorEndpoint: string | undefined;
+  private browserLeaseId: string | undefined;
+  private leaseGeneration = 0;
   private openedWorkspace: string | undefined;
   private opening: { readonly projectPath: string; readonly promise: Promise<void> } | undefined;
   private installation: Promise<void> | undefined;
@@ -221,18 +242,40 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
   }
 
   private async performOpen(projectPath: string) {
+    const generation = this.leaseGeneration;
     this.error = undefined;
     this.errorDetails = undefined;
     try {
-      await this.vscode.open(projectPath, { signal: this.signal });
-      if (this.signal.aborted || this.props.projectPath() !== projectPath) return;
+      const lease = await this.vscode.open(projectPath, { signal: this.signal });
+      if (lease && !validLeaseEndpoint(lease.endpoint)) {
+        void this.vscode.release(lease.id).catch(() => undefined);
+        throw new Error("Invalid editor lease endpoint");
+      }
+      if (
+        this.signal.aborted ||
+        generation !== this.leaseGeneration ||
+        !this.visible ||
+        this.props.projectPath() !== projectPath
+      ) {
+        if (lease) void this.vscode.release(lease.id).catch(() => undefined);
+        return;
+      }
+      this.browserLeaseId = lease?.id;
+      this.browserEditorEndpoint = lease?.endpoint;
       this.openedWorkspace = projectPath;
       // Reopening after a disconnected native view must resend even unchanged geometry.
       await this.pushNativeViewBounds();
       await this.syncAnnotations();
       await this.syncSelectionHighlights();
     } catch (error) {
-      if (this.signal.aborted) return;
+      if (
+        this.signal.aborted ||
+        generation !== this.leaseGeneration ||
+        !this.visible ||
+        this.props.projectPath() !== projectPath ||
+        this.openedWorkspace === projectPath
+      )
+        return;
       const described = describeError(error);
       this.error = described.message;
       this.errorDetails = described.details;
@@ -312,6 +355,7 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
 
   /** Serializes active-session Cake discussion annotations to VS Code. */
   async syncAnnotations() {
+    const generation = this.leaseGeneration;
     const projectPath = this.props.projectPath();
     if (!projectPath || !this.visible || this.openedWorkspace !== projectPath) return;
     if (this.syncingAnnotations) {
@@ -327,14 +371,19 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
         const fingerprint = JSON.stringify(snapshot);
         if (fingerprint === this.sentAnnotationsFingerprint) continue;
         await this.vscode.updateAnnotations(projectPath, snapshot, { signal: this.signal });
-        if (this.signal.aborted || this.props.projectPath() !== projectPath) return;
+        if (
+          this.signal.aborted ||
+          generation !== this.leaseGeneration ||
+          !this.visible ||
+          this.props.projectPath() !== projectPath ||
+          this.openedWorkspace !== projectPath
+        )
+          return;
         this.sentAnnotationsFingerprint = fingerprint;
       } while (this.annotationSyncPending);
-    } catch (error) {
-      if (this.signal.aborted) return;
-      const described = describeError(error);
-      this.error = described.message;
-      this.errorDetails = described.details;
+    } catch {
+      // Annotation synchronization is advisory. A transient rejection must not
+      // replace a working editor iframe with the error placeholder.
     } finally {
       this.syncingAnnotations = false;
     }
@@ -364,9 +413,18 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
     return this.vscode.reveal(projectPath, location, { signal: this.signal });
   }
 
-  /** Hides the native surface while retaining the current session's IDE preference. */
+  /** Hides the surface and revokes a browser viewer's scoped lease. */
   suspend() {
+    this.leaseGeneration++;
+    this.opening = undefined;
     if (this.visible) this.props.leaveProjectSidebarMode();
+    const leaseId = this.browserLeaseId;
+    this.browserLeaseId = undefined;
+    this.browserEditorEndpoint = undefined;
+    if (leaseId) {
+      this.openedWorkspace = undefined;
+      void this.vscode.release(leaseId).catch(() => undefined);
+    }
     this.visible = false;
     this.lastActivePath = undefined;
     this.activeContextAttachment = undefined;
@@ -374,12 +432,26 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
 
   /** The backend revoked this window's lease; a reconnect never replays its open. */
   disconnected() {
+    this.leaseGeneration++;
+    this.opening = undefined;
     this.openedWorkspace = undefined;
+    this.browserEditorEndpoint = undefined;
+    this.browserLeaseId = undefined;
     this.sentAnnotationsFingerprint = undefined;
     this.lastActivePath = undefined;
     this.activeContextAttachment = undefined;
     if (this.visible)
       this.error = "Connection lost. Return to agent and reopen VS Code after reconnecting.";
+  }
+
+  async updateBrowserTheme(theme: "light" | "dark") {
+    if (!this.browserLeaseId) return;
+    try {
+      await this.vscode.setTheme(theme, { signal: this.signal });
+    } catch {
+      // A theme synchronization failure must not replace a working editor with
+      // the error placeholder; the next theme change or reopen can retry.
+    }
   }
 
   /** Explicitly returns the selected session to Agent presentation. */

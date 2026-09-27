@@ -7,7 +7,7 @@ const listeners = new Set<() => void>();
 let themeObserver: MutationObserver | undefined;
 let colorSchemeQuery: MediaQueryList | undefined;
 
-function currentTheme(): ResolvedColorTheme {
+export function resolvedColorTheme(): ResolvedColorTheme {
   const preference = document.documentElement.dataset.theme;
   if (preference === "light" || preference === "dark") return preference;
   return window.matchMedia?.(darkModeQuery).matches ? "dark" : "light";
@@ -40,5 +40,5 @@ function subscribe(listener: () => void) {
 
 /** Resolves Cake's explicit theme and follows the OS while the preference is system. */
 export function useResolvedColorTheme(): ResolvedColorTheme {
-  return useSyncExternalStore<ResolvedColorTheme>(subscribe, currentTheme, () => "light");
+  return useSyncExternalStore<ResolvedColorTheme>(subscribe, resolvedColorTheme, () => "light");
 }

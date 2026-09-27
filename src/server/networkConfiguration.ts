@@ -10,6 +10,10 @@ export const networkConfiguration = Effect.fn("Server.networkConfiguration")(fun
     Config.withDefault("127.0.0.1"),
   );
   const port = yield* Config.number("CAKE_SERVER_PORT").pipe(Config.withDefault(4317));
+  const editorPort = yield* Config.number("CAKE_SERVER_EDITOR_PORT").pipe(Config.withDefault(0));
+  const editorPublicOrigin = yield* Config.string("CAKE_SERVER_EDITOR_PUBLIC_ORIGIN").pipe(
+    Config.withDefault(""),
+  );
   const allowedHosts = yield* Config.string("CAKE_SERVER_ALLOWED_HOSTS").pipe(
     Config.withDefault(""),
   );
@@ -25,7 +29,8 @@ export const networkConfiguration = Effect.fn("Server.networkConfiguration")(fun
   const browserEnabled = yield* Config.boolean("CAKE_SERVER_BROWSER_ENABLED").pipe(
     Config.withDefault(false),
   );
-  const options = { bind, port, allowMissingOrigin, maxPayloadBytes };
+  const options = { bind, port, editorPort, allowMissingOrigin, maxPayloadBytes };
+  if (editorPublicOrigin !== "") Object.assign(options, { editorPublicOrigin });
   if (browserEnabled)
     Object.assign(options, {
       browserAssetsDirectory: fileURLToPath(new URL("../browser/", import.meta.url)),

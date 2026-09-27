@@ -38,6 +38,7 @@ it("serves only the bounded browser build with HTTP authority checks and correct
         ).pipe(Effect.provideContext(backend.context));
         assert.equal(listener.address._tag, "TcpAddress");
         const port = listener.address.port;
+        assert.ok(listener.editorPort);
         const get = (
           path: string,
           headers: Record<string, string> | string[] = {},
@@ -72,7 +73,9 @@ it("serves only the bounded browser build with HTTP authority checks and correct
             status: 200,
             type: "text/html; charset=utf-8",
             body: "<!doctype html><title>Cake</title>",
-            csp: expect.stringContaining("frame-src 'none'"),
+            csp: expect.stringContaining(
+              `frame-src 'self' blob: http://127.0.0.1:${listener.editorPort};`,
+            ),
           });
           expect(await get("/assets/chat-123.js")).toMatchObject({
             status: 200,

@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useMemo, useState, type ComponentType } from "re
 import { observer } from "r-state-tree/react";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { ExtensionCompanionProjection } from "../models/ExtensionUi";
+import { extensionCompanionModuleUrl } from "../lib/extension-companion-module-url";
 import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
 import { LoadingState } from "./ui/loading-state";
@@ -20,8 +21,10 @@ interface ExtensionCompanionComponentProps {
 
 function companionModule(moduleUrl: string) {
   return lazy(async () => {
+    const publishedUrl = extensionCompanionModuleUrl(moduleUrl, window.location);
+    if (!publishedUrl) throw new Error("Invalid extension companion module URL");
     globalThis.__cakeExtensionReact = React;
-    const imported = await import(/* @vite-ignore */ moduleUrl);
+    const imported = await import(/* @vite-ignore */ publishedUrl);
     // SAFETY: main compiles a generated ESM wrapper that statically imports the
     // package's default export, so publication fails before a URL exists when
     // the companion does not provide that export.

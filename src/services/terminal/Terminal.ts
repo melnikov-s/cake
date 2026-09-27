@@ -10,6 +10,7 @@ export interface TerminalWorkingDirectoryTarget {
 }
 
 export type TerminalEvent =
+  | { readonly type: "renderer-events-ready"; readonly channel: "terminals" }
   | { readonly type: "terminal-data"; readonly terminalId: string; readonly data: string }
   | { readonly type: "terminal-exited"; readonly terminalId: string; readonly exitCode: number };
 

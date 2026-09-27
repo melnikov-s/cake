@@ -43,6 +43,7 @@ const makeFixture = Effect.gen(function* () {
   return {
     coordinator: Context.get(context, RendererRequestCoordinator),
     clients: Context.get(context, ClientConnections),
+    clientEvents,
     events,
   };
 });
@@ -406,6 +407,116 @@ describe("RendererRequestCoordinator", () => {
       });
       expect(yield* Fiber.join(fiber)).toBe("accepted");
     }),
+  );
+
+  it.effect(
+    "passive browsers retain the connected Draw controller and take over only after disconnect",
+    () =>
+      Effect.gen(function* () {
+        const { coordinator, clients, clientEvents, events } = yield* makeFixture;
+        const desktop = clients.desktop(35);
+        const browser = clients.socket();
+        const anotherBrowser = clients.socket();
+        const ready = yield* Queue.unbounded<void>();
+        for (const connectionId of [desktop, browser, anotherBrowser]) {
+          yield* clientEvents.application(connectionId).pipe(
+            Stream.runForEach((event) =>
+              event.type === "renderer-events-ready"
+                ? Queue.offer(ready, undefined)
+                : Queue.offer(events, event),
+            ),
+            Effect.forkScoped,
+          );
+          yield* Queue.take(ready);
+        }
+        const target = { _tag: "ProjectSession" as const, sessionId: "project-1" };
+        yield* coordinator.registerProjectSession("project-1", "/projects/cake");
+        yield* coordinator.bind(target, desktop);
+        yield* coordinator.bind(target, browser); // Passive observation cannot steal desktop control.
+        const desktopRequest = yield* coordinator
+          .requestDrawControl("project-1", { _tag: "Enter" }, new AbortController().signal)
+          .pipe(Effect.forkChild);
+        const desktopEvent = yield* Queue.take(events);
+        assert.equal(desktopEvent.type, "draw-control-requested");
+        expect(
+          Exit.isFailure(
+            yield* coordinator
+              .respondDrawControl(browser, "project-1", desktopEvent.drawRequestId, {
+                ok: false,
+                code: "BOARD_NOT_OPEN",
+                message: "Not open",
+              })
+              .pipe(Effect.exit),
+          ),
+        ).toBe(true);
+        yield* coordinator.respondDrawControl(desktop, "project-1", desktopEvent.drawRequestId, {
+          ok: false,
+          code: "BOARD_NOT_OPEN",
+          message: "Not open",
+        });
+        yield* Fiber.join(desktopRequest);
+
+        // Once the desktop leaves, a browser open becomes the Draw controller.
+        yield* coordinator.releaseConnection(desktop);
+        yield* coordinator.bind(target, browser);
+        yield* coordinator.bind(target, anotherBrowser); // Passive second tab cannot steal Draw.
+        const browserRequest = yield* coordinator
+          .requestDrawControl("project-1", { _tag: "Enter" }, new AbortController().signal)
+          .pipe(Effect.forkChild);
+        const browserEvent = yield* Queue.take(events);
+        assert.equal(browserEvent.type, "draw-control-requested");
+        expect(
+          Exit.isFailure(
+            yield* coordinator
+              .respondDrawControl(anotherBrowser, "project-1", browserEvent.drawRequestId, {
+                ok: false,
+                code: "BOARD_NOT_OPEN",
+                message: "Not open",
+              })
+              .pipe(Effect.exit),
+          ),
+        ).toBe(true);
+        yield* coordinator.respondDrawControl(browser, "project-1", browserEvent.drawRequestId, {
+          ok: false,
+          code: "BOARD_NOT_OPEN",
+          message: "Not open",
+        });
+        expect(yield* Fiber.join(browserRequest)).toMatchObject({ code: "BOARD_NOT_OPEN" });
+
+        yield* coordinator.releaseConnection(browser);
+        yield* coordinator.bind(target, anotherBrowser);
+        const takeover = yield* coordinator
+          .requestDrawControl(
+            "project-1",
+            { _tag: "Read", scope: "page" },
+            new AbortController().signal,
+          )
+          .pipe(Effect.forkChild);
+        const takeoverEvent = yield* Queue.take(events);
+        assert.equal(takeoverEvent.type, "draw-control-requested");
+        expect(
+          Exit.isFailure(
+            yield* coordinator
+              .respondDrawControl(browser, "project-1", takeoverEvent.drawRequestId, {
+                ok: false,
+                code: "BOARD_NOT_OPEN",
+                message: "Not open",
+              })
+              .pipe(Effect.exit),
+          ),
+        ).toBe(true);
+        yield* coordinator.respondDrawControl(
+          anotherBrowser,
+          "project-1",
+          takeoverEvent.drawRequestId,
+          {
+            ok: false,
+            code: "BOARD_NOT_OPEN",
+            message: "Not open",
+          },
+        );
+        expect(yield* Fiber.join(takeover)).toMatchObject({ code: "BOARD_NOT_OPEN" });
+      }),
   );
 
   it.effect("targets, correlates, and cancels Draw requests", () =>

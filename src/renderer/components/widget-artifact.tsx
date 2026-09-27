@@ -52,7 +52,7 @@ export const WidgetArtifact = observer(function WidgetArtifact({
       ref={iframe}
       className={fill ? "h-full" : undefined}
       title={artifact.title ?? artifact.id}
-      src={state.compiled.url}
+      compiled={state.compiled}
       style={fill ? undefined : { height }}
     />
   );

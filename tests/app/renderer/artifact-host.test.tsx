@@ -607,7 +607,7 @@ describe("ArtifactHost", () => {
     expect(client.compile).toHaveBeenCalledWith("html", request.view.source, "request");
     const frame = container.querySelector("iframe")!;
     expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
-    expect(frame.getAttribute("src")).toBe(`cake-widget://document/${token}`);
+    expect(frame.getAttribute("src")).toBe(`http://localhost:3000/widget-assets/document/${token}`);
     expect(container.textContent).not.toContain("cakeRequest.submit");
     act(() =>
       window.dispatchEvent(
@@ -692,7 +692,9 @@ describe("ArtifactHost", () => {
     const fullscreen = document.body.querySelector<HTMLElement>('[role="dialog"]');
     const fullscreenFrame = fullscreen?.querySelector<HTMLIFrameElement>("iframe");
     expect(fullscreen?.textContent).toContain("Comparison");
-    expect(fullscreenFrame?.getAttribute("src")).toBe(`cake-widget://document/${token}`);
+    expect(fullscreenFrame?.getAttribute("src")).toBe(
+      `http://localhost:3000/widget-assets/document/${token}`,
+    );
     expect(fullscreenFrame?.getAttribute("sandbox")).toBe("allow-scripts");
     act(() =>
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
@@ -709,6 +711,57 @@ describe("ArtifactHost", () => {
     );
     expect(container.textContent).toContain("Comparison fallback.");
     expect(container.textContent).not.toContain("boom");
+  });
+
+  it("recompiles a mounted widget after browser backend reconnect and ignores an old completion", async () => {
+    const firstToken = "00000000-0000-4000-8000-000000000003";
+    const nextToken = "00000000-0000-4000-8000-000000000004";
+    let finishOld: ((value: { token: string; url: string }) => void) | undefined;
+    const compile = vi
+      .fn()
+      .mockResolvedValueOnce({ token: firstToken, url: `cake-widget://document/${firstToken}` })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishOld = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ token: nextToken, url: `cake-widget://document/${nextToken}` });
+    ({ root: widgetRoot, subject: widgets } = mountWithClient(createStore(InlineWidgetStore), {
+      inlineWidgets: { compile },
+    } as unknown as Client));
+    const artifact = record({
+      protocol: "cake.artifact/v1",
+      id: "reconnect-widget",
+      sessionId: "session",
+      revision: 1,
+      kind: "widget",
+      payload: {
+        language: "html",
+        source: "<p>Still here</p>",
+        brief: "Test",
+        generationSessionId: "generation",
+      },
+      fallback: { markdown: "Widget unavailable" },
+      interaction: { mode: "present" },
+    });
+    await act(async () => {
+      root.render(<ArtifactHost record={artifact} inlineWidgets={widgets} />);
+    });
+    expect(container.querySelector("iframe")?.getAttribute("src")).toContain(firstToken);
+    // A previous process's document capability is gone, even though source is unchanged.
+    act(() => widgets!.backendReconnected());
+    expect(container.querySelector("iframe")).toBeNull();
+    act(() => widgets!.backendReconnected());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(container.querySelector("iframe")?.getAttribute("src")).toContain(nextToken);
+    await act(async () => {
+      finishOld?.({ token: firstToken, url: `cake-widget://document/${firstToken}` });
+    });
+    expect(container.querySelector("iframe")?.getAttribute("src")).toContain(nextToken);
+    expect(compile).toHaveBeenCalledTimes(3);
   });
 
   it("renders an imported Markdown file as its readable document", () => {

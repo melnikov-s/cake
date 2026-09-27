@@ -5,6 +5,7 @@ import type {
   ChatConfiguration,
   ConversationSnapshot,
   PiSessionSummary,
+  UiPart,
 } from "../../../src/ipc/session-contract";
 import type { PiModel } from "../../../src/services/pi/model-data";
 import { fakeRuntime, snapshot } from "../../app/helpers/piRuntimeFixture";
@@ -25,7 +26,11 @@ export const browserTestModel: typeof PiModel.Type = {
 const existingId = "00000000-0000-4000-8000-000000000001";
 
 /** Controlled external Pi adapter; endpoint, admission, leases, catalogs and reducers stay real. */
-export function browserBackendAdapter() {
+export function browserBackendAdapter(
+  projectPath = "/project",
+  projectOnly = false,
+  initialParts?: UiPart[],
+) {
   const summaries = new Map<string, PiSessionSummary>();
   const entries = new Map<string, ConversationSnapshot>();
   const pending = new Map<string, { finish(): void }>();
@@ -49,6 +54,7 @@ export function browserBackendAdapter() {
     sessionFile: `/sessions/${id}.jsonl`,
     model: { provider: "test", id: "controlled", name: "Controlled model" },
     models: [{ ...browserTestModel, availableThinkingLevels: ["off"] }],
+    ...(initialParts ? { parts: initialParts } : {}),
   });
   const remember = (id: string) => {
     summaries.set(id, {
@@ -63,14 +69,23 @@ export function browserBackendAdapter() {
   };
   remember(existingId);
   const adapter: CakeSessionRuntimesAdapter = {
-    sessionIds: () => Stream.fromIterable(summaries.keys()),
-    catalog: () => Stream.fromIterable(summaries.values()),
-    catalogEntry: (_query, id) => Effect.succeed(summaries.get(id)),
+    sessionIds: (query) =>
+      !projectOnly || query.workingDirectory === projectPath
+        ? Stream.fromIterable(summaries.keys())
+        : Stream.empty,
+    catalog: (query) =>
+      !projectOnly || query.workingDirectory === projectPath
+        ? Stream.fromIterable(summaries.values())
+        : Stream.empty,
+    catalogEntry: (query, id) =>
+      Effect.succeed(
+        !projectOnly || query.workingDirectory === projectPath ? summaries.get(id) : undefined,
+      ),
     inspect: (target) =>
       Effect.succeed(
         entries.has(target.sessionId)
           ? {
-              workspacePath: "/project",
+              workspacePath: projectPath,
               sessionId: target.sessionId,
               sessionFile: `/sessions/${target.sessionId}.jsonl`,
               parts: entries.get(target.sessionId)?.parts ?? [],

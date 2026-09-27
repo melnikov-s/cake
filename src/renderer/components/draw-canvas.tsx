@@ -64,6 +64,7 @@ export const DrawCanvas = observer(function DrawCanvas({
         {/* MainMenu is intentionally not mounted: Cake owns the three-format export surface in its toolbar. */}
         <Excalidraw
           excalidrawAPI={mounted}
+          onChange={() => store.editorChanged()}
           initialData={initialData}
           theme={theme}
           autoFocus

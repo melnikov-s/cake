@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, Layer } from "effect";
+import { Deferred, Effect, Fiber, Layer, Stream } from "effect";
 import { beforeEach, describe, expect, vi } from "vitest";
 import { ProjectAccess } from "../../../../src/services/projects/ProjectAccess";
 import { Terminal } from "../../../../src/services/terminal/Terminal";
@@ -13,7 +13,11 @@ const native = vi.hoisted(() => ({
 vi.mock("node:fs/promises", () => ({ realpath: native.realpath }));
 vi.mock("node-pty", () => ({ spawn: native.spawn }));
 
-const processes: Array<{ process: string; kill: ReturnType<typeof vi.fn> }> = [];
+const processes: Array<{
+  process: string;
+  kill: ReturnType<typeof vi.fn>;
+  emitData(data: string): void;
+}> = [];
 
 beforeEach(() => {
   processes.length = 0;
@@ -21,12 +25,18 @@ beforeEach(() => {
     .mockReset()
     .mockImplementation(async (path: string) => (path === "/alias" ? "/canonical" : path));
   native.spawn.mockReset().mockImplementation((shell: string) => {
+    let dataListener: ((data: string) => void) | undefined;
     const process = {
       process: basename(shell),
       kill: vi.fn(),
       write: vi.fn(),
       resize: vi.fn(),
-      onData: vi.fn(),
+      onData: vi.fn((listener: (data: string) => void) => {
+        dataListener = listener;
+      }),
+      emitData(data: string) {
+        dataListener?.(data);
+      },
       onExit: vi.fn(),
     };
     processes.push(process);
@@ -44,6 +54,29 @@ const layer = () =>
   );
 
 describe("TerminalLive retirement", () => {
+  it.effect("subscribes to PTY output before advertising terminal readiness", () =>
+    Effect.gen(function* () {
+      const terminal = yield* Terminal;
+      const messages = yield* Stream.runCollect(
+        terminal.events(1).pipe(
+          Stream.mapEffect((event) =>
+            Effect.gen(function* () {
+              if (event.type !== "renderer-events-ready") return event;
+              const opened = yield* terminal.open(1, { workingDirectory: "/canonical" }, 80, 24);
+              const pty = processes[0];
+              if (!pty) throw new Error("Expected a PTY");
+              pty.emitData("first prompt> ");
+              return { ...event, terminalId: opened.terminalId };
+            }),
+          ),
+          Stream.take(2),
+        ),
+      );
+      expect(messages[0]).toMatchObject({ type: "renderer-events-ready", channel: "terminals" });
+      expect(messages[1]).toMatchObject({ type: "terminal-data", data: "first prompt> " });
+    }).pipe(Effect.provide(layer())),
+  );
+
   it.effect("rejects opens already resolving when another window closes the directory", () =>
     Effect.gen(function* () {
       const terminal = yield* Terminal;

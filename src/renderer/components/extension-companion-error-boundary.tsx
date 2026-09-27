@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
 
 interface ExtensionCompanionErrorBoundaryProps {
@@ -34,6 +35,9 @@ export class ExtensionCompanionErrorBoundary extends Component<
       <Callout variant="error" className="mx-1 mb-2 p-2.5" role="alert">
         <strong className="text-xs">{this.props.name} could not render</strong>
         <span className="text-[11px] text-muted-foreground">{this.state.error.message}</span>
+        <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
+          Reload to retry
+        </Button>
       </Callout>
     );
   }

@@ -12,6 +12,8 @@ import type { ProjectSessionStore } from "./ProjectSessionStore";
 import type { ReviewsStore } from "./ReviewsStore";
 
 export interface SessionPresentationStoreProps {
+  browserHost?: boolean;
+  onBrowserUnavailable?(): void;
   activeSession(): ProjectSessionStore | undefined;
   activeSessionId(): string | undefined;
   activeSessionResolved(): boolean;
@@ -70,6 +72,8 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
   get browserStore(): BrowserStore {
     return createStore(BrowserStore, {
       sessionId: this.props.activeSessionId,
+      browserHost: this.props.browserHost,
+      onBrowserUnavailable: this.props.onBrowserUnavailable,
       presentationMode: () => this.session?.presentationMode ?? "normal",
       setPresentationMode: (mode) => this.session?.showPresentation(mode),
       chatSidebarVisible: () => this.session?.workspaceChatSidebarVisible ?? true,
@@ -167,7 +171,12 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
   }
 
   async openBrowser() {
-    if (!this.canOpen() || !(await this.flushDrawBeforeLeaving())) return;
+    if (!this.canOpen()) return;
+    if (this.props.browserHost) {
+      await this.browserStore.show();
+      return;
+    }
+    if (!(await this.flushDrawBeforeLeaving())) return;
     this.props.dismissCommandPane();
     this.reviews.clearActiveThread();
     this.embeddedEditorStore.suspend();

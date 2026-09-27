@@ -4,6 +4,7 @@ Authoritative primitives live in `src/renderer/components/ui/`.
 
 | Component             | Responsibility                                                                                                                                                            |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ContextActionMenu`   | Accessible tab-local device action menu. Renders client-backed actions from `BrowserMenuStore`, closes on Escape/backdrop and resolves the pending action exactly once.   |
 | `NavItem`             | Accessible row action, label, description, badges, and trailing controls. Opt-in `motionFeedback` gives titles a springy hover/selection offset and press response.       |
 | `NavigationHighlight` | Shared moving selection and hover backgrounds across descendant navigation rows, including separate groups.                                                               |
 | `AnimatedList`        | Position transitions when keyed list items reorder; composes with `NavigationHighlight`.                                                                                  |

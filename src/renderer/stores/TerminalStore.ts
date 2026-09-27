@@ -29,8 +29,10 @@ export class TerminalStore extends Store<{
 
   open = false;
   docked = false;
+  eventsReady = false;
   entries: TerminalEntry[] = [];
   activeEntryKeys: Record<string, string> = {};
+  private connectionEpoch = 0;
   private readonly dataListeners = new Map<string, Set<(data: string) => void>>();
   private readonly bufferedData = new Map<string, string>();
   private readonly orphanEvents = new Map<
@@ -79,7 +81,7 @@ export class TerminalStore extends Store<{
   }
 
   get available() {
-    return Boolean(this.activeTarget && this.terminals.open);
+    return Boolean(this.eventsReady && this.activeTarget && this.terminals.open);
   }
 
   get activeEntries() {
@@ -110,8 +112,16 @@ export class TerminalStore extends Store<{
     this.open = false;
   }
 
+  /** The backend has subscribed to PTY output before accepting any open request. */
+  readyForEvents() {
+    this.eventsReady = true;
+  }
+
   /** Socket-owned PTYs are closed on disconnect; restarting is always deliberate. */
   disconnected() {
+    this.eventsReady = false;
+    this.connectionEpoch++;
+    this.bufferedData.clear();
     this.entries = this.entries.map((entry) => ({
       ...entry,
       terminalId: undefined,
@@ -138,7 +148,7 @@ export class TerminalStore extends Store<{
 
   async newTab(cols = 80, rows = 24) {
     const target = this.activeTarget;
-    if (!target) return;
+    if (!target || !this.available) return;
     this.open = true;
     await this.start(target, cols, rows, true);
   }
@@ -166,7 +176,7 @@ export class TerminalStore extends Store<{
 
   async restart(key: string, cols: number, rows: number) {
     const entry = this.entries.find((candidate) => candidate.key === key);
-    if (entry) await this.start(entry.target, cols, rows);
+    if (entry && this.available) await this.start(entry.target, cols, rows);
   }
 
   private get activeTargetKey() {
@@ -181,7 +191,12 @@ export class TerminalStore extends Store<{
   }
 
   private async start(target: TerminalTarget, cols: number, rows: number, forceNew = false) {
-    if (this.props.retirement().isRetiring(target.workingDirectory) || this.signal.aborted) return;
+    if (
+      !this.eventsReady ||
+      this.props.retirement().isRetiring(target.workingDirectory) ||
+      this.signal.aborted
+    )
+      return;
     const openTerminal = this.terminals.open;
     if (!openTerminal) return;
     const current = this.activeEntry;
@@ -196,6 +211,7 @@ export class TerminalStore extends Store<{
   }
 
   private async restartEntry(entry: TerminalEntry, cols: number, rows: number) {
+    this.bufferedData.delete(entry.key);
     this.setEntry({
       ...entry,
       terminalId: undefined,
@@ -209,13 +225,18 @@ export class TerminalStore extends Store<{
   private async openEntry(key: string, target: TerminalTarget, cols: number, rows: number) {
     const openTerminal = this.terminals.open;
     if (!openTerminal) return;
+    const epoch = this.connectionEpoch;
     try {
       const opened = await openTerminal({
         target: { workingDirectory: target.workingDirectory },
         cols,
         rows,
       });
-      if (this.signal.aborted || !this.entries.some((entry) => entry.key === key)) {
+      if (
+        this.signal.aborted ||
+        epoch !== this.connectionEpoch ||
+        !this.entries.some((entry) => entry.key === key && entry.opening)
+      ) {
         this.orphanEvents.delete(opened.terminalId);
         await this.terminals.close(opened.terminalId).catch(() => undefined);
         return;
@@ -225,7 +246,12 @@ export class TerminalStore extends Store<{
       this.orphanEvents.delete(opened.terminalId);
       for (const event of orphaned ?? []) this.receive(event);
     } catch (error) {
-      if (this.signal.aborted || !this.entries.some((entry) => entry.key === key)) return;
+      if (
+        this.signal.aborted ||
+        epoch !== this.connectionEpoch ||
+        !this.entries.some((entry) => entry.key === key && entry.opening)
+      )
+        return;
       this.setEntry({
         key,
         target,

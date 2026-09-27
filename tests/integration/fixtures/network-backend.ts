@@ -43,6 +43,7 @@ import {
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { DrawBoardStorage } from "../../../src/services/storage/DrawBoardStorage";
+import { makeDrawBoardStorageLive } from "../../../src/services/storage/DrawBoardStorageLive";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { ArtifactProjection } from "../../../src/services/artifacts/ArtifactProjection";
@@ -66,7 +67,12 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
   adapter?: CakeSessionRuntimesAdapter;
   models?: ReadonlyArray<typeof PiModel.Type>;
   onPrompt?: (text: string, attachments: ReadonlyArray<Attachment>) => void;
+  projectPath?: string;
+  drawBoardsRoot?: string;
+  vscode?: Partial<VsCodeServer["Service"]>;
+  terminal?: Partial<Terminal["Service"]>;
 }) {
+  const projectPath = options?.projectPath ?? "/project";
   const savedDraftDirectory = join(tmpdir(), `cake-test-saved-drafts-${randomUUID()}`);
   yield* Effect.addFinalizer(() =>
     Effect.tryPromise(() => rm(savedDraftDirectory, { recursive: true, force: true })).pipe(
@@ -161,10 +167,10 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
             source: "missing" as const,
             state: {
               ...defaultApplicationState(),
-              trustedProjectPaths: ["/project"],
+              trustedProjectPaths: [projectPath],
               projects: [
                 {
-                  path: "/project",
+                  path: projectPath,
                   name: "Test",
                   addedAt: "2026-01-01T00:00:00.000Z",
                   lastOpenedAt: "2026-01-01T00:00:00.000Z",
@@ -197,6 +203,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
   );
   const worktrees = Layer.mock(ManagedWorktrees, {
     records: () => Effect.succeed([]),
+    observe: () => Stream.never,
     awaitSetup: () => Effect.void,
     hasDeferredSetup: () => Effect.succeed(false),
   });
@@ -242,7 +249,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       return ProjectSessionRuntimeHost.of({
         runtimeIntegrations: (_workingDirectory, sessionId) =>
           requests
-            .registerProjectSession(sessionId, "/project")
+            .registerProjectSession(sessionId, projectPath)
             .pipe(Effect.orDie, Effect.as(integrations)),
         releaseSession: (sessionId) =>
           requests.releaseSession({ _tag: "ProjectSession", sessionId }),
@@ -251,7 +258,11 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     }),
   ).pipe(Layer.provide(coordinator));
   const layer = Layer.mergeAll(
-    Layer.mock(VsCodeServer, { leaseFor: () => undefined, releaseConnection: () => Effect.void }),
+    Layer.mock(VsCodeServer, {
+      leaseFor: () => undefined,
+      releaseConnection: () => Effect.void,
+      ...options?.vscode,
+    }),
     Layer.mock(DiscussionSessionEnvironment, {}),
     Layer.mock(WorktreeLandingAgent, {}),
     Layer.mock(WorktreeLandingCompletion, {}),
@@ -292,18 +303,25 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       withMemberLock: (_sessionId, effect) => effect,
     }),
     Layer.mock(SessionArchiveStorage, {
+      projectMigrationComplete: () => Effect.succeed(true),
+      resolvedProjects: () => Stream.empty,
       locate: () => Effect.succeed("active" as const),
       resolvedProjectEntry: () => Effect.succeed(undefined),
     }),
     Layer.mock(Terminal, {
       closeWorkingDirectory: () => Effect.void,
       closeOwner: () => Effect.void,
+      ...options?.terminal,
     }),
     Layer.mock(SubagentEnvironment, {}),
     Layer.mock(ArtifactStorage, {}),
     Layer.mock(ArtifactProjection, {}),
     Layer.mock(ArtifactGarbageCollector, {}),
-    Layer.mock(DrawBoardStorage, {}),
+    options?.drawBoardsRoot
+      ? makeDrawBoardStorageLive(options.drawBoardsRoot).pipe(
+          Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
+        )
+      : Layer.mock(DrawBoardStorage, {}),
     Layer.mock(ReviewStorage, {
       agentSessionDirectory: () => {
         throw new Error("Unused reviews");
@@ -326,6 +344,6 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
   );
   const context = yield* Layer.build(layer);
   yield* Context.get(context, ApplicationState).initialize();
-  yield* Context.get(context, ProjectAccess).allow("/project");
+  yield* Context.get(context, ProjectAccess).allow(projectPath);
   return { context, stats, started, finish, settled, cleaned, subscriptionClosed, metadata };
 });

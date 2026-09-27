@@ -8,6 +8,8 @@ import { ClientContext } from "./context/ClientContext";
 
 export interface BrowserStoreProps {
   sessionId(): string | undefined;
+  browserHost?: boolean;
+  onBrowserUnavailable?(): void;
   presentationMode(): ProjectSessionPresentationMode;
   setPresentationMode(mode: ProjectSessionPresentationMode): void;
   chatSidebarVisible(): boolean;
@@ -81,6 +83,10 @@ export class BrowserStore extends Store<BrowserStoreProps> {
   }
 
   async show() {
+    if (this.props.browserHost) {
+      this.unavailable();
+      return;
+    }
     const sessionId = this.sessionId;
     if (!sessionId) return;
     this.props.setPresentationMode("browser");
@@ -103,6 +109,10 @@ export class BrowserStore extends Store<BrowserStoreProps> {
   }
 
   showAgentBrowser() {
+    if (this.props.browserHost) {
+      this.unavailable();
+      return;
+    }
     const sessionId = this.sessionId;
     if (!sessionId) return;
     this.props.setPresentationMode("browser");
@@ -213,6 +223,12 @@ export class BrowserStore extends Store<BrowserStoreProps> {
   suspend() {
     if (this.visible) this.props.leaveProjectSidebarMode();
     this.visible = false;
+  }
+
+  private unavailable() {
+    this.suspend();
+    if (this.props.presentationMode() === "browser") this.props.setPresentationMode("normal");
+    this.props.onBrowserUnavailable?.();
   }
 
   private applyState(state: BrowserStateSnapshot) {

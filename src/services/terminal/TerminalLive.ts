@@ -137,21 +137,30 @@ export const makeTerminalLive = () =>
           attempt("Terminal.processCloseOwner", () => manager.closeOwner(ownerId)),
         ),
         events: (ownerId) =>
-          Stream.fromPubSub(events).pipe(
-            Stream.filter((event) => event.ownerId === ownerId),
-            Stream.map((event) =>
-              event.type === "terminal-data"
-                ? {
-                    type: event.type,
-                    terminalId: event.terminalId,
-                    data: event.data,
-                  }
-                : {
-                    type: event.type,
-                    terminalId: event.terminalId,
-                    exitCode: event.exitCode,
-                  },
-            ),
+          Stream.unwrap(
+            Effect.gen(function* () {
+              // Readiness is emitted only after the PTY output subscription exists.
+              // A renderer cannot open a shell before it receives this marker.
+              const subscription = yield* PubSub.subscribe(events);
+              return Stream.concat(
+                Stream.succeed({
+                  type: "renderer-events-ready" as const,
+                  channel: "terminals" as const,
+                }),
+                Stream.fromSubscription(subscription).pipe(
+                  Stream.filter((event) => event.ownerId === ownerId),
+                  Stream.map((event) =>
+                    event.type === "terminal-data"
+                      ? { type: event.type, terminalId: event.terminalId, data: event.data }
+                      : {
+                          type: event.type,
+                          terminalId: event.terminalId,
+                          exitCode: event.exitCode,
+                        },
+                  ),
+                ),
+              );
+            }),
           ),
       });
     }),

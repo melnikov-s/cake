@@ -34,6 +34,21 @@ const requestId = Schema.String.check(Schema.isUUID());
 export const EditorLease = Schema.Struct({
   id: leaseId,
   endpoint,
+  editorPort: Schema.optionalKey(
+    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
+  ),
+  editorOrigin: Schema.optionalKey(
+    Schema.NonEmptyString.check(
+      Schema.isMaxLength(2048),
+      Schema.makeFilter((value) => {
+        try {
+          return new URL(value).origin === value && value.startsWith("https://");
+        } catch {
+          return false;
+        }
+      }),
+    ),
+  ),
 });
 export interface EditorLease extends Schema.Schema.Type<typeof EditorLease> {}
 export const AcquireEditor = Schema.Struct({

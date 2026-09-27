@@ -64,8 +64,8 @@ function mountDrawStore(boards: DrawBoardMetadata[] = [firstBoard, secondBoard])
   return { ...mounted, draw, save, saveDrawExport };
 }
 
-function adapterHarness(snapshot: DrawDocumentSnapshot = emptyDocument) {
-  let listener: (() => void) | undefined;
+function adapterHarness(initialSnapshot: DrawDocumentSnapshot = emptyDocument) {
+  let snapshot = initialSnapshot;
   const apply = vi.fn<DrawEditorAdapter["applyAnimated"]>(async () => ({
     createdIds: [],
     updatedIds: ["shape:one"],
@@ -86,12 +86,6 @@ function adapterHarness(snapshot: DrawDocumentSnapshot = emptyDocument) {
         appState: { viewBackgroundColor: "#ffffff" },
         files: {},
       }),
-    onDocumentChange: (next: () => void) => {
-      listener = next;
-      return () => {
-        listener = undefined;
-      };
-    },
     read: vi.fn(),
     render: vi.fn(),
     apply: vi.fn(),
@@ -99,7 +93,25 @@ function adapterHarness(snapshot: DrawDocumentSnapshot = emptyDocument) {
     insertMermaid,
     loadDocument: vi.fn(),
   } as unknown as DrawEditorAdapter;
-  return { adapter, apply, insertMermaid, change: () => listener?.() };
+  return {
+    adapter,
+    apply,
+    insertMermaid,
+    change: (
+      store: DrawStore,
+      document: DrawDocumentSnapshot = {
+        type: "cake-excalidraw",
+        version: 1,
+        source: "cake",
+        elements: [],
+        appState: { viewBackgroundColor: "#f8f9fa" },
+        files: {},
+      },
+    ) => {
+      snapshot = document;
+      store.editorChanged();
+    },
+  };
 }
 
 describe("DrawStore", () => {
@@ -125,7 +137,7 @@ describe("DrawStore", () => {
     await subject.initialize();
     const editor = adapterHarness();
     subject.attachEditor(editor.adapter);
-    editor.change();
+    editor.change(subject);
 
     await subject.selectBoard(secondBoard.id);
 
@@ -133,7 +145,7 @@ describe("DrawStore", () => {
       expect.objectContaining({
         boardId: firstBoard.id,
         expectedRevision: 0,
-        snapshot: emptyDocument,
+        snapshot: expect.objectContaining({ appState: { viewBackgroundColor: "#f8f9fa" } }),
       }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
@@ -150,9 +162,9 @@ describe("DrawStore", () => {
       ...emptyDocument,
       appState: { viewBackgroundColor: "#f8f9fa" },
     };
-    const editor = adapterHarness(changedDocument);
+    const editor = adapterHarness();
     subject.attachEditor(editor.adapter);
-    editor.change();
+    editor.change(subject, changedDocument);
     save.mockRejectedValueOnce(new Error("storage unavailable"));
 
     await expect(subject.selectBoard(secondBoard.id)).rejects.toThrow("storage unavailable");
@@ -324,7 +336,7 @@ describe("DrawStore", () => {
     ]);
     await Promise.resolve();
     expect(subject.agentDrawing).toBe(true);
-    editor.change();
+    editor.change(subject);
     expect(save).not.toHaveBeenCalled();
 
     finishPlayback();
@@ -342,7 +354,7 @@ describe("DrawStore", () => {
     await subject.initialize();
     const editor = adapterHarness();
     subject.attachEditor(editor.adapter);
-    editor.change();
+    editor.change(subject);
     save.mockRejectedValueOnce(new Error("disk full"));
 
     await expect(

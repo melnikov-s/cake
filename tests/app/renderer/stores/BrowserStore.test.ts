@@ -15,8 +15,9 @@ const ready = {
   inspecting: false,
 };
 
-function harness() {
+function harness(browserHost = false) {
   let mode: "normal" | "vscode" | "draw" | "browser" = "normal";
+  const onBrowserUnavailable = vi.fn();
   const attachments: Attachment[] = [];
   const browser = {
     open: vi.fn(async () => ready),
@@ -29,6 +30,8 @@ function harness() {
   const { root, subject: store } = mountWithClient(
     createStore(BrowserStore, {
       sessionId: () => "session-1",
+      browserHost,
+      onBrowserUnavailable,
       presentationMode: () => mode,
       setPresentationMode: (value) => {
         mode = value;
@@ -42,10 +45,38 @@ function harness() {
     }),
     { browser } as unknown as Client,
   );
-  return { attachments, browser, root, store, mode: () => mode };
+  return {
+    attachments,
+    browser,
+    root,
+    store,
+    mode: () => mode,
+    onBrowserUnavailable,
+    setMode: (value: typeof mode) => {
+      mode = value;
+    },
+  };
 }
 
 describe("BrowserStore", () => {
+  it("keeps browser-host opens and restored presentation out of native Browser Mode", async () => {
+    const { browser, root, store, mode, setMode, onBrowserUnavailable } = harness(true);
+    await store.show();
+    expect(mode()).toBe("normal");
+    expect(store.visible).toBe(false);
+    expect(onBrowserUnavailable).toHaveBeenCalledOnce();
+
+    setMode("browser");
+    await store.restore();
+    expect(mode()).toBe("normal");
+    expect(store.visible).toBe(false);
+    store.showAgentBrowser();
+    expect(mode()).toBe("normal");
+    expect(browser.open).not.toHaveBeenCalled();
+    expect(browser.state).not.toHaveBeenCalled();
+    expect(browser.updateBounds).not.toHaveBeenCalled();
+    root[Symbol.dispose]();
+  });
   it("opens the persistent browser view and reports its native bounds", async () => {
     const { browser, root, store, mode } = harness();
 

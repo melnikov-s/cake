@@ -67,6 +67,7 @@ export const makeDesktopSharingLive = (
             status: "serving",
             bind: settings.bind,
             port: opened.address.port,
+            editorPort: opened.editorPort,
             url: `http://${settings.bind}:${opened.address.port}/`,
           });
           return state;

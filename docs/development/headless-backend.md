@@ -4,8 +4,9 @@ The Node host runs the shared Cake backend without Electron, a display, or a
 connected client. It uses the same storage, Pi runtime registry, project/worktree
 services, client state, session workflows, scheduled-message worker and Session
 Family worker as Electron. An **explicitly enabled** WebSocket endpoint now serves
-headless chat/catalog RPC and, with a second explicit opt-in, basic browser chat.
-Electron can also connect to that server using its normal desktop shell (see below).
+headless RPC and, with a second explicit opt-in, the shared Cake application
+in a browser. Electron can also connect to that server using its normal desktop
+shell (see below).
 
 ## Share an already running desktop
 
@@ -108,8 +109,9 @@ asset routes; remote Electron resolves the existing sandboxed custom schemes
 against those routes. Rendered review requests target the bound desktop, which
 captures real settled pixels in its native offscreen window; no recipient or a
 disconnect fails the pending capture rather than aborting accepted agent work.
-Basic browser chat still shows widget text fallbacks and has no embedded Browser/CDP.
-The remote desktop runs its embedded Browser/CDP on native Chromium (see below).
+The browser renders the shared chat, interactive widgets/extension companions,
+Draw, terminal and isolated VS Code; Browser Mode/CDP remains desktop-only. The
+remote desktop runs its embedded Browser/CDP on native Chromium (see below).
 Supported interactive provider login uses backend-owned credentials and a targeted
 initiating-device prompt/notice: the desktop presents manual codes, device codes and
 verification URLs and opens eligible non-loopback URLs locally only when asked.
@@ -138,13 +140,15 @@ disconnect, deliberately reopen the editor rather than replaying commands.
 The editor route has the same **full-trust, no-Cake-auth** exposure as the RPC
 listener. Use a private authenticated tunnel/reverse proxy and TLS when accessing
 it from another machine; configure exact external Host and Origin values for that
-proxy. Browser chat does not provide a VS Code surface.
+proxy. Browser VS Code instead uses the isolated editor-only listener on a
+separate origin; for HTTPS, see the two-hostname proxy configuration below.
 
 ### Remote embedded Browser and backend development previews
 
 The remote desktop's **Open Browser Mode**, address, inspection and CDP tools use
 Chromium on the viewing device. `browser.enter` targets the desktop currently
-bound to that Project Session; a browser-chat observer cannot take its place.
+bound to that Project Session; a browser observer cannot take its place. The
+Browser Mode action is not offered in the browser application.
 With no bound desktop, the operation fails promptly. Browser views are window-owned:
 a second desktop cannot silently move an open session's view. Closing the native
 window releases its views; backend request correlation is cancelled on disconnect
@@ -182,7 +186,7 @@ the existing endpoint with normal TLS verification (HTTPS/WSS works through a
 trusted certificate). Configure an authenticated private tunnel or reverse
 proxy to carry both paths; the bridge credential is not Cake authentication.
 
-## Basic browser chat
+## Shared Cake application in a browser
 
 ```sh
 pnpm build:server
@@ -199,29 +203,34 @@ only the browser. Assets resolve beside the compiled host at `out/browser/`, not
 relative to the process working directory. A missing build fails startup explicitly.
 No arbitrary filesystem or source-map routes are exposed.
 
-Choose a registered Project and active Project Session, or **New chat**. The browser
-uses the authoritative shared Chat, ChatStore, configuration picker, transcript/tool
-presentation and basic question/form controls. It supports preconfigured authenticated
-models, typing/send and Stop. Sending during a turn uses the backend's ordinary prompt
-admission policy. Sending waits for an in-flight model configuration change; first-prompt
-configuration is captured once, with further choices unavailable until admission and its
-authoritative snapshot settle. Project registration, provider login, attachments, archive management,
-desktop native menus, VS Code, Draw, terminal and embedded browsing are not
-browser features. Saved Draft records are shared backend state: the browser can
-view/edit them with revision checks, activate one first turn, and observe another
-client's committed changes promptly. Unsent edits and navigation remain tab-local. Widget requests show text fallback with a Skip action;
-interactive widget/extension modules are not served. Desktop-only application controls
-return explicit unavailability instead of waiting on an absent native host.
+The browser uses the shared Cake shell, Chat/ChatStore, Project and Cake Chat,
+settings and reviews, artifacts, interactive widgets/extension companions, Draw,
+terminal, and (with backend `code-server`) lease-scoped VS Code. Native device
+interactions use browser equivalents where available, including file bytes,
+menus, notifications (with permission), and Draw export. Browser Mode/CDP is
+desktop-only and its action is hidden in the browser. The editor has a separate
+HTTP origin for direct LAN access; when serving Cake over HTTPS, configure the
+separate HTTPS editor hostname and fixed internal editor port below. A same-origin
+`/editor/` path on the app hostname is not safe or available to browser clients.
 
-Each tab owns its navigation and unsent text **in memory only**. Switching sessions
-within a tab retains drafts; refreshing/closing the tab loses them. No browser snapshot
-is read from or written to desktop `window-state.json`. Transcript/catalog Models remain
-projections of backend/Pi authority, never a browser-owned transcript copy. Connection
-presentation belongs to the browser shell; each session's delivery workflow is
-single-flight. A lost send receipt retains its draft, reports **delivery uncertain** and
-blocks further submission until the user checks refreshed state and deliberately chooses
-to discard or keep it for resend. Reconnection reacquires authoritative snapshots; neither
-prompts nor other mutations are automatically replayed. Accepted turns continue after
+Sending during a turn uses the backend's ordinary prompt admission policy.
+Sending waits for an in-flight model configuration change; first-prompt
+configuration is captured once, with further choices unavailable until admission
+and its authoritative snapshot settle. Saved Draft records are shared backend
+state: tabs can edit them with revision checks, activate one first turn, and
+observe committed changes from other clients promptly. Unsupported desktop-only
+capabilities return explicit unavailability rather than waiting on a native host.
+
+Each tab persists its own navigation, presentation and unsent drafts in
+`sessionStorage` across refreshes; closing the tab ends that tab's state. It
+never reads or writes desktop `window-state.json`. Transcript/catalog Models
+remain projections of backend/Pi authority, never a browser-owned transcript
+copy. Connection presentation belongs to the browser shell; each session's
+delivery workflow is single-flight. A lost send receipt retains its draft,
+reports **delivery uncertain**, and blocks further submission until the user
+checks refreshed state and deliberately chooses to discard or keep it for
+resend. Reconnection reacquires authoritative snapshots; neither prompts nor
+other mutations are automatically replayed. Accepted turns continue after
 all tabs close; Stop is separate. Pending questions cancel on socket loss, not resume.
 
 Serving enables exact HTTP same-origin WebSocket access by default, so the command above
@@ -230,9 +239,83 @@ For HTTPS termination at a trusted proxy, configure its exact external Origin an
 (including a non-default port). There is no wildcard, forwarded-header inference or
 application authentication. Prefer an authenticated private tunnel; all accepted clients
 have full backend authority. HTTPS is also needed for browser secure-context features
-when not using loopback. HTTP requests check Host and any supplied Origin; navigation
-and asset requests without Origin remain allowed. Duplicate authority headers are refused
-for HTTP as well as upgrades.
+when not using loopback.
+
+### Two HTTPS hostnames on one public proxy port (browser VS Code)
+
+Browser VS Code must have a **different origin** from Cake, not an `/editor/`
+path on Cake's public hostname. Example: the one TLS reverse proxy listens on
+443 for both `cake.example.com` and `editor.example.com`, forwarding to two
+separate internal HTTP listeners. Build browser assets (`pnpm build:server`) and
+start the backend with:
+
+```sh
+CAKE_HOME=/absolute/path/to/isolated-cake-data \
+CAKE_SERVER_ENABLED=true \
+CAKE_SERVER_BROWSER_ENABLED=true \
+CAKE_SERVER_BIND=127.0.0.1 \
+CAKE_SERVER_PORT=4317 \
+CAKE_SERVER_EDITOR_PORT=4318 \
+CAKE_SERVER_ALLOWED_HOSTS=cake.example.com \
+CAKE_SERVER_ALLOWED_ORIGINS=https://cake.example.com \
+CAKE_SERVER_EDITOR_PUBLIC_ORIGIN=https://editor.example.com \
+  pnpm start:server
+```
+
+A representative nginx routing configuration (install trusted TLS certificates and
+protect **both** virtual hosts with the same private tunnel/authenticated access):
+
+```nginx
+map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+server {
+    listen 443 ssl;
+    server_name cake.example.com;
+    ssl_certificate /path/to/fullchain.pem;
+    ssl_certificate_key /path/to/privkey.pem;
+    location / {
+        proxy_pass http://127.0.0.1:4317;
+        proxy_set_header Host $host;
+        proxy_set_header Origin $http_origin;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+    }
+}
+server {
+    listen 443 ssl;
+    server_name editor.example.com;
+    ssl_certificate /path/to/fullchain.pem;
+    ssl_certificate_key /path/to/privkey.pem;
+    location / {
+        proxy_pass http://127.0.0.1:4318;
+        proxy_set_header Host $host;
+        proxy_set_header Origin $http_origin;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+    }
+}
+```
+
+Use exact public Host authorities (include `:port` for non-default public ports).
+The editor listener only serves active lease-scoped `/editor/<connection>/<token>/`
+HTTP and WebSocket routes; app assets/RPC are unavailable there. Cake's listener
+rejects editor-origin RPC even when a header is supplied. App CSP permits exactly
+the configured HTTPS editor origin as a frame source, alongside its direct-LAN
+HTTP editor origin. The HTTPS settings above replace Cake's default app Host/Origin
+allowlist: to keep direct HTTP LAN app access too, explicitly add its exact
+`host:port` to `CAKE_SERVER_ALLOWED_HOSTS` and its exact `http://host:port` to
+`CAKE_SERVER_ALLOWED_ORIGINS` (comma-separated). The backend does **not** trust
+forwarded host/protocol headers
+or infer external URLs. Never rewrite editor requests onto Cake's origin, proxy
+an arbitrary editor path, strip Origin on WebSocket upgrades, use wildcard CORS,
+or expose either internal port to untrusted clients. Host/Origin and lease checks
+are not authentication; native clients can forge headers. Configure TLS and
+access control at the proxy/tunnel for **both** names. Editor cookies/storage
+remain on the separate editor origin; a path-only proxy shares origin and is unsafe.
+HTTP requests check Host and any supplied Origin; navigation and asset requests
+without Origin remain allowed. Duplicate authority headers are refused for HTTP
+as well as upgrades.
 
 ### Configuration
 
@@ -241,9 +324,11 @@ for HTTP as well as upgrades.
 | `CAKE_SERVER_ENABLED`              | `false`                                                                 | Explicit opt-in; disabled mode acquires no listener.                                                                                                                     |
 | `CAKE_SERVER_BIND`                 | `127.0.0.1`                                                             | Bind interface/hostname. External binding must be deliberate.                                                                                                            |
 | `CAKE_SERVER_PORT`                 | `4317`                                                                  | Integer 0–65535; 0 returns an ephemeral port.                                                                                                                            |
+| `CAKE_SERVER_EDITOR_PORT`          | `0`                                                                     | Isolated browser editor's internal HTTP bind port; 0 is ephemeral. A fixed 1–65535 port is required with a public editor origin.                                         |
+| `CAKE_SERVER_EDITOR_PUBLIC_ORIGIN` | Unset                                                                   | Exact HTTPS origin of the separate public editor hostname. Requires browser assets, fixed editor port, and an app-distinct Host/Origin.                                  |
 | `CAKE_SERVER_ALLOWED_HOSTS`        | Bound host and actual port                                              | Comma-separated exact HTTP Host authorities. For a proxy or wildcard bind, explicitly list the externally used hosts, including non-default ports. No wildcard matching. |
 | `CAKE_SERVER_ALLOWED_ORIGINS`      | None (RPC-only); exact HTTP same-origin when browser serving is enabled | Comma-separated exact `http://` or `https://` origins, without paths/trailing slash. Explicit entries replace the default. `null` is not accepted.                       |
-| `CAKE_SERVER_BROWSER_ENABLED`      | `false`                                                                 | Serve the compiled basic browser client; requires `CAKE_SERVER_ENABLED=true`.                                                                                            |
+| `CAKE_SERVER_BROWSER_ENABLED`      | `false`                                                                 | Serve the compiled shared browser application; requires `CAKE_SERVER_ENABLED=true`.                                                                                      |
 | `CAKE_SERVER_ALLOW_MISSING_ORIGIN` | `false`                                                                 | Explicitly permit native clients that do not send Origin. Does not exempt a supplied Origin from validation.                                                             |
 | `CAKE_SERVER_MAX_PAYLOAD_BYTES`    | `1048576`                                                               | Maximum WebSocket message size, 1024–16777216 bytes, including fragmented messages. Compression is disabled.                                                             |
 
@@ -306,14 +391,15 @@ and sockets and sequential listener close/reopen are supported.
 
 Ordinary Project Session acquisition/chat requires no Electron, VS Code, Browser or
 rendered-capture Service. Native operations reject explicitly when unavailable;
-rendered-widget generation/review rejects before model work without a capture
-Service or an eligible bound desktop recipient. Electron still supplies the real
-native capabilities for local use.
+rendered-widget generation/review requires an eligible recipient capable of
+capture. Browser clients provide browser capture where supported; Electron still
+supplies the native capabilities for local use.
 
-This endpoint is not browser/remote-desktop parity. Browser observation/opening cannot
-replace an existing desktop reverse-control recipient. Browser-only sessions explicitly
-reject desktop-only reverse controls (including Draw) before enqueueing a request;
-questions and supported structured responses retain recipient correlation and cancellation.
+Browser and remote desktop share the app UI, but device-specific capabilities differ.
+Browser observation/opening cannot replace an existing desktop Browser Mode/CDP
+recipient. Browser-only sessions reject desktop-only Browser Mode controls before
+enqueueing a request; Draw, widgets and terminal use their browser implementations.
+Questions and supported structured responses retain recipient correlation and cancellation.
 This is a single-user multi-view policy, not a multiplayer ACL or permissions system.
 A successful desktop session open/start/prompt deliberately designates that desktop for
 new session device requests; another desktop can deliberately change it. Merely observing
@@ -352,7 +438,8 @@ image bytes, not durable upload files. The renderer
 retains its original draft bytes until submission succeeds and never retries a
 prompt after unknown receipt. Remote Electron uses an exact-build
 handshake and its existing desktop create/fork workflows.
-Basic browser navigation observes active sessions only; full desktop parity is not implied.
+Browser navigation shares the application shell while retaining tab-local presentation;
+Browser Mode/CDP and native-only device capabilities remain desktop-only.
 
 ## Verification
 

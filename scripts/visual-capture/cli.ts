@@ -2,10 +2,11 @@ import { captureVisual } from "./capture.ts";
 import { parseVisualCaptureArguments } from "./arguments.ts";
 import { formatVisualCaptureResult } from "./result.ts";
 import { visualCaptureScenarios } from "./scenarios.ts";
+import { browserVisualScenarios } from "./browser-scenarios.ts";
 
 export const visualCaptureHelp = `Usage: pnpm visual:capture <scenario> [options]
 
-Capture a deterministic Cake UI scenario from the compiled Electron application.
+Capture a deterministic Cake UI scenario from compiled Electron or Chromium browser assets.
 
 Commands:
   --list                       List repository-owned scenarios and states
@@ -16,16 +17,17 @@ Options:
   --theme <light|dark>         Seeded application theme (default: dark)
   --width <pixels>             Renderer viewport width, 320-3840 (default: 1280)
   --height <pixels>            Renderer viewport height, 320-3840 (default: 900)
-  --capture <region|window>    Scenario region or full app content (default: region)
+  --capture <region|window>    Electron scenario region or full app content; browser always captures full page
   --output <file.png>          Exact output file
   --output-dir <directory>     Output directory (default: .visual-captures)
-  --no-build                   Use the existing compiled out/ application
+  --no-build                   Use existing compiled out/ assets (browser needs out/server and out/browser)
 
 Examples:
   pnpm visual:capture --list
   pnpm visual:capture assistant-markdown-code
   pnpm visual:capture assistant-markdown-code --state hover --theme light
   pnpm visual:capture assistant-markdown-code --capture window --width 1440 --height 1000
+  pnpm visual:capture browser-shared-chat --width 1440 --height 900
 `;
 
 export async function runVisualCaptureCli(arguments_: readonly string[]) {
@@ -36,7 +38,7 @@ export async function runVisualCaptureCli(arguments_: readonly string[]) {
   }
   if (options.list) {
     console.log("Cake visual-capture scenarios:");
-    for (const scenario of visualCaptureScenarios)
+    for (const scenario of [...visualCaptureScenarios, ...browserVisualScenarios])
       console.log(
         `  ${scenario.name.padEnd(28)} ${scenario.description} (states: ${scenario.states.join(", ")})`,
       );

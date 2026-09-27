@@ -106,6 +106,8 @@ const setup = Effect.fn("DesktopSharingTest.setup")(function* () {
   const remote = Effect.fn("DesktopSharingTest.remote")(function* () {
     const state = yield* sharing.configure({ enabled: true, bind: "127.0.0.1", port: 0 });
     assert.ok(state.url);
+    assert.ok(state.editorPort);
+    expect(state.editorPort).not.toBe(state.port);
     return yield* connectClient(state.url.replace("http:", "ws:") + "rpc", state.url.slice(0, -1));
   });
   return { backend, sharing, local, remote, closeHost: () => Scope.close(hostScope, Exit.void) };
@@ -442,6 +444,7 @@ it.live("failed_bind_recovers_and_concurrent_enables_acquire_one_listener", () =
       { concurrency: "unbounded" },
     );
     expect(first.url).toBe(second.url);
+    expect(first.editorPort).toBe(second.editorPort);
     expect(first.status).toBe("serving");
     yield* sharing.configure({ enabled: false, bind: "127.0.0.1", port: 0 });
     expect(sharing.keepsProcessAlive()).toBe(false);

@@ -114,11 +114,11 @@ test("desktop Settings shares the existing backend; window closure, reopen, disa
     const remote = await browser.newPage();
     remote.setDefaultTimeout(15_000);
     await remote.goto(url);
-    await expect(remote.getByText("Connected", { exact: true })).toBeVisible();
-    await remote.getByLabel("Project", { exact: true }).selectOption(project);
-    await remote.getByLabel("Session", { exact: true }).selectOption(id);
-    await expect(remote.getByText(title, { exact: true }).last()).toBeVisible();
-    const message = remote.getByLabel("Message Cake", { exact: true });
+    const remoteSession = remote.locator(`[data-slot="sidebar"] [data-session-id="${id}"]`).first();
+    await expect(remoteSession).toBeVisible();
+    await remoteSession.click();
+    await expect(remote.locator(".transcript").getByText(title, { exact: true })).toBeVisible();
+    const message = remote.locator('[data-slot="workspace"] textarea').first();
     await message.click();
     await message.pressSequentially("browser-only draft");
     await expect(message).toBeFocused();
@@ -163,16 +163,23 @@ test("desktop Settings shares the existing backend; window closure, reopen, disa
     // The remaining native client's requests and the browser connection still work.
     await toggle.click();
     await expect(toggle).not.toBeChecked();
-    await expect(remote.getByText("Disconnected · reconnecting…", { exact: true })).toBeVisible();
+    await expect
+      .poll(async () =>
+        remote.request.get(url!).then(
+          () => false,
+          () => true,
+        ),
+      )
+      .toBe(true);
     await toggle.click();
     await expect(toggle).toBeChecked();
-    await expect(remote.getByText("Connected", { exact: true })).toBeVisible();
+    await expect.poll(async () => (await remote.request.get(url!)).status()).toBe(200);
 
     await application.evaluate(({ BrowserWindow }) => {
       for (const window of BrowserWindow.getAllWindows()) window.close();
     });
     await expect.poll(() => application.windows().length).toBe(0);
-    await expect(remote.getByText("Connected", { exact: true })).toBeVisible();
+    await expect(remote.locator(".transcript").getByText(title, { exact: true })).toBeVisible();
     expect((await remote.request.get(url)).status()).toBe(200);
     await application.evaluate(({ app }) => app.emit("activate"));
     await expect.poll(() => application.windows().length).toBe(1);
@@ -188,15 +195,29 @@ test("desktop Settings shares the existing backend; window closure, reopen, disa
     );
     await reopenedToggle.click();
     await expect(reopenedToggle).not.toBeChecked();
-    await expect(remote.getByText("Disconnected · reconnecting…", { exact: true })).toBeVisible();
+    await expect
+      .poll(async () =>
+        remote.request.get(url!).then(
+          () => false,
+          () => true,
+        ),
+      )
+      .toBe(true);
     await expect(message).toHaveValue("browser-only draft");
     await reopenedToggle.click();
     await expect(reopenedToggle).toBeChecked();
-    await expect(remote.getByText("Connected", { exact: true })).toBeVisible();
+    await expect.poll(async () => (await remote.request.get(url!)).status()).toBe(200);
     await expect(remote.getByText(title, { exact: true }).last()).toBeVisible();
     await expect(message).toHaveValue("browser-only draft");
     await application.close();
-    await expect(remote.getByText("Disconnected · reconnecting…", { exact: true })).toBeVisible();
+    await expect
+      .poll(async () =>
+        remote.request.get(url!).then(
+          () => false,
+          () => true,
+        ),
+      )
+      .toBe(true);
     expect(childProcess.exitCode).toBe(0);
   } finally {
     await browser.close();

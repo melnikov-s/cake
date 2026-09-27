@@ -51,8 +51,13 @@ const program = Effect.gen(function* () {
         yield* Effect.logInfo(
           `Cake headless RPC listening at ws://${hostname}:${address.port}${listener.path}`,
         );
-        if (network.browserAssetsDirectory)
+        if (network.browserAssetsDirectory) {
           yield* Effect.logInfo(`Cake browser chat at http://${hostname}:${address.port}/`);
+          if (listener.editorPort !== undefined)
+            yield* Effect.logInfo(
+              `Cake isolated editor at http://${hostname}:${listener.editorPort}/`,
+            );
+        }
       }
       yield* Effect.logInfo("Cake headless backend ready");
     } else {

@@ -25,6 +25,7 @@ it.effect("enabled_network_defaults_to_loopback_with_no_browser_or_native_origin
     expect(yield* read({ CAKE_SERVER_ENABLED: "true" })).toEqual({
       bind: "127.0.0.1",
       port: 4317,
+      editorPort: 0,
       allowedOrigins: [],
       allowMissingOrigin: false,
       maxPayloadBytes: 1048576,
@@ -66,6 +67,7 @@ it.effect("explicit_remote_hosts_origins_and_ephemeral_port_are_decoded", () =>
     ).toEqual({
       bind: "0.0.0.0",
       port: 0,
+      editorPort: 0,
       allowedHosts: ["cake.example", "cake.example:4317"],
       allowedOrigins: ["https://cake.example", "http://localhost:3000"],
       allowMissingOrigin: true,
@@ -74,8 +76,32 @@ it.effect("explicit_remote_hosts_origins_and_ephemeral_port_are_decoded", () =>
   }),
 );
 
+it.effect("configures a fixed isolated editor port and HTTPS public origin", () =>
+  Effect.gen(function* () {
+    const options = yield* read({
+      CAKE_SERVER_ENABLED: "true",
+      CAKE_SERVER_BROWSER_ENABLED: "true",
+      CAKE_SERVER_ALLOWED_HOSTS: "cake.example",
+      CAKE_SERVER_ALLOWED_ORIGINS: "https://cake.example",
+      CAKE_SERVER_EDITOR_PORT: "4318",
+      CAKE_SERVER_EDITOR_PUBLIC_ORIGIN: "https://editor.example",
+    });
+    expect(options).toMatchObject({
+      editorPort: 4318,
+      editorPublicOrigin: "https://editor.example",
+    });
+  }),
+);
+
 it.effect.each([
   { CAKE_SERVER_PORT: "-1" },
+  { CAKE_SERVER_EDITOR_PORT: "-1" },
+  { CAKE_SERVER_EDITOR_PORT: "65536" },
+  { CAKE_SERVER_EDITOR_PORT: "1.5" },
+  { CAKE_SERVER_EDITOR_PUBLIC_ORIGIN: "http://editor.example" },
+  { CAKE_SERVER_EDITOR_PUBLIC_ORIGIN: "https://editor.example/path" },
+  { CAKE_SERVER_EDITOR_PUBLIC_ORIGIN: "https://editor.example/" },
+  { CAKE_SERVER_EDITOR_PUBLIC_ORIGIN: "https://*.example" },
   { CAKE_SERVER_PORT: "1.5" },
   { CAKE_SERVER_PORT: "65536" },
   { CAKE_SERVER_MAX_PAYLOAD_BYTES: "0" },

@@ -9,6 +9,8 @@ import { extensionCompanionModuleSource } from "../services/pi/runtime/extension
 import { inlineWidgetContentSecurityPolicy } from "../services/electron/inline-widget-policy";
 import { VsCodeServer } from "../services/vscode/VsCodeServer";
 import { editorProxyTarget, proxyEditorHttp, proxyEditorSocket } from "./editorProxy";
+import { EditorBrowserPort } from "./EditorBrowserPort";
+import type { VsCodeServer as VsCodeServerType } from "../services/vscode/VsCodeServer";
 import { previewProxyTarget, proxyPreviewHttp, proxyPreviewSocket } from "./previewProxy";
 import type { CakeChatRuntimeConfiguration } from "../domain/cake-chats/cakeChatRuntime";
 import { makeBackendRpcServerLive } from "../ipc/server/BackendRpcServer";
@@ -69,6 +71,16 @@ export const NetworkListenerOptions = Schema.Struct({
   ),
   allowedHosts: Schema.optionalKey(Schema.Array(exactHost).check(Schema.isMaxLength(64))),
   allowedOrigins: Schema.optionalKey(Schema.Array(exactOrigin).check(Schema.isMaxLength(64))),
+  editorPort: Schema.optionalKey(
+    Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 65535 })),
+  ),
+  editorPublicOrigin: Schema.optionalKey(
+    exactOrigin.check(
+      Schema.makeFilter((value) => value.startsWith("https://"), {
+        message: "Expected an exact HTTPS editor origin",
+      }),
+    ),
+  ),
   allowMissingOrigin: Schema.optionalKey(Schema.Boolean),
   maxPayloadBytes: Schema.optionalKey(
     Schema.Int.check(Schema.isBetween({ minimum: 1024, maximum: 16 * 1024 * 1024 })),
@@ -106,6 +118,25 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
   );
   const bind = options.bind ?? "127.0.0.1";
   const path = options.path ?? "/rpc";
+  if (options.editorPublicOrigin) {
+    const editorHostname = new URL(options.editorPublicOrigin).hostname.toLowerCase();
+    const appHosts = options.allowedHosts ?? [bind];
+    if (
+      !options.browserAssetsDirectory ||
+      !options.editorPort ||
+      options.allowedOrigins?.includes(options.editorPublicOrigin) ||
+      appHosts.some(
+        (host) => new URL(`http://${host}`).hostname.toLowerCase() === editorHostname,
+      ) ||
+      options.allowedOrigins?.some(
+        (origin) => new URL(origin).hostname.toLowerCase() === editorHostname,
+      )
+    )
+      return yield* new NetworkListenerError({
+        message:
+          "Public editor requires browser assets, a fixed editor port, and an origin and Host distinct from the application",
+      });
+  }
   const scope = yield* Scope.fork(yield* Effect.scope);
   const acquire = Effect.gen(function* () {
     const editor = yield* VsCodeServer;
@@ -116,6 +147,26 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
     const assets = options.browserAssetsDirectory
       ? yield* loadBrowserAssets(options.browserAssetsDirectory)
       : undefined;
+    const isolatedEditor = assets !== undefined;
+    const editorServer = isolatedEditor
+      ? yield* openIsolatedEditorListener(
+          bind,
+          options.allowedHosts,
+          options.editorPort ?? 0,
+          options.editorPublicOrigin,
+          editor,
+          listenerAbort.signal,
+        )
+      : undefined;
+    const editorPort = editorServer?.port;
+    const directEditorOrigins =
+      editorPort === undefined
+        ? []
+        : (options.allowedHosts ?? [bind]).map((host) => {
+            const authority = host === bind ? bracketHost(host) : host;
+            const hostname = bracketHost(new URL(`http://${authority}`).hostname);
+            return `http://${hostname}:${editorPort}`;
+          });
     const refusal = (request: IncomingMessage, upgrade: boolean): string | undefined => {
       const names = request.rawHeaders
         .filter((_value, index) => index % 2 === 0)
@@ -133,7 +184,7 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
       if (!host || !hosts.includes(host)) return "Unexpected Host";
       const origin = request.headers.origin;
       // Serving explicitly enables exact HTTP same-origin access. Explicit origins replace this default.
-      const editorRoute = request.url?.startsWith("/editor/") === true;
+      const editorRoute = !isolatedEditor && request.url?.startsWith("/editor/") === true;
       const previewRoute = request.url?.startsWith("/preview/") === true;
       const origins =
         editorRoute || previewRoute
@@ -142,7 +193,9 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
       if (
         origin === undefined
           ? upgrade && (editorRoute || previewRoute || options.allowMissingOrigin !== true)
-          : !origins.includes(origin)
+          : origin === options.editorPublicOrigin ||
+            directEditorOrigins.includes(origin) ||
+            !origins.includes(origin)
       )
         return "Unexpected Origin";
       return undefined;
@@ -168,7 +221,7 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
             proxyPreviewHttp(request, response, target, listenerAbort.signal);
             return;
           }
-          if (request.url?.startsWith("/editor/")) {
+          if (!isolatedEditor && request.url?.startsWith("/editor/")) {
             const target = editorProxyTarget(editor, request.url);
             if (!target) {
               response.writeHead(403);
@@ -217,9 +270,16 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
           }
           response.setHeader("Content-Type", asset.contentType);
           response.setHeader("Content-Length", asset.body.byteLength);
+          const browserHost = bracketHost(new URL(`http://${request.headers.host}`).hostname);
+          const frameOrigin =
+            editorPort === undefined
+              ? "'none'"
+              : [`http://${browserHost}:${editorPort}`, options.editorPublicOrigin]
+                  .filter((origin) => origin !== undefined)
+                  .join(" ");
           response.setHeader(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+            `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob: ${frameOrigin}; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`,
           );
           response.writeHead(200);
           response.end(request.method === "HEAD" ? undefined : asset.body);
@@ -244,7 +304,7 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
             const previewRoute = info.req.url?.startsWith("/preview/") === true;
             if (
               info.req.url !== path &&
-              !editorProxyTarget(editor, info.req.url ?? "", true) &&
+              (isolatedEditor || !editorProxyTarget(editor, info.req.url ?? "", true)) &&
               !previewRoute
             )
               return done(false, 404, "Unknown RPC, editor or preview path");
@@ -308,7 +368,9 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
               return yield* proxyPreviewSocket(target, protocol);
             }
             if (request.value.url !== path) {
-              const target = editorProxyTarget(editor, request.value.url ?? "", true);
+              const target = isolatedEditor
+                ? undefined
+                : editorProxyTarget(editor, request.value.url ?? "", true);
               if (!target) return;
               return yield* proxyEditorSocket(target);
             }
@@ -414,18 +476,141 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
     yield* Layer.buildWithScope(
       makeBackendRpcServerLive(configuration.homeDirectory, configuration.cakeChat).pipe(
         Layer.provide(protocol),
+        Layer.provide(
+          Layer.succeed(EditorBrowserPort, {
+            port: editorPort,
+            publicOrigin: options.editorPublicOrigin,
+          }),
+        ),
       ),
       scope,
     );
-    return socketServer.address;
+    return { address: socketServer.address, editorPort };
   });
   const address = yield* acquire.pipe(
     Scope.provide(scope),
     Effect.onError(() => Scope.close(scope, Exit.void)),
   );
   return {
-    address,
+    address: address.address,
     path,
+    editorPort: address.editorPort,
     close: () => Scope.close(scope, Exit.void),
   };
 });
+
+/** The browser editor is a separate, editor-only HTTP origin. The scope owning the
+ * application listener also closes this socket and every proxied request. */
+const openIsolatedEditorListener = Effect.fn("NetworkListener.editor")(function* (
+  bind: string,
+  allowedHosts: ReadonlyArray<string> | undefined,
+  configuredPort: number,
+  publicOrigin: string | undefined,
+  editor: VsCodeServerType["Service"],
+  signal: AbortSignal,
+) {
+  const http = yield* Effect.acquireRelease(
+    Effect.sync(() =>
+      createServer((request, response) => {
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setHeader("Cache-Control", "no-store");
+        const denied = refuseEditorRequest(request, bind, allowedHosts, publicOrigin);
+        if (denied) {
+          response.writeHead(403);
+          response.end(denied);
+          return;
+        }
+        const target = editorProxyTarget(editor, request.url ?? "");
+        if (!target) {
+          response.writeHead(403);
+          response.end("Invalid editor lease or route");
+          return;
+        }
+        proxyEditorHttp(request, response, target, signal);
+      }),
+    ),
+    (server) =>
+      Effect.callback<void>((resume) => {
+        server.close(() => resume(Effect.void));
+        server.closeAllConnections();
+      }),
+  );
+  const [socketServer] = yield* Effect.all(
+    [
+      NodeSocketServer.makeWebSocket({
+        server: http,
+        maxPayload: 16 * 1024 * 1024,
+        perMessageDeflate: false,
+        verifyClient: (info, done) => {
+          const denied = refuseEditorRequest(info.req, bind, allowedHosts, publicOrigin);
+          if (denied) return done(false, 403, denied);
+          if (!editorProxyTarget(editor, info.req.url ?? "", true))
+            return done(false, 404, "Invalid editor lease or socket path");
+          done(true);
+        },
+      }),
+      Effect.callback<void, NetworkListenerError>((resume) => {
+        http.once("error", (error) =>
+          resume(
+            Effect.fail(
+              new NetworkListenerError({
+                message: `Cannot listen on editor ${bind}:${configuredPort}: ${String(error)}`,
+              }),
+            ),
+          ),
+        );
+        http.listen(configuredPort, bind, () => resume(Effect.void));
+      }),
+    ],
+    { concurrency: "unbounded" },
+  );
+  yield* socketServer
+    .run(() =>
+      Effect.gen(function* () {
+        const request = yield* Effect.serviceOption(NodeSocketServer.IncomingMessage);
+        if (Option.isNone(request)) return yield* Effect.die("Node editor request missing");
+        yield* Effect.addFinalizer(() => Effect.sync(() => request.value.socket.destroy()));
+        const target = editorProxyTarget(editor, request.value.url ?? "", true);
+        if (target) yield* proxyEditorSocket(target);
+      }).pipe(Effect.scoped),
+    )
+    .pipe(Effect.forkScoped);
+  const address = socketServer.address;
+  if (address._tag !== "TcpAddress")
+    return yield* new NetworkListenerError({
+      message: "Editor listener did not acquire a TCP port",
+    });
+  return { port: address.port };
+});
+
+function bracketHost(hostname: string): string {
+  return hostname.includes(":") && !hostname.startsWith("[") ? `[${hostname}]` : hostname;
+}
+
+function refuseEditorRequest(
+  request: IncomingMessage,
+  bind: string,
+  allowedHosts: ReadonlyArray<string> | undefined,
+  publicOrigin: string | undefined,
+): string | undefined {
+  const names = request.rawHeaders
+    .filter((_value, index) => index % 2 === 0)
+    .map((name) => name.toLowerCase());
+  if (
+    names.filter((name) => name === "host").length !== 1 ||
+    names.filter((name) => name === "origin").length > 1
+  )
+    return "Ambiguous Host or Origin";
+  const port = request.socket.localPort;
+  if (!request.socket.localAddress || !port) return "Unexpected socket address";
+  const host = request.headers.host?.toLowerCase();
+  const hostnames = allowedHosts?.map((entry) => new URL(`http://${entry}`).hostname) ?? [bind];
+  const expectedHosts = hostnames.map((name) => `${bracketHost(name)}:${port}`.toLowerCase());
+  const external = publicOrigin !== undefined && host === new URL(publicOrigin).host;
+  if (!host || (!expectedHosts.includes(host) && !external)) return "Unexpected Host";
+  const origin = request.headers.origin;
+  const expected = external ? publicOrigin : `http://${host}`;
+  if (origin !== undefined && origin !== expected) return "Unexpected Origin";
+  if (request.headers.upgrade && origin !== expected) return "Missing editor socket Origin";
+  return undefined;
+}

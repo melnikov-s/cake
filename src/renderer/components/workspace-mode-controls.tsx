@@ -18,6 +18,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   treeOpen,
   terminalAvailable,
   terminalOpen,
+  browserHost = false,
   onToggleTree,
   onBackToAgent,
   onOpenDraw,
@@ -30,6 +31,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   treeOpen: boolean;
   terminalAvailable: boolean;
   terminalOpen: boolean;
+  browserHost?: boolean;
   onToggleTree(): void;
   onBackToAgent(): void;
   onOpenDraw(): void;
@@ -53,7 +55,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
       );
 
     if (target === "browser")
-      return (
+      return browserHost ? null : (
         <IconButton key={target} tooltip="Open Browser Mode" onClick={onOpenBrowser}>
           <BrowserIcon />
         </IconButton>

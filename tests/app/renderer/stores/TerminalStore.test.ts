@@ -47,6 +47,7 @@ function mountTerminal(
     client,
   );
   terminalRef.current = mounted.subject;
+  mounted.subject.readyForEvents();
   retirements.set(mounted.subject, retirementMount.subject);
   stores.push(mounted.root, retirementMount.root);
   return mounted.subject;
@@ -57,6 +58,48 @@ afterEach(() => {
 });
 
 describe("TerminalStore", () => {
+  it("does not open until terminal output observation is subscribed", async () => {
+    const open = vi.fn(async () => ({ terminalId: "terminal-1", shell: "zsh" }));
+    const store = mountTerminal(() => workingDirectoryTarget("/workspace/one"), { open });
+    store.eventsReady = false;
+    expect(store.available).toBe(false);
+    await store.toggle();
+    await store.newTab();
+    expect(open).not.toHaveBeenCalled();
+    store.readyForEvents();
+    await store.toggle();
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a late open from a disconnected socket and requires a deliberate restart", async () => {
+    let finishOpen!: (value: { terminalId: string; shell: string }) => void;
+    const close = vi.fn(async () => undefined);
+    const open = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishOpen = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ terminalId: "new-terminal", shell: "zsh" });
+    const store = mountTerminal(() => workingDirectoryTarget("/workspace/one"), { open, close });
+    const opening = store.toggle();
+    store.disconnected();
+    expect(store.available).toBe(false);
+    finishOpen({ terminalId: "old-terminal", shell: "zsh" });
+    await opening;
+    expect(store.activeEntry?.terminalId).toBeUndefined();
+    expect(store.activeEntry?.error).toContain("Connection lost");
+    expect(close).toHaveBeenCalledWith("old-terminal");
+    expect(open).toHaveBeenCalledTimes(1);
+    await store.restart(store.activeEntry!.key, 80, 24);
+    expect(open).toHaveBeenCalledTimes(1);
+    store.readyForEvents();
+    await store.restart(store.activeEntry!.key, 80, 24);
+    expect(store.activeEntry?.terminalId).toBe("new-terminal");
+  });
+
   it("closes a late open response instead of resurrecting a retired tab", async () => {
     let finishOpen!: (value: { terminalId: string; shell: string }) => void;
     const close = vi.fn(async () => undefined);

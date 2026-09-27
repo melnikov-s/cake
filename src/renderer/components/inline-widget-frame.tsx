@@ -1,11 +1,15 @@
 import { forwardRef, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
+import type { CompiledInlineWidget } from "../../ipc/inline-widget-contract";
+import { widgetDocumentUrl } from "../lib/widget-document-url";
 
 /** Authoritative opaque-origin execution frame for compiled Cake widgets. */
 export const InlineWidgetFrame = forwardRef<
   HTMLIFrameElement,
-  { title: string; src: string; className?: string; style?: CSSProperties }
->(function InlineWidgetFrame({ title, src, className, style }, ref) {
+  { title: string; compiled: CompiledInlineWidget; className?: string; style?: CSSProperties }
+>(function InlineWidgetFrame({ title, compiled, className, style }, ref) {
+  const src = widgetDocumentUrl(compiled, window.location);
+  if (!src) return null;
   return (
     <iframe
       ref={ref}

@@ -48,7 +48,6 @@ import type {
 export interface DrawEditorAdapter extends DrawEditorController {
   loadDocument(snapshot: DrawDocumentSnapshot): void;
   snapshotDocument(): DrawDocumentSnapshot;
-  onDocumentChange(listener: () => void): () => void;
 }
 
 const MAX_ABSOLUTE_COORDINATE = 1_000_000;
@@ -146,7 +145,10 @@ function text(value: string, name = "text") {
   return value;
 }
 
-function shapeId(value: string) {
+function shapeId(value: string, known?: { has(id: string): boolean }) {
+  // An exact native Excalidraw ID returned by Read takes precedence over shorthand.
+  // New shapes still use shape: IDs, and other shorthand resolves to its shape: form.
+  if (known?.has(value)) return value;
   const id = value.startsWith("shape:") ? value : `shape:${value}`;
   if (!/^shape:[A-Za-z0-9_-]{1,256}$/.test(id)) throw new Error(`Invalid shape ID: ${value}`);
   return id;
@@ -438,8 +440,12 @@ function validateRelativeShape(shape: DrawRelativeShape) {
   }
 }
 
-function uniqueTargetIds(values: readonly string[], operation: string) {
-  const ids = values.map(shapeId);
+function uniqueTargetIds(
+  values: readonly string[],
+  operation: string,
+  known: { has(id: string): boolean },
+) {
+  const ids = values.map((value) => shapeId(value, known));
   if (new Set(ids).size !== ids.length)
     throw new Error(`${operation} contains a duplicate shape target`);
   return ids;
@@ -544,14 +550,17 @@ function prepareOperations(
     switch (operation.type) {
       case "flow": {
         Schema.decodeUnknownSync(DrawFlowOperation, { onExcessProperty: "error" })(operation);
-        if (operation.placement) requireTargets(known, [operation.placement.relativeTo], "flow");
+        const relativeTo = operation.placement
+          ? shapeId(operation.placement.relativeTo, known)
+          : undefined;
+        if (relativeTo) requireTargets(known, [relativeTo], "flow");
+        const nodes = operation.nodes.map((node) => ({ ...node, id: shapeId(node.id) }));
+        const frame = operation.frame
+          ? { ...operation.frame, id: shapeId(operation.frame.id) }
+          : undefined;
         const edgeIds =
-          operation.connect === false ? [] : operation.nodes.slice(1).map(() => generatedShapeId());
-        const ids = [
-          ...operation.nodes.map(({ id }) => id),
-          ...edgeIds,
-          ...(operation.frame ? [operation.frame.id] : []),
-        ];
+          operation.connect === false ? [] : nodes.slice(1).map(() => generatedShapeId());
+        const ids = [...nodes.map(({ id }) => id), ...edgeIds, ...(frame ? [frame.id] : [])];
         for (const id of ids) {
           if (
             known.has(id) ||
@@ -560,32 +569,41 @@ function prepareOperations(
             throw new Error(`Duplicate shape ID: ${id}`);
           known.set(id, { type: "rectangle", hasText: true });
         }
-        for (const node of operation.nodes)
+        for (const node of nodes)
           known.set(node.id, { type: node.geo ?? "rectangle", hasText: true });
         for (const id of edgeIds) known.set(id, { type: "arrow", hasText: false });
-        if (operation.frame) {
-          known.set(operation.frame.id, { type: "frame", hasText: false });
-          for (const id of ids) if (id !== operation.frame.id) framed.set(id, operation.frame.id);
+        if (frame) {
+          known.set(frame.id, { type: "frame", hasText: false });
+          for (const id of ids) if (id !== frame.id) framed.set(id, frame.id);
         }
-        prepared.push({ ...operation, edgeIds });
+        prepared.push({
+          ...operation,
+          nodes,
+          ...(frame ? { frame } : null),
+          ...(relativeTo && operation.placement
+            ? { placement: { ...operation.placement, relativeTo } }
+            : null),
+          edgeIds,
+        });
         break;
       }
       case "frame": {
         Schema.decodeUnknownSync(DrawFrameOperation, { onExcessProperty: "error" })(operation);
-        const ids = uniqueTargetIds(operation.ids, "frame");
+        const ids = uniqueTargetIds(operation.ids, "frame", known);
         requireTargets(known, ids, "frame");
         if (ids.some((id) => known.get(id)?.type === "frame" || framed.has(id)))
           throw new Error(
             "Frame children must be unframed shapes; nested frames are not supported",
           );
+        const id = shapeId(operation.id);
         if (
-          known.has(operation.id) ||
-          api.getSceneElementsIncludingDeleted().some(({ id }) => id === operation.id)
+          known.has(id) ||
+          api.getSceneElementsIncludingDeleted().some((element) => element.id === id)
         )
-          throw new Error(`Duplicate shape ID: ${operation.id}`);
-        known.set(operation.id, { type: "frame", hasText: false });
-        for (const id of ids) framed.set(id, operation.id);
-        prepared.push(operation);
+          throw new Error(`Duplicate shape ID: ${id}`);
+        known.set(id, { type: "frame", hasText: false });
+        for (const childId of ids) framed.set(childId, id);
+        prepared.push({ ...operation, id, ids });
         break;
       }
       case "create": {
@@ -599,7 +617,7 @@ function prepareOperations(
       case "create-relative": {
         validateRelativeShape(operation.shape);
         const id = operation.shape.id ? shapeId(operation.shape.id) : generatedShapeId();
-        const relativeTo = shapeId(operation.shape.placement.relativeTo);
+        const relativeTo = shapeId(operation.shape.placement.relativeTo, known);
         if (known.has(id)) throw new Error(`Duplicate shape ID: ${id}`);
         requireTargets(known, [relativeTo], "create-relative");
         known.set(id, knownCreatedShape(operation.shape));
@@ -608,8 +626,8 @@ function prepareOperations(
       }
       case "connect": {
         const id = operation.id ? shapeId(operation.id) : generatedShapeId();
-        const fromId = shapeId(operation.fromId);
-        const toId = shapeId(operation.toId);
+        const fromId = shapeId(operation.fromId, known);
+        const toId = shapeId(operation.toId, known);
         if (known.has(id)) throw new Error(`Duplicate shape ID: ${id}`);
         requireTargets(known, [fromId, toId], "connect");
         if (operation.text !== undefined) text(operation.text);
@@ -618,7 +636,7 @@ function prepareOperations(
         break;
       }
       case "update": {
-        const id = shapeId(operation.id);
+        const id = shapeId(operation.id, known);
         requireTargets(known, [id], "update");
         const target = known.get(id)!;
         if (
@@ -674,7 +692,7 @@ function prepareOperations(
         break;
       }
       case "style": {
-        const ids = uniqueTargetIds(operation.ids, "style");
+        const ids = uniqueTargetIds(operation.ids, "style", known);
         requireTargetCount(ids, "style", 1);
         requireTargets(known, ids, "style");
         validateStyleUpdate(
@@ -685,7 +703,7 @@ function prepareOperations(
         break;
       }
       case "delete": {
-        const ids = uniqueTargetIds(operation.ids, "delete");
+        const ids = uniqueTargetIds(operation.ids, "delete", known);
         requireTargetCount(ids, "delete", 1);
         requireTargets(known, ids, "delete");
         for (const id of ids) {
@@ -705,7 +723,7 @@ function prepareOperations(
         break;
       }
       case "move": {
-        const ids = uniqueTargetIds(operation.ids, "move");
+        const ids = uniqueTargetIds(operation.ids, "move", known);
         requireTargetCount(ids, "move", 1);
         requireTargets(known, ids, "move");
         finite(operation.deltaX, "deltaX");
@@ -722,7 +740,7 @@ function prepareOperations(
       case "set-locked":
       case "select":
       case "zoom-to": {
-        const ids = uniqueTargetIds(operation.ids, operation.type);
+        const ids = uniqueTargetIds(operation.ids, operation.type, known);
         const minimum =
           operation.type === "select"
             ? 0
@@ -1915,6 +1933,8 @@ function applyPreparedOperations(
   const createdDiagramIds = new Set<string>();
   const changedIds = new Set<string>();
   for (const operation of prepared) {
+    const knownElements = new Set(elements.map(({ id }) => id));
+    const targetId = (value: string) => shapeId(value, knownElements);
     const createdBefore = receipt.createdIds.length;
     const updatedBefore = receipt.updatedIds.length;
     switch (operation.type) {
@@ -1961,7 +1981,7 @@ function applyPreparedOperations(
         if (highlightActive) selectedElementIds = { [operation.id]: true };
         break;
       case "update": {
-        const id = shapeId(operation.id);
+        const id = targetId(operation.id);
         const target = elementMap(elements).get(id);
         if (!target) throw new Error(`Shape not found: ${id}`);
         if (operation.text !== undefined)
@@ -1980,7 +2000,7 @@ function applyPreparedOperations(
         break;
       }
       case "style": {
-        const ids = new Set(operation.ids.map(shapeId));
+        const ids = new Set(operation.ids.map(targetId));
         elements = styleElements(elements, ids, operation.style);
         receipt.updatedIds.push(...ids);
         if (highlightActive)
@@ -1988,7 +2008,7 @@ function applyPreparedOperations(
         break;
       }
       case "delete": {
-        const ids = new Set(operation.ids.map(shapeId));
+        const ids = new Set(operation.ids.map(targetId));
         elements = elements.map((element) =>
           ids.has(element.id) || isGeneratedLabelFor(element, ids)
             ? newElementWith(element, { isDeleted: true })
@@ -2014,7 +2034,7 @@ function applyPreparedOperations(
         break;
       }
       case "move": {
-        const ids = new Set(operation.ids.map(shapeId));
+        const ids = new Set(operation.ids.map(targetId));
         elements = moveRelated(elements, ids, operation.deltaX, operation.deltaY);
         receipt.updatedIds.push(...ids);
         if (highlightActive)
@@ -2022,14 +2042,14 @@ function applyPreparedOperations(
         break;
       }
       case "align": {
-        const ids = operation.ids.map(shapeId);
+        const ids = operation.ids.map(targetId);
         elements = alignElements(elements, ids, operation.alignment);
         receipt.updatedIds.push(...ids);
         if (highlightActive) selectedElementIds = Object.fromEntries(ids.map((id) => [id, true]));
         break;
       }
       case "distribute": {
-        const ids = operation.ids.map(shapeId);
+        const ids = operation.ids.map(targetId);
         elements = distributeElements(elements, ids, operation.direction);
         receipt.updatedIds.push(...ids);
         if (highlightActive) selectedElementIds = Object.fromEntries(ids.map((id) => [id, true]));
@@ -2039,7 +2059,7 @@ function applyPreparedOperations(
       case "bring-forward":
       case "send-backward":
       case "send-to-back": {
-        const ids = new Set(operation.ids.map(shapeId));
+        const ids = new Set(operation.ids.map(targetId));
         elements =
           operation.type === "bring-to-front"
             ? reorder(elements, ids, true)
@@ -2052,7 +2072,7 @@ function applyPreparedOperations(
         break;
       }
       case "set-locked": {
-        const ids = new Set(operation.ids.map(shapeId));
+        const ids = new Set(operation.ids.map(targetId));
         elements = elements.map((element) =>
           ids.has(element.id) || isGeneratedLabelFor(element, ids)
             ? newElementWith(element, { locked: operation.locked })
@@ -2064,11 +2084,11 @@ function applyPreparedOperations(
         break;
       }
       case "select":
-        selectedElementIds = Object.fromEntries(operation.ids.map((id) => [shapeId(id), true]));
+        selectedElementIds = Object.fromEntries(operation.ids.map((id) => [targetId(id), true]));
         break;
       case "zoom-to":
-        selectedElementIds = Object.fromEntries(operation.ids.map((id) => [shapeId(id), true]));
-        zoomIds = operation.ids.map(shapeId);
+        selectedElementIds = Object.fromEntries(operation.ids.map((id) => [targetId(id), true]));
+        zoomIds = operation.ids.map(targetId);
         break;
     }
     // Structural helpers already measure only new content. Membership alone must
@@ -2780,15 +2800,6 @@ export function createDrawEditorAdapter(api: ExcalidrawImperativeAPI): DrawEdito
       const snapshot = asDrawDocumentSnapshot(plainSnapshot(api));
       assertPersistableDrawDocument(snapshot);
       return snapshot;
-    },
-    onDocumentChange(listener) {
-      let fingerprint = JSON.stringify(plainSnapshot(api));
-      return api.onChange(() => {
-        const nextFingerprint = JSON.stringify(plainSnapshot(api));
-        if (nextFingerprint === fingerprint) return;
-        fingerprint = nextFingerprint;
-        listener();
-      });
     },
   };
 }

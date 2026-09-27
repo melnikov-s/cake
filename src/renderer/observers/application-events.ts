@@ -8,7 +8,11 @@ import type { RootStore } from "../stores/RootStore";
 import { handleDrawControlRequest } from "./draw-control-events";
 
 /** Routes window-focused application events to their Store owners. */
-export const observeApplicationEvents = (runtime: Runtime, root: RootStore) =>
+export const observeApplicationEvents = (
+  runtime: Runtime,
+  root: RootStore,
+  host: "desktop" | "browser" = "desktop",
+) =>
   runtime.observe(
     (client) => client.events.application(),
     (event) => {
@@ -32,6 +36,8 @@ export const observeApplicationEvents = (runtime: Runtime, root: RootStore) =>
             Effect.gen(function* () {
               const client = yield* CakeIpcClient;
               const result = yield* Effect.gen(function* () {
+                if (host === "browser")
+                  throw new Error("Native Browser Mode is unavailable in this browser");
                 if (event.operation === "enter") {
                   yield* client.browser["native-browser-enter"]({
                     sessionId: event.sessionId,
@@ -79,26 +85,33 @@ export const observeApplicationEvents = (runtime: Runtime, root: RootStore) =>
           .execute(
             Effect.gen(function* () {
               const client = yield* CakeIpcClient;
-              const result = yield* client.widgets["capture-native-widget"]({
-                sessionId: event.sessionId,
-                widget: event.widget,
-                pluginState: event.pluginState,
-              }).pipe(
-                Effect.map((value) => ({ ok: true as const, ...value })),
-                Effect.catch((cause) =>
-                  Effect.succeed({
-                    ok: false as const,
-                    kind:
-                      cause instanceof RenderedWidgetCaptureError
-                        ? cause.kind
-                        : ("infrastructure" as const),
-                    message:
-                      cause instanceof Error
-                        ? cause.message.slice(0, 2000)
-                        : "Desktop capture unavailable",
-                  }),
-                ),
-              );
+              const result =
+                host === "browser"
+                  ? {
+                      ok: false as const,
+                      kind: "infrastructure" as const,
+                      message: "Native widget capture is unavailable in this browser",
+                    }
+                  : yield* client.widgets["capture-native-widget"]({
+                      sessionId: event.sessionId,
+                      widget: event.widget,
+                      pluginState: event.pluginState,
+                    }).pipe(
+                      Effect.map((value) => ({ ok: true as const, ...value })),
+                      Effect.catch((cause) =>
+                        Effect.succeed({
+                          ok: false as const,
+                          kind:
+                            cause instanceof RenderedWidgetCaptureError
+                              ? cause.kind
+                              : ("infrastructure" as const),
+                          message:
+                            cause instanceof Error
+                              ? cause.message.slice(0, 2000)
+                              : "Desktop capture unavailable",
+                        }),
+                      ),
+                    );
               yield* client.widgets["respond-widget-capture"]({
                 requestId: event.requestId,
                 sessionId: event.sessionId,

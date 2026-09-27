@@ -10,11 +10,15 @@ export function mountRootStore(
   flushWindowState: () => Promise<void>,
   projection: RootProjection,
   desktopConnection?: DesktopConnectionStore,
+  canDeliver?: () => boolean,
+  browserHost = false,
 ) {
   const root = mount(
     createStore(RootStore, {
       client: client,
       desktopConnection,
+      canDeliver,
+      browserHost,
       projection,
       flushWindowState,
     }),

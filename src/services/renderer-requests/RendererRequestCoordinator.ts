@@ -450,15 +450,21 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
         runTransition(
           Effect.sync(() => {
             const current = bindings.get(targetKey(target));
-            // Single-user, multiple views: an explicit desktop open/start/prompt designates
-            // the controller for NEW device requests. Browser chat cannot take that role.
+            // Passive browser opens cannot steal a connected controller, whether desktop
+            // or browser. A browser takes control after that recipient disconnects.
             // Pending requests retain the recipient captured at dispatch, even after a rebind.
             if (
               connections.kind(connectionId) === "browser" &&
               current !== undefined &&
-              connections.kind(current) === "desktop"
-            )
-              return;
+              current !== connectionId
+            ) {
+              const ownerKind = connections.kind(current);
+              if (
+                ownerKind === "desktop" ||
+                (target._tag === "ProjectSession" && ownerKind === "browser")
+              )
+                return;
+            }
             bindings.set(targetKey(target), connectionId);
           }),
         ),
@@ -871,12 +877,6 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
                 ? cause
                 : coordinatorError("requestDrawControl", String(cause)),
           });
-          if (connections.kind(connectionId) === "browser")
-            return DrawControlResponse.make({
-              ok: false,
-              code: "CAPABILITY_UNAVAILABLE",
-              message: "Draw editing is unavailable in basic browser chat.",
-            });
           const drawRequestId = crypto.randomUUID();
           const completion = yield* Deferred.make<JsonValue | undefined>();
           const entry: PendingRequest = {

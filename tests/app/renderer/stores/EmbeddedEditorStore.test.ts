@@ -16,9 +16,14 @@ function createHarness(annotations?: EditorAnnotationSnapshot) {
       unreadSessionIds: [],
       trustedProjectPaths: [],
     })),
-    open: vi.fn<(workingDirectory: string, options?: object) => Promise<undefined>>(
-      async () => undefined,
-    ),
+    open: vi.fn<
+      (
+        workingDirectory: string,
+        options?: object,
+      ) => Promise<{ id: string; endpoint: string } | undefined>
+    >(async () => undefined),
+    release: vi.fn<(id: string) => Promise<void>>(async () => undefined),
+    setTheme: vi.fn<(theme: "light" | "dark") => Promise<void>>(async () => undefined),
     updateBounds: vi.fn<(input: object, options?: object) => Promise<undefined>>(
       async () => undefined,
     ),
@@ -80,6 +85,107 @@ const hiddenBounds = { visible: false, ...surfaceRect, projectSidebarWidth: 292 
 describe("EmbeddedEditorStore", () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("holds a network lease only while visible, reveals through the backend and requires explicit reconnect", async () => {
+    const { client, root, store } = createHarness();
+    const lease = {
+      id: "a".repeat(64),
+      endpoint: "http://localhost/editor/1/" + "a".repeat(64) + "/",
+    };
+    client.open.mockResolvedValue(lease);
+    store.applyState({ status: "ready" });
+    await store.show();
+    expect(store.browserEditorEndpoint).toBe(lease.endpoint);
+    expect(store.nativeViewReady).toBe(true);
+    await store.updateBrowserTheme("dark");
+    expect(client.setTheme).toHaveBeenCalledWith("dark", expect.any(Object));
+    client.setTheme.mockRejectedValueOnce(new Error("Theme RPC disconnected"));
+    await store.updateBrowserTheme("light");
+    expect(store.error).toBeUndefined();
+    expect(store.browserEditorEndpoint).toBe(lease.endpoint);
+    await store.reveal({ kind: "working-directory", path: "src/index.ts" });
+    expect(client.reveal).toHaveBeenCalledWith(
+      "/tmp/project",
+      { kind: "working-directory", path: "src/index.ts" },
+      expect.any(Object),
+    );
+    store.disconnected();
+    expect(store.browserEditorEndpoint).toBeUndefined();
+    expect(client.open).toHaveBeenCalledTimes(1);
+    await store.show();
+    expect(client.open).toHaveBeenCalledTimes(2);
+    store.hide();
+    expect(client.release).toHaveBeenCalledWith(lease.id);
+    root[Symbol.dispose]();
+  });
+
+  it("releases a malformed acquired endpoint without presenting it", async () => {
+    const { client, root, store } = createHarness();
+    const id = "b".repeat(64);
+    client.open.mockResolvedValue({
+      id,
+      endpoint: `http://localhost/editor/1/${id}/?redirect=elsewhere`,
+    });
+    await store.show();
+    expect(client.release).toHaveBeenCalledWith(id);
+    expect(store.browserEditorEndpoint).toBeUndefined();
+    expect(store.error).toContain("Invalid editor lease endpoint");
+    root[Symbol.dispose]();
+  });
+
+  it("releases a lease acquired after disconnect rather than displaying a stale frame", async () => {
+    const { client, root, store } = createHarness();
+    let resolve!: (lease: { id: string; endpoint: string }) => void;
+    client.open.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const opening = store.show();
+    store.disconnected();
+    const id = "c".repeat(64);
+    resolve({ id, endpoint: `http://localhost:4317/editor/1/${id}/` });
+    await opening;
+    expect(client.release).toHaveBeenCalledWith(id);
+    expect(store.browserEditorEndpoint).toBeUndefined();
+    expect(store.nativeViewReady).toBe(false);
+    root[Symbol.dispose]();
+  });
+
+  it("does not replace a reconnected editor with a stale rejected acquisition", async () => {
+    const { client, root, store } = createHarness();
+    let reject!: (error: Error) => void;
+    client.open.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    const stale = store.show();
+    store.disconnected();
+    const id = "d".repeat(64);
+    client.open.mockResolvedValueOnce({ id, endpoint: `http://localhost:4317/editor/1/${id}/` });
+    await store.show();
+    expect(store.browserEditorEndpoint).toContain(id);
+    reject(new Error("stale transport rejection"));
+    await stale;
+    expect(store.error).toBeUndefined();
+    expect(store.nativeViewReady).toBe(true);
+    root[Symbol.dispose]();
+  });
+
+  it("does not blank an already open editor after annotation synchronization fails", async () => {
+    const { client, root, store } = createHarness({ sessionId: "session", annotations: [] });
+    const id = "e".repeat(64);
+    client.open.mockResolvedValue({ id, endpoint: `http://localhost:4317/editor/1/${id}/` });
+    client.updateAnnotations.mockRejectedValueOnce(new Error("annotation unavailable"));
+    await store.show();
+    expect(store.browserEditorEndpoint).toContain(id);
+    expect(store.nativeViewReady).toBe(true);
+    expect(store.error).toBeUndefined();
+    root[Symbol.dispose]();
   });
 
   it("shows and hides the IDE while retaining the running editor", async () => {

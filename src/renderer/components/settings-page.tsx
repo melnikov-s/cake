@@ -47,8 +47,10 @@ import { LabelSettings } from "./label-settings";
 
 export const SettingsPage = observer(function SettingsPage({
   settings,
+  browserMode = false,
 }: {
   settings: SettingsStore;
+  browserMode?: boolean;
 }) {
   const session = settings.activeSession;
   const configuration = settings.configuration;
@@ -644,9 +646,14 @@ export const SettingsPage = observer(function SettingsPage({
               {settings.desktopConnection && (
                 <SettingsDesktopHostSection connection={settings.desktopConnection} />
               )}
-              {!settings.desktopConnection?.remote && (
+              {browserMode ? (
+                <Callout variant="info">
+                  Desktop sharing is managed in the Cake desktop app and is unavailable in this
+                  browser.
+                </Callout>
+              ) : !settings.desktopConnection?.remote ? (
                 <SettingsDesktopSharingSection sharing={settings.desktopSharing} />
-              )}
+              ) : null}
               <section className="border-t border-border py-5" aria-labelledby="network-title">
                 <header className="mb-4">
                   <div>
@@ -876,7 +883,14 @@ export const SettingsPage = observer(function SettingsPage({
           {activePage === "providers" && (
             <SettingsProvidersSection providers={providers} providerGroups={providerGroups} />
           )}
-          {activePage === "dictation" && <SettingsDictationSection store={settings.dictation} />}
+          {activePage === "dictation" &&
+            (browserMode ? (
+              <Callout variant="info">
+                Native dictation and microphone controls are available only in the Cake desktop app.
+              </Callout>
+            ) : (
+              <SettingsDictationSection store={settings.dictation} />
+            ))}
           {activePage === "appearance" && <SettingsAppearanceSection appearance={appearance} />}
           {activePage === "hotkeys" && <SettingsHotkeysSection hotkeys={settings.hotkeys} />}
           {activePage === "editor" && (

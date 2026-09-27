@@ -1,4 +1,6 @@
 import { DesktopConnectionStatus } from "./desktop-connection-status";
+import { BrowserConnectionStatus } from "./browser-connection-status";
+import type { BrowserConnectionStore } from "../stores/BrowserConnectionStore";
 import { StrictMode } from "react";
 import { observer, StoreProvider } from "r-state-tree/react";
 import type { RootStore } from "../stores/RootStore";
@@ -11,12 +13,14 @@ import { formatArtifactRef, parseArtifactRef } from "../../domain/artifacts/arti
 
 interface RendererRootProps {
   rootStore: RootStore;
+  browserConnection?: BrowserConnectionStore;
   openExternalUrl(url: string): void;
   openSession(sessionId: string): void;
 }
 
 export const RendererRoot = observer(function RendererRoot({
   rootStore,
+  browserConnection,
   openExternalUrl,
   openSession,
 }: RendererRootProps) {
@@ -64,8 +68,11 @@ export const RendererRoot = observer(function RendererRoot({
                     {rootStore.desktopConnection && (
                       <DesktopConnectionStatus connection={rootStore.desktopConnection} />
                     )}
+                    {browserConnection && (
+                      <BrowserConnectionStatus connection={browserConnection} />
+                    )}
                     <div className="min-h-0 flex-1">
-                      <App />
+                      <App browserMode={Boolean(browserConnection)} />
                     </div>
                   </div>
                 </IconButtonHotkeyProvider>

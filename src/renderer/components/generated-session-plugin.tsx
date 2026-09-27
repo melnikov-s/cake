@@ -139,7 +139,7 @@ export const GeneratedSessionPlugin = observer(function GeneratedSessionPlugin({
     <InlineWidgetFrame
       ref={iframe}
       title={plugin.title}
-      src={compiledState.compiled.url}
+      compiled={compiledState.compiled}
       style={{ height }}
     />
   );

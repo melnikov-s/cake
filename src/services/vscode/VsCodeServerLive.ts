@@ -234,10 +234,13 @@ export const makeVsCodeServerLive = (
               const previousLease = runtime.leaseFor(connectionId)?.id;
               return Effect.gen(function* () {
                 yield* requireAllowed(request.workspacePath);
-                if (connections.kind(connectionId) !== "desktop")
+                // Both native desktop and browser sockets may own a scoped view;
+                // unknown/disconnected clients cannot acquire one. Browser sockets
+                // remain network viewers and therefore require code-server.
+                if (connections.kind(connectionId) === undefined)
                   return yield* new VsCodeServerError({
                     operation: "acquire",
-                    message: "An embedded VS Code view requires a connected desktop",
+                    message: "An embedded VS Code view requires a connected client",
                   });
                 const lease = yield* tryServer("acquire", (signal) =>
                   runtime.acquire(
@@ -248,7 +251,7 @@ export const makeVsCodeServerLive = (
                     connections.nativeId(connectionId) === undefined,
                   ),
                 );
-                if (connections.kind(connectionId) !== "desktop") {
+                if (connections.kind(connectionId) === undefined) {
                   runtime.releaseConnection(connectionId);
                   return yield* new VsCodeServerError({
                     operation: "acquire",

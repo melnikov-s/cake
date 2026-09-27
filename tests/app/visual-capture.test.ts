@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseVisualCaptureArguments } from "../../scripts/visual-capture/arguments";
+import { browserVisualScenarios } from "../../scripts/visual-capture/browser-scenarios";
 import {
   formatVisualCaptureResult,
   visualCaptureResultPrefix,
@@ -65,6 +66,17 @@ describe("visual capture arguments", () => {
         "/workspace",
       ),
     ).toThrow("Use either --output or --output-dir");
+  });
+});
+
+describe("browser visual scenarios", () => {
+  it("advertises the four browser proof surfaces as named deterministic scenarios", () => {
+    expect(browserVisualScenarios.map(({ name, states }) => [name, states])).toEqual([
+      ["browser-shared-chat", ["default"]],
+      ["browser-draw", ["default"]],
+      ["browser-vscode", ["default"]],
+      ["browser-mode-hidden", ["default"]],
+    ]);
   });
 });
 

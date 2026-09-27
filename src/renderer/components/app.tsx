@@ -80,7 +80,7 @@ const DrawWorkspace = lazy(() =>
   import("@/components/draw-workspace").then((module) => ({ default: module.DrawWorkspace })),
 );
 
-export const App = observer(function App() {
+export const App = observer(function App({ browserMode = false }: { browserMode?: boolean }) {
   const root = useStore(RootStore);
   const store = root.projectWorkbenchStore;
   const projectOpen = store.projectOpenStore;
@@ -600,15 +600,17 @@ export const App = observer(function App() {
         >
           <WhiteboardIcon />
         </IconButton>
-        <IconButton
-          tooltip="Open Browser Mode"
-          onClick={() => {
-            focusPane();
-            void store.presentationStore.openBrowser();
-          }}
-        >
-          <BrowserIcon />
-        </IconButton>
+        {!browserMode && (
+          <IconButton
+            tooltip="Open Browser Mode"
+            onClick={() => {
+              focusPane();
+              void store.presentationStore.openBrowser();
+            }}
+          >
+            <BrowserIcon />
+          </IconButton>
+        )}
         <IconButton
           data-cake-hint-key="v"
           tooltip="Open VS Code"
@@ -660,6 +662,7 @@ export const App = observer(function App() {
       treeOpen={store.commandPaneStore.pane === "tree"}
       terminalAvailable={terminal.available}
       terminalOpen={terminal.open}
+      browserHost={browserMode}
       onToggleTree={() => {
         void store.presentationStore.backToAgent().then(() => {
           if (store.activeSession?.presentationMode === "normal")
@@ -1093,7 +1096,7 @@ export const App = observer(function App() {
         )}
         {surface === "settings" ? (
           <div className="h-full min-h-0 w-full overflow-hidden">
-            <SettingsPage settings={settings} />
+            <SettingsPage settings={settings} browserMode={browserMode} />
           </div>
         ) : surface === "artifact-library" ? (
           <ArtifactLibrary

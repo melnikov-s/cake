@@ -6,6 +6,7 @@ import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-
 import { decodeArtifactLineageId } from "../../domain/artifacts/artifact-lineage";
 import type { Client } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
+import { DeliveryAvailabilityContext } from "./context/DeliveryAvailabilityContext";
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
 import type { SessionHistoryEntry } from "./AppShellStore";
 import { SessionRegistryStore } from "./SessionRegistryStore";
@@ -50,6 +51,8 @@ export class RootStore extends Store<{
   desktopConnection?: DesktopConnectionStore;
   projection: RootProjection;
   flushWindowState(): Promise<void>;
+  canDeliver?(): boolean;
+  browserHost: boolean;
 }> {
   @child
   get drawControlStore(): DrawControlStore {
@@ -78,6 +81,10 @@ export class RootStore extends Store<{
 
   [ClientContext.provide]() {
     return this.client;
+  }
+
+  [DeliveryAvailabilityContext.provide]() {
+    return () => this.props.canDeliver?.() ?? true;
   }
 
   [ActiveProjectSessionContext.provide]() {
@@ -886,6 +893,13 @@ export class RootStore extends Store<{
       extensionUi: () => this.extensionUiStore,
       catalog: this.sessionCatalogStore,
       startCakeChat: (prompt) => this.startCakeChat(prompt),
+      browserHost: this.props.browserHost,
+      onBrowserUnavailable: () =>
+        this.toastStore.show({
+          title: "Browser Mode is desktop-only",
+          message: "Open Cake desktop to use Browser Mode.",
+          coalesceKey: "browser-mode-unavailable",
+        }),
       onWorktreeSessionsResolved: (sessionIds, projectPath) =>
         this.sessionRetirementStore.forgetProjectSessions(sessionIds, projectPath),
       openSessionById: async (sessionId) => {

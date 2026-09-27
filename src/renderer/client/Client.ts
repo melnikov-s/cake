@@ -337,7 +337,12 @@ interface VsCodeCommands {
     path: string | undefined,
     options?: ClientCommandOptions,
   ): Promise<ApplicationState>;
-  open(workingDirectory: string, options?: ClientCommandOptions): Promise<void>;
+  open(
+    workingDirectory: string,
+    options?: ClientCommandOptions,
+  ): Promise<{ id: string; endpoint: string } | undefined>;
+  release(leaseId: string, options?: ClientCommandOptions): Promise<void>;
+  setTheme(theme: "light" | "dark", options?: ClientCommandOptions): Promise<void>;
   updateBounds(
     input: {
       visible: boolean;

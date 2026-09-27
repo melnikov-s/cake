@@ -17,6 +17,9 @@ export const DesktopSharingState = Schema.Struct({
   bind: Schema.String,
   port: Schema.Number,
   url: Schema.optionalKey(Schema.String),
+  editorPort: Schema.optionalKey(
+    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
+  ),
   error: Schema.optionalKey(Schema.String),
 });
 export interface DesktopSharingState extends Schema.Schema.Type<typeof DesktopSharingState> {}

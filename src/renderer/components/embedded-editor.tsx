@@ -1,8 +1,9 @@
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { observer } from "r-state-tree/react";
 import type { EmbeddedEditorStore } from "../stores/EmbeddedEditorStore";
 import { Button } from "./ui/button";
 import { LoadingState } from "./ui/loading-state";
+import { useResolvedColorTheme } from "../lib/resolved-color-theme";
 
 const StatusCard = observer(function StatusCard({ store }: { store: EmbeddedEditorStore }) {
   const setupRequired = store.status === "missing";
@@ -60,6 +61,11 @@ export const EmbeddedEditorPane = observer(function EmbeddedEditorPane({
   store: EmbeddedEditorStore;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const theme = useResolvedColorTheme();
+  const endpoint = store.browserEditorEndpoint;
+  useEffect(() => {
+    if (endpoint) void store.updateBrowserTheme(theme);
+  }, [endpoint, store, theme]);
 
   useLayoutEffect(() => {
     const element = containerRef.current;
@@ -84,10 +90,21 @@ export const EmbeddedEditorPane = observer(function EmbeddedEditorPane({
     };
   }, [store]);
 
-  const showPlaceholder = store.status !== "ready" || Boolean(store.error);
+  const showPlaceholder =
+    (!store.browserEditorEndpoint && store.status !== "ready") || Boolean(store.error);
+  const editorUrl =
+    !showPlaceholder && store.nativeViewReady ? store.browserEditorEndpoint : undefined;
 
   return (
     <div ref={containerRef} className="embedded-editor-pane h-full">
+      {editorUrl ? (
+        <iframe
+          title="VS Code workspace"
+          src={editorUrl}
+          className="h-full w-full border-0"
+          referrerPolicy="no-referrer"
+        />
+      ) : null}
       {showPlaceholder ? (
         store.status === "missing" && !store.error ? (
           <StatusCard store={store} />

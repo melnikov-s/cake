@@ -7,7 +7,10 @@ export const observeTerminalEvents = (runtime: Runtime, root: RootStore) =>
     (client) => client.events.terminals(),
     (event) => {
       try {
-        if (event.type === "renderer-events-ready") return;
+        if (event.type === "renderer-events-ready") {
+          root.terminalStore.readyForEvents();
+          return;
+        }
         if (event.type === "terminal-toggle-requested") {
           void root.terminalStore.toggle();
           return;

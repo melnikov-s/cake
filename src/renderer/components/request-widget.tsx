@@ -7,6 +7,7 @@ import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { CakeRequestView } from "../../ipc/request-contract";
 import { inlineWidgetMessageSchema } from "../../utils/inline-widget-message";
+import { InlineWidgetFrame } from "./inline-widget-frame";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 
 export const RequestWidget = observer(function RequestWidget({
@@ -59,12 +60,10 @@ export const RequestWidget = observer(function RequestWidget({
   if (state?.status === "error") return <Markdown>{fallback}</Markdown>;
   if (!state?.compiled) return <div className="min-h-30" aria-busy="true" />;
   return (
-    <iframe
+    <InlineWidgetFrame
       ref={iframe}
       title={artifact.title ?? artifact.id}
-      sandbox="allow-scripts"
-      referrerPolicy="no-referrer"
-      src={state.compiled.url}
+      compiled={state.compiled}
       className={cn("w-full border-none", fill && "h-full")}
       style={fill ? undefined : { height }}
     />

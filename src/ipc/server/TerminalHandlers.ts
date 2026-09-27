@@ -32,7 +32,14 @@ export const terminalHandlers = TerminalRpc.of({
       Effect.gen(function* () {
         const connection = yield* RendererConnection;
         const terminalEvents = yield* workingDirectoryTerminals.events(connection.connectionId);
-        return Stream.merge(terminalEvents, nativeTerminalEvents());
+        // The PTY subscription sends readiness only after subscribing. The native
+        // control-event channel's earlier marker must not authorize a shell open.
+        return Stream.merge(
+          terminalEvents,
+          nativeTerminalEvents().pipe(
+            Stream.filter((event) => event.type !== "renderer-events-ready"),
+          ),
+        );
       }),
     ),
 });

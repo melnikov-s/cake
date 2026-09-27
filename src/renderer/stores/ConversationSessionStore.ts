@@ -15,6 +15,7 @@ import { SideChatStore } from "./SideChatStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { ScheduledMessageCapabilities } from "./ScheduledMessageInteractionStore";
 import { ClientContext } from "./context/ClientContext";
+import { DeliveryAvailabilityContext } from "./context/DeliveryAvailabilityContext";
 
 type ComposerCapabilities = Omit<
   ConversationComposerStoreProps,
@@ -115,7 +116,11 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
   }
 
   get canSubmit() {
-    return this.props.canSubmit() && this.composerStore.draftStore.hasContent;
+    return (
+      (DeliveryAvailabilityContext.consume(this)?.() ?? true) &&
+      this.props.canSubmit() &&
+      this.composerStore.draftStore.hasContent
+    );
   }
 
   @child

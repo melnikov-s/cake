@@ -191,7 +191,9 @@ export async function loadExtensionCompanions(
           jsx: "transform",
           jsxFactory: "React.createElement",
           jsxFragment: "React.Fragment",
-          banner: { js: "const React = globalThis.__cakeExtensionReact;" },
+          // esbuild may emit `var React` for an entry importing React; a const
+          // banner would redeclare it and make the published module invalid.
+          banner: { js: "var React = globalThis.__cakeExtensionReact;" },
           plugins: [reactHostPlugin],
         });
         const source = result.outputFiles[0]?.text;

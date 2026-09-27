@@ -462,6 +462,10 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
       },
     },
     vscode: {
+      release: (leaseId, options) =>
+        execute("vscode.release", (client) => client.vscode.release(leaseId), options),
+      setTheme: (theme, options) =>
+        execute("vscode.set-theme", (client) => client.vscode.setTheme(theme), options),
       getState: (options) =>
         execute(
           "vscode.get-embedded-editor-state",
@@ -505,7 +509,7 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
             }),
           { requestId, workspacePath: workingDirectory }.requestId,
           options,
-        );
+        ).then(() => undefined);
       },
       updateBounds: (input, options) => {
         const requestId = crypto.randomUUID();

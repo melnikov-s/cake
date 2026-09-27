@@ -46,7 +46,7 @@ export class DrawStore extends Store<DrawStoreProps> {
   private pendingSnapshot:
     | { boardId: string; generation: number; snapshot: DrawDocumentSnapshot }
     | undefined;
-  private detachDocumentListener: (() => void) | undefined;
+  private editorFingerprint: string | undefined;
   private suppressDocumentChanges = false;
   private readonly checkpoints = new Map<string, DrawDocumentSnapshot>();
   private checkpointOrder: string[] = [];
@@ -110,19 +110,25 @@ export class DrawStore extends Store<DrawStoreProps> {
   }
 
   attachEditor(adapter: DrawEditorAdapter) {
-    this.detachDocumentListener?.();
     this.editorAdapter = adapter;
-    this.detachDocumentListener = adapter.onDocumentChange(() => this.documentChanged());
+    this.editorFingerprint = JSON.stringify(adapter.snapshotDocument());
     for (const resolve of this.readyWaiters) resolve(adapter);
     this.readyWaiters.clear();
   }
 
   detachEditor(adapter: DrawEditorAdapter) {
     if (this.editorAdapter !== adapter) return;
-    this.detachDocumentListener?.();
-    this.detachDocumentListener = undefined;
     if (this.dirtyGeneration > this.savedGeneration) this.enqueueSave(adapter.snapshotDocument());
     this.editorAdapter = undefined;
+    this.editorFingerprint = undefined;
+  }
+
+  editorChanged() {
+    if (this.suppressDocumentChanges || !this.editorAdapter) return;
+    const fingerprint = JSON.stringify(this.editorAdapter.snapshotDocument());
+    if (fingerprint === this.editorFingerprint) return;
+    this.editorFingerprint = fingerprint;
+    this.documentChanged();
   }
 
   waitUntilReady() {
@@ -357,6 +363,8 @@ export class DrawStore extends Store<DrawStoreProps> {
 
   private documentChanged() {
     if (this.suppressDocumentChanges) return;
+    if (this.editorAdapter)
+      this.editorFingerprint = JSON.stringify(this.editorAdapter.snapshotDocument());
     this.dirtyGeneration += 1;
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {

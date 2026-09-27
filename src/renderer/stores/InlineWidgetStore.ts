@@ -28,6 +28,18 @@ export class InlineWidgetStore extends Store {
     return this.states[id];
   }
 
+  /** Published document tokens belong to the backend process, not the browser tab. */
+  backendReconnected() {
+    for (const [id, state] of Object.entries(this.states)) {
+      const revision = (this.revisions.get(id) ?? 0) + 1;
+      this.revisions.set(id, revision);
+      state.compiled = undefined;
+      state.diagnostic = undefined;
+      state.status = "building";
+      void this.compile(id, state, state.source, revision);
+    }
+  }
+
   prepare(
     id: string,
     language: InlineWidgetLanguage,

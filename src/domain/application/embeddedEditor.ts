@@ -4,6 +4,7 @@ import { VsCodeViews } from "../../services/vscode/VsCodeViews";
 import { setVscodeServerPath } from "./application";
 import { VsCodeServer, VsCodeServerError } from "../../services/vscode/VsCodeServer";
 import type { AcquireEditor, EditorEndpoint } from "../../ipc/protocol/VsCodeRpc";
+import { EditorBrowserPort } from "../../server/EditorBrowserPort";
 
 /** Backend issues a presentation capability. Internal addresses and server tokens
  * never cross RPC, even when the desktop and backend share an Electron host. */
@@ -12,8 +13,20 @@ export const acquire = Effect.fn("EmbeddedEditor.acquire")(function* (
   request: typeof AcquireEditor.Type,
 ) {
   const server = yield* VsCodeServer;
+  const port = yield* Effect.serviceOption(EditorBrowserPort);
   const lease = yield* server.acquire(connectionId, request);
-  return { id: lease.id, endpoint: `/editor/${connectionId}/${lease.id}/` };
+  const endpoint = `/editor/${connectionId}/${lease.id}/`;
+  if (Option.isSome(port) && port.value.port !== undefined) {
+    if (port.value.publicOrigin)
+      return {
+        id: lease.id,
+        endpoint,
+        editorPort: port.value.port,
+        editorOrigin: port.value.publicOrigin,
+      };
+    return { id: lease.id, endpoint, editorPort: port.value.port };
+  }
+  return { id: lease.id, endpoint };
 });
 
 /** Native presentation accepts only this host's editor endpoint. The remote host

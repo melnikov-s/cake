@@ -19,7 +19,8 @@ const diagramId = semanticId;
 const shapeId = Schema.String.check(
   Schema.isMinLength(7),
   Schema.isMaxLength(262),
-  Schema.isPattern(/^shape:[A-Za-z0-9_-]{1,256}$/),
+  // Excalidraw's native drawing tools generate bare IDs; agent-created shapes use shape: IDs.
+  Schema.isPattern(/^(?:shape:[A-Za-z0-9_-]{1,256}|[A-Za-z0-9_-]{7,256})$/),
 );
 const shapeIds = Schema.Array(shapeId).check(Schema.isMaxLength(500));
 const nonEmptyShapeIds = shapeIds.check(Schema.isMinLength(1));

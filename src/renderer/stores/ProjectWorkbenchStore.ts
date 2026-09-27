@@ -33,6 +33,8 @@ export interface ProjectWorkbenchStoreProps {
   extensionUi(): ExtensionUiStore;
   catalog: SessionCatalogStore;
   startCakeChat(prompt?: string): Promise<void>;
+  browserHost?: boolean;
+  onBrowserUnavailable?(): void;
   /** Removes resolved worktree sessions from history and chooses the next conversation. */
   onWorktreeSessionsResolved(sessionIds: readonly string[], projectPath: string): Promise<void>;
   /** Navigates the shell to an existing session by ID. */
@@ -89,6 +91,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   @child
   get presentationStore(): SessionPresentationStore {
     return createStore(SessionPresentationStore, {
+      browserHost: this.props.browserHost,
+      onBrowserUnavailable: this.props.onBrowserUnavailable,
       activeSession: () => this.activeSession,
       activeSessionId: () => this.activeSessionId,
       activeSessionResolved: () => this.activeSessionResolved,
