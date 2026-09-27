@@ -318,6 +318,8 @@ export const projectAttachments = (values: ReadonlyArray<Attachment>): ReadonlyA
               contextBefore: annotation.contextBefore,
               contextAfter: annotation.contextAfter,
             };
+            if (annotation.artifactId !== undefined)
+              Object.assign(projected, { artifactId: annotation.artifactId });
             if (annotation.entryId !== undefined)
               Object.assign(projected, { entryId: annotation.entryId });
             if (annotation.comment !== undefined)

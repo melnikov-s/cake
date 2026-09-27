@@ -30,7 +30,7 @@ export function ArtifactSelectionSurface({
   const comments = session.messageCommentsStore;
   const sideChat = session.conversationSessionStore.sideChatStore;
   const openDraft = (capture: Capture) => {
-    comments.prepareDraft({ ...capture.selection, artifactId });
+    comments.prepareDraft(capture.selection);
     sideChat.open({
       key: `artifact-selection-draft:${session.sessionId}`,
       title: "Side chat",
@@ -62,7 +62,7 @@ export function ArtifactSelectionSurface({
         if (!selection) return;
         const end = Array.from(range.getClientRects()).at(-1) ?? range.getBoundingClientRect();
         const capture = {
-          selection,
+          selection: { ...selection, artifactId },
           rect: { top: end.top, right: end.right, bottom: end.bottom, left: end.left },
         };
         pending.current = capture;
@@ -86,8 +86,9 @@ export function ArtifactSelectionSurface({
           anchor={annotationDraft.rect}
           selection={annotationDraft.selection}
           onAdd={(annotation) => {
-            openDraft(annotationDraft);
-            comments.annotationDraft.add(annotation);
+            session.conversationSessionStore.composerStore.draftStore.annotationDraft.add(
+              annotation,
+            );
             setAnnotationDraft(undefined);
           }}
           onClose={() => setAnnotationDraft(undefined)}

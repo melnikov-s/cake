@@ -139,10 +139,12 @@ test("opens the artifact workspace, keeps requests inline, and isolates HTML", a
     await page.getByLabel("Annotation comment").fill("Review this artifact value");
     await annotation.getByRole("button", { name: "Add annotation" }).click();
     const sideChat = page.getByRole("complementary", { name: "Side chat" });
-    await expect(sideChat).toBeVisible();
-    await expect(sideChat.getByText("Alpha")).toBeVisible();
+    await expect(sideChat).not.toBeAttached();
+    await expect(page.getByRole("button", { name: "View 1 annotation" })).toBeVisible();
     await selectArtifactText();
     await rightClickSelection();
+    await expect(sideChat).toBeVisible();
+    await expect(sideChat.getByText("Alpha")).toBeVisible();
     const draftInput = sideChat.getByLabel("Message about selected text");
     await expect(draftInput).toBeFocused();
     await draftInput.pressSequentially("Why is Alpha here?");

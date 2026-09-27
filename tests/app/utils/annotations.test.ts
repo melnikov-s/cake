@@ -32,6 +32,20 @@ describe("annotations", () => {
     ).not.toThrow();
   });
 
+  it("keeps the artifact identity in prompt attachments", () => {
+    const annotation = createAnnotation(id, { ...requiredFields, artifactId: "artifact-1" });
+    const prompt = Schema.decodeUnknownSync(ProjectSessionPromptInput)({
+      sessionId: "session-1",
+      text: "Review this",
+      attachments: [{ kind: "annotation", annotations: [annotation] }],
+      renderUserMessageAsMarkdown: false,
+    });
+    expect(prompt.attachments[0]).toMatchObject({
+      kind: "annotation",
+      annotations: [{ artifactId: "artifact-1", selectedText: "important" }],
+    });
+  });
+
   it("removes optional fields when an annotation is updated", () => {
     const annotation = createAnnotation(id, {
       ...requiredFields,

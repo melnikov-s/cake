@@ -11,6 +11,7 @@ export function createAnnotation(id: string, input: Omit<Annotation, "id">): Ann
     contextBefore: input.contextBefore,
     contextAfter: input.contextAfter,
   };
+  if (input.artifactId !== undefined) Object.assign(annotation, { artifactId: input.artifactId });
   if (input.entryId !== undefined) Object.assign(annotation, { entryId: input.entryId });
   if (input.comment !== undefined) Object.assign(annotation, { comment: input.comment });
   return annotation;
