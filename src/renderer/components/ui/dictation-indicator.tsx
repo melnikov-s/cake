@@ -17,7 +17,8 @@ export const DictationIndicator = observer(function DictationIndicator({
   targetId: string;
   anchor: RefObject<HTMLTextAreaElement | null>;
 }) {
-  const visible = store.enabled && store.activeTargetId === targetId;
+  const visible =
+    store.enabled && store.activeTargetId === targetId && !store.isDismissed(targetId);
   const phase = store.phase;
   const [position, setPosition] = useState<CSSProperties>({ visibility: "hidden" });
   useLayoutEffect(() => {
@@ -71,10 +72,10 @@ export const DictationIndicator = observer(function DictationIndicator({
           if (event.key !== "Escape") return;
           event.preventDefault();
           event.stopPropagation();
-          void store.setEnabled(false);
+          store.dismiss(targetId);
           anchor.current?.focus();
         }}
-        onClick={() => void store.setEnabled(false)}
+        onClick={() => store.dismiss(targetId)}
       >
         <CloseIcon size={12} />
       </IconButton>

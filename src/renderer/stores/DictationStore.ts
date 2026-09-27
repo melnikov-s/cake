@@ -33,6 +33,7 @@ export class DictationStore extends Store<{ client: Client["dictation"]; microph
   devices: ReadonlyArray<{ id: string; label: string }> = [];
   busy = false;
   private target: DictationTarget | undefined;
+  private dismissedTargetId: string | undefined;
   private utterance: Utterance | undefined;
   private installation: AbortController | undefined;
   private modeRevision = 0;
@@ -47,6 +48,16 @@ export class DictationStore extends Store<{ client: Client["dictation"]; microph
 
   get activeTargetId() {
     return this.target?.id;
+  }
+  isDismissed(id: string) {
+    return this.dismissedTargetId === id;
+  }
+  /** Stop only this focus's capture; blur makes the field eligible again. */
+  dismiss(id: string) {
+    if (!this.enabled || this.target?.id !== id || this.dismissedTargetId === id) return;
+    this.dismissedTargetId = id;
+    this.endUtterance();
+    this.phase = "paused";
   }
   get label() {
     if (this.phase === "preparing") return "Preparing dictation… Wait to speak";
@@ -76,6 +87,7 @@ export class DictationStore extends Store<{ client: Client["dictation"]; microph
   async setEnabled(enabled: boolean) {
     const revision = ++this.modeRevision;
     this.enabled = enabled;
+    this.dismissedTargetId = undefined;
     this.error = undefined;
     this.endUtterance();
     this.phase = enabled ? "preparing" : "off";
@@ -95,6 +107,7 @@ export class DictationStore extends Store<{ client: Client["dictation"]; microph
   focus(target: DictationTarget) {
     if (this.target === target) return;
     this.endUtterance();
+    this.dismissedTargetId = undefined;
     this.target = target;
     if (!this.enabled) return;
     if (this.state?.status === "ready") void this.start(target);
@@ -105,12 +118,19 @@ export class DictationStore extends Store<{ client: Client["dictation"]; microph
   blur(id: string) {
     if (this.target?.id !== id) return;
     this.endUtterance();
+    this.dismissedTargetId = undefined;
     this.target = undefined;
     if (this.enabled) this.phase = "paused";
   }
   /** Manual editing/cursor movement seals visible speech and starts a new insertion. */
   restart(id: string) {
-    if (this.target?.id !== id || !this.enabled || this.phase === "finishing") return;
+    if (
+      this.target?.id !== id ||
+      !this.enabled ||
+      this.isDismissed(id) ||
+      this.phase === "finishing"
+    )
+      return;
     const run = this.utterance;
     if (run && this.phase === "listening") {
       // Editing starts a new decoding generation, not a new microphone acquisition.
@@ -207,7 +227,7 @@ export class DictationStore extends Store<{ client: Client["dictation"]; microph
     }
   }
   resume(id: string) {
-    if (this.target?.id === id && this.enabled && this.phase === "paused")
+    if (this.target?.id === id && this.enabled && !this.isDismissed(id) && this.phase === "paused")
       void this.start(this.target);
   }
   async refreshDevices() {
@@ -219,7 +239,13 @@ export class DictationStore extends Store<{ client: Client["dictation"]; microph
   }
   setDevice(id: string) {
     this.deviceId = id;
-    if (this.target && this.enabled && this.state?.status === "ready") void this.start(this.target);
+    if (
+      this.target &&
+      this.enabled &&
+      !this.isDismissed(this.target.id) &&
+      this.state?.status === "ready"
+    )
+      void this.start(this.target);
   }
   get installing() {
     return this.installation !== undefined;

@@ -167,6 +167,31 @@ describe("focus-driven dictation workflow", () => {
     expect(store.phase).toBe("paused");
   });
 
+  it("dismisses only the current focus and resumes capture on refocus", async () => {
+    const { store, requests, captures, target } = fixture();
+    const chat = target("chat");
+    store.focus(chat);
+    await store.setEnabled(true);
+    captures[0]!.push(new Float32Array(12_800));
+    store.dismiss(chat.id);
+    expect(store.enabled).toBe(true);
+    expect(store.isDismissed(chat.id)).toBe(true);
+    expect(store.phase).toBe("paused");
+    expect(captures[0]!.stop).toHaveBeenCalledOnce();
+    store.restart(chat.id);
+    store.resume(chat.id);
+    expect(captures).toHaveLength(1);
+    requests[0]!.reply.resolve("Discard after dismissal");
+    await drain();
+    expect(chat.replace).not.toHaveBeenCalled();
+    store.blur(chat.id);
+    expect(store.isDismissed(chat.id)).toBe(false);
+    store.focus(chat);
+    await drain();
+    expect(captures).toHaveLength(2);
+    expect(store.phase).toBe("listening");
+  });
+
   it("manual edits seal visible text and invalidate pending recognition", async () => {
     const { store, requests, captures, target } = fixture();
     const chat = target("chat");
