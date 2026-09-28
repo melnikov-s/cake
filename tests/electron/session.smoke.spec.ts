@@ -153,6 +153,21 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await expect(page.getByText("Immediate draft", { exact: true })).toBeVisible();
     await expect(page.getByText("Draft", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Message")).toHaveCount(0);
+    // The saved draft's input-free composer puts the assistant beside the model picker.
+    // At compact widths they must retain separate hit targets.
+    await application.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]!.setContentSize(840, 600);
+    });
+    const assistant = page.locator('[data-slot="composer-leading-accessory"] button');
+    const modelPicker = page.getByRole("button", { name: "Model configuration" });
+    await expect(assistant).toBeVisible();
+    await expect(modelPicker).toBeVisible();
+    const assistantBounds = await assistant.boundingBox();
+    const pickerBounds = await modelPicker.boundingBox();
+    expect(assistantBounds!.x + assistantBounds!.width).toBeLessThanOrEqual(pickerBounds!.x);
+    await modelPicker.click();
+    await expect(page.getByRole("dialog", { name: "Model configuration" })).toBeVisible();
+    await modelPicker.click();
     // An explicitly saved draft is the pseudo-session that belongs in the sidebar.
     await expect(page.locator(".session-item")).toHaveCount(sessionCountBeforeNewChat + 1);
     await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("New chat");

@@ -82,7 +82,10 @@ export const ChatComposer = observer(function ChatComposer({
           <ComposerToolbar
             data-slot="composer-toolbar"
             separated={toolbarSeparated}
-            className="flex min-w-0 items-center justify-between gap-3 px-1.5 py-1"
+            className={cn(
+              "flex min-w-0 items-center justify-between gap-3 px-1.5 py-1",
+              leadingAccessory && !input && "pl-12 @4xl/composer-dock:pl-1.5",
+            )}
           >
             <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
               {toolbarLeading}
