@@ -1,4 +1,11 @@
-import { applySnapshot, createStore, mount, toSnapshot, type StoreSnapshot } from "r-state-tree";
+import {
+  applySnapshot,
+  createStore,
+  mount,
+  observable,
+  toSnapshot,
+  type StoreSnapshot,
+} from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { piBuiltinSlashCommands } from "../../../../src/ipc/session-contract";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
@@ -115,6 +122,22 @@ describe("SessionRegistryStore materialization", () => {
     expect(firstRestored).not.toBe(first);
     expect(secondRestored).not.toBe(second);
     restored.dispose();
+  });
+
+  it("does not reconcile the loaded Store collection when active selection changes", () => {
+    const selection = observable({ sessionId: "session-1" });
+    const fixture = registryFixture(undefined, (sessionId) => sessionId === selection.sessionId);
+    for (let index = 0; index < 20; index += 1)
+      fixture.registry.load(`session-${index}`, "/project");
+    const sessionsGetter = vi.spyOn(fixture.registry, "sessions", "get");
+
+    selection.sessionId = "session-2";
+
+    expect(sessionsGetter).not.toHaveBeenCalled();
+    expect(
+      fixture.registry.observationRetention.sessions.map((session) => session.sessionId),
+    ).toEqual(expect.arrayContaining(["session-1", "session-2"]));
+    fixture.dispose();
   });
 
   it("restores pending lifecycles and keyed loaded Store state from a window snapshot", async () => {

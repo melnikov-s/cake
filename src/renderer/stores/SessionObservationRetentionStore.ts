@@ -4,7 +4,7 @@ import type { ProjectSessionStore } from "./ProjectSessionStore";
 const IDLE_OBSERVATION_LIMIT = 4;
 
 export interface SessionObservationRetentionStoreProps {
-  sessions(): readonly ProjectSessionStore[];
+  findSession(sessionId: string): ProjectSessionStore | undefined;
   isActive(sessionId: string): boolean;
   isVisible?(sessionId: string): boolean;
 }
@@ -17,16 +17,13 @@ export class SessionObservationRetentionStore extends Store<SessionObservationRe
 
   get sessions(): readonly ProjectSessionStore[] {
     const recent = new Set(this.recentSessionIds);
-    return this.props
-      .sessions()
-      .filter(
-        (session) =>
-          this.materializedSessionIds.includes(session.sessionId) &&
-          (recent.has(session.sessionId) ||
-            this.props.isActive(session.sessionId) ||
-            this.props.isVisible?.(session.sessionId) ||
-            isRunning(session)),
-      );
+    return this.materializedSessions().filter(
+      (session) =>
+        recent.has(session.sessionId) ||
+        this.props.isActive(session.sessionId) ||
+        this.props.isVisible?.(session.sessionId) ||
+        isRunning(session),
+    );
   }
 
   materialize(sessionId: string) {
@@ -50,9 +47,16 @@ export class SessionObservationRetentionStore extends Store<SessionObservationRe
     this.recentSessionIds.push(sessionId);
   }
 
+  private materializedSessions() {
+    return this.materializedSessionIds.flatMap((sessionId) => {
+      const session = this.props.findSession(sessionId);
+      return session ? [session] : [];
+    });
+  }
+
   private trim() {
     const sessionsById = new Map(
-      this.props.sessions().map((session) => [session.sessionId, session]),
+      this.materializedSessions().map((session) => [session.sessionId, session]),
     );
     for (let index = this.recentSessionIds.length - 1; index >= 0; index -= 1) {
       const sessionId = this.recentSessionIds[index]!;
@@ -73,7 +77,7 @@ export class SessionObservationRetentionStore extends Store<SessionObservationRe
     super(props);
     this.reaction(
       () =>
-        this.props.sessions().map((session) => ({
+        this.materializedSessions().map((session) => ({
           sessionId: session.sessionId,
           active: this.props.isActive(session.sessionId),
           visible: this.props.isVisible?.(session.sessionId) ?? false,

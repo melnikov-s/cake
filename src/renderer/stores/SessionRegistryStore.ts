@@ -88,7 +88,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   @child
   get observationRetention(): SessionObservationRetentionStore {
     return createStore(SessionObservationRetentionStore, {
-      sessions: () => this.sessions,
+      findSession: (sessionId) => this.findSession(sessionId),
       isActive: this.props.isActive,
       isVisible: this.props.isVisible,
     });

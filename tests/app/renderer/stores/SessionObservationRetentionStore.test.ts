@@ -18,7 +18,7 @@ function fixture(options?: { snapshot?: StoreSnapshot; selected?: string; visibl
   const sessions: ProjectSessionStore[] = observable([]);
   const store = mount(
     createStore(SessionObservationRetentionStore, {
-      sessions: () => sessions,
+      findSession: (sessionId) => sessions.find((item) => item.sessionId === sessionId),
       isActive: (sessionId) => sessionId === options?.selected,
       isVisible: (sessionId) => sessionId === options?.visible,
     }),
@@ -44,22 +44,26 @@ describe("SessionObservationRetentionStore", () => {
     store[Symbol.dispose]();
   });
 
-  it("resolves the loaded collection once when trimming several recent sessions", () => {
+  it("looks up only materialized sessions when trimming the warm set", () => {
     const sessions = observable(
       Array.from({ length: 5 }, (_, index) => session(`session-${index}`)),
     );
-    const readSessions = vi.fn(() => sessions);
+    const findSession = vi.fn((sessionId: string) =>
+      sessions.find((item) => item.sessionId === sessionId),
+    );
     const store = mount(
       createStore(SessionObservationRetentionStore, {
-        sessions: readSessions,
+        findSession,
         isActive: () => false,
       }),
     );
     for (const item of sessions) store.materialize(item.sessionId);
 
-    readSessions.mockClear();
+    findSession.mockClear();
     store.retain("session-0");
-    expect(readSessions.mock.calls.length).toBeLessThanOrEqual(2);
+    expect(new Set(findSession.mock.calls.map(([sessionId]) => sessionId))).toEqual(
+      new Set(sessions.map((item) => item.sessionId)),
+    );
     store[Symbol.dispose]();
   });
 
