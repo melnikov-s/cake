@@ -1,4 +1,5 @@
 import { Excalidraw } from "@excalidraw/excalidraw";
+import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { SourceLocation } from "../../ipc/source-location";
 import { isCakeDrawSourceUrl, parseDrawSourceLink } from "../../domain/draw/draw-source-link";

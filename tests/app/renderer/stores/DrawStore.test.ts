@@ -380,6 +380,27 @@ describe("DrawStore", () => {
     expect(subject.error).toBeUndefined();
   });
 
+  it("retries the step that failed while opening a whiteboard", async () => {
+    const { subject, draw } = mountDrawStore();
+    draw.list.mockRejectedValueOnce(new Error("list unavailable"));
+
+    await subject.initialize();
+    expect(subject.error).toContain("list unavailable");
+    expect(subject.documentLoaded).toBe(false);
+
+    draw.read.mockRejectedValueOnce(new Error("read unavailable"));
+    await subject.retry();
+    expect(subject.error).toContain("read unavailable");
+    expect(subject.documentLoaded).toBe(false);
+    expect(subject.loading).toBe(false);
+
+    await subject.retry();
+    expect(draw.list).toHaveBeenCalledTimes(2);
+    expect(draw.read).toHaveBeenCalledTimes(2);
+    expect(subject.documentLoaded).toBe(true);
+    expect(subject.error).toBeUndefined();
+  });
+
   it("creates a default board when the session has none", async () => {
     const { subject, draw } = mountDrawStore([]);
 

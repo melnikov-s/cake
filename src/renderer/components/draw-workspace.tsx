@@ -1,13 +1,12 @@
 import type { ComponentProps, ReactNode } from "react";
 import { observer } from "r-state-tree/react";
-import "@excalidraw/excalidraw/index.css";
 import type { ChatTranscriptBehavior } from "./chat-message";
 import type { ChatStore } from "../stores/ChatStore";
 import type { DrawStore } from "../stores/DrawStore";
 import type { SideChatStore } from "../stores/SideChatStore";
 import { Chat } from "./chat";
 import { DrawBoardToolbar } from "./draw-board-toolbar";
-import { DrawCanvas } from "./draw-canvas";
+import { DrawCanvasRegion } from "./draw-canvas-region";
 import { SideChatLayout } from "./side-chat-layout";
 import { WorkspaceChatLayout } from "./workspace-chat-layout";
 
@@ -106,13 +105,10 @@ export const DrawWorkspace = observer(function DrawWorkspace({
             onGoForward={onGoForward}
           />
           <div className="min-h-0 flex-1">
-            {draw.activeBoardId && draw.documentLoaded && !draw.loading ? (
-              <DrawCanvas
-                key={draw.activeBoardId}
-                store={draw}
-                onOpenSourceLocation={transcriptBehavior.openSourceLocation}
-              />
-            ) : null}
+            <DrawCanvasRegion
+              store={draw}
+              onOpenSourceLocation={transcriptBehavior.openSourceLocation}
+            />
           </div>
         </div>
       }

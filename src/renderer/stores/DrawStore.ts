@@ -102,6 +102,13 @@ export class DrawStore extends Store<DrawStoreProps> {
     }
   }
 
+  /** Retries whichever step of opening the whiteboard last failed. */
+  async retry() {
+    if (this.loading) return;
+    if (!this.initialized) await this.initialize();
+    else if (this.activeBoardId) await this.loadBoard(this.activeBoardId);
+  }
+
   async selectBoard(boardId: string) {
     if (boardId === this.activeBoardId) return;
     if (!this.boards.some((board) => board.id === boardId)) throw new Error("Board not found");
@@ -338,6 +345,7 @@ export class DrawStore extends Store<DrawStoreProps> {
   private async loadBoard(boardId: string) {
     const revision = ++this.loadRevision;
     this.loading = true;
+    this.clearError();
     this.documentLoaded = false;
     this.documentSnapshot = null;
     this.checkpoints.clear();
