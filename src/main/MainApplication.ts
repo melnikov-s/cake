@@ -16,9 +16,11 @@ import { handleExtensionCompanionScheme } from "../services/electron/extension-c
 
 interface MainApplicationElectron {
   on(event: "before-quit", listener: (event: Event) => void): void;
-  on(event: "window-all-closed", listener: () => void): void;
+  on(event: "window-all-closed" | "second-instance", listener: () => void): void;
   removeListener(event: "before-quit", listener: (event: Event) => void): void;
-  removeListener(event: "window-all-closed", listener: () => void): void;
+  removeListener(event: "window-all-closed" | "second-instance", listener: () => void): void;
+  /** Electron's per-`userData` lock; one Chromium profile must never be shared by two processes. */
+  requestSingleInstanceLock(): boolean;
   quit(): void;
   whenReady(): Promise<void>;
 }
@@ -49,6 +51,11 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
 
   const program = Effect.scoped(
     Effect.gen(function* () {
+      if (!application.requestSingleInstanceLock()) {
+        // The primary instance receives `second-instance` and brings its window forward.
+        yield* Effect.logInfo("Cake is already running with this profile; exiting");
+        return;
+      }
       const applicationState = yield* Effect.serviceOption(ApplicationState);
       const sharing = yield* Effect.serviceOption(DesktopSharing);
       const browser = yield* Effect.serviceOption(Browser);
@@ -156,6 +163,20 @@ export const MainApplication = Effect.fn("MainApplication")(function* ({
           Option.isNone(applicationState) ||
           Boolean(applicationState.value.snapshot().utilityModel),
       });
+      // Electron emits `second-instance` synchronously from a native callback; queue it and
+      // let this Scope own the consumer so window work cannot outlive the application.
+      const secondInstances = yield* Queue.unbounded<void>();
+      yield* Stream.fromQueue(secondInstances).pipe(
+        Stream.runForEach(() => electron.focusOrCreateWindow()),
+        Effect.forkScoped,
+      );
+      const onSecondInstance = () => {
+        Queue.offerUnsafe(secondInstances, undefined);
+      };
+      yield* Effect.acquireRelease(
+        Effect.sync(() => application.on("second-instance", onSecondInstance)),
+        () => Effect.sync(() => application.removeListener("second-instance", onSecondInstance)),
+      );
       yield* Effect.logInfo("Cake main application started");
       yield* Deferred.await(shutdownRequested);
       yield* Effect.logInfo("Cake main application stopping");

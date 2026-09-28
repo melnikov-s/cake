@@ -665,6 +665,20 @@ const makeElectronService = (
         createWindow();
       }),
     ),
+    focusOrCreateWindow: Effect.fn("Electron.focusOrCreateWindow")(() =>
+      Effect.sync(() => {
+        // A window-less instance stays alive on macOS and while sharing the desktop; a second
+        // launch is the user asking for that window back rather than for a second process.
+        if (stopped || !windowLifecycle) return;
+        const window = windows.values().next().value;
+        if (!window) {
+          onActivate();
+          return;
+        }
+        if (window.isMinimized()) window.restore();
+        window.focus();
+      }),
+    ),
     stop: Effect.fn("Electron.stop")(() =>
       Effect.sync(() => {
         if (stopped) return;

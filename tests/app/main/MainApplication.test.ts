@@ -17,13 +17,17 @@ import { VsCodeViews } from "../../../src/services/vscode/VsCodeViews";
 
 class TestApplication extends EventEmitter {
   readonly quit = vi.fn(() => this.emit("before-quit", { preventDefault: vi.fn() }));
-  constructor(private readonly ready: Promise<void> = Promise.resolve()) {
+  readonly requestSingleInstanceLock = vi.fn(() => this.primaryInstance);
+  constructor(
+    private readonly ready: Promise<void> = Promise.resolve(),
+    private readonly primaryInstance = true,
+  ) {
     super();
   }
   override on(eventName: "before-quit", listener: (event: Event) => void): this;
-  override on(eventName: "window-all-closed", listener: () => void): this;
+  override on(eventName: "window-all-closed" | "second-instance", listener: () => void): this;
   override on(
-    eventName: "before-quit" | "window-all-closed",
+    eventName: "before-quit" | "window-all-closed" | "second-instance",
     listener: ((event: Event) => void) | (() => void),
   ): this {
     super.on(eventName, listener);
@@ -48,6 +52,7 @@ const testLayer = (input?: {
   readonly keepsProcessAlive?: () => boolean;
   readonly stop?: () => void;
   readonly start?: (lifecycle: ElectronWindowLifecycle) => void;
+  readonly focusOrCreateWindow?: () => void;
   readonly closeTerminalOwner?: (ownerId: number) => void;
   readonly closeEditorForWindow?: (ownerId: number) => void;
   readonly clearOwner?: (ownerId: number) => void;
@@ -62,6 +67,7 @@ const testLayer = (input?: {
     }),
     Layer.mock(Electron, {
       start: (lifecycle) => Effect.sync(() => input?.start?.(lifecycle)),
+      focusOrCreateWindow: () => Effect.sync(() => input?.focusOrCreateWindow?.()),
       stop: () => Effect.sync(() => input?.stop?.()),
       requireRendererConnection: () => {
         throw new Error("No renderer connection in this test");
@@ -153,6 +159,39 @@ describe("MainApplication", () => {
       expect(event.preventDefault).toHaveBeenCalledOnce();
       expect(stop).toHaveBeenCalledOnce();
       expect(application.listenerCount("before-quit")).toBe(0);
+    }),
+  );
+
+  it.effect("exits before touching Electron when another instance owns the profile", () =>
+    Effect.gen(function* () {
+      // Electron never becomes ready here: the secondary instance must not wait for it.
+      const application = new TestApplication(new Promise(() => {}), false);
+      const start = vi.fn();
+      const stop = vi.fn();
+      yield* program(application, testLayer({ start, stop }));
+      expect(application.requestSingleInstanceLock).toHaveBeenCalledOnce();
+      expect(start).not.toHaveBeenCalled();
+      expect(stop).not.toHaveBeenCalled();
+      expect(application.listenerCount("before-quit")).toBe(0);
+    }),
+  );
+
+  it.effect("brings the primary instance's window forward on a second launch", () =>
+    Effect.gen(function* () {
+      const application = new TestApplication();
+      const focused = yield* Deferred.make<void>();
+      const fiber = yield* Effect.forkChild(
+        program(
+          application,
+          testLayer({ focusOrCreateWindow: () => Deferred.doneUnsafe(focused, Effect.void) }),
+        ),
+      );
+      yield* Effect.promise(() => application.waitForListener("second-instance"));
+      application.emit("second-instance");
+      yield* Deferred.await(focused);
+      application.requestQuit();
+      yield* Fiber.join(fiber);
+      expect(application.listenerCount("second-instance")).toBe(0);
     }),
   );
 

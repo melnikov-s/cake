@@ -70,6 +70,8 @@ export interface ElectronService {
   readonly fullscreenSurfaceChanges: () => Stream.Stream<FullscreenSurfaceState>;
 
   readonly start: (lifecycle: ElectronWindowLifecycle) => Effect.Effect<void>;
+  /** Brings the application window forward, recreating it when every window has been closed. */
+  readonly focusOrCreateWindow: () => Effect.Effect<void>;
   readonly stop: () => Effect.Effect<void>;
   readonly requireRendererConnection: (connectionId: number) => WebContents;
   readonly windowsForWorkspace: (
