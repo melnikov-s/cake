@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ProjectPendingSessionsStore } from "../../../../src/renderer/stores/ProjectPendingSessionsStore";
 import type { ProjectSessionStore } from "../../../../src/renderer/stores/ProjectSessionStore";
 import { PendingConversationStore } from "../../../../src/renderer/stores/PendingConversationStore";
+import { fakeSavedDrafts } from "../fake-saved-drafts";
 
 interface PendingSessionStub {
   sessionId: string;
@@ -17,54 +18,7 @@ interface PendingSessionStub {
 function fixture() {
   const sessions = new Map<string, PendingSessionStub>();
   const persistNow = vi.fn(async () => undefined);
-  const records = new Map<string, SavedDraft>();
-  const savedDrafts = {
-    list: async () => [...records.values()],
-    create: async (input: {
-      sessionId?: string;
-      projectPath: string;
-      title: string;
-      text: string;
-      attachments: readonly SavedDraft["attachments"][number][];
-      configuration?: SavedDraft["configuration"];
-      labelIds?: readonly string[];
-    }) => {
-      const record: SavedDraft = {
-        ...input,
-        sessionId: input.sessionId ?? crypto.randomUUID(),
-        workingDirectory: input.projectPath,
-        attachments: [...input.attachments],
-        labelIds: [...(input.labelIds ?? [])],
-        resolved: false,
-        createdAt: "2026-01-01",
-        modifiedAt: "2026-01-01",
-        revision: 1,
-        status: "saved",
-      };
-      records.set(record.sessionId, record);
-      return record;
-    },
-    update: async (record: SavedDraft, expectedRevision: number) => {
-      if (records.get(record.sessionId)?.revision !== expectedRevision)
-        throw new Error("Revision conflict");
-      const next: SavedDraft = { ...record, revision: expectedRevision + 1 };
-      records.set(record.sessionId, next);
-      return next;
-    },
-    remove: async (sessionId: string) => {
-      records.delete(sessionId);
-    },
-    recoverUncertain: async (sessionId: string) => {
-      const current = records.get(sessionId)!;
-      const record = { ...current, status: "saved" as const, revision: current.revision + 1 };
-      records.set(sessionId, record);
-      return record;
-    },
-    activate: async ({ sessionId }: { sessionId: string }) => {
-      const record = records.get(sessionId)!;
-      return { record, workingDirectory: record.workingDirectory };
-    },
-  };
+  const { client: savedDrafts, records } = fakeSavedDrafts();
   const prepareIdentity = (sessionId: string, workingDirectory: string) => {
     const existing = sessions.get(sessionId);
     if (existing) return existing as unknown as ProjectSessionStore;

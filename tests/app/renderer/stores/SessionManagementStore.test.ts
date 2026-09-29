@@ -51,6 +51,8 @@ describe("SessionManagementStore", () => {
     const operations = mount(createStore(SessionOperationCoordinatorStore));
     const registry = {
       pendingSessions: {
+        savedRecord: () => undefined,
+        isDraft: () => false,
         conversation: () => undefined,
         isTemporary: () => false,
       },
@@ -89,6 +91,8 @@ describe("SessionManagementStore", () => {
     const operations = mount(createStore(SessionOperationCoordinatorStore));
     const registry = {
       pendingSessions: {
+        savedRecord: () => undefined,
+        isDraft: () => false,
         conversation: () => undefined,
         isTemporary: () => false,
       },
@@ -145,6 +149,8 @@ describe("SessionManagementStore", () => {
     const registry = {
       findSession: () => ({ workspacePath: "/work/cake" }),
       pendingSessions: {
+        savedRecord: () => undefined,
+        isDraft: () => false,
         conversation: () => undefined,
         isTemporary: () => temporary,
         setLabels,

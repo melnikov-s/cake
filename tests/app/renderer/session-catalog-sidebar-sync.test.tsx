@@ -10,17 +10,10 @@ import type { Client } from "../../../src/renderer/client/Client";
 import { mountRootStore } from "../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../src/renderer/models/RootProjection";
 import type { RootStore } from "../../../src/renderer/stores/RootStore";
+import { fakeSavedDrafts, type FakeSavedDrafts } from "./fake-saved-drafts";
 
 const projectPath = "/projects/sidebar-sync";
 const worktreePath = "/projects/.cake-worktrees/sidebar-sync-generated";
-
-function deferred() {
-  let resolve!: () => void;
-  return {
-    promise: new Promise<void>((complete) => (resolve = complete)),
-    resolve,
-  };
-}
 
 function authoritativeSession(sessionId: string, modifiedAt: string) {
   return {
@@ -71,7 +64,8 @@ describe("Project Session catalog to sidebar synchronization", () => {
   let reactRoot: Root;
   let models: RootProjection;
   let root: RootStore;
-  let start: ReturnType<typeof deferred>;
+  let savedDrafts: FakeSavedDrafts;
+  let start: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -102,13 +96,15 @@ describe("Project Session catalog to sidebar synchronization", () => {
         ),
       ),
     });
-    start = deferred();
+    savedDrafts = fakeSavedDrafts();
+    start = vi.fn(async () => undefined);
     const client = {
       electron: {
         showProjectContextMenu: async () => undefined,
         showSessionContextMenu: async () => undefined,
       },
-      projectSessions: { start: vi.fn(() => start.promise) },
+      savedDrafts: savedDrafts.client,
+      projectSessions: { start },
     } as unknown as Client;
     root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
     await act(async () => reactRoot.render(sidebar(root)));
@@ -170,14 +166,21 @@ describe("Project Session catalog to sidebar synchronization", () => {
     expect(root.sessionCatalogStore.find(firstId)?.projectPath).toBe(projectPath);
     expect(row()).toHaveLength(1);
 
+    // Main claims the Draft (`activating`) and starts Pi itself; hold it there to observe the
+    // in-flight state the `savedDrafts.observe` stream would push to this window.
+    const hold = savedDrafts.holdActivation();
     let activation!: Promise<boolean>;
     await act(async () => {
       activation = root.sessionRegistry
         .findSession(firstId)!
         .conversationSessionStore.composerStore.activateDraftSession({ kind: "current" });
-      await Promise.resolve();
+      await hold.claimed;
+      root.sessionRegistry.pendingSessions.applySavedDraftSnapshot(savedDrafts.snapshot());
     });
+    expect(root.sessionRegistry.pendingSessions.savedRecord(firstId)?.status).toBe("activating");
     expect(root.sessionRegistry.pendingSessions.isDraft(firstId)).toBe(false);
+    expect(root.sessionRegistry.pendingSessions.isTemporary(firstId)).toBe(true);
+    expect(start).not.toHaveBeenCalled();
     expect(row()).toHaveLength(1);
 
     await act(async () => {
@@ -211,9 +214,12 @@ describe("Project Session catalog to sidebar synchronization", () => {
     expect(row()).toHaveLength(1);
 
     await act(async () => {
-      start.resolve();
-      await activation;
+      hold.release();
+      await expect(activation).resolves.toBe(true);
+      root.sessionRegistry.pendingSessions.applySavedDraftSnapshot(savedDrafts.snapshot());
     });
+    expect(savedDrafts.records.get(firstId)?.status).toBe("activated");
+    expect(root.sessionRegistry.pendingSessions.isTemporary(firstId)).toBe(false);
     expect(root.sessionCatalogStore.find(firstId)).toMatchObject({
       sessionId: firstId,
       pending: false,

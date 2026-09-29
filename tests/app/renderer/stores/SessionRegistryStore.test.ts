@@ -18,10 +18,12 @@ import { SessionRegistryStore } from "../../../../src/renderer/stores/SessionReg
 import { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
 import { applyDiscussionCatalogUpdate } from "../../../../src/renderer/reducers/DiscussionReducer";
 import { sessionAssistantThreadPath } from "../../../../src/domain/discussion-sessions/discussion-session-data";
+import { fakeSavedDrafts, type FakeSavedDrafts } from "../fake-saved-drafts";
 
 function registryFixture(
   snapshot?: StoreSnapshot,
   isActive: (sessionId: string) => boolean = () => false,
+  savedDrafts: FakeSavedDrafts = fakeSavedDrafts(),
 ) {
   const catalogModel = SessionCatalog.create({ sessions: [] });
   const registryRef: { current?: SessionRegistryStore } = {};
@@ -37,6 +39,7 @@ function registryFixture(
   const registry = mount(
     createStore(SessionRegistryStore, {
       catalog,
+      savedDrafts: savedDrafts.client,
       sessionModel: (sessionId, workingDirectory) =>
         models.projectConversation(sessionId, workingDirectory),
       discussionCatalog: (sessionId) => models.discussionCatalog(sessionId),
@@ -73,6 +76,7 @@ function registryFixture(
     models,
     operations,
     registry,
+    savedDrafts,
     dispose() {
       registry[Symbol.dispose]();
       operations[Symbol.dispose]();
@@ -157,7 +161,9 @@ describe("SessionRegistryStore materialization", () => {
     const snapshot = toSnapshot(fixture.registry);
     fixture.dispose();
 
-    const restored = registryFixture(snapshot);
+    // Saved Drafts are main-owned: the restored window reloads them from the same authority.
+    const restored = registryFixture(snapshot, undefined, fixture.savedDrafts);
+    await restored.registry.pendingSessions.refreshSavedDrafts();
     const restoredStaged = restored.registry.findSession("staged")!;
     const restoredDraft = restored.registry.findSession("draft")!;
 
@@ -418,16 +424,22 @@ describe("SessionRegistryStore materialization", () => {
     fixture.dispose();
   });
 
-  it("deletes a resolved draft from renderer-owned state", async () => {
+  it("deletes a resolved saved Draft through the Saved Draft authority", async () => {
     const fixture = registryFixture();
-    const { registry } = fixture;
+    const { registry, savedDrafts } = fixture;
     registry.pendingSessions.prepare("/project", "draft-1");
     await registry.pendingSessions.createDraft("draft-1", "Planned work", []);
-    registry.pendingSessions.conversation("draft-1")!.setDraftResolved(true);
 
+    // An unresolved saved Draft is not deletable through this path.
+    await expect(registry.pendingSessions.deleteResolvedDraft("draft-1")).resolves.toBe(false);
+    expect(savedDrafts.records.has("draft-1")).toBe(true);
+
+    await registry.pendingSessions.updateSavedMetadata("draft-1", { resolved: true });
     await expect(registry.pendingSessions.deleteResolvedDraft("draft-1")).resolves.toBe(true);
 
+    expect(savedDrafts.records.has("draft-1")).toBe(false);
     expect(registry.pendingSessions.isDraft("draft-1")).toBe(false);
+    expect(registry.findSession("draft-1")).toBeUndefined();
     expect(fixture.catalog.find("draft-1")).toBeUndefined();
     fixture.dispose();
   });
