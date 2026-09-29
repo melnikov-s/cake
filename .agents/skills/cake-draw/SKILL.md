@@ -13,7 +13,8 @@ Explain at a shared whiteboard, not through a slide deck. Draw a little, say wha
 - Identify the relationship the user needs to understand. Draw only when space, connections, containment, sequence, or contrast can make it clearer than prose alone.
 - Choose a visual that serves that point: a flow for dependencies, boundaries or containment for ownership, aligned alternatives for comparison, or before/after for a change. Do not default to a flowchart for everything.
 - Apply the **visual delta test** before drawing: the canvas must communicate at least one relationship that would be slower or harder to grasp from the same labels as prose. Use position, connection, direction, containment, scale, or contrast to carry meaning. A title followed by labeled cards, a list of facts in boxes, or prose arranged vertically fails this test and should remain chat text instead.
-- Start with the smallest useful picture. For the first guided step, prefer 2–3 primary shapes and one visually encoded relationship; avoid decorative frames, redundant connectors, and styling passes. Do not first draw an agenda, taxonomy, or paragraphs in boxes unless their spatial arrangement itself explains something.
+- Plan one coherent final diagram, then build it piece by piece as you explain. Each step adds a meaningful part to the same picture and shows how it connects to what is already there. Do not substitute a series of separate mini-diagrams for one connected explanation.
+- Start with the smallest useful piece of that final diagram. For the first guided step, prefer 2–3 primary shapes and one visually encoded relationship; leave room for the remaining steps. Avoid decorative frames, redundant connectors, and styling passes. Do not first draw an agenda, taxonomy, or paragraphs in boxes unless their spatial arrangement itself explains something.
 - Distinguish verified facts from hypotheses and illustrative examples. A confident-looking diagram is not evidence.
 
 ## Start drawing without protocol discovery
@@ -174,7 +175,7 @@ A topology-changing edit to an existing diagram requires one visual verification
 
 Inspect for shape overlap, connector crossings, labels sitting on shapes or other labels, awkward long routes, clipping, and a misleading camera position. Make at most one targeted corrective layout pass, then render again only if that correction changed routing or there is concrete doubt that it worked. Do not present a topology-changing step based only on mutation bounds.
 
-During a guided explanation, prefer adding a separate detail stage or inset beside or below the stable overview. Restructure the existing overview only when the relationship itself must change; preserving the user's spatial orientation is more important than making every new point part of one compact graph.
+During a guided explanation, extend the same connected diagram beside or below the existing pieces. Preserve existing positions where practical and explicitly connect each new piece to the relevant earlier piece. Use separate insets only when genuinely needed for a detail or comparison, not as the default explanation structure. Restructure existing pieces only when the relationship itself must change; preserve the user's spatial orientation.
 
 ## Choose the interaction contract
 
@@ -187,7 +188,7 @@ During a guided explanation, prefer adding a separate detail stage or inset besi
 
 1. Make one coherent visual change that uses the canvas: establish a dependency with an arrow, show ownership with containment or bounded regions, trace a consequence through a path, place alternatives side by side, or reveal a before/after transformation. Never substitute a stack of text-bearing boxes for a relationship.
 2. Pair it with one or two short sentences that state the implication or direct attention to the encoded relationship. Do not duplicate the diagram's labels as a prose list; if the spoken explanation works equally well without the picture, improve the visual or skip drawing that point.
-3. Build on the same picture only as far as the current step needs. In a guided explanation, stop after that step; commentary between several tool calls in one turn is not interactive pacing. A step may need several drawing operations, but should teach only one relationship or consequence.
+3. Build toward the full diagram one connected piece at a time. Explain both what the new piece does and how it relates to the existing picture; do not restart the diagram at each step. In a guided explanation, stop after that step; commentary between several tool calls in one turn is not interactive pacing. A step may need several drawing operations, but should teach only one relationship or consequence. Over the steps, the board accumulates into one complete diagram.
 
 Do not ask permission for every shape, add artificial delays, or end every step with a question. End the turn when the point lands; the controls and ordinary chat let the user choose what happens next. For an explicitly requested one-shot walkthrough, use a few coherent stages with commentary between them. A finished-diagram request can be fulfilled directly.
 
