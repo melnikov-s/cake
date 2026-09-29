@@ -84,6 +84,7 @@ describe("Project Session catalog to sidebar synchronization", () => {
             worktreeCreateCommand: "",
             worktreeSetupCommands: "",
             worktreeSetupInstructions: "",
+            customInstructions: "",
           },
         },
       ],

@@ -83,6 +83,7 @@ export const ProjectSettings = Schema.Struct({
   worktreeSetupInstructions: boundedString(16_384).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed("")),
   ),
+  customInstructions: boundedString(16_384).pipe(Schema.withDecodingDefaultKey(Effect.succeed(""))),
   icon: Schema.optionalKey(ProjectIcon),
 });
 
@@ -207,6 +208,7 @@ export const defaultProjectSettings = (): ProjectSettings => ({
   worktreeCreateCommand: DEFAULT_WORKTREE_CREATE_COMMAND,
   worktreeSetupCommands: "",
   worktreeSetupInstructions: "",
+  customInstructions: "",
 });
 
 export const ProjectRecord = Schema.Struct({
@@ -231,6 +233,9 @@ const RendererApplicationFields = {
   modelPresets: boundedArray(ModelPreset, 100),
   defaultModelPresetId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   cakePrompts: CakePrompts,
+  globalCustomInstructions: boundedString(16_384).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed("")),
+  ),
   sessionPlugins: boundedArray(SessionPlugin, 500),
   sessionPluginSharedState: boundedArray(SessionPluginSharedState, 2_000),
 };
@@ -303,6 +308,7 @@ export const defaultApplicationState = (): ApplicationState => ({
   fastModeSessionIds: [],
   modelPresets: [],
   cakePrompts: defaultCakePrompts(),
+  globalCustomInstructions: "",
   sessionPlugins: [],
   sessionPluginSharedState: [],
 });

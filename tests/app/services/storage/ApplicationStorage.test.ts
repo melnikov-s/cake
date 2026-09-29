@@ -164,13 +164,14 @@ describe("ApplicationStorage", () => {
     ),
   );
 
-  it.effect("defaults setup instructions in existing project settings", () =>
+  it.effect("defaults personal instructions in existing application and project settings", () =>
     withStorage(
       {
         [documentPath]: JSON.stringify({
           version: 5,
           data: {
             ...current,
+            globalCustomInstructions: undefined,
             projects: [
               {
                 path: "/work/cake",
@@ -192,6 +193,8 @@ describe("ApplicationStorage", () => {
           const loaded = yield* storage.load();
           assert.strictEqual(loaded.source, "current");
           assert.equal(loaded.state.projects[0]?.settings?.worktreeSetupInstructions, "");
+          assert.equal(loaded.state.projects[0]?.settings?.customInstructions, "");
+          assert.equal(loaded.state.globalCustomInstructions, "");
         }),
     ),
   );

@@ -94,6 +94,7 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
       worktreeCreateCommand: "git worktree add -b {branchName} {worktreePath} {baseCommit}",
       worktreeSetupCommands: "printf ready > {worktreePath}/.cake-setup",
       worktreeSetupInstructions: "",
+      customInstructions: "",
     });
 
     await expect(readFile(join(record.worktreePath, ".cake-setup"), "utf8")).resolves.toBe("ready");

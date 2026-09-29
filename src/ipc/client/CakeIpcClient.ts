@@ -671,6 +671,7 @@ export interface CakeIpcClientService {
     | "generate-session-title"
     | "set-utility-model"
     | "set-cake-prompts"
+    | "set-global-custom-instructions"
     | "load-staged-slash-commands"
     | "register-project"
     | "rename-project"
@@ -1332,6 +1333,9 @@ export const CakeIpcClientLive = Layer.effect(
         "set-cake-prompts": Effect.fn("CakeIpcClient.workspaces.set-cake-prompts")((payload) =>
           client("workspaces.set-cake-prompts", payload),
         ),
+        "set-global-custom-instructions": Effect.fn(
+          "CakeIpcClient.workspaces.set-global-custom-instructions",
+        )((payload) => client("workspaces.set-global-custom-instructions", payload)),
         "load-staged-slash-commands": Effect.fn(
           "CakeIpcClient.workspaces.load-staged-slash-commands",
         )((payload) => client("workspaces.load-staged-slash-commands", payload)),

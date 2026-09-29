@@ -579,6 +579,9 @@ export const cakeRpcPayloadSchemas = {
   "set-cake-prompts": Schema.Struct({
     prompts: CakePrompts,
   }),
+  "set-global-custom-instructions": Schema.Struct({
+    instructions: stringMax(16_384),
+  }),
   "load-staged-slash-commands": Schema.Struct({
     path: stringMax(4_096),
   }),
@@ -823,6 +826,7 @@ export const cakeRpcSuccessSchemas = {
   "generate-session-title": cakeRpcResultSchemas["session-title-generated"],
   "set-utility-model": cakeRpcResultSchemas["application-state-updated"],
   "set-cake-prompts": cakeRpcResultSchemas["application-state-updated"],
+  "set-global-custom-instructions": cakeRpcResultSchemas["application-state-updated"],
   "load-staged-slash-commands": cakeRpcResultSchemas["slash-commands-loaded"],
   "register-project": cakeRpcResultSchemas["application-state-updated"],
   "rename-project": cakeRpcResultSchemas["application-state-updated"],

@@ -73,11 +73,13 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
           worktreeCreateCommand: "git worktree add -b {branchName} {worktreePath} {baseCommit}",
           worktreeSetupCommands: "",
           worktreeSetupInstructions: "",
+          customInstructions: "",
         }),
         update: async (_projectPath, changes) => ({
           worktreeCreateCommand: "git worktree add -b {branchName} {worktreePath} {baseCommit}",
           worktreeSetupCommands: "",
           worktreeSetupInstructions: "",
+          customInstructions: "",
           ...changes,
         }),
       } satisfies AppControlHost["projectSettings"]),
@@ -492,6 +494,7 @@ describe("AppControlBridge", () => {
       worktreeCreateCommand: "git worktree add {worktreePath}",
       worktreeSetupCommands: "pnpm install",
       worktreeSetupInstructions: "Install dependencies when needed.",
+      customInstructions: "",
     };
     const get = vi.fn(() => settings);
     const update = vi.fn(async (_projectPath: string, changes: Partial<typeof settings>) => ({

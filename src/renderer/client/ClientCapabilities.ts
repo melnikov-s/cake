@@ -155,6 +155,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.workspaces["set-cake-prompts"]({ prompts }),
           options,
         ).then((response) => response.state),
+      setGlobalCustomInstructions: (instructions, options) =>
+        execute(
+          "workspaces.set-global-custom-instructions",
+          (client) => client.workspaces["set-global-custom-instructions"]({ instructions }),
+          options,
+        ).then((response) => response.state),
       loadStagedSlashCommands: (path, options) =>
         execute(
           "workspaces.load-staged-slash-commands",

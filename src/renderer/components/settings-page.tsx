@@ -188,7 +188,7 @@ export const SettingsPage = observer(function SettingsPage({
                           : activePage === "labels"
                             ? "Session labels"
                             : activePage === "prompts"
-                              ? "Cake prompts"
+                              ? "Instructions & prompts"
                               : activePage === "appearance"
                                 ? "Appearance"
                                 : activePage === "hotkeys"
@@ -203,7 +203,7 @@ export const SettingsPage = observer(function SettingsPage({
                   : activePage === "labels"
                     ? "Create the labels available across all projects."
                     : activePage === "prompts"
-                      ? "Customize the messages Cake automatically sends while completing workflows."
+                      ? "Set personal agent instructions and customize Cake's workflow messages."
                       : "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects."}
             </p>
           </div>
@@ -795,6 +795,33 @@ export const SettingsPage = observer(function SettingsPage({
                 )}
               </section>
             </>
+          )}
+
+          {activePage === "prompts" && (
+            <section
+              className="border-t border-border py-5"
+              aria-labelledby="global-instructions-title"
+            >
+              <h2
+                id="global-instructions-title"
+                className="text-[15px] font-semibold text-foreground"
+              >
+                Global custom instructions
+              </h2>
+              <p className="mt-1 mb-4 text-xs text-muted-foreground">
+                Personal guidance for every Project Session on this Cake installation. Added to the
+                system prompt alongside project instructions and AGENTS.md when a session runtime
+                starts or restarts. Not written to any repository. Cake Chat is unaffected.
+              </p>
+              <SettingsPromptField
+                id="setting-global-custom-instructions"
+                label="Global instructions"
+                description="Saved when you leave the field. Clear it to remove these instructions."
+                value={settings.globalInstructions.instructions}
+                defaultValue=""
+                onApply={(value) => void settings.globalInstructions.update(value)}
+              />
+            </section>
           )}
 
           {activePage === "prompts" && settings.cakePrompts.prompts && (

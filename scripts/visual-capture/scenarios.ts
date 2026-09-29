@@ -551,7 +551,7 @@ const cakePromptsSettingsScenario: VisualCaptureScenario = {
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.waitForTimeout(1_000);
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
-    const prompts = page.getByRole("button", { name: "Cake prompts" });
+    const prompts = page.getByRole("button", { name: "Instructions & prompts" });
     await prompts.waitFor({ state: "visible", timeout: 20_000 });
     await prompts.click();
     await page.getByRole("textbox", { name: "Commit before merge" }).waitFor({
@@ -564,6 +564,21 @@ const cakePromptsSettingsScenario: VisualCaptureScenario = {
   },
   region(page) {
     return page.locator("#settings-content-scroll");
+  },
+};
+
+const projectCustomInstructionsScenario: VisualCaptureScenario = {
+  name: "project-custom-instructions",
+  description: "Personal project instructions in the Project Settings dialog",
+  states: ["default"],
+  seed: (paths, theme) => cakePromptsSettingsScenario.seed(paths, theme),
+  async prepare(page) {
+    await page.getByRole("button", { name: "Open settings for project" }).click();
+    await page.getByRole("dialog", { name: /settings/ }).waitFor({ state: "visible" });
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+  },
+  region(page) {
+    return page.getByRole("dialog", { name: /settings/ });
   },
 };
 
@@ -882,6 +897,7 @@ export const visualCaptureScenarios = [
   drawMermaidArchitectureScenario,
   drawCompositionScenario,
   cakePromptsSettingsScenario,
+  projectCustomInstructionsScenario,
   dictationSettingsScenario,
   serverClientSettingsScenario,
 ] as const;

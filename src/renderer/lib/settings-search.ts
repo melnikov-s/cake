@@ -132,9 +132,14 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
       },
       {
         page: "prompts",
-        label: "Cake prompts",
-        description: "Automatic workflow messages",
+        label: "Instructions & prompts",
+        description: "Personal agent guidance and automatic workflow messages",
         settings: [
+          {
+            label: "Global custom instructions",
+            targetId: "setting-global-custom-instructions",
+            keywords: "personal system prompt agent",
+          },
           { label: "Commit before merge", targetId: "setting-prompt-worktree-commit" },
           { label: "Rebase conflict", targetId: "setting-prompt-worktree-rebase-conflict" },
           { label: "Merge conflict", targetId: "setting-prompt-worktree-preserve-conflict" },

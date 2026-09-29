@@ -15,6 +15,23 @@ function mountSettings(client: Client) {
 }
 
 describe("ProjectSettingsStore", () => {
+  it("saves personal instructions with the project settings", async () => {
+    const setProjectSettings = vi.fn(async () => ({}));
+    const { root, subject } = mountSettings({
+      workspaces: { setProjectSettings },
+    } as unknown as Client);
+
+    subject.open("/work/cake");
+    subject.setCustomInstructions("  Prefer incremental changes.  ");
+    await subject.save();
+    expect(setProjectSettings).toHaveBeenCalledWith(
+      "/work/cake",
+      expect.objectContaining({ customInstructions: "Prefer incremental changes." }),
+      expect.anything(),
+    );
+    root[Symbol.dispose]();
+  });
+
   it("chooses and persists a custom project icon", async () => {
     const setProjectSettings = vi.fn(async () => ({}));
     const { root, subject } = mountSettings({

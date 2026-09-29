@@ -15,6 +15,7 @@ const applicationState = (utilityModel?: UtilityModel): ApplicationState => ({
   sessionPlugins: [],
   sessionPluginSharedState: [],
   cakePrompts: defaultCakePrompts(),
+  globalCustomInstructions: "",
   modelPresets: [],
   utilityModel,
 });

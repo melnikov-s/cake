@@ -146,6 +146,7 @@ function mountStore(initial?: Projection, models?: ModelOption[]) {
     sessionPlugins: [],
     sessionPluginSharedState: [],
     cakePrompts: defaultCakePrompts(),
+    globalCustomInstructions: "",
     modelPresets: initial?.presets ?? [],
     defaultModelPresetId: initial?.defaultPresetId,
   } satisfies ApplicationState);
@@ -189,6 +190,7 @@ describe("ModelPresetSettingsStore", () => {
       sessionPlugins: [],
       sessionPluginSharedState: [],
       cakePrompts: defaultCakePrompts(),
+      globalCustomInstructions: "",
       modelPresets: [replacement],
       defaultModelPresetId: replacement.id,
     });
@@ -345,6 +347,7 @@ describe("ModelPresetSettingsStore", () => {
       sessionPlugins: [],
       sessionPluginSharedState: [],
       cakePrompts: defaultCakePrompts(),
+      globalCustomInstructions: "",
       utilityModel: { provider: "openai", modelId: "utility", thinkingLevel: "off" },
       modelPresets: [first, second],
     });
@@ -374,6 +377,7 @@ describe("ModelPresetSettingsStore", () => {
       sessionPlugins: [],
       sessionPluginSharedState: [],
       cakePrompts: defaultCakePrompts(),
+      globalCustomInstructions: "",
       modelPresets: [external],
     });
     expect(store.presets[0]?.name).toBe("Local edit");

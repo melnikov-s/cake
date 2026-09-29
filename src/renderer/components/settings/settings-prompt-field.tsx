@@ -16,7 +16,7 @@ export function SettingsPromptField({
   description: string;
   value: string;
   defaultValue: string;
-  variables: string;
+  variables?: string;
   onApply(value: string): void;
 }) {
   const [draft, setDraft] = useState(value);
@@ -28,9 +28,11 @@ export function SettingsPromptField({
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <strong className="text-xs font-medium text-foreground">{label}</strong>
           <small className="text-[11px] text-muted-foreground">{description}</small>
-          <small className="font-mono text-[10px] text-muted-foreground">
-            Variables: {variables}
-          </small>
+          {variables && (
+            <small className="font-mono text-[10px] text-muted-foreground">
+              Variables: {variables}
+            </small>
+          )}
         </span>
         <Button
           type="button"

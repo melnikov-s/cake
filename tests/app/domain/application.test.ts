@@ -10,6 +10,7 @@ import {
   removeProject,
   renameProject,
   setProjectSettings,
+  setGlobalCustomInstructions,
   setProjectSessionLabels,
   setProjectSessionLabelsIfUnlabelled,
   setSessionFastMode,
@@ -63,6 +64,18 @@ const run = <A, E>(effect: Effect.Effect<A, E, ApplicationState>) => {
 };
 
 describe("Application domain", () => {
+  it.effect("persists global personal instructions without changing project settings", () =>
+    run(
+      Effect.gen(function* () {
+        const state = yield* setGlobalCustomInstructions("  Prefer small changes.  ");
+        assert.equal(state.globalCustomInstructions, "Prefer small changes.");
+        assert.deepEqual(state.projects, []);
+        const cleared = yield* setGlobalCustomInstructions("");
+        assert.equal(cleared.globalCustomInstructions, "");
+      }),
+    ),
+  );
+
   it("offers 32 curated workflow colors", () => {
     assert.equal(SESSION_LABEL_COLORS.length, 32);
     assert.equal(new Set(SESSION_LABEL_COLORS).size, 32);
@@ -201,12 +214,14 @@ describe("Application domain", () => {
           worktreeCreateCommand: "custom-worktree {worktreeName} {worktreePath}",
           worktreeSetupCommands: "pnpm install",
           worktreeSetupInstructions: "Install dependencies only when needed.",
+          customInstructions: "Use concise summaries.",
           icon: { mimeType: "image/png", data: "aWNvbg==" },
         });
         assert.deepEqual(configured.projects[0]?.settings, {
           worktreeCreateCommand: "custom-worktree {worktreeName} {worktreePath}",
           worktreeSetupCommands: "pnpm install",
           worktreeSetupInstructions: "Install dependencies only when needed.",
+          customInstructions: "Use concise summaries.",
           icon: { mimeType: "image/png", data: "aWNvbg==" },
         });
         const removed = yield* removeProject("/work/cake");

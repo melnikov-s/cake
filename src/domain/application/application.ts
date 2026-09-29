@@ -101,6 +101,15 @@ export const renameProject = Effect.fn("Application.renameProject")(function* (
   }));
 });
 
+export const setGlobalCustomInstructions = Effect.fn("Application.setGlobalCustomInstructions")(
+  function* (instructions: string) {
+    return yield* update((current) => ({
+      ...current,
+      globalCustomInstructions: instructions.trim(),
+    }));
+  },
+);
+
 export const setProjectSettings = Effect.fn("Application.setProjectSettings")(function* (
   path: string,
   settings: ProjectSettings,

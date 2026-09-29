@@ -20,6 +20,7 @@ export class ProjectSettingsStore extends Store<{
   worktreeCreateCommand = "";
   worktreeSetupCommands = "";
   worktreeSetupInstructions = "";
+  customInstructions = "";
   icon: ProjectIcon | undefined;
   saving = false;
   choosingIcon = false;
@@ -58,6 +59,7 @@ export class ProjectSettingsStore extends Store<{
     this.worktreeCreateCommand = settings.worktreeCreateCommand;
     this.worktreeSetupCommands = settings.worktreeSetupCommands;
     this.worktreeSetupInstructions = settings.worktreeSetupInstructions;
+    this.customInstructions = settings.customInstructions;
     this.icon = settings.icon;
     this.error = undefined;
   }
@@ -76,6 +78,10 @@ export class ProjectSettingsStore extends Store<{
 
   setWorktreeSetupInstructions(instructions: string) {
     this.worktreeSetupInstructions = instructions;
+  }
+
+  setCustomInstructions(instructions: string) {
+    this.customInstructions = instructions;
   }
 
   async chooseIcon() {
@@ -195,6 +201,7 @@ export class ProjectSettingsStore extends Store<{
       worktreeCreateCommand: this.worktreeCreateCommand.trim(),
       worktreeSetupCommands: this.worktreeSetupCommands.trim(),
       worktreeSetupInstructions: this.worktreeSetupInstructions.trim(),
+      customInstructions: this.customInstructions.trim(),
       ...(this.icon ? { icon: this.icon } : undefined),
     };
     this.saving = true;

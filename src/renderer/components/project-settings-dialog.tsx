@@ -46,12 +46,31 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
           <DialogHeader>
             <DialogTitle id="project-settings-title">{store.projectName} settings</DialogTitle>
             <DialogDescription id="project-settings-description">
-              Configure the project icon, project-specific labels, and how Cake prepares managed
-              worktrees for this project.
+              Configure personal instructions, the project icon, labels, and managed worktrees.
             </DialogDescription>
           </DialogHeader>
 
           <div className="mt-5 grid gap-5">
+            <label className="grid gap-2">
+              <span className="text-xs font-semibold text-foreground">Custom instructions</span>
+              <Textarea
+                dictation
+                rows={6}
+                maxLength={16_384}
+                placeholder="How should the agent work on this project?"
+                value={store.customInstructions}
+                onChange={(event) => store.setCustomInstructions(event.target.value)}
+                aria-describedby="project-custom-instructions-help"
+              />
+              <span
+                id="project-custom-instructions-help"
+                className="text-[11px] leading-relaxed text-muted-foreground"
+              >
+                Personal to this Cake installation; not written to AGENTS.md or the repository.
+                Added alongside global instructions and repository guidance to Project Session
+                system prompts. Applies when a session runtime starts or restarts.
+              </span>
+            </label>
             <section aria-labelledby="project-icon-title" className="grid gap-2">
               <span id="project-icon-title" className="text-xs font-semibold text-foreground">
                 Project icon

@@ -20,6 +20,7 @@ import { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
 import { HotkeySettingsStore } from "./HotkeySettingsStore";
 import { GlobalLabelSettingsStore } from "./GlobalLabelSettingsStore";
 import { CakePromptSettingsStore } from "./CakePromptSettingsStore";
+import { GlobalInstructionsStore } from "./GlobalInstructionsStore";
 
 export type SettingsPageId =
   | "models"
@@ -73,6 +74,9 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   @child get cakePrompts(): CakePromptSettingsStore {
     return createStore(CakePromptSettingsStore);
   }
+  @child get globalInstructions(): GlobalInstructionsStore {
+    return createStore(GlobalInstructionsStore);
+  }
   @child get providers(): ProviderSettingsStore {
     return createStore(ProviderSettingsStore, {
       operations: this.props.operations,
@@ -107,6 +111,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
       this.utilityModel.error ??
       this.modelPresets.error ??
       this.cakePrompts.error ??
+      this.globalInstructions.error ??
       this.globalLabels.error ??
       this.configuration?.error ??
       this.props.workbenchError()
@@ -192,6 +197,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     this.utilityModel.applyApplicationState(revision, state);
     this.modelPresets.applyApplicationState(revision, state);
     this.cakePrompts.applyApplicationState(revision, state);
+    this.globalInstructions.applyApplicationState(revision, state);
     this.globalLabels.applyApplicationState(revision, state);
   }
 }

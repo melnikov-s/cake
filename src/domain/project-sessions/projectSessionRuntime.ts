@@ -194,12 +194,15 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           workingDirectory: member.workingDirectory,
         })
       : renderProjectSessionPrompt(parentSessionFamilyPromptTemplate);
+  const appState = application.snapshot();
+  const projectSettings = appState.projects.find(
+    (project) => project.path === location.projectPath,
+  )?.settings;
   const setupInstructions = location.managedWorktree
-    ? application
-        .snapshot()
-        .projects.find((project) => project.path === location.projectPath)
-        ?.settings?.worktreeSetupInstructions.trim()
+    ? projectSettings?.worktreeSetupInstructions.trim()
     : undefined;
+  const globalInstructions = appState.globalCustomInstructions.trim();
+  const projectInstructions = projectSettings?.customInstructions.trim();
   const projectPrompt = setupInstructions
     ? `## Project worktree setup instructions\n\n${setupInstructions}`
     : undefined;
@@ -303,7 +306,14 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       cwd: location.workingDirectory,
       trusted: application.snapshot().trustedProjectPaths.includes(location.workingDirectory),
       agentDir: configuration.agentDirectory,
-      additionalSystemPrompt: [relationshipPrompt, projectPrompt].filter(Boolean).join("\n\n"),
+      additionalSystemPrompt: [
+        relationshipPrompt,
+        globalInstructions && `## Personal global instructions\n\n${globalInstructions}`,
+        projectInstructions && `## Personal project instructions\n\n${projectInstructions}`,
+        projectPrompt,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
       sessionDir: configuration.sessionDirectory,
       resolvedSessionDir: configuration.resolvedSessionDirectory,
       newSession,

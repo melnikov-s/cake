@@ -113,6 +113,7 @@ describe("Project Session runtime worktree controls", () => {
         transact: (transition) => transition(defaultApplicationState()),
         snapshot: () => ({
           ...defaultApplicationState(),
+          globalCustomInstructions: "Give direct answers globally.",
           projects: [
             {
               path: "/project",
@@ -124,6 +125,7 @@ describe("Project Session runtime worktree controls", () => {
                   "git worktree add -b {branchName} {worktreePath} {baseCommit}",
                 worktreeSetupCommands: "",
                 worktreeSetupInstructions: "Run pnpm install only when dependencies are needed.",
+                customInstructions: "Prefer focused tests for this project.",
               },
             },
           ],
@@ -162,6 +164,14 @@ describe("Project Session runtime worktree controls", () => {
         newSession: false,
       });
       assert.doesNotMatch(rootOptions.runtime.additionalSystemPrompt ?? "", /pnpm install/);
+      assert.match(
+        rootOptions.runtime.additionalSystemPrompt ?? "",
+        /## Personal global instructions\n\nGive direct answers globally\./,
+      );
+      assert.match(
+        rootOptions.runtime.additionalSystemPrompt ?? "",
+        /## Personal project instructions\n\nPrefer focused tests for this project\./,
+      );
       const storage = yield* SessionFamilyStorage;
 
       yield* addFamilyMember(storage, sharedChildId, rootId, "/project", "/project");
@@ -206,6 +216,14 @@ describe("Project Session runtime worktree controls", () => {
       assert.match(
         childOptions.runtime.additionalSystemPrompt ?? "",
         /## Project worktree setup instructions\n\nRun pnpm install only when dependencies are needed\./,
+      );
+      assert.match(
+        childOptions.runtime.additionalSystemPrompt ?? "",
+        /## Personal global instructions\n\nGive direct answers globally\./,
+      );
+      assert.match(
+        childOptions.runtime.additionalSystemPrompt ?? "",
+        /## Personal project instructions\n\nPrefer focused tests for this project\./,
       );
       const childMerge = childOptions.runtime.currentSessionControl?.mergeSession;
       assert.ok(childMerge);

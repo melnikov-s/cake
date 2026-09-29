@@ -211,6 +211,10 @@ interface WorkspaceCommands {
     options?: ClientCommandOptions,
   ): Promise<ApplicationState>;
   setCakePrompts(prompts: CakePrompts, options?: ClientCommandOptions): Promise<ApplicationState>;
+  setGlobalCustomInstructions(
+    instructions: string,
+    options?: ClientCommandOptions,
+  ): Promise<ApplicationState>;
   loadStagedSlashCommands(
     path: string,
     options?: ClientCommandOptions,
