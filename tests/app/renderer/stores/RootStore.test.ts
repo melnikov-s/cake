@@ -31,6 +31,66 @@ function deferred<T = void>() {
 }
 
 describe("RootStore session navigation", () => {
+  it("routes repeated surface shortcuts to toggles and returns from Settings", async () => {
+    const models = RootProjection.create();
+    applySnapshot(models.sessionCatalog, {
+      sessions: [sessionSummary("session", projectPath)],
+      resolvedHasMoreByProject: {},
+    });
+    const root = mountRootStore(
+      {} as Client,
+      { state: {}, children: {} },
+      async () => undefined,
+      models,
+    );
+    try {
+      root.sessionRegistry.load("session", projectPath);
+      root.appShellStore.selectProjectSession("session");
+      root.projectWorkbenchStore.showLoadedSession("session");
+      const presentation = root.projectWorkbenchStore.presentationStore;
+      const ide = vi.spyOn(presentation, "toggleIde").mockResolvedValue();
+      const changes = vi.spyOn(presentation, "toggleWorkspaceChanges").mockResolvedValue();
+      const browser = vi.spyOn(presentation, "toggleBrowser").mockResolvedValue();
+      root.handleHotkey("open-editor");
+      root.handleHotkey("open-editor");
+      root.handleHotkey("open-changes");
+      root.handleHotkey("open-changes");
+      root.handleHotkey("toggle-browser");
+      root.handleHotkey("toggle-browser");
+      expect(ide).toHaveBeenCalledTimes(2);
+      expect(changes).toHaveBeenCalledTimes(2);
+      expect(browser).toHaveBeenCalledTimes(2);
+      ide.mockRestore();
+      changes.mockRestore();
+      browser.mockRestore();
+      const back = vi.spyOn(presentation, "backToAgent").mockResolvedValue();
+      const openIde = vi.spyOn(presentation, "openIde").mockResolvedValue();
+      const openChanges = vi.spyOn(presentation, "openWorkspaceChanges").mockResolvedValue();
+      const openBrowser = vi.spyOn(presentation, "openBrowser").mockResolvedValue();
+      presentation.embeddedEditorStore.visible = false;
+      await presentation.toggleIde();
+      await presentation.toggleWorkspaceChanges();
+      presentation.embeddedEditorStore.visible = true;
+      await presentation.toggleIde();
+      await presentation.toggleWorkspaceChanges();
+      presentation.browserStore.visible = false;
+      await presentation.toggleBrowser();
+      presentation.browserStore.visible = true;
+      await presentation.toggleBrowser();
+      expect(back).toHaveBeenCalledTimes(3);
+      expect(openIde).toHaveBeenCalledOnce();
+      expect(openChanges).toHaveBeenCalledOnce();
+      expect(openBrowser).toHaveBeenCalledOnce();
+
+      root.handleHotkey("open-settings");
+      expect(root.appShellStore.surface).toBe("settings");
+      root.handleHotkey("open-settings");
+      expect(root.appShellStore.surface).toBe("workbench");
+    } finally {
+      root[Symbol.dispose]();
+      models[Symbol.dispose]();
+    }
+  });
   it("keeps the current session selected while a new session is prepared", async () => {
     const models = RootProjection.create();
     const client = {} as Client;

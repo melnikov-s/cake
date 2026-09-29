@@ -598,6 +598,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
         {!browserMode && (
           <IconButton
             tooltip="Open Browser Mode"
+            hotkey="toggle-browser"
             onClick={() => {
               focusPane();
               void store.presentationStore.openBrowser();

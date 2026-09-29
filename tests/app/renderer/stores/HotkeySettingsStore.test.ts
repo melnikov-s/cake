@@ -29,11 +29,15 @@ describe("HotkeySettingsStore", () => {
 
     store.assign("toggle-sidebar", "Mod+Shift+B");
 
+    expect(store.bindingFor("toggle-browser")).toBe("");
     expect(store.actionForEvent(keyboardEvent("b", platformModifier))).toBeUndefined();
     expect(store.actionForEvent(keyboardEvent("b", { ...platformModifier, shiftKey: true }))).toBe(
       "toggle-sidebar",
     );
-    expect(toSnapshot(store).state.bindings).toEqual({ "toggle-sidebar": "Mod+Shift+B" });
+    expect(toSnapshot(store).state.bindings).toEqual({
+      "toggle-browser": "",
+      "toggle-sidebar": "Mod+Shift+B",
+    });
   });
 
   it("moves a binding instead of leaving ambiguous duplicate shortcuts", () => {

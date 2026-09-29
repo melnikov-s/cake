@@ -345,11 +345,15 @@ export class RootStore extends Store<{
         break;
       case "open-editor":
         if (projectSelected && !projectResolved)
-          void this.projectWorkbenchStore.presentationStore.openIde();
+          void this.projectWorkbenchStore.presentationStore.toggleIde();
         break;
       case "open-changes":
         if (projectSelected && !projectResolved)
-          void this.projectWorkbenchStore.presentationStore.openWorkspaceChanges();
+          void this.projectWorkbenchStore.presentationStore.toggleWorkspaceChanges();
+        break;
+      case "toggle-browser":
+        if (projectSelected && !projectResolved)
+          void this.projectWorkbenchStore.presentationStore.toggleBrowser();
         break;
       case "toggle-terminal":
         if (!projectResolved) void this.terminalStore.toggle();
@@ -407,7 +411,8 @@ export class RootStore extends Store<{
       case "open-hovered-message":
         break;
       case "open-settings":
-        this.showSettings();
+        if (this.appShellStore.surface === "settings") this.returnToWorkbench();
+        else this.showSettings();
         break;
     }
   }

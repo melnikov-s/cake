@@ -26,6 +26,7 @@ export const cakeHotkeyActionIds = [
   "toggle-agent-editor",
   "open-editor",
   "open-changes",
+  "toggle-browser",
   "toggle-terminal",
   "new-terminal-tab",
   "toggle-sidebar",

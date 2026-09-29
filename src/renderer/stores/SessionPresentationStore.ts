@@ -198,6 +198,16 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
     else await this.openIde();
   }
 
+  async toggleWorkspaceChanges() {
+    if (this.embeddedEditorStore.visible) await this.backToAgent();
+    else await this.openWorkspaceChanges();
+  }
+
+  async toggleBrowser() {
+    if (this.browserStore.visible) await this.backToAgent();
+    else await this.openBrowser();
+  }
+
   async openFile(location: EditorLocation) {
     const session = this.session;
     if (!session || !this.canOpen() || !(await this.flushDrawBeforeLeaving(session))) return;

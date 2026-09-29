@@ -20,16 +20,23 @@ export const hotkeyDefinitions: readonly HotkeyDefinition[] = [
   {
     id: "open-editor",
     group: "Editor & tools",
-    label: "Open VS Code",
-    description: "Open the focused Project Session in VS Code.",
+    label: "Toggle VS Code",
+    description: "Show or hide VS Code for the focused Project Session.",
     defaultBinding: "Mod+Shift+V",
   },
   {
     id: "open-changes",
     group: "Editor & tools",
-    label: "Open Changes",
-    description: "Open Source Control for the focused Project Session.",
+    label: "Toggle Changes",
+    description: "Show or hide Source Control for the focused Project Session.",
     defaultBinding: "Mod+Shift+G",
+  },
+  {
+    id: "toggle-browser",
+    group: "Editor & tools",
+    label: "Toggle Browser Mode",
+    description: "Show or hide Browser Mode for the focused Project Session.",
+    defaultBinding: "Mod+Shift+B",
   },
   {
     id: "toggle-terminal",
@@ -146,8 +153,8 @@ export const hotkeyDefinitions: readonly HotkeyDefinition[] = [
   {
     id: "open-settings",
     group: "Navigation",
-    label: "Open Settings",
-    description: "Open Cake settings.",
+    label: "Toggle Settings",
+    description: "Show or hide Cake settings.",
     defaultBinding: "Mod+,",
   },
   {
