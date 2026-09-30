@@ -6,6 +6,7 @@ out/
 coverage/
 playwright-report/
 test-results/
+.performance-captures/
 .visual-captures/
 *.log
 .DS_Store
