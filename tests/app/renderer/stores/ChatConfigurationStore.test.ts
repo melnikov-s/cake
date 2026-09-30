@@ -130,6 +130,8 @@ describe("ChatConfigurationStore catalog derivation", () => {
     const f = configurationFixture(true);
     try {
       expect(f.subject.connectedModelsByProvider).toEqual([]);
+      await f.subject.selectModel("openai/gpt-5");
+      expect(f.subject.deferredModelName).toBeUndefined();
       expect(f.list).not.toHaveBeenCalled();
       f.subject.ensureCatalog();
       await Promise.resolve();
@@ -163,6 +165,13 @@ describe("ChatConfigurationStore catalog derivation", () => {
       expect(f.subject.connectedModelsByProvider).not.toBe(loaded);
       expect(f.subject.connectedModelsByProvider[0]!.models[0]!.name).toBe("Refreshed fallback");
       expect(f.subject.deferredModelName).toBe("Refreshed fallback");
+      // Removed models must not leave old labels in the fallback index.
+      f.list.mockResolvedValueOnce([]);
+      f.subject.ensureCatalog();
+      await Promise.resolve();
+      expect(f.subject.connectedModelsByProvider).toEqual([]);
+      expect(f.subject.deferredModelName).toBeUndefined();
+      expect(f.state.pending?.modelId).toBe("gpt-5");
     } finally {
       f.dispose();
     }
