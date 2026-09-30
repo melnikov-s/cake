@@ -1,4 +1,4 @@
-import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
+import { Context, Effect, FileSystem, Layer, Path, Predicate, Schema, Semaphore } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 import {
   SavedDraft,
@@ -163,30 +163,36 @@ export interface SavedDraftExtraction {
 export const extractSavedDrafts = (
   snapshot: Schema.Schema.Type<typeof Schema.Json>,
 ): SavedDraftExtraction => {
-  const root = decodeJsonRecord(snapshot);
-  const children = decodeJsonRecord(root?.children);
-  const registry = decodeJsonRecord(children?.sessionRegistry);
-  const registryChildren = decodeJsonRecord(registry?.children);
-  const pending = decodeJsonRecord(registryChildren?.pendingSessions);
-  const pendingChildren = decodeJsonRecord(pending?.children);
+  // The caller has already normalized or decoded JSON. Inspect only the legacy path;
+  // recursively decoding each ancestor revalidates unrelated navigation/composer trees.
+  const jsonRecord = (
+    value: Schema.Schema.Type<typeof Schema.Json> | undefined,
+  ): Schema.JsonObject | undefined => {
+    // SAFETY: Input is already JSON; Predicate.isObject excludes null/arrays, leaving only JsonObject.
+    return Predicate.isObject(value) ? (value as Schema.JsonObject) : undefined;
+  };
+  const root = jsonRecord(snapshot);
+  const children = jsonRecord(root?.children);
+  const registry = jsonRecord(children?.sessionRegistry);
+  const registryChildren = jsonRecord(registry?.children);
+  const pending = jsonRecord(registryChildren?.pendingSessions);
+  const pendingChildren = jsonRecord(pending?.children);
   const conversations = Array.isArray(pendingChildren?.conversations)
     ? pendingChildren.conversations
     : [];
-  const targetsValue = decodeJsonRecord(registry?.state)?.targets;
+  const targetsValue = jsonRecord(registry?.state)?.targets;
   const targets = Array.isArray(targetsValue) ? targetsValue : [];
   const records: SavedDraftValue[] = [];
   const migratedIds = new Set<string>();
   for (const item of conversations) {
-    const conversation = decodeJsonRecord(item);
+    const conversation = jsonRecord(item);
     const sessionId = decodeString(conversation?.key);
-    const state = decodeJsonRecord(conversation?.state);
-    const prompt = decodeJsonRecord(state?.draftPrompt);
-    const target = targets
-      .map(decodeJsonRecord)
-      .find((candidate) => candidate?.sessionId === sessionId);
+    const state = jsonRecord(conversation?.state);
+    const prompt = jsonRecord(state?.draftPrompt);
+    const target = targets.map(jsonRecord).find((candidate) => candidate?.sessionId === sessionId);
     const projectPath = decodeString(target?.workspacePath);
     if (!sessionId || !projectPath || !prompt) continue;
-    const legacyConfiguration = decodeJsonRecord(state?.configuration);
+    const legacyConfiguration = jsonRecord(state?.configuration);
     const candidate = {
       sessionId,
       projectPath,
@@ -226,11 +232,11 @@ export const extractSavedDrafts = (
     !pendingChildren
   )
     return { records, windowSnapshot: snapshot };
-  const pendingState = decodeJsonRecord(pending.state) ?? {};
-  const registryState = decodeJsonRecord(registry.state) ?? {};
+  const pendingState = jsonRecord(pending.state) ?? {};
+  const registryState = jsonRecord(registry.state) ?? {};
   const filterIds = (value: Schema.Schema.Type<typeof Schema.Json> | undefined) =>
     decodeStringArray(value).filter((id) => !migratedIds.has(id));
-  const windowSnapshot = {
+  const windowSnapshot: Schema.Schema.Type<typeof Schema.Json> = {
     ...root,
     children: {
       ...children,
@@ -239,7 +245,7 @@ export const extractSavedDrafts = (
         state: {
           ...registryState,
           targets: targets.filter(
-            (item) => !migratedIds.has(decodeString(decodeJsonRecord(item)?.sessionId) ?? ""),
+            (item) => !migratedIds.has(decodeString(jsonRecord(item)?.sessionId) ?? ""),
           ),
         },
         children: {
@@ -255,7 +261,7 @@ export const extractSavedDrafts = (
             children: {
               ...pendingChildren,
               conversations: conversations.filter(
-                (item) => !migratedIds.has(decodeString(decodeJsonRecord(item)?.key) ?? ""),
+                (item) => !migratedIds.has(decodeString(jsonRecord(item)?.key) ?? ""),
               ),
             },
           },
@@ -263,11 +269,9 @@ export const extractSavedDrafts = (
       },
     },
   };
-  const decodedSnapshot = Schema.decodeUnknownResult(Schema.Json)(windowSnapshot);
-  return {
-    records,
-    windowSnapshot: decodedSnapshot._tag === "Success" ? decodedSnapshot.success : snapshot,
-  };
+  // Copying JSON subtrees and filtering arrays preserves JSON validity. Boundary
+  // validation remains with RPC/storage; extraction does not need another full walk.
+  return { records, windowSnapshot };
 };
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));

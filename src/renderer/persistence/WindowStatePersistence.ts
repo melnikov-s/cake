@@ -1,6 +1,5 @@
-import { Schema } from "effect";
 import { onSnapshot, toSnapshot, type Store } from "r-state-tree";
-import { jsonValueSchema } from "../../ipc/json-contract";
+import type { JsonValue } from "../../ipc/json-contract";
 import type { Client } from "../client/Client";
 import { extractSavedDrafts } from "../../services/storage/WindowStateStorage";
 
@@ -49,9 +48,10 @@ export class WindowStatePersistence implements Disposable {
   }
 
   private enqueue(root: Store) {
-    const snapshot = Schema.decodeUnknownSync(jsonValueSchema)(
-      JSON.parse(JSON.stringify(toSnapshot(root))),
-    );
+    // Store snapshots are plain data, but may contain undefined and non-finite numbers.
+    // Keep JSON normalization and capture isolation before queueing. Parsing our own JSON
+    // needs no further tree validation here; the RPC and storage boundaries still validate.
+    const snapshot: JsonValue = JSON.parse(JSON.stringify(toSnapshot(root)));
     // After migration commits, this window persists only unsent navigation/composer state.
     const windowSnapshot = this.savedDraftsReady
       ? extractSavedDrafts(snapshot).windowSnapshot
