@@ -138,8 +138,8 @@ test("opens family children beside their parent and reuses the child pane", asyn
     await expect(panes).toHaveCount(2);
     const parentPane = panes.filter({ has: page.getByText("Parent", { exact: true }) });
     const childPane = panes.filter({ has: page.getByText("First child", { exact: true }) });
-    const parentInput = parentPane.getByLabel("Message");
-    const childInput = childPane.getByLabel("Message");
+    const parentInput = parentPane.getByRole("combobox", { name: "Message", exact: true });
+    const childInput = childPane.getByRole("combobox", { name: "Message", exact: true });
     await expect(childPane).toHaveAttribute("data-session-id", firstChildSessionId);
     await expect(childPane).toHaveAttribute("data-focused", "true");
     await expect(childInput).toBeFocused();

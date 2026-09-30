@@ -478,8 +478,9 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             ),
             { signal },
           );
-          // Pane placement is a best-effort client request, not an admission dependency.
-          if (result.launch.status !== "failed" && input.placement !== "none")
+          // Register background children for live observation too; pane placement is optional.
+          // This best-effort client request is not an admission dependency.
+          if (result.launch.status !== "failed")
             void runtimeIntegrations
               .requestApplicationControl(
                 {
