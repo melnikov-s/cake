@@ -1,4 +1,4 @@
-import { Model, child, observable, transient } from "r-state-tree";
+import { Model, child, computed, findModelById, observable, transient } from "r-state-tree";
 import { LlmModel } from "./LlmModel";
 import { ArtifactCatalog } from "./ArtifactCatalog";
 import { Resource } from "./Resource";
@@ -99,8 +99,17 @@ export class RootProjection extends Model {
     return session;
   }
 
+  /** Membership scopes the tree's ID index to Project (not Cake Chat or Discussion) Conversations. */
+  @computed
+  private get projectConversationMembers(): ReadonlySet<Conversation> {
+    return new Set(this.projectConversations);
+  }
+
   findProjectConversation(sessionId: string) {
-    return this.projectConversations.find((session) => session.sessionId === sessionId);
+    // Track the empty-to-first-child transition before the tree has an ID bucket.
+    if (this.projectConversations.length === 0) return undefined;
+    const model = findModelById(this, Conversation, sessionId);
+    return model && this.projectConversationMembers.has(model) ? model : undefined;
   }
 
   cakeChatConversation(sessionId: string) {

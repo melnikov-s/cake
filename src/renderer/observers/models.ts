@@ -1,5 +1,5 @@
 import { Schema, type Stream } from "effect";
-import { effect as reactiveEffect, type Model } from "r-state-tree";
+import { effect as reactiveEffect, reaction, type Model } from "r-state-tree";
 import type {
   CakeChatCatalogQuery,
   CakeChatTarget,
@@ -363,10 +363,26 @@ export const createModelObserver = (
   const observe = (source: ModelSource) => {
     if (stopObservingSource)
       throw new Error("Renderer Model observation already has a Model source");
-    stopObservingSource = reactiveEffect(() => {
-      const stagedProjectSessionTargets = source.stagedProjectSessionTargets?.() ?? [];
-      const stagedIds = new Set(stagedProjectSessionTargets.map(({ sessionId }) => sessionId));
-      const loadedProjectSessions = source.loadedProjectSessions?.();
+    const loadedIdentities = () => ({
+      loadedProjectSessions: source
+        .loadedProjectSessions?.()
+        .map(({ sessionId, workingDirectory }) => ({
+          sessionId,
+          workingDirectory,
+        })),
+      loadedCakeChatIds: source.loadedCakeChatIds?.().slice(),
+      stagedIds: new Set(
+        (source.stagedProjectSessionTargets?.() ?? []).map(({ sessionId }) => sessionId),
+      ),
+    });
+    // Identity lifetime follows the loaded registry, not selection or observation
+    // demand. A reaction tracks only these inputs, not the collections reconciled
+    // below, so switching warm sessions never re-ensures every loaded identity.
+    const reconcileLoadedIdentities = ({
+      loadedProjectSessions,
+      loadedCakeChatIds,
+      stagedIds,
+    }: ReturnType<typeof loadedIdentities>) => {
       if (loadedProjectSessions) {
         const loadedIds = new Set(loadedProjectSessions.map(({ sessionId }) => sessionId));
         for (const target of loadedProjectSessions)
@@ -383,7 +399,6 @@ export const createModelObserver = (
               retainDiscussionCatalog: stagedIds.has(sessionId),
             });
       }
-      const loadedCakeChatIds = source.loadedCakeChatIds?.();
       if (loadedCakeChatIds) {
         const loadedIds = new Set(loadedCakeChatIds);
         for (const sessionId of loadedCakeChatIds)
@@ -395,6 +410,11 @@ export const createModelObserver = (
         for (const sessionId of projectionIds)
           if (!loadedIds.has(sessionId)) source.projection.removeCakeChatProjections(sessionId);
       }
+    };
+    reconcileLoadedIdentities(loadedIdentities());
+    const stopReconciling = reaction(loadedIdentities, reconcileLoadedIdentities);
+    const stopDemand = reactiveEffect(() => {
+      const stagedProjectSessionTargets = source.stagedProjectSessionTargets?.() ?? [];
       const projectSessions = source.projectSessionTargets().map((target) => ({
         target,
         conversation: source.projection.projectConversation(
@@ -450,6 +470,10 @@ export const createModelObserver = (
         }),
       });
     });
+    stopObservingSource = () => {
+      stopReconciling();
+      stopDemand();
+    };
   };
 
   const dispose = () => {
