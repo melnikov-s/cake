@@ -150,7 +150,7 @@ export function ArtifactForm({
       )}
       {stepped && (
         <div className="grid gap-1.5">
-          <div className="flex items-center justify-between gap-2 pr-8 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span aria-live="polite">
               {reviewing ? "Review answers" : `Question ${step + 1} of ${fields.length}`}
             </span>

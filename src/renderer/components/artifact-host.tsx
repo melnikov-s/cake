@@ -1,4 +1,3 @@
-import { Option, Schema } from "effect";
 import { useState } from "react";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { FullscreenSurface } from "@/components/fullscreen-surface";
@@ -6,7 +5,6 @@ import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { observer } from "r-state-tree/react";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { JsonValue } from "../../ipc/json-contract";
-import { cakeRequestV1Schema } from "../../ipc/request-contract";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { ArtifactForm } from "./artifact-form";
@@ -38,18 +36,9 @@ export const ArtifactHost = observer(function ArtifactHost({
 }: ArtifactHostProps) {
   const artifact = record.artifact;
   const [fullscreen, setFullscreen] = useState(false);
-  const parsedRequest =
-    artifact.kind === "request"
-      ? Schema.decodeUnknownOption(cakeRequestV1Schema)(artifact.payload.request)
-      : Option.none<typeof cakeRequestV1Schema.Type>();
-  const title =
-    Option.isSome(parsedRequest) && parsedRequest.value.title
-      ? parsedRequest.value.title
-      : (artifact.title ?? artifact.id);
-  const canvas =
-    artifact.kind === "widget" ||
-    artifact.kind === "html" ||
-    (Option.isSome(parsedRequest) && parsedRequest.value.view.type === "widget");
+  const canOpenFullscreen = artifact.kind !== "request" && artifact.kind !== "form";
+  const title = artifact.title ?? artifact.id;
+  const canvas = artifact.kind === "widget" || artifact.kind === "html";
 
   const renderArtifact = (fill = false) => (
     <>
@@ -98,13 +87,15 @@ export const ArtifactHost = observer(function ArtifactHost({
       data-artifact-id={artifact.id}
       data-artifact-kind={artifact.kind}
     >
-      <FullscreenButton
-        className="absolute top-0 right-0 z-10 bg-background/85"
-        label={`View ${title} fullscreen`}
-        onClick={() => setFullscreen(true)}
-      />
+      {canOpenFullscreen && (
+        <FullscreenButton
+          className="absolute top-0 right-0 z-10 bg-background/85"
+          label={`View ${title} fullscreen`}
+          onClick={() => setFullscreen(true)}
+        />
+      )}
       {renderArtifact()}
-      {fullscreen && (
+      {canOpenFullscreen && fullscreen && (
         <FullscreenSurface
           mode={canvas ? "canvas" : "reader"}
           eyebrow="Artifact"

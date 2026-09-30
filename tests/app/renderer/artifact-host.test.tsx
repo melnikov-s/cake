@@ -139,6 +139,7 @@ describe("ArtifactHost", () => {
       interaction: { mode: "request", responseSchema: request.responseSchema },
     });
     act(() => root.render(<ArtifactHost record={form} requested onSubmit={submit} />));
+    expect(container.querySelector(".fullscreen-trigger")).toBeNull();
     act(() => {
       const input = container.querySelector("input") as HTMLInputElement;
       setInputValue(input, "yes");
@@ -157,6 +158,22 @@ describe("ArtifactHost", () => {
     expect([...container.querySelectorAll("button")].map((b) => b.textContent)).not.toContain(
       "Submit",
     );
+
+    act(() =>
+      root.render(
+        <ArtifactHost
+          record={record({
+            ...form.artifact,
+            kind: "form",
+            payload: { fields: request.view.fields },
+          })}
+          requested
+          onSubmit={submit}
+        />,
+      ),
+    );
+    expect(container.querySelector("form")).not.toBeNull();
+    expect(container.querySelector(".fullscreen-trigger")).toBeNull();
 
     const html = record({
       protocol: "cake.artifact/v1",
@@ -354,6 +371,7 @@ describe("ArtifactHost", () => {
     const pressEnter = () =>
       act(() => form().dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
 
+    expect(container.querySelector(".fullscreen-trigger")).toBeNull();
     expect(container.textContent).toContain("Question 1 of 3");
     expect(container.querySelector('[role="radiogroup"][aria-label="Region"]')).not.toBeNull();
     expect(container.textContent).not.toContain("Name");
@@ -618,27 +636,7 @@ describe("ArtifactHost", () => {
       ),
     );
     expect(submit).toHaveBeenCalledWith({ choice: "yes" });
-    act(() =>
-      container
-        .querySelector<HTMLButtonElement>('[aria-label="View Visual choice fullscreen"]')!
-        .click(),
-    );
-    const fullscreenFrame =
-      document.body.querySelector<HTMLIFrameElement>('[role="dialog"] iframe')!;
-    act(() =>
-      window.dispatchEvent(
-        new MessageEvent("message", {
-          source: fullscreenFrame.contentWindow,
-          data: {
-            source: "cake-inline-widget",
-            token,
-            type: "submit",
-            value: { choice: "fullscreen" },
-          },
-        }),
-      ),
-    );
-    expect(submit).toHaveBeenLastCalledWith({ choice: "fullscreen" });
+    expect(container.querySelector(".fullscreen-trigger")).toBeNull();
   });
 
   it("compiles delegated widget artifacts without placing their source in transcript text", async () => {
