@@ -299,7 +299,12 @@ export const SettingsPage = observer(function SettingsPage({
                     <ModelPicker
                       ariaLabel="Default agent model"
                       placeholder="Choose default model"
-                      groups={providerGroups}
+                      groups={() => providerGroups}
+                      currentModelName={
+                        providerGroups
+                          .find((group) => group.id === pi.defaultProvider)
+                          ?.models.find((model) => model.id === pi.defaultModel)?.name
+                      }
                       value={
                         pi.defaultProvider && pi.defaultModel
                           ? {
@@ -363,7 +368,12 @@ export const SettingsPage = observer(function SettingsPage({
                     placeholder="No utility model"
                     allowClear
                     showFastMode={false}
-                    groups={providerGroups}
+                    groups={() => providerGroups}
+                    currentModelName={
+                      providerGroups
+                        .find((group) => group.id === utilityModel?.provider)
+                        ?.models.find((model) => model.id === utilityModel?.modelId)?.name
+                    }
                     value={
                       utilityModel
                         ? {

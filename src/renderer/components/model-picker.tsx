@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import type { ModelOption, ModelPreset, ThinkingLevel } from "../../ipc/session-contract";
 import { FastModeToggle } from "./fast-mode-toggle";
@@ -25,7 +26,11 @@ interface ModelConfigurationValue {
 }
 
 export interface ModelPickerProps {
-  groups: readonly ModelGroup[];
+  /** Reactive catalog source, read only while the picker is open. */
+  groups(): readonly ModelGroup[];
+  /** Current identity's display name, independent of the full availability catalog. */
+  currentModelName?: string;
+  onOpen?(): void;
   value?: ModelConfigurationValue;
   presets?: readonly ModelPreset[];
   activePreset?: ModelPreset;
@@ -58,8 +63,12 @@ function modelKey(provider: string, modelId: string) {
   return `${provider}/${modelId}`;
 }
 
-export function ModelPicker({
+const emptyGroups: readonly ModelGroup[] = [];
+
+export const ModelPicker = observer(function ModelPicker({
   groups,
+  currentModelName,
+  onOpen,
   value,
   presets = [],
   activePreset,
@@ -84,7 +93,7 @@ export function ModelPicker({
   const searchRef = useRef<HTMLInputElement>(null);
   const configureBackRef = useRef<HTMLButtonElement>(null);
 
-  const allModels = useMemo(() => groups.flatMap((group) => group.models), [groups]);
+  const visibleGroups = open ? groups() : emptyGroups;
   const configuration: ModelConfigurationValue | undefined =
     value ??
     (activePreset
@@ -98,40 +107,48 @@ export function ModelPicker({
   const selectedModel = useMemo(
     () =>
       configuration?.provider && configuration.modelId
-        ? allModels.find(
-            (model) =>
-              model.provider === configuration.provider && model.id === configuration.modelId,
-          )
+        ? visibleGroups
+            .find((group) => group.id === configuration.provider)
+            ?.models.find((model) => model.id === configuration.modelId)
         : undefined,
-    [allModels, configuration?.provider, configuration?.modelId],
+    [visibleGroups, configuration?.provider, configuration?.modelId],
   );
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredPresets = useMemo(
     () =>
-      presets.filter((preset) =>
-        `${preset.name} ${preset.provider} ${preset.modelId} ${preset.thinkingLevel}`
-          .toLocaleLowerCase()
-          .includes(normalizedQuery),
-      ),
-    [presets, normalizedQuery],
+      open && view === "models"
+        ? presets.filter((preset) =>
+            `${preset.name} ${preset.provider} ${preset.modelId} ${preset.thinkingLevel}`
+              .toLocaleLowerCase()
+              .includes(normalizedQuery),
+          )
+        : [],
+    [open, view, presets, normalizedQuery],
   );
 
   const filteredGroups = useMemo(
     () =>
-      groups
-        .map((group) => ({
-          ...group,
-          models: group.models.filter((model) =>
-            `${model.name} ${model.id} ${group.name}`.toLocaleLowerCase().includes(normalizedQuery),
-          ),
-        }))
-        .filter((group) => group.models.length > 0),
-    [groups, normalizedQuery],
+      !open || view !== "models"
+        ? emptyGroups
+        : !normalizedQuery
+          ? visibleGroups
+          : visibleGroups
+              .map((group) => ({
+                ...group,
+                models: group.models.filter((model) =>
+                  `${model.name} ${model.id} ${group.name}`
+                    .toLocaleLowerCase()
+                    .includes(normalizedQuery),
+                ),
+              }))
+              .filter((group) => group.models.length > 0),
+    [open, view, visibleGroups, normalizedQuery],
   );
 
   const activeName =
     activePreset?.name ??
+    currentModelName ??
     selectedModel?.name ??
     (configuration?.modelId ? configuration.modelId : placeholder);
   const displayThinking = configuration?.thinkingLevel;
@@ -144,15 +161,18 @@ export function ModelPicker({
 
   useEffect(() => {
     if (!open) return;
-    if (view === "models") {
-      if (document.activeElement !== searchRef.current) {
-        searchRef.current?.focus();
-      }
-    } else if (view === "configure") {
-      if (document.activeElement !== configureBackRef.current) {
-        configureBackRef.current?.focus();
-      }
-    }
+    // The portal is initially hidden while PopoverContent positions it. Focus
+    // after that layout commits, including keyboard opens directly into search.
+    const frame = requestAnimationFrame(() => {
+      const target =
+        view === "models"
+          ? searchRef.current
+          : view === "configure"
+            ? configureBackRef.current
+            : null;
+      if (target && document.activeElement !== target) target.focus();
+    });
+    return () => cancelAnimationFrame(frame);
   }, [open, view]);
 
   const reset = () => {
@@ -200,6 +220,7 @@ export function ModelPicker({
         setOpen(next);
         if (!next) reset();
         else {
+          onOpen?.();
           setView(hasValue ? "current" : "models");
         }
       }}
@@ -573,4 +594,4 @@ export function ModelPicker({
       </PopoverContent>
     </Popover>
   );
-}
+});

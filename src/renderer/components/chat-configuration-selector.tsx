@@ -24,32 +24,37 @@ export const ChatConfigurationSelector = observer(function ChatConfigurationSele
     : sessionConfiguration;
 
   return (
-    <div onClick={() => configuration.ensureCatalog()} className="contents">
-      <ModelPicker
-        className={className}
-        groups={configuration.connectedModelsByProvider}
-        presets={configuration.presets}
-        activePreset={configuration.activePreset}
-        value={effectiveConfiguration}
-        error={configuration.error}
-        openPresetSettings={
-          configuration.canOpenPresetSettings ? () => configuration.openPresetSettings() : undefined
+    <ModelPicker
+      className={className}
+      groups={() => configuration.connectedModelsByProvider}
+      currentModelName={
+        effectiveConfiguration?.provider === selectedModel?.provider &&
+        effectiveConfiguration?.modelId === selectedModel?.modelId
+          ? selectedModel?.name
+          : configuration.deferredModelName
+      }
+      onOpen={() => configuration.ensureCatalog()}
+      presets={configuration.presets}
+      activePreset={configuration.activePreset}
+      value={effectiveConfiguration}
+      error={configuration.error}
+      openPresetSettings={
+        configuration.canOpenPresetSettings ? () => configuration.openPresetSettings() : undefined
+      }
+      onSelect={(next) => {
+        if (
+          selectedModel &&
+          next.provider === selectedModel.provider &&
+          next.modelId === selectedModel.modelId &&
+          next.fastMode === configuration.fastMode &&
+          next.thinkingLevel !== session?.thinkingLevel
+        ) {
+          void configuration.selectThinkingLevel(next.thinkingLevel);
+        } else {
+          void configuration.selectConfiguration(next);
         }
-        onSelect={(next) => {
-          if (
-            selectedModel &&
-            next.provider === selectedModel.provider &&
-            next.modelId === selectedModel.modelId &&
-            next.fastMode === configuration.fastMode &&
-            next.thinkingLevel !== session?.thinkingLevel
-          ) {
-            void configuration.selectThinkingLevel(next.thinkingLevel);
-          } else {
-            void configuration.selectConfiguration(next);
-          }
-        }}
-        onSelectPreset={(preset) => void configuration.selectPreset(preset)}
-      />
-    </div>
+      }}
+      onSelectPreset={(preset) => void configuration.selectPreset(preset)}
+    />
   );
 });

@@ -215,7 +215,12 @@ export const ModelPresetSettings = observer(function ModelPresetSettings({
             <ModelPicker
               ariaLabel="Preset model"
               placeholder="Choose model & thinking"
-              groups={groups}
+              groups={() => groups}
+              currentModelName={
+                groups
+                  .find((group) => group.id === draft.provider)
+                  ?.models.find((model) => model.id === draft.modelId)?.name
+              }
               showFastMode
               value={
                 draft.provider && draft.modelId

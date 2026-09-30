@@ -1,4 +1,4 @@
-import { Store, observable } from "r-state-tree";
+import { Store, batch, computed, observable } from "r-state-tree";
 import type {
   ChatConfiguration,
   ModelOption,
@@ -37,6 +37,8 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
   error: string | undefined;
   errorDetails: string | undefined;
   readonly catalogModels: ModelOption[] = observable([]);
+  // Session-less catalog presentation index; populated only by explicit opens.
+  private readonly catalogNames = observable(new Map<string, string>());
   private catalogLoadRevision = 0;
   private fastModeOverride: boolean | undefined;
 
@@ -77,19 +79,45 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     return this.props.operations.active(this.props.operationOwner);
   }
 
+  @computed
   get modelsByProvider() {
-    // A runtime-backed session carries its own authoritative catalog; a
-    // deferred chat falls back to the shared agent-directory catalog.
-    const models = this.session?.modelOptions.length
-      ? this.session.modelOptions.map((option) => option.value)
-      : this.catalogModels;
+    return this.groupModels(false);
+  }
+
+  @computed
+  get connectedModelsByProvider() {
+    return this.groupModels(true);
+  }
+
+  private groupModels(connectedOnly: boolean) {
+    // Runtime availability and capabilities belong to this Conversation, not
+    // the shared LLM identities. Derive lazily and cache until these facts change.
+    const options = this.session?.modelOptions;
     const groups = new Map<string, { name: string; models: ModelOption[] }>();
-    for (const model of models) {
+    const add = (model: ModelOption) => {
       const group = groups.get(model.provider) ?? { name: model.providerName, models: [] };
       group.models.push(model);
       groups.set(model.provider, group);
+    };
+    if (options?.length) {
+      for (const option of options) {
+        // Do not copy capabilities or subscribe to irrelevant model fields for
+        // disconnected providers when deriving the connected picker list.
+        if (!connectedOnly || option.authenticated) add(option.value);
+      }
+    } else {
+      for (const model of this.catalogModels) {
+        if (!connectedOnly || model.authenticated) add(model);
+      }
     }
     return [...groups.entries()].map(([id, group]) => ({ id, ...group }));
+  }
+
+  get deferredModelName() {
+    const selected = this.effectiveConfiguration;
+    return this.deferred && selected
+      ? this.catalogNames.get(`${selected.provider}/${selected.modelId}`)
+      : undefined;
   }
 
   /**
@@ -104,16 +132,16 @@ export class ChatConfigurationStore extends Store<ChatConfigurationStoreProps> {
     void this.client.models
       .list({ signal: this.signal })
       .then((models) => {
-        if (!this.signal.aborted && revision === this.catalogLoadRevision)
-          this.catalogModels.splice(0, this.catalogModels.length, ...models);
+        if (!this.signal.aborted && revision === this.catalogLoadRevision) {
+          batch(() => {
+            this.catalogModels.splice(0, this.catalogModels.length, ...models);
+            this.catalogNames.clear();
+            for (const model of models)
+              this.catalogNames.set(`${model.provider}/${model.id}`, model.name);
+          });
+        }
       })
       .catch(() => undefined);
-  }
-
-  get connectedModelsByProvider() {
-    return this.modelsByProvider
-      .map((group) => ({ ...group, models: group.models.filter((model) => model.authenticated) }))
-      .filter((group) => group.models.length > 0);
   }
 
   get deferred() {

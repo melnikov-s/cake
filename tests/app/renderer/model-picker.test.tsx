@@ -68,29 +68,33 @@ describe("ModelPicker", () => {
     { id: "anthropic", name: "Anthropic", models: [models[1]!] },
   ];
 
-  it("renders the active model summary and opens popover on click", () => {
+  it("renders the active model summary without reading the catalog until opening", () => {
     const onSelect = vi.fn();
+    const catalog = vi.fn(() => groups);
     act(() =>
       root.render(
         <ModelPicker
-          groups={groups}
+          groups={catalog}
+          currentModelName="GPT-5"
           value={{ provider: "openai", modelId: "gpt-5", thinkingLevel: "medium" }}
           onSelect={onSelect}
         />,
       ),
     );
 
+    expect(catalog).not.toHaveBeenCalled();
     const trigger = container.querySelector<HTMLButtonElement>("button")!;
     expect(trigger.textContent).toContain("GPT-5");
     expect(trigger.textContent).toContain("Medium");
 
     act(() => trigger.click());
+    expect(catalog).toHaveBeenCalled();
     expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
   });
 
   it("selects model and configures reasoning level", () => {
     const onSelect = vi.fn();
-    act(() => root.render(<ModelPicker groups={groups} onSelect={onSelect} />));
+    act(() => root.render(<ModelPicker groups={() => groups} onSelect={onSelect} />));
 
     act(() => container.querySelector<HTMLButtonElement>("button")!.click());
 
@@ -125,7 +129,8 @@ describe("ModelPicker", () => {
     act(() =>
       root.render(
         <ModelPicker
-          groups={groups}
+          groups={() => groups}
+          currentModelName="GPT-5"
           value={{ provider: "openai", modelId: "gpt-5", thinkingLevel: "medium" }}
           onSelect={onSelect}
         />,

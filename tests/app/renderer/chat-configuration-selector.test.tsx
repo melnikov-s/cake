@@ -4,35 +4,15 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ModelOption } from "../../../src/ipc/session-contract";
 import { ChatConfigurationSelector } from "../../../src/renderer/components/chat-configuration-selector";
-import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
+import { ModelOption } from "../../../src/renderer/models/ModelOption";
+import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
+import { configurationFixture } from "./chat-configuration-fixture";
 
-function model(
-  provider: string,
-  providerName: string,
-  id: string,
-  name: string,
-  availableThinkingLevels: ModelOption["availableThinkingLevels"],
-  fastMode = false,
-): ModelOption {
-  return {
-    provider,
-    providerName,
-    id,
-    name,
-    reasoning: availableThinkingLevels.some((level) => level !== "off"),
-    availableThinkingLevels,
-    fastMode,
-    input: ["text"],
-    authenticated: true,
-    authTypes: [],
-  };
-}
-
-describe("ChatConfigurationSelector", () => {
+describe("ChatConfigurationSelector with authoritative Conversation catalogs", () => {
   let container: HTMLDivElement;
   let root: Root;
+  let fixture: ReturnType<typeof configurationFixture>;
 
   beforeEach(() => {
     Object.assign(globalThis, {
@@ -45,114 +25,166 @@ describe("ChatConfigurationSelector", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+    fixture = configurationFixture();
   });
 
   afterEach(() => {
     act(() => root.unmount());
+    fixture.dispose();
     container.remove();
+    vi.restoreAllMocks();
   });
 
-  function configuration() {
-    const current = model("openai", "OpenAI", "gpt-5", "GPT-5", ["off", "medium", "high"], false);
-    const next = model(
-      "anthropic",
-      "Anthropic",
-      "claude-opus",
-      "Claude Opus",
-      ["low", "high", "xhigh", "max"],
-      true,
+  const button = (text: string) =>
+    [
+      ...(
+        document.body.querySelector('[role="dialog"]') ?? document.body
+      ).querySelectorAll<HTMLButtonElement>("button"),
+    ].find((button) => button.textContent?.includes(text))!;
+  const trigger = () =>
+    container.querySelector<HTMLButtonElement>('[aria-label="Model configuration"]')!;
+  const render = () =>
+    act(() => root.render(<ChatConfigurationSelector configuration={fixture.subject} />));
+
+  it("switches closed current-model summaries without materializing or loading any catalog", async () => {
+    const materialize = vi.spyOn(ModelOption.prototype, "value", "get");
+    render();
+    expect(trigger().textContent).toContain("GPT-5");
+    expect(trigger().textContent).toContain("Medium");
+    await act(async () => {
+      fixture.state.session = fixture.second;
+    });
+    expect(trigger().textContent).toContain("Claude Opus");
+    expect(trigger().textContent).toContain("High");
+    await act(async () => {
+      fixture.state.session = fixture.first;
+    });
+    expect(trigger().textContent).toContain("GPT-5");
+    expect(materialize).not.toHaveBeenCalled();
+    expect(fixture.list).not.toHaveBeenCalled();
+
+    act(() => trigger().click());
+    expect(materialize).toHaveBeenCalledTimes(2);
+    expect(document.body.querySelector('[aria-label="Reasoning effort"]')!.textContent).toContain(
+      "Medium",
     );
-    return {
-      session: {
-        model: {
-          provider: current.provider,
-          id: JSON.stringify([current.provider, current.id]),
-          modelId: current.id,
-          name: current.name,
-        },
-        thinkingLevel: "medium",
-        availableThinkingLevels: current.availableThinkingLevels,
-        fastModeAvailable: false,
-        streaming: false,
-      },
-      activeOperations: [],
-      activePreset: undefined,
-      presets: [],
-      fastMode: false,
-      connectedModelsByProvider: [
-        { id: "openai", name: "OpenAI", models: [current] },
-        { id: "anthropic", name: "Anthropic", models: [next] },
-      ],
-      ensureCatalog: vi.fn(),
-      selectThinkingLevel: vi.fn(async () => undefined),
-      selectFastMode: vi.fn(async () => undefined),
-      selectConfiguration: vi.fn(async () => undefined),
-      selectPreset: vi.fn(async () => undefined),
-      openPresetSettings: vi.fn(),
-    } as unknown as ChatConfigurationStore;
-  }
+    act(() => button("Change model").click());
+    const dialog = document.body.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain("GPT-5");
+    expect(dialog.textContent).toContain("Claude Opus");
+    expect(dialog.textContent).toContain("Deep review");
+    expect(dialog.textContent).not.toContain("Disconnected model");
+    expect(materialize).toHaveBeenCalledTimes(2);
+  });
 
-  it("changes reasoning for the current model in two clicks", () => {
-    const store = configuration();
-    act(() => root.render(<ChatConfigurationSelector configuration={store} />));
+  it("shows the active preset, reasoning and Fast mode without catalog reads", () => {
+    applyConversationSnapshot(fixture.first, {
+      ...fixture.snapshot,
+      model: { provider: fixture.preset.provider, id: fixture.preset.modelId, name: "Claude Opus" },
+      thinkingLevel: "max",
+      availableThinkingLevels: ["low", "high", "xhigh", "max"],
+      fastMode: true,
+      fastModeAvailable: true,
+    });
+    const materialize = vi.spyOn(ModelOption.prototype, "value", "get");
+    render();
+    expect(trigger().textContent).toContain("Deep review");
+    expect(trigger().textContent).toContain("Max");
+    expect(trigger().textContent).toContain("Fast");
+    expect(materialize).not.toHaveBeenCalled();
+    act(() => trigger().click());
+    act(() => button("Change model").click());
+    expect(button("Deep review").getAttribute("aria-current")).toBe("page");
+    act(() => button("Deep review").click());
+    expect(fixture.setConfiguration).toHaveBeenCalledWith(fixture.preset);
+  });
 
-    act(() =>
-      container.querySelector<HTMLButtonElement>('[aria-label="Model configuration"]')!.click(),
-    );
-    expect(store.ensureCatalog).toHaveBeenCalledOnce();
-    const high = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent === "High",
-    )!;
-    act(() => high.click());
-
-    expect(store.selectThinkingLevel).toHaveBeenCalledWith("high");
+  it("changes reasoning for the current model in two clicks, without refetching", () => {
+    render();
+    act(() => trigger().click());
+    act(() => button("High").click());
+    expect(fixture.setThinkingLevel).toHaveBeenCalledWith("high");
+    expect(fixture.list).not.toHaveBeenCalled();
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it("uses the chosen model's reasoning and Fast mode capabilities before applying", () => {
-    const store = configuration();
-    act(() => root.render(<ChatConfigurationSelector configuration={store} />));
-
-    act(() =>
-      container.querySelector<HTMLButtonElement>('[aria-label="Model configuration"]')!.click(),
-    );
-    act(() => {
-      const changeModel = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-        (button) => button.textContent?.includes("Change model"),
-      )!;
-      changeModel.click();
-    });
-    act(() => {
-      const claude = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-        (button) => button.textContent?.includes("Claude Opus"),
-      )!;
-      claude.click();
-    });
-
+  it("uses chosen model capabilities before applying", () => {
+    render();
+    act(() => trigger().click());
+    act(() => button("Change model").click());
+    act(() => button("Claude Opus").click());
     const reasoning = document.body.querySelector('[aria-label="Reasoning level"]')!;
     expect(reasoning.textContent).toContain("Xhigh");
     expect(reasoning.textContent).toContain("Max");
     expect(reasoning.textContent).not.toContain("Medium");
-
     act(() => {
-      const xhigh = [...reasoning.querySelectorAll<HTMLButtonElement>("button")].find(
-        (button) => button.textContent === "Xhigh",
-      )!;
-      xhigh.click();
+      button("Xhigh").click();
       document.body.querySelector<HTMLButtonElement>('[role="switch"]')!.click();
     });
-    act(() => {
-      const apply = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-        (button) => button.textContent === "Apply",
-      )!;
-      apply.click();
-    });
-
-    expect(store.selectConfiguration).toHaveBeenCalledWith({
+    act(() => button("Apply").click());
+    expect(fixture.setConfiguration).toHaveBeenCalledWith({
       provider: "anthropic",
       modelId: "claude-opus",
       thinkingLevel: "xhigh",
       fastMode: true,
     });
+  });
+
+  it("updates an open list on catalog and authentication changes and defers closed work", async () => {
+    render();
+    act(() => trigger().click());
+    act(() => button("Change model").click());
+    await act(async () => {
+      fixture.first.modelOptions[2]!.authenticated = true;
+    });
+    expect(button("Disconnected model")).toBeDefined();
+    await act(async () => {
+      applyConversationSnapshot(fixture.first, {
+        ...fixture.snapshot,
+        models: [fixture.snapshot.models[0]!],
+      });
+    });
+    expect(document.body.querySelector('[role="dialog"]')!.textContent).not.toContain(
+      "Claude Opus",
+    );
+    act(() => trigger().click());
+    const materialize = vi.spyOn(ModelOption.prototype, "value", "get");
+    await act(async () => {
+      applyConversationSnapshot(fixture.first, fixture.snapshot);
+    });
+    expect(materialize).not.toHaveBeenCalled();
+    act(() => trigger().click());
+    act(() => button("Change model").click());
+    expect(button("Claude Opus")).toBeDefined();
+    expect(materialize).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads a deferred catalog once per genuine opening, not on inner selection clicks", async () => {
+    fixture.dispose();
+    fixture = configurationFixture(true);
+    render();
+    expect(fixture.list).not.toHaveBeenCalled();
+    await act(async () => trigger().click());
+    expect(fixture.list).toHaveBeenCalledOnce();
+    act(() => button("Claude Opus").click());
+    act(() => button("Xhigh").click());
+    act(() => document.body.querySelector<HTMLButtonElement>('[role="switch"]')!.click());
+    act(() => button("Apply").click());
+    expect(fixture.state.pending).toEqual({
+      provider: "anthropic",
+      modelId: "claude-opus",
+      thinkingLevel: "xhigh",
+      fastMode: true,
+    });
+    expect(fixture.list).toHaveBeenCalledOnce();
+    expect(trigger().textContent).toContain("Claude Opus");
+    expect(trigger().textContent).toContain("Xhigh");
+    expect(trigger().textContent).toContain("Fast");
+    expect(fixture.setConfiguration).not.toHaveBeenCalled();
+    await act(async () => trigger().click());
+    expect(fixture.list).toHaveBeenCalledTimes(2);
+    expect(document.body.querySelector('[aria-label="Reasoning effort"]')!.textContent).toContain(
+      "Xhigh",
+    );
   });
 });
