@@ -35,6 +35,7 @@ export const DrawWorkspace = observer(function DrawWorkspace({
   chatSidebarVisible,
   chatSidebarWidth,
   onChatSidebarWidthChange,
+  onToggleChatSidebar,
 }: {
   draw: DrawStore;
   sidebarCollapsed: boolean;
@@ -60,6 +61,7 @@ export const DrawWorkspace = observer(function DrawWorkspace({
   chatSidebarVisible: boolean;
   chatSidebarWidth: number;
   onChatSidebarWidthChange(width: number): void;
+  onToggleChatSidebar(): void;
 }) {
   const sideChatTranscriptBehavior =
     transcriptBehavior.openSourceLocation || transcriptBehavior.workspacePath
@@ -103,6 +105,8 @@ export const DrawWorkspace = observer(function DrawWorkspace({
             onToggleSidebar={onToggleSidebar}
             onGoBack={onGoBack}
             onGoForward={onGoForward}
+            chatSidebarVisible={chatSidebarVisible}
+            onToggleChatSidebar={onToggleChatSidebar}
           />
           <div className="min-h-0 flex-1">
             <DrawCanvasRegion

@@ -41,6 +41,8 @@ describe("DrawBoardToolbar", () => {
         <DrawBoardToolbar
           store={store}
           sidebarCollapsed={false}
+          chatSidebarVisible
+          onToggleChatSidebar={vi.fn()}
           canGoBack={false}
           canGoForward={false}
           onToggleSidebar={vi.fn()}
@@ -75,6 +77,8 @@ describe("DrawBoardToolbar", () => {
         <DrawBoardToolbar
           store={store}
           sidebarCollapsed
+          chatSidebarVisible
+          onToggleChatSidebar={vi.fn()}
           canGoBack
           canGoForward
           onToggleSidebar={onToggleSidebar}
@@ -85,7 +89,7 @@ describe("DrawBoardToolbar", () => {
     );
 
     expect(container.querySelector("header")?.className).toContain("pl-[103px]");
-    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Toggle sidebar"]')!.click());
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Open sidebar"]')!.click());
     act(() =>
       container
         .querySelector<HTMLButtonElement>('[aria-label="Go back in session history"]')!

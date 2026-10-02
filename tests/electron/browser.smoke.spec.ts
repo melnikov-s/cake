@@ -7,6 +7,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const sessionId = "browser-smoke-session";
+const otherSessionId = "browser-smoke-other-session";
 
 test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected elements", async () => {
   const server = createServer((request, response) => {
@@ -82,6 +83,26 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
       .join("\n") + "\n",
   );
 
+  await writeFile(
+    join(sessionDirectory, `1970-01-01T00-00-01-000Z_${otherSessionId}.jsonl`),
+    [
+      { type: "session", version: 3, id: otherSessionId, timestamp, cwd: project },
+      {
+        type: "message",
+        id: "other-user-1",
+        parentId: null,
+        timestamp,
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Other browser fixture" }],
+          timestamp: 0,
+        },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+  );
+
   const application = await electron.launch({
     args: [repositoryRoot],
     cwd: repositoryRoot,
@@ -100,11 +121,35 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     });
     await expect(page.getByText("main#seeded", { exact: true })).toBeVisible();
     await expect(page.getByText(/cake-browser-attachment/)).toHaveCount(0);
+    // Warm both sessions so switching exercises the synchronous hydrated-session path.
+    await page.locator(`.session-item[data-session-id="${otherSessionId}"]`).click();
+    await expect(page.locator(".transcript").getByText("Other browser fixture")).toBeVisible();
+    await page.locator(`.session-item[data-session-id="${sessionId}"]`).click();
+    await expect(page.locator(".transcript").getByText("Test the app")).toBeVisible();
     await page.getByRole("button", { name: "Open Browser Mode" }).click();
     const addressInput = page.getByLabel("Browser address");
     await expect(addressInput).toBeVisible();
     await addressInput.fill(origin);
     await addressInput.press("Enter");
+
+    const workspace = page.getByRole("region", { name: "Browser workspace", exact: true });
+    const chatToggle = workspace.locator('[data-slot="header-chat-toggle"]');
+    const sidebarToggle = workspace.locator('[data-slot="header-sidebar-toggle"]');
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    await expect(chatToggle).toHaveAccessibleName("Close chat");
+    await chatToggle.click();
+    await expect(composer).toBeHidden();
+    await expect(chatToggle).toHaveAccessibleName("Open chat");
+    await expect(chatToggle).toHaveAttribute("aria-expanded", "false");
+    await chatToggle.click();
+    await expect(composer).toBeVisible();
+    await expect(sidebarToggle).toHaveAccessibleName("Close sidebar");
+    await sidebarToggle.click();
+    await expect(page.locator(`.session-item[data-session-id="${sessionId}"]`)).toBeHidden();
+    await expect(sidebarToggle).toHaveAccessibleName("Open sidebar");
+    expect((await sidebarToggle.boundingBox())?.x).toBeGreaterThanOrEqual(84);
+    await sidebarToggle.click();
+    await expect(sidebarToggle).toHaveAttribute("aria-expanded", "true");
 
     const browserState = (url: string) => () =>
       application.evaluate(async ({ webContents }, expectedUrl) => {
@@ -169,6 +214,22 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
       page.locator(".workbench-composer").getByRole("button", { name: /#target/ }),
     ).toBeVisible();
     await expect(page.getByLabel("Message", { exact: true })).toBeVisible();
+
+    const nativeBrowserVisible = () =>
+      application.evaluate(({ BrowserWindow }, expectedUrl) => {
+        const view = BrowserWindow.getAllWindows()[0]!.contentView.children.find(
+          (child) => "webContents" in child && child.webContents.getURL() === expectedUrl,
+        );
+        return view?.getVisible() ?? false;
+      }, `${origin}/second`);
+    await expect.poll(nativeBrowserVisible).toBe(true);
+    await page.locator(`.session-item[data-session-id="${otherSessionId}"]`).click();
+    await expect(page.locator(".transcript").getByText("Other browser fixture")).toBeVisible();
+    await expect(addressInput).toBeHidden();
+    await expect.poll(nativeBrowserVisible).toBe(false);
+    await page.locator(`.session-item[data-session-id="${sessionId}"]`).click();
+    await expect(addressInput).toBeVisible();
+    await expect.poll(nativeBrowserVisible).toBe(true);
 
     // Local desktop mode intentionally permits explicitly reopening the same session in another
     // native window; the new owner can then navigate the transferred view.

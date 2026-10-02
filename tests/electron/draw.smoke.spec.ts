@@ -371,7 +371,11 @@ test("Cake Draw preserves chat and its session board through Electron", async ()
     await expect(drawWorkspace.locator(".main-menu-trigger")).toBeHidden();
     await expect(drawWorkspace.locator(".default-sidebar-trigger")).toBeHidden();
 
-    await page.getByRole("button", { name: "Toggle sidebar" }).click();
+    await drawWorkspace.getByRole("button", { name: "Close chat", exact: true }).click();
+    await expect(composer).toBeHidden();
+    await drawWorkspace.getByRole("button", { name: "Open chat", exact: true }).click();
+    await expect(composer).toBeVisible();
+    await drawWorkspace.getByRole("button", { name: "Close sidebar", exact: true }).click();
     const collapsedSidebarToggle = page.locator(
       '[aria-label="Cake Draw whiteboard"] [data-slot="header-sidebar-toggle"]',
     );
@@ -379,7 +383,9 @@ test("Cake Draw preserves chat and its session board through Electron", async ()
     expect((await collapsedSidebarToggle.boundingBox())?.x).toBeGreaterThanOrEqual(84);
     await expect(page.getByRole("button", { name: "Go back in session history" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Go forward in session history" })).toBeVisible();
+    await expect(collapsedSidebarToggle).toHaveAttribute("aria-expanded", "false");
     await collapsedSidebarToggle.click();
+    await expect(collapsedSidebarToggle).toHaveAttribute("aria-expanded", "true");
 
     await composer.click();
     await expect(composer).toBeFocused();

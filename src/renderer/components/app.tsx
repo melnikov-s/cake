@@ -848,6 +848,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
             chatSidebarVisible={session.workspaceChatSidebarVisible}
             chatSidebarWidth={session.workspaceChatSidebarWidth}
             onChatSidebarWidthChange={(width) => session.setWorkspaceChatSidebarWidth(width)}
+            onToggleChatSidebar={() => session.toggleWorkspaceChatSidebar()}
           />
         </StoreProvider>
         {!terminal.docked && (
@@ -870,6 +871,8 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
         <StoreProvider key={session.sessionId} store={session}>
           <BrowserWorkspace
             browser={store.presentationStore.browserStore}
+            onToggleSidebar={toggleSidebar}
+            onToggleChatSidebar={() => session.toggleWorkspaceChatSidebar()}
             projectSidebar={projectSidebar}
             projectSidebarVisible={!sidebarCollapsed}
             projectSidebarWidth={displayedSidebarWidth}

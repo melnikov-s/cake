@@ -64,7 +64,8 @@ export class BrowserStore extends Store<BrowserStoreProps> {
   get nativeViewBounds() {
     const rect = this.measuredBounds ?? EMPTY_VIEWPORT;
     return {
-      sessionId: this.sessionId ?? "",
+      // Geometry belongs to the opened native view, even after selection has changed.
+      sessionId: this.openedSessionId ?? "",
       visible:
         this.visible &&
         this.openedSessionId === this.sessionId &&

@@ -62,8 +62,14 @@ of allowing the native surface to cover part of the portal.
 `WorkspaceChatLayout` is the shared product layout for immersive session modes.
 It composes the project sidebar, a primary workspace, the existing authoritative
 Chat drawer, and an optional terminal dock with persistent Store-owned widths.
-VS Code and Cake Draw supply their own workspace and chat header content rather
-than rebuilding resize behavior or a parallel conversation surface.
+VS Code, Browser Mode, and Cake Draw supply their own workspace and chat header
+content rather than rebuilding resize behavior or a parallel conversation surface.
+
+`WorkspacePanelToggle` is the shared Browser Mode/Draw header control. Place the
+`sidebar` variant on the left and the `chat` variant on the right. Mirrored panel
+icons, Open/Close tooltips, and `aria-expanded` reflect the supplied visibility;
+the controls remain available when their panels are hidden. Visibility and widths
+stay owned by the existing Sidebar and Project Session Stores.
 
 ## Moving navigation backgrounds
 

@@ -1,4 +1,4 @@
-import { createStore } from "r-state-tree";
+import { batch, createStore, observable } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { Attachment } from "../../../../src/ipc/session-contract";
 import type { Client } from "../../../../src/renderer/client/Client";
@@ -17,6 +17,7 @@ const ready = {
 
 function harness(browserHost = false) {
   let mode: "normal" | "vscode" | "draw" | "browser" = "normal";
+  const selection = observable({ sessionId: "session-1" as string | undefined });
   const onBrowserUnavailable = vi.fn();
   const attachments: Attachment[] = [];
   const browser = {
@@ -29,7 +30,7 @@ function harness(browserHost = false) {
   };
   const { root, subject: store } = mountWithClient(
     createStore(BrowserStore, {
-      sessionId: () => "session-1",
+      sessionId: () => selection.sessionId,
       browserHost,
       onBrowserUnavailable,
       presentationMode: () => mode,
@@ -47,6 +48,7 @@ function harness(browserHost = false) {
   );
   return {
     attachments,
+    selection,
     browser,
     root,
     store,
@@ -102,6 +104,48 @@ describe("BrowserStore", () => {
       expect.objectContaining({ sessionId: "session-1", visible: false }),
       expect.any(Object),
     );
+    root[Symbol.dispose]();
+  });
+
+  it.each(["session-2", undefined])(
+    "hides the opened view when batched navigation selects %s, then restores it",
+    async (nextSessionId) => {
+      const { browser, root, store, selection } = harness();
+      await store.show();
+      store.setMeasuredBounds({ x: 280, y: 40, width: 800, height: 600 });
+      browser.updateBounds.mockClear();
+
+      // Hydrated-session navigation changes selection before suspending in one batch.
+      batch(() => {
+        selection.sessionId = nextSessionId;
+        store.suspend();
+        store.setMeasuredBounds(undefined);
+      });
+      expect(browser.updateBounds).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: "session-1", visible: false }),
+        expect.any(Object),
+      );
+      expect(browser.updateBounds).toHaveBeenCalledOnce();
+
+      selection.sessionId = "session-1";
+      await store.restore();
+      store.setMeasuredBounds({ x: 280, y: 40, width: 800, height: 600 });
+      expect(browser.updateBounds).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: "session-1", visible: true }),
+        expect.any(Object),
+      );
+      root[Symbol.dispose]();
+    },
+  );
+
+  it("does not hide the browser when its owning session remains selected", async () => {
+    const { browser, root, store, selection } = harness();
+    await store.show();
+    store.setMeasuredBounds({ x: 280, y: 40, width: 800, height: 600 });
+    browser.updateBounds.mockClear();
+    selection.sessionId = "session-1";
+    expect(store.nativeViewBounds.visible).toBe(true);
+    expect(browser.updateBounds).not.toHaveBeenCalled();
     root[Symbol.dispose]();
   });
 

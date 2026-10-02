@@ -10,6 +10,7 @@ import { SideChatLayout } from "./side-chat-layout";
 import { WorkspaceChatLayout } from "./workspace-chat-layout";
 import { IconButton } from "./ui/icon-button";
 import { Input } from "./ui/input";
+import { WorkspacePanelToggle } from "./ui/workspace-panel-toggle";
 import { BackIcon, ForwardIcon, InspectIcon, ReloadIcon, StopIcon } from "./ui/icons";
 
 /** Browser Mode workspace with native Chromium viewport and the authoritative project chat. */
@@ -26,6 +27,8 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   projectSidebarVisible,
   projectSidebarWidth,
   onProjectSidebarWidthChange,
+  onToggleSidebar,
+  onToggleChatSidebar,
   sessionTitle,
   terminalDock,
   transcriptBehavior,
@@ -42,6 +45,8 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   projectSidebarVisible: boolean;
   projectSidebarWidth: number;
   onProjectSidebarWidthChange(width: number): void;
+  onToggleSidebar(): void;
+  onToggleChatSidebar(): void;
   sessionTitle: string;
   terminalDock?: ReactNode;
   transcriptBehavior: ChatTranscriptBehavior;
@@ -96,6 +101,11 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
         )}
       >
         <div className="flex items-center gap-0.5 [-webkit-app-region:no-drag]">
+          <WorkspacePanelToggle
+            panel="sidebar"
+            visible={projectSidebarVisible}
+            onToggle={onToggleSidebar}
+          />
           <IconButton
             tooltip="Back"
             disabled={!browser.canGoBack}
@@ -136,6 +146,11 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
           >
             <InspectIcon />
           </IconButton>
+          <WorkspacePanelToggle
+            panel="chat"
+            visible={browser.chatSidebarVisible}
+            onToggle={onToggleChatSidebar}
+          />
         </div>
       </div>
       {browser.error ? (

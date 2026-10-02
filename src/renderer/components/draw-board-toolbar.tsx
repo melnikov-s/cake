@@ -4,7 +4,8 @@ import { cn } from "../lib/utils";
 import type { DrawStore } from "../stores/DrawStore";
 import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
-import { BackIcon, ExportIcon, ForwardIcon, SidebarIcon } from "./ui/icons";
+import { BackIcon, ExportIcon, ForwardIcon } from "./ui/icons";
+import { WorkspacePanelToggle } from "./ui/workspace-panel-toggle";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 export const DrawBoardToolbar = observer(function DrawBoardToolbar({
@@ -15,6 +16,8 @@ export const DrawBoardToolbar = observer(function DrawBoardToolbar({
   onToggleSidebar,
   onGoBack,
   onGoForward,
+  chatSidebarVisible,
+  onToggleChatSidebar,
 }: {
   store: DrawStore;
   sidebarCollapsed: boolean;
@@ -23,6 +26,8 @@ export const DrawBoardToolbar = observer(function DrawBoardToolbar({
   onToggleSidebar(): void;
   onGoBack(): void;
   onGoForward(): void;
+  chatSidebarVisible: boolean;
+  onToggleChatSidebar(): void;
 }) {
   const [exportOpen, setExportOpen] = useState(false);
   const exportBoard = (format: "png" | "svg" | "excalidraw") => {
@@ -37,17 +42,13 @@ export const DrawBoardToolbar = observer(function DrawBoardToolbar({
         sidebarCollapsed && "pl-[103px]",
       )}
     >
+      <WorkspacePanelToggle
+        panel="sidebar"
+        visible={!sidebarCollapsed}
+        onToggle={onToggleSidebar}
+      />
       {sidebarCollapsed ? (
         <div className="flex items-center gap-1 [-webkit-app-region:no-drag]">
-          <IconButton
-            data-slot="header-sidebar-toggle"
-            data-cake-hint-key="s"
-            tooltip="Toggle sidebar"
-            hotkey="toggle-sidebar"
-            onClick={onToggleSidebar}
-          >
-            <SidebarIcon />
-          </IconButton>
           <IconButton
             data-cake-hint-key="b"
             tooltip="Back"
@@ -132,6 +133,11 @@ export const DrawBoardToolbar = observer(function DrawBoardToolbar({
             </div>
           </PopoverContent>
         </Popover>
+        <WorkspacePanelToggle
+          panel="chat"
+          visible={chatSidebarVisible}
+          onToggle={onToggleChatSidebar}
+        />
       </div>
     </header>
   );

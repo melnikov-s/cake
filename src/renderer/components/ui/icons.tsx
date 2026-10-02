@@ -220,6 +220,12 @@ export const SidebarIcon = () => (
     <path d="M9 4v16" />
   </Icon>
 );
+export const ChatSidebarIcon = () => (
+  <Icon>
+    <rect x="3.5" y="4" width="17" height="16" rx="3" />
+    <path d="M15 4v16" />
+  </Icon>
+);
 export const SplitRightIcon = () => (
   <Icon>
     <rect x="3.5" y="4" width="17" height="16" rx="3" />
