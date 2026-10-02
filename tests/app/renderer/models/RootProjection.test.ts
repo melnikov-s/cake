@@ -103,6 +103,73 @@ describe("RootProjection", () => {
     root[Symbol.dispose]();
   });
 
+  it("indexes focused catalogs without scanning every loaded session", () => {
+    const root = RootProjection.create({
+      discussionCatalogs: Array.from({ length: 100 }, (_, index) => ({
+        sessionId: `session-${index}`,
+      })),
+      subagentCatalogs: Array.from({ length: 100 }, (_, index) => ({
+        sessionId: `session-${index}`,
+      })),
+      scheduledMessageCatalogs: Array.from({ length: 100 }, (_, index) => ({
+        sessionId: `session-${index}`,
+      })),
+    });
+    const scans = [
+      vi.spyOn(root.discussionCatalogs, "find"),
+      vi.spyOn(root.subagentCatalogs, "find"),
+      vi.spyOn(root.scheduledMessageCatalogs, "find"),
+    ];
+    for (let index = 0; index < 100; index += 1) {
+      expect(root.discussionCatalog(`session-${index}`)).toBe(root.discussionCatalogs[index]);
+      expect(root.subagentCatalog(`session-${index}`)).toBe(root.subagentCatalogs[index]);
+      expect(root.scheduledMessageCatalog(`session-${index}`)).toBe(
+        root.scheduledMessageCatalogs[index],
+      );
+    }
+    for (const scan of scans) expect(scan).not.toHaveBeenCalled();
+    root[Symbol.dispose]();
+  });
+
+  it("refreshes indexed catalogs after removal, recreation, ID changes, and snapshots", () => {
+    const root = RootProjection.create();
+    const original = [
+      root.discussionCatalog("one"),
+      root.subagentCatalog("one"),
+      root.scheduledMessageCatalog("one"),
+    ];
+    root.removeProjectSessionProjections("one", { retainDiscussionCatalog: true });
+    expect(root.discussionCatalog("one")).toBe(original[0]);
+    expect(root.subagentCatalog("one")).not.toBe(original[1]);
+    expect(root.scheduledMessageCatalog("one")).not.toBe(original[2]);
+    root.removeProjectSessionProjections("one");
+    const recreated = [
+      root.discussionCatalog("one"),
+      root.subagentCatalog("one"),
+      root.scheduledMessageCatalog("one"),
+    ];
+    for (const [index, catalog] of recreated.entries()) {
+      expect(catalog).not.toBe(original[index]);
+      catalog.sessionId = "renamed";
+    }
+    expect(root.discussionCatalog("renamed")).toBe(recreated[0]);
+    expect(root.subagentCatalog("renamed")).toBe(recreated[1]);
+    expect(root.scheduledMessageCatalog("renamed")).toBe(recreated[2]);
+    applySnapshot(root, {
+      ...toSnapshot(root),
+      discussionCatalogs: [{ sessionId: "restored" }],
+      subagentCatalogs: [{ sessionId: "restored" }],
+      scheduledMessageCatalogs: [{ sessionId: "restored" }],
+    });
+    expect(root.discussionCatalog("restored")).toBe(root.discussionCatalogs[0]);
+    expect(root.subagentCatalog("restored")).toBe(root.subagentCatalogs[0]);
+    expect(root.scheduledMessageCatalog("restored")).toBe(root.scheduledMessageCatalogs[0]);
+    expect(root.discussionCatalog("renamed")).not.toBe(recreated[0]);
+    expect(root.subagentCatalog("renamed")).not.toBe(recreated[1]);
+    expect(root.scheduledMessageCatalog("renamed")).not.toBe(recreated[2]);
+    root[Symbol.dispose]();
+  });
+
   it("keeps Conversation and focused authorities as stable separate Models", () => {
     const root = RootProjection.create();
     const conversation = root.projectConversation("one", "/project");

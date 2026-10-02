@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { _electron as electron, expect, test, type CDPSession } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { emitRendererEvent } from "./main-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const baselineRoot = process.env.CAKE_PERFORMANCE_BASELINE_APP;
@@ -40,7 +41,7 @@ type RunResult = {
   normalizedWindowBytes: number;
 };
 
-async function fixture() {
+async function fixture(additionalChild = false) {
   const directory = await mkdtemp(join(tmpdir(), "cake-switching-performance-"));
   const project = join(directory, "project");
   const home = join(directory, "cake-home");
@@ -181,8 +182,11 @@ async function fixture() {
       },
     }),
   );
+  const transcriptTargets = additionalChild
+    ? [...targets, { sessionId: id(sessionCount), workspacePath: project }]
+    : targets;
   await Promise.all(
-    targets.map(async ({ sessionId }, index) => {
+    transcriptTargets.map(async ({ sessionId }, index) => {
       const entries = [
         { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
         {
@@ -207,8 +211,56 @@ async function fixture() {
       await utimes(path, modified, modified);
     }),
   );
-  return { directory, userData, home };
+  return { directory, userData, home, project };
 }
+
+test("opens a new family child among hundreds of restored session identities", async () => {
+  test.setTimeout(60_000);
+  const f = await fixture(true);
+  const application = await electron.launch({
+    args: [repositoryRoot],
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      CAKE_ELECTRON_SMOKE: "1",
+      CAKE_ELECTRON_USER_DATA: f.userData,
+      CAKE_HOME: f.home,
+    },
+  });
+  try {
+    const page = await application.firstWindow();
+    const failures: string[] = [];
+    page.on("pageerror", (error) => failures.push(error.message));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await expect(page.locator(".transcript").getByText(title(0), { exact: true })).toBeVisible();
+    await emitRendererEvent(application, {
+      type: "project-session-control-requested",
+      sessionId: id(0),
+      controlRequestId: "00000000-0000-4000-9000-000000000001",
+      invocation: {
+        _tag: "ProjectChildSession",
+        childSessionId: id(sessionCount),
+        title: title(sessionCount),
+        familyId: "performance-family",
+        familyChildOrder: 1,
+        familyDepth: 1,
+        workingDirectory: f.project,
+        placement: "right",
+      },
+    });
+    const parent = page.locator(`[data-slot="session-pane"][data-session-id="${id(0)}"]`);
+    const child = page.locator(`[data-slot="session-pane"][data-session-id="${id(sessionCount)}"]`);
+    await expect(parent.locator(".transcript").getByText(title(0), { exact: true })).toBeVisible();
+    await expect(
+      child.locator(".transcript").getByText(title(sessionCount), { exact: true }),
+    ).toBeVisible();
+    await expect(child).toHaveAttribute("data-focused", "true");
+    expect(failures).toEqual([]);
+  } finally {
+    await application.close();
+    await rm(f.directory, { recursive: true });
+  }
+});
 
 async function finishTrace(cdp: CDPSession) {
   const complete = new Promise<{ stream: string }>((done) =>

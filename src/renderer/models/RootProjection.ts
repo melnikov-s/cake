@@ -54,8 +54,14 @@ export class RootProjection extends Model {
     }
   }
 
+  // Each focused catalog type has one owning collection in this tree. Reuse
+  // the tree's reactive ID index: scanning these arrays for every loaded Store
+  // makes opening another (especially family-child) session quadratic.
   discussionCatalog(sessionId: string) {
-    let model = this.discussionCatalogs.find((item) => item.sessionId === sessionId);
+    let model =
+      this.discussionCatalogs.length === 0
+        ? undefined
+        : findModelById(this, DiscussionCatalog, sessionId);
     if (!model) {
       model = DiscussionCatalog.create({ sessionId });
       this.discussionCatalogs.push(model);
@@ -64,7 +70,10 @@ export class RootProjection extends Model {
   }
 
   subagentCatalog(sessionId: string) {
-    let model = this.subagentCatalogs.find((item) => item.sessionId === sessionId);
+    let model =
+      this.subagentCatalogs.length === 0
+        ? undefined
+        : findModelById(this, SubagentCatalog, sessionId);
     if (!model) {
       model = SubagentCatalog.create({ sessionId });
       this.subagentCatalogs.push(model);
@@ -73,7 +82,10 @@ export class RootProjection extends Model {
   }
 
   scheduledMessageCatalog(sessionId: string) {
-    let model = this.scheduledMessageCatalogs.find((item) => item.sessionId === sessionId);
+    let model =
+      this.scheduledMessageCatalogs.length === 0
+        ? undefined
+        : findModelById(this, ScheduledMessageCatalog, sessionId);
     if (!model) {
       model = ScheduledMessageCatalog.create({ sessionId });
       this.scheduledMessageCatalogs.push(model);

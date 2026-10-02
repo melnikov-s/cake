@@ -369,6 +369,61 @@ describe("SessionRegistryStore materialization", () => {
     fixture.dispose();
   });
 
+  it("opens a new family child without quadratic catalog scans across restored identities", () => {
+    const fixture = registryFixture({
+      state: {
+        targets: Array.from({ length: 100 }, (_, index) => ({
+          sessionId: `session-${index}`,
+          workspacePath: "/project",
+        })),
+      },
+      children: {},
+    });
+    const { registry, models } = fixture;
+    const parent = registry.findSession("session-0")!;
+    const other = registry.findSession("session-99")!;
+    const scans = [
+      vi.spyOn(models.discussionCatalogs, "find"),
+      vi.spyOn(models.subagentCatalogs, "find"),
+      vi.spyOn(models.scheduledMessageCatalogs, "find"),
+    ];
+    const child = registry.loadUnlistedFamilySession("child", "/project", "Child task", {
+      familyId: "family",
+      parentSessionId: parent.sessionId,
+      childOrder: 1,
+      depth: 1,
+    });
+
+    expect(registry.findSession(parent.sessionId)).toBe(parent);
+    expect(registry.findSession(other.sessionId)).toBe(other);
+    expect(registry.findSession("child")).toBe(child);
+    expect(registry.discussionSessionDemand).toEqual([child]);
+    expect(child.model).toBe(models.findProjectConversation("child"));
+    expect(child.props.discussionCatalog).toBe(models.discussionCatalog("child"));
+    expect(child.props.subagentCatalog).toBe(models.subagentCatalog("child"));
+    expect(child.props.scheduledMessageCatalog).toBe(models.scheduledMessageCatalog("child"));
+    expect(fixture.catalog.find("child")).toMatchObject({
+      familyParentSessionId: parent.sessionId,
+      familyId: "family",
+      title: "Child task",
+    });
+    for (const scan of scans) expect(scan).not.toHaveBeenCalled();
+
+    // Ordinary payload changes keep the same catalog and Store identities.
+    const sessionsGetter = vi.spyOn(registry, "sessions", "get");
+    child.model.streaming = true;
+    applyDiscussionCatalogUpdate(child.props.discussionCatalog, "child", {
+      _tag: "Snapshot",
+      revision: 1,
+      parentSessionId: "child",
+      threads: [],
+    });
+    expect(sessionsGetter).not.toHaveBeenCalled();
+    expect(registry.findSession("child")).toBe(child);
+    expect(child.activity).toBe("running");
+    fixture.dispose();
+  });
+
   it("clears the pending summary when authority arrives after materialization", () => {
     const fixture = registryFixture();
     const { catalogModel, registry } = fixture;

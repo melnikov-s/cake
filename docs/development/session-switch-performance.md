@@ -38,3 +38,18 @@ Each generated application's normalized persisted payload was 1,204,270 bytes, v
 Median click dispatch improved by approximately **7.4× (86% less blocking)**. None of the 24 patched switches contained a renderer task of at least 50 ms in the captured observation windows; this is an observation, not a guarantee that every future switch avoids a long task.
 
 These results compare equivalent generated workloads on the same machine. They are not a replay of the user's transcripts, a cold-session benchmark, or an exact reproduction of the original 305–328 ms dispatches. A new trace in the user's normal workload remains the real-world confirmation.
+
+## Cold family-child reconciliation
+
+`Trace-20261002T175207.json` was parsed programmatically (204,397 events, approximately 55 MB). Its renderer contained a 650.61 ms input task with 649.86 ms click dispatch, followed by a 785.69 ms task applying a Conversation update. Sampled stacks attributed approximately 295 ms and 306 ms respectively to `SessionRegistryStore.sessions`, and approximately 228 ms and 231 ms to Conversation lookup. These are sampled inclusive times and overlap; they must not be summed. The initial 1,019 ms renderer task was CPU-profiler startup, not session switching.
+
+The captured bundle still used linear Project Conversation lookup. The current checkout already indexes that lookup and isolates loaded-identity reconciliation. However, Discussion, Subagent, and Scheduled Message catalog lookup still scanned an entire collection for each loaded Store. Opening an additional family child invalidates the keyed Store collection, so those three scans made even the current cold path quadratic in the number of loaded identities. These lookups now use the existing typed, reactive Model ID index instead of a separate cache.
+
+A focused Node measurement used the real `RootProjection`, mounted `SessionRegistryStore`, and operation coordinator with 429 restored identities. After realization, it timed `loadUnlistedFamilySession` for one additional child across five fresh fixtures per implementation:
+
+| Catalog lookup | Median child-load time |
+| -------------- | ---------------------: |
+| Linear scans   |              520.78 ms |
+| Model ID index |               30.75 ms |
+
+This is approximately **17× faster (94% less synchronous work)** for the Store operation—not an Electron click-to-paint measurement or a replay of the original trace. Regression tests cover indexed lookup, removal, recreation, identifier changes, snapshot application, and child loading without catalog scans. The Electron scenario `opens a new family child among hundreds of restored session identities` verifies parent and child transcripts and pane selection with the same 429-identity scale, without brittle timing thresholds.
