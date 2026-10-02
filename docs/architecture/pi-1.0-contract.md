@@ -1,6 +1,6 @@
-# Pi 0.85.1 Service contract
+# Pi 1.0.0 Service contract
 
-Cake pins `@earendil-works/pi-coding-agent` 0.85.1. All ordinary application
+Cake pins `@earendil-works/pi-coding-agent` 1.0.0. All ordinary application
 imports of Pi packages live beneath `src/services/pi`. `PiLive` provides
 `CakeSessionRuntimes`, `PiModels`, and `PiAgentResources`; Cake domain operations and RPC
 never expose raw Pi objects.
@@ -25,6 +25,35 @@ The foundation test is provider-free and deterministic. It proves scoped
 session lifecycle, extension binding, interactive UI routing, and event
 normalization without credentials or model cost. Provider-backed streaming uses
 the same `CakeSessionRuntimes` implementation in production and remains opt-in in tests.
+
+## Minimal 1.0 upgrade
+
+Cake pins `pi-ai` and `pi-tui` to the same 1.0.0 cohort and requires Node
+`>=22.19.0`. Provider stream fixtures use Pi's `normalizeContext()`; Cake's retry
+wrapper forwards that normalized transcript unchanged. Queue fixtures honor
+Pi's `"queued" | "handled"` return contract.
+
+Provider login supplies Pi's stable installation UUID through `LoginOptions`,
+with identity and persistence owned by Pi's global `SettingsManager`. Cake keeps
+its boolean quiet-startup control, projecting Pi's `"header"` setting as enabled
+without rewriting it on load.
+
+This upgrade does not register the new MCP, codemode, or tool-search factories,
+or add virtual-model, image-generation, or classifier UI. Existing session tool
+and extension profiles remain unchanged.
+
+### Verification
+
+The minimal upgrade passes typecheck, format check, full lint, desktop/browser
+builds, standalone server bundling, 263 focused Pi/adapter unit tests, 19 runtime
+integration tests, and four Electron smoke tests (local/remote authentication,
+extension UI, durable session/reset and composer typing).
+
+The full unit run still fails the settings-search label assertion (`Cake prompts`
+versus `Instructions & prompts`). The slash-command and rate-limit-stop Electron
+smokes also fail their existing UI expectations. All three failures were reproduced
+with the previous Pi 0.85.1 dependencies; they are not fixed by this upgrade.
+No live-provider compatibility sweep was performed.
 
 ## Service ownership
 

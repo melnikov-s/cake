@@ -1,4 +1,4 @@
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import type { SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { Cache, Clock, Duration, Effect, Exit, Layer } from "effect";
@@ -153,6 +153,9 @@ export const makePiModelsLive = (agentDirectory: string) =>
           catch: (cause) => cause,
         });
       });
+      const authSettings = yield* Effect.sync(() =>
+        SettingsManager.create(agentDirectory, agentDirectory, { projectTrusted: true }),
+      );
       const login = Effect.fn("PiModelsLive.login")(function* (
         provider: string,
         authType: "api_key" | "oauth",
@@ -160,25 +163,37 @@ export const makePiModelsLive = (agentDirectory: string) =>
       ) {
         const runtime = yield* getRuntime();
         return yield* Effect.tryPromise({
-          try: (signal) =>
-            runtime.login(provider, authType, {
-              signal,
-              async prompt(prompt) {
-                const value = await interaction.request({
-                  kind: prompt.type,
-                  message: prompt.message,
-                  placeholder: "placeholder" in prompt ? prompt.placeholder : undefined,
-                  options:
-                    prompt.type === "select"
-                      ? prompt.options.map((option) => ({ id: option.id, label: option.label }))
-                      : undefined,
-                  signal: prompt.signal,
-                });
-                if (value === undefined) throw new Error("Authentication cancelled");
-                return value;
-              },
-              notify: interaction.notify,
-            }),
+          try: async (signal) => {
+            try {
+              return await runtime.login(
+                provider,
+                authType,
+                {
+                  signal,
+                  async prompt(prompt) {
+                    const value = await interaction.request({
+                      kind: prompt.type,
+                      message: prompt.message,
+                      placeholder: "placeholder" in prompt ? prompt.placeholder : undefined,
+                      options:
+                        prompt.type === "select"
+                          ? prompt.options.map((option) => ({ id: option.id, label: option.label }))
+                          : undefined,
+                      signal: prompt.signal,
+                    });
+                    if (value === undefined) throw new Error("Authentication cancelled");
+                    return value;
+                  },
+                  notify: interaction.notify,
+                },
+                {
+                  getDeviceId: () => authSettings.getOrCreateDeviceId(),
+                },
+              );
+            } finally {
+              await authSettings.flush();
+            }
+          },
           catch: (cause) => cause,
         });
       });

@@ -159,6 +159,15 @@ describe("CakeSessionRuntime characterization", () => {
 
     const prompt = runtime.prompt("Inspect with a tool", "prompt", []);
     await finalResponseStarted.promise;
+    // A server write is not a client receipt; wait for Pi's projected delta.
+    await vi.waitFor(() =>
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "part-updated",
+          part: expect.objectContaining({ kind: "text", text: "Finished.", status: "streaming" }),
+        }),
+      ),
+    );
 
     const liveSnapshot = await runtime.snapshot();
     expect(runtime.streaming).toBe(true);

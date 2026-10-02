@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "@effect/vitest";
+import { ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { Cache, Deferred, Effect, Fiber, Ref } from "effect";
 import { describe, it as vitestIt, vi } from "vitest";
 import {
@@ -65,6 +66,39 @@ const resolveError = (models: ReadonlyArray<PiModel>, input = selection) =>
   Effect.flip(resolve(models, input));
 
 describe("PiModels", () => {
+  vitestIt("supplies and persists Pi's installation ID for provider login", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cake-provider-device-id-"));
+    const deviceIds: Array<string | undefined> = [];
+    const login = vi
+      .spyOn(ModelRuntime.prototype, "login")
+      .mockImplementation(async (_provider, _type, _interaction, options) => {
+        deviceIds.push(options?.getDeviceId?.());
+        return { type: "api_key", key: "fixture" };
+      });
+    const interaction = { request: async () => undefined, notify: () => undefined };
+    try {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const models = yield* PiModels;
+          yield* models.login("openai", "oauth", interaction);
+          yield* models.login("openai", "oauth", interaction);
+        }).pipe(Effect.provide(makePiModelsLive(directory))),
+      );
+      assert.match(
+        deviceIds[0] ?? "",
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
+      assert.equal(deviceIds[1], deviceIds[0]);
+      const persisted = SettingsManager.create(directory, directory);
+      assert.equal(persisted.getGlobalSettings().deviceId, deviceIds[0]);
+      assert.equal(persisted.getOrCreateDeviceId(), deviceIds[0]);
+      await persisted.flush();
+    } finally {
+      login.mockRestore();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   vitestIt("refuses to remove an externally managed environment credential", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cake-provider-auth-"));
     vi.stubEnv("OPENAI_API_KEY", "test-external-credential");

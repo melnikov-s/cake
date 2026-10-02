@@ -22,7 +22,8 @@ export function projectPiSettings(
     mermaidRenderingMode: settingsManager.getMermaidRenderingMode(),
     showCacheMissNotices: settingsManager.getShowCacheMissNotices(),
     collapseChangelog: settingsManager.getCollapseChangelog(),
-    quietStartup: settingsManager.getQuietStartup(),
+    // Cake exposes the existing boolean control; Pi's "header" hides resource details too.
+    quietStartup: settingsManager.getQuietStartup() !== false,
     enableInstallTelemetry: settingsManager.getEnableInstallTelemetry(),
     defaultProjectTrust: settingsManager.getDefaultProjectTrust(),
     doubleEscapeAction: settingsManager.getDoubleEscapeAction(),

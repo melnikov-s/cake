@@ -18,8 +18,8 @@ function createFixture(overrides: Partial<AgentSession> = {}) {
     isCompacting: false,
     isBashRunning: false,
     prompt: vi.fn(async () => undefined),
-    steer: vi.fn(async () => undefined),
-    followUp: vi.fn(async () => undefined),
+    steer: vi.fn(async () => "queued" as const),
+    followUp: vi.fn(async () => "queued" as const),
     compact: vi.fn(async () => undefined),
     executeBash: vi.fn(async () => ({ exitCode: 0, cancelled: false })),
     abortBash: vi.fn(),
@@ -154,6 +154,7 @@ describe("CakeSessionRuntime turn controller", () => {
       isCompacting: true,
       followUp: vi.fn(async (text: string) => {
         live.followUp.push(text);
+        return "queued" as const;
       }),
       getFollowUpMessages: vi.fn(() => live.followUp),
       clearQueue: vi.fn(() => {
@@ -194,9 +195,11 @@ describe("CakeSessionRuntime turn controller", () => {
         }),
         steer: vi.fn(async (text: string) => {
           live.steering.push(text);
+          return "queued" as const;
         }),
         followUp: vi.fn(async (text: string) => {
           live.followUp.push(text);
+          return "queued" as const;
         }),
         getSteeringMessages: vi.fn(() => live.steering),
         getFollowUpMessages: vi.fn(() => live.followUp),

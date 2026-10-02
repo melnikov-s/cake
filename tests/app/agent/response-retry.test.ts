@@ -1,7 +1,7 @@
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
-  type Context,
+  normalizeContext,
   type Model,
 } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
@@ -55,7 +55,7 @@ function response(message: AssistantMessage) {
 }
 
 const model = {} as Model<"openai-completions">;
-const context: Context = { messages: [] };
+const context = normalizeContext({ messages: [] });
 
 async function streamResult(stream: ReturnType<StreamFunction>) {
   return (await stream).result();

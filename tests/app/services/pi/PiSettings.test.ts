@@ -25,6 +25,26 @@ describe("PiSettings", () => {
     }).pipe(Effect.provide(makePiSettingsLayer(manager)));
   });
 
+  it.effect("projects Pi's header-only startup setting through Cake's boolean control", () => {
+    const manager = SettingsManager.inMemory({ quietStartup: "header" });
+    return runWithSettings(
+      manager,
+      Effect.gen(function* () {
+        const settings = yield* PiSettings;
+        expect((yield* settings.load()).quietStartup).toBe(true);
+        expect(manager.getQuietStartup()).toBe("header");
+        expect((yield* settings.update({ key: "quietStartup", value: false })).quietStartup).toBe(
+          false,
+        );
+        expect(manager.getQuietStartup()).toBe(false);
+        expect((yield* settings.update({ key: "quietStartup", value: true })).quietStartup).toBe(
+          true,
+        );
+        expect(manager.getQuietStartup()).toBe(true);
+      }),
+    );
+  });
+
   it.effect("persists updates through Pi's settings manager", () => {
     const manager = SettingsManager.inMemory();
 

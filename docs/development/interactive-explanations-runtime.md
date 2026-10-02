@@ -255,7 +255,7 @@ a renderer connection or associated with a Project Session.
 Main attaches the PNG to the private specialist prompt
 as base64 `image/png`; it is not exposed through preload, written to the Project, or persisted in
 the artifact repository. It is **not memory-only** when the specialist Pi Session is persisted:
-Pi 0.85.1 builds the user message with the supplied image blocks and
+Pi 1.0.0 builds the user message with the supplied image blocks and
 `AgentSession._handleAgentEvent` passes the completed user message to
 `SessionManager.appendMessage`, so the base64 image is stored in that private Pi JSONL transcript.
 The specialist-session retention/deletion policy therefore also governs screenshot retention. A

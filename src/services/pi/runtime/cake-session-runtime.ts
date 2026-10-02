@@ -93,7 +93,7 @@ export {
   projectSessionCreateInputSchema,
 } from "./cake-session-runtime-capabilities";
 
-export const piRuntimeVersion = "0.85.1" as const;
+export const piRuntimeVersion = "1.0.0" as const;
 
 const SUBAGENT_REPORT_LIMIT = 16_000;
 
