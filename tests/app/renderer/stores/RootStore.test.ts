@@ -116,6 +116,66 @@ describe("RootStore session navigation", () => {
     }
   });
 
+  it("switches directly between staged chats in different Projects and restores their drafts", async () => {
+    const models = RootProjection.create();
+    const otherProjectPath = "/projects/another";
+    const inspect = vi.fn(async (input: { operationId: string; path: string }) => ({
+      ...input,
+      trustRequired: false,
+    }));
+    const client = {
+      workspaces: {
+        inspect,
+        registerProject: vi.fn(async () => undefined),
+        loadStagedSlashCommands: vi.fn(async () => []),
+      },
+    } as unknown as Client;
+    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
+
+    try {
+      await root.createSession(projectPath);
+      const first = root.projectWorkbenchStore.activeSession!;
+      const firstDraft = first.conversationSessionStore.composerStore.draftStore;
+      firstDraft.setText("First project draft");
+      const focusRevision = firstDraft.focusRequestRevision;
+
+      // Repeated requests in the same Project must reuse and focus its composer.
+      await root.createSession(projectPath);
+      expect(root.projectWorkbenchStore.activeSession).toBe(first);
+      expect(firstDraft.text).toBe("First project draft");
+      expect(firstDraft.focusRequestRevision).toBeGreaterThan(focusRevision);
+      expect(inspect).toHaveBeenCalledTimes(1);
+
+      await root.createSession(otherProjectPath);
+      const second = root.projectWorkbenchStore.activeSession!;
+      expect(second.sessionId).not.toBe(first.sessionId);
+      expect(second.workspacePath).toBe(otherProjectPath);
+      expect(root.projectWorkbenchStore.projectOpenStore.projectPath).toBe(otherProjectPath);
+      expect(root.appShellStore.activeConversation).toEqual({
+        kind: "project-session",
+        sessionId: second.sessionId,
+      });
+      const secondDraft = second.conversationSessionStore.composerStore.draftStore;
+      expect(secondDraft.text).toBe("");
+      secondDraft.setText("Second project draft");
+      expect(inspect).toHaveBeenCalledTimes(2);
+
+      await root.createSession(projectPath);
+      expect(root.projectWorkbenchStore.activeSession).toBe(first);
+      expect(firstDraft.text).toBe("First project draft");
+      await root.createSession(otherProjectPath);
+      expect(root.projectWorkbenchStore.activeSession).toBe(second);
+      expect(secondDraft.text).toBe("Second project draft");
+      expect(root.sessionRegistry.pendingSessions.isStaged(first.sessionId)).toBe(true);
+      expect(root.sessionRegistry.pendingSessions.isStaged(second.sessionId)).toBe(true);
+      expect(inspect).toHaveBeenCalledTimes(2);
+      expect(root.sessionLayoutStore.panes).toHaveLength(1);
+    } finally {
+      root[Symbol.dispose]();
+      models[Symbol.dispose]();
+    }
+  });
+
   it("opens projected family children in one reusable pane", async () => {
     const models = RootProjection.create();
     applySnapshot(models.sessionCatalog, {

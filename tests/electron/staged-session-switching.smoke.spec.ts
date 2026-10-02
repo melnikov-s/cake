@@ -1,0 +1,84 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { _electron as electron, expect, test } from "@playwright/test";
+
+const repositoryRoot = resolve(import.meta.dirname, "../..");
+
+test("switches directly between new Project chats and retains each composer", async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-staged-switching-smoke-"));
+  const userData = join(temporaryRoot, "user-data");
+  const cakeHome = join(temporaryRoot, "cake-home");
+  const projects = [join(temporaryRoot, "first"), join(temporaryRoot, "second")];
+  await Promise.all(
+    [userData, join(cakeHome, "state"), ...projects].map((path) =>
+      mkdir(path, { recursive: true }),
+    ),
+  );
+  await writeFile(
+    join(userData, "window-state.json"),
+    JSON.stringify({ projectPath: projects[0], recentProjectPaths: projects, draft: "" }),
+  );
+  await writeFile(
+    join(cakeHome, "state", "application.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      projects: projects.map((path, index) => ({
+        path,
+        name: index === 0 ? "first" : "second",
+        addedAt: new Date(0).toISOString(),
+        lastOpenedAt: new Date(0).toISOString(),
+      })),
+      trustedProjectPaths: projects,
+    }),
+  );
+
+  const application = await electron.launch({
+    args: [repositoryRoot],
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      CAKE_ELECTRON_SMOKE: "1",
+      CAKE_ELECTRON_USER_DATA: userData,
+      CAKE_HOME: cakeHome,
+    },
+  });
+
+  try {
+    const page = await application.firstWindow();
+    const composer = page.getByLabel("Message");
+    await expect(composer).toBeVisible({ timeout: 20_000 });
+    const newFirst = page.getByRole("button", { name: "New chat in first", exact: true });
+    const newSecond = page.getByRole("button", { name: "New chat in second", exact: true });
+
+    await newFirst.click();
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially("First project draft");
+    await expect(composer).toHaveValue("First project draft");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+
+    // Repeating New Chat in the same Project retains the staged conversation.
+    await newFirst.click();
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue("First project draft");
+
+    // No existing-session detour should be needed to start in another Project.
+    await newSecond.click();
+    await expect(composer).toHaveValue("");
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially("Second project draft");
+    await expect(composer).toHaveValue("Second project draft");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+
+    await newFirst.click();
+    await expect(composer).toHaveValue("First project draft");
+    await expect(composer).toBeFocused();
+    await newSecond.click();
+    await expect(composer).toHaveValue("Second project draft");
+    await expect(composer).toBeFocused();
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+  } finally {
+    await application.close();
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});

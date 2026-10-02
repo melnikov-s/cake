@@ -326,6 +326,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   async startNewSession(path = this.projectOpenStore.projectPath) {
     if (
       this.activeSession &&
+      this.activeSession.workspacePath === path &&
       this.sessionRegistry.pendingSessions.isStaged(this.activeSession.sessionId)
     ) {
       this.activeSession.conversationSessionStore.composerStore.draftStore.requestFocus();
