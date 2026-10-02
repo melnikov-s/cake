@@ -92,17 +92,33 @@ export const ChatTranscript = observer(function ChatTranscript({
     resize: "instant",
   });
   const atBottom = useRef(!restoredScrollPosition || restoredScrollPosition.kind === "bottom");
-  const scrollToBottom = useCallback(() => {
-    atBottom.current = true;
-    if (virtualized)
-      virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" });
-    else void scrollCompactToBottom("instant");
-  }, [scrollCompactToBottom, virtualized]);
-  useImperativeHandle(ref, () => ({ scrollToBottom }), [scrollToBottom]);
+  const bottomFrame = useRef<number | undefined>(undefined);
+  const allowFollowing = useRef(true);
   const handleTotalHeightChange = useCallback(() => {
-    if (atBottom.current)
-      virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior: "auto" });
-  }, []);
+    if (!atBottom.current || !scroller || bottomFrame.current !== undefined) return;
+    // Virtuoso's scrollToIndex retries as row measurements change, even after
+    // upward input cancels following. Align the committed DOM once instead and
+    // check user intent again before applying this frame's correction.
+    bottomFrame.current = requestAnimationFrame(() => {
+      bottomFrame.current = undefined;
+      if (!atBottom.current) return;
+      scroller.scrollTop = scroller.scrollHeight;
+    });
+  }, [scroller]);
+  useLayoutEffect(
+    () => () => {
+      if (bottomFrame.current !== undefined) cancelAnimationFrame(bottomFrame.current);
+      bottomFrame.current = undefined;
+    },
+    [scroller],
+  );
+  const scrollToBottom = useCallback(() => {
+    allowFollowing.current = true;
+    atBottom.current = true;
+    if (virtualized) handleTotalHeightChange();
+    else void scrollCompactToBottom("instant");
+  }, [handleTotalHeightChange, scrollCompactToBottom, virtualized]);
+  useImperativeHandle(ref, () => ({ scrollToBottom }), [scrollToBottom]);
   const attachScroller = useCallback(
     (element: HTMLDivElement | null) => {
       if (!virtualized) scrollRef(element);
@@ -177,10 +193,18 @@ export const ChatTranscript = observer(function ChatTranscript({
         align: "start" as const,
         offset: -restoredScrollPosition.offset,
       };
-    return { index: itemCount - 1, align: "end" as const };
+    // Normal bottom opening uses the same cancellable alignment as streaming.
+    // Virtuoso retries initial index navigation too, which can otherwise pull a
+    // user back down immediately after opening a session. Only use it as a
+    // fallback when a saved history anchor no longer exists.
+    return restoredScrollPosition?.kind === "message"
+      ? { index: itemCount - 1, align: "end" as const }
+      : undefined;
   }, [itemCount, messageNavigationItemIndex, restoredMessageItemIndex, restoredScrollPosition]);
   useLayoutEffect(() => {
     if (!messageNavigationRequest || messageNavigationItemIndex < 0) return;
+    allowFollowing.current = false;
+    atBottom.current = false;
     if (!virtualized) stopScroll();
     if (virtualized)
       virtuosoRef.current?.scrollToIndex({
@@ -197,6 +221,13 @@ export const ChatTranscript = observer(function ChatTranscript({
     if (!scroller) return;
     let pendingPosition = untracked(() => store.transcriptInteraction.transcriptScrollPosition);
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
+    let draggingScrollbar = false;
+    let previousTop = scroller.scrollTop;
+    const pauseFollowing = () => {
+      allowFollowing.current = false;
+      atBottom.current = false;
+      if (!virtualized) stopScroll();
+    };
     const captureScrollPosition = (): TranscriptScrollPosition | undefined => {
       if (scroller.clientHeight <= 0) return undefined;
       if (scroller.scrollTop <= 1) return { kind: "top" };
@@ -220,40 +251,89 @@ export const ChatTranscript = observer(function ChatTranscript({
     };
     const captureAndSchedule = () => {
       pendingPosition = captureScrollPosition();
-      // Content growth can leave the viewport temporarily above the new bottom
-      // before Virtuoso reports the new total height. Only explicit upward user
-      // input may cancel following; a scroll event alone is ambiguous because
-      // Virtuoso also emits them while measuring and realigning streamed output.
-      if (pendingPosition?.kind === "bottom") atBottom.current = true;
+      if (draggingScrollbar) {
+        if (scroller.scrollTop < previousTop) pauseFollowing();
+        else if (scroller.scrollTop > previousTop) allowFollowing.current = true;
+      }
+      previousTop = scroller.scrollTop;
+      // A queued bottom event can arrive after upward input. Only a subsequent
+      // downward gesture or an explicit request may enable following again.
+      // Scroll events alone are ambiguous: Virtuoso also moves during measurement.
+      if (pendingPosition?.kind === "bottom" && allowFollowing.current) atBottom.current = true;
       if (!pendingPosition) return;
       if (saveTimer !== undefined) clearTimeout(saveTimer);
       saveTimer = setTimeout(commitScrollPosition, 100);
     };
-    const cancelFollowingForUpwardWheel = (event: WheelEvent) => {
-      if (event.deltaY >= 0) return;
-      const target = event.target;
+    const handleScrollIntent = (target: EventTarget | null, direction: number) => {
+      if (direction === 0) return;
       if (!(target instanceof Element)) return;
       let ancestor: Element | null = target;
       while (ancestor && ancestor !== scroller) {
-        if (
-          ancestor instanceof HTMLElement &&
-          ancestor.scrollHeight > ancestor.clientHeight &&
-          ["auto", "scroll"].includes(getComputedStyle(ancestor).overflowY)
-        )
-          return;
+        if (ancestor instanceof HTMLElement) {
+          const style = getComputedStyle(ancestor);
+          if (["auto", "scroll"].includes(style.overflowY)) {
+            const canScroll =
+              direction < 0
+                ? ancestor.scrollTop > 0
+                : ancestor.scrollTop + ancestor.clientHeight < ancestor.scrollHeight;
+            // An uncontained nested scroller at its boundary chains to the
+            // transcript; that gesture must cancel outer following too.
+            if (canScroll || ["contain", "none"].includes(style.overscrollBehaviorY)) return;
+          }
+        }
         ancestor = ancestor.parentElement;
       }
-      atBottom.current = false;
+      if (direction < 0) pauseFollowing();
+      else {
+        allowFollowing.current = true;
+        if (scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 1)
+          atBottom.current = true;
+      }
     };
-    scroller.addEventListener("wheel", cancelFollowingForUpwardWheel, { passive: true });
+    const handleWheel = (event: WheelEvent) => handleScrollIntent(event.target, event.deltaY);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        !(event.target instanceof Element) ||
+        event.target.closest('input, textarea, select, [contenteditable="true"]')
+      )
+        return;
+      if (
+        ["ArrowUp", "PageUp", "Home"].includes(event.key) ||
+        (event.key === " " && event.shiftKey)
+      )
+        handleScrollIntent(event.target, -1);
+      else if (["ArrowDown", "PageDown", "End", " "].includes(event.key))
+        handleScrollIntent(event.target, 1);
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.target !== scroller) return;
+      const x = event.clientX - scroller.getBoundingClientRect().left;
+      if (x >= scroller.clientLeft && x < scroller.clientLeft + scroller.clientWidth) return;
+      draggingScrollbar = true;
+      previousTop = scroller.scrollTop;
+      pauseFollowing();
+    };
+    const handlePointerUp = () => {
+      draggingScrollbar = false;
+    };
+    scroller.addEventListener("wheel", handleWheel, { passive: true });
+    scroller.addEventListener("keydown", handleKeyDown);
+    scroller.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
     scroller.addEventListener("scroll", captureAndSchedule, { passive: true });
     return () => {
-      scroller.removeEventListener("wheel", cancelFollowingForUpwardWheel);
+      scroller.removeEventListener("wheel", handleWheel);
+      scroller.removeEventListener("keydown", handleKeyDown);
+      scroller.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
       scroller.removeEventListener("scroll", captureAndSchedule);
       if (saveTimer !== undefined) clearTimeout(saveTimer);
       if (pendingPosition) store.transcriptInteraction.setTranscriptScrollPosition(pendingPosition);
     };
-  }, [scroller, store]);
+  }, [scroller, stopScroll, store, virtualized]);
   const error = errorOverride ?? store.error;
   // Right-clicking any selection inside this conversation keeps the native
   // Electron edit menu. The capture is held until that menu sends its

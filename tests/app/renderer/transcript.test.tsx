@@ -352,7 +352,7 @@ describe("Transcript scrolling", () => {
     container.remove();
   });
 
-  it("defaults a loaded session with no scroll target to the very bottom", () => {
+  it("opens a loaded session through cancellable bottom following, not index navigation", () => {
     const parts: UiPart[] = [
       { id: "assistant-1", kind: "text", role: "assistant", text: "First", status: "complete" },
       { id: "assistant-2", kind: "text", role: "assistant", text: "Latest", status: "complete" },
@@ -360,8 +360,79 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
 
-    expect(virtualizedProps.current?.initialTopMostItemIndex).toEqual({ index: 1, align: "end" });
+    expect(virtualizedProps.current?.initialTopMostItemIndex).toBeUndefined();
     expect(virtualizedProps.current?.followOutput).toBe(false);
+  });
+
+  it("cancels pending bottom alignment and only resumes after moving back down", () => {
+    const frames: FrameRequestCallback[] = [];
+    Object.assign(globalThis, {
+      requestAnimationFrame: (callback: FrameRequestCallback) => frames.push(callback),
+    });
+    const flushFrames = () => act(() => frames.splice(0).forEach((callback) => callback(0)));
+    const parts: UiPart[] = [
+      { id: "assistant-1", kind: "text", role: "assistant", text: "Latest", status: "complete" },
+    ];
+    act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
+    const transcript = container.querySelector<HTMLDivElement>(".transcript")!;
+    let height = 1_000;
+    let top = 800;
+    Object.defineProperties(transcript, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, get: () => height },
+      scrollTop: {
+        configurable: true,
+        get: () => top,
+        set: (value: number) => {
+          top = Math.min(height - 200, Math.max(0, value));
+        },
+      },
+    });
+    const grow = () => {
+      height += 100;
+      act(() => {
+        (virtualizedProps.current?.totalListHeightChanged as (height: number) => void)(height);
+      });
+    };
+    grow();
+    flushFrames();
+    expect(top).toBe(900);
+
+    // A queued native bottom event can arrive after upward intent, before the
+    // wheel has moved even one pixel. It must not silently re-enable following.
+    act(() => {
+      (virtualizedProps.current?.totalListHeightChanged as (height: number) => void)(height);
+      transcript.dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true }));
+      transcript.dispatchEvent(new Event("scroll"));
+    });
+    grow();
+    flushFrames();
+    expect(top).toBe(900);
+    grow();
+    flushFrames();
+    expect(top).toBe(900);
+    expect(scrollToIndex).not.toHaveBeenCalled();
+
+    act(() => {
+      transcript.dispatchEvent(new WheelEvent("wheel", { deltaY: 500, bubbles: true }));
+      transcript.scrollTop = height;
+      transcript.dispatchEvent(new Event("scroll"));
+    });
+    grow();
+    flushFrames();
+    expect(top).toBe(height - 200);
+
+    // Dragging the scrollbar also detaches without a wheel event.
+    act(() => {
+      transcript.dispatchEvent(new MouseEvent("pointerdown"));
+      transcript.scrollTop -= 100;
+      transcript.dispatchEvent(new Event("scroll"));
+    });
+    act(() => window.dispatchEvent(new MouseEvent("pointerup")));
+    const readingTop = top;
+    grow();
+    flushFrames();
+    expect(top).toBe(readingTop);
   });
 
   it("lays consecutive sources out together in a wrapping horizontal group", () => {

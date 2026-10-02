@@ -1,4 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type Locator } from "@playwright/test";
@@ -53,6 +55,66 @@ function sessionTranscript(sessionId: string, project: string, title: string, co
   return entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n";
 }
 
+async function streamingProvider(cakeHome: string) {
+  let response: ServerResponse | undefined;
+  const server = createServer((_request, nextResponse) => {
+    response = nextResponse;
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.flushHeaders();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address() as AddressInfo;
+  await writeFile(
+    join(cakeHome, "pi", "models.json"),
+    JSON.stringify({
+      providers: {
+        "scroll-provider": {
+          name: "Scroll provider",
+          baseUrl: `http://127.0.0.1:${address.port}/v1`,
+          apiKey: "fixture",
+          api: "openai-completions",
+          models: [
+            {
+              id: "scroll-model",
+              name: "Scroll fixture",
+              reasoning: false,
+              input: ["text"],
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              contextWindow: 128000,
+              maxTokens: 4096,
+            },
+          ],
+        },
+      },
+    }),
+  );
+  const chunk = (text: string, finish: boolean) =>
+    `data: ${JSON.stringify({
+      id: "scroll-stream",
+      object: "chat.completion.chunk",
+      created: 0,
+      model: "scroll-model",
+      choices: [{ index: 0, delta: { content: text }, finish_reason: finish ? "stop" : null }],
+    })}\n\n`;
+  return {
+    ready: () => Boolean(response),
+    send(text: string) {
+      if (!response) throw new Error("No provider request");
+      response.write(chunk(text, false));
+    },
+    finish() {
+      response?.end(chunk("", true) + "data: [DONE]\n\n");
+    },
+    async close() {
+      response?.end();
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    },
+  };
+}
+
 async function transcriptAnchor(transcript: Locator) {
   return transcript.evaluate((element) => {
     const viewportTop = element.getBoundingClientRect().top;
@@ -93,6 +155,8 @@ for (const scenario of [
   "reopens a large loaded session",
   "restores session position",
   "follows the full bottom and isolates nested scrolling",
+  "escapes bottom following during height measurement",
+  "keeps reading position while another session streams",
 ] as const) {
   test(scenario, async () => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-session-scroll-smoke-"));
@@ -152,6 +216,10 @@ for (const scenario of [
       ),
     ]);
 
+    const stream =
+      scenario === "keeps reading position while another session streams"
+        ? await streamingProvider(cakeHome)
+        : undefined;
     const application = await electron.launch({
       args: [repositoryRoot],
       cwd: repositoryRoot,
@@ -177,6 +245,121 @@ for (const scenario of [
           ),
         )
         .toBeLessThanOrEqual(1);
+
+      if (scenario === "escapes bottom following during height measurement") {
+        // Growing the last row starts bottom alignment. Reproduce the ordering
+        // deterministically in one frame: upward intent, native scroll movement,
+        // then another measurement before Virtuoso's old alignment retry expires.
+        await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+          "transcript item 47",
+        );
+        await transcript.hover({ position: { x: 20, y: 200 } });
+        await page.waitForTimeout(250);
+        await transcript.evaluate(async (element) => {
+          const lastItem = Array.from(
+            element.querySelectorAll<HTMLElement>('[data-slot="transcript-item"]'),
+          ).at(-1);
+          if (!lastItem) throw new Error("Missing last transcript item");
+          lastItem.style.minHeight = "500px";
+          await new Promise<void>((resolve) => {
+            const aligned = () => {
+              if (element.scrollHeight - element.clientHeight - element.scrollTop <= 1) resolve();
+              else requestAnimationFrame(aligned);
+            };
+            requestAnimationFrame(aligned);
+          });
+          element.dispatchEvent(new WheelEvent("wheel", { deltaY: -800, bubbles: true }));
+          element.scrollTop -= 800;
+          lastItem.style.minHeight = "800px";
+        });
+        await expect
+          .poll(() =>
+            transcript.evaluate(
+              (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+            ),
+          )
+          .toBeGreaterThan(500);
+        await page.waitForTimeout(400);
+        expect(
+          await transcript.evaluate(
+            (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+          ),
+        ).toBeGreaterThan(500);
+
+        // Check native keyboard input too, focused on an actual transcript
+        // control rather than on a test-only focusable element.
+        await page.mouse.wheel(0, 10_000);
+        await expect
+          .poll(() =>
+            transcript.evaluate(
+              (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+            ),
+          )
+          .toBeLessThanOrEqual(1);
+        const copy = transcript.getByRole("button", { name: "Copy response", exact: true }).last();
+        await copy.focus();
+        await expect(copy).toBeFocused();
+        await page.keyboard.press("PageUp");
+        await expect
+          .poll(() =>
+            transcript.evaluate(
+              (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+            ),
+          )
+          .toBeGreaterThan(100);
+        await transcript
+          .locator('[data-slot="transcript-item"]')
+          .last()
+          .evaluate((element) => {
+            element.style.minHeight = "1000px";
+          });
+        await page.waitForTimeout(250);
+        expect(
+          await transcript.evaluate(
+            (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+          ),
+        ).toBeGreaterThan(100);
+
+        await transcript.hover({ position: { x: 20, y: 200 } });
+        await page.mouse.wheel(0, 10_000);
+        await expect
+          .poll(() =>
+            transcript.evaluate(
+              (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+            ),
+          )
+          .toBeLessThanOrEqual(1);
+        const scrollbar = await transcript.evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          const gutter = rect.width - element.clientWidth - element.clientLeft;
+          const thumbHeight = element.clientHeight ** 2 / element.scrollHeight;
+          return { x: rect.right - gutter / 2, y: rect.bottom - thumbHeight / 2 };
+        });
+        await page.mouse.move(scrollbar.x, scrollbar.y);
+        await page.mouse.down();
+        await page.mouse.move(scrollbar.x, scrollbar.y - 180, { steps: 5 });
+        await page.mouse.up();
+        await expect
+          .poll(() =>
+            transcript.evaluate(
+              (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+            ),
+          )
+          .toBeGreaterThan(100);
+        await transcript
+          .locator('[data-slot="transcript-item"]')
+          .last()
+          .evaluate((element) => {
+            element.style.minHeight = "1200px";
+          });
+        await page.waitForTimeout(250);
+        expect(
+          await transcript.evaluate(
+            (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+          ),
+        ).toBeGreaterThan(100);
+        return;
+      }
 
       if (scenario === "reopens a large loaded session") {
         for (let repeat = 0; repeat < 3; repeat += 1) {
@@ -275,6 +458,37 @@ for (const scenario of [
             ),
           )
           .toBeLessThanOrEqual(1);
+        // Without containment, upward input at the nested top reaches the outer
+        // transcript. It must cancel following on the very first gesture.
+        await nested.evaluate((element) => {
+          element.style.overscrollBehavior = "auto";
+        });
+        await page.mouse.wheel(0, -150);
+        await expect
+          .poll(() =>
+            transcript.evaluate(
+              (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+            ),
+          )
+          .toBeGreaterThan(100);
+        await nested.evaluate((element) => {
+          element.style.height = "300px";
+        });
+        await page.waitForTimeout(250);
+        expect(
+          await transcript.evaluate(
+            (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+          ),
+        ).toBeGreaterThan(100);
+        await transcript.hover({ position: { x: 20, y: 200 } });
+        await page.mouse.wheel(0, 10_000);
+        await expect
+          .poll(() =>
+            transcript.evaluate(
+              (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+            ),
+          )
+          .toBeLessThanOrEqual(1);
         await nested.evaluate((element) => element.remove());
         await expect
           .poll(() =>
@@ -295,6 +509,42 @@ for (const scenario of [
       await page.waitForTimeout(500);
       const savedAnchor = await transcriptAnchor(transcript);
 
+      if (stream) {
+        // Submitting in B must not re-enable following in A, and B's ongoing
+        // provider events and completion must not disturb A's restored anchor.
+        await secondSession.locator(".session-row").click();
+        await expect(secondSession).toHaveClass(/active/);
+        await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+          "Second scroll fixture transcript item 47",
+        );
+        await page.getByRole("button", { name: "Model configuration" }).click();
+        await page.getByRole("button", { name: "Change model" }).click();
+        await page.getByLabel("Search presets and models").fill("Scroll fixture");
+        await page
+          .getByRole("button", { name: /Scroll fixture/ })
+          .first()
+          .click();
+        await page.getByRole("button", { name: "Apply", exact: true }).click();
+        await composer.click();
+        await expect(composer).toBeFocused();
+        await page.keyboard.type("Stream in the other session");
+        await expect(composer).toHaveValue("Stream in the other session");
+        await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+        await page.keyboard.press("Enter");
+        await expect.poll(stream.ready).toBe(true);
+        stream.send("Background response started.\n\n");
+        await expect(transcript).toContainText("Background response started.");
+        await firstSession.locator(".session-row").click();
+        await expect(firstSession).toHaveClass(/active/);
+        await expectRestoredAnchor(transcript, savedAnchor);
+        await expect(secondSession.locator('[aria-label="Running"]')).toBeVisible();
+        stream.send("Background content keeps growing.\n\n".repeat(100));
+        stream.finish();
+        await expect(secondSession.locator('[aria-label="Running"]')).toHaveCount(0);
+        await expectRestoredAnchor(transcript, savedAnchor);
+        return;
+      }
+
       if (scenario === "restores session position") {
         await page.getByRole("button", { name: "Open settings", exact: true }).click();
         await page.getByLabel("Back to chat").click();
@@ -306,6 +556,9 @@ for (const scenario of [
         await expect(firstSession).toHaveClass(/active/);
 
         await expectRestoredAnchor(transcript, savedAnchor);
+        // Let Virtuoso finish the initial anchor measurement before testing a
+        // separate programmatic move. An empty, not-yet-mounted list is also at 0.
+        await page.waitForTimeout(250);
 
         await transcript.evaluate((element) => {
           element.scrollTop = 0;
@@ -316,7 +569,11 @@ for (const scenario of [
         await expect(secondSession).toHaveClass(/active/);
         await firstSession.locator(".session-row").click();
         await expect(firstSession).toHaveClass(/active/);
+        await expect(transcript.locator('[data-slot="transcript-item"]').first()).toContainText(
+          "First scroll fixture",
+        );
         await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBe(0);
+        await page.waitForTimeout(250);
 
         await transcript.evaluate((element) => {
           element.scrollTop = element.scrollHeight;
@@ -415,6 +672,7 @@ for (const scenario of [
       }
     } finally {
       await application.close();
+      await stream?.close();
       await rm(temporaryRoot, { recursive: true, force: true });
     }
   });
