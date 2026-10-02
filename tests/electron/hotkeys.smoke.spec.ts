@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -119,11 +119,17 @@ test("remaps application hotkeys from Settings", async () => {
     await page.getByRole("button", { name: "Reset all" }).click();
     await sidebarShortcut.click();
     await expect(sidebarShortcut).toBeFocused();
-    await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    });
     await page.keyboard.press(`${modifier}+Shift+B`);
     await expect(sidebarShortcut).toContainText(
       process.platform === "darwin" ? "⌘⇧B" : "Ctrl+Shift+B",
     );
+
+    await expect(
+      page.getByRole("button", { name: "Toggle Browser Mode shortcut", exact: true }),
+    ).toHaveText("Not assigned");
 
     await terminalShortcut.click();
     await expect(terminalShortcut).toBeFocused();
@@ -142,6 +148,52 @@ test("remaps application hotkeys from Settings", async () => {
     await expect(terminal).toHaveAttribute("aria-hidden", "true");
     await page.keyboard.press(`${modifier}+Shift+Y`);
     await expect(terminal).toHaveAttribute("aria-hidden", "false");
+
+    // Window snapshots are debounced; wait for the real storage boundary before reloading.
+    await expect(async () => {
+      const snapshot: unknown = JSON.parse(
+        await readFile(join(userData, "window-state.json"), "utf8"),
+      );
+      expect(snapshot).toMatchObject({
+        data: {
+          children: {
+            settingsStore: {
+              children: {
+                hotkeys: {
+                  state: {
+                    bindings: {
+                      "toggle-sidebar": "Mod+Shift+B",
+                      "toggle-browser": "",
+                      "toggle-terminal": "Mod+Shift+Y",
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+    }).toPass({ timeout: 10_000 });
+    await page.reload();
+    await expect(messageInput).toBeVisible();
+    await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
+    await page.getByRole("button", { name: "Hotkeys", exact: true }).click();
+    await expect(sidebarShortcut).toHaveText(
+      process.platform === "darwin" ? "⌘⇧B" : "Ctrl+Shift+B",
+    );
+    await expect(terminalShortcut).toHaveText(
+      process.platform === "darwin" ? "⌘⇧Y" : "Ctrl+Shift+Y",
+    );
+    await expect(
+      page.getByRole("button", { name: "Toggle Browser Mode shortcut", exact: true }),
+    ).toHaveText("Not assigned");
+    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await page.keyboard.press(`${modifier}+B`);
+    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
+    await page.keyboard.press(`${modifier}+Shift+B`);
+    await expect(page.locator('[data-slot="sidebar"]')).toHaveCount(0);
+    await page.keyboard.press(`${modifier}+Shift+B`);
+    await expect(page.locator('[data-slot="sidebar"]')).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

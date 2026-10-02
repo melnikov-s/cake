@@ -18,7 +18,7 @@ import { SessionRegistryStore } from "../../../../src/renderer/stores/SessionReg
 import { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
 import { applyDiscussionCatalogUpdate } from "../../../../src/renderer/reducers/DiscussionReducer";
 import { sessionAssistantThreadPath } from "../../../../src/domain/discussion-sessions/discussion-session-data";
-import { fakeSavedDrafts, type FakeSavedDrafts } from "../fake-saved-drafts";
+import { fakeSavedDrafts, type FakeSavedDrafts } from "../fakes/saved-drafts";
 
 function registryFixture(
   snapshot?: StoreSnapshot,

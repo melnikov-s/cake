@@ -9,6 +9,8 @@ function pressEscape() {
   act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
 }
 
+// Primitive presentation/native hit-testing backlog. Real App open/Escape/close
+// transitions are covered by session-layout-workflow.test.tsx.
 describe("FullscreenSurface", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -41,30 +43,6 @@ describe("FullscreenSurface", () => {
     );
 
     expect(document.body.querySelector("header")?.classList).toContain("pl-[84px]");
-  });
-
-  it("dismisses on Escape when no layer is stacked above", () => {
-    let closed = false;
-    act(() =>
-      root.render(
-        <FullscreenSurfaceFixture>
-          <FullscreenSurface
-            eyebrow="Full response"
-            title="Cake"
-            onClose={() => {
-              closed = true;
-            }}
-          >
-            <p>Response body</p>
-          </FullscreenSurface>
-        </FullscreenSurfaceFixture>,
-      ),
-    );
-    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
-
-    // Without layout (jsdom) the surface is treated as topmost.
-    pressEscape();
-    expect(closed).toBe(true);
   });
 
   it("ignores Escape while a higher overlay owns the viewport center", () => {

@@ -58,6 +58,7 @@ export const ProjectSettingsDialog = observer(function ProjectSettingsDialog({
                 rows={6}
                 maxLength={16_384}
                 placeholder="How should the agent work on this project?"
+                aria-label="Custom instructions"
                 value={store.customInstructions}
                 onChange={(event) => store.setCustomInstructions(event.target.value)}
                 aria-describedby="project-custom-instructions-help"

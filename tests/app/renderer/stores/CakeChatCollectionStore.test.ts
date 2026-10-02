@@ -1,6 +1,8 @@
-import { applySnapshot, createStore, toSnapshot } from "r-state-tree";
+// Migration backlog: observation demand, resolved-model restoration, attachment failures,
+// optimistic transcript rendering, split panes, and annotations.
+// Migrated management/command cases live in ../cake-chat-management-workflow.test.tsx.
+import { createStore } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import { SESSION_TITLE_MAX_LENGTH } from "../../../../src/ipc/session-contract";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { CakeChatCatalog } from "../../../../src/renderer/models/CakeChatCatalog";
 import { CakeChatCollectionStore } from "../../../../src/renderer/stores/CakeChatCollectionStore";
@@ -105,31 +107,6 @@ describe("CakeChatCollectionStore", () => {
     models[Symbol.dispose]();
   });
 
-  it.each(["/model invalid", "/toolcompact continue", "/name"])(
-    "retains rejected Cake Chat command %s for correction",
-    async (command) => {
-      const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-      const models = RootProjection.create();
-      const { root, subject: store } = mountWithClient(
-        createStore(CakeChatCollectionStore, {
-          catalog,
-          sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
-          controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
-          tools: () => [],
-        }),
-        {} as Client,
-      );
-      const session = store.activeSession!;
-      const submitted = await session.conversationSessionStore.chatStore.submit(command);
-      expect(submitted).toBe(false);
-      expect(session.conversationSessionStore.chatStore.draft).toBe(command);
-      expect(session.conversationSessionStore.composerStore.error).toBeDefined();
-      root[Symbol.dispose]();
-      catalog[Symbol.dispose]();
-      models[Symbol.dispose]();
-    },
-  );
-
   it.each([
     ["/model provider/model", "setModel"],
     ["/compact", "compact"],
@@ -171,33 +148,6 @@ describe("CakeChatCollectionStore", () => {
     expect(session.conversationSessionStore.composerStore.deliveryStore.activeOperations).toEqual(
       [],
     );
-    root[Symbol.dispose]();
-    catalog[Symbol.dispose]();
-    models[Symbol.dispose]();
-  });
-
-  it("reports failed saved-draft activation and retains its content for retry", async () => {
-    const prompt = vi.fn(async () => {
-      throw new Error("Send failed");
-    });
-    const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-    const models = RootProjection.create();
-    const { root, subject: store } = mountWithClient(
-      createStore(CakeChatCollectionStore, {
-        catalog,
-        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
-        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
-        tools: () => [],
-      }),
-      { cakeChats: { start: prompt } } as unknown as Client,
-    );
-    const session = store.activeSession!;
-    store.pendingSessions.conversation(session.sessionId)!.createDraft("Saved message", []);
-    expect(await session.conversationSessionStore.chatStore.activateDraft()).toBe(false);
-    expect(session.conversationSessionStore.chatStore.draft).toBe("Saved message");
-    expect(
-      session.conversationSessionStore.composerStore.deliveryStore.optimisticUserMessages.pending,
-    ).toEqual([]);
     root[Symbol.dispose]();
     catalog[Symbol.dispose]();
     models[Symbol.dispose]();
@@ -286,87 +236,6 @@ describe("CakeChatCollectionStore", () => {
     models[Symbol.dispose]();
   });
 
-  it("uses the shared composer command handling to rename Cake Chat", async () => {
-    const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-    const models = RootProjection.create();
-    const { root, subject: store } = mountWithClient(
-      createStore(CakeChatCollectionStore, {
-        catalog,
-        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
-        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
-        tools: () => [],
-      }),
-      {} as Client,
-    );
-    const session = store.activeSession!;
-
-    await session.conversationSessionStore.chatStore.submit("/name Shared composer title");
-
-    expect(store.summaries).toMatchObject([
-      { sessionId: session.sessionId, title: "Shared composer title" },
-    ]);
-    root[Symbol.dispose]();
-    catalog[Symbol.dispose]();
-    models[Symbol.dispose]();
-  });
-
-  it("caps Cake Chat titles when renaming", async () => {
-    const rename = vi.fn(async () => undefined);
-    const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-    const models = RootProjection.create();
-    const { root, subject: store } = mountWithClient(
-      createStore(CakeChatCollectionStore, {
-        catalog,
-        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
-        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
-        tools: () => [],
-      }),
-      { cakeChats: { rename } } as unknown as Client,
-    );
-    const sessionId = store.sessionId!;
-    store.pendingSessions.markMaterialized(sessionId);
-
-    await store.management.renameSession(sessionId, "x".repeat(SESSION_TITLE_MAX_LENGTH + 20));
-
-    expect(rename).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionId,
-        name: "x".repeat(SESSION_TITLE_MAX_LENGTH),
-      }),
-      expect.anything(),
-    );
-    root[Symbol.dispose]();
-    catalog[Symbol.dispose]();
-    models[Symbol.dispose]();
-  });
-
-  it("deletes a resolved draft without calling the Cake Chat backend", async () => {
-    const deleteResolved = vi.fn(async () => undefined);
-    const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-    const models = RootProjection.create();
-    const { root, subject: store } = mountWithClient(
-      createStore(CakeChatCollectionStore, {
-        catalog,
-        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
-        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
-        tools: () => [],
-      }),
-      { cakeChats: { deleteResolved } } as unknown as Client,
-    );
-    const sessionId = store.sessionId!;
-    store.pendingSessions.conversation(sessionId)!.createDraft("Planned work", []);
-    await store.management.resolveSession(sessionId, true);
-
-    await store.management.deleteSession(sessionId);
-
-    expect(deleteResolved).not.toHaveBeenCalled();
-    expect(store.summaries.some((session) => session.sessionId === sessionId)).toBe(false);
-    expect(store.sessionId).toBeUndefined();
-    root[Symbol.dispose]();
-    catalog[Symbol.dispose]();
-    models[Symbol.dispose]();
-  });
-
   it("submits transcript annotations from Cake Chat", async () => {
     const prompt = vi.fn(async () => "turn-1");
     const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
@@ -413,126 +282,6 @@ describe("CakeChatCollectionStore", () => {
       expect.any(Object),
     );
     expect(session.conversationSessionStore.chatStore.annotations).toEqual([]);
-    root[Symbol.dispose]();
-    catalog[Symbol.dispose]();
-    models[Symbol.dispose]();
-  });
-
-  it("keeps the latest selection when session opens finish out of order", async () => {
-    let finishFirst!: () => void;
-    let finishSecond!: () => void;
-    const first = new Promise<void>((resolve) => {
-      finishFirst = resolve;
-    });
-    const second = new Promise<void>((resolve) => {
-      finishSecond = resolve;
-    });
-    const open = vi.fn(({ sessionId }: { sessionId: string }) =>
-      sessionId === "first" ? first : second,
-    );
-    const catalog = CakeChatCatalog.create({ loaded: true, sessions: [] });
-    const models = RootProjection.create();
-    const { root, subject: store } = mountWithClient(
-      createStore(CakeChatCollectionStore, {
-        catalog,
-        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
-        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
-        tools: () => [],
-      }),
-      { cakeChats: { open } } as unknown as Client,
-    );
-
-    const openingFirst = store.open("first");
-    expect(store.sessionId).toBe("first");
-    const openingSecond = store.open("second");
-    expect(store.sessionId).toBe("second");
-
-    finishFirst();
-    await openingFirst;
-    expect(store.sessionId).toBe("second");
-    finishSecond();
-    await openingSecond;
-    expect(store.sessionId).toBe("second");
-
-    root[Symbol.dispose]();
-    catalog[Symbol.dispose]();
-    models[Symbol.dispose]();
-  });
-
-  it("omits unset optional fields from Cake Chat prompts", async () => {
-    const start = vi.fn(async () => "turn-1");
-    const prompt = vi.fn(async () => "turn-2");
-    const catalog = CakeChatCatalog.create({ loaded: false, sessions: [] });
-    const models = RootProjection.create();
-    const { root, subject: store } = mountWithClient(
-      createStore(CakeChatCollectionStore, {
-        catalog,
-        sessionModel: (sessionId) => models.cakeChatConversation(sessionId),
-        controlsModel: (sessionId) => models.controlsForCakeChat(sessionId),
-        tools: () => [],
-      }),
-      { cakeChats: { start }, sessionChats: { prompt } } as unknown as Client,
-    );
-
-    const initialization = store.initialize();
-    catalog.loaded = true;
-    await initialization;
-    const session = store.activeSession;
-    expect(session).toBeDefined();
-
-    await session!.conversationSessionStore.chatStore.submit("Hello Cake");
-
-    expect(start).toHaveBeenCalledWith(
-      {
-        sessionId: session!.sessionId,
-        tools: [],
-        text: "Hello Cake",
-        renderUserMessageAsMarkdown: false,
-        attachments: [],
-        newSession: {},
-      },
-      expect.any(Object),
-    );
-    expect(store.summaries).toMatchObject([
-      { sessionId: session!.sessionId, title: "New chat", messageCount: 1 },
-    ]);
-
-    applySnapshot(catalog, {
-      loaded: true,
-      sessions: [
-        {
-          sessionId: session!.sessionId,
-          title: "Authoritative title",
-          createdAt: "2026-09-02T10:00:00.000Z",
-          modifiedAt: "2026-09-02T10:01:00.000Z",
-          messageCount: 1,
-          resolved: false,
-        },
-      ],
-    });
-    expect(store.summaries).toMatchObject([
-      { sessionId: session!.sessionId, title: "Authoritative title", messageCount: 1 },
-    ]);
-    expect(toSnapshot(store)).toMatchObject({
-      children: {
-        pendingSessions: {
-          state: { conversationIds: [], pendingSessionIds: [] },
-          children: { conversations: [] },
-        },
-      },
-    });
-
-    await session!.conversationSessionStore.chatStore.submit("Follow up");
-
-    expect(prompt).toHaveBeenCalledWith(
-      {
-        sessionId: session!.sessionId,
-        text: "Follow up",
-        renderUserMessageAsMarkdown: false,
-        attachments: [],
-      },
-      expect.any(Object),
-    );
     root[Symbol.dispose]();
     catalog[Symbol.dispose]();
     models[Symbol.dispose]();

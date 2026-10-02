@@ -1,6 +1,6 @@
 import { Store, observable, snapshot } from "r-state-tree";
 
-export const MAX_SESSION_PANES = 4;
+const MAX_SESSION_PANES = 4;
 
 export type SessionSplitAxis = "x" | "y";
 

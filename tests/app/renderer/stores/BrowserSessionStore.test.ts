@@ -7,6 +7,7 @@ import { ClientError, type Client } from "../../../../src/renderer/client/Client
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { BrowserSessionStore } from "../../../../src/renderer/stores/BrowserSessionStore";
 import { mountWithClient } from "../mount-with-client";
+import { createTestClient } from "../test-client";
 
 const turnId = TurnId.make("00000000-0000-4000-8000-000000000002");
 const configuration: ChatConfiguration = {
@@ -37,10 +38,10 @@ function fixture(staged = true, record?: SavedDraft) {
   const applyConfiguration = vi.fn<Client["sessionChats"]["applyConfiguration"]>(
     async () => undefined,
   );
-  const client = {
+  const client = createTestClient({
     projectSessions: { start, open },
     sessionChats: { prompt, abort, applyConfiguration },
-  } as unknown as Client;
+  });
   const mounted = mountWithClient(
     createStore(BrowserSessionStore, {
       sessionId: "session-1",
@@ -75,6 +76,9 @@ function fixture(staged = true, record?: SavedDraft) {
   };
 }
 
+// Retained migration coverage: BrowserSessionStore currently has no production composition
+// caller. Its admission/reconciliation contracts have no real Root-owned UI entrypoint; mounting
+// a test-only Chat around it would invent a workflow rather than verify the shipped application.
 describe("BrowserSessionStore", () => {
   it("blocks first-turn admission while another client owns an uncertain saved Draft claim", async () => {
     const f = fixture(true, {

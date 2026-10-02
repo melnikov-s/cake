@@ -1,3 +1,12 @@
+/**
+ * Explicit migration backlog, not user-workflow coverage. These two contracts concern external
+ * agent controls: background Enter must not open the focused presentation, and Apply must wait
+ * for checkpoint persistence before acknowledging success. Neither has an accessible user action.
+ * Keep them until control requests are tested through real Root routing with the real editor.
+ * Real Excalidraw mounting in jsdom failed on Path2D/document.fonts.has; replacing peer Stores or
+ * the editor in a new React suite would hide the coordination under test. draw-workflow.test.tsx
+ * covers only the user-operated board-opening/loading/error controls, not these agent contracts.
+ */
 import { createStore, mount } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectSessionStore } from "../../../../src/renderer/stores/ProjectSessionStore";

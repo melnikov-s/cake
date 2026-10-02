@@ -1,11 +1,10 @@
 import { batch, createStore, observable } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import type { Attachment } from "../../../../src/ipc/session-contract";
-import type { Client } from "../../../../src/renderer/client/Client";
 import { BrowserStore } from "../../../../src/renderer/stores/BrowserStore";
 import { mountWithClient } from "../mount-with-client";
 import { TerminalStore } from "../../../../src/renderer/stores/TerminalStore";
 import { WorkingDirectoryRetirementStore } from "../../../../src/renderer/stores/WorkingDirectoryRetirementStore";
+import { createTestClient } from "../test-client";
 
 const ready = {
   sessionId: "session-1",
@@ -21,7 +20,6 @@ function harness(browserHost = false, terminalTopInset: () => number = () => 0) 
   let mode: "normal" | "vscode" | "draw" | "browser" = "normal";
   const selection = observable({ sessionId: "session-1" as string | undefined });
   const onBrowserUnavailable = vi.fn();
-  const attachments: Attachment[] = [];
   const browser = {
     open: vi.fn(async () => ready),
     state: vi.fn(async () => ready),
@@ -42,15 +40,14 @@ function harness(browserHost = false, terminalTopInset: () => number = () => 0) 
       chatSidebarVisible: () => true,
       chatSidebarWidth: () => 420,
       setChatSidebarWidth: vi.fn(),
-      appendAttachment: (attachment) => attachments.push(attachment),
+      appendAttachment: () => undefined,
       enterProjectSidebarMode: vi.fn(),
       leaveProjectSidebarMode: vi.fn(),
     }),
-    { browser } as unknown as Client,
+    createTestClient({ browser }),
     terminalTopInset,
   );
   return {
-    attachments,
     selection,
     browser,
     root,
@@ -63,7 +60,10 @@ function harness(browserHost = false, terminalTopInset: () => number = () => 0) 
   };
 }
 
-describe("BrowserStore", () => {
+// Browser-host rejection has no visible Browser Mode control, and positive native viewport
+// geometry is unavailable in jsdom. Retain these boundary contracts rather than inventing UI
+// or claiming layout verification. Browser opening/navigation is exercised in browser-workflow.
+describe("BrowserStore native presentation boundaries", () => {
   it("keeps browser-host opens and restored presentation out of native Browser Mode", async () => {
     const { browser, root, store, mode, setMode, onBrowserUnavailable } = harness(true);
     await store.show();
@@ -82,14 +82,12 @@ describe("BrowserStore", () => {
     expect(browser.updateBounds).not.toHaveBeenCalled();
     root[Symbol.dispose]();
   });
-  it("opens the persistent browser view and reports its native bounds", async () => {
-    const { browser, root, store, mode } = harness();
+  it("reports positive measured native bounds and hides them when suspended", async () => {
+    const { browser, root, store } = harness();
 
     await store.show();
     store.setMeasuredBounds({ x: 280, y: 40, width: 800, height: 600 });
 
-    expect(mode()).toBe("browser");
-    expect(browser.open).toHaveBeenCalledWith("session-1", undefined, expect.any(Object));
     expect(browser.updateBounds).toHaveBeenLastCalledWith(
       {
         sessionId: "session-1",
@@ -153,12 +151,12 @@ describe("BrowserStore", () => {
   });
 
   it("clears the floating terminal region without reopening or navigating the browser", async () => {
-    const terminalClient = {
+    const terminalClient = createTestClient({
       terminals: {
         open: vi.fn(async () => ({ terminalId: "terminal-1", shell: "zsh" })),
         close: vi.fn(async () => undefined),
       },
-    } as unknown as Client;
+    });
     const retirement = mountWithClient(
       createStore(WorkingDirectoryRetirementStore, { onRetired: () => undefined }),
       terminalClient,
@@ -212,33 +210,5 @@ describe("BrowserStore", () => {
       terminal.root[Symbol.dispose]();
       retirement.root[Symbol.dispose]();
     }
-  });
-
-  it("turns an inspected DOM node into explicit composer context", async () => {
-    const { attachments, root, store } = harness();
-    await store.show();
-
-    store.receive({
-      type: "browser-element-selected",
-      sessionId: "session-1",
-      url: "http://localhost:3000/settings",
-      tagName: "button",
-      selector: "#save",
-      outerHTML: '<button id="save">Save</button>',
-      text: "Save",
-    });
-
-    expect(attachments).toEqual([
-      {
-        kind: "browser",
-        name: "#save",
-        url: "http://localhost:3000/settings",
-        tagName: "button",
-        selector: "#save",
-        outerHTML: '<button id="save">Save</button>',
-        text: "Save",
-      },
-    ]);
-    root[Symbol.dispose]();
   });
 });

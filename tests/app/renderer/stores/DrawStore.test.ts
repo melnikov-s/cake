@@ -1,3 +1,15 @@
+/**
+ * Explicit migration backlog: real Excalidraw editing/export/agent playback cannot run in jsdom
+ * without emulating native rendering (a real UI export failed on Path2D/document.fonts.has).
+ * Retain dirty-board flush/retry, native export outcomes, editor readiness, checkpoints/undo,
+ * rollback, Mermaid persistence, playback and failed-save retry until real-editor integration
+ * covers them. Board switching and agent edits also have no equivalent accessible toolbar action.
+ *
+ * draw-workflow.test.tsx replaces remembered-board selection, default-board creation and opening
+ * failure/retry service coordination through App/DrawWorkspace. Its reads intentionally remain
+ * pending; retain the successful recovered-document transition below until that UI can mount the
+ * editor. documentLoaded/documentSnapshot assertions are not proof of native editor readiness.
+ */
 import { createStore } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { DrawBoardMetadata } from "../../../../src/domain/draw/draw-board-data";
@@ -115,21 +127,20 @@ function adapterHarness(initialSnapshot: DrawDocumentSnapshot = emptyDocument) {
 }
 
 describe("DrawStore", () => {
-  it("restores the remembered board and loads its document", async () => {
+  it("loads the recovered document after opening retry succeeds", async () => {
+    // The list/read failure UI and retry dispatch moved to draw-workflow.test.tsx. Retain only
+    // the successful document transition that would trigger native editor mounting in React.
     const { subject, draw } = mountDrawStore();
-    subject.activeBoardId = secondBoard.id;
-
-    expect(subject.documentLoaded).toBe(false);
-
+    draw.read.mockRejectedValueOnce(new Error("read unavailable"));
     await subject.initialize();
 
-    expect(subject.activeBoard?.id).toBe(secondBoard.id);
+    expect(subject.documentLoaded).toBe(false);
+    await subject.retry();
+
+    expect(draw.read).toHaveBeenCalledTimes(2);
     expect(subject.documentLoaded).toBe(true);
     expect(subject.documentSnapshot).toEqual(emptyDocument);
-    expect(draw.read).toHaveBeenCalledWith(
-      { sessionId: "session-1", boardId: secondBoard.id },
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
+    expect(subject.error).toBeUndefined();
   });
 
   it("flushes the current document before switching boards", async () => {
@@ -378,38 +389,5 @@ describe("DrawStore", () => {
     );
     expect(subject.activeBoard?.revision).toBe(1);
     expect(subject.error).toBeUndefined();
-  });
-
-  it("retries the step that failed while opening a whiteboard", async () => {
-    const { subject, draw } = mountDrawStore();
-    draw.list.mockRejectedValueOnce(new Error("list unavailable"));
-
-    await subject.initialize();
-    expect(subject.error).toContain("list unavailable");
-    expect(subject.documentLoaded).toBe(false);
-
-    draw.read.mockRejectedValueOnce(new Error("read unavailable"));
-    await subject.retry();
-    expect(subject.error).toContain("read unavailable");
-    expect(subject.documentLoaded).toBe(false);
-    expect(subject.loading).toBe(false);
-
-    await subject.retry();
-    expect(draw.list).toHaveBeenCalledTimes(2);
-    expect(draw.read).toHaveBeenCalledTimes(2);
-    expect(subject.documentLoaded).toBe(true);
-    expect(subject.error).toBeUndefined();
-  });
-
-  it("creates a default board when the session has none", async () => {
-    const { subject, draw } = mountDrawStore([]);
-
-    await subject.initialize();
-
-    expect(draw.create).toHaveBeenCalledWith(
-      { sessionId: "session-1", title: "Board 1" },
-      expect.anything(),
-    );
-    expect(subject.activeBoardId).toBe("33333333-3333-4333-8333-333333333333");
   });
 });

@@ -219,6 +219,7 @@ changes.
 
 ### Workflow and feature test depth
 
+- For renderer workflows, follow `docs/development/renderer-store-testing.md`; `tests/app/renderer/project-settings-dialog.test.tsx` is the React workflow pilot. Start at the real feature UI with real Root/Models/Stores and typed service fakes. Replace overlapping direct Store tests rather than duplicating coverage; existing Store suites are migration backlog.
 - Default to focused integration tests for product features and workflows. Keep
   the real domain policy, Store behavior, state transitions, and projections in
   the test; replace only external boundaries with deterministic fake Services or
@@ -259,7 +260,7 @@ and console logs from tests are suppressed. Pass `--reporter=default` (`pnpm tes
 --reporter=default`) or `--reporter=list` (Playwright) when full output is needed
 to debug a failure.
 
-Default `pnpm test` runs only fast unit tests; tests that drive real external
+Default `pnpm test` runs fast in-process tests, including React workflow integration tests; tests that drive real external
 services (git, Vite/esbuild bundling, the Pi runtime) live in
 `tests/integration` and run with `pnpm test:integration` — usually in CI or for
 an explicitly requested verification pass, not per change.

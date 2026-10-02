@@ -2,6 +2,8 @@ import { createStore, mount } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { FullscreenSurfaceStore } from "../../../../src/renderer/stores/FullscreenSurfaceStore";
 
+// Native-request routing backlog: the click-only App workflow covers open/close
+// synchronization, but does not emulate the runtime's native surface-event stream.
 describe("FullscreenSurfaceStore", () => {
   it("coordinates native open state and close requests", () => {
     const setOpen = vi.fn(async () => undefined);

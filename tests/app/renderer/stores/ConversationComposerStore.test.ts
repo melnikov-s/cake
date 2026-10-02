@@ -1,3 +1,4 @@
+import { TurnId } from "../../../../src/domain/conversations/conversation-data";
 import { child, createStore, mount, Store } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../../src/renderer/client/Client";
@@ -6,101 +7,81 @@ import { Message } from "../../../../src/renderer/models/Message";
 import { Conversation } from "../../../../src/renderer/models/Conversation";
 import { ConversationComposerStore } from "../../../../src/renderer/stores/ConversationComposerStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
+import { createTestClient } from "../test-client";
 
-class HarnessStore extends Store<{
-  client: Client;
-  model: Conversation;
-  existing?: boolean;
-  streaming?: boolean;
-  createSideChat?: (prompt: string) => Promise<boolean>;
-  toolCompactSession?: (entryId: string, prompt?: string) => Promise<boolean>;
-}> {
-  draft = "First message";
+/**
+ * Remaining migration backlog, not workflow coverage:
+ * - canonical in-place reconciliation needs a working virtualized Chat transcript fixture;
+ * - transcript annotations need the native text-selection interaction boundary;
+ * - Markdown Draft activation remains until saved-draft workflow coverage owns it.
+ * Composer/attachment/command workflows moved to ../composer-workflow.test.tsx;
+ * streaming queues to ../prompt-queue-workflow.test.tsx; side-chat creation to
+ * ../side-chat-workflow.test.tsx. Do not expand this legacy collaborator harness.
+ */
+class HarnessStore extends Store<{ client: Client; model: Conversation; existing?: boolean }> {
   submissionOrder: string[] = [];
-
   [ClientContext.provide]() {
     return this.props.client;
   }
-
   @child get operations() {
     return createStore(SessionOperationCoordinatorStore);
   }
-
   @child get composer() {
-    const materializeNewSession = vi.fn(() => {
-      this.props.model.parts.push(
-        Message.create({
-          id: "canonical-user-1",
-          partKey: "canonical-user-1",
-          kind: "text",
-          role: "user",
-          text: "First message",
-          status: "streaming",
-        }),
-      );
-      this.props.model.parts[0]!.update({
-        id: "canonical-user-1",
-        kind: "text",
-        role: "user",
-        text: "First message",
-        status: "complete",
-      });
-    });
     return createStore(ConversationComposerStore, {
       projectPath: () => "/project",
       sessionId: () => "session-1",
       canonicalParts: () => this.props.model.uiParts,
       canSubmit: () => true,
-      isStreaming: () => this.props.streaming ?? false,
+      isStreaming: () => false,
       queueWhileStreaming: () => true,
       openCommandPane: async () => undefined,
-      createSideChat: this.props.createSideChat,
       selectModel: async () => undefined,
       renameSession: async () => undefined,
-      toolCompactSession: this.props.toolCompactSession ?? (async () => false),
+      toolCompactSession: async () => false,
       deliver: async (input) => {
         if (this.props.existing) {
-          const command =
-            input.delivery === "steer"
-              ? this.props.client.sessionChats.steer
-              : this.props.client.sessionChats.prompt;
-          await command(input);
+          await this.props.client.sessionChats.prompt(input);
           return;
         }
         this.submissionOrder.push("projected", "prepared");
         await this.props.client.projectSessions.start({ ...input, workingDirectory: "/project" });
-        materializeNewSession();
+        this.props.model.parts.push(
+          Message.create({
+            id: "canonical-user-1",
+            partKey: "canonical-user-1",
+            kind: "text",
+            role: "user",
+            text: "First message",
+            status: "streaming",
+          }),
+        );
+        this.props.model.parts[0]!.update({
+          id: "canonical-user-1",
+          kind: "text",
+          role: "user",
+          text: "First message",
+          status: "complete",
+        });
       },
       editMessage: async () => undefined,
       compact: async () => undefined,
-      clearQueue: async () => {
-        await this.props.client.sessionChats.clearQueue({ sessionId: "session-1" });
-      },
-      cancelSteering: async () => {
-        await this.props.client.sessionChats.cancelSteering({ sessionId: "session-1" });
-      },
       operations: this.operations,
       operationOwner: "composer:session-1",
     });
   }
 }
-
 class DraftHarnessStore extends Store<{ client: Client }> {
-  draft = "";
   private staged: { text: string; attachments: []; resolved: boolean } | undefined = {
     text: "# Draft heading",
     attachments: [],
     resolved: false,
   };
-
   [ClientContext.provide]() {
     return this.props.client;
   }
-
   @child get operations() {
     return createStore(SessionOperationCoordinatorStore);
   }
-
   @child get composer() {
     return createStore(ConversationComposerStore, {
       projectPath: () => "/project",
@@ -135,248 +116,16 @@ class DraftHarnessStore extends Store<{ client: Client }> {
   }
 }
 
-describe("ConversationComposerStore", () => {
-  it("preserves explicit attachments while tool compacting", async () => {
-    const model = Conversation.create({
-      sessionId: "session-1",
-      parts: [
-        {
-          id: "assistant-part",
-          kind: "text",
-          role: "assistant",
-          text: "Completed response",
-          status: "complete",
-          piId: "assistant-entry",
-          partKey: "assistant-part",
-        },
-      ],
-    });
-    const toolCompactSession = vi.fn(async () => true);
-    const client = { projectSessions: {} } as unknown as Client;
-    const root = mount(
-      createStore(HarnessStore, { client, model, existing: true, toolCompactSession }),
-    );
-    const image = {
-      kind: "image" as const,
-      name: "reference.png",
-      mimeType: "image/png",
-      data: "image-data",
-    };
-    root.composer.draftStore.setText("/toolcompact Continue cleanly");
-    root.composer.draftStore.attachments.push(image);
-
-    await root.composer.submit();
-
-    expect(toolCompactSession).toHaveBeenCalledWith("assistant-entry", "Continue cleanly");
-    expect(root.composer.draftStore.text).toBe("");
-    expect(root.composer.draftStore.attachments).toEqual([image]);
-    root[Symbol.dispose]();
-    model[Symbol.dispose]();
-  });
-
-  it("allows tool compaction while VS Code contributes automatic source context", async () => {
-    const model = Conversation.create({
-      sessionId: "session-1",
-      parts: [
-        {
-          id: "assistant-part",
-          kind: "text",
-          role: "assistant",
-          text: "Completed response",
-          status: "complete",
-          piId: "assistant-entry",
-          partKey: "assistant-part",
-        },
-      ],
-    });
-    const toolCompactSession = vi.fn(async () => true);
-    const client = { projectSessions: {} } as unknown as Client;
-    const root = mount(
-      createStore(HarnessStore, { client, model, existing: true, toolCompactSession }),
-    );
-    root.composer.draftStore.setText("/toolcompact Continue cleanly");
-    root.composer.draftStore.setEditorContextAttachment({
-      kind: "source",
-      name: "active.ts",
-      location: {
-        path: "/project/active.ts",
-        range: { start: { line: 1 }, end: { line: 2 } },
-      },
-    });
-
-    await root.composer.submit();
-
-    expect(toolCompactSession).toHaveBeenCalledWith("assistant-entry", "Continue cleanly");
-    expect(root.composer.draftStore.text).toBe("");
-    root[Symbol.dispose]();
-    model[Symbol.dispose]();
-  });
-
-  it("creates a side chat from /sidechat without sending to the parent session", async () => {
-    const createSideChat = vi.fn(async () => true);
-    const client = { projectSessions: {} } as unknown as Client;
-    const model = Conversation.create({ sessionId: "session-1" });
-    const root = mount(
-      createStore(HarnessStore, { client, model, existing: true, createSideChat }),
-    );
-    root.composer.draftStore.setText("/sidechat Compare the two approaches");
-
-    await expect(root.composer.submit()).resolves.toBe(true);
-
-    expect(createSideChat).toHaveBeenCalledWith("Compare the two approaches");
-    expect(root.composer.draftStore.text).toBe("");
-    root[Symbol.dispose]();
-    model[Symbol.dispose]();
-  });
-
-  it("reports usage when /sidechat has no prompt", async () => {
-    const createSideChat = vi.fn(async () => true);
-    const client = { projectSessions: {} } as unknown as Client;
-    const model = Conversation.create({ sessionId: "session-1" });
-    const root = mount(
-      createStore(HarnessStore, { client, model, existing: true, createSideChat }),
-    );
-    root.composer.draftStore.setText("/sidechat");
-
-    await expect(root.composer.submit()).resolves.toBe(false);
-
-    expect(createSideChat).not.toHaveBeenCalled();
-    expect(root.composer.error).toBe("Usage: /sidechat <prompt>");
-    root[Symbol.dispose]();
-    model[Symbol.dispose]();
-  });
-
-  it("submits selected source context once and removes it from the next draft", async () => {
-    const prompt = vi.fn(async () => undefined);
-    const client = { sessionChats: { prompt } } as unknown as Client;
-    const model = Conversation.create({ sessionId: "session-1" });
-    const root = mount(createStore(HarnessStore, { client, model, existing: true }));
-    const context = {
-      kind: "source" as const,
-      name: "active.ts",
-      location: { path: "src/active.ts", range: { start: { line: 3 }, end: { line: 4 } } },
-    };
-    root.composer.draftStore.setEditorContextAttachment(context);
-    root.composer.draftStore.setText("What is this?");
-
-    await root.composer.submit();
-
-    expect(prompt).toHaveBeenCalledWith(expect.objectContaining({ attachments: [context] }));
-    expect(root.composer.draftStore.visibleAttachments).toEqual([]);
-    expect(root.composer.draftStore.editorContextAttachment).toBeUndefined();
-    root[Symbol.dispose]();
-    model[Symbol.dispose]();
-  });
-
-  it("preserves the next message's context when an in-flight send fails", async () => {
-    let rejectPrompt!: (error: Error) => void;
-    const prompt = vi.fn(
-      () =>
-        new Promise<void>((_resolve, reject) => {
-          rejectPrompt = reject;
-        }),
-    );
-    const client = { sessionChats: { prompt } } as unknown as Client;
-    const model = Conversation.create({ sessionId: "session-1" });
-    const root = mount(createStore(HarnessStore, { client, model, existing: true }));
-    root.composer.draftStore.setText("First message");
-    const sentImage = {
-      kind: "image" as const,
-      name: "sent.png",
-      mimeType: "image/png",
-      data: "sent",
-    };
-    const nextImage = { ...sentImage, name: "next.png", data: "next" };
-    const nextContext = {
-      kind: "source" as const,
-      name: "next.ts",
-      location: { path: "/project/next.ts", range: { start: { line: 1 }, end: { line: 2 } } },
-    };
-    root.composer.draftStore.attachments.push(sentImage);
-    const submission = root.composer.submit();
-    root.composer.draftStore.setText("Next message");
-    root.composer.draftStore.attachments.push(nextImage);
-    root.composer.draftStore.editorContextAttachment = nextContext;
-    rejectPrompt(new Error("Send failed"));
-    await submission;
-
-    expect(root.composer.draftStore.text).toBe("Next message");
-    expect(root.composer.draftStore.attachments).toEqual([nextImage, sentImage]);
-    expect(root.composer.draftStore.editorContextAttachment).toEqual(nextContext);
-    expect(root.composer.deliveryStore.optimisticUserMessages.pending).toEqual([]);
-    expect(root.composer.deliveryStore.activeOperations).toEqual([]);
-    root[Symbol.dispose]();
-    model[Symbol.dispose]();
-  });
-
-  it("keeps streaming project input in the local editable queue when configured", async () => {
-    const model = Conversation.create({ sessionId: "session-1" });
-    const followUp = vi.fn(async () => "turn-2");
-    const client = { sessionChats: { followUp } } as unknown as Client;
-    const root = mount(
-      createStore(HarnessStore, { client, model, existing: true, streaming: true }),
-    );
-    root.composer.draftStore.setText("First message");
-
-    await root.composer.submit();
-
-    expect(followUp).not.toHaveBeenCalled();
-    expect(root.composer.promptQueueStore.prompts).toEqual([
-      expect.objectContaining({ text: "First message" }),
-    ]);
-    expect(root.composer.deliveryStore.optimisticUserMessages.pending).toEqual([]);
-
-    root[Symbol.dispose]();
-    model[Symbol.dispose]();
-  });
-
-  it("returns a cancelled local steer to its queue position", async () => {
-    const model = Conversation.create({ sessionId: "session-1" });
-    const steer = vi.fn(async () => "turn-2");
-    const clearQueue = vi.fn(async () => ({ steering: ["First message"], followUp: [] }));
-    const client = { sessionChats: { steer, clearQueue } } as unknown as Client;
-    const root = mount(
-      createStore(HarnessStore, { client, model, existing: true, streaming: true }),
-    );
-    root.composer.promptQueueStore.enqueue("Before", [], false);
-    root.composer.promptQueueStore.enqueue("First message", [], false);
-    root.composer.promptQueueStore.enqueue("After", [], false);
-    const steered = root.composer.promptQueueStore.prompts[1]!;
-
-    root.composer.promptQueueStore.steer(steered.id);
-
-    expect(steer).toHaveBeenCalledOnce();
-    expect(root.composer.promptQueueStore.prompts.map((entry) => entry.text)).toEqual([
-      "Before",
-      "After",
-    ]);
-    expect(root.composer.parts).toEqual([
-      expect.objectContaining({ text: "First message", deliveryState: "steering" }),
-    ]);
-
-    await root.composer.promptQueueStore.cancelSteering();
-
-    expect(clearQueue).toHaveBeenCalledOnce();
-    expect(root.composer.promptQueueStore.prompts.map((entry) => entry.text)).toEqual([
-      "Before",
-      "First message",
-      "After",
-    ]);
-    expect(root.composer.parts).toEqual([]);
-
-    root[Symbol.dispose]();
-    model[Symbol.dispose]();
-  });
-
+describe("ConversationComposerStore remaining migration regressions", () => {
   it("reconciles the first optimistic message when its canonical part completes in place", async () => {
     const model = Conversation.create({ sessionId: "session-1" });
-    const start = vi.fn(async () => "turn-1");
-    const client = { projectSessions: { start } } as unknown as Client;
+    const start = vi.fn<Client["projectSessions"]["start"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000001"),
+    );
+    const client = createTestClient({ projectSessions: { start } });
     const root = mount(createStore(HarnessStore, { client, model }));
     root.composer.draftStore.setText("First message");
-
     await root.composer.submit();
-
     expect(start).toHaveBeenCalledOnce();
     expect(root.submissionOrder).toEqual(["projected", "prepared"]);
     expect(root.composer.deliveryStore.optimisticUserMessages.pending).toEqual([]);
@@ -387,18 +136,17 @@ describe("ConversationComposerStore", () => {
         deliveryState: undefined,
       }),
     ]);
-
     root[Symbol.dispose]();
     model[Symbol.dispose]();
   });
-
   it("delivers annotations from its draft Store and clears them after submission", async () => {
-    const prompt = vi.fn(async () => "turn-1");
-    const client = { sessionChats: { prompt } } as unknown as Client;
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000001"),
+    );
+    const client = createTestClient({ sessionChats: { prompt } });
     const model = Conversation.create({ sessionId: "session-1" });
     const root = mount(createStore(HarnessStore, { client, model, existing: true }));
     root.composer.draftStore.setText("First message");
-
     root.composer.draftStore.annotationDraft.add({
       messageId: "assistant-1",
       selectedText: "important answer",
@@ -408,9 +156,7 @@ describe("ConversationComposerStore", () => {
       contextAfter: " follows.",
       comment: "Go deeper",
     });
-    expect(root.composer.draftStore.focusRequestRevision).toBe(1);
     await root.composer.submit();
-
     expect(prompt).toHaveBeenCalledWith(
       expect.objectContaining({
         attachments: [
@@ -431,27 +177,18 @@ describe("ConversationComposerStore", () => {
     root[Symbol.dispose]();
     model[Symbol.dispose]();
   });
-
   it("renders and activates detected Markdown in a saved draft", async () => {
-    const prompt = vi.fn(async () => "turn-1");
-    const client = { sessionChats: { prompt } } as unknown as Client;
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000001"),
+    );
+    const client = createTestClient({ sessionChats: { prompt } });
     const root = mount(createStore(DraftHarnessStore, { client }));
-
     expect(root.composer.parts).toEqual([
-      expect.objectContaining({
-        text: "# Draft heading",
-        renderAs: "markdown",
-        draft: true,
-      }),
+      expect.objectContaining({ text: "# Draft heading", renderAs: "markdown", draft: true }),
     ]);
-
     await root.composer.activateDraftSession({ kind: "current" });
-
     expect(prompt).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: "# Draft heading",
-        renderUserMessageAsMarkdown: true,
-      }),
+      expect.objectContaining({ text: "# Draft heading", renderUserMessageAsMarkdown: true }),
     );
     root[Symbol.dispose]();
   });

@@ -10,7 +10,7 @@ import type { Client } from "../../../src/renderer/client/Client";
 import { mountRootStore } from "../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../src/renderer/models/RootProjection";
 import type { RootStore } from "../../../src/renderer/stores/RootStore";
-import { fakeSavedDrafts, type FakeSavedDrafts } from "./fake-saved-drafts";
+import { fakeSavedDrafts, type FakeSavedDrafts } from "./fakes/saved-drafts";
 
 const projectPath = "/projects/sidebar-sync";
 const worktreePath = "/projects/.cake-worktrees/sidebar-sync-generated";
