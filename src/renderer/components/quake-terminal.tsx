@@ -1,4 +1,13 @@
-import { lazy, Suspense, useEffect, useId, useState, type CSSProperties } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { observer } from "r-state-tree/react";
 import {
   Confirmation,
@@ -36,6 +45,21 @@ export const QuakeTerminal = observer(function QuakeTerminal({
   retirement: WorkingDirectoryRetirementStore;
 }) {
   const [height, setHeight] = useState(360);
+  const panelRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    // offsetHeight ignores the slide animation. Include the resize handle's
+    // protruding hit area so the native view cannot intercept its pointer events.
+    const measure = () => store.setMeasuredOverlayHeight(panel.offsetHeight + 5);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(panel);
+    return () => {
+      observer.disconnect();
+      store.setMeasuredOverlayHeight(0);
+    };
+  }, [store]);
   const resolutionTitleId = useId();
   const maxHeight = Math.max(220, Math.floor(window.innerHeight * 0.8));
   const style: CSSProperties = { height: Math.min(height, maxHeight) };
@@ -54,6 +78,7 @@ export const QuakeTerminal = observer(function QuakeTerminal({
   return (
     <>
       <section
+        ref={panelRef}
         className={cn(
           "flex min-h-[220px] flex-col bg-background",
           store.docked

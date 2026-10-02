@@ -6,6 +6,7 @@ import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-
 import { decodeArtifactLineageId } from "../../domain/artifacts/artifact-lineage";
 import type { Client } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
+import { TerminalTopInsetContext } from "./context/TerminalTopInsetContext";
 import { DeliveryAvailabilityContext } from "./context/DeliveryAvailabilityContext";
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
 import type { SessionHistoryEntry } from "./AppShellStore";
@@ -81,6 +82,10 @@ export class RootStore extends Store<{
 
   [ClientContext.provide]() {
     return this.client;
+  }
+
+  [TerminalTopInsetContext.provide]() {
+    return this.terminalStore.editorTopInset;
   }
 
   [DeliveryAvailabilityContext.provide]() {

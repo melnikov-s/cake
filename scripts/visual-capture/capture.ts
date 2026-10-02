@@ -109,7 +109,54 @@ export async function captureVisual(
 
     const target = options.capture === "window" ? page : scenario.region(page);
     await mkdir(dirname(outputPath), { recursive: true });
-    const png = await target.screenshot({ animations: "disabled", type: "png" });
+    const png =
+      options.capture === "window"
+        ? Buffer.from(
+            await application.evaluate(async ({ BrowserWindow, WebContentsView, nativeImage }) => {
+              const window = BrowserWindow.getAllWindows()[0];
+              if (!window) throw new Error("Cake capture window is missing");
+              const image = await window.capturePage();
+              const size = image.getSize();
+              const bitmap = image.toBitmap();
+              // Chromium's page capture omits sibling native WebContentsViews.
+              // Composite their real captures at the native window's actual bounds,
+              // in paint order, rather than publishing a blank editor viewport.
+              for (const view of window.contentView.children) {
+                if (
+                  !(view instanceof WebContentsView) ||
+                  !view.getVisible() ||
+                  view.webContents === window.webContents
+                )
+                  continue;
+                const bounds = view.getBounds();
+                if (bounds.width <= 0 || bounds.height <= 0) continue;
+                const child = await view.webContents.capturePage();
+                const childSize = child.getSize();
+                if (childSize.width !== bounds.width || childSize.height !== bounds.height)
+                  throw new Error("Native view capture dimensions do not match its bounds");
+                const childBitmap = child.toBitmap();
+                const left = Math.max(0, bounds.x);
+                const right = Math.min(size.width, bounds.x + bounds.width);
+                if (right <= left) continue;
+                for (
+                  let y = Math.max(0, bounds.y);
+                  y < Math.min(size.height, bounds.y + bounds.height);
+                  y++
+                ) {
+                  const start = ((y - bounds.y) * bounds.width + left - bounds.x) * 4;
+                  childBitmap.copy(
+                    bitmap,
+                    (y * size.width + left) * 4,
+                    start,
+                    start + (right - left) * 4,
+                  );
+                }
+              }
+              return nativeImage.createFromBitmap(bitmap, size).toPNG().toString("base64");
+            }),
+            "base64",
+          )
+        : await target.screenshot({ animations: "disabled", type: "png" });
     await writeFile(outputPath, png);
     const dimensions = parsePngDimensions(png);
     return {

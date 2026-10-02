@@ -10,6 +10,7 @@ const sessionId = "browser-smoke-session";
 const otherSessionId = "browser-smoke-other-session";
 
 test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected elements", async () => {
+  test.setTimeout(60_000);
   const server = createServer((request, response) => {
     response.setHeader("content-type", "text/html");
     response.end(
@@ -170,6 +171,61 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await addressInput.fill(`${origin}/second`);
     await addressInput.press("Enter");
     await expect.poll(browserState(`${origin}/second`)).toMatchObject({ title: "Second page" });
+
+    const toggleTerminal = () =>
+      application.evaluate(({ Menu }) => {
+        const item = Menu.getApplicationMenu()
+          ?.items.flatMap((entry) => entry.submenu?.items ?? [])
+          .find((entry) => entry.label === "Toggle Terminal");
+        if (!item) throw new Error("Toggle Terminal menu item missing");
+        item.click({}, undefined);
+      });
+    const nativeBrowserBounds = () =>
+      application.evaluate(({ BrowserWindow }, expectedUrl) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        return window.contentView.children
+          .find((child) => "webContents" in child && child.webContents.getURL() === expectedUrl)
+          ?.getBounds();
+      }, `${origin}/second`);
+    const originalBounds = await nativeBrowserBounds();
+    expect(originalBounds).toBeTruthy();
+    const terminal = page.locator('section[aria-label="Terminal"]');
+    const assertTerminalClearance = () =>
+      expect
+        .poll(async () => {
+          const bounds = (await terminal.boundingBox())!;
+          return (await nativeBrowserBounds())!.y - bounds.y - bounds.height;
+        })
+        .toBeGreaterThanOrEqual(0);
+    await toggleTerminal();
+    await expect(terminal).toHaveAttribute("aria-hidden", "false");
+    await assertTerminalClearance();
+    await terminal.locator(".xterm-screen:visible").click();
+    await page.keyboard.type("printf CAKE_TERMINAL_ABOVE_BROWSER");
+    await page.keyboard.press("Enter");
+    await expect(terminal.locator(".xterm-rows:visible")).toContainText(
+      "CAKE_TERMINAL_ABOVE_BROWSER",
+    );
+    const resize = page.getByRole("separator", { name: "Resize terminal" });
+    await resize.focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(resize).toHaveAttribute("aria-valuenow", "376");
+    await assertTerminalClearance();
+    await terminal.getByRole("button", { name: "Pin terminal to bottom" }).click();
+    await expect
+      .poll(async () => {
+        const browser = (await nativeBrowserBounds())!;
+        return browser.y + browser.height - (await terminal.boundingBox())!.y;
+      })
+      .toBeLessThanOrEqual(1);
+    await terminal.getByRole("button", { name: "Move terminal to top" }).click();
+    await assertTerminalClearance();
+    await toggleTerminal();
+    await expect.poll(nativeBrowserBounds).toEqual(originalBounds);
+    await expect.poll(browserState(`${origin}/second`)).toMatchObject({
+      title: "Second page",
+      cookie: "cakeBrowser=ready",
+    });
 
     const inspect = page.getByRole("button", { name: "Select an element" });
     await inspect.click();

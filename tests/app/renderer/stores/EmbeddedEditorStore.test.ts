@@ -4,7 +4,13 @@ import type { EditorAnnotationSnapshot } from "../../../../src/ipc/editor-annota
 import { EmbeddedEditorStore } from "../../../../src/renderer/stores/EmbeddedEditorStore";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { mountWithClient } from "../mount-with-client";
-function createHarness(annotations?: EditorAnnotationSnapshot) {
+import { TerminalStore } from "../../../../src/renderer/stores/TerminalStore";
+import { WorkingDirectoryRetirementStore } from "../../../../src/renderer/stores/WorkingDirectoryRetirementStore";
+
+function createHarness(
+  annotations?: EditorAnnotationSnapshot,
+  terminalTopInset: () => number = () => 0,
+) {
   let presentationMode: "normal" | "vscode" | "draw" | "browser" = "normal";
   let chatSidebarVisible = true;
   let chatSidebarWidth = 420;
@@ -63,6 +69,7 @@ function createHarness(annotations?: EditorAnnotationSnapshot) {
       projectSidebarWidth: () => 292,
     }),
     { vscode: client } as unknown as Client,
+    terminalTopInset,
   );
   return {
     client,
@@ -213,6 +220,66 @@ describe("EmbeddedEditorStore", () => {
     expect(leaveProjectSidebarMode).toHaveBeenCalledTimes(1);
     expect(client.updateBounds).toHaveBeenLastCalledWith(hiddenBounds, expect.any(Object));
     root[Symbol.dispose]();
+  });
+
+  it("fits the native editor below a floating terminal and restores it on dock, hide, and unmount", async () => {
+    const terminalClient = {
+      terminals: {
+        open: vi.fn(async () => ({ terminalId: "terminal-1", shell: "zsh" })),
+        close: vi.fn(async () => undefined),
+      },
+    } as unknown as Client;
+    const retirement = mountWithClient(
+      createStore(WorkingDirectoryRetirementStore, { onRetired: () => undefined }),
+      terminalClient,
+    );
+    const terminal = mountWithClient(
+      createStore(TerminalStore, {
+        activeTarget: () => ({ workingDirectory: "/tmp/project", label: "project" }),
+        retirement: () => retirement.subject,
+        toggleAcceleratorHint: () => "Ctrl+`",
+        newTabHotkey: () => "Mod+T",
+      }),
+      terminalClient,
+    );
+    const { client, root, store } = createHarness(undefined, () => terminal.subject.editorTopInset);
+    const assertBounds = (y: number, height: number, visible = true) =>
+      expect(client.updateBounds).toHaveBeenLastCalledWith(
+        { ...shownBounds, y, height, visible },
+        expect.any(Object),
+      );
+    try {
+      await store.show();
+      store.setMeasuredBounds(surfaceRect);
+      terminal.subject.setMeasuredOverlayHeight(365);
+      assertBounds(0, 820); // A mounted but closed terminal does not occlude.
+      terminal.subject.readyForEvents();
+      await terminal.subject.toggle();
+      assertBounds(365, 455);
+      terminal.subject.setMeasuredOverlayHeight(413);
+      assertBounds(413, 407); // Resizing retains the editor's bottom edge.
+      terminal.subject.dock();
+      assertBounds(0, 820); // Docked geometry comes from the editor host's layout.
+      terminal.subject.moveToTop();
+      assertBounds(413, 407);
+      terminal.subject.hide();
+      assertBounds(0, 820);
+      await terminal.subject.toggle();
+      terminal.subject.setMeasuredOverlayHeight(0);
+      assertBounds(0, 820); // Unmount clears the transient occlusion.
+      store.setMeasuredBounds({ ...surfaceRect, y: 450, height: 370 });
+      terminal.subject.setMeasuredOverlayHeight(413);
+      assertBounds(450, 370); // A surface already below the terminal is unchanged.
+      terminal.subject.setMeasuredOverlayHeight(900);
+      assertBounds(820, 0, false); // Fully covered surfaces hide without a negative height.
+      expect(store.nativeViewReady).toBe(true);
+      expect(client.open).toHaveBeenCalledTimes(1);
+      expect(client.release).not.toHaveBeenCalled();
+    } finally {
+      root[Symbol.dispose]();
+      terminal.root[Symbol.dispose]();
+      retirement.root[Symbol.dispose]();
+    }
   });
 
   it("invalidates disconnected presentation without replaying its open, then resends geometry and annotations on explicit reopen", async () => {

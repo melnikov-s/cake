@@ -29,6 +29,8 @@ export class TerminalStore extends Store<{
 
   open = false;
   docked = false;
+  /** Mounted panel geometry, window-local and never persisted. */
+  private measuredOverlayHeight = 0;
   eventsReady = false;
   entries: TerminalEntry[] = [];
   activeEntryKeys: Record<string, string> = {};
@@ -70,6 +72,15 @@ export class TerminalStore extends Store<{
 
   get activeTarget() {
     return this.props.activeTarget();
+  }
+
+  /** Native editor views cannot be covered by renderer z-index layers. */
+  get editorTopInset() {
+    return this.open && !this.docked ? this.measuredOverlayHeight : 0;
+  }
+
+  setMeasuredOverlayHeight(height: number) {
+    this.measuredOverlayHeight = height;
   }
 
   get toggleAcceleratorHint() {

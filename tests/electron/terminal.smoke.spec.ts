@@ -4,10 +4,12 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { callRpcHarness, openRpcHarness } from "./rpc-harness";
+import { emitRendererEvent } from "./main-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 test("Quake terminal runs a shell and retains tabs when a Project Session is resolved", async () => {
+  test.setTimeout(90_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-terminal-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -95,7 +97,7 @@ test("Quake terminal runs a shell and retains tabs when a Project Session is res
 
     const panel = page.locator('section[aria-label="Terminal"]');
     await expect(panel).toHaveAttribute("aria-hidden", "true");
-    await page.getByRole("button", { name: /^Terminal \(/ }).click();
+    await toggleTerminalViaMenu();
     await expect(panel).toHaveAttribute("aria-hidden", "false");
     await expect(panel.locator(".xterm-screen:visible")).toBeVisible();
     await panel.locator(".xterm-screen:visible").click();
@@ -136,6 +138,72 @@ test("Quake terminal runs a shell and retains tabs when a Project Session is res
     await expect(panel).toHaveAttribute("aria-hidden", "false");
     await panel.getByRole("tab").first().click();
     await expect(panel.locator(".xterm-rows:visible")).toContainText("CAKE_TERMINAL_OK");
+
+    // Native VS Code must leave the terminal's region clickable, not merely
+    // report a visible DOM element underneath its WebContentsView.
+    await toggleTerminalViaMenu();
+    await emitRendererEvent(application, {
+      type: "project-session-control-requested",
+      sessionId,
+      controlRequestId: crypto.randomUUID(),
+      invocation: { _tag: "InvokeAppControl", command: "vscode.enter", input: {} },
+    });
+    const nativeEditorBounds = () =>
+      application.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        const view = window.contentView.children.find(
+          (child) =>
+            "webContents" in child && child.webContents.getURL().startsWith("http://127.0.0.1:"),
+        );
+        return view?.getBounds();
+      });
+    const editorHostBounds = await page.locator(".embedded-editor-pane").boundingBox();
+    await expect.poll(nativeEditorBounds, { timeout: 20_000 }).toEqual({
+      x: Math.round(editorHostBounds!.x),
+      y: Math.round(editorHostBounds!.y),
+      width: Math.round(editorHostBounds!.width),
+      height: Math.round(editorHostBounds!.height),
+    });
+    const originalEditorBounds = await nativeEditorBounds();
+    await toggleTerminalViaMenu();
+    await expect(panel).toHaveAttribute("aria-hidden", "false");
+    const terminalBottom = async () => {
+      const bounds = await panel.boundingBox();
+      return bounds!.y + bounds!.height;
+    };
+    await expect
+      .poll(async () => (await nativeEditorBounds())!.y - (await terminalBottom()))
+      .toBeGreaterThanOrEqual(0);
+    await panel.locator(".xterm-screen:visible").click();
+    await page.keyboard.type("printf CAKE_TERMINAL_ABOVE_VSCODE");
+    await page.keyboard.press("Enter");
+    await expect(panel.locator(".xterm-rows:visible")).toContainText("CAKE_TERMINAL_ABOVE_VSCODE");
+    const resize = page.getByRole("separator", { name: "Resize terminal" });
+    await resize.focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(resize).toHaveAttribute("aria-valuenow", "376");
+    await expect
+      .poll(async () => (await nativeEditorBounds())!.y - (await terminalBottom()))
+      .toBeGreaterThanOrEqual(0);
+    await page.getByRole("button", { name: "Pin terminal to bottom" }).click();
+    await expect
+      .poll(async () => {
+        const editor = (await nativeEditorBounds())!;
+        return editor.y + editor.height - (await panel.boundingBox())!.y;
+      })
+      .toBeLessThanOrEqual(1);
+    await page.getByRole("button", { name: "Move terminal to top" }).click();
+    await expect
+      .poll(async () => (await nativeEditorBounds())!.y - (await terminalBottom()))
+      .toBeGreaterThanOrEqual(0);
+    await toggleTerminalViaMenu();
+    await expect.poll(nativeEditorBounds).toEqual(originalEditorBounds);
+    await emitRendererEvent(application, {
+      type: "embedded-editor-back-to-agent",
+      workspacePath: project,
+    });
+    await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeHidden();
+    await toggleTerminalViaMenu();
 
     await panel.getByRole("tab").last().click();
     await panel.locator(".xterm-screen:visible").click();

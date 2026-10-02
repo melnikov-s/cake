@@ -889,7 +889,101 @@ const sourceSelectionScenario: VisualCaptureScenario = {
   },
 };
 
+const vscodeTerminalScenario: VisualCaptureScenario = {
+  name: "vscode-terminal",
+  description: "Native VS Code with the terminal open above it or docked below it",
+  states: ["top", "bottom"],
+  async seed(paths, theme) {
+    await sourceSelectionScenario.seed(paths, theme);
+    await writeFile(
+      join(paths.project, "src", "example.ts"),
+      [
+        "export interface Project {",
+        "  name: string;",
+        "  workingDirectory: string;",
+        "}",
+        "",
+        "export function describeProject(project: Project): string {",
+        "  return `${project.name} — ${project.workingDirectory}`;",
+        "}",
+        "",
+        "export const example: Project = {",
+        '  name: "Cake",',
+        '  workingDirectory: "~/dev/cake",',
+        "};",
+        "",
+      ].join("\n"),
+    );
+  },
+  async prepare(page, state, application) {
+    if (!application) throw new Error("The VS Code terminal scenario requires Electron");
+    await sourceSelectionScenario.prepare(page, "draft", application);
+    await expect
+      .poll(
+        () =>
+          application.evaluate(async ({ webContents }) => {
+            for (const contents of webContents.getAllWebContents()) {
+              if (!contents.getURL().startsWith("http://127.0.0.1:")) continue;
+              if (
+                await contents.executeJavaScript(
+                  'Boolean(document.querySelector(".monaco-editor .view-lines"))',
+                )
+              )
+                return true;
+            }
+            return false;
+          }),
+        { timeout: 20_000 },
+      )
+      .toBe(true);
+    await application.evaluate(({ Menu }) => {
+      const item = Menu.getApplicationMenu()
+        ?.items.flatMap((entry) => entry.submenu?.items ?? [])
+        .find((entry) => entry.label === "Toggle Terminal");
+      if (!item) throw new Error("Toggle Terminal menu item missing");
+      item.click({}, undefined);
+    });
+    const terminal = page.locator('section[aria-label="Terminal"]');
+    await expect(terminal).toHaveAttribute("aria-hidden", "false");
+    await terminal.locator(".xterm-screen:visible").click();
+    await page.keyboard.type("printf 'Terminal ready alongside VS Code\\n'");
+    await page.keyboard.press("Enter");
+    await expect(terminal.locator(".xterm-rows:visible")).toContainText(
+      "Terminal ready alongside VS Code",
+    );
+    if (state === "bottom")
+      await terminal.getByRole("button", { name: "Pin terminal to bottom" }).click();
+    await expect
+      .poll(async () => {
+        const bounds = (await terminal.boundingBox())!;
+        return application.evaluate(
+          ({ BrowserWindow, WebContentsView }, panel) => {
+            const window = BrowserWindow.getAllWindows()[0];
+            if (!window) throw new Error("Cake capture window is missing");
+            const editor = window.contentView.children
+              .find(
+                (child) =>
+                  child instanceof WebContentsView &&
+                  child.webContents.getURL().startsWith("http://127.0.0.1:"),
+              )
+              ?.getBounds();
+            if (!editor) return false;
+            return panel.state === "top"
+              ? editor.y >= panel.y + panel.height
+              : editor.y + editor.height <= panel.y + 1;
+          },
+          { ...bounds, state },
+        );
+      })
+      .toBe(true);
+  },
+  region(page) {
+    return page.locator("body");
+  },
+};
+
 export const visualCaptureScenarios = [
+  vscodeTerminalScenario,
   sourceSelectionScenario,
   sessionPluginsScenario,
   assistantMarkdownCode,

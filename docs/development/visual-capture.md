@@ -12,6 +12,8 @@ pnpm visual:capture assistant-markdown-code --state hover --theme light
 pnpm visual:capture browser-shared-chat --width 1440 --height 900
 pnpm visual:capture browser-draw --width 1440 --height 900
 pnpm visual:capture browser-vscode --width 1440 --height 900
+pnpm visual:capture vscode-terminal --state top --capture window --width 1440 --height 1000
+pnpm visual:capture vscode-terminal --state bottom --capture window --width 1440 --height 1000
 ```
 
 The command builds Cake before launching it (browser scenarios build both `out/server` and `out/browser`). Use `--no-build` only when those assets are already current. Each run creates isolated temporary `CAKE_HOME` (and Electron user-data for desktop scenarios) and removes them after success or failure. Browser scenarios use seeded Pi transcript and project files with a real server; `browser-vscode` requires the installed `/opt/homebrew/bin/code-server` and fails clearly rather than substituting a fake editor.
@@ -22,7 +24,7 @@ Useful deterministic controls include:
 
 - `--theme light|dark`
 - `--width` and `--height` for the Electron renderer or Chromium browser viewport
-- `--capture region|window` for Electron's scenario-owned region or full app content (browser scenarios always capture the full viewport)
+- `--capture region|window` for Electron's scenario-owned region or full app content (browser scenarios always capture the full viewport). Full-window Electron captures composite the real captures of visible native WebContentsViews at their actual bounds and paint order, so embedded VS Code and Browser Mode are included.
 - `--output <file.png>` or `--output-dir <directory>`
 
 By default, PNGs are written beneath `.visual-captures/`, which is ignored by Git. Use a tracked location only when intentionally creating a reviewed fixture or baseline.

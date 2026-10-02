@@ -5,6 +5,7 @@ import type { BrowserStateSnapshot } from "../client/Client";
 import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
+import { TerminalTopInsetContext } from "./context/TerminalTopInsetContext";
 
 export interface BrowserStoreProps {
   sessionId(): string | undefined;
@@ -63,15 +64,22 @@ export class BrowserStore extends Store<BrowserStoreProps> {
 
   get nativeViewBounds() {
     const rect = this.measuredBounds ?? EMPTY_VIEWPORT;
+    // Native Chromium paints above renderer overlays, so leave the floating
+    // terminal's region clear without navigating or recreating the browser.
+    const coveredHeight = Math.min(
+      rect.height,
+      Math.max(0, TerminalTopInsetContext.consume(this) - rect.y),
+    );
+    const height = rect.height - coveredHeight;
     return {
       // Geometry belongs to the opened native view, even after selection has changed.
       sessionId: this.openedSessionId ?? "",
       visible:
-        this.visible &&
-        this.openedSessionId === this.sessionId &&
-        rect.width > 0 &&
-        rect.height > 0,
-      ...rect,
+        this.visible && this.openedSessionId === this.sessionId && rect.width > 0 && height > 0,
+      x: rect.x,
+      y: rect.y + coveredHeight,
+      width: rect.width,
+      height,
     };
   }
 

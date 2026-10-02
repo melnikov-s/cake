@@ -5,6 +5,7 @@ import type { EditorSelectionHighlights } from "../../ipc/editor-selection";
 import type { Attachment } from "../../ipc/session-contract";
 import type { EmbeddedEditorStateSnapshot, EmbeddedEditorStatus } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
+import { TerminalTopInsetContext } from "./context/TerminalTopInsetContext";
 import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../lib/error-details";
 import type { ProjectSessionPresentationMode } from "./ProjectSessionStore";
@@ -110,12 +111,19 @@ export class EmbeddedEditorStore extends Store<EmbeddedEditorStoreProps> {
    */
   get nativeViewBounds() {
     const rect = this.measuredBounds ?? EMPTY_VIEWPORT;
+    // The native WebContentsView always paints above renderer overlays. Fit it
+    // below the floating terminal instead, retaining the workspace and lease.
+    const coveredHeight = Math.min(
+      rect.height,
+      Math.max(0, TerminalTopInsetContext.consume(this) - rect.y),
+    );
+    const height = rect.height - coveredHeight;
     return {
-      visible: this.nativeViewReady && rect.width > 0 && rect.height > 0,
+      visible: this.nativeViewReady && rect.width > 0 && height > 0,
       x: rect.x,
-      y: rect.y,
+      y: rect.y + coveredHeight,
       width: rect.width,
-      height: rect.height,
+      height,
       projectSidebarWidth: this.projectSidebarWidth,
     };
   }
