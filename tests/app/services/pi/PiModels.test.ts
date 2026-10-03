@@ -66,6 +66,70 @@ const resolveError = (models: ReadonlyArray<PiModel>, input = selection) =>
   Effect.flip(resolve(models, input));
 
 describe("PiModels", () => {
+  vitestIt(
+    "gives short utility completions room for reasoning independently of the display limit",
+    async () => {
+      const directory = await mkdtemp(join(tmpdir(), "cake-utility-budget-"));
+      const checkAuth = vi
+        .spyOn(ModelRuntime.prototype, "checkAuth")
+        .mockResolvedValue({ type: "api_key", source: "fixture" });
+      const available = vi
+        .spyOn(ModelRuntime.prototype, "getAvailable")
+        .mockImplementation(async function (this: ModelRuntime, provider) {
+          return this.getModels(provider);
+        });
+      const complete = vi
+        .spyOn(ModelRuntime.prototype, "completeSimple")
+        .mockImplementation(async (model, _context, options) => {
+          assert.equal(options?.maxTokens, 2_048);
+          assert.equal(options?.reasoning, "low");
+          return {
+            role: "assistant",
+            content: [{ type: "text", text: "Useful title " + "x".repeat(100) }],
+            api: model.api,
+            provider: model.provider,
+            model: model.id,
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+            stopReason: "stop",
+            timestamp: 0,
+          };
+        });
+      try {
+        const title = await Effect.runPromise(
+          Effect.gen(function* () {
+            const models = yield* PiModels;
+            return yield* models.complete({
+              selection: {
+                provider: "openai",
+                modelId: "gpt-5-mini",
+                thinkingLevel: "low",
+                fastMode: false,
+              },
+              instructions: "Create a title",
+              context: "Investigate naming",
+              maximumOutputCharacters: 80,
+              timeoutMs: 15_000,
+            });
+          }).pipe(Effect.provide(makePiModelsLive(directory))),
+        );
+        assert.equal(title.length, 80);
+        assert.equal(complete.mock.calls.length, 1);
+      } finally {
+        complete.mockRestore();
+        available.mockRestore();
+        checkAuth.mockRestore();
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   vitestIt("supplies and persists Pi's installation ID for provider login", async () => {
     const directory = await mkdtemp(join(tmpdir(), "cake-provider-device-id-"));
     const deviceIds: Array<string | undefined> = [];

@@ -49,7 +49,11 @@ async function renderMetadata(options: { pendingWorktree?: boolean; avatars?: bo
   const fixture = createRendererStoreFixture({
     projects: [project()],
     sessions: options.pendingWorktree ? [] : [session],
-    client: { projectWorkflow: { setSessionLabels }, projectSessions: { start } },
+    client: {
+      projectWorkflow: { setSessionLabels },
+      projectSessions: { start },
+      workspaces: { generateSessionTitle: async () => undefined },
+    },
   });
   fixture.root.settingsStore.applyApplicationState(1, {
     ...defaultApplicationState(),

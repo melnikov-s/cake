@@ -217,13 +217,34 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     const pending = this.request(sessionId);
     if (!pending) return false;
     this.pending.projectSubmission(sessionId, input.text);
+    // This submission owns one transient request. Pi remains the durable title authority.
+    // Start before checkout preparation, and never await naming on the prompt's critical path.
+    const namingController = new AbortController();
+    const namingSignal = AbortSignal.any([this.signal, namingController.signal]);
+    const titleWork =
+      !pending.name && input.text.trim() && !input.text.startsWith("/")
+        ? Promise.resolve()
+            .then(() =>
+              this.client.workspaces.generateSessionTitle(input.text, { signal: namingSignal }),
+            )
+            .then((title) => {
+              if (!title || namingSignal.aborted) return undefined;
+              const conversation = this.pending.conversation(sessionId);
+              if (conversation && !conversation.name) conversation.setFallbackTitle(title);
+              return title;
+            })
+            // Main logs exhausted naming failures; they must not block the first prompt.
+            .catch(() => undefined)
+        : undefined;
     try {
       if (!(await this.prepare(sessionId, input.text))) {
+        namingController.abort();
         this.pending.cancelSubmission(sessionId);
         return false;
       }
       const prepared = this.request(sessionId);
       if (!prepared) {
+        namingController.abort();
         this.pending.cancelSubmission(sessionId);
         return false;
       }
@@ -234,6 +255,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
         text: input.text,
         renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
         attachments: input.attachments,
+        ...(titleWork ? { automaticTitle: false } : null),
         ...(input.presentationMode !== undefined
           ? { presentationMode: input.presentationMode }
           : null),
@@ -249,15 +271,34 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
       if (input.text.startsWith("/")) {
         this.props.registry.observationRetention.materialize(sessionId);
         if (!(await this.waitForRuntime(sessionId))) {
+          namingController.abort();
           this.pending.cancelSubmission(sessionId);
           this.props.registry.observationRetention.remove(sessionId);
           return false;
         }
       }
       await this.client.projectSessions.start(startInput, { signal: this.signal });
+      const latestName = this.pending.conversation(sessionId)?.name;
       this.pending.materialize(sessionId, prepared.path);
+      void (async () => {
+        // A manual name entered while start was in flight must reach Pi before the utility result.
+        if (latestName && latestName !== startInput.name)
+          await this.client.projectSessions.rename(
+            { sessionId, name: latestName },
+            { signal: namingSignal },
+          );
+        const title = await titleWork;
+        if (!title || namingSignal.aborted || !this.props.registry.findSession(sessionId)) return;
+        await this.client.projectSessions.rename(
+          { sessionId, name: title, onlyIfUnnamed: true },
+          { signal: namingSignal },
+        );
+      })().catch((error) => {
+        if (!namingSignal.aborted) this.props.reportError(error);
+      });
       return true;
     } catch (error) {
+      namingController.abort();
       this.pending.cancelSubmission(sessionId);
       if (this.pending.isTemporary(sessionId))
         this.props.registry.observationRetention.remove(sessionId);

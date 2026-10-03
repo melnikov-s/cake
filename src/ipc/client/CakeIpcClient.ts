@@ -598,7 +598,7 @@ export interface CakeIpcClientService {
       },
     ) => Effect.Effect<{ readonly sessionId: string }, ProjectSessionError | TransportError>;
     readonly rename: (
-      target: ProjectSessionTarget & { readonly name: string },
+      target: ProjectSessionTarget & { readonly name: string; readonly onlyIfUnnamed?: boolean },
     ) => Effect.Effect<void, ProjectSessionError | TransportError>;
     readonly fork: (
       input: ProjectSessionTarget & {

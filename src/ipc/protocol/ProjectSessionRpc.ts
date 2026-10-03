@@ -74,6 +74,7 @@ export const ProjectSessionRpc = RpcGroup.make(
   Rpc.make("projectSessions.rename", {
     payload: {
       ...ProjectSessionTarget.fields,
+      onlyIfUnnamed: Schema.optionalKey(Schema.Boolean),
       name: Schema.String.check(
         Schema.isMinLength(1),
         Schema.isMaxLength(SESSION_TITLE_MAX_LENGTH),

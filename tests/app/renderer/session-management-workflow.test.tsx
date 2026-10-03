@@ -48,6 +48,10 @@ async function renderManagement(
 ) {
   const fixture = createRendererStoreFixture({
     ...options,
+    client: {
+      ...options.client,
+      workspaces: { generateSessionTitle: async () => undefined, ...options.client?.workspaces },
+    },
     projects: [projectRecord({ path: projectPath, name: "Cake", workflow })],
   });
   const { root } = fixture;

@@ -432,7 +432,7 @@ describe("Pi 1.0.0 foundation contract", () => {
     ).toBe(true);
   });
 
-  it("starts automatic naming from the initial user message", async () => {
+  it.each([true, false])("names before turn settles (%s)", async (automaticTitle) => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");
     let releaseResponse!: () => void;
@@ -512,7 +512,15 @@ describe("Pi 1.0.0 foundation contract", () => {
       });
       runtimes.push(runtime);
       await runtime.setModel("fixture-provider", "fixture-model");
-      prompt = runtime.prompt("Investigate session naming", "prompt", [], true);
+      prompt = runtime.prompt(
+        "Investigate session naming",
+        "prompt",
+        [],
+        true,
+        undefined,
+        undefined,
+        automaticTitle,
+      );
 
       await vi.waitFor(
         () =>
@@ -536,11 +544,17 @@ describe("Pi 1.0.0 foundation contract", () => {
       expect(events.some((event) => event.type === "streaming" && event.streaming === false)).toBe(
         false,
       );
-      await vi.waitFor(() => expect(generateTitle).toHaveBeenCalledOnce(), { timeout: 1_000 });
-      expect(generateTitle).toHaveBeenCalledWith(
-        expect.objectContaining({ firstUserMessage: "Investigate session naming" }),
-      );
       await vi.waitFor(() => expect(autoLabelSession).toHaveBeenCalledOnce(), { timeout: 1_000 });
+      if (automaticTitle) {
+        await vi.waitFor(() => expect(generateTitle).toHaveBeenCalledOnce(), { timeout: 1_000 });
+        expect(generateTitle).toHaveBeenCalledWith(
+          expect.objectContaining({ firstUserMessage: "Investigate session naming" }),
+        );
+      } else {
+        expect(generateTitle).not.toHaveBeenCalled();
+        // The submission-time utility request delivers through the conditional rename API.
+        await runtime.rename("Generated title", true);
+      }
       expect(autoLabelSession).toHaveBeenCalledWith(
         expect.objectContaining({ firstUserMessage: "Investigate session naming" }),
       );
@@ -592,6 +606,9 @@ describe("Pi 1.0.0 foundation contract", () => {
       expect(entries).toContainEqual(
         expect.objectContaining({ type: "session_info", name: "Generated title" }),
       );
+      await runtime.rename("My manual title");
+      await runtime.rename("Unwanted generated title", true);
+      expect(sessionTitleChanged).toHaveBeenLastCalledWith(runtime.sessionId, "My manual title");
       prompt = undefined;
     } finally {
       releaseResponse();

@@ -331,20 +331,28 @@ renders native Git diffs. Cake projects review annotations into VS Code without
 maintaining a second working-tree snapshot or diff browser. Historical per-turn
 diffs remain in Pi's authoritative conversation work logs.
 
-Automatic project-session naming is the first utility workflow. After the
-initial user message is accepted, an unnamed session may send that original
-user message, with bounded length, to the configured utility model without
-waiting for the assistant turn to finish. A successful short title is appended
-through Pi's normal session-name API. A Cake-owned draft session attempts the
-same bounded naming work when its staged initial message is saved; the title
-remains pending metadata until activation. If that attempt fails, normal
-first-message naming retries after activation. With no configured utility
-model, draft naming is skipped without a fallback. The completion is discarded
-if the session is manually named while it is running. Failures are silent and
-leave Pi's first-message session-list title as the display fallback for active
-sessions. Configuring a utility model later makes an unnamed active session
-eligible after its next interaction; already named sessions are never
-regenerated automatically. Tool compaction keeps the existing Pi Session identity and title. A fork inherits the
+Automatic project-session naming is the first utility workflow. For a new UI
+session, the creation Store requests a bounded utility title at submission,
+alongside checkout preparation and without blocking the first prompt. Until Pi
+starts, a successful title is pending display metadata. Once startup succeeds,
+it is committed through Pi's normal session-name API with an atomic
+only-if-unnamed check. Submission-time naming suppresses the duplicate runtime
+request for that initial message, but not automatic labels or later unnamed-session
+eligibility. Other callers attempt naming when Pi accepts the first user message,
+without waiting for the assistant turn to finish. Live title events update both
+cataloged sessions and started sessions still awaiting catalog registration.
+A Cake-owned draft session attempts the same bounded naming work when its staged
+initial message is saved; the title remains pending metadata until activation.
+If that attempt fails, normal first-message naming retries after activation.
+With no configured utility model, naming is skipped without a generated fallback.
+A manual name always wins over an outstanding utility result. Utility completions
+have a token budget independent of the 80-character title display limit, and title
+completion failures or empty output are retried once with a fresh 15-second
+attempt deadline. Exhausted failures are logged, without blocking the conversation
+or replacing its first-message display fallback. Cancellation and invalid model
+configuration are not retried. Configuring a utility model later makes an unnamed
+active session eligible after its next interaction; already named sessions are
+never regenerated automatically. Tool compaction keeps the existing Pi Session identity and title. A fork inherits the
 source session's current title through Pi's session-name metadata, so continuation never triggers a new title
 generation pass.
 

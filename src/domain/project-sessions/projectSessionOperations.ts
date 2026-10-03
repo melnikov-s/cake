@@ -85,6 +85,7 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
         projectAttachments(input.attachments),
         input.renderUserMessageAsMarkdown,
         input.presentationMode,
+        input.automaticTitle,
       )
       .pipe(asError("start")),
   );
@@ -339,6 +340,7 @@ export const dispatchExtensionCompanionAction = Effect.fn(
 export const rename = Effect.fn("ProjectSessions.rename")(function* (
   target: ProjectSessionTarget,
   name: string,
+  onlyIfUnnamed = false,
 ) {
   const normalized = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
   if (!normalized)
@@ -348,7 +350,7 @@ export const rename = Effect.fn("ProjectSessions.rename")(function* (
     asError("rename"),
   );
   const handle = yield* acquireTarget(location, target.sessionId, false);
-  yield* handle.rename(normalized).pipe(asError("rename"));
+  yield* handle.rename(normalized, onlyIfUnnamed).pipe(asError("rename"));
   yield* publishCatalogChange(target.sessionId, location, namespace === "resolved").pipe(
     asError("rename"),
   );

@@ -24,8 +24,11 @@ interface PendingSessionFork {
 
 export interface CakeSessionRuntimeContinuations {
   activeSessionTitle(): string;
-  initializeSessionFromFirstMessage(currentUserMessage: string): Promise<void>;
-  rename(name: string, reportAction?: boolean): Promise<string>;
+  initializeSessionFromFirstMessage(
+    currentUserMessage: string,
+    automaticTitle?: boolean,
+  ): Promise<void>;
+  rename(name: string, reportAction?: boolean, onlyIfUnnamed?: boolean): Promise<string>;
   fork(
     entryId: string,
     title: string,
@@ -43,7 +46,16 @@ export interface CakeSessionRuntimeContinuations {
 
 export function createCakeSessionRuntimeContinuations(input: {
   options: CakeSessionRuntimeOptions;
-  session: AgentSession;
+  session: Pick<
+    AgentSession,
+    | "sessionManager"
+    | "setSessionName"
+    | "sessionFile"
+    | "isStreaming"
+    | "navigateTree"
+    | "model"
+    | "thinkingLevel"
+  >;
   sessionId: string;
   isDisposed(): boolean;
   emitSnapshot(): Promise<void>;
@@ -93,7 +105,9 @@ export function createCakeSessionRuntimeContinuations(input: {
     );
   };
 
-  const rename = async (name: string, shouldReport = false) => {
+  const rename = async (name: string, shouldReport = false, onlyIfUnnamed = false) => {
+    const currentName = session.sessionManager.getSessionName();
+    if (onlyIfUnnamed && currentName) return currentName;
     const normalizedName = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
     session.setSessionName(normalizedName);
     await emitSnapshot();
@@ -104,7 +118,7 @@ export function createCakeSessionRuntimeContinuations(input: {
 
   return {
     activeSessionTitle,
-    async initializeSessionFromFirstMessage(currentUserMessage) {
+    async initializeSessionFromFirstMessage(currentUserMessage, automaticTitle = true) {
       if (isDisposed() || sessionNamingInFlight) return;
       const firstUserMessage = session.sessionManager
         .getBranch()
@@ -116,11 +130,12 @@ export function createCakeSessionRuntimeContinuations(input: {
       if (!userText) return;
       const utilityModel: UtilityModel | undefined = options.utilityModel?.();
       if (!utilityModel) return;
-      const signal = AbortSignal.any([sessionNamingController.signal, AbortSignal.timeout(15_000)]);
+      // Utility work bounds each attempt; a shared 15s deadline would cancel its timeout retry.
+      const signal = sessionNamingController.signal;
       sessionNamingInFlight = true;
       try {
         const titleWork =
-          options.generateSessionTitle && !session.sessionManager.getSessionName()
+          automaticTitle && options.generateSessionTitle && !session.sessionManager.getSessionName()
             ? options
                 .generateSessionTitle({ utilityModel, firstUserMessage: userText, signal })
                 .then(async (title) => {

@@ -151,10 +151,10 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     addUnique(this.unlistedNewSessionIds, sessionId);
   }
 
-  /** Pi may name the live session before its first assistant message persists a JSONL file. */
+  /** Pi title events remain authoritative while a started session awaits catalog registration. */
   applyLiveTitle(sessionId: string, title: string) {
     const conversation = this.conversation(sessionId);
-    if (this.isTemporary(sessionId) && conversation && !conversation.name && !conversation.isDraft)
+    if (this.canCreateRuntime(sessionId) && conversation && !conversation.isDraft)
       conversation.setName(title);
   }
 

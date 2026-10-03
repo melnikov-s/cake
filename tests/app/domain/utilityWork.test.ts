@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Deferred, Effect, Fiber, Logger, Ref } from "effect";
+import { TestClock } from "effect/testing";
 import { describe, it as vitestIt } from "vitest";
 import {
   generateSessionDescription,
@@ -74,6 +75,99 @@ describe("utility work", () => {
       assert.match(received.context, /Add a user-configured utility model/);
       assert.equal(received.maximumOutputCharacters, 80);
       assert.equal(received.timeoutMs, 15_000);
+    }),
+  );
+
+  it.effect("retries a failed completion once without another user message", () =>
+    Effect.gen(function* () {
+      const attempts = yield* Ref.make(0);
+      const title = yield* run(
+        generateSessionTitle({ selection, firstUserMessage: "Investigate naming" }),
+        () =>
+          Effect.gen(function* () {
+            const attempt = yield* Ref.getAndUpdate(attempts, (count) => count + 1);
+            if (attempt === 0)
+              return yield* Effect.fail(new Error("Provider temporarily unavailable"));
+            return "Recovered title";
+          }),
+      );
+      assert.equal(title, "Recovered title");
+      assert.equal(yield* Ref.get(attempts), 2);
+    }),
+  );
+
+  it.effect("retries empty title output and bounds exhausted attempts with a diagnostic", () =>
+    Effect.gen(function* () {
+      const attempts = yield* Ref.make(0);
+      const logs: unknown[] = [];
+      const error = yield* run(
+        generateSessionTitle({ selection, firstUserMessage: "Investigate naming" }),
+        () => Ref.update(attempts, (count) => count + 1).pipe(Effect.as("")),
+      ).pipe(
+        Effect.flip,
+        Effect.provide(
+          Logger.layer([
+            Logger.make((entry) => {
+              logs.push(entry.message);
+            }),
+          ]),
+        ),
+      );
+      assert.equal(error._tag, "UtilityWorkOutputError");
+      assert.equal(yield* Ref.get(attempts), 2);
+      assert.equal(logs.length, 1);
+      assert.match(String(logs[0]), /Automatic session title generation failed/);
+    }),
+  );
+
+  it.effect("gives a timeout retry its own deadline", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const attempts = yield* Ref.make(0);
+      const naming = yield* run(
+        generateSessionTitle({ selection, firstUserMessage: "Investigate naming" }),
+        () =>
+          Effect.gen(function* () {
+            const attempt = yield* Ref.getAndUpdate(attempts, (count) => count + 1);
+            if (attempt === 0) {
+              yield* Deferred.succeed(started, undefined);
+              return yield* Effect.never;
+            }
+            return "Recovered after timeout";
+          }),
+      ).pipe(Effect.forkChild);
+      yield* Deferred.await(started);
+      yield* TestClock.adjust(15_000);
+      assert.equal(yield* Fiber.join(naming), "Recovered after timeout");
+      assert.equal(yield* Ref.get(attempts), 2);
+    }),
+  );
+
+  it.effect("does not retry interruption or an invalid utility-model selection", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const attempts = yield* Ref.make(0);
+      const complete = () =>
+        Ref.update(attempts, (count) => count + 1).pipe(
+          Effect.andThen(Deferred.succeed(started, undefined)),
+          Effect.andThen(Effect.never),
+        );
+      const naming = yield* run(
+        generateSessionTitle({ selection, firstUserMessage: "Investigate naming" }),
+        complete,
+      ).pipe(Effect.forkChild);
+      yield* Deferred.await(started);
+      yield* Fiber.interrupt(naming);
+      assert.equal(yield* Ref.get(attempts), 1);
+      const error = yield* run(
+        generateSessionTitle({
+          selection: { ...selection, modelId: "missing" },
+          firstUserMessage: "Investigate naming",
+        }),
+        complete,
+      ).pipe(Effect.flip);
+      assert.equal(error._tag, "UnknownPiModelError");
+      assert.equal(yield* Ref.get(attempts), 1);
     }),
   );
 

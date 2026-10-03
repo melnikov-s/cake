@@ -14,7 +14,8 @@ import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-pr
 import { WorktreePill } from "../../../src/renderer/components/worktree-pill";
 import { SavedDraftRecovery } from "../../../src/renderer/components/saved-draft-recovery";
 import { fakeSavedDrafts } from "./fakes/saved-drafts";
-import { fixtureTimestamp, projectRecord } from "./fixtures/catalog-fixtures";
+import { fixtureTimestamp, projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
+import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import type { TestClientOverrides } from "./test-client";
 
@@ -154,10 +155,28 @@ async function renderDrafts(drafts = fakeSavedDrafts(), client: TestClientOverri
         fixture.root.sessionRegistry.pendingSessions.applySavedDraftSnapshot(records),
       );
     },
-    async publishTitle(title: string) {
+    publishTitle(title: string) {
       // This is the live-title authority delivery used by the renderer Model observer.
-      await act(async () =>
-        fixture.root.sessionRegistry.pendingSessions.applyLiveTitle(sessionId, title),
+      act(() => {
+        applySessionCatalogGroupUpdate(
+          fixture.models.sessionCatalog,
+          { projectPath, resolved: false },
+          { _tag: "Event", revision: 1, event: { _tag: "TitleChanged", sessionId, title } },
+        );
+        fixture.root.sessionRegistry.pendingSessions.applyLiveTitle(sessionId, title);
+      });
+    },
+    publishCatalog(title: string) {
+      act(() =>
+        applySessionCatalogGroupUpdate(
+          fixture.models.sessionCatalog,
+          { projectPath, resolved: false },
+          {
+            _tag: "Snapshot",
+            revision: 1,
+            sessions: [sessionSummary({ sessionId, projectPath, title, messageCount: 1 })],
+          },
+        ),
       );
     },
     async publishWorktree(record: WorktreeRecord) {
@@ -400,33 +419,140 @@ describe("Saved Draft workflows", () => {
     expect(input()).toBeDefined();
   });
 
-  it("shows a live first-turn title without allowing later title events to replace a user-supplied name", async () => {
-    const pending = deferred<Awaited<ReturnType<Client["projectSessions"]["start"]>>>();
-    const start = vi.fn<Client["projectSessions"]["start"]>(() => pending.promise);
-    const menu = vi.fn<Client["electron"]["showSessionContextMenu"]>(async () => ({
-      action: "rename",
-    }));
+  it.each([false, true])(
+    "delivers a title after startup succeeds (catalog registered: %s)",
+    async (cataloged) => {
+      const generated = deferred<string>();
+      const generate = vi.fn<Client["workspaces"]["generateSessionTitle"]>(() => generated.promise);
+      const start = vi.fn<Client["projectSessions"]["start"]>(async () =>
+        TurnId.make("10000000-0000-4000-8000-000000000002"),
+      );
+      const rename = vi.fn<Client["projectSessions"]["rename"]>(async ({ name }) => {
+        await fixture.publishTitle(name);
+      });
+      using fixture = await renderDrafts(fakeSavedDrafts(), {
+        projectSessions: { start, rename },
+        workspaces: { generateSessionTitle: generate },
+      });
+      await fixture.user.type(input(), "Investigate naming");
+      await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(start).toHaveBeenCalledOnce());
+      expect(start).toHaveBeenCalledWith(
+        expect.objectContaining({ automaticTitle: false }),
+        expect.anything(),
+      );
+      if (cataloged) await fixture.publishCatalog("Investigate naming");
+      expect(sidebar().getByText("Investigate naming")).toBeDefined();
+      await act(async () => generated.resolve("Generated title"));
+      expect(await sidebar().findByText("Generated title")).toBeDefined();
+      expect(generate).toHaveBeenCalledOnce();
+      expect(rename).toHaveBeenCalledWith(
+        { sessionId, name: "Generated title", onlyIfUnnamed: true },
+        expect.anything(),
+      );
+    },
+  );
+
+  it("starts naming alongside checkout preparation and shows the result before session startup", async () => {
+    const checkout = deferred<WorktreeRecord>();
+    const generated = deferred<string>();
+    const generate = vi.fn<Client["workspaces"]["generateSessionTitle"]>(() => generated.promise);
+    const create = vi.fn<Client["managedWorktrees"]["create"]>(() => checkout.promise);
+    const start = vi.fn<Client["projectSessions"]["start"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000002"),
+    );
+    const rename = vi.fn<Client["projectSessions"]["rename"]>(async ({ name }) =>
+      fixture.publishTitle(name),
+    );
     using fixture = await renderDrafts(fakeSavedDrafts(), {
-      projectSessions: { start },
-      electron: { showSessionContextMenu: menu },
+      projectSessions: { start, rename },
+      managedWorktrees: { create },
+      workspaces: { generateSessionTitle: generate },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "New worktree" }));
+    await fixture.user.type(input(), "Investigate naming");
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(create).toHaveBeenCalledOnce());
+    expect(generate).toHaveBeenCalledOnce();
+    expect(start).not.toHaveBeenCalled();
+    await act(async () => generated.resolve("Generated title"));
+    expect(sidebar().getByText("Generated title")).toBeDefined();
+    expect(rename).not.toHaveBeenCalled();
+    await act(async () =>
+      checkout.resolve({
+        projectPath,
+        worktreePath: "/worktrees/naming",
+        branch: "agent/naming",
+        baseBranch: "main",
+        state: "active",
+        createdAt: fixtureTimestamp,
+      }),
+    );
+    await waitFor(() => expect(start).toHaveBeenCalledOnce());
+    await waitFor(() => expect(rename).toHaveBeenCalledOnce());
+    expect(sidebar().getByText("Generated title")).toBeDefined();
+  });
+
+  it.each([false, true])(
+    "preserves a manual rename while naming runs (startup accepted: %s)",
+    async (accepted) => {
+      const pending = deferred<Awaited<ReturnType<Client["projectSessions"]["start"]>>>();
+      const generated = deferred<string>();
+      let committedName: string | undefined;
+      const start = vi.fn<Client["projectSessions"]["start"]>(() => pending.promise);
+      const rename = vi.fn<Client["projectSessions"]["rename"]>(async ({ name, onlyIfUnnamed }) => {
+        if (onlyIfUnnamed && committedName) return;
+        committedName = name;
+        await fixture.publishTitle(name);
+      });
+      using fixture = await renderDrafts(fakeSavedDrafts(), {
+        projectSessions: { start, rename },
+        workspaces: { generateSessionTitle: () => generated.promise },
+        electron: { showSessionContextMenu: async () => ({ action: "rename" }) },
+      });
+      await fixture.user.type(input(), "Investigate naming");
+      await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(start).toHaveBeenCalledOnce());
+      if (accepted)
+        await act(async () => pending.resolve(TurnId.make("10000000-0000-4000-8000-000000000002")));
+      await fixture.user.pointer({
+        target: sidebar().getByText("Investigate naming"),
+        keys: "[MouseRight]",
+      });
+      const name = await screen.findByRole("textbox", { name: "Session name" });
+      await fixture.user.clear(name);
+      await fixture.user.type(name, "My explicit name{Enter}");
+      expect(sidebar().getByText("My explicit name")).toBeDefined();
+      await act(async () => generated.resolve("Unwanted title"));
+      if (!accepted)
+        await act(async () => pending.resolve(TurnId.make("10000000-0000-4000-8000-000000000002")));
+      await waitFor(() => expect(committedName).toBe("My explicit name"));
+      await waitFor(() =>
+        expect(rename).toHaveBeenCalledWith(
+          { sessionId, name: "Unwanted title", onlyIfUnnamed: true },
+          expect.anything(),
+        ),
+      );
+      expect(sidebar().getByText("My explicit name")).toBeDefined();
+    },
+  );
+
+  it("starts the conversation even when naming fails", async () => {
+    const generated = deferred<string>();
+    const start = vi.fn<Client["projectSessions"]["start"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000002"),
+    );
+    const rename = vi.fn<Client["projectSessions"]["rename"]>();
+    using fixture = await renderDrafts(fakeSavedDrafts(), {
+      projectSessions: { start, rename },
+      workspaces: { generateSessionTitle: () => generated.promise },
     });
     await fixture.user.type(input(), "Investigate naming");
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(start).toHaveBeenCalledOnce());
+    await act(async () => generated.reject(new Error("Naming exhausted its retry")));
     expect(sidebar().getByText("Investigate naming")).toBeDefined();
-    await fixture.publishTitle("Generated title");
-    expect(sidebar().getByText("Generated title")).toBeDefined();
-    await fixture.publishTitle("Later model response");
-    expect(sidebar().getByText("Generated title")).toBeDefined();
-    await fixture.user.pointer({
-      target: sidebar().getByText("Generated title"),
-      keys: "[MouseRight]",
-    });
-    const name = await screen.findByRole("textbox", { name: "Session name" });
-    await fixture.user.clear(name);
-    await fixture.user.type(name, "My explicit name{Enter}");
-    await fixture.publishTitle("Unwanted title");
-    expect(sidebar().getByText("My explicit name")).toBeDefined();
-    await act(async () => pending.resolve(TurnId.make("10000000-0000-4000-8000-000000000002")));
+    expect(rename).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

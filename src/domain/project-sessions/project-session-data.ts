@@ -167,6 +167,8 @@ export const ProjectSessionStartInput = Schema.Struct({
   workingDirectory: boundedPath,
   configuration: Schema.optionalKey(SessionChatConfiguration),
   name: Schema.optionalKey(Schema.String),
+  /** Set false when submission-time naming is in flight, avoiding a duplicate runtime request. */
+  automaticTitle: Schema.optionalKey(Schema.Boolean),
   labelIds: Schema.optionalKey(
     Schema.Array(Schema.String.check(Schema.isUUID(4))).check(
       Schema.isMaxLength(100),

@@ -327,6 +327,7 @@ export interface CakeSessionRuntime {
     renderUserMessageAsMarkdown?: boolean,
     turnId?: string,
     presentationMode?: ProjectSessionPresentationMode,
+    automaticTitle?: boolean,
   ): Promise<void>;
   listQueuedMessages(): Promise<{ steering: string[]; followUp: string[] }>;
   pendingMessages(): Promise<PiPendingMessages>;
@@ -360,7 +361,7 @@ export interface CakeSessionRuntime {
   callCakeOperation?(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
   dispatchExtensionCompanionAction?(id: string, action: string, value: JsonValue): Promise<void>;
   refreshModels?(): Promise<void>;
-  rename(name: string): Promise<void>;
+  rename(name: string, onlyIfUnnamed?: boolean): Promise<void>;
   fork(
     entryId: string,
     title: string,
@@ -603,6 +604,7 @@ export async function createCakeSessionRuntime(
     reportAgentAction: capabilities.reportAgentAction,
   });
 
+  let automaticTitleForNextMessage = true;
   const unsubscribe = session.subscribe((event) => {
     if (disposed) return;
     if (
@@ -638,9 +640,12 @@ export async function createCakeSessionRuntime(
           });
           emitSnapshotInBackground();
         });
+      const automaticTitle = automaticTitleForNextMessage;
+      automaticTitleForNextMessage = true;
       if (!options.auxiliary)
         void continuations.initializeSessionFromFirstMessage(
           textFromContent(event.message.content),
+          automaticTitle,
         );
     }
     if (event.type === "agent_settled") {
@@ -835,7 +840,10 @@ export async function createCakeSessionRuntime(
     },
     compact: turnController.compact,
     executingTurnIds: turnController.executingTurnIds,
-    prompt: turnController.prompt,
+    prompt(text, delivery, attachments, markdown, turnId, presentationMode, automaticTitle = true) {
+      automaticTitleForNextMessage = automaticTitle;
+      return turnController.prompt(text, delivery, attachments, markdown, turnId, presentationMode);
+    },
     listQueuedMessages: turnController.listQueuedMessages,
     pendingMessages: turnController.pendingMessages,
     reorderPendingMessage: turnController.reorderPendingMessage,
@@ -892,8 +900,8 @@ export async function createCakeSessionRuntime(
     },
     dispatchExtensionCompanionAction: resources.dispatchCompanionAction,
     refreshModels: configuration.refreshModels,
-    async rename(name) {
-      await continuations.rename(name);
+    async rename(name, onlyIfUnnamed = false) {
+      await continuations.rename(name, false, onlyIfUnnamed);
     },
     fork: continuations.fork,
     toolCompact: continuations.toolCompact,

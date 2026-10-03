@@ -1,6 +1,6 @@
-import { Effect, Schema } from "effect";
+import { Effect, Schedule, Schema } from "effect";
 import { PiModels } from "../../services/pi/PiModels";
-import type { ModelSelection } from "../../services/pi/model-data";
+import { PiModelCompletionError, type ModelSelection } from "../../services/pi/model-data";
 import {
   PROJECT_WORKFLOW_SESSION_DESCRIPTION_MAX_LENGTH,
   type SessionLabel,
@@ -44,8 +44,26 @@ Use the user's language. Describe the concrete task or topic. Keep the title at 
       maximumOutputCharacters: TITLE_CHARACTER_LIMIT,
       timeoutMs: 15_000,
     });
-    return normalizeSessionTitle(text);
+    const title = normalizeSessionTitle(text);
+    if (!title)
+      return yield* new UtilityWorkOutputError({
+        message: "The utility model returned an empty session title",
+      });
+    return title;
   },
+  Effect.retry({
+    schedule: Schedule.recurs(1),
+    while: (error) =>
+      error instanceof PiModelCompletionError || error instanceof UtilityWorkOutputError,
+  }),
+  (effect, { selection }) =>
+    effect.pipe(
+      Effect.tapError((error) =>
+        Effect.logWarning("Automatic session title generation failed", error).pipe(
+          Effect.annotateLogs({ provider: selection.provider, modelId: selection.modelId }),
+        ),
+      ),
+    ),
 );
 
 export const selectInitialSessionLabels = Effect.fn("UtilityWork.selectInitialSessionLabels")(

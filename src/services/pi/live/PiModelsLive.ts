@@ -233,9 +233,10 @@ export const makePiModelsLive = (agentDirectory: string) =>
             const options: SimpleStreamOptions & { serviceTier?: "priority" } = {
               reasoning:
                 input.selection.thinkingLevel === "off" ? undefined : input.selection.thinkingLevel,
+              // The provider budget includes reasoning; display length is bounded separately.
               maxTokens: Math.min(
                 8_192,
-                Math.max(32, Math.ceil(input.maximumOutputCharacters / 2)),
+                Math.max(2_048, Math.ceil(input.maximumOutputCharacters / 2)),
               ),
               signal,
               serviceTier: input.selection.fastMode ? CODEX_FAST_MODE_SERVICE_TIER : undefined,

@@ -55,7 +55,10 @@ async function renderStaged(load: Client["workspaces"]["loadStagedSlashCommands"
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project", name: "Project" })],
     client: {
-      workspaces: { loadStagedSlashCommands: loadCommands },
+      workspaces: {
+        loadStagedSlashCommands: loadCommands,
+        generateSessionTitle: async () => undefined,
+      },
       projectSessions: { start },
       managedWorktrees: {
         create: async () => ({

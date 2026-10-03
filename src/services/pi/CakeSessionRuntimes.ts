@@ -132,6 +132,7 @@ export interface CakeSessionHandle {
     attachments?: ReadonlyArray<Attachment>,
     renderUserMessageAsMarkdown?: boolean,
     presentationMode?: ProjectSessionPresentationMode,
+    automaticTitle?: boolean,
   ) => Effect.Effect<string, PiSessionError>;
   readonly steer: (
     text: string,
@@ -185,7 +186,7 @@ export interface CakeSessionHandle {
     options: { readonly summarize: boolean; readonly customInstructions?: string },
   ) => Effect.Effect<void, PiSessionError>;
   readonly compact: (instructions?: string) => Effect.Effect<void, PiSessionError>;
-  readonly rename: (name: string) => Effect.Effect<void, PiSessionError>;
+  readonly rename: (name: string, onlyIfUnnamed?: boolean) => Effect.Effect<void, PiSessionError>;
   readonly fork: (
     entryId: string,
     title: string,
@@ -589,6 +590,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           attachments: ReadonlyArray<Attachment>,
           markdown = false,
           presentationMode?: ProjectSessionPresentationMode,
+          automaticTitle?: boolean,
         ) {
           const turnId = crypto.randomUUID();
           const turnScope = yield* Scope.make();
@@ -635,6 +637,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 markdown,
                 turnId,
                 presentationMode,
+                automaticTitle,
               ),
             catch: (cause) => cause,
           }).pipe(
@@ -719,8 +722,8 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           profile: shared.profile,
           updates,
           snapshot: () => call("snapshot", (runtime) => runtime.snapshot()),
-          prompt: (text, attachments = [], markdown = false, presentationMode) =>
-            startTurn("prompt", text, attachments, markdown, presentationMode),
+          prompt: (text, attachments = [], markdown = false, presentationMode, automaticTitle) =>
+            startTurn("prompt", text, attachments, markdown, presentationMode, automaticTitle),
           steer: (text, attachments = [], markdown = false, presentationMode) =>
             startTurn("steer", text, attachments, markdown, presentationMode),
           followUp: (text, attachments = [], markdown = false, presentationMode) =>
@@ -816,7 +819,8 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           navigate: (entryId, options) =>
             call("navigate", (runtime) => runtime.navigate(entryId, options)),
           compact: (instructions) => call("compact", (runtime) => runtime.compact(instructions)),
-          rename: (name) => call("rename", (runtime) => runtime.rename(name)),
+          rename: (name, onlyIfUnnamed) =>
+            call("rename", (runtime) => runtime.rename(name, onlyIfUnnamed)),
           fork: (entryId, title) => call("fork", (runtime) => runtime.fork(entryId, title)),
           toolCompact: (entryId) => call("toolCompact", (runtime) => runtime.toolCompact(entryId)),
           reviewParentContext: () =>

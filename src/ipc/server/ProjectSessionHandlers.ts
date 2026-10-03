@@ -80,7 +80,8 @@ export const projectSessionHandlers = ProjectSessionRpc.of({
     if (prompt !== undefined) Object.assign(input, { prompt });
     return projectSessionContinuations.toolCompact(input);
   },
-  "projectSessions.rename": ({ name, ...target }) => projectSessionOperations.rename(target, name),
+  "projectSessions.rename": ({ name, onlyIfUnnamed, ...target }) =>
+    projectSessionOperations.rename(target, name, onlyIfUnnamed),
   "projectSessions.fork": ({ entryId, destinationWorkingDirectory, resolveSource, ...target }) => {
     const input: Parameters<typeof projectSessionContinuations.fork>[0] = { target, entryId };
     if (destinationWorkingDirectory !== undefined)
