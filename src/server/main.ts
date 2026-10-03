@@ -8,6 +8,7 @@ import { networkConfiguration } from "./networkConfiguration";
 import { makeBackendLive } from "../backend/BackendLive";
 import { PreviewLeases } from "../services/browser/PreviewLeases";
 import { resolveCakePaths } from "../config/CakePaths";
+import { configureCakePiAgentDirectory } from "../services/pi/runtime/mcp-integration";
 
 // The network endpoint is explicitly opt-in. Preconfigured projects and Pi credentials live
 // under CAKE_HOME; startup never silently opens the desktop user's default data root.
@@ -20,6 +21,7 @@ const program = Effect.gen(function* () {
   );
   const network = yield* networkConfiguration();
   const paths = resolveCakePaths({ env: { CAKE_HOME: home } });
+  configureCakePiAgentDirectory(paths.piAgent);
   const homeDirectory = homedir();
   const backend = makeBackendLive({ paths, homeDirectory, remoteCapture: true }, () => Layer.empty);
   yield* Effect.gen(function* () {

@@ -1,7 +1,8 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { configureCakePiAgentDirectory } from "../../src/services/pi/runtime/mcp-integration";
 import {
   createCakeSessionRuntime,
   type CakeSessionRuntime,
@@ -12,6 +13,7 @@ const runtimes: CakeSessionRuntime[] = [];
 
 afterEach(async () => {
   for (const runtime of runtimes.splice(0)) await runtime.dispose();
+  vi.unstubAllEnvs();
   await Promise.all(
     directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
@@ -60,6 +62,8 @@ async function openRuntime(
   directory: string,
   options: { auxiliary?: boolean; cakeChat?: boolean } = {},
 ) {
+  vi.stubEnv("PI_CODING_AGENT_DIR", process.env.PI_CODING_AGENT_DIR);
+  configureCakePiAgentDirectory(join(directory, "agent"));
   const runtime = await createCakeSessionRuntime({
     cwd: directory,
     agentDir: join(directory, "agent"),

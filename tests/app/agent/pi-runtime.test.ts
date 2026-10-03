@@ -1,4 +1,5 @@
 import { Effect, Schema, Stream } from "effect";
+import { configureCakePiAgentDirectory } from "../../../src/services/pi/runtime/mcp-integration";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -59,7 +60,8 @@ const zeroUsage = {
 };
 
 afterEach(async () => {
-  for (const runtime of runtimes.splice(0)) runtime.dispose();
+  for (const runtime of runtimes.splice(0)) await runtime.dispose();
+  vi.unstubAllEnvs();
   await Promise.all(
     temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
@@ -68,6 +70,8 @@ afterEach(async () => {
 async function createTemporaryDirectory() {
   const path = await mkdtemp(join(tmpdir(), "cake-pi-runtime-"));
   temporaryDirectories.push(path);
+  vi.stubEnv("PI_CODING_AGENT_DIR", process.env.PI_CODING_AGENT_DIR);
+  configureCakePiAgentDirectory(join(path, "agent"));
   return path;
 }
 
@@ -3227,6 +3231,7 @@ describe("S3 Pi ecosystem compatibility", () => {
     );
     const previousHome = process.env.HOME;
     process.env.HOME = standaloneHome;
+    configureCakePiAgentDirectory(agentDir);
     try {
       const runtime = await createCakeSessionRuntime({
         cwd: directory,

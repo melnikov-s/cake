@@ -25,6 +25,7 @@ import {
 import { resolveCakePaths } from "../config/CakePaths";
 import { MainApplication } from "./MainApplication";
 import { makeMainLive } from "./MainLive";
+import { configureCakePiAgentDirectory } from "../services/pi/runtime/mcp-integration";
 import cakeIconPath from "../assets/cake.png?asset";
 import annotationMenuIconPath from "../assets/menu-annotation.png?asset";
 import chatMenuIconPath from "../assets/menu-chat.png?asset";
@@ -37,6 +38,7 @@ if (process.env.CAKE_ELECTRON_USER_DATA)
 
 const paths = resolveCakePaths();
 const selectedHost = loadDesktopHost(app.getPath("userData"));
+if (selectedHost.kind === "local") configureCakePiAgentDirectory(paths.piAgent);
 const mainOptions = {
   application: app,
   paths,

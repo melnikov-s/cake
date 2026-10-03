@@ -20,10 +20,12 @@ import {
   makeApplicationStorageLive,
 } from "../../../src/services/storage/ApplicationStorage";
 import { BootstrapLive } from "../../../src/main/BootstrapLive";
+import { configureCakePiAgentDirectory } from "../../../src/services/pi/runtime/mcp-integration";
 
 const home = process.env.CAKE_HOME;
 assert.ok(home);
 const paths = resolveCakePaths({ env: { CAKE_HOME: home } });
+configureCakePiAgentDirectory(paths.piAgent);
 const project = join(home, "project");
 const inputSessionId = "00000000-0000-4000-8000-000000000001";
 await mkdir(project, { recursive: true });

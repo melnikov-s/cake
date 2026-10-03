@@ -53,6 +53,15 @@ export async function loadCakeSessionRuntimeResourceLoader(input: {
   return resourceLoader;
 }
 
+/**
+ * After active work stops, await the public extension runner's session_shutdown
+ * event with reason "quit" before AgentSession.dispose() invalidates contexts.
+ * Reload already emits its own shutdown event through Pi; do not emit it twice.
+ */
+export async function shutdownCakeSessionExtensions(session: AgentSession): Promise<void> {
+  await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+}
+
 export async function createCakeSessionRuntimeResourceLifecycle(input: {
   readonly resourceLoader: ReloadableResourceLoader;
   readonly settingsManager: SettingsManager;

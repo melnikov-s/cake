@@ -67,7 +67,11 @@ import {
 import { projectCakeSessionRuntimeSnapshot } from "./cake-session-runtime-snapshot";
 import { createCakeSessionRuntimeTurnController } from "./cake-session-runtime-turn-controller";
 import { createCakeSessionRuntimeRecovery } from "./cake-session-runtime-recovery";
-import { createCakeSessionRuntimeResourceLifecycle } from "./cake-session-runtime-resources";
+import {
+  createCakeSessionRuntimeResourceLifecycle,
+  shutdownCakeSessionExtensions,
+} from "./cake-session-runtime-resources";
+import { createCakeMcpExtensions } from "./mcp-integration";
 import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
 import {
   createCakeSessionRuntimeCapabilities,
@@ -376,6 +380,8 @@ export async function createCakeSessionRuntime(
   options: CakeSessionRuntimeOptions,
 ): Promise<CakeSessionRuntime> {
   const agentDir = options.agentDir;
+  // Check the backend root before acquiring any Pi resources.
+  const mcpExtensions = createCakeMcpExtensions({ runtime: options });
   const settingsManager = SettingsManager.create(options.cwd, agentDir, {
     projectTrusted: options.trusted,
   });
@@ -390,7 +396,11 @@ export async function createCakeSessionRuntime(
     options,
     agentDir,
     settingsManager,
-    requestExtensions: [configurationState.fastModeExtension, promptCacheLineage.extension],
+    requestExtensions: [
+      configurationState.fastModeExtension,
+      promptCacheLineage.extension,
+      ...mcpExtensions,
+    ],
   });
   const sessionDir = options.globalControl
     ? resolve(options.sessionDir)
@@ -886,16 +896,21 @@ export async function createCakeSessionRuntime(
       recovery.dispose();
       resources.dispose();
       unsubscribe();
-      const finish = async () => {
-        session.dispose();
-        await settingsManager.flush();
-      };
-      disposePromise = session.isStreaming
-        ? session
-            .abort()
-            .catch(() => undefined)
-            .then(finish)
-        : finish();
+      disposePromise = (async () => {
+        try {
+          await session.abort();
+          // An already-running reload owns its own shutdown. Let it retire
+          // before shutting down the final extension runtime.
+          await resources.drainReloads();
+        } finally {
+          try {
+            await shutdownCakeSessionExtensions(session);
+          } finally {
+            session.dispose();
+            await settingsManager.flush();
+          }
+        }
+      })();
       return disposePromise;
     },
   };

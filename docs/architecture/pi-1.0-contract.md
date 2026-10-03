@@ -38,9 +38,9 @@ with identity and persistence owned by Pi's global `SettingsManager`. Cake keeps
 its boolean quiet-startup control, projecting Pi's `"header"` setting as enabled
 without rewriting it on load.
 
-This upgrade does not register the new MCP, codemode, or tool-search factories,
-or add virtual-model, image-generation, or classifier UI. Existing session tool
-and extension profiles remain unchanged.
+The initial compatibility-only upgrade did not register MCP, codemode, or
+tool-search factories, or add virtual-model, image-generation, or classifier UI.
+Native MCP was added separately as described below.
 
 ### Verification
 
@@ -54,6 +54,50 @@ versus `Instructions & prompts`). The slash-command and rate-limit-stop Electron
 smokes also fail their existing UI expectations. All three failures were reproduced
 with the previous Pi 0.85.1 dependencies; they are not fixed by this upgrade.
 No live-provider compatibility sweep was performed.
+
+## Native MCP integration
+
+Ordinary primary Project Sessions without an explicit tool allowlist load Pi's
+named, builtin, replaceable `mcp`, `codemode`, and `tool-search` extensions.
+Cake Chat, auxiliary Discussion/Subagent runtimes, and explicit tool allowlists
+(including empty lists) do not receive these factories. Pi's builtin disable and
+replacement-extension rules remain effective.
+
+Backend bootstrap sets `PI_CODING_AGENT_DIR` to Cake's resolved backend Pi root
+before acquiring Pi resources. Eligible runtime construction rejects a different
+root rather than reading another user's config or credentials. Pi owns personal
+`mcp.json`, `mcp-auth.json`, and `mcp.log` there; project `.pi/mcp.json` loads only
+with project trust and overrides same-name personal servers.
+
+Existing tools/defaults are preserved. Discovery tools begin inactive; server
+exposure and Pi settings activate them. Configured codemode exposure opts into
+scripting, with `mode: "on"` (ordinary declarations remain visible), respecting
+`autoEnableCodemode: false`. MCP calls use Pi's tool/permission pipeline, including
+script-issued calls, cancellation, resources, and tool-result conversion.
+
+`/mcp`, `/mcp login`, `/mcp logout`, and `/mcp reconnect` use existing conversation
+commands, notifications, and extension dialogs. Cake does not parse status text
+into a connection database. Authorization URLs are shown for manual opening;
+Cake suppresses Pi's backend browser launcher. The existing text dialog accepts
+pasted redirect URLs and cancellation, including for remote backends. There is
+no dedicated MCP configuration screen or automatic native URL-opening operation.
+
+Final runtime disposal aborts active work, awaits any in-flight reload, then
+awaits `session_shutdown` with reason `quit` before Pi invalidates contexts.
+Repeated disposal shares one Promise. Reload dispatches its own shutdown through
+Pi, without a duplicate Cake dispatch.
+
+Pi 1.0's SDK passes an explicit initial tool loadout when constructing a resumed
+session, overriding its transcript-based declaration restoration. Deferred tools
+remain searchable after resume, but must be rediscovered. Cake does not maintain
+a compensating tool-state cache. Nested script activity currently uses the
+existing flat tool projection; grouped nested presentation remains separate work.
+
+Use MCP commands in an established conversation. Pi does not persist
+command-only input in a new session, and Cake's staged-chat promotion currently
+releases that transient runtime, so a follow-up command in that draft can fail
+with "has not been assembled". This is a separate draft-lifecycle gap; MCP does
+not synthesize user or assistant entries to force persistence.
 
 ## Service ownership
 

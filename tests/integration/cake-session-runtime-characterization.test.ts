@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { configureCakePiAgentDirectory } from "../../src/services/pi/runtime/mcp-integration";
 import {
   createCakeSessionRuntime,
   type CakeSessionRuntime,
@@ -97,6 +98,8 @@ async function createFixtureRuntime(
   events: CakeSessionRuntimeEvent[],
   options: { sessionFile?: string } = {},
 ) {
+  vi.stubEnv("PI_CODING_AGENT_DIR", process.env.PI_CODING_AGENT_DIR);
+  configureCakePiAgentDirectory(join(directory, "agent"));
   const runtime = await createCakeSessionRuntime({
     cwd: directory,
     agentDir: join(directory, "agent"),
@@ -115,6 +118,7 @@ async function createFixtureRuntime(
 
 afterEach(async () => {
   for (const runtime of runtimes.splice(0)) await runtime.dispose();
+  vi.unstubAllEnvs();
   for (const server of servers.splice(0))
     await new Promise<void>((resolve) => server.close(() => resolve()));
   await Promise.all(
