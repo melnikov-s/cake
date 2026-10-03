@@ -34,6 +34,32 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
         ],
       },
       {
+        page: "images",
+        label: "Images",
+        description: "Generation preferences",
+        introduction: "Choose a preferred image-generation model for eligible Project Sessions.",
+        settings: [
+          {
+            label: "Preferred image model",
+            targetId: "setting-image-preference",
+            keywords: "OpenRouter generation credentials codemode",
+          },
+        ],
+      },
+      {
+        page: "classifiers",
+        label: "Classifiers",
+        description: "Typed model preferences",
+        introduction: "Choose a preferred classifier model for eligible Project Sessions.",
+        settings: [
+          {
+            label: "Preferred classifier model",
+            targetId: "setting-classifier-preference",
+            keywords: "TypeSafe Jev classification credentials codemode",
+          },
+        ],
+      },
+      {
         page: "providers",
         label: "Providers",
         description: "Accounts and API keys",
@@ -94,6 +120,14 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
         page: "runtime",
         label: "Execution & resources",
         settings: [
+          { label: "Codemode", targetId: "setting-codemode", keywords: "image classifier scripts" },
+          { label: "Tool search", targetId: "setting-tool-search" },
+          {
+            label: "Default tools",
+            targetId: "setting-default-tools",
+            keywords: "activation plus minus",
+          },
+          { label: "Codemode inline budget", targetId: "setting-codemode-inline-budget" },
           { label: "Shell path", targetId: "setting-shell-path" },
           { label: "Shell command prefix", targetId: "setting-shell-command-prefix" },
           { label: "npm command", targetId: "setting-npm-command", keywords: "package operations" },

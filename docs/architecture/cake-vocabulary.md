@@ -283,6 +283,17 @@ Cake's selected Model Preset for bounded, non-session work such as titles and
 Managed Worktree names. Pi executes the resolved selection; Cake owns the
 preference and feature policy.
 
+### Non-chat Model Preference
+
+Cake's optional backend-owned provider/model reference for image generation or
+classification. Absence leaves selection to the agent. The preference is advisory,
+not a restriction: an explicit requested reference takes precedence, and an
+unavailable reference produces an explicit error rather than silent substitution.
+Eligible Project Session codemode scripts resolve it through
+`models.select-non-chat`, then execute through Pi's native `models` API. It never
+changes chat presets or the utility model, enables tools, or starts background
+classification or Auto routing.
+
 Use Pi's term **thinking level**, not `reasoning level`, in new contracts.
 
 ## Effect architecture

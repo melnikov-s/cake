@@ -3,6 +3,7 @@ import { SessionPluginControls } from "./session-plugin-controls";
 import { ThinkingLevel } from "../../services/pi/model-data";
 import { SESSION_LABEL_COLORS } from "../../utils/session-label-palette";
 import { CakePrompts, defaultCakePrompts } from "./cake-prompts";
+import { NonChatModelPreferences } from "../model-preferences/non-chat-model-data";
 
 export { SESSION_LABEL_COLORS } from "../../utils/session-label-palette";
 
@@ -229,6 +230,7 @@ const RendererApplicationFields = {
   trustedProjectPaths: Schema.Array(boundedString(4_096)).check(Schema.isUnique()),
   fastModeSessionIds: SessionIds,
   utilityModel: Schema.optionalKey(UtilityModel),
+  nonChatModelPreferences: Schema.optionalKey(NonChatModelPreferences),
   vscodeServerPath: Schema.optionalKey(boundedString(4_096)),
   modelPresets: boundedArray(ModelPreset, 100),
   defaultModelPresetId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),

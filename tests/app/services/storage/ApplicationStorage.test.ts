@@ -13,6 +13,8 @@ import {
   makeApplicationStorageLive,
 } from "../../../../src/services/storage/ApplicationStorage";
 import { defaultApplicationState } from "../../../../src/domain/application/application-data";
+import { ApplicationState } from "../../../../src/services/storage/ApplicationState";
+import { updateNonChatModelPreference } from "../../../../src/domain/model-preferences/non-chat-model-preferences";
 
 interface FakeFileSystemControls {
   readonly files: Map<string, string>;
@@ -134,6 +136,33 @@ const withStorage = <A, E>(
   });
 
 describe("ApplicationStorage", () => {
+  it.effect(
+    "persists independent backend non-chat preferences, reloads references and leaves chat configuration unchanged",
+    () =>
+      withStorage({}, (storage) =>
+        Effect.gen(function* () {
+          const application = yield* ApplicationState;
+          yield* application.initialize();
+          const image = { provider: "openrouter", modelId: "image" };
+          const classifier = { provider: "typesafe", modelId: "jev-latest" };
+          yield* updateNonChatModelPreference({ type: "image", preference: image });
+          yield* updateNonChatModelPreference({ type: "classifier", preference: classifier });
+          const loaded = (yield* storage.load()).state;
+          assert.deepEqual(loaded.nonChatModelPreferences, { image, classifier });
+          assert.deepEqual(loaded.modelPresets, []);
+          assert.equal(loaded.utilityModel, undefined);
+          yield* updateNonChatModelPreference({ type: "image", preference: null });
+          assert.deepEqual((yield* storage.load()).state.nonChatModelPreferences, { classifier });
+          yield* updateNonChatModelPreference({ type: "classifier", preference: null });
+          assert.deepEqual((yield* storage.load()).state.nonChatModelPreferences, {});
+        }).pipe(
+          Effect.provide(
+            ApplicationState.layer.pipe(Layer.provide(Layer.succeed(ApplicationStorage)(storage))),
+          ),
+        ),
+      ),
+  );
+
   it.effect("uses explicit defaults for a missing file", () =>
     withStorage({}, (storage) =>
       Effect.gen(function* () {

@@ -47,6 +47,21 @@ export const PiModel = Schema.Struct({
   ),
 });
 
+export const PiNonChatModel = Schema.Struct({
+  type: Schema.Literals(["image", "classifier"]),
+  provider: PiModel.fields.provider,
+  providerName: PiModel.fields.providerName,
+  id: PiModel.fields.id,
+  name: PiModel.fields.name,
+  input: PiModel.fields.input,
+  authenticated: PiModel.fields.authenticated,
+  available: PiModel.fields.available,
+  authSource: PiModel.fields.authSource,
+  authLabel: PiModel.fields.authLabel,
+  authTypes: PiModel.fields.authTypes,
+});
+export interface PiNonChatModel extends Schema.Schema.Type<typeof PiNonChatModel> {}
+
 export const ModelSelection = Schema.Struct({
   provider: nonEmptyBoundedString(256),
   modelId: nonEmptyBoundedString(512),

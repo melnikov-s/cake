@@ -247,6 +247,7 @@ describe("Client", () => {
       "desktopSharing",
       "application",
       "windowState",
+      "nonChatModels",
       "models",
       "piSettings",
       "modelPresets",
@@ -279,7 +280,7 @@ describe("Client", () => {
     expect("observe" in client.subagents).toBe(false);
   });
 
-  it("remote provider auth dispatches only while connected", async () => {
+  it("remote provider auth and non-chat settings dispatch only while connected", async () => {
     const execute = vi.fn(async () => undefined) as Runtime["execute"];
     let connected = true;
     const client = makeClient(controlledRuntime(execute), {
@@ -292,7 +293,9 @@ describe("Client", () => {
     await client.models.logout({ provider: "test" });
     await client.sessionChats.login({ sessionId: "session", provider: "test", authType: "oauth" });
     await client.sessionChats.logout({ sessionId: "session", provider: "test" });
-    expect(execute).toHaveBeenCalledTimes(4);
+    await client.nonChatModels.list();
+    await client.nonChatModels.updatePreference({ type: "image", preference: null });
+    expect(execute).toHaveBeenCalledTimes(6);
     connected = false;
     await expect(
       client.models.login({ provider: "test", authType: "api_key" }),
@@ -300,7 +303,10 @@ describe("Client", () => {
       kind: "rejected",
       message: "Disconnected. No command was sent.",
     });
-    expect(execute).toHaveBeenCalledTimes(4);
+    await expect(
+      client.nonChatModels.updatePreference({ type: "image", preference: null }),
+    ).rejects.toMatchObject({ kind: "rejected", message: "Disconnected. No command was sent." });
+    expect(execute).toHaveBeenCalledTimes(6);
   });
 
   it("remote workspace reads dispatch through the backend", async () => {

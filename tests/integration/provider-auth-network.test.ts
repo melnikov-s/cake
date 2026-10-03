@@ -7,6 +7,7 @@ import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocation
 import { openNetworkListener } from "../../src/server/NetworkListener";
 import { PiModels, makePiModels } from "../../src/services/pi/PiModels";
 import { SavedDraftStorage } from "../../src/services/storage/SavedDraftStorage";
+import { ApplicationState } from "../../src/services/storage/ApplicationState";
 import { connectClient } from "./fixtures/network-client";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 
@@ -22,6 +23,60 @@ const configuration = {
   },
 };
 
+it.live(
+  "remote image/classifier preferences and catalogs use the server authority across devices",
+  () =>
+    Effect.gen(function* () {
+      const backend = yield* makeNetworkTestBackend();
+      const models = makePiModels({
+        loadCatalog: () => Effect.succeed([]),
+        loadNonChatCatalog: () =>
+          Effect.succeed([
+            {
+              type: "classifier",
+              provider: "typesafe",
+              providerName: "TypeSafe",
+              id: "jev-latest",
+              name: "Jev",
+              input: ["text"],
+              authenticated: false,
+              available: false,
+              authTypes: ["api_key"],
+            },
+          ]),
+        refreshCatalog: () => Effect.void,
+        complete: () => Effect.succeed(""),
+        login: () => Effect.void,
+        logout: () => Effect.void,
+      });
+      const context = Context.add(backend.context, PiModels, models);
+      const listener = yield* openNetworkListener(
+        { port: 0, allowMissingOrigin: true },
+        configuration,
+      ).pipe(Effect.provide(Layer.mock(SavedDraftStorage, {})), Effect.provideContext(context));
+      assert.equal(listener.address._tag, "TcpAddress");
+      const url = `ws://127.0.0.1:${listener.address.port}${listener.path}`;
+      const a = yield* connectClient(url);
+      const b = yield* connectClient(url);
+      const preference = { provider: "typesafe", modelId: "jev-latest" };
+      expect(yield* a.client["nonChatModels.list"]()).toEqual([
+        expect.objectContaining({ type: "classifier", authenticated: false, available: false }),
+      ]);
+      yield* a.client["nonChatModels.updatePreference"]({ type: "classifier", preference });
+      expect((yield* b.client["application.getState"]()).nonChatModelPreferences).toEqual({
+        classifier: preference,
+      });
+      expect(
+        (yield* Context.get(context, ApplicationState).current()).nonChatModelPreferences,
+      ).toEqual({ classifier: preference });
+      expect(yield* b.client["models.list"]()).toEqual([]);
+      yield* b.client["nonChatModels.updatePreference"]({ type: "classifier", preference: null });
+      expect((yield* a.client["application.getState"]()).nonChatModelPreferences).toEqual({});
+      yield* a.close();
+      yield* b.close();
+    }),
+);
+
 it.live("disconnecting during device authorization aborts the server's provider operation", () =>
   Effect.gen(function* () {
     const backend = yield* makeNetworkTestBackend();
@@ -30,6 +85,7 @@ it.live("disconnecting during device authorization aborts the server's provider 
     let persisted = false;
     const models = makePiModels({
       loadCatalog: () => Effect.succeed([]),
+      loadNonChatCatalog: () => Effect.succeed([]),
       refreshCatalog: () => Effect.void,
       complete: () => Effect.succeed(""),
       login: (_provider, _type, interaction) =>
@@ -97,6 +153,7 @@ it.live(
       const backend = yield* makeNetworkTestBackend();
       const models = makePiModels({
         loadCatalog: () => Effect.succeed([]),
+        loadNonChatCatalog: () => Effect.succeed([]),
         refreshCatalog: () => Effect.void,
         complete: () => Effect.succeed(""),
         login: (_provider, _type, interaction) =>

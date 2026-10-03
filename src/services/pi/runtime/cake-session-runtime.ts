@@ -25,6 +25,7 @@ import {
   type UtilityModel,
 } from "../../../ipc/session-contract";
 import type { CakeModelPresetCatalog } from "../../../domain/model-presets/cake-model-selection";
+import type { NonChatModelPreferences } from "../../../domain/model-preferences/non-chat-model-data";
 import {
   crossSessionContextSnapshot,
   type CrossSessionContextSnapshot,
@@ -181,6 +182,7 @@ export interface CakeSessionRuntimeOptions {
   reviewContextPath?(sessionId: string): string;
   utilityModel?(): UtilityModel | undefined;
   modelPresets?(): CakeModelPresetCatalog;
+  nonChatModelPreferences?(): NonChatModelPreferences;
   fastMode?: {
     get(): boolean;
     set(enabled: boolean): Promise<void>;
@@ -398,6 +400,7 @@ export async function createCakeSessionRuntime(
     options,
     agentDir,
     settingsManager,
+    modelRuntime,
     requestExtensions: [
       configurationState.fastModeExtension,
       promptCacheLineage.extension,

@@ -354,6 +354,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           );
       },
       modelPresets,
+      nonChatModelPreferences: () => application.snapshot().nonChatModelPreferences ?? {},
       sessionPluginControl: {
         sessionId,
         present: (plugin) => run(upsertSessionPlugin(plugin)).then(() => undefined),

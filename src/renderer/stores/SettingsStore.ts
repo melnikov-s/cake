@@ -22,11 +22,14 @@ import { HotkeySettingsStore } from "./HotkeySettingsStore";
 import { GlobalLabelSettingsStore } from "./GlobalLabelSettingsStore";
 import { CakePromptSettingsStore } from "./CakePromptSettingsStore";
 import { GlobalInstructionsStore } from "./GlobalInstructionsStore";
+import { NonChatModelSettingsStore } from "./NonChatModelSettingsStore";
 
 export type SettingsPageId =
   | "mcp"
   | "models"
   | "providers"
+  | "images"
+  | "classifiers"
   | "agent"
   | "runtime"
   | "network"
@@ -63,6 +66,9 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
   @child get appearance(): AppearanceSettingsStore {
     return createStore(AppearanceSettingsStore);
+  }
+  @child get nonChatModels(): NonChatModelSettingsStore {
+    return createStore(NonChatModelSettingsStore);
   }
   @child get utilityModel(): UtilityModelSettingsStore {
     return createStore(UtilityModelSettingsStore);
@@ -116,6 +122,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   get error() {
     return (
       this.providers.error ??
+      this.nonChatModels.error ??
       this.utilityModel.error ??
       this.modelPresets.error ??
       this.cakePrompts.error ??
@@ -206,6 +213,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
 
   applyApplicationState(revision: number, state: ApplicationState) {
     this.utilityModel.applyApplicationState(revision, state);
+    this.nonChatModels.applyApplicationState(revision, state);
     this.modelPresets.applyApplicationState(revision, state);
     this.cakePrompts.applyApplicationState(revision, state);
     this.globalInstructions.applyApplicationState(revision, state);

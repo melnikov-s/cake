@@ -3,7 +3,7 @@ import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import type { SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { Cache, Clock, Duration, Effect, Exit, Layer } from "effect";
 import { makePiModels, PiModels, type PiProviderAuthInteraction } from "../PiModels";
-import type { BoundedCompletionInput, PiModel } from "../model-data";
+import type { BoundedCompletionInput, PiModel, PiNonChatModel } from "../model-data";
 import { CODEX_FAST_MODE_SERVICE_TIER, supportsFastMode } from "../fast-mode";
 import { registerAgentDirectoryExtensionProviders } from "../runtime/extension-providers";
 
@@ -35,11 +35,11 @@ export interface PiModelCatalogRuntime<M extends CatalogModel> {
   };
 }
 
-const withAuthenticationProjection = (
-  base: Omit<PiModel, "authSource" | "authLabel">,
+const withAuthenticationProjection = <Base extends { readonly provider: string }>(
+  base: Base,
   authSource: PiModel["authSource"],
   authLabel: string | undefined,
-): PiModel => {
+): Base & Pick<PiModel, "authSource" | "authLabel"> => {
   if (authSource !== undefined && authLabel !== undefined)
     return { ...base, authSource, authLabel };
   if (authSource !== undefined) return { ...base, authSource };
@@ -96,6 +96,58 @@ export async function projectModelCatalog<M extends CatalogModel>(
   });
 }
 
+export async function projectNonChatModelCatalog(
+  runtime: Pick<
+    ModelRuntime,
+    | "getProviders"
+    | "getModelsOfType"
+    | "getAvailableOfType"
+    | "checkAuth"
+    | "getProviderAuthStatus"
+  >,
+  signal?: AbortSignal,
+): Promise<ReadonlyArray<PiNonChatModel>> {
+  const entries = await Promise.all(
+    runtime.getProviders().map(async (provider) => {
+      const known = [
+        ...runtime.getModelsOfType("image", provider.id),
+        ...runtime.getModelsOfType("classifier", provider.id),
+      ];
+      if (known.length === 0) return [];
+      const [authentication, images, classifiers] = await Promise.all([
+        runtime.checkAuth(provider.id, { signal }),
+        runtime.getAvailableOfType("image", provider.id, { signal }),
+        runtime.getAvailableOfType("classifier", provider.id, { signal }),
+      ]);
+      const available = new Set(
+        [...images, ...classifiers].map((model) => `${model.type}/${model.id}`),
+      );
+      const status = runtime.getProviderAuthStatus(provider.id);
+      return known.map((model) =>
+        withAuthenticationProjection(
+          {
+            type: model.type,
+            provider: provider.id,
+            providerName: provider.name,
+            id: model.id,
+            name: model.name,
+            input: model.input,
+            authenticated: Boolean(authentication),
+            available: available.has(`${model.type}/${model.id}`),
+            authTypes: [
+              ...(provider.auth.apiKey?.login ? ["api_key" as const] : []),
+              ...(provider.auth.oauth?.login ? ["oauth" as const] : []),
+            ],
+          },
+          status.source,
+          authentication?.source ?? status.label,
+        ),
+      );
+    }),
+  );
+  return entries.flat();
+}
+
 export const makeSessionlessRuntimeCache = Effect.fn("PiModelsLive.makeRuntimeCache")(function* <
   A,
   E,
@@ -130,7 +182,7 @@ export const makePiModelsLive = (agentDirectory: string) =>
       // process-lifetime session-less runtime. Cache shares concurrent
       // initialization, retains successful construction indefinitely, and
       // immediately evicts failures so a later call can retry. ModelRuntime
-      // 0.84 exposes no disposal operation and Cake persists no projection.
+      // exposes no disposal operation for this runtime and Cake persists no projection.
       const runtimes = yield* makeSessionlessRuntimeCache(
         Effect.tryPromise({
           try: () => createSessionlessRuntime(agentDirectory),
@@ -143,6 +195,13 @@ export const makePiModelsLive = (agentDirectory: string) =>
         const runtime = yield* getRuntime();
         return yield* Effect.tryPromise({
           try: (signal) => projectModelCatalog(runtime, getSupportedThinkingLevels, signal),
+          catch: (cause) => cause,
+        });
+      });
+      const loadNonChatCatalog = Effect.fn("PiModelsLive.loadNonChatCatalog")(function* () {
+        const runtime = yield* getRuntime();
+        return yield* Effect.tryPromise({
+          try: (signal) => projectNonChatModelCatalog(runtime, signal),
           catch: (cause) => cause,
         });
       });
@@ -270,6 +329,13 @@ export const makePiModelsLive = (agentDirectory: string) =>
         });
       });
 
-      return makePiModels({ loadCatalog, refreshCatalog, login, logout, complete });
+      return makePiModels({
+        loadCatalog,
+        loadNonChatCatalog,
+        refreshCatalog,
+        login,
+        logout,
+        complete,
+      });
     }),
   );

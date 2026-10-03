@@ -3,6 +3,7 @@ import type { ModelOption, PiSettingUpdate, PiSettings } from "../../ipc/session
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
+import type { PiNonChatModel } from "../../services/pi/model-data";
 
 export interface ProviderAuthNotice {
   readonly type: "info" | "progress" | "auth_url" | "device_code";
@@ -22,6 +23,7 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   readonly providerOperations: Record<string, { provider: string; kind: "login" | "logout" }> =
     observable({});
   readonly catalogModels: ModelOption[] = observable([]);
+  readonly nonChatCatalog: PiNonChatModel[] = observable([]);
   /** Ephemeral, initiating-device presentation only; never persisted with Pi credentials. */
   readonly authNotices: Record<string, ProviderAuthNotice> = observable({});
   loadingModels = true;
@@ -49,6 +51,15 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     }
     return [...groups.entries()].map(([id, group]) => ({ id, ...group }));
   }
+  get allModelsByProvider() {
+    const groups = new Map<string, { name: string; models: (ModelOption | PiNonChatModel)[] }>();
+    for (const model of [...this.catalogModels, ...this.nonChatCatalog]) {
+      const group = groups.get(model.provider) ?? { name: model.providerName, models: [] };
+      group.models.push(model);
+      groups.set(model.provider, group);
+    }
+    return [...groups.entries()].map(([id, group]) => ({ id, ...group }));
+  }
   get refreshingModels() {
     return Boolean(
       this.refreshOperationId && this.activeOperations.includes(this.refreshOperationId),
@@ -62,8 +73,18 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
 
   async setPiSetting(update: PiSettingUpdate) {
     await this.run(async () => {
-      this.piSettings = await this.client.piSettings.update(update, { signal: this.signal });
+      const value = await this.client.piSettings.update(update, { signal: this.signal });
+      if (!this.signal.aborted) this.piSettings = value;
     });
+  }
+
+  setCodemodeInlineBudget(value: string) {
+    const budget = Number(value);
+    if (value.trim() === "" || !Number.isSafeInteger(budget) || budget < 0 || budget > 100_000) {
+      this.reportError(new Error("Codemode inline budget must be an integer from 0 to 100000."));
+      return Promise.resolve();
+    }
+    return this.setPiSetting({ key: "codemodeInlineBudget", value: budget });
   }
 
   async reloadPi() {
@@ -166,9 +187,18 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   private async loadCatalog() {
     const revision = ++this.catalogLoadRevision;
     try {
-      const models = await this.client.models.list({ signal: this.signal });
-      if (!this.signal.aborted && revision === this.catalogLoadRevision)
-        this.catalogModels.splice(0, this.catalogModels.length, ...models);
+      const [models, nonChat] = await Promise.allSettled([
+        this.client.models.list({ signal: this.signal }),
+        this.client.nonChatModels.list({ signal: this.signal }),
+      ]);
+      if (!this.signal.aborted && revision === this.catalogLoadRevision) {
+        if (models.status === "fulfilled")
+          this.catalogModels.splice(0, this.catalogModels.length, ...models.value);
+        else this.reportError(models.reason);
+        if (nonChat.status === "fulfilled")
+          this.nonChatCatalog.splice(0, this.nonChatCatalog.length, ...nonChat.value);
+        else this.reportError(nonChat.reason);
+      }
     } catch (error) {
       if (!this.signal.aborted && revision === this.catalogLoadRevision) this.reportError(error);
     } finally {

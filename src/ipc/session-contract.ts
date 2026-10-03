@@ -69,6 +69,8 @@ export const piSettingsSchema = Schema.Struct({
   treeFilterMode: Schema.Literals(["default", "no-tools", "user-only", "labeled-only", "all"]),
   anthropicExtraUsageWarning: Schema.Boolean,
   retryEnabled: Schema.Boolean,
+  defaultTools: Schema.NullOr(Schema.Array(stringRange(1, 256)).check(Schema.isMaxLength(256))),
+  codemodeInlineBudget: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100_000 })),
   shellPath: stringMax(4_096),
   shellCommandPrefix: stringMax(16_384),
   npmCommand: Schema.Array(stringMax(4_096)).check(Schema.isMaxLength(100)),
@@ -126,6 +128,14 @@ export const piSettingUpdateSchema = Schema.Union([
   }),
   Schema.Struct({ key: Schema.Literal("anthropicExtraUsageWarning"), value: Schema.Boolean }),
   Schema.Struct({ key: Schema.Literal("retryEnabled"), value: Schema.Boolean }),
+  Schema.Struct({
+    key: Schema.Literal("defaultTools"),
+    value: Schema.NullOr(Schema.Array(stringRange(1, 256)).check(Schema.isMaxLength(256))),
+  }),
+  Schema.Struct({
+    key: Schema.Literal("codemodeInlineBudget"),
+    value: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 100_000 })),
+  }),
   Schema.Struct({ key: Schema.Literal("shellPath"), value: stringMax(4_096) }),
   Schema.Struct({ key: Schema.Literal("shellCommandPrefix"), value: stringMax(16_384) }),
   Schema.Struct({

@@ -88,6 +88,7 @@ const makeTestLayer = (options?: {
   );
   const modelsLayer = makePiModelsLayer({
     loadCatalog: () => Effect.succeed([model]),
+    loadNonChatCatalog: () => Effect.succeed([]),
     refreshCatalog: () => Effect.void,
     login: () => Effect.void,
     logout: () => Effect.void,

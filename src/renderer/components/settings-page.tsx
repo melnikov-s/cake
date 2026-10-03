@@ -45,6 +45,8 @@ import { SettingsHotkeysSection } from "./settings-hotkeys-section";
 import { SettingsProvidersSection } from "./settings-providers-section";
 import type { SettingsStore } from "../stores/SettingsStore";
 import { LabelSettings } from "./label-settings";
+import { SettingsNonChatModelsSection } from "./settings-non-chat-models-section";
+import { SettingsNativeToolsSection } from "./settings-native-tools-section";
 
 export const SettingsPage = observer(function SettingsPage({
   settings,
@@ -206,6 +208,13 @@ export const SettingsPage = observer(function SettingsPage({
           )}
 
           {activePage === "mcp" && <SettingsMcpSection settings={settings.mcp} />}
+          {(activePage === "images" || activePage === "classifiers") && (
+            <SettingsNonChatModelsSection
+              type={activePage === "images" ? "image" : "classifier"}
+              preferences={settings.nonChatModels}
+              providers={providers}
+            />
+          )}
 
           {activePage === "models" && (
             <>
@@ -517,6 +526,8 @@ export const SettingsPage = observer(function SettingsPage({
                   <p className="text-xs text-muted-foreground">{piSettingsStatus}</p>
                 )}
               </section>
+
+              <SettingsNativeToolsSection providers={providers} />
 
               <section className="border-t border-border py-5" aria-labelledby="resources-title">
                 <header className="mb-4 flex items-start justify-between gap-4">
@@ -896,7 +907,10 @@ export const SettingsPage = observer(function SettingsPage({
           )}
 
           {activePage === "providers" && (
-            <SettingsProvidersSection providers={providers} providerGroups={providerGroups} />
+            <SettingsProvidersSection
+              providers={providers}
+              providerGroups={providers.allModelsByProvider}
+            />
           )}
           {activePage === "dictation" &&
             (browserMode ? (

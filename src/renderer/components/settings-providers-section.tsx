@@ -1,5 +1,4 @@
 import { observer } from "r-state-tree/react";
-import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
 import type { ProviderSettingsStore } from "../stores/ProviderSettingsStore";
 import { Button } from "./ui/button";
 import { StatusDot } from "./ui/status-dot";
@@ -9,7 +8,7 @@ export const SettingsProvidersSection = observer(function SettingsProvidersSecti
   providerGroups,
 }: {
   providers: ProviderSettingsStore;
-  providerGroups: ChatConfigurationStore["modelsByProvider"];
+  providerGroups: ProviderSettingsStore["allModelsByProvider"];
 }) {
   return (
     <section className="border-t border-border py-5" aria-labelledby="providers-title">

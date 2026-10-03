@@ -96,7 +96,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
 
   const PiLive = Layer.mergeAll(
     makePiModelsLive(paths.piAgent),
-    makePiSettingsLive(paths.piAgent),
+    makePiSettingsLive(paths.piAgent).pipe(Layer.provide(BootstrapLive)),
     makeMcpSettingsLayer(paths.piAgent),
     makePiAgentResourcesLive(paths.piAgent),
     makeCakeSessionRuntimesLive(),

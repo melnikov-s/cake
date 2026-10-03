@@ -30,6 +30,8 @@ export function projectPiSettings(
     treeFilterMode: settingsManager.getTreeFilterMode(),
     anthropicExtraUsageWarning: settingsManager.getWarnings().anthropicExtraUsage ?? true,
     retryEnabled: globalSettings.retry?.enabled ?? true,
+    defaultTools: globalSettings.defaultTools ?? null,
+    codemodeInlineBudget: globalSettings.codemode?.inlineBudget ?? 3000,
     shellPath: globalSettings.shellPath ?? "",
     shellCommandPrefix: globalSettings.shellCommandPrefix ?? "",
     npmCommand: globalSettings.npmCommand ?? [],
@@ -46,6 +48,8 @@ export function applyPiSetting(settingsManager: SettingsManager, update: PiSetti
     settingsManager.setDefaultModelAndProvider(update.provider, update.modelId);
   else if (update.key === "defaultThinkingLevel")
     settingsManager.setDefaultThinkingLevel(update.value);
+  else if (update.key === "defaultTools" || update.key === "codemodeInlineBudget")
+    throw new Error("Execution settings must be persisted through the backend Pi settings service");
   else if (update.key === "autoCompact") settingsManager.setCompactionEnabled(update.value);
   else if (update.key === "autoResizeImages") settingsManager.setImageAutoResize(update.value);
   else if (update.key === "blockImages") settingsManager.setBlockImages(update.value);

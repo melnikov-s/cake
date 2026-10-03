@@ -177,8 +177,13 @@ import type {
   ModelPresetValidationError,
 } from "../../domain/model-presets/modelPresets";
 import type {
+  NonChatModelPreferences,
+  NonChatModelPreferenceUpdate,
+} from "../../domain/model-preferences/non-chat-model-data";
+import type {
   ModelSelection,
   PiModel,
+  PiNonChatModel,
   PiModelCatalogError,
   PiModelResolutionError,
   PiProviderAuthError,
@@ -325,6 +330,18 @@ export interface CakeIpcClientService {
       readonly title: string;
       readonly firstUserMessage?: string;
     }) => Effect.Effect<ProjectWorkflowSessionDetails, ProjectError | TransportError>;
+  };
+  readonly nonChatModels: {
+    readonly list: () => Effect.Effect<
+      ReadonlyArray<PiNonChatModel>,
+      PiModelCatalogError | TransportError
+    >;
+    readonly updatePreference: (
+      input: NonChatModelPreferenceUpdate,
+    ) => Effect.Effect<
+      NonChatModelPreferences,
+      ApplicationEncodeError | ApplicationWriteError | TransportError
+    >;
   };
   readonly models: {
     readonly list: () => Effect.Effect<
@@ -1010,6 +1027,14 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         describeSession: Effect.fn("CakeIpcClient.projectWorkflow.describeSession")((input) =>
           client("projectWorkflow.describeSession", input),
+        ),
+      },
+      nonChatModels: {
+        list: Effect.fn("CakeIpcClient.nonChatModels.list")(() =>
+          client("nonChatModels.list", undefined),
+        ),
+        updatePreference: Effect.fn("CakeIpcClient.nonChatModels.updatePreference")((input) =>
+          client("nonChatModels.updatePreference", input),
         ),
       },
       models: {

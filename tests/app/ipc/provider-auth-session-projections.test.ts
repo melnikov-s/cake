@@ -65,6 +65,7 @@ describe("provider auth across acquired Pi sessions", () => {
             sessionsLayer,
             makePiModelsLayer({
               loadCatalog: () => Effect.succeed([]),
+              loadNonChatCatalog: () => Effect.succeed([]),
               refreshCatalog: () => Effect.void,
               complete: () => Effect.succeed(""),
               login: (_provider, _type, interaction) =>

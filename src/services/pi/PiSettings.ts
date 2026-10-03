@@ -26,7 +26,17 @@ const messageOf = (cause: unknown): string =>
 const settingsError = (operation: string, cause: unknown) =>
   new PiSettingsError({ operation, message: messageOf(cause) });
 
-export const makePiSettingsLayer = (settingsManager: SettingsManager) =>
+export type PiExecutionSettingUpdate = Extract<
+  PiSettingUpdate,
+  { key: "defaultTools" | "codemodeInlineBudget" }
+>;
+
+export const makePiSettingsLayer = (
+  settingsManager: SettingsManager,
+  writeExecutionSetting?: (
+    update: PiExecutionSettingUpdate,
+  ) => Effect.Effect<void, PiSettingsError>,
+) =>
   Layer.effect(
     PiSettings,
     Effect.gen(function* () {
@@ -62,10 +72,22 @@ export const makePiSettingsLayer = (settingsManager: SettingsManager) =>
       const update = Effect.fn("PiSettings.update")((setting: PiSettingUpdate) =>
         lock.withPermits(1)(
           Effect.gen(function* () {
-            yield* Effect.try({
-              try: () => applyPiSetting(settingsManager, setting),
-              catch: (cause) => settingsError("update", cause),
-            });
+            if (setting.key === "defaultTools" || setting.key === "codemodeInlineBudget") {
+              if (!writeExecutionSetting)
+                return yield* settingsError("update", "Execution settings storage is unavailable");
+              // Pi exposes these settings but has no public setters. Persist only the native
+              // fields through the backend adapter, then reload Pi's authoritative manager.
+              yield* writeExecutionSetting(setting);
+              yield* Effect.tryPromise({
+                try: () => settingsManager.reload(),
+                catch: (cause) => settingsError("update", cause),
+              });
+            } else {
+              yield* Effect.try({
+                try: () => applyPiSetting(settingsManager, setting),
+                catch: (cause) => settingsError("update", cause),
+              });
+            }
             yield* Effect.tryPromise({
               try: () => settingsManager.flush(),
               catch: (cause) => settingsError("update", cause),

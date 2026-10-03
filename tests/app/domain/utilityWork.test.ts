@@ -45,6 +45,7 @@ const run = <A, E>(effect: Effect.Effect<A, E, PiModels>, complete: PiModelsAdap
     Effect.provide(
       makePiModelsLayer({
         loadCatalog: () => Effect.succeed([model]),
+        loadNonChatCatalog: () => Effect.succeed([]),
         refreshCatalog: () => Effect.void,
         login: () => Effect.void,
         logout: () => Effect.void,

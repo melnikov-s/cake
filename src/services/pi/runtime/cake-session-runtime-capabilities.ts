@@ -4,6 +4,7 @@ import {
   type AgentSession,
   type EventBus,
   type InlineExtension,
+  type ModelRuntime,
   type SettingsManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
@@ -37,6 +38,7 @@ import {
   type PiArtifactOperationHost,
 } from "./cake-artifact-operations";
 import { createCakeModelOperations } from "./cake-model-operations";
+import { createCakeNonChatModelOperations } from "./cake-non-chat-model-operations";
 import { createCakeVscodeOperations } from "./cake-vscode-operations";
 import { createCakeBrowserOperations } from "./cake-browser-operations";
 import { createCakeDrawOperations } from "./cake-draw-operations";
@@ -426,6 +428,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
   options: CakeSessionRuntimeOptions;
   agentDir: string;
   settingsManager: SettingsManager;
+  modelRuntime: Pick<ModelRuntime, "getAvailableOfType">;
   /** Cake-owned in-process extensions that shape provider requests. */
   requestExtensions: readonly InlineExtension[];
 }): Promise<CakeSessionRuntimeCapabilities> {
@@ -1569,6 +1572,14 @@ export async function createCakeSessionRuntimeCapabilities(input: {
                   (pi) => [
                     ...filterRuntimeOperations([
                       ...localOperations(),
+                      ...(!options.auxiliary &&
+                      options.tools === undefined &&
+                      options.nonChatModelPreferences
+                        ? createCakeNonChatModelOperations(
+                            options.nonChatModelPreferences,
+                            input.modelRuntime,
+                          )
+                        : []),
                       ...(options.modelPresets
                         ? createCakeModelOperations(options.modelPresets)
                         : []),

@@ -3,6 +3,7 @@ import {
   BoundedCompletionInput,
   ModelSelection,
   PiModel,
+  PiNonChatModel,
   PiModelCatalogError,
   PiModelCompletionError,
   PiProviderAuthError,
@@ -39,6 +40,7 @@ export interface PiProviderAuthInteraction {
 
 export interface PiModelsAdapter {
   readonly loadCatalog: () => Effect.Effect<unknown, unknown>;
+  readonly loadNonChatCatalog: () => Effect.Effect<unknown, unknown>;
   readonly refreshCatalog: () => Effect.Effect<void, unknown>;
   readonly login: (
     provider: string,
@@ -53,6 +55,7 @@ export class PiModels extends Context.Service<
   PiModels,
   {
     readonly list: () => Effect.Effect<ReadonlyArray<PiModel>, PiModelCatalogError>;
+    readonly listNonChat: () => Effect.Effect<ReadonlyArray<PiNonChatModel>, PiModelCatalogError>;
     readonly refreshCatalog: () => Effect.Effect<void, PiModelCatalogError>;
     readonly login: (
       provider: string,
@@ -85,6 +88,21 @@ export const makePiModels = (adapter: PiModelsAdapter): PiModels["Service"] => {
         ),
       );
     return yield* Schema.decodeUnknownEffect(Schema.Array(PiModel))(catalog).pipe(
+      Effect.mapError(
+        (cause) => new PiModelCatalogError({ operation: "load", message: cause.message }),
+      ),
+    );
+  });
+
+  const listNonChat = Effect.fn("PiModels.listNonChat")(function* () {
+    const catalog = yield* adapter
+      .loadNonChatCatalog()
+      .pipe(
+        Effect.mapError(
+          (cause) => new PiModelCatalogError({ operation: "load", message: messageOf(cause) }),
+        ),
+      );
+    return yield* Schema.decodeUnknownEffect(Schema.Array(PiNonChatModel))(catalog).pipe(
       Effect.mapError(
         (cause) => new PiModelCatalogError({ operation: "load", message: cause.message }),
       ),
@@ -189,7 +207,7 @@ export const makePiModels = (adapter: PiModelsAdapter): PiModels["Service"] => {
     return text.slice(0, decoded.maximumOutputCharacters);
   });
 
-  return PiModels.of({ list, refreshCatalog, login, logout, resolve, complete });
+  return PiModels.of({ list, listNonChat, refreshCatalog, login, logout, resolve, complete });
 };
 
 export const makePiModelsLayer = (adapter: PiModelsAdapter) =>

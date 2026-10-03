@@ -45,6 +45,8 @@ const piSettings: PiSettings = {
   treeFilterMode: "default",
   anthropicExtraUsageWarning: true,
   retryEnabled: true,
+  defaultTools: null,
+  codemodeInlineBudget: 3000,
   shellPath: "",
   shellCommandPrefix: "",
   npmCommand: ["npm"],

@@ -14,6 +14,7 @@ import {
 import {
   ModelSelection,
   PiModel,
+  PiNonChatModel,
   PiModelCatalogError,
   UnauthenticatedPiModelError,
   UnavailablePiModelError,
@@ -25,6 +26,11 @@ import {
   ApplicationEncodeError,
   ApplicationWriteError,
 } from "../../services/storage/ApplicationStorage";
+
+import {
+  NonChatModelPreferences,
+  NonChatModelPreferenceUpdate,
+} from "../../domain/model-preferences/non-chat-model-data";
 
 const ModelPresetMutationError = Schema.Union([
   ModelPresetValidationError,
@@ -47,6 +53,15 @@ const ModelResolutionError = Schema.Union([
 ]);
 
 export const ModelRpc = RpcGroup.make(
+  Rpc.make("nonChatModels.list", {
+    success: Schema.Array(PiNonChatModel),
+    error: PiModelCatalogError,
+  }),
+  Rpc.make("nonChatModels.updatePreference", {
+    payload: NonChatModelPreferenceUpdate,
+    success: NonChatModelPreferences,
+    error: Schema.Union([ApplicationEncodeError, ApplicationWriteError]),
+  }),
   Rpc.make("models.list", {
     success: Schema.Array(PiModel),
     error: PiModelCatalogError,

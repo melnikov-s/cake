@@ -430,13 +430,16 @@ no separate public `PiExtensions` service.
 
 `PiModels` owns the complete Pi model capability:
 
-- provider/model catalog and authentication projection;
+- separate chat and typed image/classifier catalogs and authentication projection;
 - model availability and supported thinking levels;
 - reference resolution;
 - bounded, non-session completion through Pi's model runtime.
 
 It accepts concrete Model Selections and knows nothing about Cake Model Preset
-names. Conversational execution always goes through `CakeSessionRuntimes`.
+names. Conversational execution always goes through `CakeSessionRuntimes`. Image generation
+and classification stay in Pi's native codemode API. Cake's backend ApplicationState
+stores advisory non-chat references, and eligible Project Session operations resolve
+them against the session's native catalog without a second executor or credential cache.
 
 ### `PiAgentResources`
 

@@ -29,6 +29,7 @@ const testFixture = Effect.fn("ProviderAuthTest.fixture")(function* (
     eventsLayer,
     makePiModelsLayer({
       loadCatalog: () => Effect.succeed([]),
+      loadNonChatCatalog: () => Effect.succeed([]),
       refreshCatalog: () => Effect.void,
       complete: () => Effect.succeed(""),
       login: (_provider, _authType, interaction) =>

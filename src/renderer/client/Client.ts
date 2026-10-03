@@ -489,6 +489,7 @@ export interface Client {
   readonly backendConnection: CommandGroup<CakeIpcClientService["backendConnection"]>;
   readonly application: CommandGroup<CakeIpcClientService["application"]>;
   readonly windowState: CommandGroup<CakeIpcClientService["windowState"]>;
+  readonly nonChatModels: CommandGroup<CakeIpcClientService["nonChatModels"]>;
   readonly models: {
     readonly list: (options?: ClientCommandOptions) => Promise<ReadonlyArray<ModelOption>>;
     readonly refresh: (options?: ClientCommandOptions) => Promise<void>;

@@ -496,6 +496,20 @@ export function makeClient(
           options,
         ),
     },
+    nonChatModels: {
+      list: (options) =>
+        run(
+          "nonChatModels.list",
+          withClient((client) => client.nonChatModels.list()),
+          options,
+        ),
+      updatePreference: (input, options) =>
+        run(
+          "nonChatModels.updatePreference",
+          withClient((client) => client.nonChatModels.updatePreference(input)),
+          options,
+        ),
+    },
     models: {
       list: (options) =>
         run(
