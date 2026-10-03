@@ -49,14 +49,20 @@ describe("ContentTransition", () => {
     expect(live.inert).toBe(true);
     expect(outgoing.textContent).toBe("a transcript");
     expect(outgoing.querySelector("[id]")).toBeNull();
-    expect(animate).toHaveBeenCalledTimes(1);
+    expect(animate).toHaveBeenCalledExactlyOnceWith([{ opacity: 1 }, { opacity: 0 }], {
+      duration: 40,
+      easing: "ease-out",
+    });
     finish(animations[0]!.animation);
     expect(outgoing.childElementCount).toBe(0);
     expect(live.classList.contains("opacity-0")).toBe(true);
     view.rerender(content("b", "b", false));
     expect(animate).toHaveBeenCalledTimes(1);
     view.rerender(content("b"));
-    expect(animate).toHaveBeenCalledTimes(2);
+    expect(animate).toHaveBeenNthCalledWith(2, [{ opacity: 0 }, { opacity: 1 }], {
+      duration: 80,
+      easing: "cubic-bezier(0.2, 0, 0, 1)",
+    });
     expect(live.classList.contains("opacity-0")).toBe(false);
     expect(live.inert).toBe(false);
     expect(live.textContent).toBe("b transcript");

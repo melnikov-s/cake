@@ -75,9 +75,9 @@ action to remove just that range. Example:
 `ContentTransition` is a visual-only fade-out / blank / fade-in handoff. Supply
 `requestedKey` as navigation begins, `contentKey` for the mounted destination,
 and `ready` when its projection is usable. Loading and the new React tree never
-wait for animation: an inert, aria-hidden outgoing DOM snapshot fades for 100ms,
-then the surface stays blank until the matching destination is ready. Its 160ms
-entrance includes a tiny upward settle. Interrupted navigation discards the old
+wait for animation: an inert, aria-hidden outgoing DOM snapshot fades for 40ms,
+then the surface stays blank until the matching destination is ready. Its 80ms
+entrance changes opacity without moving the transcript. Interrupted navigation discards the old
 visual layer; reduced motion switches immediately. Snapshot DOM and animation
 handles are component-local, ephemeral, and never persisted.
 

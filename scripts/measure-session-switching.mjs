@@ -19,7 +19,15 @@ try {
     maxBuffer: 128 * 1024 * 1024,
   });
   execFileSync("tar", ["-xf", "-", "-C", baseline], { input: archive });
-  await symlink(join(root, "node_modules"), join(baseline, "node_modules"), "dir");
+  const [currentLockfile, baselineLockfile] = await Promise.all([
+    readFile(join(root, "pnpm-lock.yaml"), "utf8"),
+    readFile(join(baseline, "pnpm-lock.yaml"), "utf8"),
+  ]);
+  // A changed package patch must not leak into the baseline through the shared
+  // node_modules link. Materialize its exact locked dependencies from pnpm's cache.
+  if (currentLockfile === baselineLockfile)
+    await symlink(join(root, "node_modules"), join(baseline, "node_modules"), "dir");
+  else run(["install", "--offline", "--frozen-lockfile"], baseline);
   run(["build"], baseline);
   run(["build"], root);
   run(

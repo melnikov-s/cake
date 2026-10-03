@@ -233,7 +233,10 @@ for (const scenario of [
 
     try {
       const page = await application.firstWindow();
-      const transcript = page.locator(".transcript");
+      // The outgoing transition snapshot is inert DOM, not a second live chat.
+      const transcript = page.locator(
+        '.transcript:not([data-slot="content-transition-outgoing"] *)',
+      );
       const firstSession = page.locator(`.session-item[data-session-id="${firstSessionId}"]`);
       const secondSession = page.locator(`.session-item[data-session-id="${secondSessionId}"]`);
       await expect(transcript).toBeVisible({ timeout: 20_000 });
@@ -373,7 +376,9 @@ for (const scenario of [
           await page.evaluate(() => {
             const samples: number[] = [];
             const sample = () => {
-              const scroller = document.querySelector<HTMLElement>(".transcript");
+              const scroller = document.querySelector<HTMLElement>(
+                '.transcript:not([data-slot="content-transition-outgoing"] *)',
+              );
               const list = scroller?.querySelector<HTMLElement>('[aria-label="Conversation"]');
               if (
                 scroller &&

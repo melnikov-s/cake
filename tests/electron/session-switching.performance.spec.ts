@@ -8,6 +8,8 @@ import { emitRendererEvent } from "./main-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const baselineRoot = process.env.CAKE_PERFORMANCE_BASELINE_APP;
+const reducedMotion =
+  process.env.CAKE_PERFORMANCE_REDUCED_MOTION === "1" ? "reduce" : "no-preference";
 const sessionCount = 429;
 const historyCount = 7500;
 const iterations = 12;
@@ -21,6 +23,8 @@ type SwitchSample = {
   startedAt: number;
   transcriptCommitMs?: number;
   frameBoundaryMs?: number;
+  transcriptVisibleMs?: number;
+  transcriptSettledMs?: number;
 };
 type TraceEvent = {
   name: string;
@@ -36,6 +40,8 @@ type RunResult = {
   clickDispatchMs: number[];
   frameBoundaryMs: number[];
   transcriptCommitMs: number[];
+  transcriptVisibleMs: number[];
+  transcriptSettledMs: number[];
   postClickLongestTaskMs: number[];
   longTaskTotalMs: number[];
   normalizedWindowBytes: number;
@@ -360,8 +366,10 @@ test("compares warm session switching in isolated baseline and patched Electron 
       const failures: string[] = [];
       page.on("pageerror", (error) => failures.push(error.message));
       await page.setViewportSize({ width: 1440, height: 1000 });
-      await page.emulateMedia({ reducedMotion: "reduce" });
-      const transcript = page.locator(".transcript");
+      await page.emulateMedia({ reducedMotion });
+      const transcript = page.locator(
+        '.transcript:not([data-slot="content-transition-outgoing"] *)',
+      );
       await expect(transcript.getByText(title(0), { exact: true })).toBeVisible({
         timeout: 60_000,
       });
@@ -378,6 +386,7 @@ test("compares warm session switching in isolated baseline and patched Electron 
         })
         .toBe(id(0));
       await page.evaluate(() => {
+        const transcriptSelector = '.transcript:not([data-slot="content-transition-outgoing"] *)';
         const state: { samples: SwitchSample[] } = { samples: [] };
         Object.assign(window, { cakeSwitchPerformance: state });
         document.addEventListener(
@@ -390,14 +399,14 @@ test("compares warm session switching in isolated baseline and patched Electron 
             state.samples.push(sample);
             const marker = `Performance transcript ${Number(sessionId.slice(-12)) - 1}`;
             const commit = new MutationObserver(() => {
-              if (document.querySelector(".transcript")?.textContent?.includes(marker)) {
+              if (document.querySelector(transcriptSelector)?.textContent?.includes(marker)) {
                 sample.transcriptCommitMs = performance.now() - sample.startedAt;
                 commit.disconnect();
               }
             });
             commit.observe(document.body, { childList: true, characterData: true, subtree: true });
             const nextFrame = () => {
-              if (!document.querySelector(".transcript")?.textContent?.includes(marker)) {
+              if (!document.querySelector(transcriptSelector)?.textContent?.includes(marker)) {
                 requestAnimationFrame(nextFrame);
                 return;
               }
@@ -407,6 +416,42 @@ test("compares warm session switching in isolated baseline and patched Electron 
               });
             };
             requestAnimationFrame(nextFrame);
+            const visibleFrame = () => {
+              // Only inspect live content: the outgoing inert clone can contain
+              // the destination marker too during a rapid return switch.
+              const transcript = document.querySelector<HTMLElement>(transcriptSelector);
+              const list = transcript?.querySelector<HTMLElement>('[aria-label="Conversation"]');
+              if (!list?.textContent?.includes(marker)) {
+                requestAnimationFrame(visibleFrame);
+                return;
+              }
+              let visible = true;
+              let animating = false;
+              for (
+                let element: HTMLElement | null = list;
+                element;
+                element = element.parentElement
+              ) {
+                const style = getComputedStyle(element);
+                if (
+                  style.visibility !== "visible" ||
+                  Number(style.opacity) === 0 ||
+                  style.display === "none"
+                )
+                  visible = false;
+                if (element.getAnimations().some((animation) => animation.playState === "running"))
+                  animating = true;
+              }
+              if (visible) {
+                sample.transcriptVisibleMs ??= performance.now() - sample.startedAt;
+                if (!animating) {
+                  sample.transcriptSettledMs = performance.now() - sample.startedAt;
+                  return;
+                }
+              }
+              requestAnimationFrame(visibleFrame);
+            };
+            requestAnimationFrame(visibleFrame);
           },
           true,
         );
@@ -426,7 +471,7 @@ test("compares warm session switching in isolated baseline and patched Electron 
               const state = Reflect.get(window, "cakeSwitchPerformance") as {
                 samples: SwitchSample[];
               };
-              return state.samples.at(-1)?.frameBoundaryMs !== undefined;
+              return state.samples.at(-1)?.transcriptSettledMs !== undefined;
             }),
           )
           .toBe(true);
@@ -451,6 +496,14 @@ test("compares warm session switching in isolated baseline and patched Electron 
           expect(sample.transcriptCommitMs).toBeDefined();
           return sample.transcriptCommitMs!;
         }),
+        transcriptVisibleMs: samples.map((sample) => {
+          expect(sample.transcriptVisibleMs).toBeDefined();
+          return sample.transcriptVisibleMs!;
+        }),
+        transcriptSettledMs: samples.map((sample) => {
+          expect(sample.transcriptSettledMs).toBeDefined();
+          return sample.transcriptSettledMs!;
+        }),
         normalizedWindowBytes: Buffer.byteLength(JSON.stringify(saved.data)),
       };
       runs.push(result);
@@ -466,6 +519,8 @@ test("compares warm session switching in isolated baseline and patched Electron 
     "clickDispatchMs",
     "transcriptCommitMs",
     "frameBoundaryMs",
+    "transcriptVisibleMs",
+    "transcriptSettledMs",
     "postClickLongestTaskMs",
     "longTaskTotalMs",
   ] as const;
@@ -491,9 +546,10 @@ test("compares warm session switching in isolated baseline and patched Electron 
       iterationsPerRun: iterations,
       order: "ABBA",
       cpuProfiling: true,
+      reducedMotion,
     },
     limitations:
-      "Generated workload, not the user's transcripts. Includes equal CPU-profiler overhead. Transcript commit measures DOM readiness, not pixel presentation. Smoke windows are hidden; the next-rAF frame metric includes fixture scheduling and is not a compositor presentation measurement. Timings are observations, not CI thresholds.",
+      "Generated workload, not the user's transcripts. Includes equal CPU-profiler overhead. Transcript commit measures DOM readiness, not pixel presentation. Visible and settled metrics inspect computed visibility/opacity and ancestor animations at rAF opportunities with the recorded motion preference. Smoke windows are hidden; rAF metrics include fixture scheduling and are not compositor presentation measurements. Timings are observations, not CI thresholds.",
     comparison,
     runs,
   };

@@ -38,7 +38,7 @@ export class ContentTransition extends Component<
     const content = this.contentRef.current;
     if (!content) return null;
     // Capture before React removes the outgoing transcript. No second Chat or
-    // retained Store: just disposable, inert DOM for the 100ms exit animation.
+    // retained Store: just disposable, inert DOM for the brief exit animation.
     // SAFETY: cloneNode preserves the tag of the div owned by contentRef.
     const snapshot = content.cloneNode(true) as HTMLDivElement;
     const originals = content.querySelectorAll<HTMLElement>("*");
@@ -90,7 +90,7 @@ export class ContentTransition extends Component<
           delete element.dataset.transitionScrollLeft;
         }
         const exit = outgoing.animate([{ opacity: 1 }, { opacity: 0 }], {
-          duration: 100,
+          duration: 40,
           easing: "ease-out",
         });
         this.exit = exit;
@@ -118,13 +118,10 @@ export class ContentTransition extends Component<
     content.classList.remove("opacity-0");
     content.inert = false;
     content.removeAttribute("aria-hidden");
-    this.entrance = content.animate(
-      [
-        { opacity: 0, translate: "0 4px" },
-        { opacity: 1, translate: "none" },
-      ],
-      { duration: 160, easing: "cubic-bezier(0.2, 0, 0, 1)" },
-    );
+    this.entrance = content.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 80,
+      easing: "cubic-bezier(0.2, 0, 0, 1)",
+    });
   }
 
   componentWillUnmount() {

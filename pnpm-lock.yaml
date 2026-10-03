@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  react-virtuoso@4.18.11:
+    hash: 700d9b781a9f695bcf38b8194f8fa9d26d5a8804ec6ff7e2a00cce6c04552814
+    path: patches/react-virtuoso@4.18.11.patch
+
 importers:
 
   .:
@@ -105,8 +110,8 @@ importers:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
       react-virtuoso:
-        specifier: ^4.18.11
-        version: 4.18.11(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: 4.18.11
+        version: 4.18.11(patch_hash=700d9b781a9f695bcf38b8194f8fa9d26d5a8804ec6ff7e2a00cce6c04552814)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       remark-gfm:
         specifier: 4.0.1
         version: 4.0.1
@@ -8663,7 +8668,7 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.18
 
-  react-virtuoso@4.18.11(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  react-virtuoso@4.18.11(patch_hash=700d9b781a9f695bcf38b8194f8fa9d26d5a8804ec6ff7e2a00cce6c04552814)(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
