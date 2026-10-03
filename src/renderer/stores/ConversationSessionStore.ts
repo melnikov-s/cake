@@ -29,8 +29,6 @@ type ComposerCapabilities = Omit<
   | "deliver"
   | "editMessage"
   | "compact"
-  | "clearQueue"
-  | "cancelSteering"
 >;
 
 type ConfigurationCapabilities = Omit<
@@ -128,7 +126,6 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
     return createStore(ConversationComposerStore, {
       ...this.props.composer,
       sessionId: () => this.sessionId,
-      queueWhileStreaming: () => true,
       deliver: (input) => this.deliver(input),
       editMessage: (input) =>
         this.withActiveSession(async () => {
@@ -141,18 +138,6 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
             { signal: this.signal },
           );
         }),
-      clearQueue: async () => {
-        await this.client.sessionChats.clearQueue(
-          { sessionId: this.sessionId },
-          { signal: this.signal },
-        );
-      },
-      cancelSteering: async () => {
-        await this.client.sessionChats.cancelSteering(
-          { sessionId: this.sessionId },
-          { signal: this.signal },
-        );
-      },
       canonicalParts: () => this.model.uiParts,
       canSubmit: () => this.canSubmit,
       isStreaming: () => this.streaming,
@@ -265,26 +250,21 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
           ? { provider: this.model.model.provider, modelId: this.model.model.modelId }
           : undefined,
       queuedPrompts: () => [
-        ...this.composerStore.promptQueueStore.prompts.map((entry) => ({
-          ...entry,
-          state: "queued" as const,
-        })),
-        ...this.composerStore.deliveryStore.optimisticUserMessages.queuedMessages,
         ...this.runtimeQueuedPrompts,
+        ...this.composerStore.deliveryStore.optimisticUserMessages.queuedMessages.map((entry) => ({
+          ...entry,
+          pending: true,
+        })),
       ],
-      steerQueuedPrompt: (id) => {
-        if (this.composerStore.promptQueueStore.has(id))
-          return this.composerStore.promptQueueStore.steer(id).then(() => undefined);
-        this.editRuntimeQueuedPrompt(id, "steer");
+      steerQueuedPrompt: async (id) => {
+        await this.editRuntimeQueuedPrompt(id, "steer");
       },
       stopAndSendQueuedPrompt: (id) => this.stopAndSendQueuedPrompt(id),
-      editQueuedPrompt: (id) => this.composerStore.promptQueueStore.edit(id),
+      reorderQueuedPrompt: (id, position) => this.reorderQueuedPrompt(id, position),
+      editQueuedPrompt: (id) => this.editQueuedPrompt(id),
       removeQueuedPrompt: (id) => {
-        if (this.composerStore.promptQueueStore.has(id))
-          this.composerStore.promptQueueStore.remove(id);
-        else this.editRuntimeQueuedPrompt(id, "remove");
+        void this.editRuntimeQueuedPrompt(id, "remove");
       },
-      cancelSteering: () => this.composerStore.promptQueueStore.cancelSteering(),
       scheduledMessages: capabilities.scheduledMessages,
       modelPickerVisible: capabilities.modelPickerVisible,
       composerReword: {
@@ -337,12 +317,14 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
             {
               id: part.partKey,
               text: part.text ?? "",
-              attachments: [],
-              renderUserMessageAsMarkdown: part.renderAs === "markdown",
+              itemId: part.queuedInput?.itemId,
+              attachments: part.queuedInput?.attachments.slice() ?? [],
+              renderUserMessageAsMarkdown:
+                part.queuedInput?.renderUserMessageAsMarkdown ?? part.renderAs === "markdown",
               state: part.deliveryState,
               source: part.crossSession,
               scheduled: part.scheduled,
-              editable: false,
+              editable: Boolean(part.queuedInput) && !part.crossSession && !part.scheduled,
             },
           ]
         : [],
@@ -428,19 +410,10 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
 
   private async stopAndSendQueuedPrompt(partId: string) {
     try {
-      if (this.composerStore.promptQueueStore.has(partId)) {
-        const steered = await this.composerStore.promptQueueStore.steer(partId);
-        if (!steered || this.signal.aborted) return;
-        await this.client.sessionChats.sendQueuedMessageNow(
-          { sessionId: this.sessionId },
-          { signal: this.signal },
-        );
-        return;
-      }
       await this.client.sessionChats.sendQueuedMessageNow(
         {
           sessionId: this.sessionId,
-          ...(partId.startsWith("queued-") ? { partId } : null),
+          partId,
         },
         { signal: this.signal },
       );
@@ -449,15 +422,39 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
     }
   }
 
-  private editRuntimeQueuedPrompt(partId: string, operation: "remove" | "steer") {
+  private async reorderQueuedPrompt(id: string, position: number) {
+    const entry = this.runtimeQueuedPrompts.find((item) => item.id === id);
+    if (!entry?.itemId) return;
+    try {
+      await this.client.sessionChats.reorderQueuedMessage(
+        { sessionId: this.sessionId, itemId: entry.itemId, position },
+        { signal: this.signal },
+      );
+    } catch (error) {
+      if (!this.signal.aborted) this.composerStore.reportError(error, "Queued prompt");
+    }
+  }
+
+  private async editQueuedPrompt(id: string) {
+    const part = this.model.parts.find((item) => item.partKey === id);
+    if (!part?.queuedInput || part.crossSession || part.scheduled) return;
+    const input = part.queuedInput;
+    if (!(await this.editRuntimeQueuedPrompt(id, "remove")) || this.signal.aborted) return;
+    this.composerStore.draftStore.restore(input.text, input.attachments);
+    this.composerStore.draftStore.requestFocus();
+  }
+
+  private async editRuntimeQueuedPrompt(partId: string, operation: "remove" | "steer") {
     const command =
       operation === "remove"
         ? this.client.sessionChats.removeQueuedMessage
         : this.client.sessionChats.steerQueuedMessage;
-    void command({ sessionId: this.sessionId, partId }, { signal: this.signal }).catch(
-      (error: unknown) => {
-        if (!this.signal.aborted) this.composerStore.reportError(error, "Queued prompt");
-      },
-    );
+    try {
+      await command({ sessionId: this.sessionId, partId }, { signal: this.signal });
+      return true;
+    } catch (error) {
+      if (!this.signal.aborted) this.composerStore.reportError(error, "Queued prompt");
+      return false;
+    }
   }
 }

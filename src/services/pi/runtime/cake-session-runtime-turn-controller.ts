@@ -16,6 +16,7 @@ import {
   locateQueuedMessage,
   queuedMessageIds,
   promptText,
+  projectQueuedMessages,
   shellCommandPart,
 } from "./session-projection";
 
@@ -26,6 +27,8 @@ interface TurnRecoveryHooks {
 
 export interface CakeSessionRuntimeTurnController {
   readonly compactionQueuedMessages: () => readonly string[];
+  readonly queuedParts: () => UiPart[];
+  readonly handoffActive: () => boolean;
   readonly executingTurnIds: () => ReadonlyArray<string>;
   readonly prompt: (
     text: string,
@@ -87,6 +90,7 @@ export function createCakeSessionRuntimeTurnController(input: {
   type QueueLane = "steering" | "follow-up";
   type TrackedQueueItem = {
     itemId: string;
+    text: string;
     content: string;
     attachments: Attachment[];
     renderUserMessageAsMarkdown: boolean;
@@ -109,6 +113,8 @@ export function createCakeSessionRuntimeTurnController(input: {
     renderUserMessageAsMarkdown: boolean;
     presentationMode?: ProjectSessionPresentationMode;
   }[] = [];
+  let rebuildingQueue = false;
+  let handingOff = false;
   let abortGeneration = 0;
   let queueGeneration = 0;
   let steeringWaiters: Array<() => void> = [];
@@ -205,13 +211,22 @@ export function createCakeSessionRuntimeTurnController(input: {
     if (input.isDisposed() || compactionQueue.length === 0) return;
     const generation = queueGeneration;
     while (!input.isDisposed() && generation === queueGeneration) {
-      const item = compactionQueue.shift();
+      const steeringIndex = compactionQueue.findIndex((item) => item.delivery === "steer");
+      const [item] = compactionQueue.splice(steeringIndex < 0 ? 0 : steeringIndex, 1);
       if (!item) break;
       input.syncQueuedParts();
       try {
         const delivery = item.delivery === "steer" ? "steer" : "follow-up";
         const content = item.content;
         const images = imageContent(item.attachments);
+        const lane = item.delivery === "steer" ? "steering" : "follow-up";
+        trackedQueue[lane].push({
+          itemId: item.itemId,
+          text: item.text,
+          content,
+          attachments: item.attachments,
+          renderUserMessageAsMarkdown: item.renderUserMessageAsMarkdown,
+        });
         await input.deliverTrackedUserMessage(content, item.renderUserMessageAsMarkdown, () =>
           input.withResponseRetries(() =>
             session.prompt(content, {
@@ -221,16 +236,7 @@ export function createCakeSessionRuntimeTurnController(input: {
             }),
           ),
         );
-        const lane = item.delivery === "steer" ? "steering" : "follow-up";
-        const rawQueue =
-          lane === "steering" ? session.getSteeringMessages() : session.getFollowUpMessages();
-        if (rawQueue.includes(content))
-          trackedQueue[lane].push({
-            itemId: item.itemId,
-            content,
-            attachments: item.attachments,
-            renderUserMessageAsMarkdown: item.renderUserMessageAsMarkdown,
-          });
+        reconcileQueue();
         if (
           item.turnId &&
           !session.isStreaming &&
@@ -320,6 +326,15 @@ export function createCakeSessionRuntimeTurnController(input: {
       }
       const images = imageContent(attachments);
       const wasStreaming = session.isStreaming;
+      const lane = delivery === "steer" ? "steering" : "follow-up";
+      if (wasStreaming)
+        trackedQueue[lane].push({
+          itemId: randomUUID(),
+          text,
+          content,
+          attachments: [...attachments],
+          renderUserMessageAsMarkdown,
+        });
       await input.deliverTrackedUserMessage(content, renderUserMessageAsMarkdown, () =>
         input.withResponseRetries(() =>
           session.prompt(content, {
@@ -332,14 +347,8 @@ export function createCakeSessionRuntimeTurnController(input: {
         ),
       );
       if (wasStreaming) {
-        const lane = delivery === "steer" ? "steering" : "follow-up";
-        trackedQueue[lane].push({
-          itemId: randomUUID(),
-          content,
-          attachments: [...attachments],
-          renderUserMessageAsMarkdown,
-        });
         if (lane === "steering") notifySteeringQueued();
+        input.syncQueuedParts();
       }
       // Pi extensions may handle input without creating a user message or run.
       if (
@@ -395,6 +404,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       if (index >= 0) return remaining.splice(index, 1)[0]!;
       return {
         itemId: randomUUID(),
+        text: stripPresentationModeReminder(content),
         content,
         attachments: [],
         renderUserMessageAsMarkdown: false,
@@ -424,17 +434,17 @@ export function createCakeSessionRuntimeTurnController(input: {
 
   const pendingMessages = async (): Promise<PiPendingMessages> => {
     reconcileQueue();
-    const pendingIds = queuedMessageIds(
-      "queued-pending",
-      "queued",
-      compactionQueue.map((item) => item.text),
-    );
     const laneItems = (lane: QueueLane) => {
       const delivery = lane === "steering" ? "steer" : "follow-up";
       const queuedIds = queuedMessageIds(
         lane === "steering" ? "queued-steering" : "queued-follow-up",
         lane === "steering" ? "steering" : "queued",
-        lane === "steering" ? session.getSteeringMessages() : session.getFollowUpMessages(),
+        [
+          ...(lane === "steering" ? session.getSteeringMessages() : session.getFollowUpMessages()),
+          ...compactionQueue
+            .filter((item) => item.delivery === delivery)
+            .map((item) => item.content),
+        ],
       );
       return [
         ...trackedQueue[lane].map((item, index) => ({
@@ -444,11 +454,10 @@ export function createCakeSessionRuntimeTurnController(input: {
           content: item.content,
         })),
         ...compactionQueue
-          .map((item, index) => ({ item, index }))
-          .filter(({ item }) => item.delivery === delivery)
-          .map(({ item, index }) => ({
+          .filter((item) => item.delivery === delivery)
+          .map((item, index) => ({
             itemId: item.itemId,
-            partId: pendingIds[index],
+            partId: queuedIds[trackedQueue[lane].length + index],
             state: "compaction-held" as const,
             content: item.text,
           })),
@@ -475,39 +484,39 @@ export function createCakeSessionRuntimeTurnController(input: {
     readonly steering: readonly TrackedQueueItem[];
     readonly "follow-up": readonly TrackedQueueItem[];
   }) => {
-    for (const item of queues.steering)
-      await session.prompt(item.content, {
-        images: imageContent(item.attachments),
-        source: "interactive",
-        streamingBehavior: "steer",
-      });
-    for (const item of queues["follow-up"])
-      await session.prompt(item.content, {
-        images: imageContent(item.attachments),
-        source: "interactive",
-        streamingBehavior: "followUp",
-      });
-    trackedQueue = {
-      steering: [...queues.steering],
-      "follow-up": [...queues["follow-up"]],
-    };
+    // Publish the intended queue throughout Pi's whole-queue replacement, preserving
+    // stable identities and payloads across its synchronous queue_update callbacks.
+    trackedQueue = { steering: [...queues.steering], "follow-up": [...queues["follow-up"]] };
+    rebuildingQueue = true;
+    try {
+      session.clearQueue();
+      // Queue primitives never start an idle turn if a response settles during an edit.
+      for (const item of queues.steering)
+        await session.steer(item.content, imageContent(item.attachments));
+      for (const item of queues["follow-up"])
+        await session.followUp(item.content, imageContent(item.attachments));
+    } finally {
+      rebuildingQueue = false;
+    }
   };
 
   // Unlike prompt(), these Pi primitives keep messages held even after the
   // active run has stopped. This is the queue-preserving half of explicit stop.
   const holdQueue = async (queues: TrackedQueue) => {
-    for (const item of queues.steering)
-      await session.steer(item.content, imageContent(item.attachments));
-    for (const item of queues["follow-up"])
-      await session.followUp(item.content, imageContent(item.attachments));
-    trackedQueue = {
-      steering: [...queues.steering],
-      "follow-up": [...queues["follow-up"]],
-    };
+    trackedQueue = { steering: [...queues.steering], "follow-up": [...queues["follow-up"]] };
+    rebuildingQueue = true;
+    try {
+      for (const item of queues.steering)
+        await session.steer(item.content, imageContent(item.attachments));
+      for (const item of queues["follow-up"])
+        await session.followUp(item.content, imageContent(item.attachments));
+    } finally {
+      rebuildingQueue = false;
+    }
   };
 
   const queuedForStop = () => {
-    reconcileQueue();
+    if (!rebuildingQueue) reconcileQueue();
     return {
       steering: [
         ...trackedQueue.steering,
@@ -515,6 +524,7 @@ export function createCakeSessionRuntimeTurnController(input: {
           .filter((item) => item.delivery === "steer")
           .map((item) => ({
             itemId: item.itemId,
+            text: item.text,
             content: item.content,
             attachments: item.attachments,
             renderUserMessageAsMarkdown: item.renderUserMessageAsMarkdown,
@@ -526,12 +536,46 @@ export function createCakeSessionRuntimeTurnController(input: {
           .filter((item) => item.delivery === "follow-up")
           .map((item) => ({
             itemId: item.itemId,
+            text: item.text,
             content: item.content,
             attachments: item.attachments,
             renderUserMessageAsMarkdown: item.renderUserMessageAsMarkdown,
           })),
       ],
     } satisfies TrackedQueue;
+  };
+
+  const replacePendingQueues = async (queues: TrackedQueue) => {
+    if (session.isCompacting) {
+      const held = new Map(compactionQueue.map((entry) => [entry.itemId, entry]));
+      compactionQueue = (["steering", "follow-up"] as const).flatMap((lane) =>
+        queues[lane].map((entry) => ({
+          ...entry,
+          turnId: held.get(entry.itemId)?.turnId,
+          delivery: lane === "steering" ? ("steer" as const) : ("follow-up" as const),
+        })),
+      );
+      trackedQueue = { steering: [], "follow-up": [] };
+      session.clearQueue();
+    } else {
+      compactionQueue = [];
+      await requeue(queues);
+    }
+  };
+
+  const locatePendingPart = (partId: string) => {
+    const queues = queuedForStop();
+    const location = locateQueuedMessage(
+      partId,
+      queues.steering.map((item) => item.content),
+      queues["follow-up"].map((item) => item.content),
+    );
+    if (!location || location.list === "pending") return undefined;
+    const lane = location.list === "steering" ? "steering" : "follow-up";
+    if (location.index < trackedQueue[lane].length) return location;
+    const item = queues[lane][location.index];
+    const index = compactionQueue.findIndex((candidate) => candidate.itemId === item?.itemId);
+    return index < 0 ? undefined : { list: "pending" as const, index };
   };
 
   const stopActiveTurn = async () => {
@@ -555,17 +599,15 @@ export function createCakeSessionRuntimeTurnController(input: {
   ) => {
     assertActive();
     reconcileQueue();
-    const location = locateQueuedMessage(
-      partId,
-      session.getSteeringMessages(),
-      session.getFollowUpMessages(),
-      compactionQueue.map((item) => item.text),
-    );
-    if (!location) return listQueuedMessages();
+    const location = locatePendingPart(partId);
+    if (!location) throw new Error("That queued message is no longer available");
     if (location.list === "pending") {
       editPending(compactionQueue[location.index]!, location.index);
     } else {
-      const queued = session.clearQueue();
+      const queued = {
+        steering: [...session.getSteeringMessages()],
+        followUp: [...session.getFollowUpMessages()],
+      };
       const removed = edit(queued, { list: location.list, index: location.index });
       if (removed !== undefined) turnCompletions.cancelQueued(removed);
       const reordered = reconcileContents(queued.steering, queued.followUp);
@@ -578,6 +620,45 @@ export function createCakeSessionRuntimeTurnController(input: {
 
   return {
     compactionQueuedMessages: () => compactionQueue.map((item) => item.text),
+    handoffActive: () => handingOff,
+    queuedParts: () => {
+      const queues = queuedForStop();
+      const parts = projectQueuedMessages(
+        queues.steering.map((item) => item.content),
+        queues["follow-up"].map((item) => item.content),
+      );
+      const payloads = new Map<string, TrackedQueueItem>();
+      for (const [lane, items] of [
+        ["steering", queues.steering],
+        ["queued", queues["follow-up"]],
+      ] as const) {
+        const ids = queuedMessageIds(
+          lane === "steering" ? "queued-steering" : "queued-follow-up",
+          lane,
+          items.map((item) => item.content),
+        );
+        items.forEach((item, index) => {
+          const id = ids[index];
+          if (id) payloads.set(id, item);
+        });
+      }
+      return parts.map((part) => {
+        const item = payloads.get(part.id);
+        return part.kind === "text" && item
+          ? {
+              ...part,
+              text: part.crossSession || part.scheduled ? part.text : item.text,
+              renderAs: item.renderUserMessageAsMarkdown ? ("markdown" as const) : part.renderAs,
+              queuedInput: {
+                itemId: item.itemId,
+                text: item.text,
+                attachments: item.attachments,
+                renderUserMessageAsMarkdown: item.renderUserMessageAsMarkdown,
+              },
+            }
+          : part;
+      });
+    },
     executingTurnIds: () => turnCompletions.executingIds(),
     prompt,
     editMessage,
@@ -586,42 +667,20 @@ export function createCakeSessionRuntimeTurnController(input: {
     pendingMessages,
     async reorderPendingMessage({ itemId, position }) {
       assertActive();
-      reconcileQueue();
-      const sourceLane = (["steering", "follow-up"] as const).find((candidate) =>
-        trackedQueue[candidate].some((item) => item.itemId === itemId),
+      if (!Number.isSafeInteger(position) || position < 1)
+        throw new Error("Position must be a positive integer");
+      const queues = queuedForStop();
+      const lane = (["steering", "follow-up"] as const).find((candidate) =>
+        queues[candidate].some((item) => item.itemId === itemId),
       );
-      const compactionItem = compactionQueue.find((item) => item.itemId === itemId);
-      if (!sourceLane && !compactionItem) throw new Error(`Queued item ${itemId} no longer exists`);
-
-      if (compactionItem) {
-        if (trackedQueue.steering.length > 0 || trackedQueue["follow-up"].length > 0)
-          throw new Error("Cannot reorder a compaction-held item across Pi's active queue");
-        const lanes = {
-          steer: compactionQueue.filter((item) => item.delivery === "steer"),
-          "follow-up": compactionQueue.filter((item) => item.delivery === "follow-up"),
-        };
-        const source = lanes[compactionItem.delivery];
-        const sourceIndex = source.findIndex((item) => item.itemId === itemId);
-        source.splice(sourceIndex, 1);
-        if (position > source.length + 1) {
-          source.splice(sourceIndex, 0, compactionItem);
-          const laneName = compactionItem.delivery === "steer" ? "steering" : "follow-up";
-          throw new Error(`Position ${position} is outside the ${laneName} lane`);
-        }
-        source.splice(position - 1, 0, compactionItem);
-        compactionQueue = [...lanes.steer, ...lanes["follow-up"]];
-      } else {
-        const source = trackedQueue[sourceLane!];
-        const sourceIndex = source.findIndex((item) => item.itemId === itemId);
-        const [item] = source.splice(sourceIndex, 1);
-        if (position > source.length + 1) {
-          source.splice(sourceIndex, 0, item!);
-          throw new Error(`Position ${position} is outside the ${sourceLane} lane`);
-        }
-        source.splice(position - 1, 0, item!);
-        session.clearQueue();
-        await requeue(trackedQueue);
-      }
+      if (!lane) throw new Error(`Queued item ${itemId} no longer exists`);
+      const source = queues[lane];
+      if (position > source.length)
+        throw new Error(`Position ${position} is outside the ${lane} lane`);
+      const index = source.findIndex((item) => item.itemId === itemId);
+      const [item] = source.splice(index, 1);
+      source.splice(position - 1, 0, item!);
+      await replacePendingQueues(queues);
       input.syncQueuedParts();
       await input.emitSnapshot();
       return pendingMessages();
@@ -632,6 +691,7 @@ export function createCakeSessionRuntimeTurnController(input: {
         (queued, location) => queued[location.list].splice(location.index, 1)[0],
         (item, index) => {
           compactionQueue.splice(index, 1);
+          turnCompletions.cancelQueued(item.content);
           if (item.turnId)
             turnCompletions.failHandledInput(
               item.turnId,
@@ -639,19 +699,25 @@ export function createCakeSessionRuntimeTurnController(input: {
             );
         },
       ),
-    steerQueuedMessage: (partId) =>
-      editQueuedMessage(
+    async steerQueuedMessage(partId) {
+      assertActive();
+      const queues = queuedForStop();
+      const location = locateQueuedMessage(
         partId,
-        (queued, location) => {
-          if (location.list === "steering") return undefined;
-          const [text] = queued.followUp.splice(location.index, 1);
-          if (text !== undefined) queued.steering.push(text);
-          return undefined;
-        },
-        (item) => {
-          item.delivery = "steer";
-        },
-      ),
+        queues.steering.map((item) => item.content),
+        queues["follow-up"].map((item) => item.content),
+      );
+      if (!location) throw new Error("That queued message is no longer available");
+      if (location.list === "followUp") {
+        const [item] = queues["follow-up"].splice(location.index, 1);
+        queues.steering.push(item!);
+        await replacePendingQueues(queues);
+        notifySteeringQueued();
+        input.syncQueuedParts();
+        await input.emitSnapshot();
+      }
+      return listQueuedMessages();
+    },
     async sendQueuedMessageNow(partId) {
       assertActive();
       if (
@@ -662,11 +728,8 @@ export function createCakeSessionRuntimeTurnController(input: {
         await waitForSteering();
       assertActive();
       const queues = queuedForStop();
-      const rawSteering = session.getSteeringMessages();
-      const rawFollowUp = session.getFollowUpMessages();
-      const pending = compactionQueue.map((item) => item.text);
       const location = partId
-        ? locateQueuedMessage(partId, rawSteering, rawFollowUp, pending)
+        ? locatePendingPart(partId)
         : queues.steering.length > 0
           ? { list: "steering" as const, index: 0 }
           : undefined;
@@ -693,7 +756,13 @@ export function createCakeSessionRuntimeTurnController(input: {
       session.clearQueue();
       compactionQueue = [];
       trackedQueue = { steering: [], "follow-up": [] };
-      const abortedTurnIds = await stopActiveTurn();
+      let abortedTurnIds: string[];
+      handingOff = true;
+      try {
+        abortedTurnIds = await stopActiveTurn();
+      } finally {
+        handingOff = false;
+      }
       await holdQueue(queues);
       input.syncQueuedParts();
       await input.emitSnapshot();
@@ -737,7 +806,10 @@ export function createCakeSessionRuntimeTurnController(input: {
     },
     async cancelSteering() {
       reconcileQueue();
-      const queued = session.clearQueue();
+      const queued = {
+        steering: [...session.getSteeringMessages()],
+        followUp: [...session.getFollowUpMessages()],
+      };
       await requeue({
         steering: [],
         "follow-up": [...trackedQueue.steering, ...trackedQueue["follow-up"]],

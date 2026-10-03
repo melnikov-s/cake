@@ -33,7 +33,6 @@ class HarnessStore extends Store<{ client: Client; model: Conversation; existing
       canonicalParts: () => this.props.model.uiParts,
       canSubmit: () => true,
       isStreaming: () => false,
-      queueWhileStreaming: () => true,
       openCommandPane: async () => undefined,
       selectModel: async () => undefined,
       renameSession: async () => undefined,

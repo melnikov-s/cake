@@ -31,6 +31,57 @@ const adapter = (
 });
 
 describe("CakeSessionRuntimes", () => {
+  it.effect("serializes whole-queue edits across handles to the same runtime", () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const attempted = yield* Deferred.make<void>();
+      const edits: string[] = [];
+      const layer = makeCakeSessionRuntimesLayer({
+        sessionIds: () => Stream.empty,
+        catalog: () => Stream.empty,
+        catalogEntry: () => Effect.succeed(undefined),
+        inspect: () => Effect.succeed(undefined),
+        changelog: () => Effect.succeed(""),
+        createRuntime: (runtimeOptions) =>
+          Effect.succeed({
+            ...fakeRuntime(runtimeOptions, () => undefined),
+            reorderPendingMessage: async () => {
+              edits.push("reorder-start");
+              await Effect.runPromise(
+                Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(release))),
+              );
+              edits.push("reorder-end");
+              return { items: [] };
+            },
+            removeQueuedMessage: async () => {
+              edits.push("remove");
+              return { steering: [], followUp: [] };
+            },
+          }),
+      });
+      const context = yield* Layer.build(layer);
+      const sessions = Context.get(context, CakeSessionRuntimes);
+      const first = yield* sessions.acquire(options());
+      const second = yield* sessions.acquire(options());
+      const reorder = yield* first
+        .reorderPendingMessage({ itemId: "00000000-0000-4000-8000-000000000000", position: 1 })
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(entered);
+      const remove = yield* Deferred.succeed(attempted, undefined).pipe(
+        Effect.andThen(second.removeQueuedMessage("pending")),
+        Effect.forkChild,
+      );
+      yield* Deferred.await(attempted);
+      yield* Effect.yieldNow;
+      assert.deepEqual(edits, ["reorder-start"]);
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(reorder);
+      yield* Fiber.join(remove);
+      assert.deepEqual(edits, ["reorder-start", "reorder-end", "remove"]);
+    }),
+  );
+
   it.effect("delivers one aborted settlement even when the prompt finishes afterward", () =>
     Effect.gen(function* () {
       const started = yield* Deferred.make<void>();

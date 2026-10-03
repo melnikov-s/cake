@@ -284,11 +284,9 @@ describe("CakeSessionRuntime turn controller", () => {
       expect(session.clearQueue).toHaveBeenCalledOnce();
       expect(
         vi.mocked(session.prompt).mock.calls.map(([text, options]) => [text, options]),
-      ).toEqual([
-        ["Then this", expect.objectContaining({ streamingBehavior: "followUp" })],
-        ["Change direction", expect.objectContaining({ streamingBehavior: "steer" })],
-        ["Do this next", expect.objectContaining({ streamingBehavior: "followUp" })],
-      ]);
+      ).toEqual([["Then this", expect.objectContaining({ streamingBehavior: "followUp" })]]);
+      expect(session.steer).toHaveBeenCalledWith("Change direction", []);
+      expect(session.followUp).toHaveBeenCalledWith("Do this next", []);
       expect(syncQueuedParts).toHaveBeenCalled();
     });
 
@@ -303,10 +301,8 @@ describe("CakeSessionRuntime turn controller", () => {
         followUp: ["Then this"],
       });
 
-      expect(vi.mocked(session.prompt).mock.calls.slice(2)).toEqual([
-        ["Do this next", expect.objectContaining({ streamingBehavior: "steer" })],
-        ["Then this", expect.objectContaining({ streamingBehavior: "followUp" })],
-      ]);
+      expect(session.steer).toHaveBeenCalledWith("Do this next", []);
+      expect(session.followUp).toHaveBeenCalledWith("Then this", []);
       controller.consumeUserMessage("Do this next");
       controller.settleTurn();
       await expect(tracked).resolves.toBeUndefined();
@@ -348,12 +344,9 @@ describe("CakeSessionRuntime turn controller", () => {
         expect.objectContaining({ lane: "follow-up", position: 1, text: "Second" }),
         expect.objectContaining({ itemId: firstId, lane: "follow-up", position: 2 }),
       ]);
-      expect(vi.mocked(session.prompt).mock.calls.at(-1)).toEqual([
+      expect(vi.mocked(session.followUp).mock.calls.at(-1)).toEqual([
         expect.stringContaining("First"),
-        expect.objectContaining({
-          images: [expect.objectContaining({ data: "aW1hZ2U=" })],
-          streamingBehavior: "followUp",
-        }),
+        [expect.objectContaining({ data: "aW1hZ2U=" })],
       ]);
 
       const firstContent = vi.mocked(session.prompt).mock.calls[0]![0] as string;
@@ -418,7 +411,10 @@ describe("CakeSessionRuntime turn controller", () => {
         followUp: ["Do this next"],
       });
 
-      await expect(controller.removeQueuedMessage("queued-follow-up-missing-1")).resolves.toEqual({
+      await expect(controller.removeQueuedMessage("queued-follow-up-missing-1")).rejects.toThrow(
+        "no longer available",
+      );
+      expect(await controller.listQueuedMessages()).toEqual({
         steering: [],
         followUp: ["Do this next"],
       });
@@ -430,7 +426,7 @@ describe("CakeSessionRuntime turn controller", () => {
       const { controller, session } = createFixture({ isStreaming: true, isCompacting: true });
       const removed = controller.prompt("Drop me", "prompt", [], false, "turn-drop");
       await controller.prompt("Steer me", "prompt", []);
-      const [dropId, steerId] = partIds([], [], ["Drop me", "Steer me"]);
+      const [dropId, steerId] = partIds([], ["Drop me", "Steer me"]);
       expect((await controller.pendingMessages()).items).toEqual([
         expect.objectContaining({
           partId: dropId,
@@ -458,7 +454,100 @@ describe("CakeSessionRuntime turn controller", () => {
         steering: ["Steer me"],
         followUp: [],
       });
-      expect(session.clearQueue).not.toHaveBeenCalled();
+      expect(session.prompt).not.toHaveBeenCalled();
+    });
+
+    it("keeps sender-neutral order through mixed compaction queues, promotion, and cancellation", async () => {
+      const { controller, session } = createQueuedFixture({
+        steering: ["Live steer"],
+        followUp: ["Live queued"],
+      });
+      Object.assign(session, { isCompacting: true });
+      await controller.prompt("Held steer", "steer", []);
+      await controller.prompt("Held queued", "follow-up", []);
+      const initial = (await controller.pendingMessages()).items;
+      const held = initial.find((item) => item.text === "Held queued")!;
+      await controller.reorderPendingMessage({ itemId: held.itemId, position: 1 });
+      expect((await controller.pendingMessages()).items.map((item) => item.text)).toEqual([
+        "Live steer",
+        "Held steer",
+        "Held queued",
+        "Live queued",
+      ]);
+      const queued = (await controller.pendingMessages()).items.find(
+        (item) => item.text === "Live queued",
+      )!;
+      await controller.steerQueuedMessage(queued.partId!);
+      expect((await controller.pendingMessages()).items.map((item) => item.text)).toEqual([
+        "Live steer",
+        "Held steer",
+        "Live queued",
+        "Held queued",
+      ]);
+      const steer = (await controller.pendingMessages()).items.find(
+        (item) => item.text === "Held steer",
+      )!;
+      await controller.removeQueuedMessage(steer.partId!);
+      expect(
+        controller
+          .queuedParts()
+          .map((part) => part.kind === "text" && [part.text, part.deliveryState]),
+      ).toEqual([
+        ["Live steer", "steering"],
+        ["Live queued", "steering"],
+        ["Held queued", "queued"],
+      ]);
+      expect(
+        (await controller.pendingMessages()).items.find((item) => item.text === "Held queued")!
+          .itemId,
+      ).toBe(held.itemId);
+    });
+
+    it("preserves payload identity through synchronous Pi queue-update callbacks during reorder", async () => {
+      const { controller, session } = createQueuedFixture({ steering: [], followUp: [] });
+      const attachment = {
+        kind: "image" as const,
+        name: "image.png",
+        mimeType: "image/png",
+        data: "aW1hZ2U=",
+      };
+      await controller.prompt("First", "follow-up", [attachment], true);
+      await controller.prompt("Second", "follow-up", []);
+      const first = (await controller.pendingMessages()).items[0]!;
+      const clearQueue = session.clearQueue.bind(session);
+      session.clearQueue = vi.fn(() => {
+        const result = clearQueue();
+        controller.queuedParts();
+        return result;
+      });
+      const followUp = session.followUp.bind(session);
+      session.followUp = vi.fn(async (text, images, options) => {
+        const result = await followUp(text, images, options);
+        controller.queuedParts();
+        return result;
+      });
+      await controller.reorderPendingMessage({ itemId: first.itemId, position: 2 });
+      expect(controller.queuedParts().at(-1)).toMatchObject({
+        text: "First",
+        queuedInput: {
+          itemId: first.itemId,
+          text: "First",
+          attachments: [attachment],
+          renderUserMessageAsMarkdown: true,
+        },
+      });
+    });
+
+    it("marks only send-now's interruption as an intentional handoff", async () => {
+      const { controller, session } = createQueuedFixture({ steering: [], followUp: ["Next"] });
+      const handoffs: boolean[] = [];
+      session.abort = vi.fn(async () => {
+        handoffs.push(controller.handoffActive());
+      });
+      await controller.sendQueuedMessageNow((await controller.pendingMessages()).items[0]!.partId);
+      expect(controller.handoffActive()).toBe(false);
+      await controller.abort();
+      expect(handoffs).toEqual([true, false]);
     });
   });
 });

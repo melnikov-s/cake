@@ -8,6 +8,7 @@ Authoritative primitives live in `src/renderer/components/ui/`.
 | `NavItem`             | Accessible row action, label, description, badges, and trailing controls. Opt-in `motionFeedback` gives titles a springy hover/selection offset and press response.     |
 | `NavigationHighlight` | Shared moving selection and hover backgrounds across descendant navigation rows, including separate groups.                                                             |
 | `AnimatedList`        | Position transitions when keyed list items reorder; composes with `NavigationHighlight`.                                                                                |
+| `ReorderControls`     | Accessible move-up/move-down actions within an ordered group, with disabled boundary positions.                                                                         |
 | `SortableItem`        | Native drag-and-drop wrapper for persistently ordered navigation items.                                                                                                 |
 | `Avatar`              | Deterministic project/session artwork; stationary 12×12 rounded session squares via `variant="square"`; opt-in artwork interactions and resolution animations.          |
 | `ThinkingBubble`      | Compact, reduced-motion-safe conversational processing indicator.                                                                                                       |

@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { TurnId } from "../../../src/domain/conversations/conversation-data";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -293,28 +293,6 @@ describe("Chat composer workflow", () => {
     expect(input().value).toBe("/sidechat");
   });
 
-  it("restores cancelled local steering at its original queue position", async () => {
-    const steer = vi.fn<Client["sessionChats"]["steer"]>(async () =>
-      TurnId.make("10000000-0000-4000-8000-000000000001"),
-    );
-    const clearQueue = vi.fn<Client["sessionChats"]["clearQueue"]>(async () => ({
-      steering: ["Middle"],
-      followUp: [],
-    }));
-    using fixture = await renderComposer(
-      { sessionChats: { steer, clearQueue } },
-      { streaming: true },
-    );
-    for (const text of ["Before", "Middle", "After"]) await typeAndSend(fixture.user, text);
-    await fixture.user.click(screen.getByRole("button", { name: "Send now as steering: Middle" }));
-    expect(await screen.findByRole("button", { name: "Cancel steering: Middle" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Cancel steering: Middle" }));
-    const list = screen.getByRole("list", { name: "Queued prompts" });
-    expect(
-      within(list)
-        .getAllByRole("button", { name: /^View queued message:/ })
-        .map((button) => button.textContent),
-    ).toEqual(["Before", "Middle", "After"]);
-    expect(clearQueue).toHaveBeenCalledWith({ sessionId }, expect.any(Object));
-  });
+  // Sender-neutral queue policy and per-item steering cancellation are exercised
+  // with the real runtime projection in prompt-queue-workflow.test.tsx.
 });

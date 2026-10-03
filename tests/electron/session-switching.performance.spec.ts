@@ -88,7 +88,6 @@ async function fixture(additionalChild = false) {
               {
                 draftStore: store({ text: "", attachments: [], annotations: [] }),
                 deliveryStore: store(),
-                promptQueueStore: store(),
                 pendingSessionDraftStore: store(),
               },
             ),

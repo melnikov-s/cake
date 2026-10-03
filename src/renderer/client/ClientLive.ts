@@ -862,6 +862,12 @@ export function makeClient(
           withClient((client) => client.sessionChats.listQueuedMessages(target)),
           options,
         ),
+      reorderQueuedMessage: (input, options) =>
+        run(
+          "sessionChats.reorderQueuedMessage",
+          withClient((client) => client.sessionChats.reorderQueuedMessage(input)),
+          options,
+        ),
       clearQueue: (target, options) =>
         run(
           "sessionChats.clearQueue",

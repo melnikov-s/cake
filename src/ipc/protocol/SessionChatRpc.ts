@@ -32,6 +32,15 @@ export const SessionChatRpc = RpcGroup.make(
     success: QueuedConversationMessages,
     error: SessionChatError,
   }),
+  Rpc.make("sessionChats.reorderQueuedMessage", {
+    payload: {
+      ...SessionChatTarget.fields,
+      itemId: Schema.String.check(Schema.isUUID(4)),
+      position: Schema.Int.check(Schema.isGreaterThan(0)),
+    },
+    success: QueuedConversationMessages,
+    error: SessionChatError,
+  }),
   Rpc.make("sessionChats.clearQueue", {
     payload: SessionChatTarget,
     success: QueuedConversationMessages,

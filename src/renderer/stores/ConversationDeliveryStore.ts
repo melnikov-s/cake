@@ -174,10 +174,6 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
     this.editingEntryId = undefined;
   }
 
-  clearOptimisticSteering() {
-    this.optimisticUserMessages.removeByDeliveryState("steering");
-  }
-
   receive(event: StoreEvent) {
     if (event.type === "agent-availability-changed" && event.availability.state === "unavailable") {
       for (const operationId of this.activeOperations.slice()) this.finish(operationId);
@@ -246,7 +242,7 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
       operationId,
       text,
       attachments,
-      delivery === "steer" ? "steering" : "sending",
+      delivery === "steer" ? "steering" : this.props.isStreaming() ? "queued" : "sending",
       renderUserMessageAsMarkdown,
       replacingEntryId,
     );

@@ -10,6 +10,7 @@ export function FullscreenMessage({
   onOpenSourceLocation,
   partId,
   streaming = false,
+  sourceSession,
   text,
   title,
 }: {
@@ -19,12 +20,18 @@ export function FullscreenMessage({
   onOpenSourceLocation?(location: SourceLocation): void;
   partId?: string;
   streaming?: boolean;
+  sourceSession?: { sessionId: string; title: string };
   text: string;
   title: string;
 }) {
   return (
     <FullscreenSurface eyebrow={eyebrow} title={title} onClose={onClose}>
       <div className="w-full" {...(partId ? { "data-part-id": partId } : null)}>
+        {sourceSession && (
+          <div className="mb-4 text-sm text-muted-foreground">
+            <Markdown>{`From session: [${sourceSession.title.replace(/[\\`*_[\]]/g, "\\$&")}](cake://session/${encodeURIComponent(sourceSession.sessionId)})`}</Markdown>
+          </div>
+        )}
         {markdown ? (
           <Markdown
             streaming={streaming}

@@ -10,13 +10,11 @@ import {
   type ConversationDeliveryInput,
 } from "./ConversationDeliveryStore";
 import { PendingSessionDraftStore, type PendingSessionPrompt } from "./PendingSessionDraftStore";
-import { PromptQueueStore } from "./PromptQueueStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { ProjectSessionPresentationMode } from "../../domain/project-sessions/project-session-presentation";
 
 export type ComposerDeliveryInput = ConversationDeliveryInput;
-export type { QueuedPrompt } from "./PromptQueueStore";
 
 export interface ConversationComposerStoreProps {
   projectPath?(): string | undefined;
@@ -24,7 +22,6 @@ export interface ConversationComposerStoreProps {
   canonicalParts(): UiPart[];
   canSubmit(): boolean;
   isStreaming(): boolean;
-  queueWhileStreaming?(): boolean;
   openCommandPane?(pane: "changelog" | "tree" | "resources"): Promise<void>;
   createSideChat?(prompt: string): Promise<boolean>;
   selectModel(value: string): Promise<boolean | void>;
@@ -35,8 +32,6 @@ export interface ConversationComposerStoreProps {
     input: Omit<ConversationDeliveryInput, "delivery"> & { entryId: string },
   ): Promise<void>;
   compact(sessionId: string, instructions?: string): Promise<void>;
-  clearQueue?(): Promise<void>;
-  cancelSteering?(): Promise<void>;
   scheduleMessage?(sessionId: string, args: string): Promise<boolean>;
   operations: SessionOperationCoordinatorStore;
   operationOwner: string;
@@ -87,29 +82,6 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
       requestFocus: () => this.draftStore.requestFocus(),
       editorText: this.props.editorText,
       presentationMode: this.props.presentationMode,
-    });
-  }
-
-  @child
-  get promptQueueStore(): PromptQueueStore {
-    return createStore(PromptQueueStore, {
-      isStreaming: this.props.isStreaming,
-      deliver: (entry, delivery) =>
-        this.deliveryStore.send(
-          entry.text,
-          entry.attachments.slice(),
-          delivery,
-          false,
-          entry.renderUserMessageAsMarkdown,
-        ),
-      restoreForEditing: (entry) => {
-        this.draftStore.setText(entry.text);
-        this.draftStore.appendAttachments(entry.attachments);
-        this.draftStore.requestFocus();
-      },
-      clearRemoteQueue: this.props.clearQueue,
-      cancelRemoteSteering: this.props.cancelSteering,
-      clearOptimisticSteering: () => this.deliveryStore.clearOptimisticSteering(),
     });
   }
 
@@ -183,17 +155,6 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
         attachments,
         renderUserMessageAsMarkdown,
       );
-    }
-    if (
-      deliveryOverride === undefined &&
-      this.props.isStreaming() &&
-      (this.props.queueWhileStreaming?.() ?? false)
-    ) {
-      if (text || attachments.length) {
-        this.draftStore.clearForSubmit();
-        this.promptQueueStore.enqueue(text, attachments, renderUserMessageAsMarkdown);
-      }
-      return;
     }
     if (text || attachments.length) {
       this.draftStore.clearForSubmit();

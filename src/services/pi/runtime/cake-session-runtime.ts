@@ -58,6 +58,7 @@ import {
   textFromContent,
   userMessagePresentationEntrySchema,
   userMessagePresentationEntryType,
+  turnHandoffEntryType,
   type ReviewRunEntry,
 } from "./session-projection";
 import {
@@ -494,11 +495,14 @@ export async function createCakeSessionRuntime(
   });
 
   let compactionQueuedMessages: () => readonly string[] = () => [];
+  const queueProjection = { parts: (): UiPart[] => [], handoffActive: () => false };
   const projection = createCakeSessionRuntimeEventProjection({
     session,
     sessionId: cakeSessionId,
     emit: options.onEvent,
     compactionQueuedMessages: () => compactionQueuedMessages(),
+    queuedParts: () => queueProjection.parts(),
+    suppressAbort: () => queueProjection.handoffActive(),
     isDisposed: () => disposed,
   });
   const configuration = createCakeSessionRuntimeConfiguration({
@@ -584,6 +588,8 @@ export async function createCakeSessionRuntime(
     emitSnapshotInBackground,
   });
   compactionQueuedMessages = turnController.compactionQueuedMessages;
+  queueProjection.parts = turnController.queuedParts;
+  queueProjection.handoffActive = turnController.handoffActive;
 
   const continuations = createCakeSessionRuntimeContinuations({
     options,
@@ -599,6 +605,15 @@ export async function createCakeSessionRuntime(
 
   const unsubscribe = session.subscribe((event) => {
     if (disposed) return;
+    if (
+      event.type === "message_end" &&
+      event.message.role === "assistant" &&
+      event.message.stopReason === "aborted" &&
+      queueProjection.handoffActive()
+    )
+      session.sessionManager.appendCustomEntry(turnHandoffEntryType, {
+        timestamp: event.message.timestamp,
+      });
     projection.projectEvent(event);
     if (event.type === "session_info_changed" && event.name)
       void options.sessionTitleChanged?.(cakeSessionId, event.name).catch(() => undefined);

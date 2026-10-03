@@ -99,6 +99,16 @@ export const listQueuedMessages = Effect.fn("SessionChats.listQueuedMessages")(f
   ).pipe(Effect.map(projectQueuedMessages), asError("listQueuedMessages"));
 });
 
+export const reorderQueuedMessage = Effect.fn("SessionChats.reorderQueuedMessage")(function* (
+  input: SessionChatTarget & { readonly itemId: string; readonly position: number },
+) {
+  return yield* useConversation(acquire(input.sessionId), (handle) =>
+    handle
+      .reorderPendingMessage({ itemId: input.itemId, position: input.position })
+      .pipe(Effect.andThen(() => handle.listQueuedMessages())),
+  ).pipe(Effect.map(projectQueuedMessages), asError("reorderQueuedMessage"));
+});
+
 export const clearQueue = Effect.fn("SessionChats.clearQueue")(function* (
   target: SessionChatTarget,
 ) {

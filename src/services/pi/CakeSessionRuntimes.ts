@@ -10,6 +10,7 @@ import {
   Ref,
   Schedule,
   Schema,
+  Semaphore,
   Scope,
   Stream,
 } from "effect";
@@ -299,6 +300,7 @@ interface SharedRuntime {
   readonly events: PubSub.PubSub<PiSessionEvent>;
   readonly activeTurns: Ref.Ref<ReadonlyMap<string, "prompt" | "steer" | "follow-up">>;
   readonly settledInputIds: Set<string>;
+  readonly queueEdits: Semaphore.Semaphore;
 }
 
 class RuntimeKey implements Equal.Equal {
@@ -445,6 +447,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 runtime,
                 events,
                 activeTurns,
+                queueEdits: Semaphore.makeUnsafe(1),
               } satisfies SharedRuntime;
               activeRuntimes.add(shared);
               acquiredOptions.set(runtimeTarget(key.options), key.options);
@@ -556,6 +559,12 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           operation: string,
           evaluate: (runtime: CakeSessionRuntime) => Promise<A>,
         ) => runtimeOperation(operation, () => evaluate(shared.runtime));
+        // Whole-queue replacements from every acquired handle share one runtime gate.
+        // Never hold this gate for an executing prompt or send-now's new turn.
+        const editQueue = <A>(
+          operation: string,
+          evaluate: (runtime: CakeSessionRuntime) => Promise<A>,
+        ) => call(operation, evaluate).pipe(shared.queueEdits.withPermit);
         const updates = Stream.unwrap(
           Effect.gen(function* () {
             // Subscribe before reading the snapshot. Runtime events produced
@@ -720,13 +729,13 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             call("listQueuedMessages", (runtime) => runtime.listQueuedMessages()),
           pendingMessages: () => call("pendingMessages", (runtime) => runtime.pendingMessages()),
           reorderPendingMessage: (input) =>
-            call("reorderPendingMessage", (runtime) => runtime.reorderPendingMessage(input)),
-          clearQueue: () => call("clearQueue", (runtime) => runtime.clearQueue()),
-          cancelSteering: () => call("cancelSteering", (runtime) => runtime.cancelSteering()),
+            editQueue("reorderPendingMessage", (runtime) => runtime.reorderPendingMessage(input)),
+          clearQueue: () => editQueue("clearQueue", (runtime) => runtime.clearQueue()),
+          cancelSteering: () => editQueue("cancelSteering", (runtime) => runtime.cancelSteering()),
           removeQueuedMessage: (partId) =>
-            call("removeQueuedMessage", (runtime) => runtime.removeQueuedMessage(partId)),
+            editQueue("removeQueuedMessage", (runtime) => runtime.removeQueuedMessage(partId)),
           steerQueuedMessage: (partId) =>
-            call("steerQueuedMessage", (runtime) => runtime.steerQueuedMessage(partId)),
+            editQueue("steerQueuedMessage", (runtime) => runtime.steerQueuedMessage(partId)),
           sendQueuedMessageNow: (partId) =>
             Effect.gen(function* () {
               const claimed = yield* claimAbortedTurns(shared.runtime.executingTurnIds?.() ?? []);

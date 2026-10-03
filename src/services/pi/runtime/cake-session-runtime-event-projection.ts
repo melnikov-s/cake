@@ -70,6 +70,8 @@ export function createCakeSessionRuntimeEventProjection(input: {
   readonly sessionId: string;
   readonly emit: (event: RuntimeProjectionEvent) => void;
   readonly compactionQueuedMessages: () => readonly string[];
+  readonly queuedParts?: () => UiPart[];
+  readonly suppressAbort?: () => boolean;
   readonly isDisposed: () => boolean;
 }): RuntimeEventProjection {
   const { session, sessionId, emit } = input;
@@ -90,6 +92,7 @@ export function createCakeSessionRuntimeEventProjection(input: {
   const pendingUserPresentations: PendingUserPresentation[] = [];
   const projectLiveMessage = createLiveMessageProjector({
     deferProviderErrors: true,
+    suppressAbort: input.suppressAbort,
     renderUserMessageAsMarkdown: (message) => {
       if (typeof message !== "object" || message === null) return false;
       const content = textFromContent(Reflect.get(message, "content"));
@@ -158,6 +161,7 @@ export function createCakeSessionRuntimeEventProjection(input: {
   };
 
   const queuedParts = () =>
+    input.queuedParts?.() ??
     projectQueuedMessages(
       session.getSteeringMessages(),
       session.getFollowUpMessages(),

@@ -28,6 +28,7 @@ export const sessionChatHandlers = SessionChatRpc.of({
   "sessionChats.followUp": (input) => deliverFromRenderer(input, "follow-up"),
   "sessionChats.abort": sessionChats.abort,
   "sessionChats.listQueuedMessages": sessionChats.listQueuedMessages,
+  "sessionChats.reorderQueuedMessage": sessionChats.reorderQueuedMessage,
   "sessionChats.clearQueue": sessionChats.clearQueue,
   "sessionChats.cancelSteering": sessionChats.cancelSteering,
   "sessionChats.removeQueuedMessage": ({ partId, ...target }) =>

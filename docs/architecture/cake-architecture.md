@@ -94,9 +94,18 @@ hidden Pi custom entry in the fork. The display projection consumes that entry;
 Pi's model context does not. Steering and follow-up queues are transient Pi
 runtime state: Cake overlays `queue_update` projections while messages wait and
 removes them when Pi consumes the corresponding user message into the branch.
-Pi only exposes whole-queue clearing, so removing or promoting one held message
-clears the queue and re-enqueues the remainder in its original order and
-delivery kind. Scheduled messages are different: Cake owns each durable,
+Pi only exposes whole-queue clearing, so removing, promoting, or reordering one
+held message replaces the queue using Pi's queue-only primitives, preserving the
+remainder's payloads and delivery kind even if the active response settles.
+User and cross-session inputs share this runtime queue; the renderer does not
+hold a separate follow-up queue. Steering is displayed first, then follow-ups,
+with sender-neutral ordering within each lane. Promotion appends to steering;
+explicit send-now interrupts and sends just the selected input while preserving
+the rest. Stable queue item identities and original editable input payloads are
+process-lifetime Pi-adapter metadata projected onto waiting parts, not persisted
+transcript copies. A hidden `cake.turn-handoff/v1` Pi custom entry records the
+interrupted assistant timestamp for send-now's presentation: partial output stays
+visible without an erroneous provider-failure notice, including after reopening. Scheduled messages are different: Cake owns each durable,
 cancellable delivery intent until its deadline. The destination session
 projects that pending intent beside its composer. At the deadline Cake restores
 the Project Session when necessary and submits an ordinary prompt, or a

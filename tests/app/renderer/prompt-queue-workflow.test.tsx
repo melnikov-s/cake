@@ -1,54 +1,103 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { observer } from "r-state-tree/react";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   TurnId,
   type ConversationSnapshot,
+  type SessionChatPromptInput,
 } from "../../../src/domain/conversations/conversation-data";
-import type { Client } from "../../../src/renderer/client/Client";
+import { encodeCrossSessionMessage } from "../../../src/domain/conversations/cross-session-coordination";
+import { createCakeSessionRuntimeTurnController } from "../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
-import type { TestClientOverrides } from "./test-client";
 
 const sessionId = "session-one";
-function snapshot(remoteState?: "steering" | "queued"): ConversationSnapshot {
-  return {
-    sessionId,
-    sessionFile: "/project/session-one.jsonl",
-    parts: [
-      { id: "assistant-1", kind: "text", role: "assistant", text: "Working", status: "streaming" },
-      ...(remoteState
-        ? [
-            {
-              id: "remote-1",
-              kind: "text" as const,
-              role: "user" as const,
-              text: "Remote follow-up",
-              status: "complete" as const,
-              deliveryState: remoteState,
-            },
-          ]
-        : []),
-    ],
-    models: [],
-    thinkingLevel: "off",
-    availableThinkingLevels: ["off"],
-    streaming: true,
-    diagnostics: [],
-    commands: [],
-    compatibility: { resources: [], diagnostics: [] },
-    extensionUi: { statuses: [] },
-    tree: [],
-  };
-}
+const metadata = {
+  version: 1 as const,
+  messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
+  threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
+  sequence: 1,
+  expectsResponse: false,
+  sender: { kind: "project-session" as const, sessionId: "source-session", title: "API review" },
+};
 
-function renderQueue(client: TestClientOverrides = {}, remoteState?: "steering" | "queued") {
+/** Real Pi queue policy and projection; only the Pi SDK and transport are faked. */
+function renderQueue(
+  initial: { steering: string[]; followUp: string[] } = { steering: [], followUp: [] },
+) {
+  let steering = [...initial.steering];
+  let followUp = [...initial.followUp];
+  let publish = () => {};
+  const immediate: string[] = [];
+  const pi = {
+    isStreaming: true,
+    isCompacting: false,
+    isBashRunning: false,
+    sessionManager: { getBranch: () => [] },
+    prompt: vi.fn(async (text: string, options?: { streamingBehavior?: string }) => {
+      if (options?.streamingBehavior === "steer") steering.push(text);
+      else if (options?.streamingBehavior === "followUp") followUp.push(text);
+      else immediate.push(text);
+    }),
+    steer: async (text: string) => {
+      steering.push(text);
+      return "queued";
+    },
+    followUp: async (text: string) => {
+      followUp.push(text);
+      return "queued";
+    },
+    getSteeringMessages: () => steering,
+    getFollowUpMessages: () => followUp,
+    clearQueue: () => {
+      const queue = { steering, followUp };
+      steering = [];
+      followUp = [];
+      return queue;
+    },
+    abort: vi.fn(async () => {}),
+  } as unknown as AgentSession;
+  const controller = createCakeSessionRuntimeTurnController({
+    session: pi,
+    isDisposed: () => false,
+    beforeIdleTurn: async () => {},
+    withResponseRetries: (operation) => operation(),
+    cancelResponseRetries: () => {},
+    recovery: { onUserInput: () => {}, onAbort: () => {} },
+    deliverTrackedUserMessage: (_text, _markdown, deliver) => deliver(),
+    syncQueuedParts: () => publish(),
+    emitPart: () => {},
+    emitSnapshot: async () => publish(),
+    emitSnapshotInBackground: () => publish(),
+  });
+  const reorder = vi.fn(async (input: { itemId: string; position: number }) => {
+    await controller.reorderPendingMessage(input);
+    return controller.listQueuedMessages();
+  });
+  const prompt = vi.fn(async (input: SessionChatPromptInput) => {
+    await controller.prompt(
+      input.text,
+      "follow-up",
+      [...input.attachments],
+      input.renderUserMessageAsMarkdown,
+    );
+    return TurnId.make("10000000-0000-4000-8000-000000000001");
+  });
   const fixture = createRendererStoreFixture({
-    client,
+    client: {
+      sessionChats: {
+        prompt,
+        reorderQueuedMessage: reorder,
+        removeQueuedMessage: ({ partId }) => controller.removeQueuedMessage(partId),
+        steerQueuedMessage: ({ partId }) => controller.steerQueuedMessage(partId),
+        sendQueuedMessageNow: async ({ partId }) =>
+          (await controller.sendQueuedMessageNow(partId)).queued,
+      },
+    },
     projects: [projectRecord({ path: "/project", name: "Project" })],
     sessions: [sessionSummary({ sessionId, projectPath: "/project" })],
   });
@@ -56,50 +105,59 @@ function renderQueue(client: TestClientOverrides = {}, remoteState?: "steering" 
   fixture.root.appShellStore.selectProjectSession(sessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(sessionId);
   const model = fixture.models.projectConversation(sessionId, "/project");
-  let revision = 1;
-  applyConversationUpdate(model, { _tag: "Snapshot", revision, snapshot: snapshot(remoteState) });
-  const Surface = observer(function Surface() {
-    const composer = session.conversationSessionStore.composerStore;
-    return (
-      <Chat
-        store={session.conversationSessionStore.chatStore}
-        embedded
-        composerFocusEnabled={false}
-        error={composer.error ? { message: composer.error } : undefined}
-      />
-    );
-  });
-  const view = render(<Surface />);
+  let revision = 0;
+  publish = () => {
+    const snapshot: ConversationSnapshot = {
+      sessionId,
+      sessionFile: "/project/session-one.jsonl",
+      parts: [
+        {
+          id: "assistant-1",
+          kind: "text",
+          role: "assistant",
+          text: "Working",
+          status: "streaming",
+        },
+        ...controller.queuedParts(),
+      ],
+      models: [],
+      thinkingLevel: "off",
+      availableThinkingLevels: ["off"],
+      streaming: true,
+      diagnostics: [],
+      commands: [],
+      compatibility: { resources: [], diagnostics: [] },
+      extensionUi: { statuses: [] },
+      tree: [],
+    };
+    applyConversationUpdate(model, { _tag: "Snapshot", revision: ++revision, snapshot });
+  };
+  publish();
+  const view = render(
+    <Chat
+      store={session.conversationSessionStore.chatStore}
+      embedded
+      composerFocusEnabled={false}
+    />,
+  );
   return {
     user: userEvent.setup(),
-    async streaming(streaming: boolean) {
-      await act(async () =>
-        applyConversationUpdate(model, {
-          _tag: "Event",
-          revision: ++revision,
-          event: { _tag: "StreamingChanged", sessionId, streaming },
-        }),
-      );
-    },
-    async remoteQueued() {
-      await act(async () =>
-        applyConversationUpdate(model, {
-          _tag: "Snapshot",
-          revision: ++revision,
-          snapshot: snapshot("queued"),
-        }),
-      );
+    controller,
+    prompt,
+    reorder,
+    pi,
+    immediate,
+    async enqueue(text: string) {
+      const user = userEvent.setup();
+      await user.type(screen.getByRole("combobox"), text);
+      await user.click(screen.getByRole("button", { name: "Send" }));
     },
     [Symbol.dispose]() {
       view.unmount();
       fixture[Symbol.dispose]();
+      controller.dispose();
     },
   };
-}
-
-async function enqueue(user: ReturnType<typeof userEvent.setup>, text: string) {
-  await user.type(screen.getByRole("combobox"), text);
-  await user.click(screen.getByRole("button", { name: "Send" }));
 }
 function queuedTexts() {
   return within(screen.getByRole("list", { name: "Queued prompts" }))
@@ -109,73 +167,118 @@ function queuedTexts() {
 afterEach(cleanup);
 
 describe("Prompt queue workflow", () => {
-  it("queues follow-ups while running, restores one for editing, and removes the other", async () => {
-    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
-      TurnId.make("10000000-0000-4000-8000-000000000001"),
+  it("interleaves user and agent inputs in both lanes and reorders through authoritative positions", async () => {
+    using fixture = renderQueue({
+      steering: ["First steer", encodeCrossSessionMessage("Agent steer", metadata)],
+      followUp: [encodeCrossSessionMessage("Agent queued", metadata)],
+    });
+    await fixture.enqueue("User queued");
+    expect(fixture.prompt).toHaveBeenCalledOnce();
+    expect(queuedTexts()).toEqual(["First steer", "Agent steer", "Agent queued", "User queued"]);
+    await fixture.user.click(screen.getByRole("button", { name: "Move up: User queued" }));
+    expect(queuedTexts()).toEqual(["First steer", "Agent steer", "User queued", "Agent queued"]);
+    await fixture.user.click(screen.getByRole("button", { name: "Move up: Agent steer" }));
+    expect(queuedTexts()).toEqual(["Agent steer", "First steer", "User queued", "Agent queued"]);
+    expect(fixture.reorder.mock.calls.map(([input]) => input.position)).toEqual([1, 1]);
+    expect(screen.getByRole("group", { name: "Steering" })).toBeDefined();
+    expect(screen.getByRole("group", { name: "Queued" })).toBeDefined();
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Move up: User queued" }).disabled,
+    ).toBe(true);
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Move down: First steer" }).disabled,
+    ).toBe(true);
+  });
+
+  it("appends promotion to steering and cancels individual agent or user items without demoting survivors", async () => {
+    using fixture = renderQueue({
+      steering: ["Existing steer"],
+      followUp: [encodeCrossSessionMessage("Agent queued", metadata), "User queued"],
+    });
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Send now as steering: Agent queued" }),
     );
-    using fixture = renderQueue({ sessionChats: { prompt } });
-    await enqueue(fixture.user, "First");
-    await enqueue(fixture.user, "Second");
-    expect(queuedTexts()).toEqual(["First", "Second"]);
-    expect(prompt).not.toHaveBeenCalled();
-    await fixture.user.click(screen.getByRole("button", { name: "Edit queued prompt: Second" }));
-    expect(screen.getByRole<HTMLTextAreaElement>("combobox").value).toBe("Second");
-    expect(queuedTexts()).toEqual(["First"]);
-    await fixture.user.click(screen.getByRole("button", { name: "Remove queued prompt: First" }));
-    expect(screen.queryByRole("list", { name: "Queued prompts" })).toBeNull();
+    expect(queuedTexts()).toEqual(["Existing steer", "Agent queued", "User queued"]);
+    await fixture.user.click(screen.getByRole("button", { name: "Cancel steering: Agent queued" }));
+    expect(queuedTexts()).toEqual(["Existing steer", "User queued"]);
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Cancel queued message: User queued" }),
+    );
+    expect(queuedTexts()).toEqual(["Existing steer"]);
+  });
+
+  it("sends any queued item immediately without promoting or dropping the rest", async () => {
+    using fixture = renderQueue({
+      steering: ["Keep steering"],
+      followUp: ["Keep queued", encodeCrossSessionMessage("Send agent now", metadata)],
+    });
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Stop and send now: Send agent now" }),
+    );
+    expect(fixture.pi.abort).toHaveBeenCalledOnce();
+    expect(fixture.immediate).toEqual([encodeCrossSessionMessage("Send agent now", metadata)]);
+    expect(queuedTexts()).toEqual(["Keep steering", "Keep queued"]);
+  });
+
+  it("restores an admitted user payload for editing and resubmits at the queue tail", async () => {
+    using fixture = renderQueue();
+    await fixture.enqueue("First");
+    await fixture.enqueue("Second");
+    await fixture.user.click(screen.getByRole("button", { name: "Edit queued prompt: First" }));
+    expect(screen.getByRole<HTMLTextAreaElement>("combobox").value).toBe("First");
+    expect(queuedTexts()).toEqual(["Second"]);
     await fixture.user.type(screen.getByRole("combobox"), " revised");
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
-    expect(queuedTexts()).toEqual(["Second revised"]);
-    expect(prompt).not.toHaveBeenCalled();
+    expect(queuedTexts()).toEqual(["Second", "First revised"]);
   });
 
-  it("returns remote steering to the follow-up queue through the remote cancellation boundary", async () => {
-    const cancelSteering = vi.fn<Client["sessionChats"]["cancelSteering"]>(async () => ({
-      steering: ["Remote follow-up"],
-      followUp: [],
-    }));
-    const clearQueue = vi.fn<Client["sessionChats"]["clearQueue"]>(async () => ({
-      steering: [],
-      followUp: [],
-    }));
-    using fixture = renderQueue({ sessionChats: { cancelSteering, clearQueue } }, "steering");
-    await fixture.user.click(
-      screen.getByRole("button", { name: "Cancel steering: Remote follow-up" }),
-    );
-    expect(cancelSteering).toHaveBeenCalledWith(
-      { sessionId },
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
-    expect(clearQueue).not.toHaveBeenCalled();
-    await fixture.remoteQueued();
-    expect(queuedTexts()).toEqual(["Remote follow-up"]);
+  it("does not expose invalid queue positions while another input is still being admitted", async () => {
+    using fixture = renderQueue({ steering: [], followUp: ["First"] });
+    let release = () => {};
+    const admission = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const deliver = fixture.prompt.getMockImplementation()!;
+    fixture.prompt.mockImplementationOnce(async (input) => {
+      await admission;
+      return deliver(input);
+    });
+    await fixture.enqueue("Pending");
+    expect(queuedTexts()).toEqual(["First", "Pending"]);
     expect(
-      screen.getByRole("button", { name: "Send now as steering: Remote follow-up" }),
-    ).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Cancel steering: Remote follow-up" })).toBeNull();
+      screen.getByRole<HTMLButtonElement>("button", { name: "Move down: First" }).disabled,
+    ).toBe(true);
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Cancel queued message: Pending" })
+        .disabled,
+    ).toBe(true);
+    await act(async () => {
+      release();
+      await admission;
+    });
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", { name: "Move down: First" }).disabled,
+    ).toBe(false);
+    await fixture.user.click(screen.getByRole("button", { name: "Move up: Pending" }));
+    expect(queuedTexts()).toEqual(["Pending", "First"]);
   });
 
-  it("restores a failed head and drains one prompt per settled response in original order", async () => {
-    const prompt = vi
-      .fn<Client["sessionChats"]["prompt"]>()
-      .mockRejectedValueOnce(new Error("Delivery failed"))
-      .mockResolvedValue(TurnId.make("10000000-0000-4000-8000-000000000001"));
-    using fixture = renderQueue({ sessionChats: { prompt } });
-    await enqueue(fixture.user, "First");
-    await enqueue(fixture.user, "Second");
-    await fixture.streaming(false);
-    expect(await screen.findByText("Delivery failed")).toBeDefined();
+  it("restores a failed admission to the draft and queues it on retry", async () => {
+    using fixture = renderQueue();
+    fixture.prompt.mockRejectedValueOnce(new Error("Runtime unavailable"));
+    await fixture.enqueue("Retry this");
+    expect(await screen.findByText("Runtime unavailable")).toBeDefined();
+    expect(screen.getByRole<HTMLTextAreaElement>("combobox").value).toBe("Retry this");
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    expect(queuedTexts()).toEqual(["Retry this"]);
+    expect(fixture.prompt).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps queue order and displays a recoverable error when a mutation fails", async () => {
+    using fixture = renderQueue({ steering: [], followUp: ["First", "Second"] });
+    fixture.reorder.mockRejectedValueOnce(new Error("Queue unavailable"));
+    await fixture.user.click(screen.getByRole("button", { name: "Move up: Second" }));
+    expect(await screen.findByText("Queue unavailable")).toBeDefined();
     expect(queuedTexts()).toEqual(["First", "Second"]);
-    expect(prompt).toHaveBeenCalledTimes(1);
-    await fixture.streaming(true);
-    await fixture.streaming(false);
-    await waitFor(() => expect(prompt).toHaveBeenCalledTimes(2));
-    expect(queuedTexts()).toEqual(["Second"]);
-    await fixture.streaming(true);
-    await fixture.streaming(false);
-    await waitFor(() => expect(prompt).toHaveBeenCalledTimes(3));
-    expect(prompt.mock.calls.map(([input]) => input.text)).toEqual(["First", "First", "Second"]);
-    expect(screen.queryByRole("list", { name: "Queued prompts" })).toBeNull();
-    expect(screen.queryByText("Delivery failed")).toBeNull();
   });
 });

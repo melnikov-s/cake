@@ -26,6 +26,9 @@ import { toolCompactEntryType } from "./tool-compaction-provenance";
 
 export const reviewRunEntryType = "cake.review-run/v1";
 export const userMessagePresentationEntryType = "cake.user-message-presentation/v1";
+/** Presentation-only provenance: an intentional interruption is not a provider failure. */
+export const turnHandoffEntryType = "cake.turn-handoff/v1";
+const turnHandoffEntrySchema = Schema.Struct({ timestamp: Schema.Number });
 export const userMessagePresentationEntrySchema = Schema.Struct({
   targetId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
   renderAs: Schema.Literals(["markdown", "plain"]),
@@ -297,6 +300,7 @@ function partsFromMessage(
   entryId?: string,
   renderUserMessageAsMarkdown = false,
   streamingToolContentIndex?: number,
+  suppressAbort = false,
 ): UiPart[] {
   if (typeof message !== "object" || message === null) return [];
   const role = Reflect.get(message, "role");
@@ -474,7 +478,8 @@ function partsFromMessage(
             text,
             status: streaming
               ? "streaming"
-              : Reflect.get(message, "errorMessage")
+              : Reflect.get(message, "errorMessage") &&
+                  !(suppressAbort && Reflect.get(message, "stopReason") === "aborted")
                 ? "error"
                 : "complete",
             response: takeResponse(),
@@ -520,6 +525,7 @@ function partsFromMessage(
     });
     const errorMessage = Reflect.get(message, "errorMessage");
     if (
+      !(suppressAbort && Reflect.get(message, "stopReason") === "aborted") &&
       !parts.some((part) => part.kind === "text") &&
       typeof errorMessage === "string" &&
       errorMessage.trim()
@@ -591,6 +597,7 @@ function partsFromMessage(
 export function createLiveMessageProjector(
   options: {
     deferProviderErrors?: boolean;
+    suppressAbort?(): boolean;
     renderUserMessageAsMarkdown?(message: unknown): boolean;
   } = {},
 ) {
@@ -642,7 +649,15 @@ export function createLiveMessageProjector(
       const parts =
         options.deferProviderErrors && event.message.stopReason === "error"
           ? []
-          : partsFromMessage(event.message, activeStreamId);
+          : partsFromMessage(
+              event.message,
+              activeStreamId,
+              false,
+              undefined,
+              false,
+              undefined,
+              options.suppressAbort?.() ?? false,
+            );
       for (const part of parts) activeAssistantPartIds.add(part.id);
       lastAssistantPartIds = [...activeAssistantPartIds];
       activeAssistantPartIds = new Set();
@@ -806,6 +821,13 @@ export function projectSessionEntries(
       userMessagePresentations.set(presentation.value.targetId, presentation.value.renderAs);
   }
 
+  const handoffTimestamps = new Set<number>();
+  for (const entry of entries) {
+    if (entry.type !== "custom" || entry.customType !== turnHandoffEntryType) continue;
+    const handoff = Schema.decodeUnknownOption(turnHandoffEntrySchema)(entry.data);
+    if (Option.isSome(handoff)) handoffTimestamps.add(handoff.value.timestamp);
+  }
+
   const intermediateRetryErrors = new Set<string>();
   let nextContextRole: string | undefined;
   for (let index = entries.length - 1; index >= 0; index -= 1) {
@@ -831,6 +853,8 @@ export function projectSessionEntries(
         false,
         entry.id,
         userMessagePresentations.get(entry.id) === "markdown",
+        undefined,
+        handoffTimestamps.has(entry.message.timestamp),
       ))
         append(part);
       continue;

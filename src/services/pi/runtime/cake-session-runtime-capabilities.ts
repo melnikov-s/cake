@@ -918,6 +918,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
         guidance: [
           "Call sessions.pending first and pass its itemId. Positions are one-based and interpreted within the item's existing lane after removing it.",
           "Reordering never changes delivery semantics. Use the separate steering capability when an item should redirect active work.",
+          "User and agent-sent inputs share the same ordering policy. Either can be moved within steering or follow-up; sender identity never sets priority.",
         ],
         inputSchema: Schema.Struct({
           sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
@@ -951,9 +952,12 @@ export async function createCakeSessionRuntimeCapabilities(input: {
             command === "sessions.cancel-queued"
               ? "Cancel one queued input in a targeted Project Session."
               : command === "sessions.steer-queued"
-                ? "Move one queued follow-up input to the steering lane."
+                ? "Append one queued follow-up input to the steering lane, preserving existing steering order."
                 : "Stop the active turn and send one queued input now; preserve the remaining queue.",
-          guidance: ["Call sessions.pending first and pass the item's partId (not its itemId)."],
+          guidance: [
+            "Call sessions.pending first and pass the item's partId (not its itemId).",
+            "These operations apply equally to user and agent-sent messages. Cancellation removes only the selected message, including pending steering; send-now bypasses both lanes.",
+          ],
           inputSchema: Schema.Struct({
             sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
             partId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),

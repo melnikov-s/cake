@@ -274,6 +274,15 @@ export const uiPartSchema = Schema.Union([
     draft: Schema.optional(Schema.Boolean),
     crossSession: Schema.optional(CrossSessionMessageMetadata),
     scheduled: Schema.optional(ScheduledMessageOrigin),
+    /** Original payload and stable identity while Pi holds this input. */
+    queuedInput: Schema.optionalKey(
+      Schema.Struct({
+        itemId: Schema.String.check(Schema.isUUID(4)),
+        text: boundedText,
+        attachments: Schema.Array(attachmentSchema).check(Schema.isMaxLength(20)),
+        renderUserMessageAsMarkdown: Schema.Boolean,
+      }),
+    ),
     response: Schema.optional(promptCacheResponseSchema),
   }),
   Schema.Struct({

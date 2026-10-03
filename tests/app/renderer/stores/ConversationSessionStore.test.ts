@@ -128,25 +128,9 @@ describe("ConversationSessionStore", () => {
 
       model.streaming = true;
       await chat.submit("Queued follow-up");
-      const queued = subject.composerStore.promptQueueStore.prompts[0]!;
-      expect(queued.text).toBe("Queued follow-up");
-      expect(deliver).toHaveBeenCalledTimes(1);
-      chat.steerQueuedPrompt(queued.id);
+      expect(deliver).toHaveBeenCalledTimes(2);
       expect(chat.queuedPrompts).toEqual([
-        expect.objectContaining({
-          id: expect.any(String),
-          text: "Queued follow-up",
-          state: "steering",
-        }),
-      ]);
-      await vi.waitFor(() =>
-        expect(deliver).toHaveBeenLastCalledWith(
-          expect.objectContaining({ text: "Queued follow-up" }),
-          expect.any(Object),
-        ),
-      );
-      expect(chat.queuedPrompts).toEqual([
-        expect.objectContaining({ text: "Queued follow-up", state: "steering" }),
+        expect.objectContaining({ text: "Queued follow-up", state: "queued", pending: true }),
       ]);
 
       model.parts.push(
@@ -199,123 +183,8 @@ describe("ConversationSessionStore", () => {
     },
   );
 
-  it.each(["project", "cake-chat"] as const)(
-    "drains the same ordered local queue from authoritative streaming transitions for %s",
-    async (profile) => {
-      const fixtureValue = fixture({}, profile);
-      const { subject, model, deliver } = fixtureValue;
-
-      model.streaming = true;
-      await subject.chatStore.submit("First queued prompt");
-      await subject.chatStore.submit("Second queued prompt");
-      expect(subject.composerStore.promptQueueStore.prompts.map((entry) => entry.text)).toEqual([
-        "First queued prompt",
-        "Second queued prompt",
-      ]);
-      expect(deliver).not.toHaveBeenCalled();
-
-      model.streaming = false;
-      await vi.waitFor(() => expect(deliver).toHaveBeenCalledTimes(1));
-      expect(deliver).toHaveBeenLastCalledWith(
-        expect.objectContaining({ text: "First queued prompt" }),
-        expect.any(Object),
-      );
-      expect(subject.composerStore.promptQueueStore.prompts.map((entry) => entry.text)).toEqual([
-        "Second queued prompt",
-      ]);
-
-      model.streaming = true;
-      model.streaming = false;
-      await vi.waitFor(() => expect(deliver).toHaveBeenCalledTimes(2));
-      expect(deliver).toHaveBeenLastCalledWith(
-        expect.objectContaining({ text: "Second queued prompt" }),
-        expect.any(Object),
-      );
-      expect(subject.composerStore.promptQueueStore.prompts).toHaveLength(0);
-
-      fixtureValue.dispose();
-    },
-  );
-
-  it.each(["project", "cake-chat"] as const)(
-    "restores a failed drained prompt to the shared queue for %s",
-    async (profile) => {
-      const fixtureValue = fixture({}, profile);
-      const { subject, model } = fixtureValue;
-      const failed = vi.fn(async () => {
-        throw new Error("Runtime unavailable");
-      });
-      Object.assign(fixtureValue.client.sessionChats, { prompt: failed });
-
-      model.streaming = true;
-      await subject.chatStore.submit("Retry this prompt");
-      model.streaming = false;
-
-      await vi.waitFor(() => expect(failed).toHaveBeenCalledOnce());
-      await vi.waitFor(() =>
-        expect(subject.composerStore.promptQueueStore.prompts.map((entry) => entry.text)).toEqual([
-          "Retry this prompt",
-        ]),
-      );
-      expect(subject.error.message).toBe("Runtime unavailable");
-
-      fixtureValue.dispose();
-    },
-  );
-
-  it("routes queue edits to the local queue or Pi's held queue by prompt identity", async () => {
-    const removeRuntimeQueuedPrompt = vi.fn(async () => undefined);
-    const steerRuntimeQueuedPrompt = vi.fn(async () => undefined);
-    const fixtureValue = fixture();
-    const { subject, model, deliver } = fixtureValue;
-    const chat = subject.chatStore;
-    model.parts.push(
-      Message.create({
-        id: "queued-follow-up-abc-1",
-        partKey: "queued-follow-up-abc-1",
-        piId: "queued-follow-up-abc-1",
-        kind: "text",
-        role: "user",
-        text: "Check the build",
-        status: "complete",
-        deliveryState: "queued",
-      }),
-    );
-    const sessionChats = fixtureValue.client.sessionChats as unknown as {
-      removeQueuedMessage: typeof removeRuntimeQueuedPrompt;
-      steerQueuedMessage: typeof steerRuntimeQueuedPrompt;
-    };
-    sessionChats.removeQueuedMessage = removeRuntimeQueuedPrompt;
-    sessionChats.steerQueuedMessage = steerRuntimeQueuedPrompt;
-
-    model.streaming = true;
-    await chat.submit("Local follow-up");
-    const local = subject.composerStore.promptQueueStore.prompts[0]!;
-    expect(chat.queuedPrompts.map((entry) => entry.id)).toEqual([
-      local.id,
-      "queued-follow-up-abc-1",
-    ]);
-
-    chat.removeQueuedPrompt("queued-follow-up-abc-1");
-    expect(removeRuntimeQueuedPrompt).toHaveBeenCalledWith(
-      { sessionId: "session-1", partId: "queued-follow-up-abc-1" },
-      expect.any(Object),
-    );
-    expect(subject.composerStore.promptQueueStore.prompts).toHaveLength(1);
-
-    chat.steerQueuedPrompt("queued-follow-up-abc-1");
-    expect(steerRuntimeQueuedPrompt).toHaveBeenCalledWith(
-      { sessionId: "session-1", partId: "queued-follow-up-abc-1" },
-      expect.any(Object),
-    );
-    expect(deliver).not.toHaveBeenCalled();
-
-    chat.removeQueuedPrompt(local.id);
-    expect(subject.composerStore.promptQueueStore.prompts).toHaveLength(0);
-    expect(removeRuntimeQueuedPrompt).toHaveBeenCalledOnce();
-
-    fixtureValue.dispose();
-  });
+  // Queue ordering, editing, and cancellation are covered through the real Chat UI
+  // and runtime projection in prompt-queue-workflow.test.tsx.
 
   it("surfaces a failed runtime queue edit as a composer error", async () => {
     const fixtureValue = fixture();

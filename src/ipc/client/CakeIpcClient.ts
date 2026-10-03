@@ -379,6 +379,9 @@ export interface CakeIpcClientService {
     readonly listQueuedMessages: (
       target: SessionChatTarget,
     ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
+    readonly reorderQueuedMessage: (
+      input: SessionChatTarget & { readonly itemId: string; readonly position: number },
+    ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
     readonly clearQueue: (
       target: SessionChatTarget,
     ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
@@ -1053,6 +1056,9 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         listQueuedMessages: Effect.fn("CakeIpcClient.sessionChats.listQueuedMessages")((target) =>
           client("sessionChats.listQueuedMessages", target),
+        ),
+        reorderQueuedMessage: Effect.fn("CakeIpcClient.sessionChats.reorderQueuedMessage")(
+          (input) => client("sessionChats.reorderQueuedMessage", input),
         ),
         clearQueue: Effect.fn("CakeIpcClient.sessionChats.clearQueue")((target) =>
           client("sessionChats.clearQueue", target),

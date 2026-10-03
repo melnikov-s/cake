@@ -35,6 +35,7 @@ export class Message extends Model {
   renderAs: TextRenderAs | undefined;
   crossSession: CrossSessionMetadata | undefined;
   scheduled: ScheduledOrigin | undefined;
+  queuedInput: Extract<UiPart, { kind: "text" }>["queuedInput"];
   response: PromptCacheResponse | undefined;
   name: string | undefined;
   command: string | undefined;
@@ -85,6 +86,7 @@ export class Message extends Model {
         this.renderAs = part.renderAs;
         this.crossSession = part.crossSession;
         this.scheduled = part.scheduled;
+        this.queuedInput = part.queuedInput;
         this.response = part.response;
         return true;
       case "skill":
@@ -176,6 +178,7 @@ export class Message extends Model {
           renderAs: this.renderAs,
           crossSession: this.crossSession,
           scheduled: this.scheduled,
+          queuedInput: this.queuedInput,
           response: this.response,
         };
       case "skill":

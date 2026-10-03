@@ -209,12 +209,11 @@ describe("Chat", () => {
     expect(container.querySelector('[data-slot="composer-toolbar"] .w-px')).not.toBeNull();
   });
 
-  it("keeps queue controls and only shows stop-and-send while steering", async () => {
+  it("presents sender and schedule provenance alongside per-item queue controls", async () => {
     const steerQueuedPrompt = vi.fn();
     const editQueuedPrompt = vi.fn();
     const removeQueuedPrompt = vi.fn();
     const stopAndSendQueuedPrompt = vi.fn(async () => undefined);
-    const cancelSteering = vi.fn(async () => undefined);
     store = mount(
       createStore(ChatStore, {
         id: () => "queued-chat",
@@ -281,7 +280,6 @@ describe("Chat", () => {
         editQueuedPrompt,
         removeQueuedPrompt,
         stopAndSendQueuedPrompt,
-        cancelSteering,
       }),
     );
 
@@ -291,21 +289,20 @@ describe("Chat", () => {
       '[aria-label="Send now as steering: Do this next"]',
     );
     expect(steerButton).not.toBeNull();
-    expect(container.querySelector('[aria-label="Stop and send now: Do this next"]')).toBeNull();
+    expect(
+      container.querySelector('[aria-label="Stop and send now: Do this next"]'),
+    ).not.toBeNull();
     expect(
       container.querySelector('[aria-label="Edit queued prompt: Do this next"]'),
     ).not.toBeNull();
     expect(
-      container.querySelector('[aria-label="Remove queued prompt: Do this next"]'),
+      container.querySelector('[aria-label="Cancel queued message: Do this next"]'),
     ).not.toBeNull();
     expect(container.querySelector('[aria-label="Steering: Change direction"]')).not.toBeNull();
     const stopAndSendButton = container.querySelector<HTMLButtonElement>(
       '[aria-label="Stop and send now: Change direction"]',
     );
     expect(stopAndSendButton).not.toBeNull();
-    expect(stopAndSendButton?.className).toContain("mr-[30px]");
-    expect(stopAndSendButton?.className).toContain("bg-success/10");
-    expect(stopAndSendButton?.className).not.toContain("bg-destructive/10");
     expect(
       container.querySelector('[aria-label="Message from Storage implementation"]'),
     ).not.toBeNull();
@@ -321,7 +318,7 @@ describe("Chat", () => {
     // still be dropped or promoted through the runtime queue.
     await act(async () => {
       container
-        .querySelector<HTMLButtonElement>('[aria-label="Remove queued prompt: Check the build"]')!
+        .querySelector<HTMLButtonElement>('[aria-label="Cancel queued message: Check the build"]')!
         .click();
     });
     expect(removeQueuedPrompt).toHaveBeenLastCalledWith("scheduled-message");
@@ -346,7 +343,7 @@ describe("Chat", () => {
         .querySelector<HTMLButtonElement>('[aria-label="Cancel steering: Change direction"]')!
         .click();
     });
-    expect(cancelSteering).toHaveBeenCalledOnce();
+    expect(removeQueuedPrompt).toHaveBeenLastCalledWith("steering");
   });
 
   it("opens queued message content fullscreen without invoking its actions", () => {

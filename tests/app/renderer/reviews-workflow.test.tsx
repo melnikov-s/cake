@@ -238,12 +238,8 @@ describe("Review side-chat workflow", () => {
       steering: [],
       followUp: [],
     }));
-    const cancelSteering = vi.fn<Client["sessionChats"]["cancelSteering"]>(async () => ({
-      steering: [],
-      followUp: [],
-    }));
     using fixture = renderReview(
-      { sessionChats: { steerQueuedMessage, removeQueuedMessage, cancelSteering } },
+      { sessionChats: { steerQueuedMessage, removeQueuedMessage } },
       { streaming: true, runtimeQueue: true },
     );
     expect(screen.getByRole("list", { name: "Queued prompts" }).textContent).toContain("First");
@@ -254,7 +250,7 @@ describe("Review side-chat workflow", () => {
         expect.any(Object),
       ),
     );
-    await fixture.user.click(screen.getByRole("button", { name: "Remove queued prompt: First" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Cancel queued message: First" }));
     await waitFor(() =>
       expect(removeQueuedMessage).toHaveBeenCalledWith(
         { sessionId: "sidecar-thread-1", partId: "queued-follow-up-1" },
@@ -263,8 +259,8 @@ describe("Review side-chat workflow", () => {
     );
     await fixture.user.click(screen.getByRole("button", { name: "Cancel steering: Now" }));
     await waitFor(() =>
-      expect(cancelSteering).toHaveBeenCalledWith(
-        { sessionId: "sidecar-thread-1" },
+      expect(removeQueuedMessage).toHaveBeenCalledWith(
+        { sessionId: "sidecar-thread-1", partId: "queued-steering-1" },
         expect.any(Object),
       ),
     );
@@ -383,7 +379,7 @@ describe("Review side-chat workflow", () => {
     );
   });
 
-  it("queues a follow-up while streaming, stops the sidecar, then delivers after settlement", async () => {
+  it("admits a follow-up to the shared runtime queue while streaming and can stop the sidecar", async () => {
     const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
       TurnId.make("10000000-0000-4000-8000-000000000002"),
     );
@@ -394,7 +390,10 @@ describe("Review side-chat workflow", () => {
       "And then?",
     );
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
-    expect(prompt).not.toHaveBeenCalled();
+    expect(prompt).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "sidecar-thread-1", text: "And then?" }),
+      expect.any(Object),
+    );
     expect(screen.getByText("And then?")).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Stop" }));
     await waitFor(() =>
@@ -407,6 +406,7 @@ describe("Review side-chat workflow", () => {
         expect.any(Object),
       ),
     );
+    expect(prompt).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
   });
 });

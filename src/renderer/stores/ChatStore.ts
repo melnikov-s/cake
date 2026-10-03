@@ -9,7 +9,6 @@ import type {
 } from "../../ipc/session-contract";
 import type { ChatConfigurationStore } from "./ChatConfigurationStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
-import type { QueuedPrompt as ComposerQueuedPrompt } from "./ConversationComposerStore";
 import {
   ScheduledMessageInteractionStore,
   type ScheduledMessageCapabilities,
@@ -25,7 +24,14 @@ import {
   type WorkLogPresentationCapabilities,
 } from "./WorkLogPresentationStore";
 
-export interface QueuedPrompt extends ComposerQueuedPrompt {
+export interface QueuedPrompt {
+  id: string;
+  itemId?: string;
+  text: string;
+  attachments: Attachment[];
+  renderUserMessageAsMarkdown: boolean;
+  /** Admission previews have no runtime identity yet and cannot be acted on. */
+  pending?: boolean;
   state: "queued" | "steering";
   source?: Extract<UiPart, { kind: "text" }>["crossSession"];
   scheduled?: Extract<UiPart, { kind: "text" }>["scheduled"];
@@ -82,9 +88,9 @@ export interface ChatStoreProps {
   queuedPrompts?(): readonly QueuedPrompt[];
   steerQueuedPrompt?(id: string): void | Promise<void>;
   stopAndSendQueuedPrompt?(id: string): void | Promise<void>;
-  editQueuedPrompt?(id: string): boolean | undefined;
+  reorderQueuedPrompt?(id: string, position: number): void | Promise<void>;
+  editQueuedPrompt?(id: string): void | Promise<void>;
   removeQueuedPrompt?(id: string): void;
-  cancelSteering?(): Promise<void>;
   scheduledMessages?: ScheduledMessageCapabilities;
   composerVisible?(): boolean;
   /**
@@ -228,7 +234,11 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
   @computed
   get queuedPrompts(): readonly QueuedPrompt[] {
-    return this.props.queuedPrompts?.() ?? [];
+    const prompts = this.props.queuedPrompts?.() ?? [];
+    return [
+      ...prompts.filter((entry) => entry.state === "steering"),
+      ...prompts.filter((entry) => entry.state === "queued"),
+    ];
   }
   get canSteerQueuedPrompt() {
     return Boolean(this.props.steerQueuedPrompt);
@@ -236,14 +246,14 @@ export class ChatStore extends Store<ChatStoreProps> {
   get canStopAndSendQueuedPrompt() {
     return Boolean(this.props.stopAndSendQueuedPrompt);
   }
+  get canReorderQueuedPrompt() {
+    return Boolean(this.props.reorderQueuedPrompt);
+  }
   get canEditQueuedPrompt() {
     return Boolean(this.props.editQueuedPrompt);
   }
   get canRemoveQueuedPrompt() {
     return Boolean(this.props.removeQueuedPrompt);
-  }
-  get canCancelSteering() {
-    return Boolean(this.props.cancelSteering);
   }
   get composerVisible() {
     return this.props.composerVisible?.() ?? true;
@@ -317,12 +327,14 @@ export class ChatStore extends Store<ChatStoreProps> {
   async submit(value = this.draft, options?: { renderUserMessageAsMarkdown?: boolean }) {
     if (value !== this.draft) this.setDraft(value);
     const empty = !value.trim() && this.attachments.length === 0 && this.annotations.length === 0;
-    const steering = this.queuedPrompts.find((entry) => entry.state === "steering");
+    const steering = this.queuedPrompts.find(
+      (entry) => entry.state === "steering" && !entry.pending,
+    );
     if (empty && steering && this.canStopAndSendQueuedPrompt) {
       await this.stopAndSendQueuedPrompt(steering.id);
       return true;
     }
-    const queued = this.queuedPrompts.find((entry) => entry.state === "queued");
+    const queued = this.queuedPrompts.find((entry) => entry.state === "queued" && !entry.pending);
     if (empty && queued) {
       await this.steerQueuedPrompt(queued.id);
       return true;
@@ -349,14 +361,14 @@ export class ChatStore extends Store<ChatStoreProps> {
   stopAndSendQueuedPrompt(id: string) {
     return this.props.stopAndSendQueuedPrompt?.(id);
   }
+  reorderQueuedPrompt(id: string, position: number) {
+    return this.props.reorderQueuedPrompt?.(id, position);
+  }
   editQueuedPrompt(id: string) {
-    this.props.editQueuedPrompt?.(id);
+    return this.props.editQueuedPrompt?.(id);
   }
   removeQueuedPrompt(id: string) {
     this.props.removeQueuedPrompt?.(id);
-  }
-  cancelSteering() {
-    return this.props.cancelSteering?.() ?? Promise.resolve();
   }
   get draftActivationCandidates() {
     return this.props.draftActivationCandidates?.();
