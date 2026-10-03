@@ -129,7 +129,7 @@ test("rewords composer text and opens the focused session assistant", async () =
 
   try {
     const page = await application.firstWindow();
-    const composer = page.getByRole("combobox", { name: "Message" });
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await composer.fill("Before rough ramble after");
     await composer.evaluate((input: HTMLTextAreaElement) => input.setSelectionRange(7, 19));
@@ -164,15 +164,43 @@ test("rewords composer text and opens the focused session assistant", async () =
     const quickAssistant = page.getByRole("dialog", { name: "Quick session assistant" });
     const quickInput = quickAssistant.getByLabel("Ask session assistant");
     await expect(quickInput).toBeFocused();
+    const assistantSend = quickAssistant.getByRole("button", { name: "Send" });
+    const expectQuickComposerLayout = async () =>
+      expect(async () => {
+        const dialog = (await quickAssistant.boundingBox())!;
+        const input = (await quickInput.boundingBox())!;
+        const send = (await assistantSend.boundingBox())!;
+        expect(dialog.x + dialog.width - (send.x + send.width)).toBeGreaterThanOrEqual(4);
+        expect(dialog.x + dialog.width - (send.x + send.width)).toBeLessThanOrEqual(12);
+        expect(input.x).toBeGreaterThan(dialog.x);
+        expect(input.x + input.width).toBeLessThanOrEqual(send.x);
+        expect(input.y).toBeGreaterThan(dialog.y);
+        expect(input.y + input.height).toBeLessThan(dialog.y + dialog.height);
+        expect(send.y).toBeGreaterThan(dialog.y);
+        expect(send.y + send.height).toBeLessThan(dialog.y + dialog.height);
+        expect(
+          await quickAssistant.evaluate((element) => element.scrollWidth <= element.clientWidth),
+        ).toBe(true);
+      }).toPass({ timeout: 5_000 });
+    await expectQuickComposerLayout();
     const triggerBox = (await assistantTrigger.boundingBox())!;
     const quickInputBox = (await quickAssistant.boundingBox())!;
     expect(
       Math.abs(quickInputBox.x + quickInputBox.width / 2 - (triggerBox.x + triggerBox.width / 2)),
     ).toBeLessThan(2);
     expect(quickInputBox.y + quickInputBox.height).toBeLessThan(triggerBox.y);
+    await quickInput.pressSequentially("Hi");
+    await expect(quickInput).toHaveValue("Hi");
+    await expectQuickComposerLayout();
+    const longPrompt = "Please open the file we discussed and explain the changes. ".repeat(12);
+    await quickInput.fill(longPrompt);
+    await expect(quickInput).toHaveValue(longPrompt);
+    await expectQuickComposerLayout();
+    expect((await quickInput.boundingBox())!.height).toBeGreaterThan(32);
+    await quickInput.fill("");
     await quickInput.pressSequentially("Open the file from our conversation");
     await expect(quickInput).toHaveValue("Open the file from our conversation");
-    const assistantSend = quickAssistant.getByRole("button", { name: "Send" });
+    await expectQuickComposerLayout();
     await expect(assistantSend).toBeEnabled();
     await assistantSend.click();
     await expect(quickAssistant.getByLabel("Session assistant is thinking")).toBeVisible();
@@ -187,6 +215,7 @@ test("rewords composer text and opens the focused session assistant", async () =
     ).toHaveCount(0);
     const responseBox = (await quickAssistant.boundingBox())!;
     expect(responseBox.x + responseBox.width).toBeLessThan(triggerBox.x);
+    await expect(composer).toHaveValue("Before rough ramble after!");
     expect(prompts).toHaveLength(2);
     expect(prompts[1]).toContain("primary job is to carry out quick Cake actions");
     expect(prompts[1]).toContain("vscode.enter");
@@ -216,6 +245,7 @@ test("rewords composer text and opens the focused session assistant", async () =
     await fullAssistant.getByRole("button", { name: "Send" }).click();
     await expect.poll(() => prompts.length).toBe(3);
     expect(prompts.at(-1)).toContain("Open the file from our conversation");
+    await expect(composer).toHaveValue("Before rough ramble after!");
   } finally {
     await application.close();
     server.close();

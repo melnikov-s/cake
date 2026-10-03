@@ -74,7 +74,7 @@ export const ChatComposer = observer(function ChatComposer({
         >
           {children}
           {input && (
-            <div className="relative">
+            <div data-slot="composer-input" className="relative">
               {accessoryNode}
               {input}
             </div>
