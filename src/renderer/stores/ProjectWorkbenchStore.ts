@@ -66,6 +66,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   /** Session context the current error belongs to; context-free errors are undefined. */
   private errorSessionId: string | undefined;
   private sessionOpenRevision = 0;
+  /** Transient navigation intent; loading runs independently of transcript motion. */
+  openingSession: { sessionId: string; sourceSessionId: string | undefined } | undefined;
   private reopenAfterAgentRestart = false;
 
   private get reviews() {
@@ -82,6 +84,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       projects: this.props.projects,
       onOpening: () => {
         this.sessionOpenRevision += 1;
+        this.openingSession = undefined;
         this.extensionUi.clear();
       },
       onAccepted: (result) => this.acceptProjectOpen(result),
@@ -400,6 +403,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     acceptedProjectOpen = false,
   ) {
     this.sessionOpenRevision += 1;
+    this.openingSession = undefined;
     if (!acceptedProjectOpen) this.projectOpenStore.cancelPending();
     const session = staged
       ? this.sessionRegistry.pendingSessions.prepareStaged(path, sessionId)
@@ -427,6 +431,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
 
   private async openSessionTarget(sessionId: string, acceptedProjectOpen: boolean) {
     const revision = ++this.sessionOpenRevision;
+    const sourceSessionId = this.activeSessionId;
+    this.openingSession = undefined;
     if (!acceptedProjectOpen) this.projectOpenStore.cancelPending();
     const summary = this.props.catalog.find(sessionId);
     const existingSession = this.sessionRegistry.findSession(sessionId);
@@ -454,6 +460,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const hydrated = Boolean(existingSession?.model.sessionFile);
     if (hydrated) this.activateLoadedSession(sessionId);
     else if (existingSession) this.sessionRegistry.observationRetention.retain(sessionId);
+    this.openingSession = { sessionId, sourceSessionId };
     try {
       // An evicted command-only identity has no transcript for main to validate.
       // Its new observation must recreate/retain the empty runtime before open.
@@ -482,6 +489,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     } catch (error) {
       if (!this.signal.aborted && revision === this.sessionOpenRevision)
         this.setError(error, "Opening Project Session", sessionId);
+    } finally {
+      if (revision === this.sessionOpenRevision) this.openingSession = undefined;
     }
   }
 
@@ -609,6 +618,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       this.agentAvailabilityReason = event.availability.reason;
       if (event.availability.state === "unavailable") {
         this.sessionOpenRevision += 1;
+        this.openingSession = undefined;
         this.reopenAfterAgentRestart = Boolean(
           this.projectOpenStore.projectPath &&
           this.session &&

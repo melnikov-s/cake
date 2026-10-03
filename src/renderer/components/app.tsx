@@ -377,7 +377,12 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       </>
     );
   };
-  const cakeChatProps = () => ({
+  const cakeChatProps = (paneSession: NonNullable<typeof cakeChatSession>) => ({
+    transcriptTransition: {
+      ready:
+        Boolean(paneSession.model.sessionFile) ||
+        root.cakeChatCollectionStore.pendingSessions.isPending(paneSession.sessionId),
+    },
     transcriptBehavior: {},
     empty: (
       <div className="grid min-h-[calc(100vh-330px)] place-items-center content-center p-10 text-center">
@@ -721,6 +726,13 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
         paneSession.conversationSessionStore.configurationStore.errorDetails ??
         paneSession.artifactInteractionStore.errorDetails);
     return {
+      transcriptTransition: {
+        requestedKey:
+          store.openingSession?.sourceSessionId === paneSession.sessionId
+            ? store.openingSession.sessionId
+            : undefined,
+        ready: paneSession.hydrated || temporary || draft,
+      },
       transcriptBehavior: projectTranscriptBehaviorFor(paneSession),
       empty: paneSession.hydrated ? (
         <div className="grid min-h-[calc(100vh-360px)] place-items-center content-center p-8 text-center">

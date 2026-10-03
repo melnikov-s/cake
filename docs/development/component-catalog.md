@@ -63,6 +63,22 @@ action to remove just that range. Example:
 </DismissibleChip>
 ```
 
+## Content transitions
+
+`ContentTransition` is a visual-only fade-out / blank / fade-in handoff. Supply
+`requestedKey` as navigation begins, `contentKey` for the mounted destination,
+and `ready` when its projection is usable. Loading and the new React tree never
+wait for animation: an inert, aria-hidden outgoing DOM snapshot fades for 100ms,
+then the surface stays blank until the matching destination is ready. Its 160ms
+entrance includes a tiny upward settle. Interrupted navigation discards the old
+visual layer; reduced motion switches immediately. Snapshot DOM and animation
+handles are component-local, ephemeral, and never persisted.
+
+Primary Project Session and Cake Chat transcripts opt in through `Chat`'s
+`transcriptTransition` prop; sidebar, composer, and secondary chats stay steady.
+Project navigation intent belongs to `ProjectWorkbenchStore`, with its existing
+latest-request-wins revision policy, not to the animation component.
+
 ## Popover motion
 
 `PopoverContent` supports opt-in `motion="bouncy"`, used by `AvatarLabelPicker`.

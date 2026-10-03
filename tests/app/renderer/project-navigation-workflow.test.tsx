@@ -114,6 +114,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   Reflect.deleteProperty(SVGElement.prototype, "getBBox");
+  Reflect.deleteProperty(HTMLElement.prototype, "animate");
   vi.unstubAllGlobals();
 });
 
@@ -154,6 +155,44 @@ describe("Project navigation workflow", () => {
     const calls = open.mock.calls.length;
     await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
     expect(open).toHaveBeenCalledTimes(calls);
+  });
+
+  it("starts session processing before fading out and stays blank until hydration", async () => {
+    const operations: string[] = [];
+    const opening = deferred<void>();
+    const open = vi.fn<Client["projectSessions"]["open"]>(() => {
+      operations.push("open");
+      return opening.promise;
+    });
+    using fixture = renderNavigation(open);
+    const matchMedia = window.matchMedia;
+    vi.stubGlobal("matchMedia", (query: string) => ({ ...matchMedia(query), matches: false }));
+    let exit: Animation | undefined;
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      value: function (this: HTMLElement) {
+        const animation = { cancel: vi.fn(), onfinish: null } as unknown as Animation;
+        if (this.dataset.slot === "content-transition-outgoing") {
+          operations.push("fade-out");
+          exit = animation;
+        } else if (this.dataset.slot === "content-transition-live") {
+          operations.push("fade-in");
+        }
+        return animation;
+      },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
+    expect(operations).toEqual(["open", "fade-out"]);
+    await act(async () => exit!.onfinish?.call(exit!, {} as AnimationPlaybackEvent));
+    const live = document.querySelector<HTMLElement>('[data-slot="content-transition-live"]')!;
+    expect(live.classList.contains("opacity-0")).toBe(true);
+    await act(async () => opening.resolve());
+    expect(operations).toEqual(["open", "fade-out"]);
+    expect(live.classList.contains("opacity-0")).toBe(true);
+    await fixture.hydrate("beta");
+    await waitFor(() => expect(operations).toEqual(["open", "fade-out", "fade-in"]));
+    expect(live.classList.contains("opacity-0")).toBe(false);
+    expect(screen.getByPlaceholderText("Ask Cake to work in beta…")).toBeDefined();
   });
 
   it("retains the current project after an open failure and lets the user retry", async () => {

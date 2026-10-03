@@ -14,6 +14,7 @@ import { RewordPromptDialog } from "@/components/reword-prompt-dialog";
 import { SourceAttachment } from "@/components/source-attachment";
 import { SubagentStatus } from "@/components/subagent-status";
 import { Chip } from "@/components/ui/chip";
+import { ContentTransition } from "@/components/ui/content-transition";
 import { IconButton } from "@/components/ui/icon-button";
 import { PaperclipIcon } from "@/components/ui/icons";
 import { TooltipBubble, useTooltip } from "@/components/ui/tooltip";
@@ -141,6 +142,7 @@ export const Chat = observer(function Chat({
   embedded = false,
   compact = false,
   composerFocusEnabled = true,
+  transcriptTransition,
 }: {
   store: ChatStore;
   transcriptBehavior?: ChatTranscriptBehavior;
@@ -156,6 +158,7 @@ export const Chat = observer(function Chat({
   embedded?: boolean;
   compact?: boolean;
   composerFocusEnabled?: boolean;
+  transcriptTransition?: { requestedKey?: string; ready: boolean };
 }) {
   const layoutRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
@@ -391,16 +394,23 @@ export const Chat = observer(function Chat({
           className,
         )}
       >
-        <ChatTranscript
-          store={store}
-          behavior={transcriptBehavior}
-          empty={empty}
-          footer={footer}
-          error={error}
-          virtualized={!compact}
-          key={store.id}
-          ref={transcriptRef}
-        />
+        <ContentTransition
+          contentKey={store.id}
+          requestedKey={transcriptTransition?.requestedKey}
+          ready={transcriptTransition?.ready}
+          enabled={Boolean(transcriptTransition)}
+        >
+          <ChatTranscript
+            store={store}
+            behavior={transcriptBehavior}
+            empty={empty}
+            footer={footer}
+            error={error}
+            virtualized={!compact}
+            key={store.id}
+            ref={transcriptRef}
+          />
+        </ContentTransition>
         {!composerVisible && store.scheduledMessageInteraction.messages.length > 0 && (
           <div className="border-t border-border bg-background px-6 py-2 max-[620px]:px-2.5">
             <ScheduledPrompts store={store.scheduledMessageInteraction} />
