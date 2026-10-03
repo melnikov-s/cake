@@ -183,7 +183,6 @@ export const ChatTranscript = observer(function ChatTranscript({
             : item.id === restoredScrollPosition.messageId,
         )
       : -1;
-  const itemCount = items.length;
   const openingItemLocation = useMemo(() => {
     if (messageNavigationItemIndex >= 0) return undefined;
     if (restoredScrollPosition?.kind === "top") return { index: 0, align: "start" as const };
@@ -193,14 +192,12 @@ export const ChatTranscript = observer(function ChatTranscript({
         align: "start" as const,
         offset: -restoredScrollPosition.offset,
       };
-    // Normal bottom opening uses the same cancellable alignment as streaming.
-    // Virtuoso retries initial index navigation too, which can otherwise pull a
-    // user back down immediately after opening a session. Only use it as a
-    // fallback when a saved history anchor no longer exists.
-    return restoredScrollPosition?.kind === "message"
-      ? { index: itemCount - 1, align: "end" as const }
-      : undefined;
-  }, [itemCount, messageNavigationItemIndex, restoredMessageItemIndex, restoredScrollPosition]);
+    // Start measurement at the destination instead of painting the top and
+    // scrolling afterwards. Virtuoso keeps the list hidden until its initial
+    // location settles, including the footer/composer spacer at the bottom.
+    // Later height changes still use our cancellable bottom alignment.
+    return { index: "LAST" as const, align: "end" as const };
+  }, [messageNavigationItemIndex, restoredMessageItemIndex, restoredScrollPosition]);
   useLayoutEffect(() => {
     if (!messageNavigationRequest || messageNavigationItemIndex < 0) return;
     allowFollowing.current = false;

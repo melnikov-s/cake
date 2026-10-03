@@ -368,10 +368,39 @@ for (const scenario of [
           await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
             "Second scroll fixture",
           );
+          // Record every paint opportunity, not just the eventual scroll position.
+          // An initially visible top/middle render followed by a bottom scroll flashes.
+          await page.evaluate(() => {
+            const samples: number[] = [];
+            const sample = () => {
+              const scroller = document.querySelector<HTMLElement>(".transcript");
+              const list = scroller?.querySelector<HTMLElement>('[aria-label="Conversation"]');
+              if (
+                scroller &&
+                list &&
+                getComputedStyle(list).visibility === "visible" &&
+                list.textContent?.includes("First scroll fixture")
+              )
+                samples.push(scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop);
+              frame = requestAnimationFrame(sample);
+            };
+            let frame = requestAnimationFrame(sample);
+            Object.assign(window, {
+              finishOpeningSamples: () => {
+                cancelAnimationFrame(frame);
+                return samples;
+              },
+            });
+          });
           await firstSession.locator(".session-row").click();
           await expect(firstSession).toHaveClass(/active/);
           await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
             "transcript item 479",
+          );
+          await expect(transcript.locator('[data-slot="transcript-item"]').last()).toBeVisible();
+          // Include at least one frame after the initial positioning is revealed.
+          await page.evaluate(
+            () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
           );
           await expect
             .poll(() =>
@@ -380,6 +409,12 @@ for (const scenario of [
               ),
             )
             .toBeLessThanOrEqual(1);
+          const openingSamples = await page.evaluate(() => {
+            const capture = window as typeof window & { finishOpeningSamples(): number[] };
+            return capture.finishOpeningSamples();
+          });
+          expect(openingSamples.length).toBeGreaterThan(0);
+          expect(Math.max(...openingSamples)).toBeLessThanOrEqual(1);
           expect(await transcript.locator('[data-slot="transcript-item"]').count()).toBeLessThan(
             40,
           );

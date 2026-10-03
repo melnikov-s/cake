@@ -352,7 +352,7 @@ describe("Transcript scrolling", () => {
     container.remove();
   });
 
-  it("opens a loaded session through cancellable bottom following, not index navigation", () => {
+  it("opens a loaded session at the bottom before revealing it, without enabling followOutput", () => {
     const parts: UiPart[] = [
       { id: "assistant-1", kind: "text", role: "assistant", text: "First", status: "complete" },
       { id: "assistant-2", kind: "text", role: "assistant", text: "Latest", status: "complete" },
@@ -360,7 +360,10 @@ describe("Transcript scrolling", () => {
 
     act(() => root.render(<TestTranscript sessionId="session-1" store={storeWith(parts)} />));
 
-    expect(virtualizedProps.current?.initialTopMostItemIndex).toBeUndefined();
+    expect(virtualizedProps.current?.initialTopMostItemIndex).toEqual({
+      index: "LAST",
+      align: "end",
+    });
     expect(virtualizedProps.current?.followOutput).toBe(false);
   });
 
