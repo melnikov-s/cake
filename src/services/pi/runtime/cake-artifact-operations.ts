@@ -14,7 +14,7 @@ import type {
   InlineWidgetGenerationResult,
   InlineWidgetRevisionRequest,
 } from "./sidecar-runtime";
-import type { ArtifactProjectionMetadata } from "../../artifacts/ArtifactProjection";
+import { ArtifactProjectionMetadata } from "../../artifacts/ArtifactProjection";
 import type {
   CakeOperationDefinition,
   CakeOperationExecutionContext,
@@ -158,6 +158,16 @@ const artifactSearchSchema = Schema.Struct({
     Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(50)),
   ),
 });
+const artifactListOutputSchema = Schema.Struct({
+  total: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  truncated: Schema.Boolean,
+  artifacts: Schema.Array(ArtifactProjectionMetadata).check(Schema.isMaxLength(100)),
+});
+const artifactSearchOutputSchema = Schema.Struct({
+  ...artifactListOutputSchema.fields,
+  artifacts: Schema.Array(ArtifactProjectionMetadata).check(Schema.isMaxLength(50)),
+});
+
 const artifactHistorySchema = Schema.Struct({
   lineageId: artifactIdSchema,
   limit: Schema.optionalKey(
@@ -235,6 +245,7 @@ export function createCakeArtifactOperations(
       inputSchema: Schema.Struct({}),
       examples: [{}],
       result: "Up to 100 linked artifact metadata records and exact read-only paths.",
+      outputSchema: artifactListOutputSchema,
       async execute() {
         if (!options.listArtifactMetadata) throw new Error("Artifact listing is unavailable");
         const all = await options.listArtifactMetadata();
@@ -246,6 +257,7 @@ export function createCakeArtifactOperations(
       topic: "artifacts",
       summary: "Search linked artifact titles, kinds, IDs, and references.",
       inputSchema: artifactSearchSchema,
+      outputSchema: artifactSearchOutputSchema,
       examples: [{ input: { query: "design", limit: 20 } }],
       result: "Bounded matching artifact metadata; payload content is not searched or returned.",
       async execute(input) {
@@ -295,6 +307,7 @@ export function createCakeArtifactOperations(
         "An unlinked pasted URI is not readable. Explicitly link it first; temporary read leases are deferred until Cake has a durable lease owner.",
       ],
       inputSchema: artifactResolveSchema,
+      outputSchema: ArtifactProjectionMetadata,
       examples: [{ input: { reference: "cake://artifact/design-plan@r1" } }],
       result: "Bounded metadata and canonical files for the selected exact revision.",
       async execute(input) {

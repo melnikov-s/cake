@@ -75,6 +75,8 @@ export interface CakeOperationDefinition<
   inputSchema: Schema.ConstraintDecoder<Input, never>;
   /** Exact schema used in generated help when validation is delegated across a validated boundary. */
   inputJsonSchema?: JsonObject;
+  /** Opt into validated data for codemode; other operations continue to resolve to text. */
+  outputSchema?: Schema.ConstraintDecoder<JsonValue, never>;
   examples: readonly CakeOperationExample[];
   result: string;
   limitations?: readonly string[];
@@ -132,9 +134,14 @@ const cakeTopics = [
   { name: "worktrees", summary: "Complete an active worktree landing workflow." },
 ] as const satisfies readonly CakeTopicDefinition[];
 
-function schemaJson(schema: Schema.Constraint): JsonObject {
+function schemaJson(
+  schema: Schema.Constraint,
+  direction: "input" | "output" = "input",
+): JsonObject {
   return Schema.decodeUnknownSync(jsonObjectSchema)(
-    Schema.toStandardJSONSchemaV1(schema)["~standard"].jsonSchema.input({ target: "draft-07" }),
+    Schema.toStandardJSONSchemaV1(schema)["~standard"].jsonSchema[direction]({
+      target: "draft-07",
+    }),
   );
 }
 
@@ -211,6 +218,23 @@ export class CakeOperationRegistry {
       .join("\n\n");
   }
 
+  /** One tool-wide union: text for ordinary commands, command-tagged data for opted-in results. */
+  outputSchema() {
+    return Schema.Union([
+      Schema.String,
+      ...this.definitions().flatMap((operation) =>
+        operation.outputSchema
+          ? [
+              Schema.Struct({
+                command: Schema.Literal(operation.command),
+                result: operation.outputSchema,
+              }),
+            ]
+          : [],
+      ),
+    ]);
+  }
+
   operationHelp(command: string) {
     const operation = this.operations.get(command);
     if (!operation) return undefined;
@@ -218,6 +242,7 @@ export class CakeOperationRegistry {
       `${operation.command} — ${operation.summary}`,
       `Input schema:\n${JSON.stringify(operation.inputJsonSchema ?? schemaJson(operation.inputSchema))}`,
       `Result: ${operation.result}`,
+      ...structuredOutputHelp(operation),
       ...(operation.limitations ?? []).map((line) => `Limitation: ${line}`),
       ...operation.examples
         .slice(0, 1)
@@ -247,6 +272,7 @@ export class CakeOperationRegistry {
         `\n${operation.command} — ${operation.summary}`,
         `Input schema:\n${JSON.stringify(operation.inputJsonSchema ?? schemaJson(operation.inputSchema), null, 2)}`,
         `Result: ${operation.result}`,
+        ...structuredOutputHelp(operation),
         ...(operation.limitations ?? []).map((line) => `Limitation: ${line}`),
         ...(operation.examples.length
           ? [
@@ -274,7 +300,12 @@ export class CakeOperationRegistry {
   async invoke(
     envelopeInput: unknown,
     context: CakeOperationExecutionContext,
-  ): Promise<{ text: string; content: CakeOperationContent[]; details: JsonValue }> {
+  ): Promise<{
+    text: string;
+    content: CakeOperationContent[];
+    details: JsonValue;
+    structuredContent: JsonValue;
+  }> {
     const envelope = Schema.decodeUnknownSync(cakeToolEnvelopeSchema)(envelopeInput);
     const command = envelope.command ?? "help";
     if (command === "help") return helpResult(command, this.help());
@@ -291,12 +322,24 @@ export class CakeOperationRegistry {
     );
     const executionResult = await operation.execute(input, context);
     const richResult = isCakeOperationImageResult(executionResult);
+    if (operation.outputSchema && richResult)
+      throw new Error(`Structured Cake operation ${command} cannot return image content`);
     const result = Schema.decodeUnknownSync(jsonValueSchema)(
-      richResult ? executionResult.metadata : executionResult,
+      operation.outputSchema
+        ? Schema.decodeUnknownSync(operation.outputSchema, { onExcessProperty: "error" })(
+            executionResult,
+          )
+        : richResult
+          ? executionResult.metadata
+          : executionResult,
     );
     const images = richResult ? decodeImages(executionResult.images) : [];
     const serialized = JSON.stringify(result);
     const byteLength = new TextEncoder().encode(serialized).byteLength;
+    if (operation.outputSchema && byteLength > MAX_CAKE_OPERATION_RESULT_BYTES)
+      throw new Error(
+        `Structured Cake operation ${command} exceeds the ${MAX_CAKE_OPERATION_RESULT_BYTES}-byte result limit`,
+      );
     const boundedResult: JsonValue =
       byteLength > MAX_CAKE_OPERATION_RESULT_BYTES
         ? {
@@ -310,8 +353,18 @@ export class CakeOperationRegistry {
       text,
       content: [{ type: "text", text }, ...images],
       details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: boundedResult },
+      structuredContent: operation.outputSchema ? { command, result } : text,
     };
   }
+}
+
+function structuredOutputHelp(operation: CakeOperationDefinition) {
+  return operation.outputSchema
+    ? [
+        `Output schema (result):\n${JSON.stringify(schemaJson(operation.outputSchema, "output"))}`,
+        `Codemode: tools.cake resolves to { command: ${JSON.stringify(operation.command)}, result: <validated output> }. Help and operations without an output schema resolve to text.`,
+      ]
+    : [];
 }
 
 function helpResult(command: string, text: string) {
@@ -319,6 +372,7 @@ function helpResult(command: string, text: string) {
     text,
     content: [{ type: "text" as const, text }],
     details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: text },
+    structuredContent: text,
   };
 }
 

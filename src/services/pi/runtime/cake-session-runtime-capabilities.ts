@@ -298,6 +298,10 @@ export function createCakeToolDefinition(
     parameters: Schema.toStandardJSONSchemaV1(cakeToolEnvelopeSchema)["~standard"].jsonSchema.input(
       { target: "draft-07" },
     ) as TSchema,
+    // SAFETY: Like parameters, this is the registry's Effect-derived draft-07 JSON Schema.
+    outputSchema: Schema.toStandardJSONSchemaV1(registry.outputSchema())[
+      "~standard"
+    ].jsonSchema.output({ target: "draft-07" }) as TSchema,
     async execute(toolCallId, params, signal, onUpdate, runtime) {
       const update = (value: JsonValue) =>
         onUpdate?.({
@@ -310,7 +314,11 @@ export function createCakeToolDefinition(
         onUpdate: update,
         runtime,
       });
-      return { content: result.content, details: result.details };
+      return {
+        content: result.content,
+        details: result.details,
+        structuredContent: result.structuredContent,
+      };
     },
   };
 }
