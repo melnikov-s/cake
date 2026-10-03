@@ -22,6 +22,7 @@ import { makeCakeChatHandlers } from "./CakeChatHandlers";
 import { makeConversationHandlers } from "./ConversationHandlers";
 import { makeFoundationHandlers } from "./FoundationHandlers";
 import { modelHandlers } from "./ModelHandlers";
+import { mcpSettingsHandlers } from "./McpSettingsHandlers";
 import { piSettingsHandlers } from "./PiSettingsHandlers";
 import { providerAuthHandlers } from "./ProviderAuthHandlers";
 import { projectSessionHandlers } from "./ProjectSessionHandlers";
@@ -60,6 +61,7 @@ export const makeBackendRpcServerLive = (
     ...makeFoundationHandlers(homeDirectory),
     ...modelHandlers,
     ...piSettingsHandlers,
+    ...mcpSettingsHandlers,
     ...providerAuthHandlers,
     ...projectSessionHandlers,
     ...projectWorkflowHandlers,

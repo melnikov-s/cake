@@ -502,6 +502,7 @@ export interface Client {
     ) => Promise<void>;
   };
   readonly piSettings: CommandGroup<CakeIpcClientService["piSettings"]>;
+  readonly mcpSettings: CommandGroup<CakeIpcClientService["mcpSettings"]>;
   readonly modelPresets: CommandGroup<CakeIpcClientService["modelPresets"]>;
   readonly sessionChats: CommandGroup<CakeIpcClientService["sessionChats"]>;
   readonly projectSessions: CommandGroup<CakeIpcClientService["projectSessions"]>;

@@ -533,6 +533,20 @@ export function makeClient(
           options,
         ),
     },
+    mcpSettings: {
+      get: (input, options) =>
+        run(
+          "mcpSettings.get",
+          withClient((client) => client.mcpSettings.get(input)),
+          options,
+        ),
+      mutate: (input, options) =>
+        run(
+          "mcpSettings.mutate",
+          withClient((client) => client.mcpSettings.mutate(input)),
+          options,
+        ),
+    },
     piSettings: {
       get: (options) =>
         run(

@@ -13,7 +13,8 @@ import { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ModelPresetSettingsStore } from "./ModelPresetSettingsStore";
 import { ProviderSettingsStore } from "./ProviderSettingsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import type { ProjectSessionStore } from "./ProjectSessionStore";
+import { ProjectSessionStore } from "./ProjectSessionStore";
+import { McpSettingsStore } from "./McpSettingsStore";
 import type { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { UtilityModelSettingsStore } from "./UtilityModelSettingsStore";
 import { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
@@ -23,6 +24,7 @@ import { CakePromptSettingsStore } from "./CakePromptSettingsStore";
 import { GlobalInstructionsStore } from "./GlobalInstructionsStore";
 
 export type SettingsPageId =
+  | "mcp"
   | "models"
   | "providers"
   | "agent"
@@ -50,6 +52,12 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     return this.props.desktopConnection;
   }
 
+  @child get mcp(): McpSettingsStore {
+    return createStore(McpSettingsStore, {
+      projectSession: () =>
+        this.activeSession instanceof ProjectSessionStore ? this.activeSession : undefined,
+    });
+  }
   @child get desktopSharing(): DesktopSharingSettingsStore {
     return createStore(DesktopSharingSettingsStore);
   }

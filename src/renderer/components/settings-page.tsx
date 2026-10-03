@@ -1,3 +1,4 @@
+import { SettingsMcpSection } from "./settings-mcp-section";
 import { SettingsDictationSection } from "./settings-dictation-section";
 import { SettingsDesktopHostSection } from "./settings-desktop-host-section";
 import { useEffect, useState } from "react";
@@ -193,7 +194,9 @@ export const SettingsPage = observer(function SettingsPage({
                                 ? "Appearance"
                                 : activePage === "hotkeys"
                                   ? "Hotkeys"
-                                  : "VS Code"}
+                                  : activePage === "mcp"
+                                    ? "MCP servers"
+                                    : "VS Code"}
             </h2>
             <p className="mt-1.5 text-xs text-muted-foreground">
               {activePage === "dictation"
@@ -228,6 +231,8 @@ export const SettingsPage = observer(function SettingsPage({
               <span className="text-xs">{authNotice.detail}</span>
             </Callout>
           )}
+
+          {activePage === "mcp" && <SettingsMcpSection settings={settings.mcp} />}
 
           {activePage === "models" && (
             <>

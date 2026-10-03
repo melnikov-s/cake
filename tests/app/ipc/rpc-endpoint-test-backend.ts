@@ -31,6 +31,7 @@ import { InlineWidgets } from "../../../src/services/widgets/InlineWidgets";
 import { WorktreeLandingCoordinatorLive } from "../../../src/services/worktrees/WorktreeLandingCoordinator";
 import { WorktreeLandingCompletion } from "../../../src/services/worktrees/WorktreeLandingCompletion";
 import { WorktreeLandingAgent } from "../../../src/services/worktrees/WorktreeLandingAgent";
+import { McpSettings } from "../../../src/services/pi/McpSettings";
 import { PiSettings } from "../../../src/services/pi/PiSettings";
 import { ScheduledMessages } from "../../../src/services/scheduled-messages/ScheduledMessages";
 import { WorkspaceFiles } from "../../../src/services/filesystem/WorkspaceFiles";
@@ -96,6 +97,7 @@ export const unusedEndpointServices = Layer.mergeAll(
   Layer.mock(WorktreeLandingCompletion, {}),
   Layer.mock(WorktreeLandingAgent, {}),
   Layer.mock(PiSettings, {}),
+  Layer.mock(McpSettings, {}),
   Layer.mock(ScheduledMessages, { snapshot: unexpectedCapability }),
   Layer.mock(WorkspaceFiles, {}),
   Layer.mock(NativeAttachments, {}),

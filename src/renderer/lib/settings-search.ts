@@ -78,6 +78,18 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     label: "Pi runtime",
     items: [
       {
+        page: "mcp",
+        label: "MCP servers",
+        description: "Native server configuration",
+        settings: [
+          {
+            label: "MCP configuration",
+            targetId: "mcp-settings-title",
+            keywords: "servers stdio http executable env oauth tool exposure backend project",
+          },
+        ],
+      },
+      {
         page: "runtime",
         label: "Execution & resources",
         settings: [

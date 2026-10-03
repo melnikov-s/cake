@@ -638,6 +638,47 @@ const cakePromptsSettingsScenario: VisualCaptureScenario = {
   },
 };
 
+const mcpSettingsScenario: VisualCaptureScenario = {
+  name: "mcp-settings",
+  description: "Backend-owned native MCP configuration and masked advanced editor",
+  states: ["default", "editor"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    await mkdir(join(paths.cakeHome, "pi"), { recursive: true });
+    await writeFile(
+      join(paths.cakeHome, "pi", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          documentation: {
+            url: "https://docs.example.com/mcp",
+            enabled: false,
+            description: "Search the product documentation",
+            exposure: "deferred",
+            headers: { Authorization: "${DOCS_TOKEN}" },
+            toolExposure: { search: "direct", "delete_*": "hidden" },
+          },
+        },
+      }),
+    );
+  },
+  async prepare(page, state) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /^MCP servers/ }).click();
+    const edit = page.getByRole("button", { name: "Edit documentation", exact: true });
+    await edit.waitFor({ state: "visible", timeout: 20_000 });
+    if (state === "editor") {
+      await edit.click();
+      await page
+        .getByRole("textbox", { name: "MCP advanced configuration", exact: true })
+        .scrollIntoViewIfNeeded();
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: cakePromptsSettingsScenario.region,
+};
+
 const appearanceSettingsScenario: VisualCaptureScenario = {
   name: "appearance-settings",
   description: "Session-only sidebar character preference in Cake Appearance settings",
@@ -1162,6 +1203,7 @@ export const visualCaptureScenarios = [
   drawMermaidArchitectureScenario,
   drawCompositionScenario,
   cakePromptsSettingsScenario,
+  mcpSettingsScenario,
   appearanceSettingsScenario,
   projectCustomInstructionsScenario,
   dictationSettingsScenario,

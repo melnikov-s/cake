@@ -14,6 +14,12 @@ import type {
   EditorLease,
 } from "../protocol/VsCodeRpc";
 import type { BackendConnectionError } from "../protocol/BackendConnectionRpc";
+import type {
+  McpSettingsRead,
+  McpSettingsMutation,
+  McpSettingsSnapshot,
+  McpSettingsError,
+} from "../../domain/mcp/mcp-settings-data";
 import { Context, Effect, Layer, type Schema, type Stream } from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 import type { RpcClientError } from "effect/unstable/rpc";
@@ -333,6 +339,14 @@ export interface CakeIpcClientService {
     readonly logout: (input: {
       readonly provider: string;
     }) => Effect.Effect<void, PiProviderAuthError | TransportError>;
+  };
+  readonly mcpSettings: {
+    readonly get: (
+      input: McpSettingsRead,
+    ) => Effect.Effect<McpSettingsSnapshot, McpSettingsError | TransportError>;
+    readonly mutate: (
+      input: McpSettingsMutation,
+    ) => Effect.Effect<McpSettingsSnapshot, McpSettingsError | TransportError>;
   };
   readonly piSettings: {
     readonly get: () => Effect.Effect<PiSettings, PiSettingsError | TransportError>;
@@ -1005,6 +1019,14 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         login: Effect.fn("CakeIpcClient.models.login")((input) => client("models.login", input)),
         logout: Effect.fn("CakeIpcClient.models.logout")((input) => client("models.logout", input)),
+      },
+      mcpSettings: {
+        get: Effect.fn("CakeIpcClient.mcpSettings.get")((input) =>
+          client("mcpSettings.get", input),
+        ),
+        mutate: Effect.fn("CakeIpcClient.mcpSettings.mutate")((input) =>
+          client("mcpSettings.mutate", input),
+        ),
       },
       piSettings: {
         get: Effect.fn("CakeIpcClient.piSettings.get")(() => client("piSettings.get", undefined)),

@@ -20,6 +20,7 @@ import {
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import type { PiModel } from "../../../src/services/pi/model-data";
 import { PiModels } from "../../../src/services/pi/PiModels";
+import { McpSettings } from "../../../src/services/pi/McpSettings";
 import { PiSettings } from "../../../src/services/pi/PiSettings";
 import { PiAgentResources } from "../../../src/services/pi/PiAgentResources";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
@@ -335,6 +336,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     }),
     Layer.mock(PiModels, { list: () => Effect.succeed(options?.models ?? []) }),
     Layer.mock(PiSettings, {}),
+    Layer.mock(McpSettings, {}),
     Layer.mock(PiAgentResources, {}),
     Layer.mock(ScheduledMessages, {
       snapshot: () => {

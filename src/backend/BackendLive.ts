@@ -20,6 +20,7 @@ import { makeAttachmentUploadsLive } from "../services/filesystem/AttachmentUplo
 import { makeGitLive } from "../services/git/GitLive";
 import { makePiAgentResourcesLive } from "../services/pi/live/PiAgentResourcesLive";
 import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
+import { makeMcpSettingsLayer } from "../services/pi/McpSettings";
 import { makePiSettingsLive } from "../services/pi/live/PiSettingsLive";
 import { makeCakeSessionRuntimesLive } from "../services/pi/CakeSessionRuntimes";
 import { makeProjectSessionRuntimeHostLive } from "../services/pi/ProjectSessionRuntimeHostLive";
@@ -96,6 +97,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
   const PiLive = Layer.mergeAll(
     makePiModelsLive(paths.piAgent),
     makePiSettingsLive(paths.piAgent),
+    makeMcpSettingsLayer(paths.piAgent),
     makePiAgentResourcesLive(paths.piAgent),
     makeCakeSessionRuntimesLive(),
     AgentAvailability.layer,

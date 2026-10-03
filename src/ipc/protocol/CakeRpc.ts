@@ -21,6 +21,7 @@ import { InlineWidgetRpc } from "./InlineWidgetRpc";
 import { NativeWidgetCaptureRpc, WidgetCaptureResponseRpc } from "./WidgetCaptureRpc";
 import { ManagedWorktreeRpc } from "./ManagedWorktreeRpc";
 import { ModelRpc } from "./ModelRpc";
+import { McpSettingsRpc } from "./McpSettingsRpc";
 import { PiSettingsRpc } from "./PiSettingsRpc";
 import { ProjectSessionRpc } from "./ProjectSessionRpc";
 import { ProjectWorkflowRpc } from "./ProjectWorkflowRpc";
@@ -61,6 +62,7 @@ export const CakeRpc = ApplicationRpc.merge(
   ManagedWorktreeRpc,
   ModelRpc,
   PiSettingsRpc,
+  McpSettingsRpc,
   ProjectSessionRpc,
   ProjectWorkflowRpc,
   ScheduledMessageRpc,
