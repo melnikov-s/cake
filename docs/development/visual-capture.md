@@ -9,6 +9,7 @@ pnpm visual:capture --help
 pnpm visual:capture --list
 pnpm visual:capture assistant-markdown-code
 pnpm visual:capture assistant-markdown-code --state hover --theme light
+pnpm visual:capture inline-links --state hover --theme dark
 pnpm visual:capture browser-shared-chat --width 1440 --height 900
 pnpm visual:capture browser-draw --width 1440 --height 900
 pnpm visual:capture browser-vscode --width 1440 --height 900
@@ -18,7 +19,7 @@ pnpm visual:capture vscode-terminal --state bottom --capture window --width 1440
 
 The command builds Cake before launching it (browser scenarios build both `out/server` and `out/browser`). Use `--no-build` only when those assets are already current. Each run creates isolated temporary `CAKE_HOME` (and Electron user-data for desktop scenarios) and removes them after success or failure. Browser scenarios use seeded Pi transcript and project files with a real server; `browser-vscode` requires the installed `/opt/homebrew/bin/code-server` and fails clearly rather than substituting a fake editor.
 
-Named scenarios define their own fixture, readiness checks, allowed states, interactions, and capture region. Add scenarios under `scripts/visual-capture/`; do not add an arbitrary selector/action command language. The initial `assistant-markdown-code` scenario supports `default` and `hover` states.
+Named scenarios define their own fixture, readiness checks, allowed states, interactions, and capture region. Add scenarios under `scripts/visual-capture/`; do not add an arbitrary selector/action command language. The `inline-links` scenario covers artifact, workspace, website, and session links in prose, with `default` and `hover` states.
 
 Useful deterministic controls include:
 

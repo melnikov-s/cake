@@ -134,7 +134,7 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
           content: [
             {
               type: "text",
-              text: "Phase 4 — Model references ([`src/modelMeta.ts#L1`](src/modelMeta.ts#L1)) is done.",
+              text: 'Phase 4 — Model references ([`src/modelMeta.ts#L1`](src/modelMeta.ts#L1)) is done. Read [the website](https://example.com/docs "Authored title") or [this session](cake://session/file-link-session).',
             },
           ],
           api: "anthropic-messages",
@@ -172,7 +172,25 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     const page = await application.firstWindow();
     const link = page.locator('a[href="src/modelMeta.ts#L1"]');
     await expect(link).toHaveText("src/modelMeta.ts#L1");
-    expect(await link.getAttribute("title")).toBe("Open src/modelMeta.ts:1 in VS Code");
+    await link.hover();
+    await expect(link).toHaveAccessibleDescription("src/modelMeta.ts#L1");
+    await expect(page.getByRole("tooltip")).toHaveText("src/modelMeta.ts#L1");
+    const websiteLink = page.getByRole("link", { name: "the website" });
+    await websiteLink.hover();
+    await expect(websiteLink).toHaveAccessibleDescription("https://example.com/docs");
+    await expect(page.getByRole("tooltip")).toHaveText("https://example.com/docs");
+    const sessionLink = page.getByRole("link", { name: "this session" });
+    await sessionLink.hover();
+    await expect(sessionLink).toHaveAccessibleDescription("cake://session/file-link-session");
+    await expect(page.getByRole("tooltip")).toHaveText("cake://session/file-link-session");
+    const presentation = (element: HTMLElement) => {
+      const style = getComputedStyle(element);
+      return { color: style.color, decoration: style.textDecorationLine };
+    };
+    const filePresentation = await link.evaluate(presentation);
+    expect(filePresentation.decoration).toBe("underline");
+    expect(await websiteLink.evaluate(presentation)).toEqual(filePresentation);
+    expect(await sessionLink.evaluate(presentation)).toEqual(filePresentation);
     const agentInput = page.getByRole("combobox", { name: "Message" });
     const hasVsCodeTitleAction = (label: string) =>
       application.evaluate(async ({ webContents }, actionLabel) => {

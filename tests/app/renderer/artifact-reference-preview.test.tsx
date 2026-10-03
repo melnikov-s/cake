@@ -11,7 +11,6 @@ import type { Client } from "../../../src/renderer/client/Client";
 import { ArtifactCatalog } from "../../../src/renderer/models/ArtifactCatalog";
 import { ArtifactDetailStore } from "../../../src/renderer/stores/ArtifactDetailStore";
 import { ArtifactReferencePreviewStore } from "../../../src/renderer/stores/ArtifactReferencePreviewStore";
-import type { SessionCatalogStore } from "../../../src/renderer/stores/SessionCatalogStore";
 import { mountWithClient } from "./mount-with-client";
 
 const metadata: ArtifactReferenceMetadata = {
@@ -58,26 +57,12 @@ describe("ArtifactReferencePreview", () => {
     container.remove();
   });
 
-  it("loads metadata only, then links and materializes the referenced revision", async () => {
+  it("loads metadata for a bare reference label and opens its destination", async () => {
     const changed = vi.fn();
-    const linkedArtifact = {
-      lineageId: metadata.lineage.id,
-      target: { type: "family" as const, familyId: "family-1" },
-      selection: { mode: "pinned" as const, revision: metadata.revision.revision },
-      createdAt: "2025-01-01T00:00:00.000Z",
-    };
     const client = {
       artifacts: {
-        catalog: vi.fn(async () => ({ items: [], offset: 0, limit: 50, total: 0, hasMore: false })),
         referenceMetadata: vi.fn(async () => metadata),
         readExact: vi.fn(),
-        link: vi.fn(async () => linkedArtifact),
-        detail: vi.fn(async () => ({
-          lineage: metadata.lineage,
-          links: [linkedArtifact],
-          stableRef: metadata.stableRef,
-        })),
-        materialize: vi.fn(async () => ({ exactPath: "/cache/report/revision-2.md" })),
       },
     } as unknown as Client;
     const mounted = mountWithClient(
@@ -87,9 +72,7 @@ describe("ArtifactReferencePreview", () => {
       }),
       client,
     );
-    const sessions = {
-      find: () => ({ sessionId: "session-1", familyId: "family-1" }),
-    } as unknown as SessionCatalogStore;
+    const onOpen = vi.fn();
 
     await act(async () => {
       reactRoot.render(
@@ -97,9 +80,7 @@ describe("ArtifactReferencePreview", () => {
           <ArtifactReferencePreview
             reference={"cake://artifact/report@r2" as never}
             store={mounted.subject}
-            sessions={sessions}
-            activeSessionId="session-1"
-            onOpen={vi.fn()}
+            onOpen={onOpen}
           />
         </StoreProvider>,
       );
@@ -109,33 +90,71 @@ describe("ArtifactReferencePreview", () => {
 
     expect(client.artifacts.referenceMetadata).toHaveBeenCalledOnce();
     expect(client.artifacts.readExact).not.toHaveBeenCalled();
-    const link = [...container.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("Link to this family"),
-    );
-    expect(link).toBeDefined();
+    const link = container.querySelector("a")!;
+    expect(link.textContent).toBe("Report");
+    expect(link.getAttribute("href")).toBe(metadata.exactRef);
+    expect(link.getAttribute("aria-description")).toBe(metadata.exactRef);
+    expect(link.classList.contains("text-inherit")).toBe(true);
+    expect(link.classList.contains("font-semibold")).toBe(true);
+    act(() => link.click());
+    expect(onOpen).toHaveBeenCalledWith("report");
+
     await act(async () => {
-      link!.click();
-      await Promise.resolve();
-      await Promise.resolve();
+      reactRoot.render(
+        <StoreProvider store={mounted.root}>
+          <ArtifactReferencePreview
+            reference={metadata.exactRef}
+            store={mounted.subject}
+            onOpen={onOpen}
+          >
+            Custom report label
+          </ArtifactReferencePreview>
+        </StoreProvider>,
+      );
     });
-    expect(client.artifacts.link).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionId: "session-1",
-        target: { type: "family", familyId: "family-1" },
-        selection: { mode: "pinned", revision: 2 },
+    expect(container.querySelector("a")?.textContent).toBe("Custom report label");
+    expect(container.querySelector("a")?.getAttribute("aria-description")).toBe(metadata.exactRef);
+    mounted.root[Symbol.dispose]();
+  });
+
+  it("keeps unresolved references readable and clickable after metadata fails", async () => {
+    let rejectMetadata: (error: Error) => void = () => undefined;
+    const client = {
+      artifacts: {
+        referenceMetadata: vi.fn(
+          () =>
+            new Promise<ArtifactReferenceMetadata>((_resolve, reject) => {
+              rejectMetadata = reject;
+            }),
+        ),
+      },
+    } as unknown as Client;
+    const mounted = mountWithClient(
+      createStore(ArtifactReferencePreviewStore, {
+        model: ArtifactCatalog.create(),
+        artifactsChanged: vi.fn(),
       }),
-      expect.anything(),
+      client,
     );
-    expect(client.artifacts.materialize).toHaveBeenCalledWith(
-      "session-1",
-      "report",
-      2,
-      expect.anything(),
-    );
-    expect(changed).toHaveBeenCalledWith("report");
-    expect(mounted.subject.previewStates[metadata.exactRef]?.metadata?.links).toEqual([
-      linkedArtifact,
-    ]);
+    const onOpen = vi.fn();
+    await act(async () => {
+      reactRoot.render(
+        <StoreProvider store={mounted.root}>
+          <ArtifactReferencePreview
+            reference={metadata.exactRef}
+            store={mounted.subject}
+            onOpen={onOpen}
+          />
+        </StoreProvider>,
+      );
+    });
+    expect(container.querySelector("a")?.textContent).toBe("report");
+    await act(async () => rejectMetadata(new Error("unavailable")));
+    const link = container.querySelector("a")!;
+    expect(link.textContent).toBe("report");
+    expect(link.getAttribute("aria-description")).toBe(metadata.exactRef);
+    act(() => link.click());
+    expect(onOpen).toHaveBeenCalledWith("report");
     mounted.root[Symbol.dispose]();
   });
 

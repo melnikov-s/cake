@@ -26,7 +26,8 @@ import {
 } from "@/lib/syntax-highlighter";
 import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../../ipc/source-location";
-import { formatSourceLocation, parseSourceLocation } from "../../../utils/source-location";
+import { parseSourceLocation } from "../../../utils/source-location";
+import { Link } from "../ui/link";
 import { MermaidFullscreen } from "../mermaid-fullscreen";
 import { MarkdownImage } from "../markdown-image";
 import { MarkdownCodeBlock, streamingCodeMarker } from "./markdown-code-block";
@@ -52,7 +53,7 @@ type MarkdownLinkActions = {
     path: string,
     signal: AbortSignal,
   ): Promise<{ readonly data: string; readonly mimeType: string }>;
-  renderArtifactReference?(reference: string): ReactNode;
+  renderArtifactReference?(reference: string, label?: ReactNode): ReactNode;
 };
 
 const MarkdownLinkContext = createContext<MarkdownLinkActions | undefined>(undefined);
@@ -125,14 +126,17 @@ function prepareMarkdownLinks(markdown: string, sourceLinks: boolean) {
     .split(protectedMarkdown)
     .map((segment, index) => {
       if (index % 2 === 1) {
-        return segment.replace(/\]\(([^)\s]+)\)$/, (match, target: string) => {
-          const sessionId = sessionIdFromHref(target);
-          if (sessionId) return `](${sessionPathPrefix}${encodeURIComponent(sessionId)})`;
-          const artifactReference = artifactReferenceFromHref(target);
-          if (artifactReference)
-            return `](${artifactPathPrefix}${encodeURIComponent(artifactReference)})`;
-          return sourceLinks && parseSourceLocation(target) ? `](${sourceHref(target)})` : match;
-        });
+        return segment.replace(
+          /\]\(([^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'))?\)$/,
+          (match, target: string) => {
+            const sessionId = sessionIdFromHref(target);
+            if (sessionId) return `](${sessionPathPrefix}${encodeURIComponent(sessionId)})`;
+            const artifactReference = artifactReferenceFromHref(target);
+            if (artifactReference)
+              return `](${artifactPathPrefix}${encodeURIComponent(artifactReference)})`;
+            return sourceLinks && parseSourceLocation(target) ? `](${sourceHref(target)})` : match;
+          },
+        );
       }
       const withArtifacts = segment.replace(
         bareArtifactReference,
@@ -224,12 +228,17 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
   const href = props.href;
   const artifactReference = href ? artifactReferenceFromHref(href) : undefined;
   if (artifactReference && actions?.renderArtifactReference)
-    return actions.renderArtifactReference(artifactReference);
+    return actions.renderArtifactReference(
+      artifactReference,
+      props.children === artifactReference ? undefined : props.children,
+    );
   const sessionId = href ? sessionIdFromHref(href) : undefined;
   if (sessionId) {
     return (
-      <a
+      <Link
         {...props}
+        href={`cake://session/${encodeURIComponent(sessionId)}`}
+        title={`cake://session/${encodeURIComponent(sessionId)}`}
         className={cn("inline-block max-w-[80ch] truncate align-bottom", props.className)}
         onClick={(event) => {
           event.preventDefault();
@@ -240,8 +249,10 @@ function linkAnchor(allProps: AnchorProps, actions?: MarkdownLinkActions) {
   }
   const external = href ? /^https?:\/\//i.test(href) : false;
   return (
-    <a
+    <Link
       {...props}
+      href={artifactReference ?? href}
+      title={artifactReference ?? href}
       target="_blank"
       rel="noreferrer"
       onClick={
@@ -534,17 +545,12 @@ function MarkdownRenderer({
         const location = parseSourceLocation(reference);
         if (!location || (nonPathHref.test(href) && !href.startsWith(workspacePathPrefix)))
           return linkAnchor(allProps, linkActions);
-        const label = formatSourceLocation(location);
         const props = { ...allProps, href: reference };
         delete props.node;
         return (
-          <a
+          <Link
             {...props}
-            className={cn(
-              "underline decoration-dashed decoration-border underline-offset-4 hover:decoration-muted-foreground",
-              props.className,
-            )}
-            title={`Open ${label} in VS Code`}
+            title={reference}
             onClick={(event) => {
               event.preventDefault();
               openSourceLocation(location);

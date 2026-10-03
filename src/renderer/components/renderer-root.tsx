@@ -48,12 +48,11 @@ export const RendererRoot = observer(function RendererRoot({
                       signal,
                     });
                   },
-                  renderArtifactReference: (reference) => (
+                  renderArtifactReference: (reference, label) => (
                     <ArtifactReferencePreview
                       reference={formatArtifactRef(parseArtifactRef(reference))}
                       store={rootStore.artifactReferencePreviewStore}
-                      sessions={rootStore.sessionCatalogStore}
-                      activeSessionId={activeSessionId}
+                      children={label}
                       onOpen={(lineageId) =>
                         rootStore.showArtifactLibrary(activeSessionId, lineageId)
                       }

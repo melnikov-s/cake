@@ -13,6 +13,24 @@ Authoritative primitives live in `src/renderer/components/ui/`.
 | `ThinkingBubble`      | Compact, reduced-motion-safe conversational processing indicator.                                                                                                         |
 | `StepProgress`        | Segmented progress for multi-step flows such as stepped interview forms; segments become jump targets when `onSelect` is supplied.                                        |
 
+## Inline links
+
+`Link` is the shared anchor for Markdown, source citations, session links, and
+artifact references. It inherits the surrounding text color, with semibold weight
+and a persistent solid underline, strengthened on hover, plus a visible keyboard
+focus outline.
+It composes `useTooltip` and `TooltipBubble` to show the destination on hover or
+keyboard focus (not a native title popup), and exposes it as an accessible
+description. The tooltip defaults to `href`: use real destinations, not Markdown's
+sanitizer-only Cake paths. File links preserve query parameters and line ranges;
+Cake links expose their `cake://` URI. Supply an `onClick` handler to route through
+the owning surface without changing the presentation. Hover/focus state is local,
+ephemeral DOM state; tooltips dismiss on pointer exit, blur, or activation.
+
+Artifact references in prose use the Markdown label (or the resolved artifact
+title for bare URIs), not a card. Linking and materialization controls belong in
+the Artifact Library detail surface.
+
 ## Dictation-enabled writing fields
 
 `Textarea` accepts `dictation` to opt a Cake-owned prose field into the window's

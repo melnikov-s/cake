@@ -200,6 +200,76 @@ const assistantMarkdownCode: VisualCaptureScenario = {
   },
 };
 
+const inlineLinks: VisualCaptureScenario = {
+  name: "inline-links",
+  description: "Consistent artifact, workspace, website, and session links in prose",
+  states: ["default", "hover"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const sessionId = "visual-assistant-markdown-code";
+    const sessionFile = join(
+      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`,
+    );
+    const entries = (await readFile(sessionFile, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const message = entries.find((entry) => entry.id === "assistant-1");
+    message.message.content = [
+      {
+        type: "text",
+        text: [
+          "## Links stay in the conversation",
+          "",
+          "Created [Collaboration requirements](cake://artifact/visual-link-report), with confirmed requirements and open decisions.",
+          "",
+          "Review [the implementation](src/main.ts#L12-L24), read [the website](https://example.com/docs), or return to [this session](cake://session/visual-assistant-markdown-code).",
+          "",
+          "Every destination uses the same clear link style. Hover a link to see where it goes.",
+        ].join("\n"),
+      },
+    ];
+    await writeFile(sessionFile, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+    await seedArtifact(
+      paths,
+      {
+        protocol: "cake.artifact/v1",
+        id: "visual-link-report",
+        sessionId,
+        revision: 1,
+        kind: "markdown",
+        title: "Collaboration requirements",
+        payload: {
+          markdown: "# Collaboration requirements\n\nConfirmed requirements and open decisions.",
+        },
+        fallback: { markdown: "Collaboration requirements" },
+      },
+      new Date(0).toISOString(),
+    );
+  },
+  async prepare(page, state) {
+    const artifact = page.getByRole("link", { name: "Collaboration requirements", exact: true });
+    await expect(artifact).toBeVisible();
+    await expect(page.getByRole("link", { name: "the implementation" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "the website" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "this session" })).toBeVisible();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    if (state === "hover") {
+      await artifact.hover();
+      await expect(page.getByRole("tooltip")).toHaveText("cake://artifact/visual-link-report");
+      await expect(page.getByRole("tooltip")).toBeVisible();
+    } else {
+      await page.mouse.move(1, 1);
+    }
+  },
+  region(page) {
+    return page
+      .locator('[data-slot="message-content"]')
+      .filter({ has: page.getByRole("link", { name: "the implementation" }) });
+  },
+};
+
 async function seedArtifactScenario(
   paths: ScenarioFixturePaths,
   theme: "light" | "dark",
@@ -987,6 +1057,7 @@ export const visualCaptureScenarios = [
   sourceSelectionScenario,
   sessionPluginsScenario,
   assistantMarkdownCode,
+  inlineLinks,
   requestExplanationScenario,
   drawMermaidArchitectureScenario,
   drawCompositionScenario,

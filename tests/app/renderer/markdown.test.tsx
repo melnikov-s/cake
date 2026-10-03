@@ -308,6 +308,19 @@ describe("Markdown", () => {
     );
   });
 
+  it.each([
+    ["cake://session/session-123", "/__cake_session__/session-123"],
+    ["cake://artifact/report", "/__cake_artifact__/cake%3A%2F%2Fartifact%2Freport"],
+    ["src/main.ts#L3", "/__cake_workspace__/src/main.ts#L3"],
+  ])("prepares %s links even with an authored title", (href, target) => {
+    act(() =>
+      root.render(
+        <Markdown onOpenSourceLocation={vi.fn()}>{`[Label](${href} "Authored title")`}</Markdown>,
+      ),
+    );
+    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(`[Label](${target})`);
+  });
+
   it("loads workspace-relative Markdown images through the authorized workspace boundary", async () => {
     const loadWorkspaceImage = vi.fn(async () => ({ data: "cG5n", mimeType: "image/png" }));
     act(() =>
@@ -343,7 +356,7 @@ describe("Markdown", () => {
     expect(container.querySelector("img")?.src).toBe("data:image/png;base64,cG5n");
   });
 
-  it("turns a bare artifact URI into a bounded application reference surface", () => {
+  it("turns a bare artifact URI into an application link", () => {
     const renderArtifactReference = vi.fn((reference: string) => (
       <span data-testid="artifact-reference">{reference}</span>
     ));
@@ -369,13 +382,13 @@ describe("Markdown", () => {
         }),
       );
     });
-    expect(renderArtifactReference).toHaveBeenCalledWith("cake://artifact/report-1@r2");
+    expect(renderArtifactReference).toHaveBeenCalledWith("cake://artifact/report-1@r2", undefined);
     expect(container.querySelector("[data-testid=artifact-reference]")?.textContent).toBe(
       "cake://artifact/report-1@r2",
     );
   });
 
-  it("turns an explicit artifact link into the same application reference surface", () => {
+  it("preserves the label of an explicit artifact link", () => {
     const renderArtifactReference = vi.fn((reference: string) => (
       <span data-testid="artifact-reference">{reference}</span>
     ));
@@ -403,6 +416,7 @@ describe("Markdown", () => {
     });
     expect(renderArtifactReference).toHaveBeenCalledWith(
       "cake://artifact/session-assistant-narrow",
+      "Narrow layout",
     );
   });
 
@@ -440,11 +454,14 @@ describe("Markdown", () => {
     expect([...fileLink.classList]).toEqual(
       expect.arrayContaining([
         "underline",
-        "decoration-dashed",
-        "decoration-border",
+        "text-inherit",
+        "font-semibold",
+        "decoration-solid",
+        "decoration-current",
         "underline-offset-4",
       ]),
     );
+    expect(fileLink.getAttribute("aria-description")).toBe("src/modelMeta.ts#L8-L12");
     act(() => {
       fileLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
@@ -457,8 +474,8 @@ describe("Markdown", () => {
       href: "/__cake_workspace__/src/modelMeta.ts?view=changes&side=before#L8-L12",
       children: "before",
     });
-    expect(beforeLink.title).toBe(
-      "Open src/modelMeta.ts?view=changes&side=before#L8-L12 in VS Code",
+    expect(beforeLink.getAttribute("aria-description")).toBe(
+      "src/modelMeta.ts?view=changes&side=before#L8-L12",
     );
     act(() => {
       beforeLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
@@ -474,7 +491,9 @@ describe("Markdown", () => {
       href: "/__cake_workspace__/src/modelMeta.ts#L153-L170,L182-L192",
       children: "functions",
     });
-    expect(multiRangeLink.title).toBe("Open src/modelMeta.ts#L153-L170,L182-L192 in VS Code");
+    expect(multiRangeLink.getAttribute("aria-description")).toBe(
+      "src/modelMeta.ts#L153-L170,L182-L192",
+    );
     act(() => {
       multiRangeLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
@@ -486,7 +505,13 @@ describe("Markdown", () => {
       ],
     });
 
-    const webLink = renderAnchor({ href: "https://example.com", children: "example" });
+    const webLink = renderAnchor({
+      href: "https://example.com",
+      title: "Custom title",
+      children: "example",
+    });
+    expect(webLink.getAttribute("aria-description")).toBe("https://example.com");
+    expect(webLink.className).toContain("text-inherit");
     expect(webLink.target).toBe("_blank");
     act(() => {
       webLink.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
@@ -495,9 +520,12 @@ describe("Markdown", () => {
     expect(onOpenSourceLocation).toHaveBeenCalledTimes(3);
 
     const sessionLink = renderAnchor({
-      href: "cake://session/session-123",
+      href: "/__cake_session__/session-123",
+      title: "Authored title",
       children: "Authentication refactor",
     });
+    expect(sessionLink.getAttribute("aria-description")).toBe("cake://session/session-123");
+    expect(sessionLink.className).toContain("text-inherit");
     expect(sessionLink.textContent).toBe("Authentication refactor");
     expect(sessionLink.className).toContain("max-w-[80ch]");
     act(() => {
@@ -507,6 +535,8 @@ describe("Markdown", () => {
 
     act(() => root.render(<Markdown>text</Markdown>));
     const defaultLink = renderAnchor({ href: "docs/readme.md", children: "readme" });
+    expect(defaultLink.getAttribute("aria-description")).toBe("docs/readme.md");
+    expect(defaultLink.className).toContain("text-inherit");
     expect(defaultLink.target).toBe("_blank");
     expect(onOpenSourceLocation).toHaveBeenCalledTimes(3);
   });

@@ -213,11 +213,21 @@ test("opens the artifact workspace, keeps requests inline, and isolates HTML", a
     const referencePreview = page.locator(
       '[data-artifact-reference="cake://artifact/cake-s4-html@r1"]',
     );
-    await expect(
-      referencePreview.getByRole("button", { name: "Link to this session" }),
-    ).toBeVisible();
-    await referencePreview.getByRole("button", { name: "Link to this session" }).click();
-    await expect(referencePreview).toContainText("Linked");
+    await expect(referencePreview).toHaveRole("link");
+    await expect(referencePreview).toHaveText("Sandboxed HTML");
+    await referencePreview.hover();
+    await expect(referencePreview).toHaveAccessibleDescription("cake://artifact/cake-s4-html@r1");
+    await expect(page.getByRole("tooltip")).toHaveText("cake://artifact/cake-s4-html@r1");
+    const referenceSessionId = await page
+      .locator(".session-item.active")
+      .getAttribute("data-session-id");
+    await referencePreview.click();
+    await expect(page.getByLabel("Search artifact library")).toBeVisible();
+    await page.getByRole("button", { name: "Link to this session" }).click();
+    await expect(page.getByRole("button", { name: "Unlink", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Pin r1", exact: true }).click();
+    await page.setViewportSize({ width: 1_600, height: 1_000 });
+    await page.locator(`[data-session-id="${referenceSessionId}"] .session-row`).click();
 
     const linkedArtifactControl = page.getByRole("button", { name: "1 artifacts" });
     await expect(linkedArtifactControl).toBeVisible();

@@ -180,7 +180,13 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
     if (record && behavior.artifacts) {
       if (record.artifact.kind !== "request")
         return (
-          <ArtifactReference onClick={() => behavior.artifacts?.openArtifact?.(record.artifact.id)}>
+          <ArtifactReference
+            href={`cake://artifact/${record.artifact.id}`}
+            onClick={(event) => {
+              event.preventDefault();
+              behavior.artifacts?.openArtifact?.(record.artifact.id);
+            }}
+          >
             {record.artifact.title ?? record.artifact.id}
           </ArtifactReference>
         );

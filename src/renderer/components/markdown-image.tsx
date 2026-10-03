@@ -9,7 +9,7 @@ type MarkdownImageProps = Omit<ComponentProps<"img">, "src"> & {
     path: string,
     signal: AbortSignal,
   ): Promise<{ readonly data: string; readonly mimeType: string }>;
-  renderArtifactReference?(reference: string): ReactNode;
+  renderArtifactReference?(reference: string, label?: ReactNode): ReactNode;
 };
 
 export function MarkdownImage({
@@ -38,7 +38,7 @@ export function MarkdownImage({
   }, [loadWorkspaceImage, workspacePath]);
 
   if (artifactReference && renderArtifactReference)
-    return renderArtifactReference(artifactReference);
+    return renderArtifactReference(artifactReference, alt);
   if (unavailable)
     return (
       <span className="inline-flex rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
