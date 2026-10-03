@@ -34,7 +34,8 @@ export class SidebarSessionListStore extends Store<{
         sessionId: string;
         groupKey: string;
         resolved: boolean;
-        index: number;
+        /** Rows above the selection; retired rows no longer reserve an empty slot. */
+        precedingSessionIds: readonly string[];
       }
     | undefined;
   /** Prevents transcript writes from continually reordering a lane while it has active turns. */
@@ -131,12 +132,8 @@ export class SidebarSessionListStore extends Store<{
       .summaries.filter((session) => session.resolved === resolved);
     const pinned = this.pinnedSession;
     if (pinned?.kind !== "cake-chat" || pinned.resolved !== resolved) return sessions;
-    const currentIndex = sessions.findIndex((session) => session.sessionId === pinned.sessionId);
-    if (currentIndex < 0) return sessions;
-    const ordered = [...sessions];
-    const [selected] = ordered.splice(currentIndex, 1);
-    ordered.splice(Math.min(pinned.index, ordered.length), 0, selected!);
-    return ordered;
+    this.applySelectedSessionPin(sessions);
+    return sessions;
   }
 
   hasMoreResolvedProjectSessions(projectPath: string) {
@@ -232,13 +229,20 @@ export class SidebarSessionListStore extends Store<{
       pinned.groupKey === projectPath &&
       pinned.resolved === resolved
     ) {
-      const currentIndex = roots.findIndex((session) => session.sessionId === pinned.sessionId);
-      if (currentIndex >= 0) {
-        const [selected] = roots.splice(currentIndex, 1);
-        roots.splice(Math.min(pinned.index, roots.length), 0, selected!);
-      }
+      this.applySelectedSessionPin(roots);
     }
     return { byId, roots };
+  }
+
+  private applySelectedSessionPin<Session extends { sessionId: string }>(sessions: Session[]) {
+    const pinned = this.pinnedSession;
+    if (!pinned) return;
+    const currentIndex = sessions.findIndex((session) => session.sessionId === pinned.sessionId);
+    if (currentIndex < 0) return;
+    const [selected] = sessions.splice(currentIndex, 1);
+    const remainingIds = new Set(sessions.map((session) => session.sessionId));
+    const index = pinned.precedingSessionIds.filter((id) => remainingIds.has(id)).length;
+    sessions.splice(index, 0, selected!);
   }
 
   private flattenProjectSessionRoots(
@@ -370,7 +374,7 @@ export class SidebarSessionListStore extends Store<{
           sessionId: selected.sessionId,
           groupKey: "cake-chat",
           resolved: summary.resolved,
-          index,
+          precedingSessionIds: sessions.slice(0, index).map((session) => session.sessionId),
         };
       return;
     }
@@ -398,7 +402,7 @@ export class SidebarSessionListStore extends Store<{
         sessionId: rootId,
         groupKey: summary.projectPath,
         resolved: summary.resolved,
-        index,
+        precedingSessionIds: roots.slice(0, index).map((session) => session.sessionId),
       };
   }
 
