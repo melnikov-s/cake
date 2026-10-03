@@ -148,6 +148,58 @@ async function launchFixture(
   return { application };
 }
 
+test("Cake Draw loads its scene fonts locally under the renderer CSP", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cake-draw-fonts-"));
+  const { application } = await launchFixture(root);
+  try {
+    const page = await application.firstWindow();
+    const fontRequests: string[] = [];
+    const fontErrors: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes(".woff2")) fontRequests.push(request.url());
+    });
+    page.on("console", (message) => {
+      if (message.type() === "error" && /font|woff2/i.test(message.text())) {
+        fontErrors.push(message.text());
+      }
+    });
+    await page.getByRole("button", { name: "Open Cake Draw" }).click();
+    await expect(page.locator(".excalidraw__canvas.interactive")).toBeVisible();
+    await drawControl(application, {
+      _tag: "Apply",
+      operations: [{ type: "flow", nodes: [{ id: "shape:font-test", text: "Local fonts" }] }],
+    });
+    const loaded = await page.evaluate(async () => {
+      const families = [
+        "Cascadia",
+        "Virgil",
+        "Excalifont",
+        "Comic Shanns",
+        "Liberation Sans",
+        "Lilita One",
+        "Nunito",
+        "Xiaolai",
+      ];
+      return Promise.all(
+        families.map(async (family) => {
+          const faces = await document.fonts.load(`20px "${family}"`, "Local fonts 中文");
+          return {
+            family,
+            loaded: faces.length > 0 && faces.every((face) => face.status === "loaded"),
+          };
+        }),
+      );
+    });
+    expect(loaded).toEqual(loaded.map(({ family }) => ({ family, loaded: true })));
+    expect(fontRequests.some((url) => url.includes("CascadiaCode-Regular.woff2"))).toBe(true);
+    expect(fontRequests.filter((url) => !url.startsWith("file://"))).toEqual([]);
+    expect(fontErrors).toEqual([]);
+  } finally {
+    await application.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("Cake Draw compact authoring preserves native edits, frames, receipts, and undo", async () => {
   const root = await mkdtemp(join(tmpdir(), "cake-draw-authoring-"));
   const { application } = await launchFixture(root);

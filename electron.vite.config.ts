@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 
 import { buildIdentity } from "./scripts/build-identity.mjs";
+import { excalidrawFonts } from "./scripts/excalidraw-fonts";
 const buildDefine = { __CAKE_BUILD_ID__: JSON.stringify(buildIdentity()) };
 
 const manualReload = process.env.CAKE_MANUAL_RELOAD === "1";
@@ -64,7 +65,7 @@ export default defineConfig({
         "@": resolve(import.meta.dirname, "src/renderer"),
       },
     },
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), excalidrawFonts()],
     worker: { format: "es" },
     build: {
       // Keep third-party editor assets as local files under Cake's intentionally narrow CSP.
