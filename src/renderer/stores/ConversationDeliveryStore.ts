@@ -70,7 +70,10 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
       return this.compact(sessionId, builtin.args || undefined, text, attachments, restoreOnError);
 
     const operationId = this.props.operations.start(this.props.operationOwner);
-    this.addPending(operationId, text, attachments, delivery, renderUserMessageAsMarkdown);
+    // Slash input can complete without creating any Pi transcript message.
+    // Let Pi project a user entry only if the command actually produces one.
+    if (!text.startsWith("/"))
+      this.addPending(operationId, text, attachments, delivery, renderUserMessageAsMarkdown);
     try {
       const presentationMode = this.props.presentationMode?.();
       const delivered = await this.props.deliver({

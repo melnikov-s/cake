@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -6,7 +6,8 @@ import { startMcpServer } from "../fixtures/mcp-server";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("native MCP status, OAuth cancellation/pasted redirect, and packaged codemode work through the conversation", async () => {
+test("a command-only fresh chat retains native MCP through switching, OAuth cancellation, and its first message", async () => {
+  test.setTimeout(60_000);
   const root = await mkdtemp(join(tmpdir(), "cake-mcp-smoke-"));
   const userData = join(root, "user-data");
   const project = join(root, "project");
@@ -101,21 +102,51 @@ export default (pi) => {
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await composer.click();
     await expect(composer).toBeFocused();
-    // Pi does not persist command-only drafts. Exercise MCP in an established
-    // conversation rather than hiding that separate draft-promotion gap.
-    await composer.pressSequentially("Initialize fixture session");
-    await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(page.getByText("Fixture session ready", { exact: true })).toBeVisible();
-    await expect(composer).toHaveValue("");
-    await composer.click();
     await composer.pressSequentially("/mcp");
     await expect(composer).toHaveValue("/mcp");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await composer.press("Escape");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByText(/oauth: needs sign-in/).last()).toBeVisible();
+    await expect(composer).toHaveValue("");
+    await expect(page.locator("article").filter({ hasText: /^You.*\/mcp/ })).toHaveCount(0);
+    expect(
+      (await readdir(cakeHome, { recursive: true })).filter((path) => path.endsWith(".jsonl")),
+    ).toEqual([]);
 
-    await composer.fill("/mcp login oauth");
+    const commandSession = page.locator(".session-item.active");
+    await expect(commandSession).toHaveCount(1);
+    const commandSessionId = await commandSession.getAttribute("data-session-id");
+    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await expect(composer).toHaveValue("");
+    await expect(composer).toBeFocused();
+    // Exceed the four-session idle observation budget. The command-only
+    // identity must release its runtime, then reopen without a disk transcript.
+    for (let index = 0; index < 5; index += 1) {
+      await composer.pressSequentially(`Initialize fixture session ${index}`);
+      await expect(composer).toHaveValue(`Initialize fixture session ${index}`);
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(page.getByText("Fixture session ready", { exact: true })).toBeVisible();
+      await expect(composer).toHaveValue("");
+      await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+      await expect(composer).toBeFocused();
+    }
+    expect(
+      (await readdir(cakeHome, { recursive: true })).some(
+        (path) => path.endsWith(".jsonl") && path.includes(commandSessionId!),
+      ),
+    ).toBe(false);
+    await page.locator(`.session-item[data-session-id='${commandSessionId}'] .session-row`).click();
+    await expect(page.locator(".session-item.active")).toHaveAttribute(
+      "data-session-id",
+      commandSessionId!,
+    );
+    await composer.click();
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially("/mcp login oauth");
+    await expect(composer).toHaveValue("/mcp login oauth");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Send", exact: true }).click();
     const redirectInput = page.getByPlaceholder("http://127.0.0.1:.../callback?code=...");
     await expect(redirectInput).toBeVisible();
@@ -152,6 +183,33 @@ export default (pi) => {
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByText("Packaged MCP script finished", { exact: true })).toBeVisible();
     expect(server.calls()).toBe(1);
+    const transcripts = (await readdir(cakeHome, { recursive: true })).filter(
+      (path) => path.endsWith(".jsonl") && path.includes(commandSessionId!),
+    );
+    expect(transcripts).toHaveLength(1);
+    const entries = (await readFile(join(cakeHome, transcripts[0]!), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const userMessages = entries.filter(
+      (entry) => entry.type === "message" && entry.message.role === "user",
+    );
+    expect(userMessages).toHaveLength(1);
+    expect(userMessages[0].message.content).toEqual([{ type: "text", text: "Run the MCP script" }]);
+
+    // Commands in an established conversation and ordinary first-message
+    // promotion retain their existing paths.
+    await composer.fill("/mcp");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByText(/oauth: connected/).last()).toBeVisible();
+    await expect(composer).toHaveValue("");
+    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially("Initialize fixture session");
+    await expect(composer).toHaveValue("Initialize fixture session");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByText("Fixture session ready", { exact: true })).toBeVisible();
     expect(errors).toEqual([]);
   } finally {
     await application.close();

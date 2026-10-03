@@ -194,6 +194,11 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     return this.stagedSessionIds.includes(sessionId);
   }
 
+  /** A renderer-known identity whose transcript may not exist yet. */
+  canCreateRuntime(sessionId: string) {
+    return this.isTemporary(sessionId) || this.unlistedNewSessionIds.includes(sessionId);
+  }
+
   isTemporary(sessionId: string) {
     return this.temporarySessionIds.includes(sessionId);
   }

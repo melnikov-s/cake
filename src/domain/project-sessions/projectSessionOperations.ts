@@ -121,6 +121,7 @@ const restoreIfResolved = Effect.fn("ProjectSessions.restoreIfResolved")(functio
 const isSessionResolvedAt = Effect.fn("ProjectSessions.isSessionResolvedAt")(function* (
   target: ProjectSessionTarget,
   location: ProjectSessionLocation,
+  allowCreate = false,
 ) {
   const namespace = yield* resolutionNamespace(target.sessionId, archiveLocation(location)).pipe(
     asError("observe"),
@@ -134,7 +135,7 @@ const isSessionResolvedAt = Effect.fn("ProjectSessions.isSessionResolvedAt")(fun
   });
   // A new runtime can accept its first turn before its JSONL is discoverable.
   // It accounts for that missing-file case, but never overrides root resolution.
-  if (activeRuntime) return false;
+  if (activeRuntime || allowCreate) return false;
   return yield* new ProjectSessionError({
     operation: "observe",
     message: "That session is no longer available",
@@ -143,12 +144,14 @@ const isSessionResolvedAt = Effect.fn("ProjectSessions.isSessionResolvedAt")(fun
 
 const isSessionResolved = Effect.fn("ProjectSessions.isSessionResolved")(function* (
   target: ProjectSessionTarget,
+  allowCreate = false,
 ) {
-  return yield* isSessionResolvedAt(target, yield* findLocation(target));
+  return yield* isSessionResolvedAt(target, yield* findLocation(target), allowCreate);
 });
 
 export const observeConversation = Effect.fn("ProjectSessions.observeConversation")(function* (
   target: ProjectSessionTarget,
+  allowCreate = false,
 ) {
   const catalogs = yield* SessionCatalogChanges;
   const family = yield* (yield* SessionFamilyStorage)
@@ -157,7 +160,7 @@ export const observeConversation = Effect.fn("ProjectSessions.observeConversatio
   const authoritySessionId = family?.parentSessionId ?? target.sessionId;
   const resolvedStates = catalogs
     .initialThenChanges(
-      Stream.fromEffect(isSessionResolved(target)).pipe(
+      Stream.fromEffect(isSessionResolved(target, allowCreate)).pipe(
         Stream.map((resolved) => ({ _tag: "InitialResolved" as const, resolved })),
       ),
     )
@@ -169,7 +172,7 @@ export const observeConversation = Effect.fn("ProjectSessions.observeConversatio
                 item.sessionId === authoritySessionId) ||
               (item._tag === "ProjectSessionsTransitioned" &&
                 item.sessions.some(({ sessionId }) => sessionId === authoritySessionId))
-            ? isSessionResolved(target)
+            ? isSessionResolved(target, allowCreate)
             : Effect.succeed(undefined),
       ),
       Stream.filter((resolved): resolved is boolean => resolved !== undefined),
@@ -184,8 +187,21 @@ export const observeConversation = Effect.fn("ProjectSessions.observeConversatio
         : Stream.unwrap(
             Effect.gen(function* () {
               const location = yield* findLocation(target);
+              // Observation owns the lease before a command-only first turn can settle.
+              // Reopening a known new identity must still prefer Pi's persisted transcript.
+              const persisted = allowCreate
+                ? yield* (yield* CakeSessionRuntimes)
+                    .catalogEntry(
+                      {
+                        workingDirectory: location.workingDirectory,
+                        sessionDirectory: location.sessionDirectory,
+                      },
+                      target.sessionId,
+                    )
+                    .pipe(asError("observe"))
+                : undefined;
               const live = Stream.unwrap(
-                acquireTarget(location, target.sessionId, false).pipe(
+                acquireTarget(location, target.sessionId, allowCreate && !persisted).pipe(
                   Effect.map((handle) =>
                     observeConversationUpdates(handle).pipe(
                       Stream.tap((update) =>
@@ -204,7 +220,13 @@ export const observeConversation = Effect.fn("ProjectSessions.observeConversatio
                 ),
               );
               const worktrees = yield* ManagedWorktrees;
-              if (!(yield* worktrees.hasDeferredSetup(location.workingDirectory))) return live;
+              // A new identity has no disk preview; readiness must come from
+              // the live runtime, after checkout setup has completed.
+              if (
+                (allowCreate && !persisted) ||
+                !(yield* worktrees.hasDeferredSetup(location.workingDirectory))
+              )
+                return live;
               const preview = yield* inspect(target);
               return Stream.succeed({
                 _tag: "Snapshot" as const,

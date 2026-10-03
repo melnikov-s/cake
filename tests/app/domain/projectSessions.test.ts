@@ -217,6 +217,7 @@ const makeLayer = (
     onLocations?(options?: { readonly includeInactive?: boolean }): void;
     locations?: ReadonlyArray<ProjectSessionLocation>;
     onRuntimeOptions?(newSession: boolean): void;
+    runtime?(options: CakeSessionRuntimeOptions): CakeSessionRuntime;
     prompt?(): Promise<void>;
     onToolCompact?(): void;
     onForkTitle?(title: string): void;
@@ -368,6 +369,7 @@ const makeLayer = (
       Effect.sync(() => {
         hooks.onCreateRuntime?.();
         hooks.onRuntimeOptions?.(options.newSession ?? false);
+        if (hooks.runtime) return hooks.runtime(options);
         return fakeRuntime(
           options,
           hooks.prompt,
@@ -2365,6 +2367,152 @@ describe("Project Sessions domain", () => {
       ),
     );
   });
+
+  it.effect(
+    "observation retains a command-only new identity across start, commands, and its first message",
+    () => {
+      let creations = 0;
+      let disposals = 0;
+      const inputs: string[] = [];
+      return Effect.gen(function* () {
+        const ready = yield* Deferred.make<void>();
+        const settled = yield* Queue.unbounded<void>();
+        const stream = yield* projectSessionOperations.observeConversation(
+          { sessionId: "session-1", workingDirectory: "/project" },
+          true,
+        );
+        const observation = yield* stream.pipe(
+          Stream.runForEach((update) =>
+            update._tag === "Snapshot"
+              ? Deferred.succeed(ready, undefined)
+              : update.event._tag === "TurnSettled"
+                ? Queue.offer(settled, undefined)
+                : Effect.void,
+          ),
+          Effect.forkChild,
+        );
+        yield* Deferred.await(ready);
+        yield* projectSessionOperations
+          .start({
+            sessionId: "session-1",
+            workingDirectory: "/project",
+            text: "/mcp",
+            attachments: [],
+            renderUserMessageAsMarkdown: false,
+          })
+          .pipe(Effect.scoped);
+        yield* Queue.take(settled);
+        for (const text of ["/mcp login fixture", "First normal message"]) {
+          yield* sessionChats
+            .deliver(
+              { sessionId: "session-1", text, attachments: [], renderUserMessageAsMarkdown: false },
+              "prompt",
+            )
+            .pipe(Effect.scoped);
+          yield* Queue.take(settled);
+        }
+        assert.deepEqual(inputs, ["/mcp", "/mcp login fixture", "First normal message"]);
+        assert.equal(creations, 1);
+        assert.equal(disposals, 0);
+        yield* Fiber.interrupt(observation);
+        assert.equal(disposals, 1);
+        // Leaving and later reopening follows scoped observation policy: no
+        // leaked lease and a known still-unpersisted identity can start again.
+        const reopened = yield* projectSessionOperations.observeConversation(
+          { sessionId: "session-1", workingDirectory: "/project" },
+          true,
+        );
+        const updates = yield* reopened.pipe(Stream.take(1), Stream.runCollect);
+        assert.equal(updates[0]?._tag, "Snapshot");
+        if (updates[0]?._tag === "Snapshot") assert.deepEqual(updates[0].snapshot.parts, []);
+        assert.equal(creations, 2);
+        assert.equal(disposals, 2);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            sessionExists: false,
+            runtime: (options) => {
+              creations += 1;
+              return {
+                ...fakeRuntime(options),
+                snapshot: async () => ({ ...snapshot, parts: [], sessionListed: false }),
+                prompt: async (text) => {
+                  inputs.push(text);
+                },
+                dispose: async () => {
+                  disposals += 1;
+                },
+              };
+            },
+          }),
+        ),
+      );
+    },
+  );
+
+  it.effect(
+    "new command observation waits for checkout setup rather than inspecting a nonexistent transcript",
+    () =>
+      Effect.gen(function* () {
+        const setupEntered = yield* Deferred.make<void>();
+        const setupReady = yield* Deferred.make<void>();
+        let created = 0;
+        let inspected = 0;
+        yield* Effect.gen(function* () {
+          const updates = yield* projectSessionOperations.observeConversation(
+            { sessionId: "session-1", workingDirectory: "/project" },
+            true,
+          );
+          const observation = yield* updates.pipe(
+            Stream.take(1),
+            Stream.runCollect,
+            Effect.forkChild,
+          );
+          yield* Deferred.await(setupEntered);
+          assert.equal(created, 0);
+          assert.equal(inspected, 0);
+          yield* Deferred.succeed(setupReady, undefined);
+          const result = yield* Fiber.join(observation);
+          assert.equal(result[0]?._tag, "Snapshot");
+          assert.equal(created, 1);
+          assert.equal(inspected, 0);
+        }).pipe(
+          Effect.provide(
+            makeLayer(undefined, {
+              sessionExists: false,
+              deferredWorktreeSetup: Deferred.succeed(setupEntered, undefined).pipe(
+                Effect.andThen(Deferred.await(setupReady)),
+              ),
+              onCreateRuntime: () => {
+                created += 1;
+              },
+              onInspect: () => {
+                inspected += 1;
+              },
+            }),
+          ),
+        );
+      }),
+  );
+
+  it.effect(
+    "a known new identity reopens Pi's persisted transcript rather than creating an empty replacement",
+    () => {
+      const modes: boolean[] = [];
+      return Effect.gen(function* () {
+        const stream = yield* projectSessionOperations.observeConversation(
+          { sessionId: "session-1" },
+          true,
+        );
+        const updates = yield* stream.pipe(Stream.take(1), Stream.runCollect);
+        assert.deepEqual(modes, [false]);
+        if (updates[0]?._tag === "Snapshot")
+          assert.deepEqual(updates[0].snapshot.parts, JSON.parse(JSON.stringify(snapshot.parts)));
+      }).pipe(
+        Effect.provide(makeLayer(undefined, { onRuntimeOptions: (mode) => modes.push(mode) })),
+      );
+    },
+  );
 
   it.effect("emits a Cake snapshot and returns an accepted Turn ID", () =>
     Effect.gen(function* () {

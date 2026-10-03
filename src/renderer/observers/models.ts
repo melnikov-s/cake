@@ -63,7 +63,10 @@ import { applyManagedWorktreeCatalogUpdate } from "../reducers/WorktreeCatalogRe
 import { applyWorktreeOperationCatalogUpdate } from "../reducers/WorktreeOperationReducer";
 import type { StreamFailureAction } from "./observe-stream";
 
-type ObservedProjectSessionTarget = ProjectSessionTarget & { readonly workingDirectory: string };
+type ObservedProjectSessionTarget = ProjectSessionTarget & {
+  readonly workingDirectory: string;
+  readonly allowCreate?: boolean;
+};
 
 interface ModelSource {
   readonly projection: RootProjection;
@@ -104,7 +107,7 @@ type ModelInput = {
   readonly cakeChatCatalog: CakeChatCatalog;
   readonly cakeChatCatalogQueries?: ReadonlyArray<CakeChatCatalogQuery>;
   readonly projectSessions: ReadonlyArray<{
-    target: ProjectSessionTarget;
+    target: ObservedProjectSessionTarget;
     conversation: Conversation;
     discussions: DiscussionCatalog;
     subagents: SubagentCatalog;

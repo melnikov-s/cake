@@ -628,7 +628,13 @@ The window Store hierarchy mirrors the product surfaces:
   message visible, immediately clears the staged slot so New Chat can create another
   composer, and retains a renderer-local pending catalog summary until the authoritative
   Pi-backed catalog projection catches up. It must not wait for catalog discovery or replace
-  the visible Store with a newly synchronized instance. An explicitly
+  the visible Store with a newly synchronized instance. A command-only first input attaches
+  live Conversation observation before start acceptance: Pi commands need not persist any
+  transcript, so the start/turn leases alone cannot bridge renderer promotion. The same scoped
+  observation and idle-retention policy owns these runtimes; cancelling a prepared start removes
+  its observation demand. Reopening a renderer-known unlisted identity prefers its Pi transcript
+  when one exists, otherwise it may recreate the still-empty runtime. Slash input is not projected
+  as an optimistic user message; Pi decides whether it produces a transcript entry. An explicitly
   saved draft is different: choosing Draft beside the staged chat's checkout choices
   and submitting creates a cataloged pseudo-session, stages its initial message and
   attachments in Cake window state, projects them through the shared `Chat`, and

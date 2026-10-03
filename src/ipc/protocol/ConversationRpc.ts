@@ -6,7 +6,11 @@ import { ProjectSessionTarget } from "../../domain/project-sessions/project-sess
 
 /** Validated target needed to assemble the owning Cake Session runtime profile. */
 export const ConversationObservationTarget = Schema.TaggedUnion({
-  ProjectSession: ProjectSessionTarget.fields,
+  ProjectSession: {
+    ...ProjectSessionTarget.fields,
+    /** A renderer-known new identity may not have a Pi transcript yet. */
+    allowCreate: Schema.optionalKey(Schema.Boolean),
+  },
   CakeChatSession: CakeChatTarget.fields,
 });
 export type ConversationObservationTarget = Schema.Schema.Type<

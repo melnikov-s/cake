@@ -763,6 +763,7 @@ export class RootStore extends Store<{
       .map((session) => ({
         sessionId: session.sessionId,
         workingDirectory: session.workspacePath,
+        allowCreate: this.sessionRegistry.pendingSessions.canCreateRuntime(session.sessionId),
       }));
   }
 

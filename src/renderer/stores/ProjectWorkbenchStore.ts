@@ -455,6 +455,16 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (hydrated) this.activateLoadedSession(sessionId);
     else if (existingSession) this.sessionRegistry.observationRetention.retain(sessionId);
     try {
+      // An evicted command-only identity has no transcript for main to validate.
+      // Its new observation must recreate/retain the empty runtime before open.
+      if (
+        existingSession &&
+        !hydrated &&
+        this.sessionRegistry.pendingSessions.canCreateRuntime(sessionId)
+      ) {
+        const ready = await this.waitForSessionHydration(sessionId);
+        if (!ready || this.signal.aborted || revision !== this.sessionOpenRevision) return;
+      }
       await this.client.projectSessions.open(
         { sessionId, workingDirectory: workspacePath },
         { signal: this.signal },

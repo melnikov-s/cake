@@ -1,4 +1,4 @@
-import { Store, child, createStore } from "r-state-tree";
+import { Store, child, createStore, effect as reactiveEffect } from "r-state-tree";
 import type { ProjectSessionStartInput } from "../../domain/project-sessions/project-session-data";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
@@ -243,13 +243,47 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
         ...(prepared.name !== undefined ? { name: prepared.name } : null),
         ...(labelIds.length > 0 ? { labelIds } : null),
       };
+      // Pi extension commands can complete without ever writing a transcript.
+      // Attach the scoped observation first, rather than relying on the turn's
+      // temporary lease to survive the start RPC / renderer promotion handoff.
+      if (input.text.startsWith("/")) {
+        this.props.registry.observationRetention.materialize(sessionId);
+        if (!(await this.waitForRuntime(sessionId))) {
+          this.pending.cancelSubmission(sessionId);
+          this.props.registry.observationRetention.remove(sessionId);
+          return false;
+        }
+      }
       await this.client.projectSessions.start(startInput, { signal: this.signal });
       this.pending.materialize(sessionId, prepared.path);
       return true;
     } catch (error) {
       this.pending.cancelSubmission(sessionId);
+      if (this.pending.isTemporary(sessionId))
+        this.props.registry.observationRetention.remove(sessionId);
       throw error;
     }
+  }
+
+  private waitForRuntime(sessionId: string): Promise<boolean> {
+    if (this.signal.aborted) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (ready: boolean) => {
+        if (settled) return;
+        settled = true;
+        this.signal.removeEventListener("abort", abort);
+        dispose();
+        resolve(ready);
+      };
+      const abort = () => finish(false);
+      this.signal.addEventListener("abort", abort, { once: true });
+      const dispose = reactiveEffect(() => {
+        const session = this.props.registry.findSession(sessionId);
+        if (!session || !this.pending.isTemporary(sessionId)) queueMicrotask(() => finish(false));
+        else if (session.model.observedSnapshotRevision > 0) queueMicrotask(() => finish(true));
+      });
+    });
   }
 
   request(sessionId: string) {
