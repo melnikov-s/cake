@@ -336,6 +336,9 @@ describe("CakeSessionRuntime turn controller", () => {
         { lane: "follow-up", position: 2, state: "queued", text: "Second" },
       ]);
       const firstId = initial.items[0]!.itemId;
+      expect(initial.items.map((item) => item.partId)).toEqual(
+        partIds([], [...session.getFollowUpMessages()]),
+      );
 
       const reordered = await controller.reorderPendingMessage({
         itemId: firstId,
@@ -430,6 +433,7 @@ describe("CakeSessionRuntime turn controller", () => {
       const [dropId, steerId] = partIds([], [], ["Drop me", "Steer me"]);
       expect((await controller.pendingMessages()).items).toEqual([
         expect.objectContaining({
+          partId: dropId,
           lane: "follow-up",
           position: 1,
           state: "compaction-held",
@@ -438,6 +442,7 @@ describe("CakeSessionRuntime turn controller", () => {
         expect.objectContaining({
           lane: "follow-up",
           position: 2,
+          partId: steerId,
           state: "compaction-held",
           text: "Steer me",
         }),

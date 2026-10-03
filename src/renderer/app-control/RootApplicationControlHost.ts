@@ -286,6 +286,30 @@ export function createRootApplicationControlHost(
             { signal: capabilities.signal },
           );
         }),
+      removeQueuedMessage: (sessionId, partId) =>
+        capabilities.applicationControlStore().runOperation(async () => {
+          await capabilities.prepareProjectSessionChat(sessionId);
+          return capabilities.client.sessionChats.removeQueuedMessage(
+            { sessionId, partId },
+            { signal: capabilities.signal },
+          );
+        }),
+      steerQueuedMessage: (sessionId, partId) =>
+        capabilities.applicationControlStore().runOperation(async () => {
+          await capabilities.prepareProjectSessionChat(sessionId);
+          return capabilities.client.sessionChats.steerQueuedMessage(
+            { sessionId, partId },
+            { signal: capabilities.signal },
+          );
+        }),
+      sendQueuedMessageNow: (sessionId, partId) =>
+        capabilities.applicationControlStore().runOperation(async () => {
+          await capabilities.prepareProjectSessionChat(sessionId);
+          return capabilities.client.sessionChats.sendQueuedMessageNow(
+            { sessionId, partId },
+            { signal: capabilities.signal },
+          );
+        }),
       abort: (sessionId) =>
         capabilities.applicationControlStore().runOperation(async () => {
           await capabilities.prepareProjectSessionChat(sessionId);

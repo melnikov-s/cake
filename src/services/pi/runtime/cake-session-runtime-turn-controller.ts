@@ -14,6 +14,7 @@ import {
 import {
   imageContent,
   locateQueuedMessage,
+  queuedMessageIds,
   promptText,
   shellCommandPart,
 } from "./session-projection";
@@ -423,18 +424,31 @@ export function createCakeSessionRuntimeTurnController(input: {
 
   const pendingMessages = async (): Promise<PiPendingMessages> => {
     reconcileQueue();
+    const pendingIds = queuedMessageIds(
+      "queued-pending",
+      "queued",
+      compactionQueue.map((item) => item.text),
+    );
     const laneItems = (lane: QueueLane) => {
       const delivery = lane === "steering" ? "steer" : "follow-up";
+      const queuedIds = queuedMessageIds(
+        lane === "steering" ? "queued-steering" : "queued-follow-up",
+        lane === "steering" ? "steering" : "queued",
+        lane === "steering" ? session.getSteeringMessages() : session.getFollowUpMessages(),
+      );
       return [
-        ...trackedQueue[lane].map((item) => ({
+        ...trackedQueue[lane].map((item, index) => ({
           itemId: item.itemId,
+          partId: queuedIds[index],
           state: "queued" as const,
           content: item.content,
         })),
         ...compactionQueue
-          .filter((item) => item.delivery === delivery)
-          .map((item) => ({
+          .map((item, index) => ({ item, index }))
+          .filter(({ item }) => item.delivery === delivery)
+          .map(({ item, index }) => ({
             itemId: item.itemId,
+            partId: pendingIds[index],
             state: "compaction-held" as const,
             content: item.text,
           })),
@@ -443,6 +457,7 @@ export function createCakeSessionRuntimeTurnController(input: {
         const parsed = parseCrossSessionMessage(visibleContent);
         return {
           itemId: item.itemId,
+          ...(item.partId ? { partId: item.partId } : null),
           state: item.state,
           lane,
           position: index + 1,

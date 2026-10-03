@@ -12,6 +12,7 @@ export interface PiQueuedMessages extends Schema.Schema.Type<typeof PiQueuedMess
 
 const PiPendingMessage = Schema.Struct({
   itemId: Schema.String.check(Schema.isUUID(4)),
+  partId: Schema.optionalKey(Schema.String),
   lane: Schema.Literals(["steering", "follow-up"]),
   position: Schema.Int.check(Schema.isGreaterThan(0)),
   state: Schema.Literals(["queued", "compaction-held"]),

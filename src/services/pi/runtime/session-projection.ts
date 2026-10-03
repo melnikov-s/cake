@@ -639,7 +639,7 @@ const queuedMessageLists: ReadonlyArray<{
 ];
 
 /** Stable projected part ids aligned with the raw queue positions; empty texts have none. */
-function queuedMessageIds(
+export function queuedMessageIds(
   idPrefix: string,
   deliveryState: "steering" | "queued",
   messages: readonly string[],

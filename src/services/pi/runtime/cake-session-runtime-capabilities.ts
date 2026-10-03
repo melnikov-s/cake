@@ -888,7 +888,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
         topic: "sessions",
         summary: "List the live pending inputs for an explicitly targeted Project Session.",
         guidance: [
-          "Items have stable process-lifetime identities. position is one-based within the named lane.",
+          "Items have stable process-lifetime itemIds and projected partIds for cancel-queued, steer-queued, and send-now. position is one-based within the named lane.",
           "Cross-session items expose plain message text plus crossSession routing and sender metadata; they do not expose transcript or tool history.",
           "The steering lane redirects an active turn at Pi's next steering boundary; follow-up starts after the active turn settles.",
         ],
@@ -934,6 +934,39 @@ export async function createCakeSessionRuntimeCapabilities(input: {
           };
           return api().reorderPendingMessage(sessionId, reorder, context.signal);
         },
+      },
+      ...(["sessions.cancel-queued", "sessions.steer-queued", "sessions.send-now"] as const).map(
+        (command) => ({
+          command,
+          topic: "sessions",
+          summary:
+            command === "sessions.cancel-queued"
+              ? "Cancel one queued input in a targeted Project Session."
+              : command === "sessions.steer-queued"
+                ? "Move one queued follow-up input to the steering lane."
+                : "Stop the active turn and send one queued input now; preserve the remaining queue.",
+          guidance: ["Call sessions.pending first and pass the item's partId (not its itemId)."],
+          inputSchema: Schema.Struct({
+            sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+            partId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+          }),
+          examples: [
+            { input: { sessionId: "child-session-id", partId: "queued-follow-up-...-1" } },
+          ],
+          result: "The target's remaining steering and follow-up queues.",
+          execute: invokeAppControl(command),
+        }),
+      ),
+      {
+        command: "sessions.clear-queue",
+        topic: "sessions",
+        summary: "Clear all steering and follow-up inputs queued in a targeted Project Session.",
+        inputSchema: Schema.Struct({
+          sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+        }),
+        examples: [{ input: { sessionId: "child-session-id" } }],
+        result: "The removed steering and follow-up queues.",
+        execute: invokeAppControl("sessions.clear-queue"),
       },
       {
         command: "sessions.abort",

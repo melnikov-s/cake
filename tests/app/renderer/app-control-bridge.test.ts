@@ -134,6 +134,12 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
         overrides.listPendingMessages ?? (async () => ({ steering: [], followUp: [] })),
       dequeuePendingMessages:
         overrides.dequeuePendingMessages ?? (async () => ({ steering: [], followUp: [] })),
+      removeQueuedMessage:
+        overrides.removeQueuedMessage ?? (async () => ({ steering: [], followUp: [] })),
+      steerQueuedMessage:
+        overrides.steerQueuedMessage ?? (async () => ({ steering: [], followUp: [] })),
+      sendQueuedMessageNow:
+        overrides.sendQueuedMessageNow ?? (async () => ({ steering: [], followUp: [] })),
       abort: overrides.abort ?? (async () => undefined),
       rename: overrides.rename ?? (async () => undefined),
       setProjectSessionsResolved: overrides.setProjectSessionsResolved ?? (async () => 0),
@@ -955,6 +961,50 @@ describe("AppControlBridge", () => {
     ).resolves.toMatchObject({ ok: true, command: "sessions.abort", status: "stopping" });
     expect(sendSessionMessage).toHaveBeenCalledWith("session-2", "Change direction", "steer");
     expect(abortSession).toHaveBeenCalledWith("session-2");
+  });
+
+  it("controls a child's individual queued inputs and clears its remaining queue", async () => {
+    const removeQueuedMessage = vi.fn(async () => ({ steering: [], followUp: ["second"] }));
+    const steerQueuedMessage = vi.fn(async () => ({ steering: ["second"], followUp: [] }));
+    const sendQueuedMessageNow = vi.fn(async () => ({ steering: [], followUp: [] }));
+    const dequeuePendingMessages = vi.fn(async () => ({ steering: ["third"], followUp: [] }));
+    const bridge = new AppControlBridge(
+      createHost({
+        sessions: () => [
+          {
+            workingDirectory: "/projects/other",
+            projectName: "Other",
+            sessionId: "child",
+            title: "Child",
+            modifiedAt: "2026-09-04T12:00:00.000Z",
+            messageCount: 2,
+            resolved: false,
+            draft: false,
+            familyParentSessionId: "parent",
+          },
+        ],
+        removeQueuedMessage,
+        steerQueuedMessage,
+        sendQueuedMessageNow,
+        dequeuePendingMessages,
+      }),
+    );
+    for (const name of [
+      "sessions.cancel-queued",
+      "sessions.steer-queued",
+      "sessions.send-now",
+    ] as const) {
+      await expect(
+        bridge.invoke({ name, arguments: { sessionId: "child", partId: "queued-follow-up-id-1" } }),
+      ).resolves.toMatchObject({ ok: true, command: name });
+    }
+    await expect(
+      bridge.invoke({ name: "sessions.clear-queue", arguments: { sessionId: "child" } }),
+    ).resolves.toMatchObject({ ok: true, messages: { steering: ["third"] } });
+    expect(removeQueuedMessage).toHaveBeenCalledWith("child", "queued-follow-up-id-1");
+    expect(steerQueuedMessage).toHaveBeenCalledWith("child", "queued-follow-up-id-1");
+    expect(sendQueuedMessageNow).toHaveBeenCalledWith("child", "queued-follow-up-id-1");
+    expect(dequeuePendingMessages).toHaveBeenCalledWith("child");
   });
 
   it("renames an explicitly targeted session and reports the committed title", async () => {

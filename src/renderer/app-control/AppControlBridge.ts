@@ -167,6 +167,19 @@ const appControlArgumentSchemas = {
   "sessions.cancel-scheduled": Schema.Struct({ id: bounded(1, 256) }),
   "sessions.pending": sessionIdTargetSchema,
   "sessions.dequeue": sessionIdTargetSchema,
+  "sessions.cancel-queued": Schema.Struct({
+    ...sessionIdTargetSchema.fields,
+    partId: bounded(1, 256),
+  }),
+  "sessions.steer-queued": Schema.Struct({
+    ...sessionIdTargetSchema.fields,
+    partId: bounded(1, 256),
+  }),
+  "sessions.send-now": Schema.Struct({
+    ...sessionIdTargetSchema.fields,
+    partId: bounded(1, 256),
+  }),
+  "sessions.clear-queue": sessionIdTargetSchema,
   "sessions.abort": sessionIdTargetSchema,
   "sessions.rename": Schema.Struct({
     ...sessionIdTargetSchema.fields,
@@ -346,6 +359,10 @@ const appControlInvocationSchema = Schema.Union([
   invocation("sessions.cancel-scheduled"),
   invocation("sessions.pending"),
   invocation("sessions.dequeue"),
+  invocation("sessions.cancel-queued"),
+  invocation("sessions.steer-queued"),
+  invocation("sessions.send-now"),
+  invocation("sessions.clear-queue"),
   invocation("sessions.abort"),
   invocation("sessions.rename"),
   invocation("sessions.set-labels"),
@@ -540,6 +557,9 @@ export interface AppControlHost {
     cancelScheduledMessage(id: string): Promise<void>;
     listPendingMessages(sessionId: string): Promise<QueuedConversationMessages>;
     dequeuePendingMessages(sessionId: string): Promise<QueuedConversationMessages>;
+    removeQueuedMessage(sessionId: string, partId: string): Promise<QueuedConversationMessages>;
+    steerQueuedMessage(sessionId: string, partId: string): Promise<QueuedConversationMessages>;
+    sendQueuedMessageNow(sessionId: string, partId: string): Promise<QueuedConversationMessages>;
     abort(sessionId: string): Promise<void>;
     rename(sessionId: string, title: string): Promise<void>;
     setProjectSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
@@ -715,7 +735,13 @@ export type AppControlResult =
   | { ok: true; command: "sessions.cancel-scheduled"; id: string; status: "cancelled" }
   | {
       ok: true;
-      command: "sessions.pending" | "sessions.dequeue";
+      command:
+        | "sessions.pending"
+        | "sessions.dequeue"
+        | "sessions.cancel-queued"
+        | "sessions.steer-queued"
+        | "sessions.send-now"
+        | "sessions.clear-queue";
       messages: QueuedConversationMessages;
     }
   | { ok: true; command: "sessions.abort"; target: SessionTarget; status: "stopping" }
@@ -1122,6 +1148,30 @@ const modelControlOperations = [
     "sessions",
     "Clear and return all steering and follow-up messages queued in one explicitly targeted Project Session. To edit queued content, dequeue it, modify the returned text, then use sessions.send.",
     appControlArgumentSchemas["sessions.dequeue"],
+  ),
+  operation(
+    "sessions.cancel-queued",
+    "sessions",
+    "Cancel one queued message in an explicitly targeted Project Session by its projected partId.",
+    appControlArgumentSchemas["sessions.cancel-queued"],
+  ),
+  operation(
+    "sessions.steer-queued",
+    "sessions",
+    "Move one queued follow-up message to the steering lane of an explicitly targeted Project Session by its projected partId.",
+    appControlArgumentSchemas["sessions.steer-queued"],
+  ),
+  operation(
+    "sessions.send-now",
+    "sessions",
+    "Stop the active turn and send one queued message now in an explicitly targeted Project Session by its projected partId. Other queued messages remain queued.",
+    appControlArgumentSchemas["sessions.send-now"],
+  ),
+  operation(
+    "sessions.clear-queue",
+    "sessions",
+    "Clear and return all steering and follow-up messages queued in one explicitly targeted Project Session.",
+    appControlArgumentSchemas["sessions.clear-queue"],
   ),
   operation(
     "sessions.abort",
@@ -1646,11 +1696,38 @@ export class AppControlBridge {
         command: invocation.name,
         messages: await this.host.sessions.listPendingMessages(sessionId),
       };
-    if (invocation.name === "sessions.dequeue")
+    if (invocation.name === "sessions.dequeue" || invocation.name === "sessions.clear-queue")
       return {
         ok: true,
         command: invocation.name,
         messages: await this.host.sessions.dequeuePendingMessages(sessionId),
+      };
+    if (invocation.name === "sessions.cancel-queued")
+      return {
+        ok: true,
+        command: invocation.name,
+        messages: await this.host.sessions.removeQueuedMessage(
+          sessionId,
+          invocation.arguments.partId,
+        ),
+      };
+    if (invocation.name === "sessions.steer-queued")
+      return {
+        ok: true,
+        command: invocation.name,
+        messages: await this.host.sessions.steerQueuedMessage(
+          sessionId,
+          invocation.arguments.partId,
+        ),
+      };
+    if (invocation.name === "sessions.send-now")
+      return {
+        ok: true,
+        command: invocation.name,
+        messages: await this.host.sessions.sendQueuedMessageNow(
+          sessionId,
+          invocation.arguments.partId,
+        ),
       };
     if (invocation.name === "sessions.info") {
       const preview = known.draft ? undefined : await this.host.sessions.inspect(sessionId);
