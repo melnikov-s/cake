@@ -8,6 +8,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { registerAgentDirectoryExtensionProviders } from "./extension-providers";
+import { createNestedToolActivityProjection } from "./nested-tool-activity-projection";
 import { canonicalPathIsInsideRoot } from "./workspace-paths";
 import type {
   ConversationSnapshot,
@@ -199,7 +200,13 @@ export async function runIsolatedSession(
           outputContent?: ToolOutputContent[];
         }
       >();
+      const nestedActivity = createNestedToolActivityProjection((part) =>
+        options.onEvent?.({ type: "part-updated", part }),
+      );
       const unsubscribe = session.subscribe((event) => {
+        if (event.type === "message_end" && event.message.role === "toolResult")
+          nestedActivity.record(event.message.toolCallId, event.message.nestedCalls);
+        if (event.type === "agent_settled") nestedActivity.settle();
         for (const part of projectLiveMessage(event)) {
           if (part.kind !== "text" || part.role !== "user")
             options.onEvent?.({ type: "part-updated", part });
@@ -211,16 +218,16 @@ export async function runIsolatedSession(
             filePath: toolFilePath(event.toolName, event.args),
           };
           activeToolCalls.set(event.toolCallId, call);
-          options.onEvent?.({
-            type: "part-updated",
-            part: {
+          nestedActivity.project(
+            {
               id: boundedProjectionKey(`tool-${event.toolCallId}`),
               kind: "tool",
               name: event.toolName,
               ...call,
               state: "running",
             },
-          });
+            event.parentToolCallId,
+          );
         }
         if (event.type === "tool_execution_update") {
           const call = activeToolCalls.get(event.toolCallId) ?? {
@@ -233,9 +240,8 @@ export async function runIsolatedSession(
           const outputContent = toolResultOutputContent(event.partialResult) ?? call.outputContent;
           const nextCall = diff || outputContent ? { ...call, diff, outputContent } : call;
           activeToolCalls.set(event.toolCallId, nextCall);
-          options.onEvent?.({
-            type: "part-updated",
-            part: {
+          nestedActivity.project(
+            {
               id: boundedProjectionKey(`tool-${event.toolCallId}`),
               kind: "tool",
               name: event.toolName,
@@ -243,14 +249,14 @@ export async function runIsolatedSession(
               output: formatToolResult(event.partialResult),
               state: "running",
             },
-          });
+            event.parentToolCallId,
+          );
         }
         if (event.type === "tool_execution_end") {
           const call = activeToolCalls.get(event.toolCallId);
           activeToolCalls.delete(event.toolCallId);
-          options.onEvent?.({
-            type: "part-updated",
-            part: {
+          nestedActivity.project(
+            {
               id: boundedProjectionKey(`tool-${event.toolCallId}`),
               kind: "tool",
               name: event.toolName,
@@ -262,7 +268,8 @@ export async function runIsolatedSession(
               outputContent: toolResultOutputContent(event.result) ?? call?.outputContent,
               state: event.isError ? "error" : "success",
             },
-          });
+            event.parentToolCallId,
+          );
         }
         if (event.type === "message_end" && event.message.role === "assistant") {
           response = textFromContent(event.message.content).trim();
@@ -280,6 +287,7 @@ export async function runIsolatedSession(
         failure ||= error instanceof Error ? error.message : String(error);
       } finally {
         unsubscribe();
+        nestedActivity.clear();
       }
       if (!options.ephemeral && !session.sessionFile)
         throw new Error(`The ${options.modelPurpose} session was not persisted`);

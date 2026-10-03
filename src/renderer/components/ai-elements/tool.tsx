@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
-import type { ToolOutputContent, UiPart } from "../../../ipc/session-contract";
+import type { NestedToolCall, ToolOutputContent, UiPart } from "../../../ipc/session-contract";
 import type { SourceLocation } from "../../../ipc/source-location";
 import type { ChatStore } from "../../stores/ChatStore";
 import { toolOperationName } from "../../../utils/cake-tool";
@@ -30,9 +30,16 @@ function toolCode(value: string, className: string, streaming: boolean) {
   );
 }
 
+// A tool can replace its partial output with a different final result. Reset only
+// that Markdown parser at settlement so Streamdown does not retain the partial fence.
 function toolText(value: string, className: string, language: string, streaming: boolean) {
   return (
-    <Markdown className={className} streaming={streaming} mutableCode={streaming}>
+    <Markdown
+      key={streaming ? "live" : "settled"}
+      className={className}
+      streaming={streaming}
+      mutableCode={streaming}
+    >
       {fencedCode(value, language)}
     </Markdown>
   );
@@ -50,7 +57,7 @@ function toolOutputContent(
         className={className}
         streaming={streaming}
         mutableCode={streaming}
-        key={`text-${index}`}
+        key={`text-${index}-${streaming ? "live" : "settled"}`}
       >
         {fencedCode(item.text, language)}
       </Markdown>
@@ -117,7 +124,7 @@ export const ToolRunTimer = observer(function ToolRunTimer({
   );
 });
 
-export function Tool({
+export const Tool = observer(function Tool({
   part,
   onOpenSourceLocation,
   timer,
@@ -128,6 +135,8 @@ export function Tool({
   live = false,
   omitDiff,
   workspacePath,
+  activity,
+  nestedExpansion,
 }: {
   part: Extract<UiPart, { kind: "tool" }>;
   onOpenSourceLocation?: (location: SourceLocation) => void | Promise<void>;
@@ -143,6 +152,9 @@ export function Tool({
   omitDiff?: boolean;
   /** Project root used only to shorten displayed in-project paths. */
   workspacePath?: string;
+  /** Child metadata is separate from an ordinary transcript tool result. */
+  activity?: NestedToolCall;
+  nestedExpansion?: (partId: string) => { open: boolean; toggle(): void };
 }) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = expansion ? expansion.open : uncontrolledOpen;
@@ -155,7 +167,7 @@ export function Tool({
     if (expansion) expansion.toggle();
     else setUncontrolledOpen((value) => !value);
   };
-  if (toolOperationName(part).startsWith("subagents."))
+  if (!activity && toolOperationName(part).startsWith("subagents."))
     return (
       <SubagentTool
         part={part}
@@ -175,8 +187,15 @@ export function Tool({
   const title = toolDisplayTitle(part, Boolean(path), workspacePath);
   const read = part.name === "read";
   const bash = part.name === "bash" && part.input ? part.input : undefined;
+  const script = part.name === "codemode" && part.input ? part.input : undefined;
   const hasDetails = Boolean(
-    diff || bash || part.input || part.output || part.outputContent?.length,
+    diff ||
+    bash ||
+    part.input ||
+    part.output !== undefined ||
+    part.outputContent?.length ||
+    part.nestedCalls ||
+    activity?.outputAvailability === "unavailable",
   );
   return (
     <div data-slot="tool" className="rounded-xl border border-border bg-muted/35 px-4 py-3">
@@ -185,6 +204,7 @@ export function Tool({
           <DisclosureTrigger
             className="flex-1"
             title={title}
+            subtitle={part.nestedCalls ? `${part.nestedCalls.calls.length} tool calls` : undefined}
             showChevron={false}
             status={
               part.state === "running"
@@ -215,11 +235,25 @@ export function Tool({
           {displayPath && <CopyFilePathButton path={displayPath} />}
         </div>
         {timer}
+        {activity?.durationMs !== undefined && (
+          <span
+            className="font-mono text-[10px] tabular-nums text-muted-foreground"
+            aria-label="elapsed time"
+          >
+            {formatElapsed(activity.durationMs)}
+          </span>
+        )}
       </div>
       {/* Once opened, keep details mounted so later toggles do not feed Streamdown's passive update back into Virtuoso measurement. */}
       {hasDetails && detailsMounted && (
         <div data-slot="tool-details" className="mt-1" hidden={!open}>
-          {read ? (
+          {activity?.inputUnavailable && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Arguments not recorded
+              {activity.argumentsBytes !== undefined ? ` (${activity.argumentsBytes} bytes)` : ""}.
+            </p>
+          )}
+          {read && !activity ? (
             readToolCode(part, part.state === "running")
           ) : diff ? (
             <DiffView
@@ -233,6 +267,11 @@ export function Tool({
               highlightCode={part.state !== "running"}
               onOpenSourceLocation={onOpenSourceLocation}
             />
+          ) : script ? (
+            <div className="mt-3">
+              <p className="text-xs text-muted-foreground">Script</p>
+              {toolText(script, "mt-1 text-xs", "javascript", part.state === "running")}
+            </div>
           ) : bash ? (
             <Markdown
               className="mt-3 text-xs"
@@ -244,16 +283,54 @@ export function Tool({
           ) : (
             part.input && toolCode(part.input, "mt-3 text-xs", part.state === "running")
           )}
+          {script && part.output !== undefined && (
+            <p className="mt-3 text-xs text-muted-foreground">Returned output</p>
+          )}
           {!diff &&
-            !read &&
+            (!read || activity) &&
             toolOutput(
               part,
               "mt-3 border-t border-border pt-3 text-xs",
               "text",
               part.state === "running",
             )}
+          {activity?.errorSummary && (
+            <div className="mt-3 text-xs">
+              <p className="text-muted-foreground">Recorded error summary</p>
+              {toolText(activity.errorSummary, "mt-1 text-xs", "text", false)}
+            </div>
+          )}
+          {activity?.outputAvailability === "unavailable" && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Output unavailable in saved history. Pi records child-call metadata, not returned
+              output.
+            </p>
+          )}
+          {part.nestedCalls && (
+            <section
+              className="mt-3 grid gap-2 border-t border-border pt-3"
+              aria-label="Nested tool activity"
+            >
+              <p className="text-xs text-muted-foreground">
+                Tool calls
+                {part.nestedCalls.complete === false
+                  ? " · Incomplete record (calls, arguments, or completion may be missing)"
+                  : ""}
+              </p>
+              {part.nestedCalls.calls.map((call) => (
+                <Tool
+                  key={call.id}
+                  part={{ kind: "tool", ...call }}
+                  activity={call}
+                  onOpenSourceLocation={onOpenSourceLocation}
+                  workspacePath={workspacePath}
+                  expansion={nestedExpansion?.(call.id)}
+                />
+              ))}
+            </section>
+          )}
         </div>
       )}
     </div>
   );
-}
+});

@@ -14,6 +14,7 @@ import {
   toolResultOutputContent,
 } from "./session-projection";
 import type { ResponseRetryNotice } from "./response-retry";
+import { createNestedToolActivityProjection } from "./nested-tool-activity-projection";
 
 export type RuntimeProjectionEvent =
   | { type: "part-updated"; sessionId: string; part: UiPart }
@@ -83,6 +84,9 @@ export function createCakeSessionRuntimeEventProjection(input: {
       outputContent?: ToolOutputContent[];
     }
   >();
+  const nestedActivity = createNestedToolActivityProjection((part) =>
+    emit({ type: "part-updated", sessionId, part }),
+  );
   const pendingUserPresentations: PendingUserPresentation[] = [];
   const projectLiveMessage = createLiveMessageProjector({
     deferProviderErrors: true,
@@ -218,7 +222,11 @@ export function createCakeSessionRuntimeEventProjection(input: {
       for (const part of projectLiveMessage(event)) emit({ type: "part-updated", sessionId, part });
     }
 
-    if (event.type === "message_end") queueMicrotask(publishUsageUpdate);
+    if (event.type === "message_end") {
+      queueMicrotask(publishUsageUpdate);
+      if (event.message.role === "toolResult")
+        nestedActivity.record(event.message.toolCallId, event.message.nestedCalls);
+    }
 
     if (event.type === "tool_execution_start") {
       const call = {
@@ -228,17 +236,16 @@ export function createCakeSessionRuntimeEventProjection(input: {
         filePath: toolFilePath(event.toolName, event.args),
       };
       activeToolCalls.set(event.toolCallId, call);
-      emit({
-        type: "part-updated",
-        sessionId,
-        part: {
+      nestedActivity.project(
+        {
           id: boundedProjectionKey(`tool-${event.toolCallId}`),
           kind: "tool",
           name: event.toolName,
           ...call,
           state: "running",
         },
-      });
+        event.parentToolCallId,
+      );
     }
     if (event.type === "tool_execution_update") {
       const call = activeToolCalls.get(event.toolCallId) ?? {
@@ -252,10 +259,8 @@ export function createCakeSessionRuntimeEventProjection(input: {
       const outputContent = toolResultOutputContent(event.partialResult) ?? call.outputContent;
       const nextCall = diff || outputContent ? { ...call, diff, outputContent } : call;
       activeToolCalls.set(event.toolCallId, nextCall);
-      emit({
-        type: "part-updated",
-        sessionId,
-        part: {
+      nestedActivity.project(
+        {
           id: boundedProjectionKey(`tool-${event.toolCallId}`),
           kind: "tool",
           name: event.toolName,
@@ -263,15 +268,14 @@ export function createCakeSessionRuntimeEventProjection(input: {
           output: formatToolResult(event.partialResult),
           state: "running",
         },
-      });
+        event.parentToolCallId,
+      );
     }
     if (event.type === "tool_execution_end") {
       const call = activeToolCalls.get(event.toolCallId);
       activeToolCalls.delete(event.toolCallId);
-      emit({
-        type: "part-updated",
-        sessionId,
-        part: {
+      nestedActivity.project(
+        {
           id: boundedProjectionKey(`tool-${event.toolCallId}`),
           kind: "tool",
           name: event.toolName,
@@ -286,7 +290,8 @@ export function createCakeSessionRuntimeEventProjection(input: {
           outputContent: toolResultOutputContent(event.result) ?? call?.outputContent,
           state: event.isError ? "error" : "success",
         },
-      });
+        event.parentToolCallId,
+      );
     }
     if (event.type === "auto_retry_start") {
       for (const partId of projectLiveMessage.takeLastAssistantPartIds())
@@ -334,7 +339,11 @@ export function createCakeSessionRuntimeEventProjection(input: {
       }
     }
     if (event.type === "queue_update") syncQueuedParts();
-    if (event.type === "agent_settled") emit({ type: "streaming", sessionId, streaming: false });
+    if (event.type === "agent_settled") {
+      nestedActivity.settle();
+      activeToolCalls.clear();
+      emit({ type: "streaming", sessionId, streaming: false });
+    }
   };
 
   const dispose = () => {
@@ -343,6 +352,8 @@ export function createCakeSessionRuntimeEventProjection(input: {
     usageUpdateTimer = undefined;
     assistantUpdateTimer = undefined;
     pendingAssistantUpdate = undefined;
+    activeToolCalls.clear();
+    nestedActivity.clear();
   };
 
   return {

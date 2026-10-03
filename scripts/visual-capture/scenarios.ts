@@ -1,4 +1,5 @@
 import { drawMermaidArchitecture } from "../../tests/fixtures/draw-mermaid-architecture.ts";
+import { nestedAssistant, nestedEntries } from "../../tests/fixtures/nested-tool-activity.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -1074,7 +1075,84 @@ const vscodeTerminalScenario: VisualCaptureScenario = {
   },
 };
 
+const nestedToolActivityScenario: VisualCaptureScenario = {
+  name: "nested-tool-activity",
+  description: "Script source, returned error, and metadata-only restored child tool activity",
+  states: ["script", "children"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const sessionId = "visual-assistant-markdown-code";
+    const timestamp = new Date(0).toISOString();
+    const sessionDirectory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    const entries = nestedEntries();
+    entries[0]!.parentId = "user-1";
+    await writeFile(
+      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+      `${[
+        { type: "session", version: 3, id: sessionId, timestamp, cwd: paths.project },
+        {
+          type: "message",
+          id: "user-1",
+          parentId: null,
+          timestamp,
+          message: {
+            role: "user",
+            content: "Show the script and its nested tool calls.",
+            timestamp: 0,
+          },
+        },
+        ...entries,
+        {
+          type: "message",
+          id: "final",
+          parentId: "result",
+          timestamp,
+          message: {
+            ...nestedAssistant,
+            content: [{ type: "text", text: "Script tool activity restored." }],
+            stopReason: "stop",
+            timestamp: 3,
+          },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n")}\n`,
+    );
+  },
+  async prepare(page, state) {
+    const log = page.locator('[data-slot="activity-group"]');
+    await expect(log).toBeVisible();
+    await log.locator(":scope > summary").click();
+    const parent = page.locator('[data-part-id="tool-script"]');
+    await parent.getByRole("button", { name: /^codemode/ }).click();
+    await expect(parent).toContainText("Script failed");
+    if (state === "children") {
+      const activity = parent.getByRole("region", { name: "Nested tool activity" });
+      for (const child of await activity.locator('[data-slot="tool"]').all()) {
+        await child.getByRole("button").first().click();
+        await expect(child.getByText(/Output unavailable in saved history/)).toBeVisible();
+      }
+    }
+    await log
+      .locator('[data-slot="work-log-content"]')
+      .evaluate(
+        (element, state) =>
+          element.scrollTo({ top: state === "children" ? element.scrollHeight : 0 }),
+        state,
+      );
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await log.scrollIntoViewIfNeeded();
+  },
+  region(page) {
+    return page.locator('[data-slot="activity-group"]');
+  },
+};
+
 export const visualCaptureScenarios = [
+  nestedToolActivityScenario,
   vscodeTerminalScenario,
   sourceSelectionScenario,
   sessionPluginsScenario,

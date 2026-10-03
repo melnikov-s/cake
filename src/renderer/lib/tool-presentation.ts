@@ -26,6 +26,7 @@ export function toolDisplayTitle(
   workspacePath?: string,
 ) {
   const operationName = toolOperationName(part);
+  if (part.name === "codemode") return operationName;
   const filePath = toolPath(part);
   const displayPath = filePath ? toWorkspaceRelativePath(filePath, workspacePath) : undefined;
   if (concise && filePath) return operationName;

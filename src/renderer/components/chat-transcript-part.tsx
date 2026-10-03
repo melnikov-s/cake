@@ -223,6 +223,18 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         live={live}
         omitDiff={omitToolDiff}
         workspacePath={behavior.workspacePath}
+        nestedExpansion={
+          workLogItem
+            ? (partId) => ({
+                open: behavior.store.workLogPresentation.itemOpen(partId),
+                toggle: () =>
+                  behavior.store.workLogPresentation.setItemOpen(
+                    partId,
+                    !behavior.store.workLogPresentation.itemOpen(partId),
+                  ),
+              })
+            : undefined
+        }
         expansion={
           workLogItem
             ? {

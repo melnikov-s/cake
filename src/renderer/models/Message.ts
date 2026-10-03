@@ -1,5 +1,10 @@
 import { Model, computed, id } from "r-state-tree";
-import { type Annotation, type ToolOutputContent, type UiPart } from "../../ipc/session-contract";
+import {
+  type Annotation,
+  type NestedToolCalls,
+  type ToolOutputContent,
+  type UiPart,
+} from "../../ipc/session-contract";
 import type { SourceLocation } from "../../ipc/source-location";
 
 type TextRole = Extract<UiPart, { kind: "text" }>["role"];
@@ -37,6 +42,7 @@ export class Message extends Model {
   input: string | undefined;
   output: string | undefined;
   outputContent: readonly ToolOutputContent[] | undefined;
+  nestedCalls: NestedToolCalls | undefined;
   artifactId: string | undefined;
   filePath: string | undefined;
   diff: string | undefined;
@@ -104,6 +110,7 @@ export class Message extends Model {
         this.input = part.input;
         this.output = part.output;
         this.outputContent = part.outputContent ? [...part.outputContent] : undefined;
+        this.nestedCalls = part.nestedCalls;
         this.artifactId = part.artifactId;
         this.filePath = part.filePath;
         this.diff = part.diff;
@@ -203,6 +210,7 @@ export class Message extends Model {
           input: this.input!,
           output: this.output,
           outputContent: this.outputContent,
+          nestedCalls: this.nestedCalls,
           artifactId: this.artifactId,
           filePath: this.filePath,
           diff: this.diff,

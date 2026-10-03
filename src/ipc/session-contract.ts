@@ -230,6 +230,35 @@ const toolOutputContentSchema = Schema.Union([
 export const toolOutputContentArraySchema = ipcProjectionArray(toolOutputContentSchema, 100);
 export type ToolOutputContent = typeof toolOutputContentSchema.Type;
 
+const toolActivityFields = {
+  name: ipcProjectionString(256),
+  command: Schema.optional(ipcProjectionString(256)),
+  input: boundedText,
+  output: Schema.optional(boundedText),
+  outputContent: Schema.optional(toolOutputContentArraySchema),
+  filePath: Schema.optional(stringMax(8_192)),
+  diff: Schema.optional(boundedText),
+  state: Schema.Literals(["approval", "running", "success", "error", "denied", "interrupted"]),
+};
+
+/** Display activity only: Pi persists child metadata, not child results or usage. */
+const nestedToolCallSchema = Schema.Struct({
+  ...partBase,
+  ...toolActivityFields,
+  outputAvailability: Schema.Literals(["live", "unavailable"]),
+  inputUnavailable: Schema.optionalKey(Schema.Boolean),
+  argumentsBytes: Schema.optionalKey(nonNegativeInt),
+  durationMs: Schema.optionalKey(nonNegativeInt),
+  errorSummary: Schema.optionalKey(ipcProjectionString(500)),
+});
+const nestedToolCallsSchema = Schema.Struct({
+  calls: ipcProjectionArray(nestedToolCallSchema, 256),
+  /** Absent while executing; false means Pi's durable record is incomplete. */
+  complete: Schema.optionalKey(Schema.Boolean),
+});
+export interface NestedToolCall extends Schema.Schema.Type<typeof nestedToolCallSchema> {}
+export interface NestedToolCalls extends Schema.Schema.Type<typeof nestedToolCallsSchema> {}
+
 export const uiPartSchema = Schema.Union([
   Schema.Struct({
     ...partBase,
@@ -275,16 +304,10 @@ export const uiPartSchema = Schema.Union([
     ...partBase,
     kind: Schema.Literal("tool"),
     ...workLogOrigin,
-    name: ipcProjectionString(256),
-    command: Schema.optional(ipcProjectionString(256)),
-    input: boundedText,
-    output: Schema.optional(boundedText),
-    outputContent: Schema.optional(toolOutputContentArraySchema),
+    ...toolActivityFields,
     artifactId: Schema.optional(stringRange(1, 256)),
-    filePath: Schema.optional(stringMax(8_192)),
-    diff: Schema.optional(boundedText),
     inputStreaming: Schema.optional(Schema.Boolean),
-    state: Schema.Literals(["approval", "running", "success", "error", "denied", "interrupted"]),
+    nestedCalls: Schema.optional(nestedToolCallsSchema),
     response: Schema.optional(promptCacheResponseSchema),
   }),
   Schema.Struct({

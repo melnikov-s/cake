@@ -15,6 +15,7 @@ import {
   attachmentSchema,
   toolOutputContentArraySchema,
   type Attachment,
+  type NestedToolCalls,
   type SessionTreeEntry,
   type ToolOutputContent,
   type UiPart,
@@ -60,11 +61,62 @@ export function formatUnknown(value: unknown, limit = 48_000) {
 }
 
 export function formatToolInput(toolName: string, args: unknown) {
+  if (toolName === "codemode" && typeof args === "object" && args !== null) {
+    const code = Reflect.get(args, "code");
+    if (typeof code === "string") return formatUnknown(code);
+  }
   if (toolName === "bash" && typeof args === "object" && args !== null) {
     const command = Reflect.get(args, "command");
     if (typeof command === "string") return formatUnknown(command);
   }
   return formatUnknown(args);
+}
+
+const persistedNestedToolCallsSchema = Schema.Struct({
+  calls: Schema.Array(
+    Schema.Struct({
+      id: Schema.String.check(Schema.isMinLength(1)),
+      name: Schema.String,
+      arguments: Schema.optionalKey(Schema.Record(Schema.String, Schema.Json)),
+      argumentsBytes: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+      status: Schema.Literals(["ok", "error", "unfinished"]),
+      durationMs: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+      error: Schema.optionalKey(Schema.String),
+    }),
+  ).check(Schema.isMaxLength(256)),
+  complete: Schema.Boolean,
+});
+
+interface NestedToolCallMetadata {
+  argumentsBytes?: number;
+  durationMs?: number;
+  errorSummary?: string;
+}
+
+/** Pi's summary is flat beneath the model-issued parent. Do not infer a restored tree from IDs. */
+export function projectNestedToolCalls(value: unknown): NestedToolCalls | undefined {
+  const parsed = Schema.decodeUnknownOption(persistedNestedToolCallsSchema)(value);
+  if (Option.isNone(parsed)) return undefined;
+  return {
+    complete: parsed.value.complete,
+    calls: parsed.value.calls.map((call) => {
+      const metadata: NestedToolCallMetadata = {};
+      if (call.argumentsBytes !== undefined) metadata.argumentsBytes = call.argumentsBytes;
+      if (call.durationMs !== undefined) metadata.durationMs = call.durationMs;
+      if (call.error !== undefined) metadata.errorSummary = call.error.slice(0, 500);
+      return {
+        ...metadata,
+        id: boundedProjectionKey(`tool-${call.id}`),
+        name: call.name,
+        command: call.name === "cake" ? cakeOperationCommand(call.arguments) : undefined,
+        input: call.arguments === undefined ? "" : formatToolInput(call.name, call.arguments),
+        inputUnavailable: call.arguments === undefined,
+        filePath: toolFilePath(call.name, call.arguments),
+        outputAvailability: "unavailable",
+        state: call.status === "ok" ? "success" : call.status === "error" ? "error" : "interrupted",
+      };
+    }),
+  };
 }
 
 export function shellCommandPart(input: {
@@ -495,6 +547,7 @@ function partsFromMessage(
         input: "",
         output: textFromContent(content) || formatUnknown(details),
         outputContent: projectToolOutputContent(content),
+        nestedCalls: projectNestedToolCalls(Reflect.get(message, "nestedCalls")),
         artifactId: toolArtifactId({ details }),
         diff: toolResultDiff(name, { details }),
         state: Reflect.get(message, "isError") ? "error" : "success",
