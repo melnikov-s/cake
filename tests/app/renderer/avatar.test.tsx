@@ -11,8 +11,8 @@ describe("Avatar", () => {
         <Avatar kind="session" seed="session" variant="square" labelColors={labelColors} />,
       );
       const square = host.querySelector('[data-slot="avatar"]')!;
-      expect(square.classList.contains("size-3")).toBe(true);
-      expect(square.classList.contains("rounded-[3px]")).toBe(true);
+      expect(square.classList.contains("size-2")).toBe(true);
+      expect(square.classList.contains("rounded-[2px]")).toBe(true);
       expect(square.classList.contains("bg-current")).toBe(true);
       if (labelColors.length) {
         expect(square.getAttribute("data-session-label-color")).toBe("#9a78d7");

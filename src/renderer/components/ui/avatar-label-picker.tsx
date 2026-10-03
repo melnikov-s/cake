@@ -58,7 +58,7 @@ export function AvatarLabelPicker({
           interaction={interaction}
           seed={seed}
           labelColors={selected.map((label) => label.color)}
-          className={variant === "square" ? "size-3" : "size-6"}
+          className={variant === "square" ? "size-2" : "size-6"}
         />
       </PopoverIconTrigger>
       <PopoverContent

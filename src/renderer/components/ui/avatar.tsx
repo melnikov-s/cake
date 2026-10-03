@@ -125,7 +125,7 @@ export function Avatar({
         data-resolved={resolved || undefined}
         data-session-label-color={color}
         className={cn(
-          "inline-block size-3 shrink-0 rounded-[3px] border border-current bg-current",
+          "inline-block size-2 shrink-0 rounded-[2px] border border-current bg-current",
           color ? "text-[attr(data-session-label-color_type(<color>))]" : "text-muted-foreground",
           resolved && "opacity-40",
           className,
