@@ -9,13 +9,14 @@ Authoritative primitives live in `src/renderer/components/ui/`.
 | `NavigationHighlight` | Shared moving selection and hover backgrounds across descendant navigation rows, including separate groups.                                                             |
 | `AnimatedList`        | Position transitions when keyed list items reorder; composes with `NavigationHighlight`.                                                                                |
 | `SortableItem`        | Native drag-and-drop wrapper for persistently ordered navigation items.                                                                                                 |
-| `Avatar`              | Deterministic project/session artwork; stationary 12×12 rounded sidebar squares via `variant="square"`; opt-in artwork interactions and resolution animations.          |
+| `Avatar`              | Deterministic project/session artwork; stationary 12×12 rounded session squares via `variant="square"`; opt-in artwork interactions and resolution animations.          |
 | `ThinkingBubble`      | Compact, reduced-motion-safe conversational processing indicator.                                                                                                       |
 | `StepProgress`        | Segmented progress for multi-step flows such as stepped interview forms; segments become jump targets when `onSelect` is supplied.                                      |
 
-Sidebar project and session icons use `Avatar`'s square variant by default.
-Settings → Appearance → **Show sidebar characters** opts into character artwork
-and session row interactions; the preference is persisted in the window snapshot.
+Sidebar session icons use `Avatar`'s square variant by default.
+Settings → Appearance → **Show session characters** opts into session character
+artwork and row interactions; the preference is persisted in the window snapshot.
+Project icons (generated or custom) are unchanged, including in the activity feed.
 The project/session avatar visibility switches remain independent.
 
 ## Inline links

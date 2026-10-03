@@ -4,17 +4,6 @@ import { describe, expect, it } from "vitest";
 import { Avatar } from "../../../src/renderer/components/ui/avatar";
 
 describe("Avatar", () => {
-  it("renders a 12px rounded square in the existing project color", () => {
-    const host = document.createElement("div");
-    host.innerHTML = renderToStaticMarkup(<Avatar kind="project" seed="cake" variant="square" />);
-    const square = host.querySelector('[data-slot="avatar"]')!;
-    expect(square.getAttribute("data-variant")).toBe("square");
-    expect(square.getAttribute("data-session-label-color")).toBe("#c56455");
-    expect(square.classList.contains("size-3")).toBe(true);
-    expect(square.classList.contains("rounded-[3px]")).toBe(true);
-    expect(square.classList.contains("bg-current")).toBe(true);
-  });
-
   it("colors compact session squares from labels, using neutral for unlabelled sessions", () => {
     for (const labelColors of [[], ["violet"]] as const) {
       const host = document.createElement("div");
@@ -23,6 +12,8 @@ describe("Avatar", () => {
       );
       const square = host.querySelector('[data-slot="avatar"]')!;
       expect(square.classList.contains("size-3")).toBe(true);
+      expect(square.classList.contains("rounded-[3px]")).toBe(true);
+      expect(square.classList.contains("bg-current")).toBe(true);
       if (labelColors.length) {
         expect(square.getAttribute("data-session-label-color")).toBe("#9a78d7");
       } else {

@@ -311,10 +311,9 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                     ) : source.showAvatar ? (
                       <Avatar
                         kind="project"
-                        variant={avatarVariant}
                         seed={source.avatarSeed}
                         customIcon={source.customIcon}
-                        className={charactersEnabled ? "size-3.5" : undefined}
+                        className="size-3.5"
                         aria-hidden="true"
                       />
                     ) : null}

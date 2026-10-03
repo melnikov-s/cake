@@ -30,7 +30,7 @@ const sessionBodyPlaceholder = "#abcdef";
 export interface AvatarProps extends HTMLAttributes<HTMLSpanElement> {
   kind: "project" | "session";
   seed: string;
-  /** Compact, stationary sidebar marker instead of character artwork. */
+  /** Session-only compact marker instead of character artwork; projects keep their icons. */
   variant?: "artwork" | "square";
   labelColors?: readonly SessionLabelColor[];
   customIcon?: ProjectIcon;
@@ -59,7 +59,7 @@ export function Avatar({
 }: AvatarProps) {
   const host = useRef<HTMLSpanElement>(null);
   const instanceId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const compact = variant === "square";
+  const compact = kind === "session" && variant === "square";
   const disappearing = !compact && kind === "session" && resolved;
   const [phase, setPhase] = useState<"visible" | "puff" | "gone">(
     disappearing ? "gone" : "visible",
@@ -80,15 +80,7 @@ export function Avatar({
   const interactionTarget = interaction?.target;
   const activationTarget = interaction?.activationTarget;
   const avatar = useMemo(() => {
-    if (compact) {
-      return {
-        __html: "",
-        color:
-          kind === "project"
-            ? new DiceBearAvatar(styles.project, { seed }).toJSON().options.bodyColor?.[0]
-            : undefined,
-      };
-    }
+    if (compact) return { __html: "" };
     if (kind === "project") {
       return {
         uri: new DiceBearAvatar(styles.project, {
@@ -125,17 +117,17 @@ export function Avatar({
   }, [compact, animated, kind, disappearing, avatar, interactionTarget, activationTarget]);
 
   if (compact) {
-    const color = kind === "project" ? avatar.color : mergedSessionLabelColor(labelColors ?? []);
+    const color = mergedSessionLabelColor(labelColors ?? []);
     return (
       <span
         data-slot="avatar"
         data-variant="square"
-        data-resolved={kind === "session" && resolved ? true : undefined}
+        data-resolved={resolved || undefined}
         data-session-label-color={color}
         className={cn(
           "inline-block size-3 shrink-0 rounded-[3px] border border-current bg-current",
           color ? "text-[attr(data-session-label-color_type(<color>))]" : "text-muted-foreground",
-          kind === "session" && resolved && "opacity-40",
+          resolved && "opacity-40",
           className,
         )}
         {...props}

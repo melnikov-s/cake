@@ -50,7 +50,7 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
         <SettingsToggle
           id="setting-project-avatars"
           label="Project avatars"
-          description="Show project icons in the sidebar."
+          description="Show project icons in the sidebar. Projects without a custom icon use a deterministic Slice avatar."
           checked={appearance.projectAvatarsEnabled}
           onChange={(enabled) => appearance.setProjectAvatarsEnabled(enabled)}
         />
@@ -63,8 +63,8 @@ export const SettingsAppearanceSection = observer(function SettingsAppearanceSec
         />
         <SettingsToggle
           id="setting-sidebar-characters"
-          label="Show sidebar characters"
-          description="Use character avatars instead of the small rounded squares. Off by default."
+          label="Show session characters"
+          description="Use characters instead of small squares for sidebar sessions. Project icons stay unchanged. Off by default."
           checked={appearance.sidebarCharactersEnabled}
           onChange={(enabled) => appearance.setSidebarCharactersEnabled(enabled)}
         />

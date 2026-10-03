@@ -639,14 +639,14 @@ const cakePromptsSettingsScenario: VisualCaptureScenario = {
 
 const appearanceSettingsScenario: VisualCaptureScenario = {
   name: "appearance-settings",
-  description: "Sidebar character preference in Cake Appearance settings",
+  description: "Session-only sidebar character preference in Cake Appearance settings",
   states: ["default", "characters"],
   seed: assistantMarkdownCode.seed,
   async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await page.getByRole("button", { name: "Appearance", exact: true }).click();
-    const toggle = page.getByRole("switch", { name: "Show sidebar characters" });
+    const toggle = page.getByRole("switch", { name: "Show session characters" });
     await expect(toggle).toHaveAttribute("aria-checked", "false");
     if (state === "characters") {
       await toggle.click();

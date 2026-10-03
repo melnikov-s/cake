@@ -92,8 +92,8 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
         <div
           className={cn(
             "group/proj flex h-8 w-full items-center gap-1 px-1 select-none text-muted-foreground",
-            focusMode && "h-11 gap-2 px-1.5 text-foreground [&_svg]:size-5",
-            focusMode && appearance.sidebarCharactersEnabled && "[&_[data-slot=avatar]]:size-7",
+            focusMode &&
+              "h-11 gap-2 px-1.5 text-foreground [&_[data-slot=avatar]]:size-7 [&_svg]:size-5",
           )}
           title={path}
         >
@@ -123,7 +123,6 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           {appearance.projectAvatarsEnabled && (
             <Avatar
               kind="project"
-              variant={appearance.sidebarCharactersEnabled ? "artwork" : "square"}
               seed={projects.nameForPath(path)}
               customIcon={projects.find(path)?.settings?.icon}
               title={`Avatar for ${projects.nameForPath(path)}`}
@@ -239,11 +238,11 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
           className={cn(
             "mt-0.5 flex flex-col space-y-0.5 pl-4",
             focusMode && "mt-1 gap-1 pl-5",
-            // Center session squares on the project marker's column.
+            // Center session squares on the unchanged project icon's column.
             !appearance.sidebarCharactersEnabled &&
               appearance.projectAvatarsEnabled &&
               appearance.sessionAvatarsEnabled &&
-              (focusMode ? "pl-8" : "pl-[22px]"),
+              (focusMode ? "pl-10" : "pl-[26px]"),
             flattenSessions && "mt-0 pl-0",
           )}
         >

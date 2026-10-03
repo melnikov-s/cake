@@ -165,7 +165,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
         settings: [
           { label: "Theme", targetId: "setting-theme", keywords: "light dark system color" },
           {
-            label: "Show sidebar characters",
+            label: "Show session characters",
             targetId: "setting-sidebar-characters",
             keywords: "avatars icons labels squares appearance",
           },

@@ -134,13 +134,15 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
     await expect(square).toHaveCSS("width", "12px");
     await expect(square).toHaveCSS("height", "12px");
     await expect(square).toHaveCSS("border-radius", "3px");
-    const projectSquare = projectGroup.locator(':scope > div [data-slot="avatar"]').first();
-    await expect(projectSquare).toHaveAttribute("data-variant", "square");
-    await expect(projectSquare).toHaveCSS("width", "12px");
-    await expect(projectSquare).toHaveCSS("height", "12px");
+    const projectIcon = projectGroup.locator(':scope > div [data-slot="avatar"]').first();
+    await expect(projectIcon).toHaveAttribute("data-variant", "artwork");
+    await expect(projectIcon).toHaveCSS("width", "20px");
+    await expect(projectIcon).toHaveCSS("height", "20px");
+    const projectImageSource = await projectIcon.locator("img").getAttribute("src");
+    expect(projectImageSource).toBeTruthy();
     const markerColumnOffset = async () => {
       const sessionBounds = (await square.boundingBox())!;
-      const projectBounds = (await projectSquare.boundingBox())!;
+      const projectBounds = (await projectIcon.boundingBox())!;
       return Math.abs(
         sessionBounds.x + sessionBounds.width / 2 - projectBounds.x - projectBounds.width / 2,
       );
@@ -149,7 +151,7 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
     await projectGroup.hover();
     await projectGroup.getByRole("button", { name: "Focus on project" }).click();
     await expect(square).toHaveCSS("width", "12px");
-    await expect(projectSquare).toHaveCSS("width", "12px");
+    await expect(projectIcon).toHaveCSS("width", "28px");
     await expect.poll(markerColumnOffset).toBeLessThan(0.5);
     await page.getByRole("button", { name: "Exit focus mode for project" }).click();
     await expect.poll(markerColumnOffset).toBeLessThan(0.5);
@@ -198,9 +200,16 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
       /^oklch\(/,
     );
 
+    await page.getByRole("button", { name: "Show activity", exact: true }).click();
+    const sourceProjectIcon = sessionItem.locator(
+      '[data-slot="session-description"] [data-slot="avatar"]',
+    );
+    await expect(sourceProjectIcon).toHaveAttribute("data-variant", "artwork");
+    await expect(sourceProjectIcon).toHaveCSS("width", "14px");
+    await expect(sourceProjectIcon.locator("img")).toHaveAttribute("src", projectImageSource!);
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await page.getByRole("button", { name: "Appearance", exact: true }).click();
-    const charactersToggle = page.getByRole("switch", { name: "Show sidebar characters" });
+    const charactersToggle = page.getByRole("switch", { name: "Show session characters" });
     await expect(charactersToggle).toHaveAttribute("aria-checked", "false");
     await charactersToggle.click();
     await expect(charactersToggle).toHaveAttribute("aria-checked", "true");
@@ -214,7 +223,11 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
       "data-variant",
       "artwork",
     );
-    await expect(projectSquare).toHaveAttribute("data-variant", "artwork");
+    await expect(sourceProjectIcon.locator("img")).toHaveAttribute("src", projectImageSource!);
+    await expect(sourceProjectIcon).toHaveCSS("width", "14px");
+    await page.getByRole("button", { name: "Show projects", exact: true }).click();
+    await expect(projectIcon).toHaveAttribute("data-variant", "artwork");
+    await expect(projectIcon.locator("img")).toHaveAttribute("src", projectImageSource!);
     await expect(selectedPicker.locator('[data-slot="session-character"]')).toBeVisible();
     await selectedPicker.click();
     await expect(page.getByRole("checkbox", { name: "In review" })).toHaveAttribute(
@@ -231,7 +244,8 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
       "data-variant",
       "square",
     );
-    await expect(projectSquare).toHaveAttribute("data-variant", "square");
+    await expect(projectIcon).toHaveAttribute("data-variant", "artwork");
+    await expect(projectIcon.locator("img")).toHaveAttribute("src", projectImageSource!);
     await expect.poll(markerColumnOffset).toBeLessThan(0.5);
 
     await expect

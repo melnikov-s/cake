@@ -5,15 +5,25 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
+import { defaultProjectSettings } from "../../../src/domain/application/application-data";
 import { SettingsAppearanceSection } from "../../../src/renderer/components/settings-appearance-section";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
-function renderAppearanceSettings(snapshot?: StoreSnapshot) {
+function renderAppearanceSettings(snapshot?: StoreSnapshot, customIcon = false) {
   const projectPath = "/cake";
   const rootFixture = createRendererStoreFixture({
-    projects: [projectRecord({ path: projectPath, name: "Cake" })],
+    projects: [
+      projectRecord({
+        path: projectPath,
+        name: "Cake",
+        settings: {
+          ...defaultProjectSettings(),
+          ...(customIcon ? { icon: { mimeType: "image/png" as const, data: "aWNvbg==" } } : {}),
+        },
+      }),
+    ],
     sessions: [
       sessionSummary({ sessionId: "session-1", title: "Appearance session", projectPath }),
     ],
@@ -56,34 +66,53 @@ function renderAppearanceSettings(snapshot?: StoreSnapshot) {
 afterEach(cleanup);
 
 describe("Appearance settings workflow", () => {
-  it("defaults to squares, switches both sidebar icon kinds, and restores the saved character preference", async () => {
-    let saved: StoreSnapshot;
-    {
-      using fixture = renderAppearanceSettings();
-      const toggle = screen.getByRole("switch", { name: "Show sidebar characters" });
-      const variants = () =>
-        Array.from(fixture.container.querySelectorAll('[data-slot="avatar"]'), (avatar) =>
-          avatar.getAttribute("data-variant"),
-        );
-      expect(toggle.getAttribute("aria-checked")).toBe("false");
-      expect(variants()).toEqual(["square", "square"]);
-      await fixture.user.click(toggle);
-      expect(toggle.getAttribute("aria-checked")).toBe("true");
-      expect(variants()).toEqual(["artwork", "artwork"]);
-      expect(fixture.container.querySelector('[data-slot="session-character"]')).not.toBeNull();
-      await fixture.user.click(toggle);
-      expect(variants()).toEqual(["square", "square"]);
-      await fixture.user.click(toggle);
-      saved = fixture.savedSnapshot();
-    }
-    using restored = renderAppearanceSettings(saved);
-    expect(
-      screen.getByRole("switch", { name: "Show sidebar characters" }).getAttribute("aria-checked"),
-    ).toBe("true");
-    expect(restored.container.querySelectorAll('[data-variant="artwork"]')).toHaveLength(2);
-    await restored.user.click(screen.getByRole("switch", { name: "Show sidebar characters" }));
-    expect(restored.container.querySelectorAll('[data-variant="square"]')).toHaveLength(2);
-  });
+  it.each([false, true])(
+    "switches only session icons and restores the saved preference (custom project icon: %s)",
+    async (customIcon) => {
+      let saved: StoreSnapshot;
+      let projectImageSource: string | null;
+      {
+        using fixture = renderAppearanceSettings(undefined, customIcon);
+        const toggle = screen.getByRole("switch", { name: "Show session characters" });
+        const projectImage = fixture.container.querySelector(
+          '[data-slot="project-group"] > div img',
+        )!;
+        projectImageSource = projectImage.getAttribute("src");
+        expect(projectImageSource).toBeTruthy();
+        if (customIcon) expect(projectImageSource).toBe("data:image/png;base64,aWNvbg==");
+        const variants = () =>
+          Array.from(fixture.container.querySelectorAll('[data-slot="avatar"]'), (avatar) =>
+            avatar.getAttribute("data-variant"),
+          );
+        expect(toggle.getAttribute("aria-checked")).toBe("false");
+        expect(variants()).toEqual(["artwork", "square"]);
+        await fixture.user.click(toggle);
+        expect(toggle.getAttribute("aria-checked")).toBe("true");
+        expect(variants()).toEqual(["artwork", "artwork"]);
+        expect(projectImage.getAttribute("src")).toBe(projectImageSource);
+        expect(fixture.container.querySelector('[data-slot="session-character"]')).not.toBeNull();
+        await fixture.user.click(toggle);
+        expect(variants()).toEqual(["artwork", "square"]);
+        expect(projectImage.getAttribute("src")).toBe(projectImageSource);
+        await fixture.user.click(toggle);
+        saved = fixture.savedSnapshot();
+      }
+      using restored = renderAppearanceSettings(saved, customIcon);
+      expect(
+        screen
+          .getByRole("switch", { name: "Show session characters" })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+      expect(restored.container.querySelectorAll('[data-variant="artwork"]')).toHaveLength(2);
+      expect(
+        restored.container
+          .querySelector('[data-slot="project-group"] > div img')
+          ?.getAttribute("src"),
+      ).toBe(projectImageSource);
+      await restored.user.click(screen.getByRole("switch", { name: "Show session characters" }));
+      expect(restored.container.querySelectorAll('[data-variant="square"]')).toHaveLength(1);
+    },
+  );
 
   it("lets users independently disable and re-enable project and session avatars", async () => {
     using fixture = renderAppearanceSettings();
