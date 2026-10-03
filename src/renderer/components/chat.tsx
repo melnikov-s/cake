@@ -343,8 +343,10 @@ export const Chat = observer(function Chat({
                   <ImagePreview
                     src={`data:${attachment.mimeType};base64,${attachment.data}`}
                     alt={attachment.name}
+                    className="h-full w-full rounded-none"
+                    imageClassName="h-full w-full object-cover"
                   />
-                  <span className="absolute inset-x-0 bottom-0 flex justify-between gap-1 overflow-hidden bg-gradient-to-t from-black/80 to-transparent px-1.5 pb-1 pt-3 font-sans text-xs text-white truncate">
+                  <span className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between gap-1 overflow-hidden bg-gradient-to-t from-black/80 to-transparent px-1.5 pb-1 pt-3 font-sans text-xs text-white truncate">
                     {attachment.name}
                   </span>
                   <IconButton

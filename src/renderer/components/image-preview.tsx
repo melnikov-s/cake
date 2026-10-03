@@ -1,16 +1,21 @@
 import { useState } from "react";
 import { FullscreenSurface } from "@/components/fullscreen-surface";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 /** Renders an image that opens in Cake's shared fullscreen surface. */
 export function ImagePreview({
   src,
   alt,
   caption,
+  className,
+  imageClassName,
 }: {
   src: string;
   alt: string;
   caption?: string;
+  className?: string;
+  imageClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -18,12 +23,15 @@ export function ImagePreview({
     <>
       <Button
         variant="ghost"
-        className="inline-block h-auto max-w-full cursor-zoom-in overflow-hidden rounded-lg p-0 leading-none hover:bg-transparent"
+        className={cn(
+          "inline-block h-auto max-w-full cursor-zoom-in overflow-hidden rounded-lg p-0 leading-none hover:bg-transparent",
+          className,
+        )}
         aria-label={`View ${alt} enlarged`}
         title="View enlarged"
         onClick={() => setOpen(true)}
       >
-        <img src={src} alt={alt} />
+        <img src={src} alt={alt} className={imageClassName} />
       </Button>
       {open ? (
         <FullscreenSurface
