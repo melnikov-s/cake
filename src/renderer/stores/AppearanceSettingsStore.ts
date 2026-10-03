@@ -6,6 +6,7 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
   @snapshot theme: "system" | "light" | "dark" = "system";
   @snapshot projectAvatarsEnabled = true;
   @snapshot sessionAvatarsEnabled = true;
+  @snapshot sidebarCharactersEnabled = false;
   @snapshot workLogViewMode: WorkLogViewMode = "auto";
   @snapshot workLogsExpansion: WorkLogsExpansion = "collapsed";
 
@@ -19,6 +20,10 @@ export class AppearanceSettingsStore extends Store<Record<string, never>> {
 
   setSessionAvatarsEnabled(enabled: boolean) {
     this.sessionAvatarsEnabled = enabled;
+  }
+
+  setSidebarCharactersEnabled(enabled: boolean) {
+    this.sidebarCharactersEnabled = enabled;
   }
 
   setWorkLogViewMode(mode: WorkLogViewMode) {

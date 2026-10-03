@@ -2,16 +2,21 @@
 
 Authoritative primitives live in `src/renderer/components/ui/`.
 
-| Component             | Responsibility                                                                                                                                                            |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ContextActionMenu`   | Accessible tab-local device action menu. Renders client-backed actions from `BrowserMenuStore`, closes on Escape/backdrop and resolves the pending action exactly once.   |
-| `NavItem`             | Accessible row action, label, description, badges, and trailing controls. Opt-in `motionFeedback` gives titles a springy hover/selection offset and press response.       |
-| `NavigationHighlight` | Shared moving selection and hover backgrounds across descendant navigation rows, including separate groups.                                                               |
-| `AnimatedList`        | Position transitions when keyed list items reorder; composes with `NavigationHighlight`.                                                                                  |
-| `SortableItem`        | Native drag-and-drop wrapper for persistently ordered navigation items.                                                                                                   |
-| `Avatar`              | Deterministic project/session artwork, opt-in disposable avatar interactions, and reduced-motion-safe smoke/character entrance animations for resolution and restoration. |
-| `ThinkingBubble`      | Compact, reduced-motion-safe conversational processing indicator.                                                                                                         |
-| `StepProgress`        | Segmented progress for multi-step flows such as stepped interview forms; segments become jump targets when `onSelect` is supplied.                                        |
+| Component             | Responsibility                                                                                                                                                          |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ContextActionMenu`   | Accessible tab-local device action menu. Renders client-backed actions from `BrowserMenuStore`, closes on Escape/backdrop and resolves the pending action exactly once. |
+| `NavItem`             | Accessible row action, label, description, badges, and trailing controls. Opt-in `motionFeedback` gives titles a springy hover/selection offset and press response.     |
+| `NavigationHighlight` | Shared moving selection and hover backgrounds across descendant navigation rows, including separate groups.                                                             |
+| `AnimatedList`        | Position transitions when keyed list items reorder; composes with `NavigationHighlight`.                                                                                |
+| `SortableItem`        | Native drag-and-drop wrapper for persistently ordered navigation items.                                                                                                 |
+| `Avatar`              | Deterministic project/session artwork; stationary 12×12 rounded sidebar squares via `variant="square"`; opt-in artwork interactions and resolution animations.          |
+| `ThinkingBubble`      | Compact, reduced-motion-safe conversational processing indicator.                                                                                                       |
+| `StepProgress`        | Segmented progress for multi-step flows such as stepped interview forms; segments become jump targets when `onSelect` is supplied.                                      |
+
+Sidebar project and session icons use `Avatar`'s square variant by default.
+Settings → Appearance → **Show sidebar characters** opts into character artwork
+and session row interactions; the preference is persisted in the window snapshot.
+The project/session avatar visibility switches remain independent.
 
 ## Inline links
 

@@ -1,4 +1,4 @@
-import { applySnapshot } from "r-state-tree";
+import { applySnapshot, type StoreSnapshot } from "r-state-tree";
 import type { ProjectRecord } from "../../../src/domain/application/application-data";
 import { mountRootStore } from "../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../src/renderer/models/RootProjection";
@@ -10,6 +10,7 @@ export interface RendererStoreFixtureOptions {
   readonly projects?: readonly ProjectRecord[];
   readonly sessions?: readonly SessionSummaryFixture[];
   readonly flushWindowState?: () => Promise<void>;
+  readonly snapshot?: StoreSnapshot;
 }
 
 /** Mounts the real renderer Store tree over real projection Models and controlled services. */
@@ -30,7 +31,7 @@ export function createRendererStoreFixture(options: RendererStoreFixtureOptions 
   });
   const root = mountRootStore(
     client,
-    { state: {}, children: {} },
+    options.snapshot ?? { state: {}, children: {} },
     options.flushWindowState ?? (async () => undefined),
     models,
   );

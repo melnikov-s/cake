@@ -90,7 +90,10 @@ test("resolves and restores the selected project session in the desktop sidebar"
       .filter({ has: page.locator(".session-resolve-action") });
     await expect(selectedSession).toHaveCount(1);
     await expect(selectedSession.locator(".session-time")).toHaveCount(1);
-    await expect(selectedSession.locator(".dbga-hop")).toHaveCount(1);
+    await expect(selectedSession.locator('[data-slot="avatar"]')).toHaveAttribute(
+      "data-variant",
+      "square",
+    );
     await expect(page.getByRole("button", { name: "Ask session assistant" })).toBeVisible();
     await selectedSession.locator(".session-resolve-action").click();
 
@@ -120,12 +123,12 @@ test("resolves and restores the selected project session in the desktop sidebar"
     await restoreAction.click();
     await expect(restoreAction).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Ask session assistant" })).toBeVisible();
-    await expect(selectedSession.locator(".dbga-hop")).toHaveCount(1);
+    await expect(selectedSession.locator('[data-slot="avatar"]')).toHaveCSS("width", "12px");
     await expect(
       page.locator(`[data-slot="sidebar"] [data-session-id='${sessionId}']`),
     ).toHaveCount(1);
     const characters = page.locator('[data-slot="session-character"]');
-    await expect(characters).toHaveCount(2);
+    await expect(characters).toHaveCount(1);
     for (const character of await characters.all()) {
       await expect(character).toHaveCSS("animation-name", "session-avatar-appear");
       // Scrub the real CSS animation rather than depending on wall-clock timing.

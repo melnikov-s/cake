@@ -26,17 +26,22 @@ describe("SettingsStore agent controls", () => {
         theme: "system",
         projectAvatarsEnabled: true,
         sessionAvatarsEnabled: true,
+        sidebarCharactersEnabled: false,
       },
     });
 
     expect(
-      settings.updateSettings({ section: "appearance", changes: { theme: "dark" } }),
+      settings.updateSettings({
+        section: "appearance",
+        changes: { theme: "dark", sidebarCharactersEnabled: true },
+      }),
     ).toMatchObject({
       section: "appearance",
       settings: {
         theme: "dark",
         projectAvatarsEnabled: true,
         sessionAvatarsEnabled: true,
+        sidebarCharactersEnabled: true,
       },
     });
     expect(

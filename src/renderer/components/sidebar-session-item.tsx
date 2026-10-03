@@ -41,6 +41,7 @@ export interface SidebarSessionItemProps {
   labels: readonly SessionLabel[];
   avatarSeed: string;
   avatarsEnabled: boolean;
+  charactersEnabled?: boolean;
   source?:
     | {
         kind: "project";
@@ -75,6 +76,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   labels,
   avatarSeed,
   avatarsEnabled,
+  charactersEnabled = false,
   source,
   focusMode = false,
   onOpen,
@@ -89,7 +91,10 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   const [renamingValue, setRenamingValue] = useState<string | null>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const navigationRef = useRef<HTMLDivElement>(null);
-  const avatarInteraction = { target: rowRef, activationTarget: navigationRef };
+  const avatarVariant = charactersEnabled ? "artwork" : "square";
+  const avatarInteraction = charactersEnabled
+    ? { target: rowRef, activationTarget: navigationRef }
+    : undefined;
   const unread = activity === "unread";
   const isFamilyParent = Boolean(session.familyChildSessionIds?.length);
   const isFamilyChild =
@@ -128,7 +133,8 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
       data-family-role={isFamilyChild ? "child" : isFamilyParent ? "parent" : "root"}
       className={cn(
         "session-item group relative grid min-h-11 w-full items-center rounded-md text-[13px] select-none transition-colors duration-200 ease-out motion-reduce:transition-none",
-        focusMode && "min-h-14 text-sm [&_[data-slot=avatar]]:size-7 [&_svg]:size-5",
+        focusMode && "min-h-14 text-sm [&_svg]:size-5",
+        focusMode && charactersEnabled && "[&_[data-slot=avatar]]:size-7",
         avatarsEnabled
           ? isFamilyChild
             ? focusMode
@@ -173,6 +179,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           {avatarsEnabled ? (
             canSetLabels ? (
               <AvatarLabelPicker
+                variant={avatarVariant}
                 interaction={avatarInteraction}
                 seed={avatarSeed}
                 labels={availableLabels}
@@ -182,6 +189,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
               />
             ) : (
               <Avatar
+                variant={avatarVariant}
                 interaction={avatarInteraction}
                 kind="session"
                 resolved={resolved}
@@ -303,9 +311,10 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                     ) : source.showAvatar ? (
                       <Avatar
                         kind="project"
+                        variant={avatarVariant}
                         seed={source.avatarSeed}
                         customIcon={source.customIcon}
-                        className="size-3.5"
+                        className={charactersEnabled ? "size-3.5" : undefined}
                         aria-hidden="true"
                       />
                     ) : null}

@@ -11,6 +11,7 @@ const AppearanceChanges = Schema.Struct({
   theme: Schema.optionalKey(Schema.Literals(["system", "light", "dark"])),
   projectAvatarsEnabled: Schema.optionalKey(Schema.Boolean),
   sessionAvatarsEnabled: Schema.optionalKey(Schema.Boolean),
+  sidebarCharactersEnabled: Schema.optionalKey(Schema.Boolean),
   workLogViewMode: Schema.optionalKey(Schema.Literals(["auto", "diff", "log"])),
   workLogsExpansion: Schema.optionalKey(
     Schema.Literals(["collapsed", "expanded", "fully-expanded"]),

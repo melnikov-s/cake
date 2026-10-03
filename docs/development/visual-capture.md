@@ -8,6 +8,8 @@ Cake owns a small Playwright harness for repeatable screenshots of Cake UI. It s
 pnpm visual:capture --help
 pnpm visual:capture --list
 pnpm visual:capture assistant-markdown-code
+pnpm visual:capture appearance-settings
+pnpm visual:capture appearance-settings --state characters
 pnpm visual:capture assistant-markdown-code --state hover --theme light
 pnpm visual:capture inline-links --state hover --theme dark
 pnpm visual:capture browser-shared-chat --width 1440 --height 900

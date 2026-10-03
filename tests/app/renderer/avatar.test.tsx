@@ -4,6 +4,42 @@ import { describe, expect, it } from "vitest";
 import { Avatar } from "../../../src/renderer/components/ui/avatar";
 
 describe("Avatar", () => {
+  it("renders a 12px rounded square in the existing project color", () => {
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(<Avatar kind="project" seed="cake" variant="square" />);
+    const square = host.querySelector('[data-slot="avatar"]')!;
+    expect(square.getAttribute("data-variant")).toBe("square");
+    expect(square.getAttribute("data-session-label-color")).toBe("#c56455");
+    expect(square.classList.contains("size-3")).toBe(true);
+    expect(square.classList.contains("rounded-[3px]")).toBe(true);
+    expect(square.classList.contains("bg-current")).toBe(true);
+  });
+
+  it("colors compact session squares from labels, using neutral for unlabelled sessions", () => {
+    for (const labelColors of [[], ["violet"]] as const) {
+      const host = document.createElement("div");
+      host.innerHTML = renderToStaticMarkup(
+        <Avatar kind="session" seed="session" variant="square" labelColors={labelColors} />,
+      );
+      const square = host.querySelector('[data-slot="avatar"]')!;
+      expect(square.classList.contains("size-3")).toBe(true);
+      if (labelColors.length) {
+        expect(square.getAttribute("data-session-label-color")).toBe("#9a78d7");
+      } else {
+        expect(square.classList.contains("text-muted-foreground")).toBe(true);
+      }
+    }
+  });
+
+  it("keeps resolved compact session markers visible but subdued", () => {
+    const markup = renderToStaticMarkup(
+      <Avatar kind="session" seed="session" variant="square" resolved />,
+    );
+    expect(markup).toContain('data-resolved="true"');
+    expect(markup).toContain("opacity-40");
+    expect(markup).toContain("bg-current");
+  });
+
   it("keeps active sessions and project artwork intact", () => {
     for (const kind of ["session", "project"] as const) {
       const markup = renderToStaticMarkup(

@@ -56,6 +56,7 @@ interface CakeAppearanceSettings {
   readonly theme: "system" | "light" | "dark";
   readonly projectAvatarsEnabled: boolean;
   readonly sessionAvatarsEnabled: boolean;
+  readonly sidebarCharactersEnabled: boolean;
   readonly workLogViewMode: "auto" | "diff" | "log";
   readonly workLogsExpansion: "collapsed" | "expanded" | "fully-expanded";
 }

@@ -30,6 +30,8 @@ const sessionBodyPlaceholder = "#abcdef";
 export interface AvatarProps extends HTMLAttributes<HTMLSpanElement> {
   kind: "project" | "session";
   seed: string;
+  /** Compact, stationary sidebar marker instead of character artwork. */
+  variant?: "artwork" | "square";
   labelColors?: readonly SessionLabelColor[];
   customIcon?: ProjectIcon;
   animated?: boolean;
@@ -46,6 +48,7 @@ export interface AvatarProps extends HTMLAttributes<HTMLSpanElement> {
 export function Avatar({
   kind,
   seed,
+  variant = "artwork",
   labelColors,
   customIcon,
   animated = false,
@@ -56,7 +59,8 @@ export function Avatar({
 }: AvatarProps) {
   const host = useRef<HTMLSpanElement>(null);
   const instanceId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const disappearing = kind === "session" && resolved;
+  const compact = variant === "square";
+  const disappearing = !compact && kind === "session" && resolved;
   const [phase, setPhase] = useState<"visible" | "puff" | "gone">(
     disappearing ? "gone" : "visible",
   );
@@ -76,6 +80,15 @@ export function Avatar({
   const interactionTarget = interaction?.target;
   const activationTarget = interaction?.activationTarget;
   const avatar = useMemo(() => {
+    if (compact) {
+      return {
+        __html: "",
+        color:
+          kind === "project"
+            ? new DiceBearAvatar(styles.project, { seed }).toJSON().options.bodyColor?.[0]
+            : undefined,
+      };
+    }
     if (kind === "project") {
       return {
         uri: new DiceBearAvatar(styles.project, {
@@ -97,10 +110,10 @@ export function Avatar({
       svg = svg.replaceAll(match[1]!, `${match[1]}-${instanceId}`);
     }
     return { __html: materialized ? materializeSessionAvatar(svg) : svg };
-  }, [kind, seed, instanceId, materialized]);
+  }, [compact, kind, seed, instanceId, materialized]);
 
   useEffect(() => {
-    if (kind !== "session" || disappearing || !host.current) return;
+    if (compact || kind !== "session" || disappearing || !host.current) return;
     if (interactionTarget?.current && activationTarget?.current) {
       return interactWithSessionAvatar(
         host.current,
@@ -109,12 +122,32 @@ export function Avatar({
       );
     }
     if (animated) return animateSessionAvatar(host.current);
-  }, [animated, kind, disappearing, avatar, interactionTarget, activationTarget]);
+  }, [compact, animated, kind, disappearing, avatar, interactionTarget, activationTarget]);
+
+  if (compact) {
+    const color = kind === "project" ? avatar.color : mergedSessionLabelColor(labelColors ?? []);
+    return (
+      <span
+        data-slot="avatar"
+        data-variant="square"
+        data-resolved={kind === "session" && resolved ? true : undefined}
+        data-session-label-color={color}
+        className={cn(
+          "inline-block size-3 shrink-0 rounded-[3px] border border-current bg-current",
+          color ? "text-[attr(data-session-label-color_type(<color>))]" : "text-muted-foreground",
+          kind === "session" && resolved && "opacity-40",
+          className,
+        )}
+        {...props}
+      />
+    );
+  }
 
   return (
     <span
       ref={host}
       data-slot="avatar"
+      data-variant="artwork"
       data-resolved={disappearing || undefined}
       data-animated={
         kind === "session" && !disappearing

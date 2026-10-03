@@ -141,6 +141,7 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
                         labels={sessionMetadata.sessionLabels(session.sessionId)}
                         avatarSeed={session.sessionId}
                         avatarsEnabled={appearance.sessionAvatarsEnabled}
+                        charactersEnabled={appearance.sidebarCharactersEnabled}
                         source={{
                           kind: "project",
                           name: projectName,

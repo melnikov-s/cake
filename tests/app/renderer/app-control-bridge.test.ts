@@ -51,6 +51,7 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
             theme: "system",
             projectAvatarsEnabled: true,
             sessionAvatarsEnabled: true,
+            sidebarCharactersEnabled: false,
             workLogViewMode: "auto",
             workLogsExpansion: "collapsed",
           },
@@ -61,6 +62,7 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
             theme: "system",
             projectAvatarsEnabled: true,
             sessionAvatarsEnabled: true,
+            sidebarCharactersEnabled: false,
             workLogViewMode: "auto",
             workLogsExpansion: "collapsed",
           },
@@ -430,6 +432,7 @@ describe("AppControlBridge", () => {
         theme: "system" as const,
         projectAvatarsEnabled: true,
         sessionAvatarsEnabled: true,
+        sidebarCharactersEnabled: false,
         workLogViewMode: "auto" as const,
         workLogsExpansion: "collapsed" as const,
       },
@@ -440,6 +443,7 @@ describe("AppControlBridge", () => {
         theme: "dark" as const,
         projectAvatarsEnabled: true,
         sessionAvatarsEnabled: true,
+        sidebarCharactersEnabled: true,
         workLogViewMode: "auto" as const,
         workLogsExpansion: "collapsed" as const,
       },
@@ -469,17 +473,23 @@ describe("AppControlBridge", () => {
     await expect(
       bridge.invoke({
         name: "settings.update",
-        arguments: { section: "appearance", changes: { theme: "dark" } },
+        arguments: {
+          section: "appearance",
+          changes: { theme: "dark", sidebarCharactersEnabled: true },
+        },
       }),
     ).resolves.toMatchObject({
       ok: true,
       command: "settings.update",
       scope: "window",
       section: "appearance",
-      settings: { theme: "dark" },
+      settings: { theme: "dark", sidebarCharactersEnabled: true },
     });
     expect(get).toHaveBeenCalledWith("appearance");
-    expect(update).toHaveBeenCalledWith({ section: "appearance", changes: { theme: "dark" } });
+    expect(update).toHaveBeenCalledWith({
+      section: "appearance",
+      changes: { theme: "dark", sidebarCharactersEnabled: true },
+    });
 
     await expect(
       bridge.invoke({

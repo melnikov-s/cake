@@ -129,6 +129,30 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
       name: "Change session labels. Current labels: Unlabelled",
     });
     await expect(picker).toBeVisible();
+    const square = sessionItem.locator('[data-slot="session-leading"] [data-slot="avatar"]');
+    await expect(square).toHaveAttribute("data-variant", "square");
+    await expect(square).toHaveCSS("width", "12px");
+    await expect(square).toHaveCSS("height", "12px");
+    await expect(square).toHaveCSS("border-radius", "3px");
+    const projectSquare = projectGroup.locator(':scope > div [data-slot="avatar"]').first();
+    await expect(projectSquare).toHaveAttribute("data-variant", "square");
+    await expect(projectSquare).toHaveCSS("width", "12px");
+    await expect(projectSquare).toHaveCSS("height", "12px");
+    const markerColumnOffset = async () => {
+      const sessionBounds = (await square.boundingBox())!;
+      const projectBounds = (await projectSquare.boundingBox())!;
+      return Math.abs(
+        sessionBounds.x + sessionBounds.width / 2 - projectBounds.x - projectBounds.width / 2,
+      );
+    };
+    await expect.poll(markerColumnOffset).toBeLessThan(0.5);
+    await projectGroup.hover();
+    await projectGroup.getByRole("button", { name: "Focus on project" }).click();
+    await expect(square).toHaveCSS("width", "12px");
+    await expect(projectSquare).toHaveCSS("width", "12px");
+    await expect.poll(markerColumnOffset).toBeLessThan(0.5);
+    await page.getByRole("button", { name: "Exit focus mode for project" }).click();
+    await expect.poll(markerColumnOffset).toBeLessThan(0.5);
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await picker.click();
     const popup = page
@@ -173,6 +197,42 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
       "data-session-label-color",
       /^oklch\(/,
     );
+
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Appearance", exact: true }).click();
+    const charactersToggle = page.getByRole("switch", { name: "Show sidebar characters" });
+    await expect(charactersToggle).toHaveAttribute("aria-checked", "false");
+    await charactersToggle.click();
+    await expect(charactersToggle).toHaveAttribute("aria-checked", "true");
+    const savedCharacterPreference = async () => {
+      const stored = JSON.parse(await readFile(join(userData, "window-state.json"), "utf8"));
+      return stored.data?.children.settingsStore.children.appearance.state.sidebarCharactersEnabled;
+    };
+    await expect.poll(savedCharacterPreference).toBe(true);
+    await page.getByRole("button", { name: "Back to chat" }).click();
+    await expect(selectedPicker.locator('[data-slot="avatar"]')).toHaveAttribute(
+      "data-variant",
+      "artwork",
+    );
+    await expect(projectSquare).toHaveAttribute("data-variant", "artwork");
+    await expect(selectedPicker.locator('[data-slot="session-character"]')).toBeVisible();
+    await selectedPicker.click();
+    await expect(page.getByRole("checkbox", { name: "In review" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await page.keyboard.press("Escape");
+    await expect(selectedPicker).toBeFocused();
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await charactersToggle.click();
+    await expect.poll(savedCharacterPreference).toBe(false);
+    await page.getByRole("button", { name: "Back to chat" }).click();
+    await expect(selectedPicker.locator('[data-slot="avatar"]')).toHaveAttribute(
+      "data-variant",
+      "square",
+    );
+    await expect(projectSquare).toHaveAttribute("data-variant", "square");
+    await expect.poll(markerColumnOffset).toBeLessThan(0.5);
 
     await expect
       .poll(async () => {

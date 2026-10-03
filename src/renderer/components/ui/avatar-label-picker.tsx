@@ -9,23 +9,23 @@ import { LabelSwatch } from "./label-swatch";
 
 export interface AvatarLabelPickerProps {
   seed: string;
+  variant?: AvatarProps["variant"];
+  interaction?: AvatarProps["interaction"];
   labels: readonly SessionLabel[];
   value: readonly string[];
   disabled?: boolean;
-  animated?: boolean;
-  interaction?: AvatarProps["interaction"];
   className?: string;
   onChange(labelIds: readonly string[]): void;
 }
 
-/** Session-avatar trigger and ordered multi-label selector. */
+/** Session-color trigger and ordered multi-label selector, with optional character artwork. */
 export function AvatarLabelPicker({
   seed,
+  variant = "square",
+  interaction,
   labels,
   value,
   disabled = false,
-  animated = false,
-  interaction,
   className,
   onChange,
 }: AvatarLabelPickerProps) {
@@ -48,22 +48,17 @@ export function AvatarLabelPicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverIconTrigger
-        className={cn(
-          "size-7 rounded-full p-0 hover:bg-muted",
-          animated &&
-            "touch-none select-none motion-safe:cursor-grab data-[avatar-held=true]:cursor-grabbing data-[avatar-held=true]:bg-transparent",
-          className,
-        )}
+        className={cn("size-7 rounded-md p-0 hover:bg-muted", className)}
         ariaLabel={`Change session labels. Current labels: ${names}`}
         disabled={disabled}
       >
         <Avatar
           kind="session"
+          variant={variant}
+          interaction={interaction}
           seed={seed}
           labelColors={selected.map((label) => label.color)}
-          animated={animated}
-          interaction={interaction}
-          className="size-6"
+          className={variant === "square" ? "size-3" : "size-6"}
         />
       </PopoverIconTrigger>
       <PopoverContent

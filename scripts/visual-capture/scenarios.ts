@@ -166,7 +166,7 @@ const assistantMarkdownCode: VisualCaptureScenario = {
         .last()
         .click();
       await lane.locator(".session-row").click();
-      await expect(page.locator('[data-slot="session-smoke"]')).toHaveCount(2);
+      await expect(page.locator('[data-slot="session-smoke"]')).toHaveCount(1);
       await page.mouse.move(1, 1);
       await page.locator('[data-slot="session-smoke"]').evaluateAll(async (puffs) => {
         await Promise.all(
@@ -637,6 +637,28 @@ const cakePromptsSettingsScenario: VisualCaptureScenario = {
   },
 };
 
+const appearanceSettingsScenario: VisualCaptureScenario = {
+  name: "appearance-settings",
+  description: "Sidebar character preference in Cake Appearance settings",
+  states: ["default", "characters"],
+  seed: assistantMarkdownCode.seed,
+  async prepare(page, state) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: "Appearance", exact: true }).click();
+    const toggle = page.getByRole("switch", { name: "Show sidebar characters" });
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    if (state === "characters") {
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-checked", "true");
+    }
+    await toggle.scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: cakePromptsSettingsScenario.region,
+};
+
 const projectCustomInstructionsScenario: VisualCaptureScenario = {
   name: "project-custom-instructions",
   description: "Personal project instructions in the Project Settings dialog",
@@ -1062,6 +1084,7 @@ export const visualCaptureScenarios = [
   drawMermaidArchitectureScenario,
   drawCompositionScenario,
   cakePromptsSettingsScenario,
+  appearanceSettingsScenario,
   projectCustomInstructionsScenario,
   dictationSettingsScenario,
   serverClientSettingsScenario,
