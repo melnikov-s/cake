@@ -28,7 +28,7 @@ describe("settings search", () => {
   it("finds editable Cake workflow prompts", () => {
     const results = searchSettings("squash commit message");
     expect(results).toHaveLength(1);
-    expect(results[0]).toMatchObject({ page: "prompts", label: "Cake prompts" });
+    expect(results[0]).toMatchObject({ page: "prompts", label: "Instructions & prompts" });
     expect(results[0]?.items.map((item) => item.label)).toEqual(["Squash commit message"]);
   });
 

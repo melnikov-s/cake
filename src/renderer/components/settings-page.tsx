@@ -61,6 +61,10 @@ export const SettingsPage = observer(function SettingsPage({
   const utility = settings.utilityModel;
   const appearance = settings.appearance;
   const activePage = settings.activePage;
+  const pageMetadata = SETTINGS_NAV_GROUPS.flatMap((group) => group.items).find(
+    (page) => page.page === activePage,
+  );
+  if (!pageMetadata) throw new Error(`Settings page is not registered: ${activePage}`);
   const error = settings.error;
   const providerGroups = settings.providerGroups;
   const utilityModel = utility.model;
@@ -173,41 +177,10 @@ export const SettingsPage = observer(function SettingsPage({
         <div className="mx-auto max-w-4xl px-8 py-8 pb-16">
           <div className="mb-8">
             <span className="text-xs font-medium text-accent">Cake / Pi</span>
-            <h2 className="mt-1 text-2xl font-bold text-foreground">
-              {activePage === "dictation"
-                ? "Dictation"
-                : activePage === "models"
-                  ? "Models"
-                  : activePage === "providers"
-                    ? "Providers"
-                    : activePage === "agent"
-                      ? "Agent"
-                      : activePage === "runtime"
-                        ? "Execution & resources"
-                        : activePage === "network"
-                          ? "Network & privacy"
-                          : activePage === "labels"
-                            ? "Session labels"
-                            : activePage === "prompts"
-                              ? "Instructions & prompts"
-                              : activePage === "appearance"
-                                ? "Appearance"
-                                : activePage === "hotkeys"
-                                  ? "Hotkeys"
-                                  : activePage === "mcp"
-                                    ? "MCP servers"
-                                    : "VS Code"}
-            </h2>
+            <h2 className="mt-1 text-2xl font-bold text-foreground">{pageMetadata.label}</h2>
             <p className="mt-1.5 text-xs text-muted-foreground">
-              {activePage === "dictation"
-                ? "Local speech to text for Cake's writing surfaces."
-                : activePage === "hotkeys"
-                  ? "Customize Cake's application shortcuts. Changes take effect immediately."
-                  : activePage === "labels"
-                    ? "Create the labels available across all projects."
-                    : activePage === "prompts"
-                      ? "Set personal agent instructions and customize Cake's workflow messages."
-                      : "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects."}
+              {pageMetadata.introduction ??
+                "Configure the same Pi runtime used by the CLI. Pi preferences follow you across projects."}
             </p>
           </div>
           {error && (

@@ -11,6 +11,7 @@ type SettingsNavItem = {
   page: SettingsPageId;
   label: string;
   description?: string;
+  introduction?: string;
   settings: readonly Omit<SettingsSearchItem, "page">[];
 };
 
@@ -134,6 +135,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
         page: "dictation",
         label: "Dictation",
         description: "Local speech to text",
+        introduction: "Local speech to text for Cake's writing surfaces.",
         settings: [
           {
             label: "Dictation mode",
@@ -146,6 +148,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
         page: "prompts",
         label: "Instructions & prompts",
         description: "Personal agent guidance and automatic workflow messages",
+        introduction: "Set personal agent instructions and customize Cake's workflow messages.",
         settings: [
           {
             label: "Global custom instructions",
@@ -163,6 +166,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
         page: "labels",
         label: "Session labels",
         description: "Global workflow labels",
+        introduction: "Create the labels available across all projects.",
         settings: [
           {
             label: "Global session labels",
@@ -187,6 +191,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
         page: "hotkeys",
         label: "Hotkeys",
         description: "Keyboard shortcuts",
+        introduction: "Customize Cake's application shortcuts. Changes take effect immediately.",
         settings: [
           {
             label: "Keyboard shortcuts",
