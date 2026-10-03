@@ -42,11 +42,9 @@ export const DrawBoardToolbar = observer(function DrawBoardToolbar({
         sidebarCollapsed && "pl-[103px]",
       )}
     >
-      <WorkspacePanelToggle
-        panel="sidebar"
-        visible={!sidebarCollapsed}
-        onToggle={onToggleSidebar}
-      />
+      {sidebarCollapsed && (
+        <WorkspacePanelToggle panel="sidebar" visible={false} onToggle={onToggleSidebar} />
+      )}
       {sidebarCollapsed ? (
         <div className="flex items-center gap-1 [-webkit-app-region:no-drag]">
           <IconButton

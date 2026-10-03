@@ -144,13 +144,15 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
     await expect(chatToggle).toHaveAttribute("aria-expanded", "false");
     await chatToggle.click();
     await expect(composer).toBeVisible();
-    await expect(sidebarToggle).toHaveAccessibleName("Close sidebar");
-    await sidebarToggle.click();
+    await expect(sidebarToggle).toBeHidden();
+    await page.getByRole("button", { name: "Toggle sidebar", exact: true }).click();
     await expect(page.locator(`.session-item[data-session-id="${sessionId}"]`)).toBeHidden();
     await expect(sidebarToggle).toHaveAccessibleName("Open sidebar");
     expect((await sidebarToggle.boundingBox())?.x).toBeGreaterThanOrEqual(84);
     await sidebarToggle.click();
-    await expect(sidebarToggle).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(`.session-item[data-session-id="${sessionId}"]`)).toBeVisible();
+    await expect(sidebarToggle).toBeHidden();
+    await expect(page.getByRole("button", { name: "Toggle sidebar", exact: true })).toBeVisible();
 
     const browserState = (url: string) => () =>
       application.evaluate(async ({ webContents }, expectedUrl) => {

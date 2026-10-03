@@ -101,11 +101,9 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
         )}
       >
         <div className="flex items-center gap-0.5 [-webkit-app-region:no-drag]">
-          <WorkspacePanelToggle
-            panel="sidebar"
-            visible={projectSidebarVisible}
-            onToggle={onToggleSidebar}
-          />
+          {!projectSidebarVisible && (
+            <WorkspacePanelToggle panel="sidebar" visible={false} onToggle={onToggleSidebar} />
+          )}
           <IconButton
             tooltip="Back"
             disabled={!browser.canGoBack}
