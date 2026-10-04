@@ -145,6 +145,9 @@ async function launch({ reasoning = false } = {}) {
     },
   });
   const page = await application.firstWindow();
+  await expect(page.locator("strong").filter({ hasText: "Fixture history" })).toBeVisible({
+    timeout: 20000,
+  });
   await expect(page.getByRole("button", { name: "Enter conversation mode" })).toBeVisible({
     timeout: 20000,
   });
@@ -226,7 +229,10 @@ test("conversation controls enter, mute and exit with real capture and streaming
   try {
     await f.configure();
     await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
-    await expect(f.page.getByText("Listening", { exact: true })).toBeVisible();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await expect
       .poll(() =>
         f.page.evaluate(
@@ -260,14 +266,29 @@ test("conversation controls enter, mute and exit with real capture and streaming
       )
       .toBe(1);
     // Output is already scheduled while both the provider and Pi responses remain open.
-    await f.page.getByRole("button", { name: "Mute input" }).click();
-    await expect(f.page.getByRole("button", { name: "Unmute input" })).toBeVisible();
+    const ear = f.page.getByRole("button", { name: "Mute input", exact: true });
+    await expect(ear.locator("svg")).toBeVisible();
+    await expect(ear).toHaveText("");
+    await ear.hover();
+    await expect(f.page.getByRole("tooltip")).toHaveText("Listening — mute input");
+    await ear.click();
+    const mutedEar = f.page.getByRole("button", { name: "Unmute input", exact: true });
+    await expect(mutedEar).toHaveAttribute("aria-pressed", "false");
+    await expect(mutedEar.locator("svg")).toBeVisible();
+    await f.page.mouse.move(1, 1);
+    await mutedEar.hover();
+    await expect(f.page.getByRole("tooltip")).toHaveText("Input muted — unmute input");
+    await mutedEar.click();
+    await expect(ear).toHaveAttribute("aria-pressed", "true");
     await emitSpeechPcm(f.application, true);
     f.sendText("", true);
     await f.page.getByRole("button", { name: "Exit conversation mode" }).click();
     await expect(f.page.getByRole("button", { name: "Enter conversation mode" })).toBeVisible();
     await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
-    await expect(f.page.getByText("Listening", { exact: true })).toBeVisible();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await f.application.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0]!;
       window.show();
@@ -308,7 +329,10 @@ test("barge-in keeps the interrupted reply silent and speaks the next turn from 
   try {
     await f.configure();
     await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
-    await expect(f.page.getByText("Listening", { exact: true })).toBeVisible();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     const composer = f.page.getByRole("combobox", { name: "Message", exact: true });
     await composer.fill("First request");
     await f.page.getByRole("button", { name: "Send", exact: true }).click();
@@ -357,7 +381,10 @@ test("invalid provider PCM reaches a dismissible toast through native RPC and le
   try {
     await f.configure();
     await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
-    await expect(f.page.getByText("Listening", { exact: true })).toBeVisible();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     const composer = f.page.getByRole("combobox", { name: "Message", exact: true });
     await composer.fill("Speak a response");
     await f.page.getByRole("button", { name: "Send", exact: true }).click();
@@ -411,7 +438,10 @@ test("typed composer retains focus, actual input value and enabled submission ac
     await expect(composer).toHaveValue("Typed draft survives");
     await expect(composer).toBeFocused();
     await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
-    await expect(f.page.getByText("Listening", { exact: true })).toBeVisible();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await composer.click();
     await composer.pressSequentially(" and typing works");
     await expect(composer).toBeFocused();

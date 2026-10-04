@@ -19,8 +19,6 @@ export const ChatConversationControls = observer(function ChatConversationContro
       active={selected && conversation.phase === "active"}
       preparing={selected && conversation.phase === "preparing"}
       muted={conversation.muted}
-      listening={conversation.listening}
-      speaking={conversation.speaking}
       disabled={!target.canEnter()}
       onEnter={() => void conversation.enter(target)}
       onMute={(muted) => void conversation.setMuted(muted)}

@@ -192,14 +192,21 @@ afterEach(() => {
 });
 
 describe("Project Session conversation mode", () => {
-  it("enter prepares local recognition and offers listening, input mute and exit on the existing Chat", async () => {
+  it("enter offers a highlighted listening ear, toggles input mute and exits on the existing Chat", async () => {
     using f = fixture();
     await f.enter();
-    expect(screen.getByText("Listening")).toBeDefined();
-    await f.user.click(screen.getByRole("button", { name: "Mute input" }));
+    const ear = screen.getByRole("button", { name: "Mute input", pressed: true });
+    expect(ear.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    const listeningIcon = ear.querySelector("svg")?.innerHTML;
+    await f.user.click(ear);
+    const mutedEar = screen.getByRole("button", { name: "Unmute input", pressed: false });
+    expect(mutedEar.querySelector("svg")?.innerHTML).not.toBe(listeningIcon);
     expect(f.root.conversationModeStore.muted).toBe(true);
+    await f.user.click(mutedEar);
+    expect(screen.getByRole("button", { name: "Mute input", pressed: true })).toBeDefined();
+    expect(f.root.conversationModeStore.muted).toBe(false);
     await f.user.click(screen.getByRole("button", { name: "Exit conversation mode" }));
-    expect(f.root.conversationModeStore.phase).toBe("off");
+    expect(screen.getByRole("button", { name: "Enter conversation mode" })).toBeDefined();
   });
   it("missing model, key, voice or microphone permission shows an actionable error and leaves text chat usable", async () => {
     for (const kind of ["model", "key", "voice", "permission"] as const) {
@@ -288,7 +295,7 @@ describe("Project Session conversation mode", () => {
     expect((screen.getByLabelText("Voice") as HTMLSelectElement).value).toBe("voice");
     await restored.user.click(screen.getByRole("switch", { name: "Enable speech" }));
     await restored.enter();
-    expect(screen.getByText("Listening")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Mute input", pressed: true })).toBeDefined();
     expect(restored.setApiKey).not.toHaveBeenCalled();
     expect(restored.setVoice).not.toHaveBeenCalled();
   });
@@ -300,7 +307,7 @@ describe("Project Session conversation mode", () => {
     render(<SettingsSpeechSection speech={f.root.speechSettingsStore} />);
     await f.user.click(screen.getByRole("switch", { name: "Enable speech" }));
     await act(async () => preparation.resolve());
-    expect(screen.queryByText("Listening")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Mute input" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Enter conversation mode" })).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(f.microphone.open).not.toHaveBeenCalled();

@@ -53,9 +53,13 @@ shared spinner and microphone icon and never takes focus. See
 ## Voice conversation controls
 
 `VoiceConversationControls` is a shared stateless toolbar pattern composed from
-`IconButton`, `Button`, `Badge` and `Callout`. Supply preparing/active/listening/speaking,
-input-only mute, disabled/error and enter/mute/exit intents. The entry action uses the
-shared `AudioLinesIcon` waveform to distinguish voice conversation from dictation.
+`IconButton` and `Badge`. Supply preparing/active, input-only mute, disabled and
+enter/mute/exit intents. The entry action uses the shared `AudioLinesIcon` waveform
+to distinguish voice conversation from dictation. Once active, a highlighted
+`EarIcon` combines listening status and input mute; clicking it switches to an
+unhighlighted `EarOffIcon` with a diagonal slash. Tooltips and accessible names
+explain the mute/unmute action, and `aria-pressed` reflects input being enabled.
+A separate `StopIcon` exits conversation mode. Preparing retains its status badge.
 It owns no microphone,
 provider requests, timers or workflow state. `ChatConversationControls` maps the focused
 window `ConversationModeStore` and Project Session target into this primitive;

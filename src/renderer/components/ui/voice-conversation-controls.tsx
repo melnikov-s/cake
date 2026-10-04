@@ -1,14 +1,11 @@
-import { Button } from "./button";
 import { Badge } from "./badge";
 import { IconButton } from "./icon-button";
-import { AudioLinesIcon, StopIcon } from "./icons";
+import { AudioLinesIcon, EarIcon, EarOffIcon, StopIcon } from "./icons";
 
 export interface VoiceConversationControlsProps {
   active: boolean;
   preparing: boolean;
   muted: boolean;
-  listening: boolean;
-  speaking: boolean;
   disabled: boolean;
   onEnter(): void;
   onMute(muted: boolean): void;
@@ -28,21 +25,17 @@ export function VoiceConversationControls(props: VoiceConversationControlsProps)
         </IconButton>
       ) : (
         <>
-          <Badge>
-            {props.preparing
-              ? "Preparing voice…"
-              : props.speaking
-                ? "Speaking"
-                : props.muted
-                  ? "Input muted"
-                  : props.listening
-                    ? "Listening"
-                    : "Voice"}
-          </Badge>
-          {!props.preparing && (
-            <Button size="sm" variant="ghost" onClick={() => props.onMute(!props.muted)}>
-              {props.muted ? "Unmute input" : "Mute input"}
-            </Button>
+          {props.preparing ? (
+            <Badge>Preparing voice…</Badge>
+          ) : (
+            <IconButton
+              tooltip={props.muted ? "Input muted — unmute input" : "Listening — mute input"}
+              ariaLabel={props.muted ? "Unmute input" : "Mute input"}
+              aria-pressed={!props.muted}
+              onClick={() => props.onMute(!props.muted)}
+            >
+              {props.muted ? <EarOffIcon /> : <EarIcon />}
+            </IconButton>
           )}
           <IconButton tooltip="Exit conversation mode" onClick={props.onExit}>
             <StopIcon />
