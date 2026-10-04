@@ -13,7 +13,7 @@ import {
 } from "./main-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
-async function launch() {
+async function launch({ reasoning = false } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "cake-conversation-"));
   const userData = join(directory, "user-data"),
     project = join(directory, "project"),
@@ -48,7 +48,7 @@ async function launch() {
             {
               id: "fixture",
               name: "Fixture",
-              reasoning: false,
+              reasoning,
               input: ["text"],
               cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
               contextWindow: 4096,
@@ -152,6 +152,14 @@ async function launch() {
   await page.evaluate(() => {
     const tracks: MediaStreamTrack[] = [];
     const nodes: AudioBufferSourceNode[] = [];
+    const processors: AudioWorkletNode[] = [];
+    const WorkletNode = AudioWorkletNode;
+    globalThis.AudioWorkletNode = class extends WorkletNode {
+      constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
+        super(context, name, options);
+        processors.push(this);
+      }
+    };
     const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getUserMedia = async (constraints) => {
       const stream = await getUserMedia(constraints);
@@ -164,7 +172,7 @@ async function launch() {
       nodes.push(node);
       return node;
     };
-    Object.assign(globalThis, { conversationAudioFixture: { tracks, nodes } });
+    Object.assign(globalThis, { conversationAudioFixture: { tracks, nodes, processors } });
   });
   const configure = async () => {
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
@@ -290,6 +298,55 @@ test("conversation controls enter, mute and exit with real capture and streaming
         ),
       )
       .toBe(true);
+  } finally {
+    await f.close();
+  }
+});
+
+test("barge-in keeps the interrupted reply silent and speaks the next turn from its beginning", async () => {
+  const f = await launch({ reasoning: true });
+  try {
+    await f.configure();
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(f.page.getByText("Listening", { exact: true })).toBeVisible();
+    const composer = f.page.getByRole("combobox", { name: "Message", exact: true });
+    await composer.fill("First request");
+    await f.page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => f.responses.length).toBe(1);
+    f.sendText("First answer. ");
+    await expect.poll(() => speechHttpRequests(f.application)).toEqual(["First answer."]);
+    await emitSpeechPcm(f.application);
+    // Drive barge-in through the real microphone port/VAD, not a Store method.
+    await f.page.evaluate(() => {
+      const fixture = Reflect.get(globalThis, "conversationAudioFixture") as {
+        processors: AudioWorkletNode[];
+      };
+      const processor = fixture.processors.at(-1)!;
+      for (let i = 0; i < 2; i++)
+        processor.port.dispatchEvent(
+          new MessageEvent("message", { data: new Float32Array(1600).fill(0.1) }),
+        );
+    });
+    await f.page.getByRole("button", { name: "Mute input" }).click();
+    // A configuration operation refreshes the authoritative snapshot while Pi
+    // still generates the old reply, replacing its live user ID with an entry ID.
+    await f.page.getByRole("button", { name: "Model configuration", exact: true }).click();
+    await f.page.getByRole("button", { name: "Low", exact: true }).click();
+    await expect(
+      f.page.getByRole("button", { name: "Model configuration", exact: true }),
+    ).toContainText("Low");
+    await composer.fill("Next request");
+    await f.page.getByRole("button", { name: "Send", exact: true }).click();
+    f.sendText("Interrupted remainder. ", true);
+    await expect.poll(() => f.responses.length).toBe(2);
+    f.sendText("Next answer starts here. ");
+    await expect
+      .poll(() => speechHttpRequests(f.application))
+      .toEqual(["First answer.", "Next answer starts here."]);
+    await expect(f.page.getByText("Next answer starts here.", { exact: true })).toBeVisible();
+    await emitSpeechPcm(f.application, true);
+    f.sendText("", true);
+    await f.page.getByRole("button", { name: "Exit conversation mode" }).click();
   } finally {
     await f.close();
   }

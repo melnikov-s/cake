@@ -4,6 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../src/ipc/session-contract";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { createLiveMessageProjector } from "../../../src/services/pi/runtime/session-projection";
+import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { TurnId } from "../../../src/domain/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import type { Microphone } from "../../../src/renderer/dictation/microphone";
@@ -458,6 +461,50 @@ describe("Project Session conversation mode", () => {
     await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(2));
     expect(f.synthesize.mock.calls[1]?.[0].text).toBe("New.");
   });
+  it.each([
+    "Repeat this request",
+    '<skill name="fixture" location="/fixture/SKILL.md">\nInstructions\n</skill>\nRepeat this request',
+  ])(
+    "a settled projection of the same consumed input cannot undo barge-in (%s)",
+    async (content) => {
+      using f = fixture();
+      const history = SessionManager.inMemory("/project");
+      const project = createLiveMessageProjector();
+      const input = { role: "user" as const, content, timestamp: 100 };
+      const live = project({ type: "message_start", message: input });
+      await f.enter();
+      f.publish([...live, assistant("Old answer. ")]);
+      await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(1));
+      await f.frames(0.1, 2);
+      history.appendMessage(input);
+      const settled = projectConversationDisplay(history);
+      f.publish([
+        ...settled,
+        assistant("Old answer. Interrupted remainder. "),
+        { ...consumed("queued"), deliveryState: "queued" },
+      ]);
+      await act(async () => {});
+      expect(f.synthesize.mock.calls.map(([request]) => request.text)).toEqual(["Old answer."]);
+
+      // Identical words in a genuinely new Pi message still unlock its entire response.
+      const next = { ...input, timestamp: 200 };
+      const nextLive = project({ type: "message_start", message: next });
+      f.publish([
+        ...settled,
+        assistant("Old answer. Interrupted remainder. ", "complete", "settled-answer"),
+        ...nextLive,
+        { ...assistant("Next answer starts here. "), id: "next-answer", renderKey: "reply-2" },
+      ]);
+      await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(2));
+      expect(f.synthesize.mock.calls.map(([request]) => request.text)).toEqual([
+        "Old answer.",
+        "Next answer starts here.",
+      ]);
+      expect(f.session.model.uiParts.find((part) => part.id === "next-answer")).toMatchObject({
+        text: "Next answer starts here. ",
+      });
+    },
+  );
   it("muting stops and discards unfinished input while allowing output and accepted agent work to continue", async () => {
     using f = fixture();
     await f.enter();

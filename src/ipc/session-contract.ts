@@ -299,6 +299,8 @@ export const uiPartSchema = Schema.Union([
     ...partBase,
     kind: Schema.Literal("skill"),
     entryId: Schema.optional(stringRange(1, 256)),
+    /** Shares the input's presentation identity with its accompanying user text. */
+    renderKey: Schema.optional(stringRange(1, 256)),
     name: ipcProjectionString(256),
     content: boundedText,
   }),

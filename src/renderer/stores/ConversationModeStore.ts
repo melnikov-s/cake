@@ -339,7 +339,9 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
         part.kind === "skill" ||
         (part.kind === "text" && part.role === "user" && !part.deliveryState && !part.draft)
       ) {
-        const key = part.entryId ?? part.id;
+        // A saved snapshot replaces live IDs; it must not count as another input
+        // and re-enable speech from a reply the user already interrupted.
+        const key = part.renderKey ?? part.entryId ?? part.id;
         if (!this.users.has(key)) {
           this.users.add(key);
           if (this.phase === "active") this.outputEligible = true;

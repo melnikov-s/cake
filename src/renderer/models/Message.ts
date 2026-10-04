@@ -92,6 +92,8 @@ export class Message extends Model {
         this.response = part.response;
         return true;
       case "skill":
+        this.piId = part.entryId;
+        this.renderKey = part.renderKey;
         this.name = part.name;
         this.content = part.content;
         return true;
@@ -185,7 +187,14 @@ export class Message extends Model {
           response: this.response,
         };
       case "skill":
-        return { id: this.partKey, kind: this.kind, name: this.name!, content: this.content! };
+        return {
+          id: this.partKey,
+          kind: this.kind,
+          entryId: this.piId,
+          renderKey: this.renderKey,
+          name: this.name!,
+          content: this.content!,
+        };
       case "reasoning":
         // SAFETY: snapshots and update() keep reasoning status aligned with the part discriminant.
         return {

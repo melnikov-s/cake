@@ -309,6 +309,11 @@ function partsFromMessage(
 
   if (role === "user") {
     const parts: UiPart[] = [];
+    // Pi preserves the message timestamp when a live input becomes a durable entry.
+    // Both the skill and text part represent consumption of this same input.
+    const timestamp = Reflect.get(message, "timestamp");
+    const renderKey =
+      typeof timestamp === "number" && Number.isFinite(timestamp) ? `user-${timestamp}` : undefined;
     const envelope = parseUserMessageEnvelope(textFromContent(content));
     const parsedContext = parseContextAttachmentBlocks(envelope.text);
     const text = parsedContext.text;
@@ -320,6 +325,7 @@ function partsFromMessage(
         id: `${baseId}-skill`,
         kind: "skill",
         entryId,
+        renderKey,
         name: skill.name,
         content: skill.content,
       });
@@ -329,6 +335,7 @@ function partsFromMessage(
           kind: "text",
           role: "user",
           entryId,
+          renderKey,
           text: skill.userMessage,
           status: "complete",
           renderAs: renderAsMarkdown ? "markdown" : undefined,
@@ -341,6 +348,7 @@ function partsFromMessage(
         kind: "text",
         role: "user",
         entryId,
+        renderKey,
         text,
         status: "complete",
         renderAs: renderAsMarkdown ? "markdown" : undefined,
@@ -409,6 +417,7 @@ function partsFromMessage(
         kind: "text",
         role: "user",
         entryId,
+        renderKey,
         text: "",
         status: "complete",
       });

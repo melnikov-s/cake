@@ -1119,6 +1119,43 @@ describe("Pi 1.0.0 foundation contract", () => {
     expect(afterTool[0]).toMatchObject({ id: "stream-2-text-0", text: "Here is the result." });
   });
 
+  it.each([
+    "Same request",
+    '<skill name="fixture" location="/fixture/SKILL.md">\nInstructions\n</skill>\nSame request',
+    '<skill name="fixture" location="/fixture/SKILL.md">\nInstructions\n</skill>',
+  ])(
+    "preserves consumed user identity from live to settled without conflating repeated input (%s)",
+    (content) => {
+      const project = createLiveMessageProjector();
+      const message = { role: "user" as const, content, timestamp: 1234 };
+      const live = project({ type: "message_start", message });
+      const settled = projectSessionEntries([
+        {
+          type: "message",
+          id: "user-1",
+          parentId: null,
+          timestamp: new Date(0).toISOString(),
+          message,
+        },
+      ]);
+      const next = project({
+        type: "message_start",
+        message: { ...message, timestamp: 5678 },
+      });
+      const keys = (parts: typeof live) =>
+        parts.flatMap((part) =>
+          part.kind === "skill" || (part.kind === "text" && part.role === "user")
+            ? [part.renderKey]
+            : [],
+        );
+      expect(keys(live).length).toBeGreaterThan(0);
+      expect(keys(live).every((key) => key === "user-1234")).toBe(true);
+      expect(keys(settled)).toEqual(keys(live));
+      expect(keys(next)).toEqual(keys(live).map(() => "user-5678"));
+      expect(live[0]?.id).not.toBe(settled[0]?.id);
+    },
+  );
+
   it("shares one assistant text render key between live and settled projections", () => {
     const project = createLiveMessageProjector();
     const message = {
@@ -1302,6 +1339,8 @@ describe("Pi 1.0.0 foundation contract", () => {
       {
         id: "live-user-1-skill",
         kind: "skill",
+        entryId: undefined,
+        renderKey: "user-0",
         name: "pdf-tools",
         content:
           "References are relative to /skills/pdf-tools.\n\n# PDF tools\n\nExtract text from PDFs.",
