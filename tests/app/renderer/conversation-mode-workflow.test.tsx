@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -24,6 +24,12 @@ function deferred<T>() {
     resolve = done;
   });
   return { promise, resolve };
+}
+function untilAborted(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) resolve();
+    else signal.addEventListener("abort", () => resolve(), { once: true });
+  });
 }
 const assistant = (
   text: string,
@@ -51,6 +57,7 @@ function fixture(
     transcribe?: Client["dictation"]["transcribe"];
     synthesize?: Client["speechOutput"]["synthesize"];
     enqueue?: SpeechPlayback["enqueue"];
+    drain?: SpeechPlayback["drain"];
     microphoneError?: Error;
     streaming?: boolean;
     snapshot?: StoreSnapshot;
@@ -69,7 +76,7 @@ function fixture(
   const playback: SpeechPlayback = {
     start: vi.fn(async () => {}),
     enqueue: vi.fn(options.enqueue ?? (async () => {})),
-    drain: vi.fn(async () => {}),
+    drain: vi.fn(options.drain ?? (async () => {})),
     stop: vi.fn(),
   };
   const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
@@ -173,7 +180,7 @@ function fixture(
     },
     async say() {
       await this.frames(0.1, 4);
-      await this.frames(0, 10);
+      await this.frames(0, 18);
       await waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
     },
     publish(next: UiPart[]) {
@@ -331,6 +338,24 @@ describe("Project Session conversation mode", () => {
     await f.frames(0, 20);
     expect(f.prompt).toHaveBeenCalledTimes(1);
   });
+  it("keeps a one-second thinking pause in the same utterance and waits for 1.8 seconds of quiet before submitting once", async () => {
+    using f = fixture({ transcribe: async () => "First part and second part" });
+    await f.enter();
+    await f.frames(0.1, 4);
+    await f.frames(0, 10);
+    expect(f.prompt).not.toHaveBeenCalled();
+    expect(f.transcribe.mock.calls.some(([request]) => request.final)).toBe(false);
+    await f.frames(0.1, 4);
+    await f.frames(0, 17);
+    expect(f.prompt).not.toHaveBeenCalled();
+    await f.frames(0, 1);
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(1));
+    expect(f.prompt.mock.calls[0]![0].text).toBe("First part and second part");
+    expect(new Set(f.transcribe.mock.calls.map(([request]) => request.utteranceId)).size).toBe(1);
+    expect(f.transcribe.mock.calls.filter(([request]) => request.final)).toHaveLength(1);
+    await f.frames(0, 20);
+    expect(f.prompt).toHaveBeenCalledTimes(1);
+  });
   it("silence, brief noise and empty recognition do not submit or interrupt the assistant", async () => {
     using f = fixture({ transcribe: async () => "" });
     await f.enter();
@@ -341,7 +366,7 @@ describe("Project Session conversation mode", () => {
     expect(f.playback.stop).toHaveBeenCalledTimes(stops);
     expect(f.transcribe).not.toHaveBeenCalled();
     await f.frames(0.1, 4);
-    await f.frames(0, 10);
+    await f.frames(0, 18);
     expect(f.prompt).not.toHaveBeenCalled();
   });
   it("retains 600 ms of audio including the speech onset before recognition", async () => {
@@ -358,7 +383,7 @@ describe("Project Session conversation mode", () => {
     expect(samples).toHaveLength(12800);
     expect(samples.slice(0, 6400).every((value) => value === 0)).toBe(true);
     expect(samples.slice(6400).every((value) => value === Math.fround(0.03))).toBe(true);
-    await f.frames(0, 7);
+    await f.frames(0, 16);
     await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(1));
   });
   it.each([
@@ -384,7 +409,7 @@ describe("Project Session conversation mode", () => {
       await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(1));
       await waitFor(() => expect(f.root.conversationModeStore.speaking).toBe(false));
       for (const [value, count] of frames) await f.frames(value, count);
-      await f.frames(0, 10);
+      await f.frames(0, 18);
       await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(2));
       expect(f.microphone.open).toHaveBeenCalledTimes(1);
       const finalCalls = f.transcribe.mock.calls.filter(([request]) => request.final);
@@ -477,10 +502,127 @@ describe("Project Session conversation mode", () => {
     f.publish([consumed(), assistant("Speak once. ", "complete", "durable-entry")]);
     expect(f.synthesize).toHaveBeenCalledTimes(1);
   });
-  it("barge-in requires 400 ms above the louder threshold, then silences playback and rejects late synthesis without aborting agent work", async () => {
+  it.each(["okay", "all right", "oh, I see", "don't stop", "the bus stop"])(
+    "discards %s during output without silencing playback or submitting it",
+    async (text) => {
+      using f = fixture({ drain: untilAborted, transcribe: async () => text });
+      await f.enter();
+      f.publish([consumed(), assistant("Keep speaking. ")]);
+      await waitFor(() => expect(f.playback.drain).toHaveBeenCalledTimes(1));
+      const stops = vi.mocked(f.playback.stop).mock.calls.length;
+      await f.frames(0.1, 8);
+      expect(f.playback.stop).toHaveBeenCalledTimes(stops);
+      await f.frames(0, 18);
+      expect(f.transcribe.mock.calls.filter(([request]) => request.final)).toHaveLength(1);
+      expect(f.playback.stop).toHaveBeenCalledTimes(stops);
+      expect(f.root.conversationModeStore.speaking).toBe(true);
+      expect(f.root.conversationModeStore.transcript).toBe("");
+      expect(f.prompt).not.toHaveBeenCalled();
+      expect(f.abort).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["Stop!", "WAIT.", "Please stop.", "please wait"])(
+    "allows the short explicit command %s to interrupt",
+    async (text) => {
+      using f = fixture({ drain: untilAborted, transcribe: async () => text });
+      await f.enter();
+      f.publish([consumed(), assistant("Speaking. ")]);
+      await waitFor(() => expect(f.playback.drain).toHaveBeenCalledTimes(1));
+      const stops = vi.mocked(f.playback.stop).mock.calls.length;
+      await f.frames(0.1, 2);
+      expect(f.playback.stop).toHaveBeenCalledTimes(stops);
+      await f.frames(0, 18);
+      expect(f.playback.stop).toHaveBeenCalledTimes(stops + 1);
+      expect(f.prompt.mock.calls[0]![0].text).toBe(text);
+      expect(f.abort).not.toHaveBeenCalled();
+    },
+  );
+  it("does not turn a tentative acknowledgment into a message when output finishes; ordinary short replies still work", async () => {
+    const output = deferred<void>();
+    using f = fixture({ drain: async () => output.promise, transcribe: async () => "all right" });
+    await f.enter();
+    f.publish([consumed(), assistant("First answer. ")]);
+    await waitFor(() => expect(f.playback.drain).toHaveBeenCalledTimes(1));
+    await f.frames(0.1, 8);
+    await act(async () => output.resolve());
+    await f.frames(0, 18);
+    expect(f.prompt).not.toHaveBeenCalled();
+    expect(f.root.conversationModeStore.transcript).toBe("");
+    await f.say();
+    expect(f.prompt.mock.calls[0]![0].text).toBe("all right");
+    expect(f.microphone.open).toHaveBeenCalledTimes(1);
+  });
+  it("expires tentative speech after three seconds, rejects late words and accepts a fresh interruption without restarting recognition", async () => {
+    const recognition = deferred<string>();
+    using f = fixture({ drain: untilAborted, transcribe: async () => recognition.promise });
+    await f.enter();
+    f.publish([consumed(), assistant("Still speaking. ")]);
+    await waitFor(() => expect(f.playback.drain).toHaveBeenCalledTimes(1));
+    const stops = vi.mocked(f.playback.stop).mock.calls.length;
+    const releases = f.release.mock.calls.length;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    await f.frames(0.1, 8);
+    expect(f.transcribe).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTimeAsync(3000));
+    expect(f.root.conversationModeStore.transcript).toBe("");
+    await act(async () => recognition.resolve("Actually change that approach"));
+    await f.frames(0.1, 8);
+    await f.frames(0, 18);
+    expect(f.playback.stop).toHaveBeenCalledTimes(stops);
+    expect(f.prompt).not.toHaveBeenCalled();
+    // A quiet boundary, not another three seconds of continuous noise, admits a fresh candidate.
+    await f.frames(0.1, 8);
+    expect(f.playback.stop).toHaveBeenCalledTimes(stops + 1);
+    await f.frames(0, 18);
+    expect(f.prompt).toHaveBeenCalledTimes(1);
+    expect(f.release).toHaveBeenCalledTimes(releases);
+    expect(f.microphone.open).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+  });
+  it.each(["mute", "exit"] as const)(
+    "%s discards a pending interruption and its timer without accepting late recognition",
+    async (action) => {
+      const recognition = deferred<string>();
+      let calls = 0;
+      using f = fixture({
+        drain: untilAborted,
+        transcribe: async () => (++calls === 1 ? "all right" : recognition.promise),
+      });
+      await f.enter();
+      f.publish([consumed(), assistant("Speaking. ")]);
+      await waitFor(() => expect(f.playback.drain).toHaveBeenCalledTimes(1));
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+      await f.frames(0.1, 8);
+      expect(f.root.conversationModeStore.transcript).toBe("all right");
+      await f.frames(0.1, 8);
+      expect(vi.getTimerCount()).toBe(1);
+      // Synchronous UI dispatch keeps this timer/cancellation test independent of user-event delays.
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: action === "mute" ? "Mute input" : "Exit conversation mode",
+        }),
+      );
+      expect(vi.getTimerCount()).toBe(0);
+      expect(f.root.conversationModeStore.transcript).toBe("");
+      const stops = vi.mocked(f.playback.stop).mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+        recognition.resolve("Actually change that approach");
+      });
+      expect(f.playback.stop).toHaveBeenCalledTimes(stops);
+      expect(f.prompt).not.toHaveBeenCalled();
+      expect(f.abort).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    },
+  );
+  it("barge-in waits for four recognized words before silencing playback and rejects late synthesis without aborting agent work", async () => {
     const gate = deferred<void>();
+    const recognition = deferred<string>();
     let consume: Parameters<Client["speechOutput"]["synthesize"]>[1] | undefined;
     using f = fixture({
+      transcribe: async (request) =>
+        request.final ? "Actually change that approach please" : recognition.promise,
       synthesize: async (_request, callback) => {
         consume = callback;
         await gate.promise;
@@ -492,21 +634,28 @@ describe("Project Session conversation mode", () => {
     const stops = vi.mocked(f.playback.stop).mock.calls.length;
     await f.frames(0.02, 10);
     expect(f.playback.stop).toHaveBeenCalledTimes(stops);
-    await f.frames(0.1, 3);
+    await f.frames(0.1, 8);
+    expect(f.transcribe).toHaveBeenCalledTimes(1);
     expect(f.playback.stop).toHaveBeenCalledTimes(stops);
-    await f.frames(0.1, 1);
+    await act(async () => recognition.resolve("Actually change that approach"));
     expect(f.playback.stop).toHaveBeenCalledTimes(stops + 1);
     await consume?.({ encoding: "pcm_s16le", sampleRate: 24000, pcm: "AAA=" });
     expect(f.playback.enqueue).not.toHaveBeenCalled();
     expect(f.abort).not.toHaveBeenCalled();
+    await f.frames(0, 18);
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(1));
+    expect(f.prompt.mock.calls[0]![0].text).toBe("Actually change that approach please");
     gate.resolve();
   });
   it("barge-in suppresses the interrupted reply until the next user input is consumed rather than merely queued", async () => {
-    using f = fixture();
+    using f = fixture({
+      drain: untilAborted,
+      transcribe: async () => "Actually change that approach",
+    });
     await f.enter();
     f.publish([consumed(), assistant("Old. ")]);
     await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(1));
-    await f.frames(0.1, 4);
+    await f.frames(0.1, 8);
     f.publish([
       consumed(),
       assistant("Old. Still old. "),
@@ -528,7 +677,10 @@ describe("Project Session conversation mode", () => {
   ])(
     "a settled projection of the same consumed input cannot undo barge-in (%s)",
     async (content) => {
-      using f = fixture();
+      using f = fixture({
+        drain: untilAborted,
+        transcribe: async () => "Actually change that approach",
+      });
       const history = SessionManager.inMemory("/project");
       const project = createLiveMessageProjector();
       const input = { role: "user" as const, content, timestamp: 100 };
@@ -536,7 +688,7 @@ describe("Project Session conversation mode", () => {
       await f.enter();
       f.publish([...live, assistant("Old answer. ")]);
       await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(1));
-      await f.frames(0.1, 4);
+      await f.frames(0.1, 8);
       history.appendMessage(input);
       const settled = projectConversationDisplay(history);
       f.publish([
@@ -691,7 +843,7 @@ describe("Project Session conversation mode", () => {
       const f = fixture({ transcribe: async () => gate.promise });
       await f.enter();
       await f.frames(0.1, 8);
-      await f.frames(0, 10);
+      await f.frames(0, 18);
       if (action === "selection") act(() => f.root.appShellStore.showSettings());
       else if (action === "disposal") f.root[Symbol.dispose]();
       else

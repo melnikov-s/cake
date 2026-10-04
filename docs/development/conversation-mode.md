@@ -7,10 +7,12 @@ Conversation mode is opt-in for existing writable Project Sessions in Cake deskt
 1. Install/select local Parakeet in **Settings → Dictation** ([requirements](dictation.md)). Apple Silicon and macOS 14+ are required. Nothing downloads automatically.
 2. In **Settings → Speech output**, save your own ElevenLabs API key, explicitly load voices and choose a voice. Cake uses Flash `eleven_flash_v2_5` with ordered 24 kHz PCM streaming. No generated preview is requested.
 3. In an existing Project Session, choose **Enter conversation mode**, then wait for **Listening**. Subsequent ordinary spoken and typed messages receive brief natural spoken-response guidance. Code and detailed tables stay visible in chat.
-4. Speak continuously, then pause. Sustained speech starts capture; about 900 ms quiet finalizes it. A successful nonempty utterance sends exactly once, independently of the typed draft, pending files and annotations. A busy session receives ordinary queued follow-up input, never an implicit steer or abort.
+4. Speak continuously, then pause. Sustained speech starts capture; about 1.8 seconds quiet finalizes it, allowing shorter thinking pauses within the same utterance. A successful nonempty utterance sends exactly once, independently of the typed draft, pending files and annotations. A busy session receives ordinary queued follow-up input, never an implicit steer or abort.
 5. **Mute input** stops capture and discards unfinished speech while accepted work and output continue. **Exit conversation mode** restores text-oriented subsequent submissions. Window blur, selection changes and disposal exit automatically. Dictation activation exits conversation mode and vice versa in the same window; neither is restored automatically.
 
-Speech onset immediately silences playback and cancels pending synthesis, not Pi/tool work. The interrupted answer remains readable but stays unspoken until Pi actually consumes a new user input. Queuing an input alone does not lift that suppression. Mode entry never replays history or an already-running response.
+While the agent is speaking, detected speech is tentative: playback and synthesis continue until Parakeet recognizes at least four words within three seconds of detection, or a leading **stop** or **wait** command (optionally preceded by **please**). Recognition, not sound onset, confirms the interruption. Short acknowledgments such as “okay,” “all right” and “oh, I see” are discarded when the utterance ends or the window expires; they never become queued messages. Timed-out speech stays rejected until a quiet boundary, and late recognition cannot interrupt. A short response while the agent is quiet is accepted normally.
+
+A confirmed interruption silences playback and cancels pending synthesis, not Pi/tool work. The full captured utterance is submitted once after final recognition. The interrupted answer remains readable but stays unspoken until Pi actually consumes a new user input. Queuing an input alone does not lift that suppression. Mode entry never replays history or an already-running response.
 
 ## Privacy and billing
 
@@ -22,7 +24,7 @@ Native main stores the API key encrypted using Electron safeStorage in `<Electro
 
 ## Coordination and limitations
 
-`ConversationModeStore` owns window-local VAD, capture, serial recognition/finalization/submission, transcript-derived raw cursors, phrase queues and playback cancellation. Main still owns Pi and secure speech storage. Response mode is captured per submission and carried through Pi queues, compaction, reordering and send-now; exact Cake reminders remain in Pi input but are removed from display, editable queues, titles and continuation source text.
+`ConversationModeStore` owns window-local VAD, capture, tentative interruption decisions and their capture-scoped deadlines, serial recognition/finalization/submission, transcript-derived raw cursors, phrase queues and playback cancellation. Candidate timers are cleared on confirmation, rejection, mute, exit and disposal; rejecting speech does not cancel or restart the native recognizer. Main still owns Pi and secure speech storage. Response mode is captured per submission and carried through Pi queues, compaction, reordering and send-now; exact Cake reminders remain in Pi input but are removed from display, editable queues, titles and continuation source text.
 
 Manually typed slash skills or prompt templates while conversation mode is active may miss the response-style instruction. Only assistant replies are spoken; normal spoken conversation flow is unaffected.
 

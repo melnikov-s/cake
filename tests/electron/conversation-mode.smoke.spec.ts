@@ -13,7 +13,11 @@ import {
 } from "./main-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
-async function launch({ reasoning = false, recognizeSpeech = false } = {}) {
+async function launch({
+  reasoning = false,
+  recognizeSpeech = false,
+  recognitionTexts = [],
+}: { reasoning?: boolean; recognizeSpeech?: boolean; recognitionTexts?: string[] } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "cake-conversation-"));
   const userData = join(directory, "user-data"),
     project = join(directory, "project"),
@@ -66,7 +70,19 @@ async function launch({ reasoning = false, recognizeSpeech = false } = {}) {
   const helper = join(directory, "dictation");
   await writeFile(
     helper,
-    `#!${process.execPath}\nconst readline = require('node:readline'); let turns = 0; process.stdout.write(JSON.stringify({ready:true})+'\\n'); readline.createInterface({ input: process.stdin }).on('line', (line) => { const request = JSON.parse(line); const text = ${recognizeSpeech} && request.final ? 'Spoken request ' + (++turns) : ''; process.stdout.write(JSON.stringify({text})+'\\n'); });\n`,
+    `#!${process.execPath}
+const readline = require('node:readline');
+const texts = ${JSON.stringify(recognitionTexts)};
+const utterances = new Map();
+process.stdout.write(JSON.stringify({ready:true})+'\\n');
+readline.createInterface({ input: process.stdin }).on('line', (line) => {
+  const request = JSON.parse(line);
+  if (!utterances.has(request.utteranceId)) utterances.set(request.utteranceId, utterances.size);
+  const index = utterances.get(request.utteranceId);
+  const text = texts[index] ?? (${recognizeSpeech} && request.final ? 'Spoken request ' + (index + 1) : '');
+  process.stdout.write(JSON.stringify({text})+'\\n');
+});
+`,
   );
   await chmod(helper, 0o755);
   // Silence keeps the real worklet/capture path active without artificially barging into output.
@@ -211,6 +227,19 @@ async function launch({ reasoning = false, recognizeSpeech = false } = {}) {
     page,
     responses,
     configure,
+    async frames(chunks: [number, number][]) {
+      await page.evaluate((chunks) => {
+        const fixture = Reflect.get(globalThis, "conversationAudioFixture") as {
+          processors: AudioWorkletNode[];
+        };
+        const processor = fixture.processors.at(-1)!;
+        for (const [value, count] of chunks)
+          for (let i = 0; i < count; i++)
+            processor.port.dispatchEvent(
+              new MessageEvent("message", { data: new Float32Array(1600).fill(value) }),
+            );
+      }, chunks);
+    },
     sendText(text: string, finish = false) {
       const response = responses.at(-1);
       if (!response) throw new Error("No Pi request opened");
@@ -340,19 +369,6 @@ test("conversation controls enter, mute and exit with real capture and streaming
 
 test("quieter follow-up speech with syllable gaps is accepted after a spoken reply without restarting capture", async () => {
   const f = await launch({ recognizeSpeech: true });
-  const frames = async (chunks: [number, number][]) => {
-    await f.page.evaluate((chunks) => {
-      const fixture = Reflect.get(globalThis, "conversationAudioFixture") as {
-        processors: AudioWorkletNode[];
-      };
-      const processor = fixture.processors.at(-1)!;
-      for (const [value, count] of chunks)
-        for (let i = 0; i < count; i++)
-          processor.port.dispatchEvent(
-            new MessageEvent("message", { data: new Float32Array(1600).fill(value) }),
-          );
-    }, chunks);
-  };
   try {
     await f.configure();
     await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
@@ -360,9 +376,9 @@ test("quieter follow-up speech with syllable gaps is accepted after a spoken rep
       "aria-pressed",
       "true",
     );
-    await frames([
+    await f.frames([
       [0.1, 8],
-      [0, 10],
+      [0, 18],
     ]);
     await expect.poll(() => f.responses.length).toBe(1);
     f.sendText("First answer. ");
@@ -381,13 +397,13 @@ test("quieter follow-up speech with syllable gaps is accepted after a spoken rep
         ),
       )
       .toBe(1);
-    await frames([
+    await f.frames([
       [0.02, 2],
       [0, 1],
       [0.02, 2],
       [0, 1],
       [0.02, 2],
-      [0, 10],
+      [0, 18],
     ]);
     await expect(f.page.getByRole("article").filter({ hasText: "Spoken request 2" })).toBeVisible();
     await expect.poll(() => f.responses.length).toBe(2);
@@ -410,8 +426,79 @@ test("quieter follow-up speech with syllable gaps is accepted after a spoken rep
   }
 });
 
+for (const { text, frames } of [
+  { text: "Wait.", frames: 2 },
+  { text: "Actually change that approach", frames: 8 },
+]) {
+  test(`background acknowledgment leaves speech running, but ${text} interrupts through recognition`, async () => {
+    const f = await launch({ recognitionTexts: ["all right", text] });
+    try {
+      await f.configure();
+      await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+      await expect(f.page.getByRole("button", { name: "Mute input" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      await f.page.getByRole("combobox", { name: "Message", exact: true }).fill("First request");
+      await f.page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect.poll(() => f.responses.length).toBe(1);
+      f.sendText("First answer. ");
+      await expect.poll(() => speechHttpRequests(f.application)).toEqual(["First answer."]);
+      await emitSpeechPcm(f.application);
+      await f.frames([
+        [0.1, 8],
+        [0, 18],
+      ]);
+      // The first provider stream is still open: a rejected snippet must not cancel it.
+      f.sendText("Still speaking. ");
+      await emitSpeechPcm(f.application, true);
+      await expect
+        .poll(() => speechHttpRequests(f.application))
+        .toEqual(["First answer.", "Still speaking."]);
+      await expect(f.page.getByRole("list", { name: "Queued prompts" })).toHaveCount(0);
+      await emitSpeechPcm(f.application);
+      await expect
+        .poll(() =>
+          f.page.evaluate(
+            () =>
+              (
+                Reflect.get(globalThis, "conversationAudioFixture") as {
+                  nodes: AudioBufferSourceNode[];
+                }
+              ).nodes.length,
+          ),
+        )
+        .toBe(3);
+      await f.frames([
+        [0.1, frames],
+        [0, 18],
+      ]);
+      await expect
+        .poll(() =>
+          f.page.evaluate(
+            () =>
+              (
+                Reflect.get(globalThis, "conversationAudioFixture") as {
+                  nodes: AudioBufferSourceNode[];
+                }
+              ).nodes.at(-1)?.context.state,
+          ),
+        )
+        .toBe("closed");
+      await expect(
+        f.page.getByRole("button", { name: `View queued message: ${text}`, exact: true }),
+      ).toBeVisible();
+      // Confirmed speech is ordinary queued input, not an abort of the active agent.
+      expect(f.responses).toHaveLength(1);
+      await f.page.getByRole("button", { name: "Exit conversation mode" }).click();
+    } finally {
+      await f.close();
+    }
+  });
+}
+
 test("barge-in keeps the interrupted reply silent and speaks the next turn from its beginning", async () => {
-  const f = await launch({ reasoning: true });
+  const f = await launch({ reasoning: true, recognitionTexts: ["Wait."] });
   try {
     await f.configure();
     await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
@@ -427,16 +514,19 @@ test("barge-in keeps the interrupted reply silent and speaks the next turn from 
     await expect.poll(() => speechHttpRequests(f.application)).toEqual(["First answer."]);
     await emitSpeechPcm(f.application);
     // Drive barge-in through the real microphone port/VAD, not a Store method.
-    await f.page.evaluate(() => {
-      const fixture = Reflect.get(globalThis, "conversationAudioFixture") as {
-        processors: AudioWorkletNode[];
-      };
-      const processor = fixture.processors.at(-1)!;
-      for (let i = 0; i < 4; i++)
-        processor.port.dispatchEvent(
-          new MessageEvent("message", { data: new Float32Array(1600).fill(0.1) }),
-        );
-    });
+    await f.frames([[0.1, 8]]);
+    await expect
+      .poll(() =>
+        f.page.evaluate(
+          () =>
+            (
+              Reflect.get(globalThis, "conversationAudioFixture") as {
+                nodes: AudioBufferSourceNode[];
+              }
+            ).nodes[0]?.context.state,
+        ),
+      )
+      .toBe("closed");
     await f.page.getByRole("button", { name: "Mute input" }).click();
     // A configuration operation refreshes the authoritative snapshot while Pi
     // still generates the old reply, replacing its live user ID with an entry ID.

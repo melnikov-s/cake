@@ -5,6 +5,7 @@ import type { SpeechOutputCommands, Client } from "../client/Client";
 import { encodePcm, type Microphone, type MicrophoneCapture } from "../dictation/microphone";
 import type { SpeechPlayback } from "../speech/playback";
 import { takeSpokenPhrases } from "../speech/spoken-text";
+import { INTERRUPTION_WINDOW_MS, isSpeechInterruption } from "../speech/interruption";
 
 export interface ConversationModeTarget {
   readonly sessionId: string;
@@ -32,9 +33,16 @@ interface Utterance {
   duration: number;
   quiet: number;
   finishing: boolean;
+  interruption?: {
+    state: "pending" | "confirmed" | "rejected";
+    deadline: number;
+    timer?: ReturnType<typeof setTimeout>;
+  };
 }
 
-/** Window-only owner: ephemeral audio, VAD, recognition, submission and spoken-prose cursors. */
+/** Window-only owner: ephemeral audio, VAD, recognition, submission and spoken-prose cursors.
+ * Interruption candidates/timers belong to this capture generation, never persistence;
+ * recognition remains serial and rejected candidates are finalized without submitting. */
 export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   phase: "off" | "preparing" | "active" | "error" = "off";
   sessionId: string | undefined;
@@ -168,6 +176,11 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     this.captureController = undefined;
     this.capture?.stop();
     this.capture = undefined;
+    const runs = [...this.finalizing, ...(this.utterance ? [this.utterance] : [])];
+    for (const run of runs) {
+      this.clearInterruptionTimer(run);
+      if (run.interruption && run.interruption.state !== "confirmed") this.transcript = "";
+    }
     this.utterance = undefined;
     this.finalizing = [];
     this.preroll = [];
@@ -199,6 +212,21 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     this.outputEligible = false;
     // Advance raw cursors now; the interrupted reply never gets replayed.
     if (this.target) this.consumeParts(this.target.parts());
+  }
+  private clearInterruptionTimer(run: Utterance) {
+    if (!run.interruption) return;
+    clearTimeout(run.interruption.timer);
+    run.interruption.timer = undefined;
+  }
+  private rejectInterruption(run: Utterance) {
+    if (run.interruption?.state !== "pending") return;
+    this.clearInterruptionTimer(run);
+    run.interruption.state = "rejected";
+    run.chunks = [];
+    run.samples = 0;
+    this.transcript = "";
+    // Do not cancel native inference: finish this ID at the quiet boundary so
+    // rejection neither invalidates the warm recognizer nor re-triggers on the same speech.
   }
   private fail(error: unknown) {
     const message =
@@ -260,8 +288,10 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       )
         this.preroll.shift();
       this.onset = speech ? this.onset + samples.length : 0;
-      if (this.onset < (this.speaking ? 6400 : 3200)) return;
-      this.interrupt();
+      // Recognition now decides barge-in; a short spoken "stop" must reach it too.
+      if (this.onset < 3200) return;
+      const tentative = this.speaking;
+      if (!tentative) this.interrupt();
       run = {
         id: crypto.randomUUID(),
         chunks: this.preroll,
@@ -269,12 +299,22 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
         duration: 0,
         quiet: 0,
         finishing: false,
+        interruption: tentative
+          ? { state: "pending", deadline: performance.now() + INTERRUPTION_WINDOW_MS }
+          : undefined,
       };
+      if (run.interruption) {
+        const candidate = run;
+        run.interruption.timer = setTimeout(
+          () => this.rejectInterruption(candidate),
+          INTERRUPTION_WINDOW_MS,
+        );
+      }
       this.preroll = [];
       this.onset = 0;
       this.utterance = run;
       this.transcript = "";
-    } else {
+    } else if (run.interruption?.state !== "rejected") {
       run.chunks.push(samples);
       run.samples += samples.length;
     }
@@ -285,7 +325,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       this.fail(new Error("Recognition cannot keep up. Re-enter conversation mode to retry."));
       return;
     }
-    if (run.quiet >= 14400 || run.duration >= 480000) {
+    if (run.quiet >= 28800 || run.duration >= 480000) {
       run.finishing = true;
       this.finalizing.push(run);
       this.utterance = undefined;
@@ -314,10 +354,20 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
         { signal },
       );
       if (signal.aborted || revision !== this.revision) return;
-      this.transcript = text;
+      if (run.interruption?.state === "pending") {
+        if (performance.now() >= run.interruption.deadline) this.rejectInterruption(run);
+        else if (isSpeechInterruption(text)) {
+          this.clearInterruptionTimer(run);
+          run.interruption.state = "confirmed";
+          this.interrupt();
+        } else if (final) this.rejectInterruption(run);
+      }
+      const rejected = run.interruption?.state === "rejected";
+      this.transcript = rejected ? "" : text;
       if (final) {
+        this.clearInterruptionTimer(run);
         this.finalizing.shift();
-        if (text.trim() && this.target) {
+        if (!rejected && text.trim() && this.target) {
           const accepted = await this.target.submitUtterance(text.trim());
           if (revision !== this.revision || signal.aborted) return;
           if (!accepted) {
