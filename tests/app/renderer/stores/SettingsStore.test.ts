@@ -3,12 +3,15 @@ import { createStore, mount } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 import { SettingsStore } from "../../../../src/renderer/stores/SettingsStore";
+import { SpeechSettingsStore } from "../../../../src/renderer/stores/SpeechSettingsStore";
+import { createTestClient } from "../test-client";
 
 function createSettingsStore() {
   const operations = mount(createStore(SessionOperationCoordinatorStore));
   return mount(
     createStore(SettingsStore, {
       dictation: createDictationStore(),
+      speech: mount(createStore(SpeechSettingsStore, { client: createTestClient().speechOutput })),
       operations,
       activeSession: () => undefined,
       workbenchError: () => undefined,

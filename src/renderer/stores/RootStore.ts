@@ -1,5 +1,8 @@
 import { DictationStore } from "./DictationStore";
-import { microphone } from "../dictation/microphone";
+import { microphone, type Microphone } from "../dictation/microphone";
+import { createSpeechPlayback, type SpeechPlayback } from "../speech/playback";
+import { ConversationModeStore, ConversationModeContext } from "./ConversationModeStore";
+import { SpeechSettingsStore } from "./SpeechSettingsStore";
 import type { DesktopConnectionStore } from "./DesktopConnectionStore";
 import { Store, child, createStore, untracked } from "r-state-tree";
 import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
@@ -54,7 +57,10 @@ export class RootStore extends Store<{
   flushWindowState(): Promise<void>;
   canDeliver?(): boolean;
   browserHost: boolean;
+  microphone?: Microphone;
+  speechPlayback?: SpeechPlayback;
 }> {
+  private readonly defaultSpeechPlayback = createSpeechPlayback();
   @child
   get drawControlStore(): DrawControlStore {
     return createStore(DrawControlStore, {
@@ -845,15 +851,46 @@ export class RootStore extends Store<{
     });
   }
 
+  [ConversationModeContext.provide]() {
+    return this.props.browserHost ? undefined : this.conversationModeStore;
+  }
+
+  @child
+  get speechSettingsStore(): SpeechSettingsStore {
+    return createStore(SpeechSettingsStore, { client: this.client.speechOutput });
+  }
+
+  @child
+  get conversationModeStore(): ConversationModeStore {
+    return createStore(ConversationModeStore, {
+      speech: this.client.speechOutput,
+      recognition: this.client.dictation,
+      microphone: this.props.microphone ?? microphone,
+      playback: this.props.speechPlayback ?? this.defaultSpeechPlayback,
+      settings: () => this.speechSettingsStore.settings,
+      activeSessionId: () =>
+        this.appShellStore.activeConversation?.kind === "project-session"
+          ? this.appShellStore.activeConversation.sessionId
+          : undefined,
+      deviceId: () => this.dictationStore.deviceId,
+      suspendDictation: () => this.dictationStore.setEnabled(false),
+    });
+  }
+
   @child
   get dictationStore(): DictationStore {
-    return createStore(DictationStore, { client: this.client.dictation, microphone });
+    return createStore(DictationStore, {
+      client: this.client.dictation,
+      microphone: this.props.microphone ?? microphone,
+      beforeEnable: () => this.conversationModeStore.exit(),
+    });
   }
 
   @child
   get settingsStore(): SettingsStore {
     return createStore(SettingsStore, {
       dictation: this.dictationStore,
+      speech: this.speechSettingsStore,
       desktopConnection: this.props.desktopConnection,
       operations: this.sessionOperationCoordinator,
       activeSession: () => {

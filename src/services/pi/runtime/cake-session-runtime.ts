@@ -76,6 +76,10 @@ import {
 import { createCakeMcpExtensions } from "./mcp-integration";
 import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
 import {
+  stripResponseModeReminder,
+  type ConversationResponseMode,
+} from "../../../domain/conversations/conversation-response-mode";
+import {
   createCakeSessionRuntimeCapabilities,
   type GlobalControlTool,
 } from "./cake-session-runtime-capabilities";
@@ -330,6 +334,7 @@ export interface CakeSessionRuntime {
     turnId?: string,
     presentationMode?: ProjectSessionPresentationMode,
     automaticTitle?: boolean,
+    responseMode?: ConversationResponseMode,
   ): Promise<void>;
   listQueuedMessages(): Promise<{ steering: string[]; followUp: string[] }>;
   pendingMessages(): Promise<PiPendingMessages>;
@@ -348,6 +353,7 @@ export interface CakeSessionRuntime {
     attachments: Attachment[],
     renderUserMessageAsMarkdown: boolean,
     presentationMode?: ProjectSessionPresentationMode,
+    responseMode?: ConversationResponseMode,
   ): Promise<void>;
   setUserMessageMarkdown(entryId: string, renderAsMarkdown: boolean): Promise<void>;
   compact(instructions?: string): Promise<void>;
@@ -668,7 +674,11 @@ export async function createCakeSessionRuntime(
         .getBranch()
         .flatMap((entry) =>
           entry.type === "message" && entry.message.role === "user"
-            ? [stripPresentationModeReminder(textFromContent(entry.message.content)).trim()]
+            ? [
+                stripResponseModeReminder(
+                  stripPresentationModeReminder(textFromContent(entry.message.content)),
+                ).trim(),
+              ]
             : [],
         )
         .find(Boolean);
@@ -843,9 +853,26 @@ export async function createCakeSessionRuntime(
     },
     compact: turnController.compact,
     executingTurnIds: turnController.executingTurnIds,
-    prompt(text, delivery, attachments, markdown, turnId, presentationMode, automaticTitle = true) {
+    prompt(
+      text,
+      delivery,
+      attachments,
+      markdown,
+      turnId,
+      presentationMode,
+      automaticTitle = true,
+      responseMode,
+    ) {
       automaticTitleForNextMessage = automaticTitle;
-      return turnController.prompt(text, delivery, attachments, markdown, turnId, presentationMode);
+      return turnController.prompt(
+        text,
+        delivery,
+        attachments,
+        markdown,
+        turnId,
+        presentationMode,
+        responseMode,
+      );
     },
     listQueuedMessages: turnController.listQueuedMessages,
     pendingMessages: turnController.pendingMessages,

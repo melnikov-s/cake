@@ -23,7 +23,11 @@ export type DictationPhase = "off" | "paused" | "preparing" | "listening" | "fin
 /** Window-owned voice-input workflow. Focus is take-latest; drafts retain their existing owners.
  * Installation is a projection of main; enabled mode/audio/focus are ephemeral, never persisted.
  */
-export class DictationStore extends Store<{ client: Client["dictation"]; microphone: Microphone }> {
+export class DictationStore extends Store<{
+  client: Client["dictation"];
+  microphone: Microphone;
+  beforeEnable?(): Promise<void>;
+}> {
   state: DictationState | undefined;
   enabled = false;
   phase: DictationPhase = "off";
@@ -96,6 +100,8 @@ export class DictationStore extends Store<{ client: Client["dictation"]; microph
         await this.props.client.release({ signal: this.signal });
         return;
       }
+      await this.props.beforeEnable?.();
+      if (revision !== this.modeRevision || this.signal.aborted) return;
       await this.props.client.prepare({ signal: this.signal });
       if (revision !== this.modeRevision || this.signal.aborted) return;
       this.phase = "paused";

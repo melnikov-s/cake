@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { SESSION_TITLE_MAX_LENGTH } from "../../../ipc/session-contract";
 import { textFromContent, visibleUserMessageText } from "./session-projection";
 import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
+import { stripResponseModeReminder } from "../../../domain/conversations/conversation-response-mode";
 
 function sessionTitle(sessionManager: SessionManager) {
   const firstUserMessage = sessionManager
@@ -11,7 +12,9 @@ function sessionTitle(sessionManager: SessionManager) {
       if (entry.type !== "message" || entry.message.role !== "user") return [];
       return [
         visibleUserMessageText(
-          stripPresentationModeReminder(textFromContent(entry.message.content)),
+          stripResponseModeReminder(
+            stripPresentationModeReminder(textFromContent(entry.message.content)),
+          ),
         ).trim(),
       ];
     })

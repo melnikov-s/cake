@@ -151,6 +151,7 @@ export const makeRemoteRuntime = (
       const client = CakeIpcClient.of({
         ...remote,
         dictation: local.dictation,
+        speechOutput: local.speechOutput,
         vscodeViews: local.vscodeViews,
         vscode: {
           ...remote.vscode,

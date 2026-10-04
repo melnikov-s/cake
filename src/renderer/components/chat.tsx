@@ -8,6 +8,7 @@ import { ChatSubmitAction } from "@/components/chat-submit-action";
 import { ImagePreview } from "@/components/image-preview";
 import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-transcript";
 import { ChatTranscriptControlsContext } from "@/components/chat-transcript-controls-context";
+import { ChatConversationControls } from "./chat-conversation-controls";
 import { QueuedPrompts } from "@/components/queued-prompts";
 import { ScheduledPrompts } from "@/components/scheduled-prompts";
 import { RewordPromptDialog } from "@/components/reword-prompt-dialog";
@@ -292,6 +293,12 @@ export const Chat = observer(function Chat({
         toolbarLeading={
           !activatingDraft && (
             <>
+              {store.conversationMode && (
+                <ChatConversationControls
+                  conversation={store.conversationMode.workflow}
+                  target={store.conversationMode.target}
+                />
+              )}
               {store.canAttach && (
                 <IconButton tooltip="Attach files" onClick={() => void store.addAttachments()}>
                   <PaperclipIcon />

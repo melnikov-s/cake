@@ -1,5 +1,6 @@
 import { child, computed, createStore, snapshot, Store } from "r-state-tree";
 import { shouldRenderMarkdown } from "../../utils/markdown";
+import type { ConversationModeStore, ConversationModeTarget } from "./ConversationModeStore";
 import type {
   Annotation,
   Attachment,
@@ -103,12 +104,20 @@ export interface ChatStoreProps {
   hideThinking?(): boolean;
   error?(): { message?: string; details?: string; title?: string };
   workLogPresentation?: WorkLogPresentationCapabilities;
+  /** Project-only capability. Shared Chat renders controls; this Store does not own voice state. */
+  conversationMode?: {
+    readonly workflow: ConversationModeStore;
+    readonly target: ConversationModeTarget;
+  };
 }
 
 export type { TranscriptScrollPosition };
 
 /** Common state and behavior contract for every Cake conversation surface. */
 export class ChatStore extends Store<ChatStoreProps> {
+  get conversationMode() {
+    return this.props.conversationMode;
+  }
   @snapshot private localDraft = "";
   submittingLocally = false;
   rewording = false;

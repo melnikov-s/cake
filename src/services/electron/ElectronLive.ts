@@ -152,6 +152,9 @@ const makeElectronService = (
     const nativeId = window.webContents.id;
     const ownerId = connections.desktop(nativeId);
     windows.set(window.id, window);
+    window.on("blur", () => {
+      clientEvents.sendTo(connectionForWindow(window), { type: "window-blurred" });
+    });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("before-input-event", (event, input) => {
       // Native Command+Backquote is claimed by the application-menu accelerator below. Keep this

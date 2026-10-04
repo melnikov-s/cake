@@ -81,6 +81,7 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
       projectAttachments(input.attachments),
       input.renderUserMessageAsMarkdown,
       input.presentationMode,
+      input.responseMode,
     ).pipe(asError("deliver")),
   );
   yield* handle.publishSessionChanged().pipe(asError("deliver"));
@@ -173,6 +174,7 @@ export const editMessage = Effect.fn("SessionChats.editMessage")(function* (
     projectAttachments(input.attachments),
     input.renderUserMessageAsMarkdown,
     input.presentationMode,
+    input.responseMode,
   ).pipe(asError("editMessage"));
   yield* handle.publishSessionChanged().pipe(asError("editMessage"));
 });

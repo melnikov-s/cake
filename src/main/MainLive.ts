@@ -1,6 +1,9 @@
 import { homedir, release } from "node:os";
 import { join } from "node:path";
-import type { App } from "electron";
+import { safeStorage, type App } from "electron";
+import { ElevenLabsSpeechLive } from "../services/speech/ElevenLabsSpeechLive";
+import { makeSpeechOutputStorageLive } from "../services/speech/SpeechOutputStorageLive";
+import { BootstrapLive } from "./BootstrapLive";
 import { Layer } from "effect";
 import type { CakePaths } from "../config/CakePaths";
 import * as cakeChatLocations from "../domain/cake-chats/cakeChatLocations";
@@ -55,6 +58,19 @@ export const makeMainLive = (options: MainLiveOptions) => {
       ElectronLive,
       ViewsLive,
       DictationLive,
+      ElevenLabsSpeechLive.pipe(
+        Layer.provide(
+          makeSpeechOutputStorageLive(join(options.userData, "speech-output"), {
+            available: () =>
+              safeStorage.isEncryptionAvailable() &&
+              (process.platform !== "linux" ||
+                safeStorage.getSelectedStorageBackend() !== "basic_text"),
+            encrypt: (key) => safeStorage.encryptString(key),
+            decrypt: (bytes) => safeStorage.decryptString(Buffer.from(bytes)),
+          }),
+        ),
+        Layer.provide(BootstrapLive),
+      ),
       makeWindowStateStorageLive(options.userData).pipe(Layer.provide(foundation)),
       Layer.mergeAll(BrowserLive, RenderedWidgetCaptureLive, NativeAttachmentsLive).pipe(
         Layer.provide(HostFoundationLive),

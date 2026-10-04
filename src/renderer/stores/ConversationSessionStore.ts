@@ -56,6 +56,7 @@ interface ConversationChatCapabilities {
   draftActivationCandidates?(): ExistingWorktreeCandidate[];
   isDraftSession?(): boolean;
   scheduledMessages?: ScheduledMessageCapabilities;
+  conversationMode?: ChatStoreProps["conversationMode"];
   /** Hidden for a conversation whose model is fixed by its kind, such as the session assistant. */
   modelPickerVisible?(): boolean;
   rewordWorkingDirectory?(): string | undefined;
@@ -266,6 +267,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
         void this.editRuntimeQueuedPrompt(id, "remove");
       },
       scheduledMessages: capabilities.scheduledMessages,
+      conversationMode: capabilities.conversationMode,
       modelPickerVisible: capabilities.modelPickerVisible,
       composerReword: {
         showContextMenu: (selection, x, y) =>
@@ -344,6 +346,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
         text: input.text,
         attachments: input.attachments,
         renderUserMessageAsMarkdown: input.renderUserMessageAsMarkdown,
+        responseMode: input.responseMode ?? "text",
         ...(input.presentationMode === undefined
           ? null
           : { presentationMode: input.presentationMode }),

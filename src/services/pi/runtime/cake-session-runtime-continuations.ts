@@ -12,6 +12,7 @@ import {
 import { appendToolCompactedBranch } from "./session-tool-compaction";
 import { projectArtifactPointers, textFromContent } from "./session-projection";
 import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
+import { stripResponseModeReminder } from "../../../domain/conversations/conversation-response-mode";
 
 interface PendingSessionFork {
   readonly entryId?: string;
@@ -96,7 +97,11 @@ export function createCakeSessionRuntimeContinuations(input: {
           !("content" in entry.message)
         )
           return [];
-        return [stripPresentationModeReminder(textFromContent(entry.message.content)).trim()];
+        return [
+          stripResponseModeReminder(
+            stripPresentationModeReminder(textFromContent(entry.message.content)),
+          ).trim(),
+        ];
       })
       .find(Boolean);
     return (session.sessionManager.getSessionName() || firstUserMessage || "New chat").slice(
@@ -124,9 +129,15 @@ export function createCakeSessionRuntimeContinuations(input: {
         .getBranch()
         .flatMap((entry) => (entry.type === "message" ? [entry.message] : []))
         .filter((message) => message.role === "user")
-        .map((message) => stripPresentationModeReminder(textFromContent(message.content)).trim())
+        .map((message) =>
+          stripResponseModeReminder(
+            stripPresentationModeReminder(textFromContent(message.content)),
+          ).trim(),
+        )
         .find(Boolean);
-      const userText = firstUserMessage || stripPresentationModeReminder(currentUserMessage).trim();
+      const userText =
+        firstUserMessage ||
+        stripResponseModeReminder(stripPresentationModeReminder(currentUserMessage)).trim();
       if (!userText) return;
       const utilityModel: UtilityModel | undefined = options.utilityModel?.();
       if (!utilityModel) return;

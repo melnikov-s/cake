@@ -6,6 +6,7 @@ import { describeError } from "../lib/error-details";
 import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ProjectSessionPresentationMode } from "../../domain/project-sessions/project-session-presentation";
+import type { ConversationResponseMode } from "../../domain/conversations/conversation-response-mode";
 
 export interface ConversationDeliveryInput {
   sessionId: string;
@@ -14,6 +15,8 @@ export interface ConversationDeliveryInput {
   delivery: "prompt" | "steer";
   renderUserMessageAsMarkdown: boolean;
   presentationMode?: ProjectSessionPresentationMode;
+  /** Captured once per input; implementation carries it through existing delivery, not a new queue. */
+  responseMode?: ConversationResponseMode;
 }
 
 export interface ConversationDeliveryStoreProps {
@@ -32,6 +35,7 @@ export interface ConversationDeliveryStoreProps {
   requestFocus(): void;
   editorText?(entryId: string): string | undefined;
   presentationMode?(): ProjectSessionPresentationMode;
+  responseMode?(): ConversationResponseMode;
 }
 
 /** Owns optimistic projection, operation correlation, editing, and delivery failure recovery. */
@@ -76,12 +80,14 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
       this.addPending(operationId, text, attachments, delivery, renderUserMessageAsMarkdown);
     try {
       const presentationMode = this.props.presentationMode?.();
+      const responseMode = this.props.responseMode?.() ?? "text";
       const delivered = await this.props.deliver({
         sessionId,
         text,
         attachments,
         delivery,
         renderUserMessageAsMarkdown,
+        responseMode,
         ...(presentationMode === undefined ? null : { presentationMode }),
       });
       if (delivered === false) {
@@ -117,12 +123,14 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
     this.addPending(operationId, text, attachments, "prompt", renderUserMessageAsMarkdown, entryId);
     try {
       const presentationMode = this.props.presentationMode?.();
+      const responseMode = this.props.responseMode?.() ?? "text";
       await this.props.editMessage({
         sessionId,
         entryId,
         text,
         attachments,
         renderUserMessageAsMarkdown,
+        responseMode,
         ...(presentationMode === undefined ? null : { presentationMode }),
       });
       this.optimisticUserMessages.remove(operationId);

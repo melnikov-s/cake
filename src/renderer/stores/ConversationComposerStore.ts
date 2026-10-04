@@ -13,6 +13,7 @@ import { PendingSessionDraftStore, type PendingSessionPrompt } from "./PendingSe
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { ProjectSessionPresentationMode } from "../../domain/project-sessions/project-session-presentation";
+import type { ConversationResponseMode } from "../../domain/conversations/conversation-response-mode";
 
 export type ComposerDeliveryInput = ConversationDeliveryInput;
 
@@ -54,6 +55,7 @@ export interface ConversationComposerStoreProps {
   sessionCreationChoice?(): WorktreeDraftChoice;
   editorText?(entryId: string): string | undefined;
   presentationMode?(): ProjectSessionPresentationMode;
+  responseMode?(): ConversationResponseMode;
 }
 
 /** Coordinates draft, queue, pending-session, command, and delivery composer capabilities. */
@@ -82,6 +84,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
       requestFocus: () => this.draftStore.requestFocus(),
       editorText: this.props.editorText,
       presentationMode: this.props.presentationMode,
+      responseMode: this.props.responseMode,
     });
   }
 

@@ -50,6 +50,17 @@ focused field: Preparing, Listening, Finishing, or a failure. It composes the
 shared spinner and microphone icon and never takes focus. See
 [local dictation](dictation.md) for lifecycle and installation details.
 
+## Voice conversation controls
+
+`VoiceConversationControls` is a shared stateless toolbar pattern composed from
+`IconButton`, `Button`, `Badge` and `Callout`. Supply preparing/active/listening/speaking,
+input-only mute, disabled/error and enter/mute/exit intents. The entry action uses the
+shared `AudioLinesIcon` waveform to distinguish voice conversation from dictation.
+It owns no microphone,
+provider requests, timers or workflow state. `ChatConversationControls` maps the focused
+window `ConversationModeStore` and Project Session target into this primitive;
+other Chat kinds omit the capability. See [conversation mode](conversation-mode.md).
+
 ## Dismissible chips
 
 `DismissibleChip` composes sibling `Chip` and `IconButton` controls for separate

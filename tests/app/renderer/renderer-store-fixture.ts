@@ -1,4 +1,6 @@
-import { applySnapshot, type StoreSnapshot } from "r-state-tree";
+import { applySnapshot, updateStore, type StoreSnapshot } from "r-state-tree";
+import type { Microphone } from "../../../src/renderer/dictation/microphone";
+import type { SpeechPlayback } from "../../../src/renderer/speech/playback";
 import type { ProjectRecord } from "../../../src/domain/application/application-data";
 import { mountRootStore } from "../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../src/renderer/models/RootProjection";
@@ -13,6 +15,8 @@ export interface RendererStoreFixtureOptions {
   readonly flushWindowState?: () => Promise<void>;
   readonly snapshot?: StoreSnapshot;
   readonly desktopConnection?: DesktopConnectionStore;
+  readonly microphone?: Microphone;
+  readonly speechPlayback?: SpeechPlayback;
 }
 
 /** Mounts the real renderer Store tree over real projection Models and controlled services. */
@@ -40,6 +44,7 @@ export function createRendererStoreFixture(options: RendererStoreFixtureOptions 
     options.desktopConnection,
   );
 
+  updateStore(root, { microphone: options.microphone, speechPlayback: options.speechPlayback });
   return {
     client,
     models,

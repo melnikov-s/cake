@@ -11,6 +11,7 @@ import { parseCrossSessionMessage } from "../../../domain/conversations/cross-se
 import { parseScheduledMessage } from "../../../domain/scheduled-messages/scheduled-message-envelope";
 import { shouldRenderMarkdown } from "../../../utils/markdown";
 import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
+import { stripResponseModeReminder } from "../../../domain/conversations/conversation-response-mode";
 import {
   attachmentSchema,
   toolOutputContentArraySchema,
@@ -686,7 +687,7 @@ type UserMessageEnvelope = {
 
 /** Strips Cake's provenance envelope from a Pi user message and surfaces its metadata. */
 function parseUserMessageEnvelope(content: string): UserMessageEnvelope {
-  content = stripPresentationModeReminder(content);
+  content = stripResponseModeReminder(stripPresentationModeReminder(content));
   const scheduled = parseScheduledMessage(content);
   if (scheduled) return { text: scheduled.text, scheduled: scheduled.origin };
   const crossSession = parseCrossSessionMessage(content);
@@ -1013,8 +1014,8 @@ function entryPreview(entry: SessionEntry) {
   if (entry.type === "message") {
     const message = entry.message;
     const role = message.role;
-    const rawText = stripPresentationModeReminder(
-      "content" in message ? textFromContent(message.content) : "",
+    const rawText = stripResponseModeReminder(
+      stripPresentationModeReminder("content" in message ? textFromContent(message.content) : ""),
     );
     const displayText = role === "user" ? visibleUserMessageText(rawText) : rawText;
     const text = displayText.replace(/[\n\t]+/g, " ").trim();
@@ -1059,7 +1060,9 @@ export function projectTree(sessionManager: SessionManager): SessionTreeEntry[] 
       editorText:
         node.entry.type === "message" && node.entry.message.role === "user"
           ? visibleUserMessageText(
-              stripPresentationModeReminder(textFromContent(node.entry.message.content)),
+              stripResponseModeReminder(
+                stripPresentationModeReminder(textFromContent(node.entry.message.content)),
+              ),
             )
           : undefined,
       label: node.label,

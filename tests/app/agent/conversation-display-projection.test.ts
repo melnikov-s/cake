@@ -1,6 +1,10 @@
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import { SessionManager, type FileEntry } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
+import {
+  addResponseModeReminder,
+  responseModeReminders,
+} from "../../../src/domain/conversations/conversation-response-mode";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { forkDisplayProvenanceEntryType } from "../../../src/services/pi/runtime/fork-display-provenance";
 import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
@@ -66,6 +70,42 @@ function summarized(parts: ReturnType<typeof projectConversationDisplay>) {
 }
 
 describe("Conversation display projection after tool compaction", () => {
+  it("hides exact response-mode guidance from normalized image input through the real display projection", () => {
+    const hint =
+      "[Image: original 4096x3072, displayed at 2048x1536. Multiply coordinates by 2.00 to map to original image.]\n[Image converted from image/heic to image/png.]\n[Image omitted: could not be resized below the inline image size limit.]";
+    const own = "<system-reminder>Keep this user-authored tag.</system-reminder>";
+    for (const mode of ["voice", "text"] as const) {
+      const session = SessionManager.inMemory("/project");
+      const body = `Describe the images\n\n${own}`;
+      const normalized = `${addResponseModeReminder(body, mode)}\n\n${hint}`;
+      const entryId = session.appendMessage({
+        role: "user",
+        content: [
+          { type: "text", text: normalized },
+          { type: "image", data: "fixture", mimeType: "image/png" },
+        ],
+        timestamp: 1,
+      });
+      const parts = projectConversationDisplay(session);
+      expect(parts.find((part) => part.kind === "text")).toMatchObject({
+        role: "user",
+        entryId,
+        text: `${body}\n\n${hint}`,
+      });
+      expect(JSON.stringify(parts)).not.toContain(responseModeReminders[mode]);
+      expect(parts.some((part) => part.kind === "attachment")).toBe(true);
+      const stored = session.getBranch().find((entry) => entry.id === entryId);
+      expect(stored).toMatchObject({
+        type: "message",
+        message: {
+          content: [
+            { type: "text", text: normalized },
+            { type: "image", data: "fixture", mimeType: "image/png" },
+          ],
+        },
+      });
+    }
+  });
   it("restores work at its original positions and substitutes explicitly mapped active dialogue", () => {
     const { session, leafId } = sessionWithWork();
     appendToolCompactedBranch(session, leafId);

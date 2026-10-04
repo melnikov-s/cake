@@ -1,4 +1,5 @@
 import type { DictationStore } from "./DictationStore";
+import type { SpeechSettingsStore } from "./SpeechSettingsStore";
 import type { DesktopConnectionStore } from "./DesktopConnectionStore";
 import { Store, child, createStore } from "r-state-tree";
 import type {
@@ -38,10 +39,12 @@ export type SettingsPageId =
   | "appearance"
   | "hotkeys"
   | "editor"
-  | "dictation";
+  | "dictation"
+  | "speech";
 
 export interface SettingsStoreProps {
   dictation: DictationStore;
+  speech: SpeechSettingsStore;
   desktopConnection?: DesktopConnectionStore;
   operations: SessionOperationCoordinatorStore;
   activeSession(): ProjectSessionStore | CakeChatSessionStore | undefined;
@@ -95,6 +98,10 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     return createStore(ProviderSettingsStore, {
       operations: this.props.operations,
     });
+  }
+
+  get speech() {
+    return this.props.speech;
   }
 
   get dictation() {

@@ -22,6 +22,9 @@ its compiled speech helper and FluidAudio; Core ML is part of macOS.
 
 There are no ready sounds. Dictation mode starts off on each app launch. Model selection and
 installation persist; microphone selection and enabled mode are window-local for now.
+Dictation and [conversation mode](conversation-mode.md) exclude each other within the same window.
+Enabling one exits the other first; leaving it never automatically restores the previous mode.
+Conversation mode submits finalized speech independently of writing-field drafts and can speak assistant prose.
 Microphone access is requested on first capture. macOS permission denial can be repaired in
 System Settings → Privacy & Security → Microphone, then by toggling dictation off and on.
 

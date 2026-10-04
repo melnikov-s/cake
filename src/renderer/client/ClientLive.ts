@@ -1,4 +1,4 @@
-import { Effect, Predicate } from "effect";
+import { Effect, Predicate, Stream } from "effect";
 import { CakeIpcClient, type CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import { makeClientCapabilities } from "./ClientCapabilities";
 import type { Runtime } from "../runtime";
@@ -230,7 +230,7 @@ export function makeClient(
     const stop = /\.(abort|cancel)/i.test(operation);
     if (host?.kind === "browser") {
       if (
-        /^(dictation|desktopHost|backendConnection|desktopSharing|electron|windowState|browser)\./.test(
+        /^(speechOutput|dictation|desktopHost|backendConnection|desktopSharing|electron|windowState|browser)\./.test(
           operation,
         ) ||
         operation === "filesystem.choose-attachments" ||
@@ -261,7 +261,7 @@ export function makeClient(
         );
     }
     const native =
-      /^(dictation|desktopHost|windowState|electron)\./.test(operation) ||
+      /^(speechOutput|dictation|desktopHost|windowState|electron)\./.test(operation) ||
       operation === "filesystem.choose-attachments" ||
       (operation.startsWith("browser.") && operation !== "browser.acquire-browser-preview");
     if (host?.kind === "remote" && !native) {
@@ -376,6 +376,40 @@ export function makeClient(
       );
   }
   return {
+    speechOutput: {
+      setApiKey: (key, options) =>
+        run(
+          "speechOutput.setApiKey",
+          withClient((client) => client.speechOutput.setApiKey(key)),
+          options,
+        ),
+      setVoice: (voiceId, options) =>
+        run(
+          "speechOutput.setVoice",
+          withClient((client) => client.speechOutput.setVoice(voiceId)),
+          options,
+        ),
+      listVoices: (options) =>
+        run(
+          "speechOutput.listVoices",
+          withClient((client) => client.speechOutput.listVoices()),
+          options,
+        ),
+      synthesize: (request, consume, options) =>
+        run(
+          "speechOutput.synthesize",
+          withClient((client) =>
+            client.speechOutput
+              .synthesize(request)
+              .pipe(
+                Stream.runForEach((audio) =>
+                  Effect.tryPromise({ try: () => consume(audio), catch: (error) => error }),
+                ),
+              ),
+          ),
+          options,
+        ),
+    },
     dictation: {
       install: (options) =>
         run(

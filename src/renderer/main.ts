@@ -1,4 +1,5 @@
 import { observeDictation } from "./observers/dictation";
+import { observeSpeechOutput } from "./observers/speech-output";
 import { Schema } from "effect";
 import { createStore, mount, effect as reactiveEffect, untracked } from "r-state-tree";
 import { cakeBuildId } from "../ipc/protocol/BackendConnectionRpc";
@@ -141,6 +142,11 @@ async function mountDesktop(runtime: Runtime, client: Client, connection: Deskto
   const stopObservingAgentAvailability = observeAgentAvailability(runtime, rootStore);
   const stopObservingVsCodeState = observeVsCodeState(runtime, rootStore);
   const stopObservingDictation = observeDictation(runtime, rootStore.dictationStore);
+  const stopObservingSpeech = observeSpeechOutput(runtime, rootStore.speechSettingsStore);
+  const stopVoiceOnBlur = () => {
+    void rootStore.conversationModeStore.exit();
+  };
+  window.addEventListener("blur", stopVoiceOnBlur);
   const persistence = new WindowStatePersistence(
     client,
     (error) =>
@@ -216,6 +222,8 @@ async function mountDesktop(runtime: Runtime, client: Client, connection: Deskto
       stopObservingSharing();
       stopObservingEvents();
       stopObservingDictation();
+      stopObservingSpeech();
+      window.removeEventListener("blur", stopVoiceOnBlur);
       stopObservingSavedDrafts();
       stopObservingVsCodeState();
       stopObservingAgentAvailability();

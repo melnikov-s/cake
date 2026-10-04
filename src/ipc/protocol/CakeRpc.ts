@@ -1,4 +1,5 @@
 import { DictationRpc } from "./DictationRpc";
+import { SpeechOutputRpc } from "./SpeechOutputRpc";
 import { DesktopHostRpc } from "./DesktopHostRpc";
 import { BackendConnectionRpc } from "./BackendConnectionRpc";
 import { ApplicationRpc } from "./ApplicationRpc";
@@ -38,6 +39,7 @@ export { FoundationFailure } from "./FoundationRpc";
 
 export const CakeRpc = ApplicationRpc.merge(
   DictationRpc,
+  SpeechOutputRpc,
   DesktopHostRpc,
   BackendConnectionRpc,
   ArtifactRpc,

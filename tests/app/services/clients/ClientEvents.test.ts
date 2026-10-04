@@ -36,6 +36,51 @@ const notification: CakeEvent = {
 };
 
 describe("ClientEvents", () => {
+  it.effect("native_window_blur_validates_and_reaches_only_target_application_connection", () =>
+    Effect.gen(function* () {
+      const events = yield* ClientEvents;
+      const first = yield* subscribe(events.application(1));
+      const second = yield* subscribe(events.application(2));
+      const blur = yield* Schema.decodeUnknownEffect(cakeEventSchema)({ type: "window-blurred" });
+      expect(yield* Schema.decodeUnknownEffect(applicationEventSchema)(blur)).toEqual({
+        type: "window-blurred",
+      });
+      expect(Schema.is(applicationEventSchema)({ type: "window-blur" })).toBe(false);
+      expect(events.sendTo(1, blur)).toBe(true);
+      events.broadcast(notification);
+      expect(yield* Queue.take(first.received)).toEqual(blur);
+      expect(yield* Queue.take(first.received)).toEqual(notification);
+      expect(yield* Queue.take(second.received)).toEqual(notification);
+      expect(events.sendTo(99, blur)).toBe(false);
+    }).pipe(Effect.provide(ClientEventsLive)),
+  );
+  it.effect("native_window_blur_is_not_replayed_to_late_or_other_channel_subscribers", () =>
+    Effect.gen(function* () {
+      const events = yield* ClientEvents;
+      const first = yield* subscribe(events.application(1));
+      const terminals = yield* subscribe(events.terminals(1));
+      const onlyTerminals = yield* subscribe(events.terminals(2));
+      const blur = { type: "window-blurred" } as const;
+      expect(events.sendTo(1, blur)).toBe(true);
+      expect(yield* Queue.take(first.received)).toEqual(blur);
+      expect(events.sendTo(2, blur)).toBe(false);
+      const late = yield* subscribe(events.application(1));
+      // Ordered, channel-specific barriers prove neither channel filtering nor late
+      // subscription has retained the earlier targeted blur.
+      expect(events.sendTo(1, { type: "terminal-toggle-requested" })).toBe(true);
+      expect(events.sendTo(2, { type: "terminal-toggle-requested" })).toBe(true);
+      events.broadcast(notification);
+      expect(yield* Queue.take(terminals.received)).toEqual({ type: "terminal-toggle-requested" });
+      expect(yield* Queue.take(onlyTerminals.received)).toEqual({
+        type: "terminal-toggle-requested",
+      });
+      expect(yield* Queue.take(first.received)).toEqual(notification);
+      expect(yield* Queue.take(late.received)).toEqual(notification);
+      yield* Fiber.interrupt(first.fiber);
+      yield* Fiber.interrupt(late.fiber);
+      expect(events.sendTo(1, blur)).toBe(false);
+    }).pipe(Effect.provide(ClientEventsLive)),
+  );
   it.effect("client_events_deliver_only_to_target_connection", () =>
     Effect.gen(function* () {
       const events = yield* ClientEvents;

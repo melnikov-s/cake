@@ -62,6 +62,7 @@ const embeddedEditorExplicitSelectionFields = {
 };
 
 const cakeEventSchemas = {
+  "window-blurred": Schema.Struct({ type: Schema.Literal("window-blurred") }),
   "renderer-events-ready": Schema.Struct({
     type: Schema.Literal("renderer-events-ready"),
     channel: Schema.Literals(["application", "artifacts", "terminals", "vscode", "surfaces"]),
@@ -257,6 +258,7 @@ const cakeEventSchemas = {
 } as const;
 
 export const applicationEventSchema = Schema.Union([
+  cakeEventSchemas["window-blurred"],
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["changelog-snapshot"],
   cakeEventSchemas.complete,
@@ -308,6 +310,7 @@ export const surfaceEventSchema = Schema.Union([
 ]);
 
 export const cakeEventSchema = Schema.Union([
+  cakeEventSchemas["window-blurred"],
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["fullscreen-surface-close-requested"],
   cakeEventSchemas["changelog-snapshot"],

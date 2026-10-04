@@ -1,4 +1,5 @@
 import { dictationHandlers } from "./DictationHandlers";
+import { speechOutputHandlers } from "./SpeechOutputHandlers";
 import { desktopHostHandlers } from "./DesktopHostHandlers";
 import { backendConnectionHandlers } from "./BackendConnectionHandlers";
 import { Layer } from "effect";
@@ -53,6 +54,7 @@ export const makeCakeRpcServerLive = (
 ) => {
   const handlers = CakeRpc.toLayer({
     ...dictationHandlers,
+    ...speechOutputHandlers,
     ...desktopHostHandlers,
     ...backendConnectionHandlers,
     ...applicationStateHandlers,

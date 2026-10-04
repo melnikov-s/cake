@@ -3,6 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import { createCakeSessionRuntimeTurnController } from "../../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
 import { encodeCrossSessionMessage } from "../../../../src/domain/conversations/cross-session-coordination";
 import { projectQueuedMessages } from "../../../../src/services/pi/runtime/session-projection";
+import {
+  addResponseModeReminder,
+  stripResponseModeReminder,
+  responseModeReminders,
+} from "../../../../src/domain/conversations/conversation-response-mode";
 
 function deferred() {
   let resolve: () => void = () => undefined;
@@ -50,6 +55,119 @@ function createFixture(overrides: Partial<AgentSession> = {}) {
 }
 
 describe("CakeSessionRuntime turn controller", () => {
+  it("captures voice response style through prompt, steering, follow-up and compaction-held delivery", async () => {
+    for (const delivery of ["prompt", "steer", "follow-up"] as const) {
+      const { controller, session } = createFixture();
+      await controller.prompt("Voice", delivery, [], false, undefined, undefined, "voice");
+      expect(vi.mocked(session.prompt).mock.calls[0]?.[0]).toBe(
+        addResponseModeReminder("Voice", "voice"),
+      );
+      controller.dispose();
+    }
+    const { controller, session } = createFixture({ isStreaming: true, isCompacting: true });
+    await controller.prompt("Held voice", "follow-up", [], false, undefined, undefined, "voice");
+    expect(session.prompt).not.toHaveBeenCalled();
+    Object.assign(session, { isCompacting: false });
+    controller.compactionEnded(false);
+    await vi.waitFor(() => expect(session.prompt).toHaveBeenCalled());
+    expect(vi.mocked(session.prompt).mock.calls[0]?.[0]).toContain(responseModeReminders.voice);
+    controller.dispose();
+  });
+  it("omitted responseMode explicitly restores text guidance after a voice submission", async () => {
+    const { controller, session } = createFixture();
+    await controller.prompt("Spoken first", "prompt", [], false, undefined, undefined, "voice");
+    await controller.prompt("Normal next", "prompt", []);
+    expect(vi.mocked(session.prompt).mock.calls[0]?.[0]).toBe(
+      addResponseModeReminder("Spoken first", "voice"),
+    );
+    expect(vi.mocked(session.prompt).mock.calls[1]?.[0]).toBe(
+      addResponseModeReminder("Normal next", "text"),
+    );
+    controller.dispose();
+  });
+  it("reordered queued voice and text inputs each retain their own response style rather than a mutable mode flag", async () => {
+    const queue: string[] = [];
+    const { controller, session } = createFixture({
+      isStreaming: true,
+      prompt: vi.fn(async (text: string, options) => {
+        if (options?.streamingBehavior) queue.push(text);
+      }),
+      getFollowUpMessages: () => queue,
+      clearQueue: () => ({ steering: [], followUp: queue.splice(0) }),
+      followUp: vi.fn(async (text: string) => {
+        queue.push(text);
+        return "queued" as const;
+      }),
+    });
+    await controller.prompt("Voice", "follow-up", [], false, undefined, undefined, "voice");
+    await controller.prompt("Text", "follow-up", []);
+    const pending = await controller.pendingMessages();
+    await controller.reorderPendingMessage({ itemId: pending.items[1]!.itemId, position: 1 });
+    expect(queue).toEqual([
+      addResponseModeReminder("Text", "text"),
+      addResponseModeReminder("Voice", "voice"),
+    ]);
+    const part = controller.queuedParts()[1]!;
+    await controller.sendQueuedMessageNow(part.id);
+    expect(vi.mocked(session.prompt).mock.calls.at(-1)?.[0]).toBe(
+      addResponseModeReminder("Voice", "voice"),
+    );
+    expect(queue).toEqual([addResponseModeReminder("Text", "text")]);
+  });
+  it("display, editable queue payloads and user-message projection exclude exact response-mode reminders", async () => {
+    const { controller } = createFixture({ isStreaming: true, isCompacting: true });
+    await controller.prompt("Visible voice", "prompt", [], false, undefined, "draw", "voice");
+    const [part] = controller.queuedParts();
+    expect(part).toMatchObject({
+      kind: "text",
+      text: "Visible voice",
+      queuedInput: { text: "Visible voice" },
+    });
+    expect((await controller.pendingMessages()).items[0]?.text).toBe("Visible voice");
+    expect(
+      projectQueuedMessages([], [addResponseModeReminder("Visible text", "voice")])[0],
+    ).toMatchObject({ text: "Visible text" });
+  });
+  it("voice decoration preserves built-in commands, attachments, cross-session provenance and presentation guidance", async () => {
+    const { controller, session } = createFixture();
+    await controller.prompt("/compact preserve", "prompt", [], false, undefined, "draw", "voice");
+    expect(session.compact).toHaveBeenCalledWith("preserve");
+    await controller.prompt("!pwd", "prompt", [], false, undefined, "draw", "voice");
+    expect(session.executeBash).toHaveBeenCalledWith(
+      "pwd",
+      expect.any(Function),
+      expect.any(Object),
+    );
+    const text = encodeCrossSessionMessage("Context", {
+      version: 1,
+      messageId: "00000000-0000-4000-8000-000000000001",
+      threadId: "00000000-0000-4000-8000-000000000002",
+      sequence: 1,
+      expectsResponse: false,
+      sender: {
+        sessionId: "peer",
+        title: "Peer",
+        kind: "project-session",
+        projectName: "Project",
+        workingDirectory: "/project",
+      },
+    });
+    await controller.prompt(
+      text,
+      "prompt",
+      [{ kind: "image", name: "a.png", mimeType: "image/png", data: "AAA=" }],
+      false,
+      undefined,
+      "draw",
+      "voice",
+    );
+    const call = vi.mocked(session.prompt).mock.calls.at(-1)!;
+    expect(call[0]).toContain(text);
+    expect(call[0]).toContain("entered Draw");
+    expect(call[0]).toContain(responseModeReminders.voice);
+    expect(call[1]?.images).toEqual([{ type: "image", data: "AAA=", mimeType: "image/png" }]);
+    expect(stripResponseModeReminder(call[0])).not.toContain("Cake response mode");
+  });
   it("does not dispatch an accepted idle prompt after abort wins during preparation", async () => {
     const preparation = deferred();
     const { controller, session } = createFixture();
@@ -97,7 +215,7 @@ describe("CakeSessionRuntime turn controller", () => {
 
     expect(prompt.mock.calls[0]?.[0]).toContain("entered embedded VS Code");
     expect(prompt.mock.calls[0]?.[0]).toContain("Open this");
-    expect(prompt.mock.calls[1]?.[0]).toBe("Keep going");
+    expect(prompt.mock.calls[1]?.[0]).toBe(addResponseModeReminder("Keep going", "text"));
     expect(prompt.mock.calls[2]?.[0]).toContain("returned to the normal conversation view");
     expect(prompt.mock.calls[2]?.[0]).toContain("Summarize");
   });
@@ -168,15 +286,18 @@ describe("CakeSessionRuntime turn controller", () => {
     await controller.abort();
 
     expect(session.prompt).not.toHaveBeenCalled();
-    expect(session.followUp).toHaveBeenCalledWith("Do work later", []);
+    expect(session.followUp).toHaveBeenCalledWith(
+      addResponseModeReminder("Do work later", "text"),
+      [],
+    );
     expect(await controller.listQueuedMessages()).toEqual({
       steering: [],
-      followUp: ["Do work later"],
+      followUp: [addResponseModeReminder("Do work later", "text")],
     });
     expect(controller.compactionQueuedMessages()).toEqual([]);
     expect(syncQueuedParts).toHaveBeenCalledTimes(2);
 
-    const [part] = projectQueuedMessages([], ["Do work later"]);
+    const [part] = controller.queuedParts();
     await controller.removeQueuedMessage(part!.id);
     await expect(prompt).rejects.toThrow("Queued input was canceled");
   });
@@ -262,7 +383,7 @@ describe("CakeSessionRuntime turn controller", () => {
         abortedTurnIds: [],
       });
       expect(vi.mocked(session.prompt).mock.calls.at(-1)).toEqual([
-        "Rapid steering",
+        addResponseModeReminder("Rapid steering", "text"),
         expect.objectContaining({ source: "interactive" }),
       ]);
     });
@@ -273,7 +394,10 @@ describe("CakeSessionRuntime turn controller", () => {
         followUp: ["Do this next"],
       });
       const tracked = controller.prompt("Then this", "follow-up", [], false, "turn-then");
-      const [, , thenThisId] = partIds(["Change direction"], ["Do this next", "Then this"]);
+      const [, , thenThisId] = partIds(
+        ["Change direction"],
+        ["Do this next", addResponseModeReminder("Then this", "text")],
+      );
 
       await expect(controller.removeQueuedMessage(thenThisId!)).resolves.toEqual({
         steering: ["Change direction"],
@@ -284,7 +408,12 @@ describe("CakeSessionRuntime turn controller", () => {
       expect(session.clearQueue).toHaveBeenCalledOnce();
       expect(
         vi.mocked(session.prompt).mock.calls.map(([text, options]) => [text, options]),
-      ).toEqual([["Then this", expect.objectContaining({ streamingBehavior: "followUp" })]]);
+      ).toEqual([
+        [
+          addResponseModeReminder("Then this", "text"),
+          expect.objectContaining({ streamingBehavior: "followUp" }),
+        ],
+      ]);
       expect(session.steer).toHaveBeenCalledWith("Change direction", []);
       expect(session.followUp).toHaveBeenCalledWith("Do this next", []);
       expect(syncQueuedParts).toHaveBeenCalled();
@@ -294,16 +423,18 @@ describe("CakeSessionRuntime turn controller", () => {
       const { controller, session } = createQueuedFixture({ steering: [], followUp: [] });
       const tracked = controller.prompt("Do this next", "follow-up", [], false, "turn-next");
       await controller.prompt("Then this", "follow-up", []);
-      const [doThisNextId] = partIds([], ["Do this next", "Then this"]);
+      const next = addResponseModeReminder("Do this next", "text"),
+        then = addResponseModeReminder("Then this", "text");
+      const [doThisNextId] = partIds([], [next, then]);
 
       await expect(controller.steerQueuedMessage(doThisNextId!)).resolves.toEqual({
-        steering: ["Do this next"],
-        followUp: ["Then this"],
+        steering: [next],
+        followUp: [then],
       });
 
-      expect(session.steer).toHaveBeenCalledWith("Do this next", []);
-      expect(session.followUp).toHaveBeenCalledWith("Then this", []);
-      controller.consumeUserMessage("Do this next");
+      expect(session.steer).toHaveBeenCalledWith(next, []);
+      expect(session.followUp).toHaveBeenCalledWith(then, []);
+      controller.consumeUserMessage(next);
       controller.settleTurn();
       await expect(tracked).resolves.toBeUndefined();
     });
@@ -426,7 +557,10 @@ describe("CakeSessionRuntime turn controller", () => {
       const { controller, session } = createFixture({ isStreaming: true, isCompacting: true });
       const removed = controller.prompt("Drop me", "prompt", [], false, "turn-drop");
       await controller.prompt("Steer me", "prompt", []);
-      const [dropId, steerId] = partIds([], ["Drop me", "Steer me"]);
+      const [dropId, steerId] = partIds(
+        [],
+        [addResponseModeReminder("Drop me", "text"), addResponseModeReminder("Steer me", "text")],
+      );
       expect((await controller.pendingMessages()).items).toEqual([
         expect.objectContaining({
           partId: dropId,

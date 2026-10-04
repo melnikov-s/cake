@@ -7,7 +7,10 @@ import { expect, type ElectronApplication, type Locator, type Page } from "@play
 import type { VisualCaptureTheme } from "./arguments.ts";
 import type { CakeArtifactV1 } from "../../src/ipc/artifact-contract.ts";
 import type { CakeEvent } from "../../src/ipc/cake-rpc-contract.ts";
-import { emitRendererEvent } from "../../tests/electron/main-harness.ts";
+import {
+  emitRendererEvent,
+  installLocalModelHttpGuard,
+} from "../../tests/electron/main-harness.ts";
 
 interface ScenarioFixturePaths {
   readonly cakeHome: string;
@@ -198,6 +201,153 @@ const assistantMarkdownCode: VisualCaptureScenario = {
       .filter({ has: page.locator('[data-streamdown="code-block-body"]') })
       .locator('[data-slot="message-content"]');
     return dialog.or(message).last();
+  },
+};
+
+const conversationEntryOrigin = "http://127.0.0.1:9";
+
+const conversationEntryScenario: VisualCaptureScenario = {
+  name: "conversation-entry",
+  description: "Actual Project Session composer with the conversation-mode entry microphone",
+  states: ["default", "hover"],
+  async seed(paths, theme) {
+    const sessionId = "visual-conversation-entry";
+    const timestamp = new Date(0).toISOString();
+    const sessionDirectory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    await Promise.all([
+      mkdir(paths.userData, { recursive: true }),
+      mkdir(paths.project, { recursive: true }),
+      mkdir(sessionDirectory, { recursive: true }),
+      mkdir(join(paths.cakeHome, "state"), { recursive: true }),
+    ]);
+    await writeFile(
+      join(paths.cakeHome, "pi", "settings.json"),
+      JSON.stringify({ defaultProvider: "conversation-visual", defaultModel: "fixture" }),
+    );
+    await writeFile(join(paths.cakeHome, "pi", "auth.json"), "{}");
+    // No submission occurs; the dummy loopback endpoint cannot invoke a billed provider.
+    await writeFile(
+      join(paths.cakeHome, "pi", "models.json"),
+      JSON.stringify({
+        providers: {
+          "conversation-visual": {
+            name: "Visual fixture",
+            baseUrl: `${conversationEntryOrigin}/v1`,
+            apiKey: "fixture-only",
+            api: "openai-completions",
+            models: [
+              {
+                id: "fixture",
+                name: "Visual fixture",
+                reasoning: false,
+                input: ["text"],
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 4096,
+                maxTokens: 1024,
+              },
+            ],
+          },
+        },
+      }),
+    );
+    await writeFile(
+      join(paths.userData, "window-state.json"),
+      JSON.stringify({
+        projectPath: paths.project,
+        selectedSessionId: sessionId,
+        activeConversation: { kind: "project-session", workspacePath: paths.project, sessionId },
+        recentProjectPaths: [paths.project],
+        draft: "",
+        draftsBySession: {},
+        theme,
+      }),
+    );
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        projects: [
+          { path: paths.project, name: "Project", addedAt: timestamp, lastOpenedAt: timestamp },
+        ],
+        trustedProjectPaths: [],
+      }),
+    );
+    await writeFile(
+      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+      [
+        { type: "session", version: 3, id: sessionId, timestamp, cwd: paths.project },
+        {
+          type: "model_change",
+          id: "model",
+          parentId: null,
+          timestamp,
+          provider: "conversation-visual",
+          modelId: "fixture",
+        },
+        {
+          type: "message",
+          id: "history",
+          parentId: "model",
+          timestamp,
+          message: { role: "user", content: "Let's discuss this project.", timestamp: 0 },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+  },
+  async prepare(page, state, application) {
+    if (!application) throw new Error("Conversation entry requires native Electron");
+    expect(await installLocalModelHttpGuard(application, conversationEntryOrigin)).toEqual({
+      allowedOrigin: conversationEntryOrigin,
+      installed: true,
+    });
+    const composer = page.locator(".workbench-composer");
+    await expect(composer.getByLabel("Message", { exact: true })).toBeVisible({ timeout: 20_000 });
+    const entry = composer.getByRole("button", { name: "Enter conversation mode", exact: true });
+    await expect(entry).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Exit conversation mode", exact: true }),
+    ).toHaveCount(0);
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    if (state === "hover") {
+      await entry.hover();
+      await expect(
+        page.getByRole("tooltip", { name: "Enter conversation mode", exact: true }),
+      ).toBeVisible();
+    } else {
+      await page.mouse.move(1, 1);
+    }
+  },
+  region(page) {
+    return page.locator(".workbench-composer");
+  },
+};
+
+const speechOutputSettingsScenario: VisualCaptureScenario = {
+  name: "speech-output-settings",
+  description: "Actual Speech output Settings with an empty masked ElevenLabs API key input",
+  states: ["default"],
+  seed: conversationEntryScenario.seed,
+  async prepare(page, _state, application) {
+    await conversationEntryScenario.prepare(page, "default", application);
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    await expect(page.locator("#speech-output-title")).toBeVisible();
+    const key = page.getByLabel("ElevenLabs API key", { exact: true });
+    await expect(key).toBeVisible();
+    await expect(key).toHaveAttribute("type", "password");
+    await expect(key).toHaveValue("");
+    await expect(page.getByText(/No key configured/)).toBeVisible();
+    await key.scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page.locator("#settings-content-scroll");
   },
 };
 
@@ -1198,6 +1348,8 @@ export const visualCaptureScenarios = [
   sourceSelectionScenario,
   sessionPluginsScenario,
   assistantMarkdownCode,
+  conversationEntryScenario,
+  speechOutputSettingsScenario,
   inlineLinks,
   requestExplanationScenario,
   drawMermaidArchitectureScenario,

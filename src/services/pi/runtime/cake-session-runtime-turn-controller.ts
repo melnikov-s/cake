@@ -1,4 +1,9 @@
 import { randomUUID } from "node:crypto";
+import {
+  addResponseModeReminder,
+  stripResponseModeReminder,
+  type ConversationResponseMode,
+} from "../../../domain/conversations/conversation-response-mode";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Attachment, UiPart } from "../../../ipc/session-contract";
 import type { ProjectSessionPresentationMode } from "../../../domain/project-sessions/project-session-presentation";
@@ -37,6 +42,7 @@ export interface CakeSessionRuntimeTurnController {
     renderUserMessageAsMarkdown?: boolean,
     turnId?: string,
     presentationMode?: ProjectSessionPresentationMode,
+    responseMode?: ConversationResponseMode,
   ) => Promise<void>;
   readonly editMessage: (
     entryId: string,
@@ -44,6 +50,7 @@ export interface CakeSessionRuntimeTurnController {
     attachments: Attachment[],
     renderUserMessageAsMarkdown: boolean,
     presentationMode?: ProjectSessionPresentationMode,
+    responseMode?: ConversationResponseMode,
   ) => Promise<void>;
   readonly compact: (instructions?: string) => Promise<void>;
   readonly listQueuedMessages: () => Promise<{ steering: string[]; followUp: string[] }>;
@@ -188,11 +195,20 @@ export function createCakeSessionRuntimeTurnController(input: {
     attachments: Attachment[],
     delivery: "prompt" | "steer" | "follow-up",
     presentationMode?: ProjectSessionPresentationMode,
+    responseMode: ConversationResponseMode = "text",
   ) => {
     const content = promptText(text, attachments);
-    return presentationMode === undefined
-      ? content
-      : addPresentationModeReminder(content, previousPresentationMode(delivery), presentationMode);
+    if (text.startsWith("/")) return content;
+    return addResponseModeReminder(
+      presentationMode === undefined
+        ? content
+        : addPresentationModeReminder(
+            content,
+            previousPresentationMode(delivery),
+            presentationMode,
+          ),
+      responseMode,
+    );
   };
 
   const deliverPrompt = (
@@ -262,6 +278,7 @@ export function createCakeSessionRuntimeTurnController(input: {
     renderUserMessageAsMarkdown = false,
     turnId?: string,
     presentationMode?: ProjectSessionPresentationMode,
+    responseMode?: ConversationResponseMode,
   ) => {
     assertActive();
     const generation = abortGeneration;
@@ -305,7 +322,13 @@ export function createCakeSessionRuntimeTurnController(input: {
       await input.beforeIdleTurn();
       assertNotAborted(generation);
     }
-    const content = contentForPresentation(text, attachments, delivery, presentationMode);
+    const content = contentForPresentation(
+      text,
+      attachments,
+      delivery,
+      presentationMode,
+      responseMode,
+    );
     const completion = turnId ? turnCompletions.track(turnId, content, true) : undefined;
     try {
       if (session.isCompacting) {
@@ -371,6 +394,7 @@ export function createCakeSessionRuntimeTurnController(input: {
     attachments: Attachment[],
     renderUserMessageAsMarkdown: boolean,
     presentationMode?: ProjectSessionPresentationMode,
+    responseMode?: ConversationResponseMode,
   ) => {
     assertActive();
     if (session.isStreaming || session.isCompacting)
@@ -388,7 +412,7 @@ export function createCakeSessionRuntimeTurnController(input: {
     await input.emitSnapshot();
     assertNotAborted(generation);
     await deliverPrompt(
-      contentForPresentation(text, attachments, "prompt", presentationMode),
+      contentForPresentation(text, attachments, "prompt", presentationMode, responseMode),
       imageContent(attachments),
       renderUserMessageAsMarkdown,
     );
@@ -404,7 +428,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       if (index >= 0) return remaining.splice(index, 1)[0]!;
       return {
         itemId: randomUUID(),
-        text: stripPresentationModeReminder(content),
+        text: stripResponseModeReminder(stripPresentationModeReminder(content)),
         content,
         attachments: [],
         renderUserMessageAsMarkdown: false,
@@ -462,7 +486,9 @@ export function createCakeSessionRuntimeTurnController(input: {
             content: item.text,
           })),
       ].map((item, index) => {
-        const visibleContent = stripPresentationModeReminder(item.content);
+        const visibleContent = stripResponseModeReminder(
+          stripPresentationModeReminder(item.content),
+        );
         const parsed = parseCrossSessionMessage(visibleContent);
         return {
           itemId: item.itemId,

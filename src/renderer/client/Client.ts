@@ -44,9 +44,28 @@ import type {
   UtilityModel,
 } from "../../ipc/session-contract";
 import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
+import type {
+  SpeechOutputAudio,
+  SpeechOutputRequest,
+  SpeechOutputVoice,
+} from "../../domain/speech/speech-output-data";
 
 export interface ClientCommandOptions {
   readonly signal?: AbortSignal;
+}
+
+/** Review skeleton: implementation adds this required group to Client and updates every adapter/fake.
+ * Synthesis consumes the RPC stream through runtime.execute, never observation retry machinery.
+ */
+export interface SpeechOutputCommands {
+  setApiKey(key: string | null, options?: ClientCommandOptions): Promise<void>;
+  setVoice(voiceId: string, options?: ClientCommandOptions): Promise<void>;
+  listVoices(options?: ClientCommandOptions): Promise<ReadonlyArray<SpeechOutputVoice>>;
+  synthesize(
+    request: SpeechOutputRequest,
+    consume: (audio: SpeechOutputAudio) => Promise<void>,
+    options?: ClientCommandOptions,
+  ): Promise<void>;
 }
 
 type CommandGroup<Group> = {
@@ -485,6 +504,7 @@ interface InlineWidgetCommands {
 /** Permanent renderer-facing Promise API grouped by semantic Cake capability. */
 export interface Client {
   readonly dictation: CommandGroup<CakeIpcClientService["dictation"]>;
+  readonly speechOutput: SpeechOutputCommands;
   readonly desktopHost: CommandGroup<CakeIpcClientService["desktopHost"]>;
   readonly backendConnection: CommandGroup<CakeIpcClientService["backendConnection"]>;
   readonly application: CommandGroup<CakeIpcClientService["application"]>;

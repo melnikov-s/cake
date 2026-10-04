@@ -26,6 +26,7 @@ export interface ClientEventsService {
       | "browser-native-requested"
       | "widget-capture-requested"
       | "application-hotkey-input"
+      | "window-blurred"
       | "browser-entered"
       | "browser-state-changed"
       | "browser-element-selected"

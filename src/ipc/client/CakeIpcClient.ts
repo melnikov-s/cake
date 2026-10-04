@@ -4,6 +4,13 @@ import type {
   DictationState,
 } from "../../domain/dictation/dictation-data";
 import type {
+  SpeechOutputSettings,
+  SpeechOutputError,
+  SpeechOutputVoice,
+  SpeechOutputRequest,
+  SpeechOutputAudio,
+} from "../../domain/speech/speech-output-data";
+import type {
   DesktopHostError,
   DesktopHostSelection,
 } from "../../domain/application/desktop-host-data";
@@ -236,6 +243,18 @@ type ModelPresetResolutionError =
   | TransportError;
 
 export interface CakeIpcClientService {
+  readonly speechOutput: {
+    observeSettings(): Stream.Stream<SpeechOutputSettings, SpeechOutputError | TransportError>;
+    setApiKey(key: string | null): Effect.Effect<void, SpeechOutputError | TransportError>;
+    setVoice(voiceId: string): Effect.Effect<void, SpeechOutputError | TransportError>;
+    listVoices(): Effect.Effect<
+      ReadonlyArray<SpeechOutputVoice>,
+      SpeechOutputError | TransportError
+    >;
+    synthesize(
+      request: SpeechOutputRequest,
+    ): Stream.Stream<SpeechOutputAudio, SpeechOutputError | TransportError>;
+  };
   readonly dictation: {
     readonly observeState: () => Stream.Stream<DictationState, TransportError>;
     readonly install: () => Effect.Effect<void, DictationError | TransportError>;
@@ -887,6 +906,7 @@ export interface CakeIpcClientService {
         | "browser-native-requested"
         | "widget-capture-requested"
         | "application-hotkey-input"
+        | "window-blurred"
         | "browser-entered"
         | "browser-state-changed"
         | "browser-element-selected"
@@ -956,6 +976,19 @@ export const CakeIpcClientLive = Layer.effect(
       spanPrefix: "CakeIpcClient",
     });
     return CakeIpcClient.of({
+      speechOutput: {
+        observeSettings: () => client("speechOutput.observeSettings", undefined),
+        setApiKey: Effect.fn("CakeIpcClient.speechOutput.setApiKey")((key) =>
+          client("speechOutput.setApiKey", { key }),
+        ),
+        setVoice: Effect.fn("CakeIpcClient.speechOutput.setVoice")((voiceId) =>
+          client("speechOutput.setVoice", { voiceId }),
+        ),
+        listVoices: Effect.fn("CakeIpcClient.speechOutput.listVoices")(() =>
+          client("speechOutput.listVoices", undefined),
+        ),
+        synthesize: (request) => client("speechOutput.synthesize", request),
+      },
       dictation: {
         observeState: () => client("dictation.observeState", undefined),
         install: Effect.fn("CakeIpcClient.dictation.install")(() =>

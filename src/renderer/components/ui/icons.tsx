@@ -32,6 +32,12 @@ function Icon({
   );
 }
 
+export const AudioLinesIcon = () => (
+  <Icon size={14}>
+    <path d="M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4" />
+  </Icon>
+);
+
 export const MicrophoneIcon = () => (
   <Icon size={14}>
     <rect x="9" y="2" width="6" height="12" rx="3" />

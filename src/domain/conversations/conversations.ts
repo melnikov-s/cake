@@ -9,6 +9,7 @@ import type {
 } from "../../services/pi/CakeSessionRuntimes";
 import type { PiQueuedMessages } from "../../services/pi/conversation-data";
 import type { ProjectSessionPresentationMode } from "../project-sessions/project-session-presentation";
+import type { ConversationResponseMode } from "./conversation-response-mode";
 import type {
   Annotation,
   Attachment,
@@ -159,15 +160,35 @@ export const deliver = Effect.fn("Conversations.deliver")(function* <E, R>(
   attachments: ReadonlyArray<Attachment>,
   renderUserMessageAsMarkdown: boolean,
   presentationMode?: ProjectSessionPresentationMode,
+  responseMode?: ConversationResponseMode,
 ) {
   return yield* use(acquisition, (handle) => {
     switch (delivery) {
       case "prompt":
-        return handle.prompt(text, attachments, renderUserMessageAsMarkdown, presentationMode);
+        return handle.prompt(
+          text,
+          attachments,
+          renderUserMessageAsMarkdown,
+          presentationMode,
+          undefined,
+          responseMode,
+        );
       case "steer":
-        return handle.steer(text, attachments, renderUserMessageAsMarkdown, presentationMode);
+        return handle.steer(
+          text,
+          attachments,
+          renderUserMessageAsMarkdown,
+          presentationMode,
+          responseMode,
+        );
       case "follow-up":
-        return handle.followUp(text, attachments, renderUserMessageAsMarkdown, presentationMode);
+        return handle.followUp(
+          text,
+          attachments,
+          renderUserMessageAsMarkdown,
+          presentationMode,
+          responseMode,
+        );
     }
   });
 });
@@ -215,9 +236,17 @@ export const editMessage = Effect.fn("Conversations.editMessage")(function* <E, 
   attachments: ReadonlyArray<Attachment>,
   renderUserMessageAsMarkdown: boolean,
   presentationMode?: ProjectSessionPresentationMode,
+  responseMode?: ConversationResponseMode,
 ) {
   yield* use(acquisition, (handle) =>
-    handle.editMessage(entryId, text, attachments, renderUserMessageAsMarkdown, presentationMode),
+    handle.editMessage(
+      entryId,
+      text,
+      attachments,
+      renderUserMessageAsMarkdown,
+      presentationMode,
+      responseMode,
+    ),
   );
 });
 

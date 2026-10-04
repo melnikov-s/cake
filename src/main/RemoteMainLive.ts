@@ -1,4 +1,9 @@
 import { release } from "node:os";
+import { safeStorage } from "electron";
+import { ElevenLabsSpeechLive } from "../services/speech/ElevenLabsSpeechLive";
+import { makeSpeechOutputStorageLive } from "../services/speech/SpeechOutputStorageLive";
+import { SpeechOutputRpc } from "../ipc/protocol/SpeechOutputRpc";
+import { speechOutputHandlers } from "../ipc/server/SpeechOutputHandlers";
 import { join } from "node:path";
 import { DictationRpc } from "../ipc/protocol/DictationRpc";
 import { dictationHandlers } from "../ipc/server/DictationHandlers";
@@ -66,6 +71,19 @@ export const makeRemoteMainLive = (
   const Host = Layer.mergeAll(
     Clients,
     Native,
+    ElevenLabsSpeechLive.pipe(
+      Layer.provide(
+        makeSpeechOutputStorageLive(join(options.userData, "speech-output"), {
+          available: () =>
+            safeStorage.isEncryptionAvailable() &&
+            (process.platform !== "linux" ||
+              safeStorage.getSelectedStorageBackend() !== "basic_text"),
+          encrypt: (key) => safeStorage.encryptString(key),
+          decrypt: (bytes) => safeStorage.decryptString(Buffer.from(bytes)),
+        }),
+      ),
+      Layer.provide(BootstrapLive),
+    ),
     makeDictationLive(
       join(options.userData, "dictation"),
       process.platform === "darwin" &&
@@ -84,6 +102,7 @@ export const makeRemoteMainLive = (
   );
   const Rpc = ElectronRpc.merge(
     DictationRpc,
+    SpeechOutputRpc,
     WindowStateRpc,
     DesktopHostRpc,
     ApplicationEventsRpc,
@@ -96,6 +115,7 @@ export const makeRemoteMainLive = (
   ).middleware(RendererConnectionMiddleware);
   const handlers = Rpc.toLayer({
     ...dictationHandlers,
+    ...speechOutputHandlers,
     ...electronHandlers,
     ...windowStateHandlers,
     ...desktopHostHandlers,

@@ -1,7 +1,10 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { installLocalModelHttpGuard } from "./main-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -10,11 +13,51 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
   const cakeHome = join(temporaryRoot, "cake-home");
+  const home = join(temporaryRoot, "home");
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.end(
+      `data: ${JSON.stringify({ id: "slash-fixture", object: "chat.completion.chunk", created: 0, model: "slash-fixture", choices: [{ index: 0, delta: { content: "Fixture response." }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const skillDirectory = join(project, ".agents", "skills", "desktop-fixture");
   await Promise.all([
     mkdir(userData, { recursive: true }),
     mkdir(skillDirectory, { recursive: true }),
+    mkdir(home, { recursive: true }),
+    mkdir(join(cakeHome, "pi"), { recursive: true }),
   ]);
+  await writeFile(
+    join(cakeHome, "pi", "settings.json"),
+    JSON.stringify({ defaultProvider: "slash-provider", defaultModel: "slash-fixture" }),
+  );
+  await writeFile(join(cakeHome, "pi", "auth.json"), "{}");
+  await writeFile(
+    join(cakeHome, "pi", "models.json"),
+    JSON.stringify({
+      providers: {
+        "slash-provider": {
+          name: "Slash provider",
+          baseUrl: `${origin}/v1`,
+          apiKey: "fixture-only",
+          api: "openai-completions",
+          models: [
+            {
+              id: "slash-fixture",
+              name: "Slash fixture",
+              reasoning: false,
+              input: ["text"],
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              contextWindow: 4096,
+              maxTokens: 1024,
+            },
+          ],
+        },
+      },
+    }),
+  );
   await writeFile(
     join(skillDirectory, "SKILL.md"),
     "---\nname: desktop-fixture\ndescription: Desktop fixture skill\n---\nFixture.\n",
@@ -49,7 +92,10 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
     args: [repositoryRoot],
     cwd: repositoryRoot,
     env: {
-      ...process.env,
+      PATH: process.env.PATH,
+      TMPDIR: process.env.TMPDIR,
+      LANG: process.env.LANG,
+      HOME: home,
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
       CAKE_HOME: cakeHome,
@@ -60,6 +106,10 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
     const page = await application.firstWindow();
     const composer = page.getByLabel("Message");
     await expect(composer).toBeVisible({ timeout: 20_000 });
+    expect(await installLocalModelHttpGuard(application, origin)).toEqual({
+      allowedOrigin: origin,
+      installed: true,
+    });
 
     const initialHeight = await composer.evaluate((input) => input.getBoundingClientRect().height);
     expect(initialHeight).toBeLessThanOrEqual(48);
@@ -104,6 +154,8 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
     await expect(composer).toHaveValue("");
   } finally {
     await application.close();
+    server.closeAllConnections();
+    server.close();
     await rm(temporaryRoot, { recursive: true, force: true });
   }
 });

@@ -16,6 +16,10 @@ export const observeApplicationEvents = (
   runtime.observe(
     (client) => client.events.application(),
     (event) => {
+      if (event.type === "window-blurred") {
+        void root.conversationModeStore.exit();
+        return;
+      }
       if (event.type === "provider-auth-notice") {
         root.settingsStore.providers.receiveAuthNotice(event);
         if (

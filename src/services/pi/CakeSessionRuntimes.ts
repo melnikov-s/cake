@@ -47,6 +47,7 @@ import {
 } from "./runtime/session-discovery";
 import type { ReviewParentContext } from "./runtime/sidecar-runtime";
 import type { ProjectSessionPresentationMode } from "../../domain/project-sessions/project-session-presentation";
+import type { ConversationResponseMode } from "../../domain/conversations/conversation-response-mode";
 
 const PiSessionCapabilityProfile = Schema.TaggedUnion({
   ProjectSession: {},
@@ -133,18 +134,21 @@ export interface CakeSessionHandle {
     renderUserMessageAsMarkdown?: boolean,
     presentationMode?: ProjectSessionPresentationMode,
     automaticTitle?: boolean,
+    responseMode?: ConversationResponseMode,
   ) => Effect.Effect<string, PiSessionError>;
   readonly steer: (
     text: string,
     attachments?: ReadonlyArray<Attachment>,
     renderUserMessageAsMarkdown?: boolean,
     presentationMode?: ProjectSessionPresentationMode,
+    responseMode?: ConversationResponseMode,
   ) => Effect.Effect<string, PiSessionError>;
   readonly followUp: (
     text: string,
     attachments?: ReadonlyArray<Attachment>,
     renderUserMessageAsMarkdown?: boolean,
     presentationMode?: ProjectSessionPresentationMode,
+    responseMode?: ConversationResponseMode,
   ) => Effect.Effect<string, PiSessionError>;
   readonly listQueuedMessages: () => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly pendingMessages: () => Effect.Effect<PiPendingMessages, PiSessionError>;
@@ -164,6 +168,7 @@ export interface CakeSessionHandle {
     attachments: ReadonlyArray<Attachment>,
     renderUserMessageAsMarkdown: boolean,
     presentationMode?: ProjectSessionPresentationMode,
+    responseMode?: ConversationResponseMode,
   ) => Effect.Effect<void, PiSessionError>;
   readonly setUserMessageMarkdown: (
     entryId: string,
@@ -591,6 +596,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           markdown = false,
           presentationMode?: ProjectSessionPresentationMode,
           automaticTitle?: boolean,
+          responseMode?: ConversationResponseMode,
         ) {
           const turnId = crypto.randomUUID();
           const turnScope = yield* Scope.make();
@@ -638,6 +644,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 turnId,
                 presentationMode,
                 automaticTitle,
+                responseMode,
               ),
             catch: (cause) => cause,
           }).pipe(
@@ -722,12 +729,43 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           profile: shared.profile,
           updates,
           snapshot: () => call("snapshot", (runtime) => runtime.snapshot()),
-          prompt: (text, attachments = [], markdown = false, presentationMode, automaticTitle) =>
-            startTurn("prompt", text, attachments, markdown, presentationMode, automaticTitle),
-          steer: (text, attachments = [], markdown = false, presentationMode) =>
-            startTurn("steer", text, attachments, markdown, presentationMode),
-          followUp: (text, attachments = [], markdown = false, presentationMode) =>
-            startTurn("follow-up", text, attachments, markdown, presentationMode),
+          prompt: (
+            text,
+            attachments = [],
+            markdown = false,
+            presentationMode,
+            automaticTitle,
+            responseMode,
+          ) =>
+            startTurn(
+              "prompt",
+              text,
+              attachments,
+              markdown,
+              presentationMode,
+              automaticTitle,
+              responseMode,
+            ),
+          steer: (text, attachments = [], markdown = false, presentationMode, responseMode) =>
+            startTurn(
+              "steer",
+              text,
+              attachments,
+              markdown,
+              presentationMode,
+              undefined,
+              responseMode,
+            ),
+          followUp: (text, attachments = [], markdown = false, presentationMode, responseMode) =>
+            startTurn(
+              "follow-up",
+              text,
+              attachments,
+              markdown,
+              presentationMode,
+              undefined,
+              responseMode,
+            ),
           listQueuedMessages: () =>
             call("listQueuedMessages", (runtime) => runtime.listQueuedMessages()),
           pendingMessages: () => call("pendingMessages", (runtime) => runtime.pendingMessages()),
@@ -754,6 +792,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             attachments,
             renderUserMessageAsMarkdown,
             presentationMode,
+            responseMode,
           ) =>
             shared.runtime.editMessage
               ? call(
@@ -765,6 +804,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                       [...attachments],
                       renderUserMessageAsMarkdown,
                       presentationMode,
+                      responseMode,
                     ) ?? Promise.resolve(),
                 )
               : Effect.fail(

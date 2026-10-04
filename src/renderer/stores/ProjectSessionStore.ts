@@ -1,4 +1,5 @@
 import { Store, child, computed, createStore, snapshot } from "r-state-tree";
+import { ConversationModeContext, type ConversationModeTarget } from "./ConversationModeStore";
 import { isSessionAssistantThread } from "../../domain/discussion-sessions/discussion-session-data";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { Conversation } from "../models/Conversation";
@@ -300,6 +301,32 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return true;
   }
 
+  get conversationTarget(): ConversationModeTarget {
+    return {
+      sessionId: this.sessionId,
+      parts: () => this.model.uiParts,
+      canEnter: () =>
+        this.props.isActive() &&
+        this.props.canSubmit() &&
+        !this.props.pendingSessions.isTemporary(this.sessionId),
+      submitUtterance: (text) => {
+        if (
+          !this.props.isActive() ||
+          !this.props.canSubmit() ||
+          this.props.pendingSessions.isTemporary(this.sessionId)
+        )
+          return Promise.resolve(false);
+        return this.conversationSessionStore.composerStore.deliveryStore.send(
+          text,
+          [],
+          "prompt",
+          false,
+          false,
+        );
+      },
+    };
+  }
+
   @child
   get stagedCommandStore(): StagedSessionCommandStore {
     return createStore(StagedSessionCommandStore);
@@ -317,6 +344,10 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       composer: {
         projectPath: () => this.workspacePath,
         presentationMode: () => this.presentationMode,
+        responseMode: () => {
+          const mode = ConversationModeContext.consume(this);
+          return mode?.phase === "active" && mode.sessionId === this.sessionId ? "voice" : "text";
+        },
         openCommandPane: (pane) => this.props.openCommandPane(pane),
         createSideChat: (prompt) => this.createSideChat(prompt),
         renameSession: (name) => this.props.renameSession(name),
@@ -354,6 +385,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           this.props.pendingSessions.conversation(this.sessionId)?.setConfiguration(configuration),
       },
       chat: {
+        conversationMode: ConversationModeContext.consume(this)
+          ? { workflow: ConversationModeContext.consume(this)!, target: this.conversationTarget }
+          : undefined,
         commands: () =>
           this.props.pendingSessions.isTemporary(this.sessionId)
             ? this.stagedCommandStore.commands

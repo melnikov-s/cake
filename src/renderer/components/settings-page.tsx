@@ -1,5 +1,6 @@
 import { SettingsMcpSection } from "./settings-mcp-section";
 import { SettingsDictationSection } from "./settings-dictation-section";
+import { SettingsSpeechSection } from "./settings-speech-section";
 import { SettingsDesktopHostSection } from "./settings-desktop-host-section";
 import { useEffect, useState } from "react";
 import { observer } from "r-state-tree/react";
@@ -919,6 +920,12 @@ export const SettingsPage = observer(function SettingsPage({
               </Callout>
             ) : (
               <SettingsDictationSection store={settings.dictation} />
+            ))}
+          {activePage === "speech" &&
+            (browserMode ? (
+              <Callout>Native speech output is available only in the Cake desktop app.</Callout>
+            ) : (
+              <SettingsSpeechSection speech={settings.speech} />
             ))}
           {activePage === "appearance" && <SettingsAppearanceSection appearance={appearance} />}
           {activePage === "hotkeys" && <SettingsHotkeysSection hotkeys={settings.hotkeys} />}

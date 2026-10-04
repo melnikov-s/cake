@@ -17,6 +17,7 @@ import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { unusedEndpointServices } from "./rpc-endpoint-test-backend";
+import { ElevenLabsSpeech } from "../../../src/services/speech/ElevenLabsSpeech";
 
 const endpoint = makeCakeRpcServerLive("/home/test", {
   agentDirectory: "/agent",
@@ -68,6 +69,17 @@ const makeBackend = Effect.fn("RpcEndpoint.test.makeBackend")(function* (failHom
       observedClientEvents,
       ClientWorkspacesLive,
       unusedEndpointServices,
+      Layer.succeed(
+        ElevenLabsSpeech,
+        ElevenLabsSpeech.of({
+          observeSettings: () =>
+            Stream.make({ keyConfigured: false, modelId: "eleven_flash_v2_5" }),
+          setApiKey: () => Effect.void,
+          setVoice: () => Effect.void,
+          listVoices: () => Effect.succeed([]),
+          synthesize: () => Stream.empty,
+        }),
+      ),
       Layer.mock(ProjectAccess, {
         allow: (path) =>
           failHome

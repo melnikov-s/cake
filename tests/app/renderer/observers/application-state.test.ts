@@ -10,6 +10,8 @@ import { observeStream } from "../../../../src/renderer/observers/observe-stream
 import type { Runtime } from "../../../../src/renderer/runtime";
 import type { RootStore } from "../../../../src/renderer/stores/RootStore";
 import { SettingsStore } from "../../../../src/renderer/stores/SettingsStore";
+import { SpeechSettingsStore } from "../../../../src/renderer/stores/SpeechSettingsStore";
+import { createTestClient } from "../test-client";
 import { ClientContext } from "../../../../src/renderer/stores/context/ClientContext";
 
 const runtimeFor = (client: CakeIpcClientService): Runtime => {
@@ -33,6 +35,7 @@ class HarnessStore extends Store {
   @child get settings() {
     return createStore(SettingsStore, {
       dictation: createDictationStore(),
+      speech: mount(createStore(SpeechSettingsStore, { client: createTestClient().speechOutput })),
       operations: {} as never,
       activeSession: () => undefined,
       workbenchError: () => undefined,

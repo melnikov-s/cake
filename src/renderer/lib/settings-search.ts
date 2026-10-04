@@ -166,6 +166,18 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     label: "Application",
     items: [
       {
+        page: "speech",
+        label: "Speech output",
+        description: "Conversation voice",
+        settings: [
+          {
+            label: "ElevenLabs key and voice",
+            targetId: "speech-output-title",
+            keywords: "conversation hands-free Flash speech audio microphone quota billing",
+          },
+        ],
+      },
+      {
         page: "dictation",
         label: "Dictation",
         description: "Local speech to text",
