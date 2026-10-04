@@ -14,7 +14,6 @@ function createSettingsStore() {
       speech: mount(createStore(SpeechSettingsStore, { client: createTestClient().speechOutput })),
       operations,
       activeSession: () => undefined,
-      workbenchError: () => undefined,
     }),
   );
 }

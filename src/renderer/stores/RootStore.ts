@@ -903,8 +903,6 @@ export class RootStore extends Store<{
           ? this.cakeChatCollectionStore.registry.find(active.sessionId)
           : undefined;
       },
-      workbenchError: () =>
-        this.projectWorkbenchStore.error ?? this.projectWorkbenchStore.projectOpenStore.error,
     });
   }
 

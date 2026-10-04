@@ -48,7 +48,6 @@ export interface SettingsStoreProps {
   desktopConnection?: DesktopConnectionStore;
   operations: SessionOperationCoordinatorStore;
   activeSession(): ProjectSessionStore | CakeChatSessionStore | undefined;
-  workbenchError(): string | undefined;
 }
 
 /** Coordinates the focused workflows presented by the settings surface. */
@@ -135,8 +134,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
       this.cakePrompts.error ??
       this.globalInstructions.error ??
       this.globalLabels.error ??
-      this.configuration?.error ??
-      this.props.workbenchError()
+      this.configuration?.error
     );
   }
   get errorDetails() {

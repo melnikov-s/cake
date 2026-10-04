@@ -38,7 +38,6 @@ class HarnessStore extends Store {
       speech: mount(createStore(SpeechSettingsStore, { client: createTestClient().speechOutput })),
       operations: {} as never,
       activeSession: () => undefined,
-      workbenchError: () => undefined,
     });
   }
 }
