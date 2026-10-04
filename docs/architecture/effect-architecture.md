@@ -177,6 +177,12 @@ MainLive
 └── RpcLive                      # the host-supplied Electron Effect RPC endpoint
 ```
 
+Shared startup subgraphs use `Layer.suspend` as a memoized composition boundary.
+Memoizing leaf Services does not memoize `merge`/`provide` composites: repeatedly
+traversing a shared diamond graph otherwise retains redundant Scopes and finalizers.
+These boundaries share the graph within the existing process runtime and MemoMap;
+they do not introduce another runtime or change Service ownership and shutdown.
+
 The Node host supplies `Layer.empty` for native capabilities and can explicitly enable
 the standalone backend WebSocket endpoint and basic browser asset serving. The
 backend owns VS Code servers and companion commands; the network listener forwards

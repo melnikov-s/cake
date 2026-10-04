@@ -53,7 +53,7 @@ export const makeMainLive = (options: MainLiveOptions) => {
       preloadPath: join(import.meta.dirname, "../preload/preload.cjs"),
       rendererPath: join(import.meta.dirname, "../renderer/index.html"),
     }).pipe(Layer.provide(foundation));
-    const HostFoundationLive = Layer.merge(foundation, ElectronLive);
+    const HostFoundationLive = Layer.suspend(() => Layer.merge(foundation, ElectronLive));
     const ViewsLive = makeVsCodeViewsLive(options).pipe(Layer.provide(HostFoundationLive));
     return Layer.mergeAll(
       ElectronLive,
@@ -91,10 +91,12 @@ export const makeMainLive = (options: MainLiveOptions) => {
     { homeDirectory, cakeChat },
     join(import.meta.dirname, "../browser"),
   ).pipe(Layer.provide(BackendLive));
-  const HostLive = Layer.mergeAll(
-    BackendLive,
-    SharingLive,
-    makeDesktopHostLive(options.application, options.userData, { kind: "local" }),
+  const HostLive = Layer.suspend(() =>
+    Layer.mergeAll(
+      BackendLive,
+      SharingLive,
+      makeDesktopHostLive(options.application, options.userData, { kind: "local" }),
+    ),
   );
   const ProtocolLive = ElectronRpcServerProtocolLive.pipe(Layer.provide(BackendLive));
   const RpcLive = makeCakeRpcServerLive(homeDirectory, cakeChat).pipe(

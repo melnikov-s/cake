@@ -112,29 +112,35 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
     ClientEventsLive,
     ClientWorkspacesLive,
   );
-  const FoundationLive = Layer.mergeAll(
-    PlatformLive,
-    StorageLive,
-    PiLive,
-    ClientStateLive,
-    PreviewLeasesLive.pipe(Layer.provide(ClientStateLive)),
-    GitLive,
-    ManagedWorktreesCapabilityLive,
-    makeProjectAccessLive({
-      projectSessionDirectory: paths.piSessions,
-      resolvedProjectSessionDirectory: paths.piResolvedSessions,
-    }).pipe(Layer.provide(Layer.merge(StorageLive, ManagedWorktreesCapabilityLive))),
-  );
-  return Layer.merge(
-    FoundationLive,
+  // Shared composites need their own memoization boundary: leaf Services alone
+  // do not prevent repeated traversal and retained Scope bookkeeping in a diamond graph.
+  const FoundationLive = Layer.suspend(() =>
     Layer.mergeAll(
-      makeTerminalLive(),
-      makeVsCodeServerLive({ root: join(paths.cache, "vscode-editor"), ...companionAssets }),
-      WorkspaceFileExportLive,
-      makeWorkspaceFilesLive(paths.piAgent).pipe(Layer.provide(FoundationLive)),
-      makeAttachmentUploadsLive(paths.cache, paths.state).pipe(Layer.provide(FoundationLive)),
-      makeArtifactProjectionLive(paths.cache),
-    ).pipe(Layer.provide(FoundationLive)),
+      PlatformLive,
+      StorageLive,
+      PiLive,
+      ClientStateLive,
+      PreviewLeasesLive.pipe(Layer.provide(ClientStateLive)),
+      GitLive,
+      ManagedWorktreesCapabilityLive,
+      makeProjectAccessLive({
+        projectSessionDirectory: paths.piSessions,
+        resolvedProjectSessionDirectory: paths.piResolvedSessions,
+      }).pipe(Layer.provide(Layer.merge(StorageLive, ManagedWorktreesCapabilityLive))),
+    ),
+  );
+  return Layer.suspend(() =>
+    Layer.merge(
+      FoundationLive,
+      Layer.mergeAll(
+        makeTerminalLive(),
+        makeVsCodeServerLive({ root: join(paths.cache, "vscode-editor"), ...companionAssets }),
+        WorkspaceFileExportLive,
+        makeWorkspaceFilesLive(paths.piAgent).pipe(Layer.provide(FoundationLive)),
+        makeAttachmentUploadsLive(paths.cache, paths.state).pipe(Layer.provide(FoundationLive)),
+        makeArtifactProjectionLive(paths.cache),
+      ).pipe(Layer.provide(FoundationLive)),
+    ),
   );
 };
 
@@ -151,8 +157,8 @@ export const makeBackendLive = <HostServices, HostError>(
   const paths = options.paths;
   const homeDirectory = options.homeDirectory ?? homedir();
   const FoundationLive = makeBackendFoundationLive(options);
-  const HostLive = makeHostLive(FoundationLive);
-  const ApplicationCapabilitiesLive = Layer.merge(FoundationLive, HostLive);
+  const HostLive = Layer.suspend(() => makeHostLive(FoundationLive));
+  const ApplicationCapabilitiesLive = Layer.suspend(() => Layer.merge(FoundationLive, HostLive));
   const RendererRequestsLive = RendererRequestCoordinatorLive.pipe(
     Layer.provide(ApplicationCapabilitiesLive),
   );
@@ -187,23 +193,29 @@ export const makeBackendLive = <HostServices, HostError>(
     ArtifactGarbageCollectorLive,
   ).pipe(Layer.provide(ApplicationCapabilitiesLive));
 
-  const SessionFoundationLive = Layer.merge(ApplicationCapabilitiesLive, SessionCoreLive);
+  const SessionFoundationLive = Layer.suspend(() =>
+    Layer.merge(ApplicationCapabilitiesLive, SessionCoreLive),
+  );
   const RuntimeHostLive = makeProjectSessionRuntimeHostLive({
     agentDirectory: paths.piAgent,
     sessionDirectory: paths.piSessions,
     widgetSessionDirectory: paths.piWidgetSessions,
   }).pipe(Layer.provide(SessionFoundationLive));
-  const SessionRuntimeLive = Layer.merge(SessionFoundationLive, RuntimeHostLive);
+  const SessionRuntimeLive = Layer.suspend(() =>
+    Layer.merge(SessionFoundationLive, RuntimeHostLive),
+  );
 
   const SessionEnvironmentsLive = makeDiscussionSessionEnvironmentLive({
     agentDirectory: paths.piAgent,
     parentSessionDirectory: paths.piSessions,
   }).pipe(Layer.provide(SessionRuntimeLive));
-  const SessionWorkflowsLive = Layer.mergeAll(
-    SessionRuntimeLive,
-    SessionEnvironmentsLive,
-    WorktreeLandingAgentLive.pipe(Layer.provide(SessionRuntimeLive)),
-    WorktreeLandingCompletionLive.pipe(Layer.provide(SessionRuntimeLive)),
+  const SessionWorkflowsLive = Layer.suspend(() =>
+    Layer.mergeAll(
+      SessionRuntimeLive,
+      SessionEnvironmentsLive,
+      WorktreeLandingAgentLive.pipe(Layer.provide(SessionRuntimeLive)),
+      WorktreeLandingCompletionLive.pipe(Layer.provide(SessionRuntimeLive)),
+    ),
   );
 
   const InitializedLive = Layer.effectDiscard(initializeBackend()).pipe(
@@ -226,5 +238,7 @@ export const makeBackendLive = <HostServices, HostError>(
     ),
   ).pipe(Layer.provide(Layer.merge(SessionWorkflowsLive, InitializedLive)));
 
-  return Layer.mergeAll(SessionWorkflowsLive, InitializedLive, BackgroundWorkersLive);
+  return Layer.suspend(() =>
+    Layer.mergeAll(SessionWorkflowsLive, InitializedLive, BackgroundWorkersLive),
+  );
 };
