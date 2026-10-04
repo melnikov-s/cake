@@ -336,7 +336,7 @@ describe("Project Session conversation mode", () => {
     await f.enter();
     const stops = vi.mocked(f.playback.stop).mock.calls.length;
     await f.frames(0, 20);
-    await f.frames(0.1, 3);
+    await f.frames(0.1, 1);
     await f.frames(0, 10);
     expect(f.playback.stop).toHaveBeenCalledTimes(stops);
     expect(f.transcribe).not.toHaveBeenCalled();
@@ -356,12 +356,44 @@ describe("Project Session conversation mode", () => {
       pcm.readFloatLE(index * 4),
     );
     expect(samples).toHaveLength(12800);
-    expect(samples.slice(0, 3200).every((value) => value === 0)).toBe(true);
-    expect(samples.slice(3200, 9600).every((value) => value === Math.fround(0.03))).toBe(true);
-    expect(samples.slice(9600).every((value) => value === 0)).toBe(true);
+    expect(samples.slice(0, 6400).every((value) => value === 0)).toBe(true);
+    expect(samples.slice(6400).every((value) => value === Math.fround(0.03))).toBe(true);
     await f.frames(0, 7);
     await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(1));
   });
+  it.each([
+    { name: "quieter speech", frames: [[0.02, 8]] },
+    {
+      name: "syllable gaps",
+      frames: [
+        [0.1, 2],
+        [0, 1],
+        [0.1, 2],
+        [0, 1],
+        [0.1, 2],
+      ],
+    },
+  ] as const)(
+    "accepts a follow-up with $name after output finishes without restarting capture",
+    async ({ frames }) => {
+      using f = fixture();
+      await f.enter();
+      const releases = f.release.mock.calls.length;
+      await f.say();
+      f.publish([consumed(), assistant("First answer. ")]);
+      await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(f.root.conversationModeStore.speaking).toBe(false));
+      for (const [value, count] of frames) await f.frames(value, count);
+      await f.frames(0, 10);
+      await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(2));
+      expect(f.microphone.open).toHaveBeenCalledTimes(1);
+      const finalCalls = f.transcribe.mock.calls.filter(([request]) => request.final);
+      expect(finalCalls).toHaveLength(2);
+      expect(finalCalls[0]![0].utteranceId).not.toBe(finalCalls[1]![0].utteranceId);
+      expect(f.release).toHaveBeenCalledTimes(releases);
+      expect(f.abort).not.toHaveBeenCalled();
+    },
+  );
   it("speech input leaves the typed draft, pending attachments and annotations untouched", async () => {
     using f = fixture();
     const draft = f.session.conversationSessionStore.composerStore.draftStore;

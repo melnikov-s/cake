@@ -247,7 +247,10 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   private audio(samples: Float32Array) {
     let energy = 0;
     for (const value of samples) energy += value * value;
-    const speech = Math.sqrt(energy / Math.max(1, samples.length)) > 0.025;
+    // Background-noise rejection for barge-in must not make ordinary listening less sensitive.
+    const speech =
+      Math.sqrt(energy / Math.max(1, samples.length)) >
+      (this.speaking && !this.utterance ? 0.025 : 0.015);
     let run = this.utterance;
     if (!run) {
       this.preroll.push(samples);
@@ -257,7 +260,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       )
         this.preroll.shift();
       this.onset = speech ? this.onset + samples.length : 0;
-      if (this.onset < 6400) return;
+      if (this.onset < (this.speaking ? 6400 : 3200)) return;
       this.interrupt();
       run = {
         id: crypto.randomUUID(),

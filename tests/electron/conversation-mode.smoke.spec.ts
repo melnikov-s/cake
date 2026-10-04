@@ -13,7 +13,7 @@ import {
 } from "./main-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
-async function launch({ reasoning = false } = {}) {
+async function launch({ reasoning = false, recognizeSpeech = false } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "cake-conversation-"));
   const userData = join(directory, "user-data"),
     project = join(directory, "project"),
@@ -66,7 +66,7 @@ async function launch({ reasoning = false } = {}) {
   const helper = join(directory, "dictation");
   await writeFile(
     helper,
-    `#!${process.execPath}\nconst readline = require('node:readline'); process.stdout.write(JSON.stringify({ready:true})+'\\n'); readline.createInterface({ input: process.stdin }).on('line', () => process.stdout.write(JSON.stringify({text:''})+'\\n'));\n`,
+    `#!${process.execPath}\nconst readline = require('node:readline'); let turns = 0; process.stdout.write(JSON.stringify({ready:true})+'\\n'); readline.createInterface({ input: process.stdin }).on('line', (line) => { const request = JSON.parse(line); const text = ${recognizeSpeech} && request.final ? 'Spoken request ' + (++turns) : ''; process.stdout.write(JSON.stringify({text})+'\\n'); });\n`,
   );
   await chmod(helper, 0o755);
   // Silence keeps the real worklet/capture path active without artificially barging into output.
@@ -155,6 +155,7 @@ async function launch({ reasoning = false } = {}) {
   await page.evaluate(() => {
     const tracks: MediaStreamTrack[] = [];
     const nodes: AudioBufferSourceNode[] = [];
+    const endedNodes: AudioBufferSourceNode[] = [];
     const processors: AudioWorkletNode[] = [];
     const WorkletNode = AudioWorkletNode;
     globalThis.AudioWorkletNode = class extends WorkletNode {
@@ -173,11 +174,24 @@ async function launch({ reasoning = false } = {}) {
     AudioContext.prototype.createBufferSource = function () {
       const node = create.call(this);
       nodes.push(node);
+      node.addEventListener("ended", () => endedNodes.push(node), { once: true });
       return node;
     };
-    Object.assign(globalThis, { conversationAudioFixture: { tracks, nodes, processors } });
+    Object.assign(globalThis, {
+      conversationAudioFixture: { tracks, nodes, endedNodes, processors },
+    });
   });
   const configure = async () => {
+    await application.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0]!;
+      window.show();
+      window.focus();
+    });
+    await expect
+      .poll(() =>
+        application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.isFocused()),
+      )
+      .toBe(true);
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
     const key = page.getByLabel("ElevenLabs API key");
@@ -324,6 +338,78 @@ test("conversation controls enter, mute and exit with real capture and streaming
   }
 });
 
+test("quieter follow-up speech with syllable gaps is accepted after a spoken reply without restarting capture", async () => {
+  const f = await launch({ recognizeSpeech: true });
+  const frames = async (chunks: [number, number][]) => {
+    await f.page.evaluate((chunks) => {
+      const fixture = Reflect.get(globalThis, "conversationAudioFixture") as {
+        processors: AudioWorkletNode[];
+      };
+      const processor = fixture.processors.at(-1)!;
+      for (const [value, count] of chunks)
+        for (let i = 0; i < count; i++)
+          processor.port.dispatchEvent(
+            new MessageEvent("message", { data: new Float32Array(1600).fill(value) }),
+          );
+    }, chunks);
+  };
+  try {
+    await f.configure();
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await frames([
+      [0.1, 8],
+      [0, 10],
+    ]);
+    await expect.poll(() => f.responses.length).toBe(1);
+    f.sendText("First answer. ");
+    await expect.poll(() => speechHttpRequests(f.application)).toEqual(["First answer."]);
+    await emitSpeechPcm(f.application, true);
+    f.sendText("", true);
+    await expect
+      .poll(() =>
+        f.page.evaluate(
+          () =>
+            (
+              Reflect.get(globalThis, "conversationAudioFixture") as {
+                endedNodes: AudioBufferSourceNode[];
+              }
+            ).endedNodes.length,
+        ),
+      )
+      .toBe(1);
+    await frames([
+      [0.02, 2],
+      [0, 1],
+      [0.02, 2],
+      [0, 1],
+      [0.02, 2],
+      [0, 10],
+    ]);
+    await expect(f.page.getByRole("article").filter({ hasText: "Spoken request 2" })).toBeVisible();
+    await expect.poll(() => f.responses.length).toBe(2);
+    await expect
+      .poll(() =>
+        f.page.evaluate(
+          () =>
+            (
+              Reflect.get(globalThis, "conversationAudioFixture") as {
+                tracks: MediaStreamTrack[];
+                processors: AudioWorkletNode[];
+              }
+            ).processors.length,
+        ),
+      )
+      .toBe(1);
+    await f.page.getByRole("button", { name: "Exit conversation mode" }).click();
+  } finally {
+    await f.close();
+  }
+});
+
 test("barge-in keeps the interrupted reply silent and speaks the next turn from its beginning", async () => {
   const f = await launch({ reasoning: true });
   try {
@@ -346,7 +432,7 @@ test("barge-in keeps the interrupted reply silent and speaks the next turn from 
         processors: AudioWorkletNode[];
       };
       const processor = fixture.processors.at(-1)!;
-      for (let i = 0; i < 2; i++)
+      for (let i = 0; i < 4; i++)
         processor.port.dispatchEvent(
           new MessageEvent("message", { data: new Float32Array(1600).fill(0.1) }),
         );
