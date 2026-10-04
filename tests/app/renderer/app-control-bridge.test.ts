@@ -42,6 +42,7 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
       globalSessionLabels: overrides.globalSessionLabels ?? (() => []),
       ...(overrides.sessionLayout ? { sessionLayout: overrides.sessionLayout } : null),
     },
+    agentSettings: { invoke: async () => null },
     settings:
       overrides.settings ??
       ({
@@ -455,11 +456,17 @@ describe("AppControlBridge", () => {
     ).resolves.toMatchObject({
       ok: true,
       command: "settings.sections",
-      sections: [
-        { id: "appearance", scope: "window", writable: true },
-        { id: "editor", scope: "window", writable: true },
-        { id: "hotkeys", scope: "window", writable: true },
-      ],
+      sections: expect.arrayContaining([
+        expect.objectContaining({ id: "appearance", scope: "window", writable: true }),
+        expect.objectContaining({ id: "editor", scope: "window", writable: true }),
+        expect.objectContaining({ id: "hotkeys", scope: "window", writable: true }),
+        expect.objectContaining({
+          id: "mcp",
+          scope: "backend-or-calling-working-directory",
+          writable: true,
+        }),
+        expect.objectContaining({ id: "dictation", scope: "originating-desktop", writable: true }),
+      ]),
     });
     await expect(
       bridge.invoke({ name: "settings.get", arguments: { section: "appearance" } }),

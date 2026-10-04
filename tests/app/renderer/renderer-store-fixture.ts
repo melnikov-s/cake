@@ -4,6 +4,7 @@ import { mountRootStore } from "../../../src/renderer/bootstrap/mount-root-store
 import { RootProjection } from "../../../src/renderer/models/RootProjection";
 import type { SessionSummaryFixture } from "./fixtures/catalog-fixtures";
 import { createTestClient, type TestClientOverrides } from "./test-client";
+import type { DesktopConnectionStore } from "../../../src/renderer/stores/DesktopConnectionStore";
 
 export interface RendererStoreFixtureOptions {
   readonly client?: TestClientOverrides;
@@ -11,6 +12,7 @@ export interface RendererStoreFixtureOptions {
   readonly sessions?: readonly SessionSummaryFixture[];
   readonly flushWindowState?: () => Promise<void>;
   readonly snapshot?: StoreSnapshot;
+  readonly desktopConnection?: DesktopConnectionStore;
 }
 
 /** Mounts the real renderer Store tree over real projection Models and controlled services. */
@@ -35,6 +37,7 @@ export function createRendererStoreFixture(options: RendererStoreFixtureOptions 
     options.snapshot ?? { state: {}, children: {} },
     options.flushWindowState ?? (async () => undefined),
     models,
+    options.desktopConnection,
   );
 
   return {

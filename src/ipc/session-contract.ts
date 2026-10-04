@@ -387,7 +387,7 @@ export const uiPartSchema = Schema.Union([
   }),
 ]);
 
-const modelOptionSchema = Schema.Struct({
+export const modelOptionSchema = Schema.Struct({
   provider: stringMax(256),
   providerName: ipcProjectionString(512),
   id: stringMax(512),

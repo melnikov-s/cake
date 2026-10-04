@@ -1,4 +1,5 @@
 import { Store } from "r-state-tree";
+import { submitNativeMcpAction } from "../lib/native-mcp-action";
 import type {
   McpEntry,
   McpSettingsSnapshot,
@@ -190,16 +191,7 @@ export class McpSettingsStore extends Store<{ projectSession(): ProjectSessionSt
     this.authSessionId = session.sessionId;
     this.error = undefined;
     try {
-      if (!(await session.conversationSessionStore.prepareForCommand())) return;
-      await this.client.sessionChats.prompt(
-        {
-          sessionId: session.sessionId,
-          text: `/mcp ${action} ${name}`,
-          attachments: [],
-          renderUserMessageAsMarkdown: false,
-        },
-        { signal: this.signal },
-      );
+      await submitNativeMcpAction(this.client, session, name, action, this.signal);
       this.notice =
         "Native Pi command submitted. Follow its dialogs and current session notices; stored config is not live status.";
     } catch (error) {

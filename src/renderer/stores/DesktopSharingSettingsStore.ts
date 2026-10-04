@@ -40,7 +40,7 @@ export class DesktopSharingSettingsStore extends Store {
     this.error = undefined;
     try {
       if (!/^\d+$/.test(this.port)) throw new Error("Port must be an integer from 0 to 65535.");
-      await ClientContext.consume(this)!.desktopSharing.configure(
+      return await ClientContext.consume(this)!.desktopSharing.configure(
         { enabled, bind: this.bind.trim(), port: Number(this.port) },
         { signal: this.signal },
       );

@@ -37,6 +37,7 @@ function createHost(
       managedWorktree: () => undefined,
       globalSessionLabels: () => [],
     },
+    agentSettings: { invoke: async () => null },
     settings: {
       get: () => ({
         section: "appearance",

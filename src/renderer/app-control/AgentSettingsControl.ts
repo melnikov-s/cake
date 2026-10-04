@@ -1,0 +1,288 @@
+import { Schema } from "effect";
+import { jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
+import type { AgentSettingsInvocation } from "../../domain/application/agent-settings-schema";
+import { defaultCakePrompts } from "../../domain/application/cake-prompts";
+import { normalizeServerUrl } from "../../domain/application/desktop-host-data";
+import type { AgentControlSource } from "./AppControlBridge";
+import type { Client } from "../client/Client";
+import type { SettingsStore } from "../stores/SettingsStore";
+import type { ProjectSessionStore } from "../stores/ProjectSessionStore";
+import { submitNativeMcpAction } from "../lib/native-mcp-action";
+
+export interface AgentSettingsControlHost {
+  client: Client;
+  settings: SettingsStore;
+  signal: AbortSignal;
+  workingDirectory(sessionId: string): string | undefined;
+  projectSession(sessionId: string): ProjectSessionStore | undefined;
+}
+
+/** Stateless adapter: the same Promise Client/domain boundaries used by manual Settings.
+ * Native/window controls deliberately target this originating renderer's existing Stores.
+ */
+export async function invokeAgentSettings(
+  host: AgentSettingsControlHost,
+  invocation: AgentSettingsInvocation,
+  source?: AgentControlSource,
+): Promise<JsonValue> {
+  const value = await executeAgentSettings(host, invocation, source);
+  // Service projections may include undefined optional properties. Only JSON data
+  // leaves this application-control adapter; secrets stay masked by their authority.
+  return Schema.decodeUnknownPromise(jsonValueSchema)(JSON.parse(JSON.stringify(value)));
+}
+
+async function executeAgentSettings(
+  host: AgentSettingsControlHost,
+  invocation: AgentSettingsInvocation,
+  source?: AgentControlSource,
+) {
+  const { client, settings, signal } = host;
+  signal.throwIfAborted();
+  const options = { signal };
+  const application = () => client.application.getState(options);
+  const catalog = async () => ({
+    chat: await client.models.list(options),
+    nonChat: await client.nonChatModels.list(options),
+  });
+  const projectScope = (scope: "backend" | "project") => {
+    if (scope === "backend") return {};
+    const projectPath =
+      source?.kind === "project-session" ? host.workingDirectory(source.sessionId) : undefined;
+    if (!projectPath)
+      throw new Error(
+        "Project MCP scope requires the calling Project Session's Working Directory.",
+      );
+    return { projectPath };
+  };
+  const desktop = () => {
+    const connection = settings.desktopConnection;
+    if (!connection)
+      throw new Error(
+        "Native settings are available only in the originating Cake desktop, not a browser.",
+      );
+    return connection;
+  };
+  const dictation = () => {
+    desktop();
+    return settings.dictation;
+  };
+  const dictationView = () => {
+    const store = dictation();
+    return {
+      state: store.state ?? null,
+      enabled: store.enabled,
+      phase: store.phase,
+      deviceId: store.deviceId,
+      devices: store.devices,
+      busy: store.busy,
+      installing: store.installing,
+      error: store.error ?? null,
+    };
+  };
+  switch (invocation.name) {
+    case "settings.pi.get":
+      return client.piSettings.get(options);
+    case "settings.pi.update": {
+      const value = await client.piSettings.update(invocation.arguments, options);
+      settings.providers.piSettings = value;
+      return value;
+    }
+    case "settings.pi.reload":
+      return client.piSettings.reload(options);
+    case "settings.models.get": {
+      const state = await application();
+      return {
+        presets: state.modelPresets,
+        defaultPresetId: state.defaultModelPresetId ?? null,
+        utilityModel: state.utilityModel ?? null,
+        nonChatPreferences: state.nonChatModelPreferences ?? {},
+      };
+    }
+    case "settings.models.set-utility": {
+      const state = await client.workspaces.setUtilityModel(
+        invocation.arguments.model ?? undefined,
+        options,
+      );
+      return { utilityModel: state.utilityModel ?? null };
+    }
+    case "settings.models.set-non-chat":
+      return client.nonChatModels.updatePreference(invocation.arguments, options);
+    case "settings.presets.create":
+      return client.modelPresets.create(invocation.arguments, options);
+    case "settings.presets.update":
+      return client.modelPresets.update(invocation.arguments, options);
+    case "settings.presets.reorder":
+      return client.modelPresets.reorder(invocation.arguments, options);
+    case "settings.presets.remove":
+      return client.modelPresets.remove(invocation.arguments.id, options);
+    case "settings.presets.set-default":
+      return client.modelPresets.setDefault(invocation.arguments.id ?? undefined, options);
+    case "settings.providers.list":
+      return catalog();
+    case "settings.providers.refresh": {
+      await client.models.refresh(options);
+      return catalog();
+    }
+    case "settings.providers.login": {
+      await client.models.login(invocation.arguments, options);
+      return { authorized: true, ...(await catalog()) };
+    }
+    case "settings.providers.logout": {
+      await client.models.logout(invocation.arguments, options);
+      return catalog();
+    }
+    case "settings.mcp.get":
+      return client.mcpSettings.get(
+        { ...projectScope(invocation.arguments.scope), revealSecrets: false },
+        options,
+      );
+    case "settings.mcp.update": {
+      const { scope, ...mutation } = invocation.arguments;
+      return client.mcpSettings.mutate({ ...mutation, ...projectScope(scope) }, options);
+    }
+    case "settings.mcp.native": {
+      const { name, action, sessionId } = invocation.arguments;
+      const targetId =
+        sessionId ?? (source?.kind === "project-session" ? source.sessionId : undefined);
+      const session = targetId ? host.projectSession(targetId) : undefined;
+      if (!session)
+        throw new Error("Choose an existing idle Project Session for the native MCP action.");
+      await client.mcpSettings.get(
+        { projectPath: session.workspacePath, revealSecrets: false },
+        options,
+      );
+      const turnId = await submitNativeMcpAction(client, session, name, action, signal);
+      return {
+        submitted: true,
+        sessionId: session.sessionId,
+        turnId,
+        authorization: "interactive-not-confirmed",
+      };
+    }
+    case "settings.instructions.get": {
+      const state = await application();
+      return {
+        instructions: state.globalCustomInstructions,
+        prompts: state.cakePrompts,
+        defaults: defaultCakePrompts(),
+      };
+    }
+    case "settings.instructions.update": {
+      await settings.globalInstructions.update(invocation.arguments.instructions);
+      if (settings.globalInstructions.error) throw new Error(settings.globalInstructions.error);
+      return { instructions: (await application()).globalCustomInstructions };
+    }
+    case "settings.prompts.update": {
+      const { key, value } = invocation.arguments;
+      if (!settings.cakePrompts.prompts)
+        throw new Error("Settings are not hydrated; retry after application state loads.");
+      await settings.cakePrompts.update(key, value ?? defaultCakePrompts()[key]);
+      if (settings.cakePrompts.error) throw new Error(settings.cakePrompts.error);
+      return { prompts: (await application()).cakePrompts };
+    }
+    case "settings.labels.get":
+      return (await application()).globalSessionLabels;
+    case "settings.labels.update":
+      return client.projectWorkflow.mutateGlobal(invocation.arguments, options);
+    case "settings.desktop.get": {
+      const connection = desktop();
+      return {
+        host: await client.desktopHost.current(options),
+        connected: connection.connected,
+        connecting: connection.connecting,
+        error: connection.error ?? null,
+        sharing: connection.remote ? null : (settings.desktopSharing.state ?? null),
+      };
+    }
+    case "settings.desktop.sharing": {
+      if (desktop().remote)
+        throw new Error(
+          "Desktop sharing is managed in local-host Settings, not remote-host Settings.",
+        );
+      const sharing = settings.desktopSharing;
+      if (sharing.pending)
+        throw new Error("Desktop sharing is not ready or is already changing; retry when settled.");
+      if (
+        sharing.enabled &&
+        (invocation.arguments.bind !== sharing.bind ||
+          invocation.arguments.port !== Number(sharing.port))
+      )
+        throw new Error(
+          "Disable desktop sharing before changing its bind address or port, as in manual Settings.",
+        );
+      sharing.setBind(invocation.arguments.bind);
+      sharing.setPort(String(invocation.arguments.port));
+      const value = await sharing.configure(invocation.arguments.enabled);
+      if (sharing.error) throw new Error(sharing.error);
+      if (!value) throw new Error("Desktop sharing is already changing; retry when settled.");
+      return value;
+    }
+    case "settings.desktop.reconnect": {
+      const connection = desktop();
+      await connection.retry();
+      if (connection.error) throw new Error(connection.error);
+      return { connected: connection.connected };
+    }
+    case "settings.desktop.select-host": {
+      const connection = desktop();
+      if (connection.selecting) throw new Error("Host selection is already in progress.");
+      const input = invocation.arguments;
+      if (input.kind === "remote") {
+        connection.setUrl(normalizeServerUrl(input.url));
+        await connection.selectRemote();
+      } else await connection.selectLocal();
+      if (connection.error) throw new Error(connection.error);
+      return { selectionRequested: true, receiptMayBeLost: true };
+    }
+    case "settings.dictation.get":
+      return dictationView();
+    case "settings.dictation.update": {
+      const store = dictation();
+      const input = invocation.arguments;
+      if (store.busy && input.action !== "cancel-install" && input.action !== "refresh-microphones")
+        throw new Error("Dictation installation is busy; wait or cancel the install.");
+      if (
+        input.action === "enable" &&
+        input.enabled &&
+        (!store.state?.supported ||
+          !store.state.engineAvailable ||
+          !store.state.modelPath ||
+          store.state.status === "installing")
+      )
+        throw new Error(
+          "Dictation requires a supported desktop, installed speech engine and model, as in manual Settings.",
+        );
+      store.error = undefined;
+      switch (input.action) {
+        case "enable":
+          await store.setEnabled(input.enabled);
+          break;
+        case "microphone": {
+          if (input.deviceId && !store.devices.some((device) => device.id === input.deviceId))
+            throw new Error(
+              "Refresh microphones and choose a listed device, or an empty deviceId for the system default.",
+            );
+          store.setDevice(input.deviceId);
+          break;
+        }
+        case "refresh-microphones":
+          await store.refreshDevices();
+          break;
+        case "install":
+          await store.install();
+          break;
+        case "cancel-install":
+          store.cancelInstall();
+          break;
+        case "remove":
+          await store.remove();
+          break;
+        case "model-path":
+          await store.useModelPath(input.path);
+          break;
+      }
+      if (store.error) throw new Error(store.error);
+      return dictationView();
+    }
+  }
+}

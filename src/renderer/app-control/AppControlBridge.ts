@@ -1,4 +1,10 @@
 import { Effect, Schema } from "effect";
+import {
+  AgentSettingsInvocation,
+  agentSettingsOperations,
+  agentSettingsGuidance,
+  agentSettingsSections,
+} from "../../domain/application/agent-settings-schema";
 import { jsonObjectSchema, jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
 import {
   SESSION_TITLE_MAX_LENGTH,
@@ -37,7 +43,6 @@ import type { QueuedConversationMessages } from "../../domain/conversations/conv
 import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
 import { CakeModelSelection } from "../../domain/model-presets/cake-model-selection";
 import {
-  cakeSettingsSections,
   type CakeSettingsSectionId,
   type CakeSettingsSectionView,
   type CakeSettingsUpdate,
@@ -500,6 +505,9 @@ export interface AppControlHost {
     managedWorktree(workingDirectory: string): WorktreeRecord | undefined;
     globalSessionLabels(): readonly SessionLabel[];
   };
+  agentSettings: {
+    invoke(invocation: AgentSettingsInvocation, source?: AgentControlSource): Promise<JsonValue>;
+  };
   settings: {
     get(section: CakeSettingsSectionId): CakeSettingsSectionView;
     update(input: CakeSettingsUpdate): Promise<CakeSettingsSectionView>;
@@ -639,7 +647,7 @@ interface CoordinationThreadView {
 export type AppControlResult =
   | { ok: true; command: "app.state"; state: AppControlState }
   | { ok: true; command: "app.user-selection"; text: string | null }
-  | { ok: true; command: "settings.sections"; sections: typeof cakeSettingsSections }
+  | { ok: true; command: "settings.sections"; sections: typeof agentSettingsSections }
   | {
       ok: true;
       command: "settings.get" | "settings.update";
@@ -1300,7 +1308,20 @@ function decodedControlTools(
 }
 
 export function listAppControlTools() {
-  return decodedControlTools(modelControlOperations);
+  return decodedControlTools([
+    ...modelControlOperations,
+    ...agentSettingsOperations.map((definition) => ({
+      command: definition.command,
+      topic: "settings",
+      summary: definition.summary,
+      parameters: Schema.toStandardJSONSchemaV1(definition.input)["~standard"].jsonSchema.input({
+        target: "draft-07",
+      }),
+      guidance: [...agentSettingsGuidance, ...definition.guidance],
+      examples: [{ input: definition.example }],
+      result: "The existing Settings service's result; credentials remain masked.",
+    })),
+  ]);
 }
 
 export function listSessionAssistantControlTools() {
@@ -1337,6 +1358,19 @@ export class AppControlBridge {
   }
 
   async invoke(untrustedInput: unknown, source?: AgentControlSource): Promise<JsonValue> {
+    const envelope = await Schema.decodeUnknownPromise(Schema.Struct({ name: Schema.String }))(
+      untrustedInput,
+    );
+    if (agentSettingsOperations.some((operation) => operation.command === envelope.name)) {
+      const invocation = await Schema.decodeUnknownPromise(AgentSettingsInvocation)(
+        untrustedInput,
+        { onExcessProperty: "error" },
+      );
+      const value = await this.host.agentSettings.invoke(invocation, source);
+      return Schema.decodeUnknownPromise(jsonValueSchema)(
+        JSON.parse(JSON.stringify({ ok: true, command: invocation.name, value })),
+      );
+    }
     const result = await this.invokeResult(untrustedInput, source);
     if (source && result.ok && result.command !== "notifications.send") {
       const receipt = this.agentActionReceipt(result, source);
@@ -1352,7 +1386,7 @@ export class AppControlBridge {
     const invocation = Schema.decodeUnknownSync(appControlInvocationSchema)(untrustedInput);
     const command = invocation.name;
     if (invocation.name === "settings.sections")
-      return { ok: true, command: invocation.name, sections: cakeSettingsSections };
+      return { ok: true, command: invocation.name, sections: agentSettingsSections };
     if (invocation.name === "settings.get") {
       const view = this.host.settings.get(invocation.arguments.section);
       return toStrictJson({ ok: true, command: invocation.name, scope: "window", ...view });

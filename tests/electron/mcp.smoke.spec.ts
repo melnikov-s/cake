@@ -136,7 +136,9 @@ export default (pi) => {
       args: [repositoryRoot],
       cwd: repositoryRoot,
       env: {
-        ...process.env,
+        PATH: process.env.PATH,
+        HOME: root,
+        TMPDIR: process.env.TMPDIR,
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: userData,
         CAKE_HOME: remote ? localHome : cakeHome,
@@ -148,6 +150,16 @@ export default (pi) => {
       page.on("pageerror", (error) => errors.push(error.message));
       const composer = page.getByRole("combobox", { name: "Message", exact: true });
       await expect(composer).toBeVisible({ timeout: 20_000 });
+      // Verify/select the unbilled fake provider before any prompt; never rely on ambient auth fallback.
+      const configuration = page.getByRole("button", { name: "Model configuration", exact: true });
+      const selectFixture = async () => {
+        await configuration.click();
+        await page.getByLabel("Search presets and models").fill("Fixture");
+        await page.getByRole("button", { name: "Fixture fixture", exact: true }).click();
+        await page.getByRole("button", { name: "Apply", exact: true }).click();
+        await expect(configuration).toContainText("Fixture");
+      };
+      await selectFixture();
       await composer.click();
       await expect(composer).toBeFocused();
       await composer.pressSequentially("/mcp");
@@ -171,6 +183,9 @@ export default (pi) => {
       // Exceed the four-session idle observation budget. The command-only
       // identity must release its runtime, then reopen without a disk transcript.
       for (let index = 0; index < 5; index += 1) {
+        await selectFixture();
+        await composer.click();
+        await expect(composer).toBeFocused();
         await composer.pressSequentially(`Initialize fixture session ${index}`);
         await expect(composer).toHaveValue(`Initialize fixture session ${index}`);
         await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
@@ -295,6 +310,9 @@ export default (pi) => {
       await expect(page.getByText(/oauth: connected/).last()).toBeVisible();
       await expect(composer).toHaveValue("");
       await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+      await expect(composer).toBeFocused();
+      await selectFixture();
+      await composer.click();
       await expect(composer).toBeFocused();
       await composer.pressSequentially("Initialize fixture session");
       await expect(composer).toHaveValue("Initialize fixture session");

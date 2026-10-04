@@ -3,7 +3,8 @@ import { watch } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
+import { AgentSettingsInvocation } from "../../src/domain/application/agent-settings-schema";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { PiSettings } from "../../src/services/pi/PiSettings";
 import { makePiSettingsLive } from "../../src/services/pi/live/PiSettingsLive";
@@ -214,6 +215,25 @@ describe("Native non-chat model settings contract", () => {
       requestUi: async () => undefined,
       onEvent: () => {},
       nonChatModelPreferences: () => preferences,
+      currentSessionControl: {
+        resolved: () => false,
+        setResolved: async () => {},
+        invokeAppControl: async (command, input, signal) => {
+          signal.throwIfAborted();
+          const invocation = await Schema.decodeUnknownPromise(AgentSettingsInvocation)(
+            { name: command, arguments: input },
+            { onExcessProperty: "error" },
+          );
+          if (invocation.name !== "settings.models.set-non-chat")
+            throw new Error("Unexpected fixture operation");
+          const { type, preference } = invocation.arguments;
+          const next = { ...preferences };
+          if (preference === null) delete next[type];
+          else next[type] = preference;
+          preferences = next;
+          return { ok: true, command, value: preferences };
+        },
+      },
     });
     runtimes.push(runtime);
     expect((await runtime.snapshot()).model).toMatchObject({
@@ -223,8 +243,12 @@ describe("Native non-chat model settings contract", () => {
     await runtime.prompt(`SCRIPT:${nativeNonChatScript("image")}`, "prompt", []);
     await runtime.prompt(`SCRIPT:${nativeNonChatScript("classifier")}`, "prompt", []);
     await runtime.prompt(`SCRIPT:${nativeNonChatScript("image", "image-b")}`, "prompt", []);
-    preferences = { image: reference("image-b"), classifier: reference("classifier-b") };
-    await runtime.prompt(`SCRIPT:${nativeNonChatScript("classifier")}`, "prompt", []);
+    // Native codemode consumes a real structured settings operation before selecting a model.
+    await runtime.prompt(
+      `SCRIPT:const saved = await tools.cake({command:"settings.models.set-non-chat", input:{type:"classifier", preference:{provider:"non-chat-fixture", modelId:"classifier-b"}}}); if (!saved.result.ok) throw new Error("Settings failed"); ${nativeNonChatScript("classifier")}`,
+      "prompt",
+      [],
+    );
     const rawCalls = await readFile(h.trace, "utf8");
     expect(rawCalls, JSON.stringify(await runtime.snapshot())).not.toBe("");
     const calls = rawCalls
@@ -253,6 +277,37 @@ describe("Native non-chat model settings contract", () => {
       type: "image",
       model: "image-a",
     });
+    const restricted = await createCakeSessionRuntime({
+      ...h,
+      trusted: true,
+      sessionDir: join(h.cwd, "restricted"),
+      newSession: true,
+      auxiliary: true,
+      tools: ["read"],
+      requestUi: async () => undefined,
+      onEvent: () => {},
+      currentSessionControl: {
+        resolved: () => false,
+        setResolved: async () => {},
+        invokeAppControl: async () => {
+          throw new Error("Restricted settings must not dispatch");
+        },
+      },
+    });
+    runtimes.push(restricted);
+    expect((await restricted.snapshot()).model).toMatchObject({
+      provider: "non-chat-fixture",
+      id: "chat",
+    });
+    expect(
+      JSON.stringify(
+        await restricted.callCakeOperation?.(
+          "settings.pi.update",
+          { key: "defaultTools", value: ["+codemode"] },
+          new AbortController().signal,
+        ),
+      ),
+    ).toContain("Unknown Cake command");
   }, 30_000);
 
   it("cancels an in-flight native image request without reporting success", async () => {

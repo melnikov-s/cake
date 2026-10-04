@@ -38,6 +38,7 @@ import {
   type PiArtifactOperationHost,
 } from "./cake-artifact-operations";
 import { createCakeModelOperations } from "./cake-model-operations";
+import { createCakeSettingsOperations } from "./cake-settings-operations";
 import { createCakeNonChatModelOperations } from "./cake-non-chat-model-operations";
 import { createCakeVscodeOperations } from "./cake-vscode-operations";
 import { createCakeBrowserOperations } from "./cake-browser-operations";
@@ -106,31 +107,37 @@ export function createGlobalControlOperations(
   control: NonNullable<CakeSessionRuntimeOptions["globalControl"]>,
   resolveModel: (selection: CakeModelSelection | undefined) => ExplicitCakeModelSelection,
 ): CakeOperationDefinition[] {
-  return control.tools.map((tool) => ({
-    command: tool.command,
-    topic: tool.topic,
-    summary: tool.summary,
-    guidance: tool.guidance,
-    inputSchema: jsonObjectSchema,
-    inputJsonSchema: tool.parameters,
-    examples: tool.examples ?? [],
-    result: tool.result ?? "A bounded result from Cake's authoritative application control.",
-    limitations: tool.limitations,
-    async execute(input, context) {
-      const decodedInput = Schema.decodeUnknownSync(jsonObjectSchema)(input);
-      const argumentsValue = ["sessions.create", "sessions.create-draft"].includes(tool.command)
-        ? {
-            ...decodedInput,
-            model: resolveModel(
-              decodedInput.model === undefined
-                ? undefined
-                : Schema.decodeUnknownSync(CakeModelSelection)(decodedInput.model),
-            ),
-          }
-        : decodedInput;
-      return control.invoke({ name: tool.command, arguments: argumentsValue }, context.signal);
-    },
-  }));
+  const settings = createCakeSettingsOperations((command, input, signal) =>
+    control.invoke({ name: command, arguments: input }, signal),
+  );
+  return control.tools.map(
+    (tool) =>
+      settings.find((operation) => operation.command === tool.command) ?? {
+        command: tool.command,
+        topic: tool.topic,
+        summary: tool.summary,
+        guidance: tool.guidance,
+        inputSchema: jsonObjectSchema,
+        inputJsonSchema: tool.parameters,
+        examples: tool.examples ?? [],
+        result: tool.result ?? "A bounded result from Cake's authoritative application control.",
+        limitations: tool.limitations,
+        async execute(input, context) {
+          const decodedInput = Schema.decodeUnknownSync(jsonObjectSchema)(input);
+          const argumentsValue = ["sessions.create", "sessions.create-draft"].includes(tool.command)
+            ? {
+                ...decodedInput,
+                model: resolveModel(
+                  decodedInput.model === undefined
+                    ? undefined
+                    : Schema.decodeUnknownSync(CakeModelSelection)(decodedInput.model),
+                ),
+              }
+            : decodedInput;
+          return control.invoke({ name: tool.command, arguments: argumentsValue }, context.signal);
+        },
+      },
+  );
 }
 
 export function createAgentControlOperations(
@@ -492,6 +499,14 @@ export async function createCakeSessionRuntimeCapabilities(input: {
         return api().invokeAppControl(command, input as JsonObject, context.signal);
       };
     const operations: CakeOperationDefinition[] = [
+      ...(!options.globalControl &&
+      !options.auxiliary &&
+      options.tools === undefined &&
+      options.currentSessionControl?.invokeAppControl
+        ? createCakeSettingsOperations((command, input, signal) =>
+            api().invokeAppControl(command, input, signal),
+          )
+        : []),
       {
         command: "app.user-selection",
         topic: "app",

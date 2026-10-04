@@ -1,4 +1,5 @@
 import type { AppControlHost } from "./AppControlBridge";
+import { invokeAgentSettings } from "./AgentSettingsControl";
 import type { Client } from "../client/Client";
 import type { AppShellStore } from "../stores/AppShellStore";
 import type { ApplicationControlStore } from "../stores/ApplicationControlStore";
@@ -127,6 +128,20 @@ export function createRootApplicationControlHost(
       managedWorktree: (workingDirectory) =>
         capabilities.sessionCatalogStore.managedWorktree(workingDirectory),
       globalSessionLabels: () => capabilities.settingsStore.globalLabels.labels,
+    },
+    agentSettings: {
+      invoke: (invocation, source) =>
+        invokeAgentSettings(
+          {
+            client: capabilities.client,
+            settings: capabilities.settingsStore,
+            signal: capabilities.signal,
+            workingDirectory: capabilities.projectSessionWorkingDirectory,
+            projectSession: (sessionId) => capabilities.sessionRegistry.findSession(sessionId),
+          },
+          invocation,
+          source,
+        ),
     },
     settings: {
       get: (section) => capabilities.settingsStore.settingsSection(section),

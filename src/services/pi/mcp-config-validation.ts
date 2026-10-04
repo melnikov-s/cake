@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { MCP_STORED_SECRET } from "../../domain/mcp/mcp-settings-data";
 
 const exposure = Schema.Literals(["codemode", "codemode-deferred", "deferred", "direct", "hidden"]);
 const strings = Schema.Record(Schema.String, Schema.String);
@@ -46,20 +47,21 @@ const common = {
   enabled: Schema.optionalKey(Schema.Boolean),
   timeout: Schema.optionalKey(Schema.Number.check(Schema.isGreaterThan(0))),
 };
-/** Documented Pi configuration shape; validation never resolves env/credential commands. */
-export const NativeMcpConfig = Schema.Union([
-  Schema.Struct({
-    ...common,
-    type: Schema.optionalKey(Schema.Literal("stdio")),
-    command: Schema.String.check(Schema.isMinLength(1)),
-    args: Schema.optionalKey(Schema.Array(Schema.String)),
-    env: Schema.optionalKey(strings),
-    cwd: Schema.optionalKey(Schema.String),
-  }).check(Schema.makeFilter((value) => !("url" in value))),
+const stdioConfig = Schema.Struct({
+  ...common,
+  type: Schema.optionalKey(Schema.Literal("stdio")),
+  command: Schema.String.check(Schema.isMinLength(1)),
+  args: Schema.optionalKey(Schema.Array(Schema.String)),
+  env: Schema.optionalKey(strings),
+  cwd: Schema.optionalKey(Schema.String),
+}).check(Schema.makeFilter((value) => !("url" in value)));
+
+const editableHttpUrl = Schema.Union([httpUrl, Schema.Literal(MCP_STORED_SECRET)]);
+const httpConfig = (url: typeof httpUrl | typeof editableHttpUrl) =>
   Schema.Struct({
     ...common,
     type: Schema.optionalKey(Schema.Literals(["http", "streamable-http"])),
-    url: httpUrl,
+    url,
     headers: Schema.optionalKey(strings),
     oauth: Schema.optionalKey(oauth),
     auth: Schema.optionalKey(
@@ -68,7 +70,18 @@ export const NativeMcpConfig = Schema.Union([
   }).check(
     Schema.makeFilter(
       (value) =>
-        !value.auth || new URL(value.url).protocol === "https:" || loopback(new URL(value.url)),
+        !value.auth ||
+        value.url === MCP_STORED_SECRET ||
+        new URL(value.url).protocol === "https:" ||
+        loopback(new URL(value.url)),
     ),
-  ),
+  );
+
+/** Documented Pi configuration shape; validation never resolves env/credential commands. */
+export const NativeMcpConfig = Schema.Union([stdioConfig, httpConfig(httpUrl)]);
+/** Tool edits may retain a redacted URL. The authoritative service restores it, then
+ * validates NativeMcpConfig before writing; this is never an executable config. */
+export const NativeMcpConfigEdit = Schema.Union([
+  Schema.StructWithRest(stdioConfig, [Schema.Record(Schema.String, Schema.Json)]),
+  Schema.StructWithRest(httpConfig(editableHttpUrl), [Schema.Record(Schema.String, Schema.Json)]),
 ]);
