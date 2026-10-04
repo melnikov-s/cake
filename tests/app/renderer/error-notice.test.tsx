@@ -22,6 +22,32 @@ describe("ErrorNotice", () => {
     container.remove();
   });
 
+  it("suppresses internal missing-session failures without hiding actionable session failures", () => {
+    act(() => {
+      root.render(
+        <ErrorNotice
+          title="Operation failed"
+          message="Cake could not find Project Session 03bd332b-18f1-4e1f-bfa4-f92a1e9cab2a"
+          details="Internal lookup stack\n\nContext:\nOpening Project Session"
+        />,
+      );
+    });
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(container.textContent).toBe("");
+
+    act(() => {
+      root.render(
+        <ErrorNotice
+          title="Operation failed"
+          message="Project Session ID collision detected: session-1"
+        />,
+      );
+    });
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "Project Session ID collision detected: session-1",
+    );
+  });
+
   it("can be dismissed and shows a later error", () => {
     act(() => {
       root.render(<ErrorNotice title="Operation failed" message="First failure" />);

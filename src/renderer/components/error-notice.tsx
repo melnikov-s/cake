@@ -14,6 +14,8 @@ export function ErrorNotice({
 }) {
   const signature = `${title}\u0000${message}\u0000${details}`;
   const [dismissedSignature, setDismissedSignature] = useState<string>();
+  // Stale Project Session references are internal lookup failures, not actionable notices.
+  if (/^Cake could not find Project Session \S+$/.test(message)) return null;
   if (dismissedSignature === signature) return null;
 
   return (
