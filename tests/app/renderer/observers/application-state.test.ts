@@ -32,10 +32,14 @@ class HarnessStore extends Store {
     return {} as Client;
   }
 
+  @child get speech() {
+    return createStore(SpeechSettingsStore, { client: createTestClient().speechOutput });
+  }
+
   @child get settings() {
     return createStore(SettingsStore, {
       dictation: createDictationStore(),
-      speech: mount(createStore(SpeechSettingsStore, { client: createTestClient().speechOutput })),
+      speech: this.speech,
       operations: {} as never,
       activeSession: () => undefined,
     });

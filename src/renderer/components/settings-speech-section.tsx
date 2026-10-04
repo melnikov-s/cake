@@ -4,6 +4,7 @@ import { Input } from "./ui/input";
 import { Select } from "./ui/select";
 import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
+import { Switch } from "./ui/switch";
 
 export const SettingsSpeechSection = observer(function SettingsSpeechSection({
   speech,
@@ -21,6 +22,23 @@ export const SettingsSpeechSection = observer(function SettingsSpeechSection({
           ElevenLabs Flash · eleven_flash_v2_5 · streaming 24 kHz audio
         </p>
       </header>
+      <div className="flex items-center justify-between gap-3">
+        <div className="grid gap-1">
+          <label htmlFor="speech-enabled" className="text-xs font-medium">
+            Enable speech
+          </label>
+          <p id="speech-enabled-description" className="text-xs text-muted-foreground">
+            Show the conversation-mode icon in chat. Turning this off stops speech input and output.
+          </p>
+        </div>
+        <Switch
+          id="speech-enabled"
+          aria-label="Enable speech"
+          aria-describedby="speech-enabled-description"
+          checked={speech.enabled}
+          onCheckedChange={(enabled) => speech.setEnabled(enabled)}
+        />
+      </div>
       <Callout>
         Conversation mode uses local Parakeet input. Only selected assistant prose is sent to
         ElevenLabs, not microphone audio, reasoning or tool output. Provider retention depends on

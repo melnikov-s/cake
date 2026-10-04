@@ -24,7 +24,23 @@ export function ToastItem({
       className="relative shadow-lg"
       role={toast.tone === "error" ? "alert" : "status"}
     >
-      <strong className="pr-7">{toast.title}</strong>
+      {toast.action ? (
+        <Button
+          className="h-auto w-full flex-col items-start gap-1 whitespace-normal p-0 pr-7 text-left font-normal text-foreground"
+          variant="ghost"
+          aria-label={toast.action.label}
+          onClick={onAction}
+        >
+          <strong>{toast.title}</strong>
+          <span className="text-muted-foreground">{toast.message}</span>
+          <span className="mt-0.5 text-xs font-semibold">{toast.action.label}</span>
+        </Button>
+      ) : (
+        <>
+          <strong className="pr-7">{toast.title}</strong>
+          <span className="pr-5 text-muted-foreground">{toast.message}</span>
+        </>
+      )}
       <IconButton
         className="absolute right-1.5 top-1.5 size-7"
         tooltip="Dismiss notification"
@@ -32,7 +48,6 @@ export function ToastItem({
       >
         <CloseIcon size={15} />
       </IconButton>
-      <span className="pr-5 text-muted-foreground">{toast.message}</span>
       {toast.details && (
         <div className="mt-0.5 grid gap-1.5">
           <DisclosureTrigger
@@ -50,11 +65,6 @@ export function ToastItem({
             </>
           )}
         </div>
-      )}
-      {toast.action && (
-        <Button className="mt-0.5 w-fit" size="sm" variant="ghost" onClick={onAction}>
-          {toast.action.label}
-        </Button>
       )}
     </Callout>
   );

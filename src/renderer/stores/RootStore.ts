@@ -868,6 +868,22 @@ export class RootStore extends Store<{
       microphone: this.props.microphone ?? microphone,
       playback: this.props.speechPlayback ?? this.defaultSpeechPlayback,
       settings: () => this.speechSettingsStore.settings,
+      enabled: () => this.speechSettingsStore.enabled,
+      onError: (message, details) =>
+        this.toastStore.show({
+          tone: "error",
+          title: "Conversation mode unavailable",
+          message,
+          details,
+          coalesceKey: "conversation-mode-error",
+          action: {
+            label: "Open Speech output settings",
+            run: () => {
+              this.settingsStore.selectPage("speech");
+              this.showSettings();
+            },
+          },
+        }),
       activeSessionId: () =>
         this.appShellStore.activeConversation?.kind === "project-session"
           ? this.appShellStore.activeConversation.sessionId

@@ -1,12 +1,14 @@
-import { Store } from "r-state-tree";
+import { snapshot, Store } from "r-state-tree";
 import type {
   SpeechOutputSettings,
   SpeechOutputVoice,
 } from "../../domain/speech/speech-output-data";
 import type { SpeechOutputCommands } from "../client/Client";
 
-/** Native main owns persistence. This window owns only the projection and transient interaction. */
+/** Native main owns credentials/voice persistence. This window owns the projection,
+ * transient interaction and snapshotted speech-control visibility preference (last local edit wins). */
 export class SpeechSettingsStore extends Store<{ client: SpeechOutputCommands }> {
+  @snapshot enabled = true;
   settings: SpeechOutputSettings | undefined;
   voices: readonly SpeechOutputVoice[] = [];
   apiKeyDraft = "";
@@ -21,6 +23,9 @@ export class SpeechSettingsStore extends Store<{ client: SpeechOutputCommands }>
       this.apiKeyDraft = "";
       this.refresh?.abort();
     });
+  }
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
   }
   applySettings(settings: SpeechOutputSettings): void {
     this.settings = settings;

@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../src/ipc/session-contract";
 import { TurnId } from "../../../src/domain/conversations/conversation-data";
@@ -9,6 +10,7 @@ import type { Microphone } from "../../../src/renderer/dictation/microphone";
 import type { SpeechPlayback } from "../../../src/renderer/speech/playback";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SettingsSpeechSection } from "../../../src/renderer/components/settings-speech-section";
+import { ToastHost } from "../../../src/renderer/components/toast-host";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -45,8 +47,10 @@ function fixture(
     prepare?: Client["dictation"]["prepare"];
     transcribe?: Client["dictation"]["transcribe"];
     synthesize?: Client["speechOutput"]["synthesize"];
+    enqueue?: SpeechPlayback["enqueue"];
     microphoneError?: Error;
     streaming?: boolean;
+    snapshot?: StoreSnapshot;
   } = {},
 ) {
   let onAudio: ((samples: Float32Array) => void) | undefined;
@@ -61,7 +65,7 @@ function fixture(
   };
   const playback: SpeechPlayback = {
     start: vi.fn(async () => {}),
-    enqueue: vi.fn(async () => {}),
+    enqueue: vi.fn(options.enqueue ?? (async () => {})),
     drain: vi.fn(async () => {}),
     stop: vi.fn(),
   };
@@ -81,6 +85,7 @@ function fixture(
   const setApiKey = vi.fn(async () => {}),
     setVoice = vi.fn(async () => {});
   const rootFixture = createRendererStoreFixture({
+    snapshot: options.snapshot,
     microphone,
     speechPlayback: playback,
     projects: [projectRecord({ path: "/project", name: "Project" })],
@@ -130,11 +135,14 @@ function fixture(
   }
   publish(parts);
   const view = render(
-    <Chat
-      store={session.conversationSessionStore.chatStore}
-      embedded
-      composerFocusEnabled={false}
-    />,
+    <>
+      <Chat
+        store={session.conversationSessionStore.chatStore}
+        embedded
+        composerFocusEnabled={false}
+      />
+      <ToastHost store={root.toastStore} />
+    </>,
   );
   const user = userEvent.setup();
   return {
@@ -177,6 +185,7 @@ function fixture(
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("Project Session conversation mode", () => {
@@ -207,13 +216,93 @@ describe("Project Session conversation mode", () => {
           modelId: "eleven_flash_v2_5",
         });
       await f.user.click(screen.getByRole("button", { name: "Enter conversation mode" }));
-      await waitFor(() => expect(f.root.conversationModeStore.phase).toBe("error"));
+      const toast = await screen.findByRole("alert");
+      expect(toast.textContent).toContain("Conversation mode unavailable");
+      expect(screen.getByRole("button", { name: "Open Speech output settings" })).toBeDefined();
       await f.user.type(screen.getByRole("combobox", { name: "Message" }), "Text works");
       expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(
         false,
       );
       expect(f.prompt).not.toHaveBeenCalled();
     }
+  });
+  it("clicking a speech-error toast opens Speech output settings and dismisses the notification", async () => {
+    using f = fixture();
+    act(() =>
+      f.root.speechSettingsStore.applySettings({
+        keyConfigured: false,
+        modelId: "eleven_flash_v2_5",
+      }),
+    );
+    await f.user.click(screen.getByRole("button", { name: "Enter conversation mode" }));
+    const message = await screen.findByText(
+      "Configure an ElevenLabs key and voice in Settings → Speech output.",
+    );
+    await f.user.click(message);
+    expect(f.root.appShellStore.surface).toBe("settings");
+    expect(f.root.settingsStore.activePage).toBe("speech");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+  it("speech-error toasts expire without requiring navigation or dismissal", async () => {
+    const preparation = deferred<void>();
+    using f = fixture({
+      prepare: async () => {
+        await preparation.promise;
+        throw new Error("Speech preparation failed");
+      },
+    });
+    await f.user.click(screen.getByRole("button", { name: "Enter conversation mode" }));
+    vi.useFakeTimers();
+    await act(async () => preparation.resolve());
+    expect(screen.getByRole("alert").textContent).toContain("Speech preparation failed");
+    act(() => vi.advanceTimersByTime(8_000));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: "Enter conversation mode" })).toBeDefined();
+  });
+  it("disabling speech hides its control, stops active audio and survives window restoration without losing voice configuration", async () => {
+    using f = fixture();
+    await f.enter();
+    render(<SettingsSpeechSection speech={f.root.speechSettingsStore} />);
+    await f.user.click(screen.getByRole("switch", { name: "Enable speech" }));
+    expect(screen.getByRole("switch", { name: "Enable speech" }).getAttribute("aria-checked")).toBe(
+      "false",
+    );
+    expect(screen.queryByRole("button", { name: "Enter conversation mode" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Exit conversation mode" })).toBeNull();
+    expect(f.stopCapture).toHaveBeenCalled();
+    expect(f.playback.stop).toHaveBeenCalled();
+    await waitFor(() => expect(f.release).toHaveBeenCalled());
+    const saved = toSnapshot(f.root);
+    cleanup();
+    f[Symbol.dispose]();
+
+    using restored = fixture({ snapshot: saved });
+    render(<SettingsSpeechSection speech={restored.root.speechSettingsStore} />);
+    expect(screen.getByRole("switch", { name: "Enable speech" }).getAttribute("aria-checked")).toBe(
+      "false",
+    );
+    expect(screen.queryByRole("button", { name: "Enter conversation mode" })).toBeNull();
+    expect((screen.getByLabelText("Voice") as HTMLSelectElement).value).toBe("voice");
+    await restored.user.click(screen.getByRole("switch", { name: "Enable speech" }));
+    await restored.enter();
+    expect(screen.getByText("Listening")).toBeDefined();
+    expect(restored.setApiKey).not.toHaveBeenCalled();
+    expect(restored.setVoice).not.toHaveBeenCalled();
+  });
+  it("disabling speech during preparation prevents late completion from restarting audio or reporting an error", async () => {
+    const preparation = deferred<void>();
+    using f = fixture({ prepare: async () => preparation.promise });
+    await f.user.click(screen.getByRole("button", { name: "Enter conversation mode" }));
+    expect(screen.getByText("Preparing voice…")).toBeDefined();
+    render(<SettingsSpeechSection speech={f.root.speechSettingsStore} />);
+    await f.user.click(screen.getByRole("switch", { name: "Enable speech" }));
+    await act(async () => preparation.resolve());
+    expect(screen.queryByText("Listening")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Enter conversation mode" })).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(f.microphone.open).not.toHaveBeenCalled();
+    expect(f.playback.start).not.toHaveBeenCalled();
+    expect(f.release).toHaveBeenCalled();
   });
   it("a speech pause finalizes recognition and submits one nonempty voice-mode turn to the same session", async () => {
     using f = fixture();
@@ -541,13 +630,57 @@ describe("Project Session conversation mode", () => {
     });
     await quota.enter();
     quota.publish([consumed(), assistant("Visible answer. ")]);
-    await waitFor(() => expect(quota.root.conversationModeStore.phase).toBe("error"));
+    expect((await screen.findByRole("alert")).textContent).toContain("Quota exhausted");
     expect(quota.abort).not.toHaveBeenCalled();
     expect(
       quota.session.model.uiParts.some(
         (part) => part.kind === "text" && part.text === "Visible answer. ",
       ),
     ).toBe(true);
+  });
+  it.each([
+    ["invalid PCM", "ElevenLabs returned invalid PCM audio. No automatic retry was made."],
+    ["network", "Could not connect to ElevenLabs."],
+    ["playback", "Audio playback failed."],
+  ])(
+    "%s runtime errors appear as dismissible toasts and leave text chat usable",
+    async (kind, message) => {
+      const fail = async () => {
+        throw new Error(message);
+      };
+      using f = fixture(kind === "playback" ? { enqueue: fail } : { synthesize: fail });
+      await f.enter();
+      f.publish([consumed(), assistant("Visible answer. ")]);
+      expect((await screen.findByRole("alert")).textContent).toContain(message);
+      expect(f.stopCapture).toHaveBeenCalled();
+      expect(f.playback.stop).toHaveBeenCalled();
+      expect(f.synthesize).toHaveBeenCalledTimes(1);
+      expect(f.abort).not.toHaveBeenCalled();
+      await f.user.click(screen.getByRole("button", { name: "Dismiss notification" }));
+      expect(screen.queryByRole("alert")).toBeNull();
+      await f.user.type(screen.getByRole("combobox", { name: "Message" }), "Continue in text");
+      expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+      expect(f.synthesize).toHaveBeenCalledTimes(1);
+    },
+  );
+  it("retains unaccepted recognized text in the error toast details for manual recovery", async () => {
+    using f = fixture({
+      synthesize: async () => {
+        throw new Error("Invalid audio");
+      },
+    });
+    await f.enter();
+    await f.frames(0.1, 8);
+    await waitFor(() => expect(f.root.conversationModeStore.transcript).toBe("Recognized speech"));
+    f.publish([consumed(), assistant("Visible answer. ")]);
+    await screen.findByRole("alert");
+    await f.user.click(screen.getByRole("button", { name: "Technical details" }));
+    expect(screen.getByRole("alert").textContent).toContain("Unaccepted speech: Recognized speech");
+    expect(screen.getByRole("button", { name: "Copy full error details" })).toBeDefined();
+    await f.user.click(screen.getByRole("button", { name: "Dismiss notification" }));
+    expect(screen.queryByRole("alert")).toBeNull();
   });
   it("speech settings save a masked transient key, clear its draft and select a voice without exposing stored credentials", async () => {
     using f = fixture();

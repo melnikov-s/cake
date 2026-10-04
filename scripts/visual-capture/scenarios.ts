@@ -208,8 +208,9 @@ const conversationEntryOrigin = "http://127.0.0.1:9";
 
 const conversationEntryScenario: VisualCaptureScenario = {
   name: "conversation-entry",
-  description: "Actual Project Session composer with the conversation-mode entry microphone",
-  states: ["default", "hover"],
+  description:
+    "Actual Project Session composer with conversation-mode entry and speech error toast",
+  states: ["default", "hover", "error-toast"],
   async seed(paths, theme) {
     const sessionId = "visual-conversation-entry";
     const timestamp = new Date(0).toISOString();
@@ -313,7 +314,13 @@ const conversationEntryScenario: VisualCaptureScenario = {
       page.getByRole("button", { name: "Exit conversation mode", exact: true }),
     ).toHaveCount(0);
     await page.waitForFunction(() => document.fonts.status === "loaded");
-    if (state === "hover") {
+    if (state === "error-toast") {
+      await entry.click();
+      await expect(
+        page.getByRole("alert").filter({ hasText: "Conversation mode unavailable" }),
+      ).toBeVisible();
+      await page.mouse.move(1, 1);
+    } else if (state === "hover") {
       await entry.hover();
       await expect(
         page.getByRole("tooltip", { name: "Enter conversation mode", exact: true }),
@@ -323,7 +330,10 @@ const conversationEntryScenario: VisualCaptureScenario = {
     }
   },
   region(page) {
-    return page.locator(".workbench-composer");
+    return page
+      .locator(".workbench-composer")
+      .or(page.getByRole("alert").filter({ hasText: "Conversation mode unavailable" }))
+      .last();
   },
 };
 

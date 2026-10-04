@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
-import { emitSpeechPcm, installSpeechHttpFixture, speechHttpRequests } from "./main-harness";
+import {
+  emitInvalidSpeechPcm,
+  emitSpeechPcm,
+  installSpeechHttpFixture,
+  speechHttpRequests,
+} from "./main-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 async function launch() {
@@ -290,6 +295,55 @@ test("conversation controls enter, mute and exit with real capture and streaming
   }
 });
 
+test("invalid provider PCM reaches a dismissible toast through native RPC and leaves the composer usable", async () => {
+  const f = await launch();
+  try {
+    await f.configure();
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(f.page.getByText("Listening", { exact: true })).toBeVisible();
+    const composer = f.page.getByRole("combobox", { name: "Message", exact: true });
+    await composer.fill("Speak a response");
+    await f.page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => f.responses.length).toBe(1);
+    f.sendText("A visible answer. ");
+    await expect.poll(() => speechHttpRequests(f.application)).toEqual(["A visible answer."]);
+    await emitInvalidSpeechPcm(f.application);
+    const toast = f.page.getByRole("alert").filter({ hasText: "Conversation mode unavailable" });
+    await expect(toast).toContainText(
+      "ElevenLabs returned invalid PCM audio. No automatic retry was made.",
+    );
+    await expect(
+      f.page
+        .locator(".workbench-composer")
+        .getByText("ElevenLabs returned invalid PCM audio. No automatic retry was made.", {
+          exact: true,
+        }),
+    ).toHaveCount(0);
+    await expect(f.page.getByRole("button", { name: "Enter conversation mode" })).toBeVisible();
+    await expect
+      .poll(() =>
+        f.page.evaluate(() =>
+          (
+            Reflect.get(globalThis, "conversationAudioFixture") as { tracks: MediaStreamTrack[] }
+          ).tracks.every((track) => track.readyState === "ended"),
+        ),
+      )
+      .toBe(true);
+    await toast.getByRole("button", { name: "Dismiss notification" }).click();
+    await expect(toast).toHaveCount(0);
+    f.sendText("", true);
+    await composer.click();
+    await composer.pressSequentially("Continue in text");
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue("Continue in text");
+    await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await expect(f.page.getByText("A visible answer.", { exact: true })).toBeVisible();
+    expect(await speechHttpRequests(f.application)).toEqual(["A visible answer."]);
+  } finally {
+    await f.close();
+  }
+});
+
 test("typed composer retains focus, actual input value and enabled submission across voice-mode transitions", async () => {
   const f = await launch();
   try {
@@ -311,6 +365,41 @@ test("typed composer retains focus, actual input value and enabled submission ac
     await expect(composer).toBeFocused();
     await expect(composer).toHaveValue("Typed draft survives and typing works");
     await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    expect(await speechHttpRequests(f.application)).toEqual([]);
+  } finally {
+    await f.close();
+  }
+});
+
+test("speech error toast opens settings and speech can be hidden and re-enabled without affecting text input", async () => {
+  const f = await launch();
+  try {
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    const toast = f.page.getByRole("alert").filter({ hasText: "Conversation mode unavailable" });
+    await expect(toast).toBeVisible();
+    await toast.getByText("Configure an ElevenLabs key and voice", { exact: false }).click();
+    await expect(f.page.getByRole("region", { name: "Speech output", exact: true })).toBeVisible();
+    await expect(toast).toHaveCount(0);
+    const enabled = f.page.getByRole("switch", { name: "Enable speech", exact: true });
+    await enabled.click();
+    await expect(enabled).not.toBeChecked();
+    await f.page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await f.page.locator('[data-navigation-item][data-session-id="conversation-session"]').click();
+    await expect(f.page.getByRole("button", { name: "Enter conversation mode" })).toHaveCount(0);
+    const composer = f.page.getByRole("combobox", { name: "Message", exact: true });
+    await composer.click();
+    await composer.pressSequentially("Text chat still works");
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue("Text chat still works");
+    await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await f.page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    await enabled.click();
+    await expect(enabled).toBeChecked();
+    await f.page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await f.page.locator('[data-navigation-item][data-session-id="conversation-session"]').click();
+    await expect(f.page.getByRole("button", { name: "Enter conversation mode" })).toBeVisible();
+    await expect(composer).toHaveValue("Text chat still works");
     expect(await speechHttpRequests(f.application)).toEqual([]);
   } finally {
     await f.close();

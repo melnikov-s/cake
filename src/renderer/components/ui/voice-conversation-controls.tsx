@@ -1,6 +1,5 @@
 import { Button } from "./button";
 import { Badge } from "./badge";
-import { Callout } from "./callout";
 import { IconButton } from "./icon-button";
 import { AudioLinesIcon, StopIcon } from "./icons";
 
@@ -11,7 +10,6 @@ export interface VoiceConversationControlsProps {
   listening: boolean;
   speaking: boolean;
   disabled: boolean;
-  error?: string;
   onEnter(): void;
   onMute(muted: boolean): void;
   onExit(): void;
@@ -51,7 +49,6 @@ export function VoiceConversationControls(props: VoiceConversationControlsProps)
           </IconButton>
         </>
       )}
-      {props.error && <Callout variant="error">{props.error}</Callout>}
     </div>
   );
 }

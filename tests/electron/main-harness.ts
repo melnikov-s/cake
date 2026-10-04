@@ -45,6 +45,19 @@ export function emitSpeechPcm(application: ElectronApplication, close = false) {
   }, close);
 }
 
+/** A dangling PCM sample byte exercises the real service's invalid-audio failure. */
+export function emitInvalidSpeechPcm(application: ElectronApplication) {
+  return application.evaluate(() => {
+    const fixture = Reflect.get(globalThis, "cakeSpeechFixture") as {
+      streams: ReadableStreamDefaultController<Uint8Array>[];
+    };
+    const controller = fixture.streams.at(-1);
+    if (!controller) throw new Error("No provider stream opened");
+    controller.enqueue(new Uint8Array([0]));
+    controller.close();
+  });
+}
+
 export function speechHttpRequests(application: ElectronApplication) {
   return application.evaluate(() =>
     (Reflect.get(globalThis, "cakeSpeechFixture") as { requests: string[] }).requests.slice(),

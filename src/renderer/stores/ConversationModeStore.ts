@@ -18,6 +18,8 @@ export interface ConversationModeStoreProps {
   microphone: Microphone;
   playback: SpeechPlayback;
   settings(): SpeechOutputSettings | undefined;
+  enabled(): boolean;
+  onError(message: string, details?: string): void;
   activeSessionId(): string | undefined;
   deviceId(): string;
   suspendDictation(): Promise<void>;
@@ -40,7 +42,6 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   listening = false;
   speaking = false;
   transcript = "";
-  error: string | undefined;
   private target: ConversationModeTarget | undefined;
   private revision = 0;
   private controller: AbortController | undefined;
@@ -69,6 +70,12 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
         void this.exit();
       },
     );
+    this.reaction(
+      () => this.enabled,
+      (enabled) => {
+        if (!enabled) void this.exit();
+      },
+    );
     this.effect(() => {
       const parts = this.target?.parts();
       // Read the actual changing projection fields, not just array length or an ID fingerprint.
@@ -81,19 +88,22 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       void this.exit();
     });
   }
+  get enabled(): boolean {
+    return this.props.enabled();
+  }
   async enter(target: ConversationModeTarget): Promise<boolean> {
+    if (!this.enabled) return false;
     if (
       (this.phase === "active" || this.phase === "preparing") &&
       this.sessionId === target.sessionId
     )
       return this.phase === "active";
     await this.exit();
-    if (this.signal.aborted) return false;
+    if (this.signal.aborted || !this.enabled) return false;
     const revision = ++this.revision;
     this.phase = "preparing";
     this.sessionId = target.sessionId;
     this.target = target;
-    this.error = undefined;
     this.transcript = "";
     this.muted = false;
     this.outputEligible = false;
@@ -195,7 +205,10 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       error instanceof Error ? error.message : "Conversation mode failed. Re-enter to retry.";
     void this.exit();
     this.phase = "error";
-    this.error = message;
+    this.props.onError(
+      message,
+      this.transcript ? `Unaccepted speech: ${this.transcript}` : undefined,
+    );
   }
   private async startCapture(revision: number, prepare = false) {
     const controller = new AbortController();
