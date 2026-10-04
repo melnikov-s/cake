@@ -336,13 +336,31 @@ describe("Project Session conversation mode", () => {
     await f.enter();
     const stops = vi.mocked(f.playback.stop).mock.calls.length;
     await f.frames(0, 20);
-    await f.frames(0.1, 1);
+    await f.frames(0.1, 3);
     await f.frames(0, 10);
     expect(f.playback.stop).toHaveBeenCalledTimes(stops);
     expect(f.transcribe).not.toHaveBeenCalled();
     await f.frames(0.1, 4);
     await f.frames(0, 10);
     expect(f.prompt).not.toHaveBeenCalled();
+  });
+  it("retains 600 ms of audio including the speech onset before recognition", async () => {
+    using f = fixture();
+    await f.enter();
+    await f.frames(0, 10);
+    await f.frames(0.03, 4);
+    await f.frames(0, 2);
+    await waitFor(() => expect(f.transcribe).toHaveBeenCalledTimes(1));
+    const pcm = Buffer.from(f.transcribe.mock.calls[0]![0].pcm, "base64");
+    const samples = Array.from({ length: pcm.byteLength / 4 }, (_, index) =>
+      pcm.readFloatLE(index * 4),
+    );
+    expect(samples).toHaveLength(12800);
+    expect(samples.slice(0, 3200).every((value) => value === 0)).toBe(true);
+    expect(samples.slice(3200, 9600).every((value) => value === Math.fround(0.03))).toBe(true);
+    expect(samples.slice(9600).every((value) => value === 0)).toBe(true);
+    await f.frames(0, 7);
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(1));
   });
   it("speech input leaves the typed draft, pending attachments and annotations untouched", async () => {
     using f = fixture();
@@ -427,7 +445,7 @@ describe("Project Session conversation mode", () => {
     f.publish([consumed(), assistant("Speak once. ", "complete", "durable-entry")]);
     expect(f.synthesize).toHaveBeenCalledTimes(1);
   });
-  it("barge-in immediately silences playback and rejects late synthesis chunks without aborting agent work", async () => {
+  it("barge-in requires 400 ms above the louder threshold, then silences playback and rejects late synthesis without aborting agent work", async () => {
     const gate = deferred<void>();
     let consume: Parameters<Client["speechOutput"]["synthesize"]>[1] | undefined;
     using f = fixture({
@@ -440,7 +458,11 @@ describe("Project Session conversation mode", () => {
     f.publish([consumed(), assistant("Speaking. ")]);
     await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(1));
     const stops = vi.mocked(f.playback.stop).mock.calls.length;
-    await f.frames(0.1, 2);
+    await f.frames(0.02, 10);
+    expect(f.playback.stop).toHaveBeenCalledTimes(stops);
+    await f.frames(0.1, 3);
+    expect(f.playback.stop).toHaveBeenCalledTimes(stops);
+    await f.frames(0.1, 1);
     expect(f.playback.stop).toHaveBeenCalledTimes(stops + 1);
     await consume?.({ encoding: "pcm_s16le", sampleRate: 24000, pcm: "AAA=" });
     expect(f.playback.enqueue).not.toHaveBeenCalled();
@@ -452,7 +474,7 @@ describe("Project Session conversation mode", () => {
     await f.enter();
     f.publish([consumed(), assistant("Old. ")]);
     await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(1));
-    await f.frames(0.1, 2);
+    await f.frames(0.1, 4);
     f.publish([
       consumed(),
       assistant("Old. Still old. "),
@@ -482,7 +504,7 @@ describe("Project Session conversation mode", () => {
       await f.enter();
       f.publish([...live, assistant("Old answer. ")]);
       await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(1));
-      await f.frames(0.1, 2);
+      await f.frames(0.1, 4);
       history.appendMessage(input);
       const settled = projectConversationDisplay(history);
       f.publish([
@@ -515,7 +537,7 @@ describe("Project Session conversation mode", () => {
   it("muting stops and discards unfinished input while allowing output and accepted agent work to continue", async () => {
     using f = fixture();
     await f.enter();
-    await f.frames(0.1, 2);
+    await f.frames(0.1, 4);
     await f.user.click(screen.getByRole("button", { name: "Mute input" }));
     await f.frames(0, 10);
     expect(f.prompt).not.toHaveBeenCalled();

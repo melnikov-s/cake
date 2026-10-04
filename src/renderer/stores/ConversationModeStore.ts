@@ -247,17 +247,17 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   private audio(samples: Float32Array) {
     let energy = 0;
     for (const value of samples) energy += value * value;
-    const speech = Math.sqrt(energy / Math.max(1, samples.length)) > 0.015;
+    const speech = Math.sqrt(energy / Math.max(1, samples.length)) > 0.025;
     let run = this.utterance;
     if (!run) {
       this.preroll.push(samples);
       while (
-        this.preroll.reduce((sum, chunk) => sum + chunk.length, 0) > 6400 &&
+        this.preroll.reduce((sum, chunk) => sum + chunk.length, 0) > 9600 &&
         this.preroll.length > 1
       )
         this.preroll.shift();
       this.onset = speech ? this.onset + samples.length : 0;
-      if (this.onset < 3200) return;
+      if (this.onset < 6400) return;
       this.interrupt();
       run = {
         id: crypto.randomUUID(),
