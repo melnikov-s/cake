@@ -1,6 +1,7 @@
 import { release } from "node:os";
 import { safeStorage } from "electron";
 import { ElevenLabsSpeechLive } from "../services/speech/ElevenLabsSpeechLive";
+import { makeSpeechOutputDiagnosticsLive } from "../services/speech/SpeechOutputDiagnosticsLive";
 import { makeSpeechOutputStorageLive } from "../services/speech/SpeechOutputStorageLive";
 import { SpeechOutputRpc } from "../ipc/protocol/SpeechOutputRpc";
 import { speechOutputHandlers } from "../ipc/server/SpeechOutputHandlers";
@@ -72,6 +73,7 @@ export const makeRemoteMainLive = (
     Clients,
     Native,
     ElevenLabsSpeechLive.pipe(
+      Layer.provide(makeSpeechOutputDiagnosticsLive(join(options.userData, "speech-output"))),
       Layer.provide(
         makeSpeechOutputStorageLive(join(options.userData, "speech-output"), {
           available: () =>

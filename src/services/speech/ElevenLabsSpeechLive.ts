@@ -1,4 +1,5 @@
 import {
+  Clock,
   Effect,
   Layer,
   Option,
@@ -23,6 +24,7 @@ import {
   type SpeechOutputAudio,
 } from "../../domain/speech/speech-output-data";
 import { ElevenLabsSpeech } from "./ElevenLabsSpeech";
+import { SpeechOutputDiagnostic, SpeechOutputDiagnostics } from "./SpeechOutputDiagnostics";
 import { SpeechOutputStorage, StoredSpeechOutputSettings } from "./SpeechOutputStorage";
 
 const networkError = () =>
@@ -110,11 +112,12 @@ const checkStatus = Effect.fn("ElevenLabsSpeech.checkStatus")(function* (
 export const ElevenLabsSpeechLive: Layer.Layer<
   ElevenLabsSpeech,
   never,
-  SpeechOutputStorage | HttpClient.HttpClient
+  SpeechOutputStorage | SpeechOutputDiagnostics | HttpClient.HttpClient
 > = Layer.effect(
   ElevenLabsSpeech,
   Effect.gen(function* () {
     const storage = yield* SpeechOutputStorage;
+    const diagnostics = yield* SpeechOutputDiagnostics;
     const client = HttpClient.withScope(yield* HttpClient.HttpClient);
     const settingsLock = yield* Semaphore.make(1);
     const synthesisLock = yield* Semaphore.make(1);
@@ -178,7 +181,6 @@ export const ElevenLabsSpeechLive: Layer.Layer<
           Effect.provideService(Headers.CurrentRedactedNames, [...redacted, "xi-api-key"]),
           Effect.mapError(networkError),
         );
-      yield* checkStatus(response);
       return response;
     });
     const listVoices = Effect.fn("ElevenLabsSpeech.listVoices")(function* () {
@@ -190,6 +192,7 @@ export const ElevenLabsSpeechLive: Layer.Layer<
           HttpClientRequest.acceptJson,
         ),
       );
+      yield* checkStatus(response);
       const body = yield* response.json.pipe(Effect.mapError(networkError));
       const decoded = yield* Schema.decodeUnknownEffect(voices)(body).pipe(
         Effect.mapError(providerError),
@@ -202,55 +205,120 @@ export const ElevenLabsSpeechLive: Layer.Layer<
       Stream.unwrap(
         Effect.gen(function* () {
           yield* Effect.acquireRelease(synthesisLock.take(1), () => synthesisLock.release(1));
-          const current = yield* settingsLock.withPermit(readSettings());
-          if (current.apiKey === undefined || current.voiceId === undefined)
-            return yield* notConfigured();
-          yield* Schema.decodeUnknownEffect(SpeechOutputRequest)(request).pipe(
-            Effect.mapError(providerError),
-          );
-          const response = yield* execute(
-            HttpClientRequest.post(
-              `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(current.voiceId)}/stream`,
-            ).pipe(
-              HttpClientRequest.setUrlParams({ output_format: "pcm_24000" }),
-              HttpClientRequest.setHeader("xi-api-key", current.apiKey),
-              HttpClientRequest.setHeader("accept", "audio/pcm"),
-              HttpClientRequest.bodyJsonUnsafe({
-                text: request.text,
-                model_id: "eleven_flash_v2_5",
-              }),
-            ),
-          );
-          const contentType = response.headers["content-type"]?.split(";")[0]?.trim().toLowerCase();
-          if (contentType !== "audio/pcm" && contentType !== "application/octet-stream")
-            return yield* invalidAudio();
-          // Keep only a dangling sample byte between pulls; no whole-phrase audio collection.
-          let pending: number | undefined;
-          let emitted = false;
-          return response.stream.pipe(
-            Stream.mapError(networkError),
-            Stream.flatMap((bytes) => {
-              if (bytes.byteLength > 65_536) return Stream.fail(invalidAudio());
-              const data =
-                pending === undefined
-                  ? Buffer.from(bytes)
-                  : Buffer.concat([Buffer.from([pending]), bytes]);
-              const alignedLength = data.byteLength - (data.byteLength % 2);
-              pending = data.byteLength % 2 === 0 ? undefined : data[data.byteLength - 1];
-              if (alignedLength === 0) return Stream.empty;
-              emitted = true;
-              return Stream.succeed<SpeechOutputAudio>({
-                encoding: "pcm_s16le",
-                sampleRate: 24_000,
-                pcm: data.subarray(0, alignedLength).toString("base64"),
-              });
-            }),
-            Stream.concat(
-              Stream.unwrap(
-                Effect.sync(() =>
-                  pending !== undefined || !emitted ? Stream.fail(invalidAudio()) : Stream.empty,
+          const started = yield* Clock.currentTimeMillis;
+          const stats: Types.Mutable<SpeechOutputDiagnostic> = {
+            timestampMillis: started,
+            elapsedMillis: 0,
+            reason: "request-failed",
+            errorKind: "provider",
+            receivedChunks: 0,
+            receivedBytes: 0,
+            largestChunkBytes: 0,
+            emittedBytes: 0,
+            danglingSampleByte: false,
+          };
+          return Stream.unwrap(
+            Effect.gen(function* () {
+              const current = yield* settingsLock.withPermit(readSettings());
+              if (current.apiKey === undefined || current.voiceId === undefined)
+                return yield* notConfigured();
+              yield* Schema.decodeUnknownEffect(SpeechOutputRequest)(request).pipe(
+                Effect.mapError(providerError),
+              );
+              const response = yield* execute(
+                HttpClientRequest.post(
+                  `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(current.voiceId)}/stream`,
+                ).pipe(
+                  HttpClientRequest.setUrlParams({ output_format: "pcm_24000" }),
+                  HttpClientRequest.setHeader("xi-api-key", current.apiKey),
+                  HttpClientRequest.setHeader("accept", "audio/pcm"),
+                  HttpClientRequest.bodyJsonUnsafe({
+                    text: request.text,
+                    model_id: "eleven_flash_v2_5",
+                  }),
                 ),
-              ),
+              );
+              stats.httpStatus = response.status;
+              const contentType = response.headers["content-type"]
+                ?.split(";")[0]
+                ?.trim()
+                .toLowerCase();
+              const safeContentType = Schema.decodeUnknownOption(
+                SpeechOutputDiagnostic.fields.contentType,
+              )(contentType);
+              if (Option.isSome(safeContentType) && safeContentType.value !== undefined)
+                stats.contentType = safeContentType.value;
+              const requestId = Schema.decodeUnknownOption(
+                SpeechOutputDiagnostic.fields.providerRequestId,
+              )(response.headers["request-id"] ?? response.headers["x-request-id"]);
+              if (Option.isSome(requestId) && requestId.value !== undefined)
+                stats.providerRequestId = requestId.value;
+              yield* checkStatus(response);
+              if (contentType !== "audio/pcm" && contentType !== "application/octet-stream") {
+                stats.reason = "unexpected-content-type";
+                return yield* invalidAudio();
+              }
+              // Keep only a dangling sample byte between pulls; no whole-phrase audio collection.
+              let pending: number | undefined;
+              let emitted = false;
+              return response.stream.pipe(
+                Stream.mapError(networkError),
+                Stream.flatMap((bytes) => {
+                  stats.receivedChunks++;
+                  stats.receivedBytes += bytes.byteLength;
+                  stats.largestChunkBytes = Math.max(stats.largestChunkBytes, bytes.byteLength);
+                  const data =
+                    pending === undefined
+                      ? Buffer.from(bytes)
+                      : Buffer.concat([Buffer.from([pending]), bytes]);
+                  const alignedLength = data.byteLength - (data.byteLength % 2);
+                  pending = data.byteLength % 2 === 0 ? undefined : data[data.byteLength - 1];
+                  stats.danglingSampleByte = pending !== undefined;
+                  if (alignedLength === 0) return Stream.empty;
+                  emitted = true;
+                  // HTTP read boundaries are arbitrary, not audio framing. Bound outgoing RPC
+                  // frames instead of rejecting valid coalesced provider chunks.
+                  return Stream.fromIterable(
+                    (function* () {
+                      for (let offset = 0; offset < alignedLength; offset += 65_536) {
+                        const frame = data.subarray(
+                          offset,
+                          Math.min(offset + 65_536, alignedLength),
+                        );
+                        stats.emittedBytes += frame.byteLength;
+                        yield {
+                          encoding: "pcm_s16le",
+                          sampleRate: 24_000,
+                          pcm: frame.toString("base64"),
+                        } satisfies SpeechOutputAudio;
+                      }
+                    })(),
+                  );
+                }),
+                Stream.concat(
+                  Stream.unwrap(
+                    Effect.sync(() => {
+                      if (pending !== undefined || !emitted) {
+                        stats.reason = pending !== undefined ? "incomplete-sample" : "empty-stream";
+                        return Stream.fail(invalidAudio());
+                      }
+                      return Stream.empty;
+                    }),
+                  ),
+                ),
+              );
+            }),
+          ).pipe(
+            Stream.tapError(
+              Effect.fn("ElevenLabsSpeech.reportFailure")(function* (error) {
+                const now = yield* Clock.currentTimeMillis;
+                yield* diagnostics.record({
+                  ...stats,
+                  timestampMillis: now,
+                  elapsedMillis: now - started,
+                  errorKind: error.kind,
+                });
+              }),
             ),
           );
         }).pipe(Effect.withSpan("ElevenLabsSpeech.synthesize")),

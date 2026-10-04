@@ -2,6 +2,7 @@ import { homedir, release } from "node:os";
 import { join } from "node:path";
 import { safeStorage, type App } from "electron";
 import { ElevenLabsSpeechLive } from "../services/speech/ElevenLabsSpeechLive";
+import { makeSpeechOutputDiagnosticsLive } from "../services/speech/SpeechOutputDiagnosticsLive";
 import { makeSpeechOutputStorageLive } from "../services/speech/SpeechOutputStorageLive";
 import { BootstrapLive } from "./BootstrapLive";
 import { Layer } from "effect";
@@ -59,6 +60,7 @@ export const makeMainLive = (options: MainLiveOptions) => {
       ViewsLive,
       DictationLive,
       ElevenLabsSpeechLive.pipe(
+        Layer.provide(makeSpeechOutputDiagnosticsLive(join(options.userData, "speech-output"))),
         Layer.provide(
           makeSpeechOutputStorageLive(join(options.userData, "speech-output"), {
             available: () =>

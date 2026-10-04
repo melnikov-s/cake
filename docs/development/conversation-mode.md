@@ -32,6 +32,12 @@ Only stable new assistant prose is spoken. Fenced code, tables, reasoning, error
 
 Configuration, permission, recognition backlog and provider failures stop optional voice resources with an actionable error, leaving text chat and accepted agent work available. Unaccepted recognized text remains visible for manual recovery. Fix the cause and explicitly re-enter; no automatic retry or fallback occurs.
 
+## Speech diagnostics
+
+Native main writes a structured console warning and replaces `<Electron userData>/speech-output/last-failure.json` on synthesis failure. This private, bounded report survives restarting Cake and contains only the latest failure: timestamp, elapsed milliseconds, failure reason/kind, HTTP status, validated content type/provider request ID, received chunk/byte counts, largest chunk size, emitted byte count and whether a sample byte was left over. It contains no API key, voice ID, spoken text, response body or audio. Diagnostic write failures do not change the synthesis error or trigger a retry. Cancellation and successful synthesis do not overwrite the last failure.
+
+For `invalid-audio`, `unexpected-content-type`, `empty-stream` and `incomplete-sample` distinguish the checks. HTTP read sizes are arbitrary: large network chunks are split into sample-aligned PCM frames of at most 65,536 bytes, not treated as corrupt audio. Give the report and the approximate time of the failure when debugging; an older report may describe a previous attempt.
+
 ## Verification
 
 Focused domain, queue, real Root/Model/Store/shared Chat workflow and playback tests use controlled external boundaries. Isolated compiled Electron smoke tests prove native inputs/Select, retained typing and enabled submission, real microphone/worklet capture, streaming playback and blur cleanup without credentials, downloads or billed requests. Deterministic fakes do not prove physical-microphone quality, real provider availability/quotas or voice quality; live validation needs explicit consent.

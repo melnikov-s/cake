@@ -26,6 +26,11 @@ import type {
 import { ElevenLabsSpeech } from "../../../src/services/speech/ElevenLabsSpeech";
 import { ElevenLabsSpeechLive } from "../../../src/services/speech/ElevenLabsSpeechLive";
 import {
+  type SpeechOutputDiagnostic,
+  SpeechOutputDiagnostics,
+} from "../../../src/services/speech/SpeechOutputDiagnostics";
+import { makeSpeechOutputDiagnosticsLive } from "../../../src/services/speech/SpeechOutputDiagnosticsLive";
+import {
   SpeechOutputStorage,
   type StoredSpeechOutputSettings,
 } from "../../../src/services/speech/SpeechOutputStorage";
@@ -206,6 +211,9 @@ const withSpeech = <A, E, R>(
   storage: SpeechOutputStorage["Service"],
   http: HttpClient.HttpClient,
   use: (speech: ElevenLabsSpeech["Service"]) => Effect.Effect<A, E, R>,
+  diagnostics: SpeechOutputDiagnostics["Service"] = SpeechOutputDiagnostics.of({
+    record: () => Effect.void,
+  }),
 ) =>
   Effect.gen(function* () {
     return yield* use(yield* ElevenLabsSpeech);
@@ -214,6 +222,7 @@ const withSpeech = <A, E, R>(
       ElevenLabsSpeechLive.pipe(
         Layer.provide([
           Layer.succeed(SpeechOutputStorage, storage),
+          Layer.succeed(SpeechOutputDiagnostics, diagnostics),
           Layer.succeed(HttpClient.HttpClient, http),
         ]),
       ),
@@ -653,21 +662,50 @@ describe("ElevenLabs speech output contract", () => {
       }),
   );
 
-  it.effect(
-    "malformed, oversized or odd-byte final PCM fails rather than playing corrupt audio",
-    () =>
-      Effect.gen(function* () {
-        for (const entry of [
-          { chunks: [new Uint8Array([1, 2])], type: "application/json", emitted: 0 },
-          { chunks: [new Uint8Array(65_538)], type: "audio/pcm", emitted: 0 },
-          { chunks: [new Uint8Array([1])], type: "audio/pcm", emitted: 0 },
-          { chunks: [new Uint8Array([1, 2, 3])], type: "audio/pcm", emitted: 1 },
-          { chunks: [], type: "audio/pcm", emitted: 0 },
-        ]) {
-          const storage = yield* memoryStorage(configured);
-          const seen: SpeechOutputAudio[] = [];
-          const http = makeHttp(() => Effect.succeed(audioResponse(entry.chunks, entry.type)));
-          yield* withSpeech(storage, http.client, (speech) =>
+  it.effect("malformed, empty or odd-byte final PCM fails with distinct private diagnostics", () =>
+    Effect.gen(function* () {
+      for (const entry of [
+        {
+          chunks: [new Uint8Array([1, 2])],
+          type: "application/json",
+          emitted: 0,
+          reason: "unexpected-content-type",
+          received: 0,
+          emittedBytes: 0,
+        },
+        {
+          chunks: [new Uint8Array([1])],
+          type: "audio/pcm",
+          emitted: 0,
+          reason: "incomplete-sample",
+          received: 1,
+          emittedBytes: 0,
+        },
+        {
+          chunks: [new Uint8Array([1, 2, 3])],
+          type: "audio/pcm",
+          emitted: 1,
+          reason: "incomplete-sample",
+          received: 3,
+          emittedBytes: 2,
+        },
+        {
+          chunks: [],
+          type: "audio/pcm",
+          emitted: 0,
+          reason: "empty-stream",
+          received: 0,
+          emittedBytes: 0,
+        },
+      ]) {
+        const storage = yield* memoryStorage(configured);
+        const seen: SpeechOutputAudio[] = [];
+        const reports: SpeechOutputDiagnostic[] = [];
+        const http = makeHttp(() => Effect.succeed(audioResponse(entry.chunks, entry.type)));
+        yield* withSpeech(
+          storage,
+          http.client,
+          (speech) =>
             Effect.gen(function* () {
               expectError(
                 yield* speech.synthesize({ text: "Hello" }).pipe(
@@ -686,8 +724,168 @@ describe("ElevenLabs speech output contract", () => {
               expect(http.requests).toHaveLength(1);
               expect(http.signals[0]?.aborted).toBe(true);
             }),
+          SpeechOutputDiagnostics.of({
+            record: (report) =>
+              Effect.sync(() => {
+                reports.push(report);
+              }),
+          }),
+        );
+        expect(reports).toHaveLength(1);
+        expect(reports[0]).toMatchObject({
+          reason: entry.reason,
+          errorKind: "invalid-audio",
+          httpStatus: 200,
+          contentType: entry.type,
+          receivedBytes: entry.received,
+          emittedBytes: entry.emittedBytes,
+          danglingSampleByte: entry.reason === "incomplete-sample",
+        });
+        expect(JSON.stringify(reports)).not.toContain(secret);
+        expect(JSON.stringify(reports)).not.toContain("Hello");
+      }
+    }),
+  );
+
+  it.effect(
+    "arbitrary large HTTP chunks become bounded PCM frames without losing sample bytes",
+    () =>
+      Effect.gen(function* () {
+        for (const type of ["audio/pcm; charset=binary", "application/octet-stream"]) {
+          const storage = yield* memoryStorage(configured);
+          const source = Uint8Array.from({ length: 196_612 }, (_, index) => index % 251);
+          // Both a dangling byte entering a large chunk and leaving one are preserved.
+          const http = makeHttp(() =>
+            Effect.succeed(
+              audioResponse(
+                [source.subarray(0, 1), source.subarray(1, 131_077), source.subarray(131_077)],
+                type,
+              ),
+            ),
           );
+          const reports: SpeechOutputDiagnostic[] = [];
+          yield* withSpeech(
+            storage,
+            http.client,
+            (speech) =>
+              Effect.gen(function* () {
+                const frames = yield* speech
+                  .synthesize({ text: "Private phrase" })
+                  .pipe(Stream.runCollect);
+                const decoded = frames.map((frame) => Buffer.from(frame.pcm, "base64"));
+                expect(Buffer.concat(decoded)).toEqual(Buffer.from(source));
+                for (const frame of decoded) {
+                  expect(frame.byteLength).toBeGreaterThan(0);
+                  expect(frame.byteLength).toBeLessThanOrEqual(65_536);
+                  expect(frame.byteLength % 2).toBe(0);
+                }
+                expect(http.requests).toHaveLength(1);
+              }),
+            SpeechOutputDiagnostics.of({
+              record: (report) =>
+                Effect.sync(() => {
+                  reports.push(report);
+                }),
+            }),
+          );
+          expect(reports).toEqual([]);
         }
+      }),
+  );
+
+  it.effect(
+    "real synthesis failures persist only the latest metadata report with private permissions",
+    () =>
+      Effect.gen(function* () {
+        const fake = yield* makeFileSystem();
+        const storage = yield* memoryStorage(configured);
+        const logs: unknown[] = [];
+        yield* Effect.gen(function* () {
+          const diagnostics = yield* SpeechOutputDiagnostics;
+          for (const type of ["application/json", "audio/pcm"]) {
+            const response = audioResponse([], type);
+            response.headers.set("request-id", "provider-request-123");
+            response.headers.set("xi-api-key", secret);
+            const http = makeHttp(() => Effect.succeed(response));
+            yield* withSpeech(
+              storage,
+              http.client,
+              (speech) =>
+                speech
+                  .synthesize({ text: "Do not log this phrase" })
+                  .pipe(Stream.runDrain, Effect.result),
+              diagnostics,
+            );
+            expect(http.requests).toHaveLength(1);
+          }
+          const raw = fake.files.get("private/speech/last-failure.json");
+          expect(raw).toBeDefined();
+          expect(JSON.parse(raw ?? "null")).toMatchObject({
+            reason: "empty-stream",
+            httpStatus: 200,
+            providerRequestId: "provider-request-123",
+            contentType: "audio/pcm",
+          });
+          expect([...fake.files.keys()]).toEqual(["private/speech/last-failure.json"]);
+          expect(fake.permissions.get("private/speech")).toBe(0o700);
+          expect(fake.permissions.get("private/speech/last-failure.json")).toBe(0o600);
+          expect(raw).not.toContain(secret);
+          expect(raw).not.toContain("Do not log this phrase");
+          expect(raw).not.toContain(configured.voiceId);
+          // Successful playback and cancellation before EOF retain the previous failure.
+          for (const cancelEarly of [false, true]) {
+            const http = makeHttp(() =>
+              Effect.succeed(audioResponse([new Uint8Array(cancelEarly ? [1, 2, 3] : [1, 2])])),
+            );
+            yield* withSpeech(
+              storage,
+              http.client,
+              (speech) => {
+                const stream = speech.synthesize({ text: "Successful or interrupted phrase" });
+                return (cancelEarly ? stream.pipe(Stream.take(1)) : stream).pipe(Stream.runDrain);
+              },
+              diagnostics,
+            );
+            expect(fake.files.get("private/speech/last-failure.json")).toBe(raw);
+            expect(http.requests).toHaveLength(1);
+            expect(http.signals[0]?.aborted).toBe(true);
+          }
+          // A diagnostic write failure must neither replace the synthesis error nor retry it.
+          fake.controls.failRename = true;
+          const http = makeHttp(() => Effect.succeed(audioResponse([])));
+          expectError(
+            yield* withSpeech(
+              storage,
+              http.client,
+              (speech) =>
+                speech
+                  .synthesize({ text: "Another private phrase" })
+                  .pipe(Stream.runDrain, Effect.result),
+              diagnostics,
+            ),
+            "invalid-audio",
+          );
+          expect(http.requests).toHaveLength(1);
+          expect(fake.files.get("private/speech/last-failure.json")).toBe(raw);
+          expect([...fake.files.keys()]).toEqual(["private/speech/last-failure.json"]);
+        }).pipe(
+          Effect.provide(
+            makeSpeechOutputDiagnosticsLive("private/speech").pipe(
+              Layer.provide(Layer.succeed(FileSystem.FileSystem, fake.fs)),
+            ),
+          ),
+          Effect.provide(
+            Logger.layer([
+              Logger.map(Logger.formatStructured, (entry) => {
+                logs.push(entry);
+              }),
+            ]),
+          ),
+        );
+        expect(logs.length).toBeGreaterThan(0);
+        expect(JSON.stringify(logs)).not.toContain(secret);
+        expect(JSON.stringify(logs)).not.toContain("private phrase");
+        expect(JSON.stringify(logs)).not.toContain(configured.voiceId);
       }),
   );
 });
