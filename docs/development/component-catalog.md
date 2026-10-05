@@ -45,10 +45,17 @@ the Artifact Library detail surface.
 unset for paths, search, code, and configuration syntax. Embedded surfaces never
 participate. Existing keyboard and controlled-value handlers remain authoritative.
 
-`DictationIndicator` is the shared silent, non-interactive status attached to the
-focused field: Preparing, Listening, Finishing, or a failure. It composes the
-shared spinner and microphone icon and never takes focus. See
-[local dictation](dictation.md) for lifecycle and installation details.
+`DictationIndicator` sits inside the focused writing field, with a `VoiceMeter`
+and a shared stop action. Listening is announced accessibly, not displayed as a
+popup. Preparing, Finishing and failures remain visible in the field. Textarea
+reserves space so status and bars never cover typed or dictated text; stopping
+retains writing focus. See [local dictation](dictation.md) for lifecycle details.
+
+`VoiceMeter` is a decorative seven-bar microphone-level display. Supply a normalized
+`level` from 0 to 1; silence leaves short bars and louder input raises them. It has
+no microphone, timers, or simulated animation, and respects reduced motion.
+`DictationStore` derives its ephemeral level from the existing PCM capture at
+roughly 20Hz and resets it on finishing, blur, dismissal or capture replacement.
 
 ## Voice conversation controls
 

@@ -15,6 +15,8 @@ interface Utterance {
   capture?: MicrophoneCapture;
   chunks: Float32Array[];
   samples: number;
+  meterEnergy: number;
+  meterSamples: number;
   pending?: Promise<void>;
   finishing: boolean;
 }
@@ -32,6 +34,8 @@ export class DictationStore extends Store<{
   state: DictationState | undefined;
   enabled = false;
   phase: DictationPhase = "off";
+  /** Ephemeral level of the current capture; never persisted or shared across focus generations. */
+  audioLevel = 0;
   error: string | undefined;
   modelPathDraft = "";
   deviceId = "";
@@ -82,6 +86,7 @@ export class DictationStore extends Store<{
   private endUtterance() {
     const run = this.utterance;
     this.utterance = undefined;
+    this.audioLevel = 0;
     run?.controller.abort();
     run?.capture?.stop();
     if (run) {
@@ -160,6 +165,8 @@ export class DictationStore extends Store<{
       controller: new AbortController(),
       chunks: [],
       samples: 0,
+      meterEnergy: 0,
+      meterSamples: 0,
       finishing: false,
     };
     this.utterance = run;
@@ -174,6 +181,20 @@ export class DictationStore extends Store<{
       const capture = await this.props.microphone.open(
         (samples) => {
           if (this.utterance !== run) return;
+          if (!run.finishing) {
+            for (const sample of samples) {
+              const bounded = Number.isFinite(sample) ? Math.max(-1, Math.min(1, sample)) : 0;
+              run.meterEnergy += bounded * bounded;
+            }
+            run.meterSamples += samples.length;
+            // PCM arrives every ~8ms; publish at ~20Hz rather than rendering each worklet block.
+            if (run.meterSamples >= 800) {
+              const level = Math.min(1, Math.sqrt(run.meterEnergy / run.meterSamples) * 8);
+              this.audioLevel = Math.max(level, this.audioLevel * 0.65);
+              run.meterEnergy = 0;
+              run.meterSamples = 0;
+            }
+          }
           run.chunks.push(samples);
           run.samples += samples.length;
           if (run.samples > 128_000) {
@@ -229,6 +250,7 @@ export class DictationStore extends Store<{
     if (!run || run.target.id !== id || run.finishing || this.phase !== "listening") return false;
     run.finishing = true;
     this.phase = "finishing";
+    this.audioLevel = 0;
     try {
       await run.capture?.finish();
       await run.pending;

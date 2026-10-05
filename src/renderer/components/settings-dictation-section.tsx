@@ -41,7 +41,7 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
       )}
       <SettingsToggle
         label="Dictation mode"
-        description="Focus a writing field, wait for Listening, then speak. Enter finishes your last words and submits where supported. Mode starts off when Cake opens."
+        description="Focus a writing field, wait for the voice bars, then speak. Enter finishes your last words and submits where supported. Mode starts off when Cake opens."
         checked={store.enabled}
         disabled={!state?.supported || !state.engineAvailable || !state.modelPath || installing}
         onChange={(enabled) => void store.setEnabled(enabled)}
@@ -159,7 +159,7 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
         <Textarea
           dictation
           aria-label="Try dictation"
-          placeholder="Enable dictation, focus here, wait for Listening, then speak…"
+          placeholder="Enable dictation, focus here, wait for the voice bars, then speak…"
           value={testDraft}
           onChange={(event) => setTestDraft(event.target.value)}
           rows={3}

@@ -203,6 +203,51 @@ const listening = () => expect(screen.getAllByText("Listening").length).toBeGrea
 afterEach(cleanup);
 
 describe("Dictation writing-field workflow", () => {
+  it("shows in-field bars from microphone volume, decays on silence and resets on refocus", async () => {
+    using fixture = renderDictation();
+    await fixture.user.click(mode());
+    await fixture.user.click(trial());
+    const field = trial().closest('[data-slot="dictation-field"]')!;
+    const meter = () => field.querySelector('[data-slot="voice-meter"]');
+    const scales = () =>
+      Array.from(field.querySelectorAll<HTMLElement>('[data-slot="voice-meter-bar"]'), (bar) =>
+        Number(bar.style.getPropertyValue("--voice-bar-scale")),
+      );
+    expect(meter()).not.toBeNull();
+    expect(scales()).toHaveLength(7);
+    expect(scales().every((scale) => scale === 0.18)).toBe(true);
+    await fixture.audio.push(new Float32Array(128));
+    expect(scales().every((scale) => scale === 0.18)).toBe(true);
+    await fixture.audio.push(new Float32Array(800).fill(0.1));
+    const speaking = scales();
+    expect(speaking.every((scale) => scale > 0.18 && scale <= 1)).toBe(true);
+    await fixture.audio.push(new Float32Array(800));
+    expect(scales().every((scale, index) => scale < speaking[index]!)).toBe(true);
+    await fixture.user.click(message());
+    expect(meter()).toBeNull();
+    const otherBars = message()
+      .closest('[data-slot="dictation-field"]')!
+      .querySelectorAll<HTMLElement>('[data-slot="voice-meter-bar"]');
+    expect(
+      Array.from(otherBars).every(
+        (bar) => Number(bar.style.getPropertyValue("--voice-bar-scale")) === 0.18,
+      ),
+    ).toBe(true);
+    // Late PCM from the abandoned microphone must not animate the new field.
+    await fixture.audio.push(new Float32Array(800).fill(1), 0);
+    expect(
+      Array.from(otherBars).every(
+        (bar) => Number(bar.style.getPropertyValue("--voice-bar-scale")) === 0.18,
+      ),
+    ).toBe(true);
+    await fixture.user.click(trial());
+    expect(scales().every((scale) => scale === 0.18)).toBe(true);
+    await fixture.audio.push(new Float32Array(800).fill(Number.NaN));
+    expect(scales().every((scale) => scale === 0.18)).toBe(true);
+    await fixture.user.keyboard("{Escape}");
+    expect(meter()).toBeNull();
+  });
+
   it("waits for both model and microphone readiness, capturing only the latest focused field", async () => {
     const model = deferred<void>();
     const microphone = deferred<void>();

@@ -142,6 +142,29 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
       timeout: 15_000,
     });
     await expect(sample).toHaveValue("Dictation is ready");
+    const meter = page.locator(
+      '[data-slot="dictation-field"]:has(textarea[aria-label="Try dictation"]) [data-slot="voice-meter"]',
+    );
+    await expect(meter).toBeVisible();
+    await expect(meter.locator('[data-slot="voice-meter-bar"]')).toHaveCount(7);
+    // Verify real Electron layout: the meter is inside the input, not a floating popup.
+    const inputBox = await sample.boundingBox();
+    const meterBox = await meter.boundingBox();
+    expect(inputBox).not.toBeNull();
+    expect(meterBox!.x).toBeGreaterThan(inputBox!.x);
+    expect(meterBox!.y).toBeGreaterThan(inputBox!.y);
+    expect(meterBox!.x + meterBox!.width).toBeLessThan(inputBox!.x + inputBox!.width);
+    expect(meterBox!.y + meterBox!.height).toBeLessThan(inputBox!.y + inputBox!.height);
+    await expect
+      .poll(() =>
+        meter
+          .locator('[data-slot="voice-meter-bar"]')
+          .evaluateAll((bars) =>
+            Math.max(...bars.map((bar) => bar.getBoundingClientRect().height)),
+          ),
+      )
+      .toBeGreaterThan(4);
+    await expect(sample).toBeFocused();
     // A path/search input is not a dictation target.
     await page.getByLabel("Use an existing Core ML Parakeet model folder").focus();
     await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);

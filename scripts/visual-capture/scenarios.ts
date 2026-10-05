@@ -979,6 +979,60 @@ const projectCustomInstructionsScenario: VisualCaptureScenario = {
   },
 };
 
+const dictationInputScenario: VisualCaptureScenario = {
+  name: "dictation-input",
+  description: "Real Chat composer with in-field dictation bars at rest or responding to speech",
+  states: ["default", "speaking"],
+  environment: conversationCountdownScenario.environment,
+  seed: conversationCountdownScenario.seed,
+  async prepare(page, state, application) {
+    await conversationEntryScenario.prepare(page, "default", application);
+    // Replace only the browser audio boundary; drive the real dictation workflow and PCM meter.
+    await page.evaluate(() => {
+      const source = new AudioContext();
+      const stream = source.createMediaStreamDestination().stream;
+      navigator.mediaDevices.getUserMedia = async () => stream;
+      const WorkletNode = AudioWorkletNode;
+      globalThis.AudioWorkletNode = class extends WorkletNode {
+        constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
+          super(context, name, options);
+          this.port.addEventListener("message", (event) => {
+            if (event.isTrusted) event.stopImmediatePropagation();
+          });
+          Object.assign(globalThis, { visualDictationProcessor: this });
+        }
+      };
+    });
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /Dictation Local speech to text/ }).click();
+    await page.getByRole("switch", { name: "Dictation mode" }).click();
+    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await page
+      .locator('[data-navigation-item][data-session-id="visual-conversation-entry"]')
+      .click();
+    const input = page.getByRole("combobox", { name: "Message", exact: true });
+    await input.fill("Let’s refine the voice conversation together.");
+    await expect(page.locator('[data-slot="voice-meter"]')).toBeVisible();
+    await page.evaluate((speaking) => {
+      const processor = Reflect.get(globalThis, "visualDictationProcessor") as AudioWorkletNode;
+      processor.port.dispatchEvent(
+        new MessageEvent("message", { data: new Float32Array(800).fill(speaking ? 0.09 : 0) }),
+      );
+    }, state === "speaking");
+    await expect
+      .poll(() =>
+        page
+          .locator('[data-slot="voice-meter-bar"]')
+          .evaluateAll((bars) =>
+            Math.max(...bars.map((bar) => bar.getBoundingClientRect().height)),
+          ),
+      )
+      .toBeCloseTo(state === "speaking" ? 12.33 : 2.88, 0);
+    await page.mouse.move(1, 1);
+  },
+  region: conversationEntryScenario.region,
+};
+
 const dictationSettingsScenario: VisualCaptureScenario = {
   name: "dictation-settings",
   description: "Local Parakeet installation and focus-driven dictation settings",
@@ -1472,6 +1526,7 @@ export const visualCaptureScenarios = [
   mcpSettingsScenario,
   appearanceSettingsScenario,
   projectCustomInstructionsScenario,
+  dictationInputScenario,
   dictationSettingsScenario,
   serverClientSettingsScenario,
 ] as const;
