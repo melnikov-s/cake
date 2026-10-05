@@ -181,8 +181,7 @@ describe("WorktreeLandings", () => {
         });
         yield* awaitPhase("landed");
         expect(events).toEqual(["prepare", "prompt", "land"]);
-        expect(promptText).toContain("commit all intended work");
-        expect(promptText).toContain("Do not merge, rebase, push");
+        expect(promptText).toBe("Commit this change.");
       }).pipe(Effect.provide(layer)),
     );
   });

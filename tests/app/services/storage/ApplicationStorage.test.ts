@@ -237,7 +237,7 @@ describe("ApplicationStorage", () => {
         Effect.gen(function* () {
           const loaded = yield* storage.load();
           assert.strictEqual(loaded.source, "migrated");
-          assert.match(loaded.state.cakePrompts.worktreeCommit, /uncommitted changes/);
+          assert.equal(loaded.state.cakePrompts.worktreeCommit, "Commit this change.");
         }),
     );
   });

@@ -14,13 +14,7 @@ export const CakePrompts = Schema.Struct({
 export interface CakePrompts extends Schema.Schema.Type<typeof CakePrompts> {}
 
 export const defaultCakePrompts = (): CakePrompts => ({
-  worktreeCommit: [
-    "Cake is preparing to merge this worktree into {{target}}, but it has uncommitted changes.",
-    "",
-    "Inspect the complete working tree, verify the change, and commit all intended work with an appropriate commit message.",
-    "",
-    "Do not merge, rebase, push, switch branches, or modify the target checkout. Cake will merge the committed branch after this turn finishes.",
-  ].join("\n"),
+  worktreeCommit: "Commit this change.",
   worktreeRebaseConflict: [
     "Cake tried to rebase this worktree onto {{target}}, but the deterministic rebase stopped on conflicts in these files:",
     "",
