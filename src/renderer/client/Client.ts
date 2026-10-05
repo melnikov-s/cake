@@ -60,6 +60,7 @@ export interface ClientCommandOptions {
 export interface SpeechOutputCommands {
   setApiKey(key: string | null, options?: ClientCommandOptions): Promise<void>;
   setVoice(voiceId: string, options?: ClientCommandOptions): Promise<void>;
+  setSpeed(speed: number, options?: ClientCommandOptions): Promise<void>;
   listVoices(options?: ClientCommandOptions): Promise<ReadonlyArray<SpeechOutputVoice>>;
   synthesize(
     request: SpeechOutputRequest,

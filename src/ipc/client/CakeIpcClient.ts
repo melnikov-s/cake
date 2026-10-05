@@ -247,6 +247,7 @@ export interface CakeIpcClientService {
     observeSettings(): Stream.Stream<SpeechOutputSettings, SpeechOutputError | TransportError>;
     setApiKey(key: string | null): Effect.Effect<void, SpeechOutputError | TransportError>;
     setVoice(voiceId: string): Effect.Effect<void, SpeechOutputError | TransportError>;
+    setSpeed(speed: number): Effect.Effect<void, SpeechOutputError | TransportError>;
     listVoices(): Effect.Effect<
       ReadonlyArray<SpeechOutputVoice>,
       SpeechOutputError | TransportError
@@ -983,6 +984,9 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         setVoice: Effect.fn("CakeIpcClient.speechOutput.setVoice")((voiceId) =>
           client("speechOutput.setVoice", { voiceId }),
+        ),
+        setSpeed: Effect.fn("CakeIpcClient.speechOutput.setSpeed")((speed: number) =>
+          client("speechOutput.setSpeed", { speed }),
         ),
         listVoices: Effect.fn("CakeIpcClient.speechOutput.listVoices")(() =>
           client("speechOutput.listVoices", undefined),

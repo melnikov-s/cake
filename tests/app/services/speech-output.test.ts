@@ -296,6 +296,8 @@ describe("ElevenLabs speech output contract", () => {
               keyConfigured: true,
               voiceId: "explicit-voice",
               modelId: "eleven_flash_v2_5",
+              speed: 1,
+              voices: [],
             });
             const first = yield* speech.setVoice("new-voice").pipe(Effect.forkChild);
             yield* Deferred.await(saveStarted);
@@ -309,11 +311,15 @@ describe("ElevenLabs speech output contract", () => {
               keyConfigured: true,
               voiceId: "new-voice",
               modelId: "eleven_flash_v2_5",
+              speed: 1,
+              voices: [],
             });
             expect(yield* Queue.take(updates)).toEqual({
               keyConfigured: false,
               voiceId: "new-voice",
               modelId: "eleven_flash_v2_5",
+              speed: 1,
+              voices: [],
             });
             expect(maximum).toBe(1);
             expect(saves).toEqual([
@@ -321,7 +327,15 @@ describe("ElevenLabs speech output contract", () => {
               { voiceId: "new-voice" },
             ]);
             expect(yield* speech.observeSettings().pipe(Stream.take(1), Stream.runCollect)).toEqual(
-              [{ keyConfigured: false, voiceId: "new-voice", modelId: "eleven_flash_v2_5" }],
+              [
+                {
+                  keyConfigured: false,
+                  voiceId: "new-voice",
+                  modelId: "eleven_flash_v2_5",
+                  speed: 1,
+                  voices: [],
+                },
+              ],
             );
           }),
         );
@@ -353,14 +367,18 @@ describe("ElevenLabs speech output contract", () => {
               expect(crypto.controls.decrypted).toBe(1);
               expect(
                 yield* speech.observeSettings().pipe(Stream.take(1), Stream.runCollect),
-              ).toEqual([{ keyConfigured: true, modelId: "eleven_flash_v2_5" }]);
+              ).toEqual([
+                { keyConfigured: true, modelId: "eleven_flash_v2_5", speed: 1, voices: [] },
+              ]);
               expect(yield* speech.setApiKey(null)).toBeUndefined();
               expect(yield* storage.load()).toEqual({});
               expect(fake.files.get(target)).not.toContain("encryptedApiKey");
               expect([...fake.files.keys()]).toEqual([target]);
               expect(
                 yield* speech.observeSettings().pipe(Stream.take(1), Stream.runCollect),
-              ).toEqual([{ keyConfigured: false, modelId: "eleven_flash_v2_5" }]);
+              ).toEqual([
+                { keyConfigured: false, modelId: "eleven_flash_v2_5", speed: 1, voices: [] },
+              ]);
             }),
           );
         }).pipe(
@@ -416,7 +434,9 @@ describe("ElevenLabs speech output contract", () => {
               expect([...fake.files.keys()]).toEqual([target]);
               expect(
                 yield* speech.observeSettings().pipe(Stream.take(1), Stream.runCollect),
-              ).toEqual([{ keyConfigured: true, modelId: "eleven_flash_v2_5" }]);
+              ).toEqual([
+                { keyConfigured: true, modelId: "eleven_flash_v2_5", speed: 1, voices: [] },
+              ]);
               crypto.controls.available = false;
               expectError(yield* storage.load().pipe(Effect.result), "storage");
             }),
@@ -455,13 +475,23 @@ describe("ElevenLabs speech output contract", () => {
                 { id: "voice-a", name: "First" },
                 { id: "voice-b", name: "Second" },
               ]);
-              expect(yield* storage.load()).toEqual({ apiKey: secret });
+              const voices = [
+                { id: "voice-a", name: "First" },
+                { id: "voice-b", name: "Second" },
+              ];
+              expect(yield* storage.load()).toEqual({ apiKey: secret, voices });
               yield* speech.setVoice("voice-b");
-              expect(yield* storage.load()).toEqual({ apiKey: secret, voiceId: "voice-b" });
+              expect(yield* storage.load()).toEqual({ apiKey: secret, voiceId: "voice-b", voices });
               expect(
                 yield* speech.observeSettings().pipe(Stream.take(1), Stream.runCollect),
               ).toEqual([
-                { keyConfigured: true, voiceId: "voice-b", modelId: "eleven_flash_v2_5" },
+                {
+                  keyConfigured: true,
+                  voiceId: "voice-b",
+                  modelId: "eleven_flash_v2_5",
+                  speed: 1,
+                  voices,
+                },
               ]);
             }),
           );
@@ -472,6 +502,64 @@ describe("ElevenLabs speech output contract", () => {
         expect(http.requests[0]?.headers["xi-api-key"]).toBe(secret);
         expect(http.signals[0]?.aborted).toBe(true);
       }),
+  );
+
+  it.effect("speed and voices survive service restart; failed refresh retains the saved list", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFileSystem();
+      const crypto = makeEncryption();
+      const voices = [{ id: "voice-a", name: "First" }];
+      const http = makeHttp(() =>
+        Effect.succeed(Response.json({ voices: [{ voice_id: "voice-a", name: "First" }] })),
+      );
+      yield* Effect.gen(function* () {
+        const storage = yield* SpeechOutputStorage;
+        yield* withSpeech(storage, http.client, (speech) =>
+          Effect.gen(function* () {
+            yield* speech.setApiKey(secret);
+            yield* speech.listVoices();
+            yield* speech.setVoice("voice-a");
+            yield* speech.setSpeed(1.15);
+            expectError(yield* speech.setSpeed(0.9).pipe(Effect.result), "provider");
+            expectError(yield* speech.setSpeed(1.21).pipe(Effect.result), "provider");
+          }),
+        );
+        const audioHttp = makeHttp(() => Effect.succeed(audioResponse([new Uint8Array([0, 0])])));
+        yield* withSpeech(storage, audioHttp.client, (speech) =>
+          Effect.gen(function* () {
+            expect(yield* speech.observeSettings().pipe(Stream.take(1), Stream.runCollect)).toEqual(
+              [
+                {
+                  keyConfigured: true,
+                  voiceId: "voice-a",
+                  modelId: "eleven_flash_v2_5",
+                  speed: 1.15,
+                  voices,
+                },
+              ],
+            );
+            expect(audioHttp.requests).toHaveLength(0);
+            yield* speech.synthesize({ text: "Faster speech." }).pipe(Stream.runDrain);
+            const body = audioHttp.requests[0]?.body;
+            expect(body?._tag).toBe("Uint8Array");
+            if (body?._tag === "Uint8Array")
+              expect(JSON.parse(Buffer.from(body.body).toString()).voice_settings).toEqual({
+                speed: 1.15,
+              });
+          }),
+        );
+        const failing = makeHttp(() => Effect.succeed(new Response("", { status: 500 })));
+        yield* withSpeech(storage, failing.client, (speech) =>
+          Effect.gen(function* () {
+            expectError(yield* speech.listVoices().pipe(Effect.result), "provider");
+            expect((yield* storage.load()).voices).toEqual(voices);
+            yield* speech.setApiKey("different-key");
+            expect((yield* storage.load()).voices).toBeUndefined();
+            expect((yield* storage.load()).speed).toBe(1.15);
+          }),
+        );
+      }).pipe(Effect.provide(storageLayer(fake, crypto.encryption)));
+    }),
   );
 
   it.effect(
@@ -523,6 +611,7 @@ describe("ElevenLabs speech output contract", () => {
           expect(JSON.parse(Buffer.from(request.body.body).toString())).toEqual({
             text: "A short phrase.",
             model_id: "eleven_flash_v2_5",
+            voice_settings: { speed: 1 },
           });
         expect(http.signals[0]?.aborted).toBe(true);
       }),

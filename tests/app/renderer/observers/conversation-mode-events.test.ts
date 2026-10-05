@@ -83,6 +83,8 @@ async function workflow(events: ClientEvents["Service"]) {
     keyConfigured: true,
     voiceId: "voice",
     modelId: "eleven_flash_v2_5",
+    speed: 1,
+    voices: [],
   });
   const session = root.sessionRegistry.load("one", "/project");
   root.appShellStore.selectProjectSession("one");

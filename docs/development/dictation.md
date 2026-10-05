@@ -10,7 +10,7 @@ It does not inject keystrokes into VS Code, terminals, browser pages, widgets, o
    **Parakeet TDT v2 Core ML** folder. It must contain `Preprocessor.mlmodelc`, `Encoder.mlmodelc`,
    `Decoder.mlmodelc`, `JointDecision.mlmodelc`, and `parakeet_vocab.json`.
    MLX, ONNX, Whisper, and NeMo weights are not interchangeable with these compiled bundles.
-3. Enable **Dictation mode**. Cake loads and warms the model once, retaining it while enabled.
+3. Enable **Dictation mode**. Cake loads and warms the model, reusing it while available and re-preparing after a voice-mode handoff.
 4. Focus a Cake chat composer, annotation comment, or another opted-in writing field.
    Wait for **Listening** before speaking. **Preparing dictation…** means capture is not ready.
    Core ML's first load can take longer while macOS prepares the model for the device.
@@ -22,9 +22,8 @@ its compiled speech helper and FluidAudio; Core ML is part of macOS.
 
 There are no ready sounds. Dictation mode starts off on each app launch. Model selection and
 installation persist; microphone selection and enabled mode are window-local for now.
-Dictation and [conversation mode](conversation-mode.md) exclude each other within the same window.
-Enabling one exits the other first; leaving it never automatically restores the previous mode.
-Conversation mode submits finalized speech independently of writing-field drafts and can speak assistant prose.
+[Conversation mode](conversation-mode.md) suppresses dictation only in its active composer, without changing the window's Dictation mode preference. Exiting voice mode or switching sessions allows focused-field dictation to resume automatically. Focusing a different opted-in writing field hands the shared recognizer back to dictation and exits voice mode. Toggling the dictation preference alone does not exit voice mode.
+Conversation mode updates and submits the normal composer draft and can speak assistant prose.
 Microphone access is requested on first capture. macOS permission denial can be repaired in
 System Settings → Privacy & Security → Microphone, then by toggling dictation off and on.
 

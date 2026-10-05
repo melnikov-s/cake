@@ -234,6 +234,26 @@ async function executeAgentSettings(
       if (connection.error) throw new Error(connection.error);
       return { selectionRequested: true, receiptMayBeLost: true };
     }
+    case "settings.speech.get": {
+      desktop();
+      if (!settings.speech.settings)
+        throw new Error("Speech settings are still loading. Try again.");
+      return settings.speech.settings;
+    }
+    case "settings.speech.refresh-voices": {
+      desktop();
+      return client.speechOutput.listVoices(options);
+    }
+    case "settings.speech.set-voice": {
+      desktop();
+      const { voiceId } = invocation.arguments;
+      if (!settings.speech.voices.some((voice) => voice.id === voiceId))
+        throw new Error(
+          "Choose a voice ID from settings.speech.get, or refresh the voice list first.",
+        );
+      await client.speechOutput.setVoice(voiceId, options);
+      return { voiceId };
+    }
     case "settings.dictation.get":
       return dictationView();
     case "settings.dictation.update": {

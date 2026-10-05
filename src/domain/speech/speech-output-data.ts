@@ -2,19 +2,25 @@ import { Schema } from "effect";
 
 const voiceId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 
-/** Main-owned, secret-free settings projection. The API key never comes back over RPC. */
-export const SpeechOutputSettings = Schema.Struct({
-  keyConfigured: Schema.Boolean,
-  voiceId: Schema.optionalKey(voiceId),
-  modelId: Schema.Literal("eleven_flash_v2_5"),
-});
-export interface SpeechOutputSettings extends Schema.Schema.Type<typeof SpeechOutputSettings> {}
+export const SpeechOutputSpeed = Schema.Number.check(
+  Schema.isBetween({ minimum: 1, maximum: 1.2 }),
+);
 
 export const SpeechOutputVoice = Schema.Struct({
   id: voiceId,
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
 });
 export interface SpeechOutputVoice extends Schema.Schema.Type<typeof SpeechOutputVoice> {}
+
+/** Main-owned, secret-free settings projection. The API key never comes back over RPC. */
+export const SpeechOutputSettings = Schema.Struct({
+  keyConfigured: Schema.Boolean,
+  voiceId: Schema.optionalKey(voiceId),
+  modelId: Schema.Literal("eleven_flash_v2_5"),
+  speed: SpeechOutputSpeed,
+  voices: Schema.Array(SpeechOutputVoice).check(Schema.isMaxLength(1_000)),
+});
+export interface SpeechOutputSettings extends Schema.Schema.Type<typeof SpeechOutputSettings> {}
 
 /** One bounded plain-language phrase. No provider override, credentials, or microphone audio. */
 export const SpeechOutputRequest = Schema.Struct({

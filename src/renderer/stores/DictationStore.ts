@@ -26,7 +26,8 @@ export type DictationPhase = "off" | "paused" | "preparing" | "listening" | "fin
 export class DictationStore extends Store<{
   client: Client["dictation"];
   microphone: Microphone;
-  beforeEnable?(): Promise<void>;
+  beforeCapture?(): Promise<void>;
+  canReleaseRecognition?(): boolean;
 }> {
   state: DictationState | undefined;
   enabled = false;
@@ -88,6 +89,12 @@ export class DictationStore extends Store<{
       run.samples = 0;
     }
   }
+  /** Pause the current field without changing the user's dictation preference. */
+  pauseCapture(): void {
+    this.endUtterance();
+    this.target = undefined;
+    if (this.enabled) this.phase = "paused";
+  }
   async setEnabled(enabled: boolean) {
     const revision = ++this.modeRevision;
     this.enabled = enabled;
@@ -97,10 +104,10 @@ export class DictationStore extends Store<{
     this.phase = enabled ? "preparing" : "off";
     try {
       if (!enabled) {
-        await this.props.client.release({ signal: this.signal });
+        if (this.props.canReleaseRecognition?.() ?? true)
+          await this.props.client.release({ signal: this.signal });
         return;
       }
-      await this.props.beforeEnable?.();
       if (revision !== this.modeRevision || this.signal.aborted) return;
       await this.props.client.prepare({ signal: this.signal });
       if (revision !== this.modeRevision || this.signal.aborted) return;
@@ -116,10 +123,9 @@ export class DictationStore extends Store<{
     this.dismissedTargetId = undefined;
     this.target = target;
     if (!this.enabled) return;
-    if (this.state?.status === "ready") void this.start(target);
-    else if (this.state?.status === "error")
+    if (this.state?.status === "error")
       this.reportError(new Error(this.state.message ?? "Dictation unavailable"));
-    else this.phase = "preparing";
+    else if (this.phase !== "preparing" || this.utterance) void this.start(target);
   }
   blur(id: string) {
     if (this.target?.id !== id) return;
@@ -160,6 +166,11 @@ export class DictationStore extends Store<{
     this.phase = "preparing";
     target.begin();
     try {
+      await this.props.beforeCapture?.();
+      if (this.utterance !== run) return;
+      // Voice mode can have released the shared recognizer. Preparation is warm/idempotent.
+      await this.props.client.prepare({ signal: this.signal });
+      if (this.utterance !== run) return;
       const capture = await this.props.microphone.open(
         (samples) => {
           if (this.utterance !== run) return;

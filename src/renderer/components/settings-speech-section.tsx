@@ -5,6 +5,7 @@ import { Select } from "./ui/select";
 import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
 import { Switch } from "./ui/switch";
+import { Slider } from "./ui/slider";
 
 export const SettingsSpeechSection = observer(function SettingsSpeechSection({
   speech,
@@ -104,8 +105,33 @@ export const SettingsSpeechSection = observer(function SettingsSpeechSection({
           disabled={speech.refreshing || !speech.settings?.keyConfigured}
           onClick={() => void speech.refreshVoices()}
         >
-          {speech.refreshing ? "Loading voices…" : "Load voices"}
+          {speech.refreshing ? "Refreshing voices…" : "Refresh voices"}
         </Button>
+      </div>
+      <div className="grid max-w-64 gap-2">
+        <div className="flex items-center justify-between text-xs">
+          <label htmlFor="speech-speed" className="font-medium">
+            Speaking speed
+          </label>
+          <span className="tabular-nums">{speech.speed.toFixed(2)}×</span>
+        </div>
+        <Slider
+          id="speech-speed"
+          min={1}
+          max={1.2}
+          step={0.01}
+          value={speech.speed}
+          disabled={speech.busy}
+          aria-valuetext={`${speech.speed.toFixed(2)} times normal speed`}
+          onValueChange={(speed) => {
+            speech.speedDraft = speed;
+          }}
+          onValueCommit={() => void speech.saveSpeed()}
+        />
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>Normal · 1×</span>
+          <span>Faster · 1.2×</span>
+        </div>
       </div>
       <p className="text-xs text-muted-foreground">
         No generated preview, automatic billed retry or fallback. Exit voice mode to use ordinary

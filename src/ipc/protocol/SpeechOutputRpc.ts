@@ -5,6 +5,7 @@ import {
   SpeechOutputError,
   SpeechOutputRequest,
   SpeechOutputSettings,
+  SpeechOutputSpeed,
   SpeechOutputVoice,
 } from "../../domain/speech/speech-output-data";
 
@@ -24,6 +25,11 @@ export const SpeechOutputRpc = RpcGroup.make(
   }),
   Rpc.make("speechOutput.setVoice", {
     payload: { voiceId: SpeechOutputVoice.fields.id },
+    success: Schema.Void,
+    error: SpeechOutputError,
+  }),
+  Rpc.make("speechOutput.setSpeed", {
+    payload: { speed: SpeechOutputSpeed },
     success: Schema.Void,
     error: SpeechOutputError,
   }),

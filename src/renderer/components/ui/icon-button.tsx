@@ -30,7 +30,7 @@ export function IconButtonHotkeyProvider({
 export type IconButtonProps = Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
   "title" | "aria-label"
-> & { hotkey?: CakeHotkeyActionId } & (
+> & { hotkey?: CakeHotkeyActionId; pressedAppearance?: "solid" | "subtle" } & (
     | { tooltip: string; ariaLabel?: string }
     | { tooltip?: undefined; ariaLabel: string }
   );
@@ -42,6 +42,7 @@ const ObservedIconButton = observer(function ObservedIconButton({
   ariaLabel,
   type = "button",
   className,
+  pressedAppearance = "solid",
   children,
   onMouseEnter,
   onMouseLeave,
@@ -61,7 +62,10 @@ const ObservedIconButton = observer(function ObservedIconButton({
       ref={buttonRef}
       type={type}
       className={cn(
-        "icon-button grid size-[30px] place-items-center rounded-[7px] border-0 bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:shadow-sm aria-pressed:hover:bg-primary/90 disabled:opacity-30 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-muted-foreground [app-region:no-drag]",
+        "icon-button grid size-[30px] place-items-center rounded-[7px] border-0 bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-muted-foreground [app-region:no-drag]",
+        pressedAppearance === "solid"
+          ? "aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:shadow-sm aria-pressed:hover:bg-primary/90"
+          : "aria-pressed:text-accent aria-pressed:hover:bg-accent/10",
         className,
       )}
       aria-label={ariaLabel ?? tooltip}

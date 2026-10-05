@@ -19,6 +19,7 @@ import {
 import {
   SpeechOutputError,
   SpeechOutputRequest,
+  SpeechOutputSpeed,
   type SpeechOutputSettings,
   SpeechOutputVoice,
   type SpeechOutputAudio,
@@ -52,6 +53,8 @@ const project = (settings: StoredSpeechOutputSettings): SpeechOutputSettings => 
   const snapshot: Types.Mutable<SpeechOutputSettings> = {
     keyConfigured: settings.apiKey !== undefined,
     modelId: "eleven_flash_v2_5",
+    speed: settings.speed ?? 1,
+    voices: settings.voices ?? [],
   };
   if (settings.voiceId !== undefined) snapshot.voiceId = settings.voiceId;
   return snapshot;
@@ -144,8 +147,9 @@ export const ElevenLabsSpeechLive: Layer.Layer<
     }, Effect.uninterruptible);
     const setApiKey = Effect.fn("ElevenLabsSpeech.setApiKey")(function* (key: string | null) {
       const current = yield* readSettings();
-      const updated: Types.Mutable<StoredSpeechOutputSettings> = {};
-      if (current.voiceId !== undefined) updated.voiceId = current.voiceId;
+      const updated: Types.Mutable<StoredSpeechOutputSettings> = { ...current };
+      delete updated.apiKey;
+      if (key !== current.apiKey) delete updated.voices;
       if (key !== null) updated.apiKey = key;
       const next = yield* Schema.decodeUnknownEffect(StoredSpeechOutputSettings)(updated).pipe(
         Effect.mapError(notConfigured),
@@ -159,6 +163,13 @@ export const ElevenLabsSpeechLive: Layer.Layer<
         voiceId,
       }).pipe(Effect.mapError(notConfigured));
       yield* saveSettings(next);
+    }, settingsLock.withPermit);
+    const setSpeed = Effect.fn("ElevenLabsSpeech.setSpeed")(function* (speed: number) {
+      const current = yield* readSettings();
+      yield* Schema.decodeUnknownEffect(SpeechOutputSpeed)(speed).pipe(
+        Effect.mapError(providerError),
+      );
+      yield* saveSettings({ ...current, speed });
     }, settingsLock.withPermit);
     const observeSettings = () =>
       Stream.unwrap(
@@ -197,7 +208,15 @@ export const ElevenLabsSpeechLive: Layer.Layer<
       const decoded = yield* Schema.decodeUnknownEffect(voices)(body).pipe(
         Effect.mapError(providerError),
       );
-      return decoded.voices.map((voice) => ({ id: voice.voice_id, name: voice.name }));
+      const refreshed = decoded.voices.map((voice) => ({ id: voice.voice_id, name: voice.name }));
+      yield* settingsLock.withPermit(
+        Effect.gen(function* () {
+          const latest = yield* readSettings();
+          if (latest.apiKey !== current.apiKey) return yield* notConfigured();
+          yield* saveSettings({ ...latest, voices: refreshed });
+        }),
+      );
+      return refreshed;
     }, Effect.scoped);
     const synthesize = (
       request: SpeechOutputRequest,
@@ -235,6 +254,7 @@ export const ElevenLabsSpeechLive: Layer.Layer<
                   HttpClientRequest.bodyJsonUnsafe({
                     text: request.text,
                     model_id: "eleven_flash_v2_5",
+                    voice_settings: { speed: current.speed ?? 1 },
                   }),
                 ),
               );
@@ -323,6 +343,13 @@ export const ElevenLabsSpeechLive: Layer.Layer<
           );
         }).pipe(Effect.withSpan("ElevenLabsSpeech.synthesize")),
       );
-    return ElevenLabsSpeech.of({ observeSettings, setApiKey, setVoice, listVoices, synthesize });
+    return ElevenLabsSpeech.of({
+      observeSettings,
+      setApiKey,
+      setVoice,
+      setSpeed,
+      listVoices,
+      synthesize,
+    });
   }),
 );

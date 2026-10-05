@@ -21,6 +21,8 @@ const document = Schema.Struct({
     ),
   ),
   voiceId: StoredSpeechOutputSettings.fields.voiceId,
+  speed: StoredSpeechOutputSettings.fields.speed,
+  voices: StoredSpeechOutputSettings.fields.voices,
 });
 const storageError = () =>
   new SpeechOutputError({
@@ -74,6 +76,8 @@ export const makeSpeechOutputStorageLive = (
         const settings: Types.Mutable<StoredSpeechOutputSettings> = {};
         if (apiKey !== undefined) settings.apiKey = apiKey;
         if (saved.voiceId !== undefined) settings.voiceId = saved.voiceId;
+        if (saved.speed !== undefined) settings.speed = saved.speed;
+        if (saved.voices !== undefined) settings.voices = saved.voices;
         return yield* Schema.decodeUnknownEffect(StoredSpeechOutputSettings)(settings).pipe(
           Effect.mapError(storageError),
         );
@@ -98,6 +102,8 @@ export const makeSpeechOutputStorageLive = (
         const saved: Types.Mutable<Schema.Schema.Type<typeof document>> = { version: 1 };
         if (encryptedApiKey !== undefined) saved.encryptedApiKey = encryptedApiKey;
         if (settings.voiceId !== undefined) saved.voiceId = settings.voiceId;
+        if (settings.speed !== undefined) saved.speed = settings.speed;
+        if (settings.voices !== undefined) saved.voices = settings.voices;
         const content = yield* Schema.encodeEffect(Schema.fromJsonString(document))(saved).pipe(
           Effect.mapError(storageError),
         );

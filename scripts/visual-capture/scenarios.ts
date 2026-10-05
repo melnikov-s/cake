@@ -1,7 +1,7 @@
 import { drawMermaidArchitecture } from "../../tests/fixtures/draw-mermaid-architecture.ts";
 import { nestedAssistant, nestedEntries } from "../../tests/fixtures/nested-tool-activity.ts";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type { VisualCaptureTheme } from "./arguments.ts";
@@ -10,6 +10,7 @@ import type { CakeEvent } from "../../src/ipc/cake-rpc-contract.ts";
 import {
   emitRendererEvent,
   installLocalModelHttpGuard,
+  installSpeechHttpFixture,
 } from "../../tests/electron/main-harness.ts";
 
 interface ScenarioFixturePaths {
@@ -22,6 +23,7 @@ interface VisualCaptureScenario {
   readonly name: string;
   readonly description: string;
   readonly states: readonly string[];
+  environment?(paths: ScenarioFixturePaths): Record<string, string>;
   seed(
     paths: ScenarioFixturePaths,
     theme: VisualCaptureTheme,
@@ -309,7 +311,10 @@ const conversationEntryScenario: VisualCaptureScenario = {
     const composer = page.locator(".workbench-composer");
     await expect(composer.getByLabel("Message", { exact: true })).toBeVisible({ timeout: 20_000 });
     const entry = composer.getByRole("button", { name: "Enter conversation mode", exact: true });
-    await expect(entry).toBeVisible();
+    await expect(entry).toBeEnabled();
+    await expect(
+      page.locator("strong").filter({ hasText: "Let's discuss this project." }),
+    ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Exit conversation mode", exact: true }),
     ).toHaveCount(0);
@@ -337,13 +342,104 @@ const conversationEntryScenario: VisualCaptureScenario = {
   },
 };
 
+const conversationCountdownScenario: VisualCaptureScenario = {
+  name: "conversation-countdown",
+  description: "Live voice draft with the cancellable circular send countdown",
+  states: ["default", "cancelled"],
+  environment: (paths) => ({
+    CAKE_SMOKE_DICTATION_HELPER: join(paths.userData, "visual-dictation"),
+  }),
+  async seed(paths, theme) {
+    await conversationEntryScenario.seed(paths, theme);
+    const model = join(paths.userData, "dictation", "model");
+    await mkdir(model, { recursive: true });
+    await writeFile(
+      join(paths.userData, "dictation", "settings.json"),
+      JSON.stringify({ modelPath: model }),
+    );
+    const helper = join(paths.userData, "visual-dictation");
+    await writeFile(
+      helper,
+      `#!${process.execPath}\nconst readline = require('node:readline');\nprocess.stdout.write(JSON.stringify({ready:true})+'\\n');\nreadline.createInterface({input:process.stdin}).on('line', () => process.stdout.write(JSON.stringify({text:'Let’s refine the voice conversation together.'})+'\\n'));\n`,
+    );
+    await chmod(helper, 0o755);
+  },
+  async prepare(page, state, application) {
+    if (!application) throw new Error("Conversation countdown requires Electron");
+    await conversationEntryScenario.prepare(page, "default", application);
+    await installSpeechHttpFixture(application);
+    // Smoke windows start hidden. Presentation captures must never show or focus them.
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    await page.getByLabel("ElevenLabs API key").fill("visual-fixture-only");
+    await page.getByRole("button", { name: "Save key", exact: true }).click();
+    await expect(page.getByLabel("ElevenLabs API key")).toHaveValue("");
+    await page.getByRole("button", { name: "Refresh voices" }).click();
+    await expect(
+      page.getByLabel("Voice").locator("option", { hasText: "Fixture voice" }),
+    ).toHaveCount(1);
+    await page.getByLabel("Voice").selectOption("fixture-voice");
+    await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await page
+      .locator('[data-navigation-item][data-session-id="visual-conversation-entry"]')
+      .click();
+    // Only external audio is replaced. The real capture, recognition, Store and Chat remain in use.
+    await page.evaluate(() => {
+      const source = new AudioContext();
+      const stream = source.createMediaStreamDestination().stream;
+      navigator.mediaDevices.getUserMedia = async () => stream;
+      const WorkletNode = AudioWorkletNode;
+      globalThis.AudioWorkletNode = class extends WorkletNode {
+        constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
+          super(context, name, options);
+          this.port.addEventListener("message", (event) => {
+            if (event.isTrusted) event.stopImmediatePropagation();
+          });
+          Object.assign(globalThis, { visualConversationProcessor: this });
+        }
+      };
+    });
+    await page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(page.getByRole("button", { name: "Mute input" })).toBeVisible();
+    await page.evaluate(() => {
+      const processor = Reflect.get(globalThis, "visualConversationProcessor") as AudioWorkletNode;
+      for (let i = 0; i < 8; i++)
+        processor.port.dispatchEvent(
+          new MessageEvent("message", { data: new Float32Array(1600).fill(0.1) }),
+        );
+    });
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toHaveValue(
+      "Let’s refine the voice conversation together.",
+    );
+    await page.evaluate(() => {
+      const processor = Reflect.get(globalThis, "visualConversationProcessor") as AudioWorkletNode;
+      for (let i = 0; i < 12; i++)
+        processor.port.dispatchEvent(new MessageEvent("message", { data: new Float32Array(1600) }));
+    });
+    const cancel = page.getByRole("button", { name: "Cancel automatic send" });
+    await expect(cancel).toBeVisible();
+    if (state === "cancelled") {
+      await cancel.click();
+      await expect(page.getByRole("button", { name: "Mute input" })).toBeVisible();
+    }
+    expect(
+      await application.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().every((window) => !window.isVisible()),
+      ),
+    ).toBe(true);
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator(".workbench-composer"),
+};
+
 const speechOutputSettingsScenario: VisualCaptureScenario = {
   name: "speech-output-settings",
   description: "Actual Speech output Settings with an empty masked ElevenLabs API key input",
-  states: ["default"],
+  states: ["default", "faster"],
   seed: conversationEntryScenario.seed,
-  async prepare(page, _state, application) {
+  async prepare(page, state, application) {
     await conversationEntryScenario.prepare(page, "default", application);
+    if (!application) throw new Error("Speech settings capture requires Electron");
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
     await expect(page.locator("#speech-output-title")).toBeVisible();
@@ -352,7 +448,14 @@ const speechOutputSettingsScenario: VisualCaptureScenario = {
     await expect(key).toHaveAttribute("type", "password");
     await expect(key).toHaveValue("");
     await expect(page.getByText(/No key configured/)).toBeVisible();
-    await key.scrollIntoViewIfNeeded();
+    const slider = page.getByRole("slider", { name: "Speaking speed" });
+    await expect(slider).toBeVisible();
+    if (state === "faster") {
+      await slider.focus();
+      await slider.press("End");
+      await expect(slider).toHaveValue("1.2");
+    }
+    await slider.scrollIntoViewIfNeeded();
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
   },
@@ -1359,6 +1462,7 @@ export const visualCaptureScenarios = [
   sessionPluginsScenario,
   assistantMarkdownCode,
   conversationEntryScenario,
+  conversationCountdownScenario,
   speechOutputSettingsScenario,
   inlineLinks,
   requestExplanationScenario,

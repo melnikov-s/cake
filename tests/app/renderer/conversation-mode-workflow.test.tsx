@@ -2,6 +2,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
+import { StoreProvider } from "r-state-tree/react";
+import { installedDictationState } from "../../helpers/dictation";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UiPart } from "../../../src/ipc/session-contract";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -13,6 +15,7 @@ import type { Microphone } from "../../../src/renderer/dictation/microphone";
 import type { SpeechPlayback } from "../../../src/renderer/speech/playback";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SettingsSpeechSection } from "../../../src/renderer/components/settings-speech-section";
+import { SettingsDictationSection } from "../../../src/renderer/components/settings-dictation-section";
 import { ToastHost } from "../../../src/renderer/components/toast-host";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
@@ -94,6 +97,10 @@ function fixture(
   const release = vi.fn(async () => {});
   const setApiKey = vi.fn(async () => {}),
     setVoice = vi.fn(async () => {});
+  const setSpeed = vi.fn<Client["speechOutput"]["setSpeed"]>(async (speed) => {
+    const settings = root.speechSettingsStore.settings;
+    if (settings) root.speechSettingsStore.applySettings({ ...settings, speed });
+  });
   const rootFixture = createRendererStoreFixture({
     snapshot: options.snapshot,
     microphone,
@@ -106,6 +113,7 @@ function fixture(
         synthesize,
         setApiKey,
         setVoice,
+        setSpeed,
         listVoices: async () => [{ id: "voice", name: "Fixture voice" }],
       },
       sessionChats: { prompt, abort },
@@ -116,6 +124,8 @@ function fixture(
     keyConfigured: true,
     voiceId: "voice",
     modelId: "eleven_flash_v2_5",
+    speed: 1,
+    voices: [{ id: "voice", name: "Fixture voice" }],
   });
   const session = root.sessionRegistry.load("one", "/project");
   root.appShellStore.selectProjectSession("one");
@@ -145,14 +155,14 @@ function fixture(
   }
   publish(parts);
   const view = render(
-    <>
+    <StoreProvider store={root.dictationStore}>
       <Chat
         store={session.conversationSessionStore.chatStore}
         embedded
         composerFocusEnabled={false}
       />
       <ToastHost store={root.toastStore} />
-    </>,
+    </StoreProvider>,
   );
   const user = userEvent.setup();
   return {
@@ -168,6 +178,7 @@ function fixture(
     release,
     setApiKey,
     setVoice,
+    setSpeed,
     user,
     async enter() {
       await user.click(screen.getByRole("button", { name: "Enter conversation mode" }));
@@ -180,7 +191,7 @@ function fixture(
     },
     async say() {
       await this.frames(0.1, 4);
-      await this.frames(0, 18);
+      await this.frames(0, 20);
       await waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
     },
     publish(next: UiPart[]) {
@@ -231,6 +242,8 @@ describe("Project Session conversation mode", () => {
         f.root.speechSettingsStore.applySettings({
           keyConfigured: kind !== "key",
           modelId: "eleven_flash_v2_5",
+          speed: 1,
+          voices: [],
         });
       await f.user.click(screen.getByRole("button", { name: "Enter conversation mode" }));
       const toast = await screen.findByRole("alert");
@@ -249,6 +262,8 @@ describe("Project Session conversation mode", () => {
       f.root.speechSettingsStore.applySettings({
         keyConfigured: false,
         modelId: "eleven_flash_v2_5",
+        speed: 1,
+        voices: [],
       }),
     );
     await f.user.click(screen.getByRole("button", { name: "Enter conversation mode" }));
@@ -338,7 +353,7 @@ describe("Project Session conversation mode", () => {
     await f.frames(0, 20);
     expect(f.prompt).toHaveBeenCalledTimes(1);
   });
-  it("keeps a one-second thinking pause in the same utterance and waits for 1.8 seconds of quiet before submitting once", async () => {
+  it("keeps a one-second thinking pause in the same utterance and waits for two seconds of quiet before submitting once", async () => {
     using f = fixture({ transcribe: async () => "First part and second part" });
     await f.enter();
     await f.frames(0.1, 4);
@@ -346,7 +361,7 @@ describe("Project Session conversation mode", () => {
     expect(f.prompt).not.toHaveBeenCalled();
     expect(f.transcribe.mock.calls.some(([request]) => request.final)).toBe(false);
     await f.frames(0.1, 4);
-    await f.frames(0, 17);
+    await f.frames(0, 19);
     expect(f.prompt).not.toHaveBeenCalled();
     await f.frames(0, 1);
     await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(1));
@@ -355,6 +370,62 @@ describe("Project Session conversation mode", () => {
     expect(f.transcribe.mock.calls.filter(([request]) => request.final)).toHaveLength(1);
     await f.frames(0, 20);
     expect(f.prompt).toHaveBeenCalledTimes(1);
+  });
+  it("live transcription replaces partial words in the composer; cancelling retains them and resumed speech rearms the countdown", async () => {
+    let text = "First";
+    using f = fixture({ transcribe: async () => text });
+    await f.enter();
+    await f.frames(0.1, 8);
+    const input = screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement;
+    expect(input.value).toBe("First");
+    text = "First thought";
+    await f.frames(0.1, 8);
+    expect(input.value).toBe("First thought");
+    await f.frames(0, 10);
+    const cancel = screen.getByRole("button", { name: "Cancel automatic send" });
+    expect(cancel.querySelector("circle")?.getAttribute("stroke-dashoffset")).toBe("0.5");
+    expect(f.prompt).not.toHaveBeenCalled();
+    await f.user.click(cancel);
+    await f.frames(0, 20);
+    expect(input.value).toBe("First thought");
+    expect(f.prompt).not.toHaveBeenCalled();
+    expect(f.stopCapture).not.toHaveBeenCalled();
+    text = "and more";
+    await f.frames(0.1, 8);
+    expect(input.value).toBe("First thought and more");
+    await f.frames(0, 19);
+    expect(screen.getByRole("button", { name: "Cancel automatic send" })).toBeDefined();
+    expect(f.prompt).not.toHaveBeenCalled();
+    await f.frames(0, 1);
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(1));
+    expect(f.prompt.mock.calls[0]?.[0].text).toBe("First thought and more");
+    expect(input.value).toBe("");
+  });
+  it("cancelling while final recognition is pending retains the corrected draft without sending", async () => {
+    const final = deferred<string>();
+    using f = fixture({ transcribe: async (request) => (request.final ? final.promise : "First") });
+    await f.enter();
+    await f.frames(0.1, 8);
+    await f.frames(0, 20);
+    const cancel = screen.getByRole("button", { name: "Cancel automatic send" });
+    expect(cancel.querySelector("circle")?.getAttribute("stroke-dashoffset")).toBe("0");
+    await f.user.click(cancel);
+    await act(async () => final.resolve("First thought"));
+    expect((screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).value).toBe(
+      "First thought",
+    );
+    expect(f.prompt).not.toHaveBeenCalled();
+  });
+  it("manual edits seal a voice insertion rather than being overwritten or automatically sent", async () => {
+    using f = fixture();
+    await f.enter();
+    await f.frames(0.1, 8);
+    const input = screen.getByRole("combobox", { name: "Message" });
+    await f.user.clear(input);
+    await f.user.type(input, "My correction");
+    await f.frames(0, 20);
+    expect((input as HTMLTextAreaElement).value).toBe("My correction");
+    expect(f.prompt).not.toHaveBeenCalled();
   });
   it("silence, brief noise and empty recognition do not submit or interrupt the assistant", async () => {
     using f = fixture({ transcribe: async () => "" });
@@ -366,7 +437,7 @@ describe("Project Session conversation mode", () => {
     expect(f.playback.stop).toHaveBeenCalledTimes(stops);
     expect(f.transcribe).not.toHaveBeenCalled();
     await f.frames(0.1, 4);
-    await f.frames(0, 18);
+    await f.frames(0, 20);
     expect(f.prompt).not.toHaveBeenCalled();
   });
   it("retains 600 ms of audio including the speech onset before recognition", async () => {
@@ -383,7 +454,7 @@ describe("Project Session conversation mode", () => {
     expect(samples).toHaveLength(12800);
     expect(samples.slice(0, 6400).every((value) => value === 0)).toBe(true);
     expect(samples.slice(6400).every((value) => value === Math.fround(0.03))).toBe(true);
-    await f.frames(0, 16);
+    await f.frames(0, 18);
     await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(1));
   });
   it.each([
@@ -409,7 +480,7 @@ describe("Project Session conversation mode", () => {
       await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(1));
       await waitFor(() => expect(f.root.conversationModeStore.speaking).toBe(false));
       for (const [value, count] of frames) await f.frames(value, count);
-      await f.frames(0, 18);
+      await f.frames(0, 20);
       await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(2));
       expect(f.microphone.open).toHaveBeenCalledTimes(1);
       const finalCalls = f.transcribe.mock.calls.filter(([request]) => request.final);
@@ -419,7 +490,7 @@ describe("Project Session conversation mode", () => {
       expect(f.abort).not.toHaveBeenCalled();
     },
   );
-  it("speech input leaves the typed draft, pending attachments and annotations untouched", async () => {
+  it("speech composes with the typed draft, attachments and annotations through the normal composer", async () => {
     using f = fixture();
     const draft = f.session.conversationSessionStore.composerStore.draftStore;
     draft.setText("Typed draft");
@@ -434,12 +505,17 @@ describe("Project Session conversation mode", () => {
       comment: "Keep annotation",
     });
     const files = draft.visibleAttachments;
-    const annotations = draft.annotationDraft.annotations.slice();
     await f.enter();
     await f.say();
-    expect(draft.text).toBe("Typed draft");
-    expect(draft.visibleAttachments).toEqual(files);
-    expect(draft.annotationDraft.annotations).toEqual(annotations);
+    expect(f.prompt.mock.calls[0]?.[0].text).toContain("Typed draft Recognized speech");
+    expect(f.prompt.mock.calls[0]?.[0].attachments).toEqual([
+      ...files,
+      expect.objectContaining({
+        kind: "annotation",
+        annotations: [expect.objectContaining({ comment: "Keep annotation" })],
+      }),
+    ]);
+    expect(draft.text).toBe("");
   });
   it("a busy agent retains its tools and receives spoken input through its existing follow-up queue", async () => {
     using f = fixture({ streaming: true });
@@ -512,7 +588,7 @@ describe("Project Session conversation mode", () => {
       const stops = vi.mocked(f.playback.stop).mock.calls.length;
       await f.frames(0.1, 8);
       expect(f.playback.stop).toHaveBeenCalledTimes(stops);
-      await f.frames(0, 18);
+      await f.frames(0, 20);
       expect(f.transcribe.mock.calls.filter(([request]) => request.final)).toHaveLength(1);
       expect(f.playback.stop).toHaveBeenCalledTimes(stops);
       expect(f.root.conversationModeStore.speaking).toBe(true);
@@ -531,7 +607,7 @@ describe("Project Session conversation mode", () => {
       const stops = vi.mocked(f.playback.stop).mock.calls.length;
       await f.frames(0.1, 2);
       expect(f.playback.stop).toHaveBeenCalledTimes(stops);
-      await f.frames(0, 18);
+      await f.frames(0, 20);
       expect(f.playback.stop).toHaveBeenCalledTimes(stops + 1);
       expect(f.prompt.mock.calls[0]![0].text).toBe(text);
       expect(f.abort).not.toHaveBeenCalled();
@@ -545,7 +621,7 @@ describe("Project Session conversation mode", () => {
     await waitFor(() => expect(f.playback.drain).toHaveBeenCalledTimes(1));
     await f.frames(0.1, 8);
     await act(async () => output.resolve());
-    await f.frames(0, 18);
+    await f.frames(0, 20);
     expect(f.prompt).not.toHaveBeenCalled();
     expect(f.root.conversationModeStore.transcript).toBe("");
     await f.say();
@@ -567,13 +643,13 @@ describe("Project Session conversation mode", () => {
     expect(f.root.conversationModeStore.transcript).toBe("");
     await act(async () => recognition.resolve("Actually change that approach"));
     await f.frames(0.1, 8);
-    await f.frames(0, 18);
+    await f.frames(0, 20);
     expect(f.playback.stop).toHaveBeenCalledTimes(stops);
     expect(f.prompt).not.toHaveBeenCalled();
     // A quiet boundary, not another three seconds of continuous noise, admits a fresh candidate.
     await f.frames(0.1, 8);
     expect(f.playback.stop).toHaveBeenCalledTimes(stops + 1);
-    await f.frames(0, 18);
+    await f.frames(0, 20);
     expect(f.prompt).toHaveBeenCalledTimes(1);
     expect(f.release).toHaveBeenCalledTimes(releases);
     expect(f.microphone.open).toHaveBeenCalledTimes(1);
@@ -642,7 +718,7 @@ describe("Project Session conversation mode", () => {
     await consume?.({ encoding: "pcm_s16le", sampleRate: 24000, pcm: "AAA=" });
     expect(f.playback.enqueue).not.toHaveBeenCalled();
     expect(f.abort).not.toHaveBeenCalled();
-    await f.frames(0, 18);
+    await f.frames(0, 20);
     await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(1));
     expect(f.prompt.mock.calls[0]![0].text).toBe("Actually change that approach please");
     gate.resolve();
@@ -843,7 +919,7 @@ describe("Project Session conversation mode", () => {
       const f = fixture({ transcribe: async () => gate.promise });
       await f.enter();
       await f.frames(0.1, 8);
-      await f.frames(0, 18);
+      await f.frames(0, 20);
       if (action === "selection") act(() => f.root.appShellStore.showSettings());
       else if (action === "disposal") f.root[Symbol.dispose]();
       else
@@ -861,18 +937,44 @@ describe("Project Session conversation mode", () => {
       f[Symbol.dispose]();
     }
   });
-  it("dictation and conversation capture exclude each other in the same window in either activation order", async () => {
+  it("voice mode suppresses only its composer while dictation stays enabled and resumes after exit", async () => {
     using f = fixture();
-    await act(async () => {
-      await f.root.dictationStore.setEnabled(true);
-    });
+    act(() => f.root.dictationStore.applyState({ ...installedDictationState, status: "ready" }));
+    render(<SettingsDictationSection store={f.root.dictationStore} />);
+    const toggle = screen.getByRole("switch", { name: "Dictation mode" });
+    await f.user.click(toggle);
+    const input = screen.getByRole("combobox", { name: "Message" });
+    await f.user.click(input);
+    await waitFor(() => expect(f.root.dictationStore.phase).toBe("listening"));
     await f.enter();
-    expect(f.root.dictationStore.enabled).toBe(false);
-    await act(async () => {
-      await f.root.dictationStore.setEnabled(true);
-    });
-    expect(f.root.conversationModeStore.phase).toBe("off");
-    expect(f.root.dictationStore.enabled).toBe(true);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    await f.user.click(input);
+    expect(
+      screen.queryByText("Listening", { selector: '[data-slot="dictation-indicator"]' }),
+    ).toBeNull();
+    const opens = vi.mocked(f.microphone.open).mock.calls.length;
+    await f.frames(0.1, 8);
+    expect((input as HTMLTextAreaElement).value).toBe("Recognized speech");
+    expect(f.microphone.open).toHaveBeenCalledTimes(opens);
+    await f.user.click(screen.getByRole("button", { name: "Exit conversation mode" }));
+    await f.user.click(input);
+    await waitFor(() => expect(f.root.dictationStore.phase).toBe("listening"));
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(f.microphone.open).toHaveBeenCalledTimes(opens + 1);
+    expect(f.prompt).not.toHaveBeenCalled();
+  });
+  it("turning dictation on or off does not disable voice mode or release its recognizer", async () => {
+    using f = fixture();
+    act(() => f.root.dictationStore.applyState({ ...installedDictationState, status: "ready" }));
+    render(<SettingsDictationSection store={f.root.dictationStore} />);
+    await f.enter();
+    const releases = f.release.mock.calls.length;
+    const toggle = screen.getByRole("switch", { name: "Dictation mode" });
+    await f.user.click(toggle);
+    expect(f.root.conversationModeStore.phase).toBe("active");
+    await f.user.click(toggle);
+    expect(f.root.conversationModeStore.phase).toBe("active");
+    expect(f.release).toHaveBeenCalledTimes(releases);
   });
   it("recognition backlog or output quota failure stops voice resources, preserves agent work and exposes recoverable text", async () => {
     const gate = deferred<string>();
@@ -942,6 +1044,19 @@ describe("Project Session conversation mode", () => {
     await f.user.click(screen.getByRole("button", { name: "Dismiss notification" }));
     expect(screen.queryByRole("alert")).toBeNull();
   });
+  it("the settings speed slider commits a faster speed through the service and reflects its authoritative projection", async () => {
+    using f = fixture();
+    render(<SettingsSpeechSection speech={f.root.speechSettingsStore} />);
+    const slider = screen.getByRole("slider", { name: "Speaking speed" });
+    expect(slider.getAttribute("min")).toBe("1");
+    expect(slider.getAttribute("max")).toBe("1.2");
+    fireEvent.change(slider, { target: { value: "1.15" } });
+    expect(screen.getByText("1.15×")).toBeDefined();
+    fireEvent.pointerUp(slider);
+    await waitFor(() => expect(f.setSpeed).toHaveBeenCalledWith(1.15, expect.any(Object)));
+    expect((slider as HTMLInputElement).value).toBe("1.15");
+    expect(f.synthesize).not.toHaveBeenCalled();
+  });
   it("speech settings save a masked transient key, clear its draft and select a voice without exposing stored credentials", async () => {
     using f = fixture();
     render(<SettingsSpeechSection speech={f.root.speechSettingsStore} />);
@@ -951,7 +1066,7 @@ describe("Project Session conversation mode", () => {
     await f.user.click(screen.getByRole("button", { name: "Save key" }));
     await waitFor(() => expect(f.root.speechSettingsStore.apiKeyDraft).toBe(""));
     expect(f.setApiKey).toHaveBeenCalledWith("transient-key", expect.any(Object));
-    await f.user.click(screen.getByRole("button", { name: "Load voices" }));
+    await f.user.click(screen.getByRole("button", { name: "Refresh voices" }));
     await screen.findByText("Fixture voice");
     await f.user.selectOptions(screen.getByLabelText("Voice"), "voice");
     expect(f.setVoice).toHaveBeenCalledWith("voice", expect.any(Object));

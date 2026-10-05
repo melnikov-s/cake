@@ -11,7 +11,9 @@ export interface ConversationModeTarget {
   readonly sessionId: string;
   parts(): readonly UiPart[];
   canEnter(): boolean;
-  submitUtterance(text: string): Promise<boolean>;
+  draft(): string;
+  setDraft(text: string): void;
+  submitUtterance(): Promise<boolean>;
 }
 export interface ConversationModeStoreProps {
   speech: SpeechOutputCommands;
@@ -33,6 +35,9 @@ interface Utterance {
   duration: number;
   quiet: number;
   finishing: boolean;
+  autoSend: boolean;
+  draftText: string;
+  draftInvalid: boolean;
   interruption?: {
     state: "pending" | "confirmed" | "rejected";
     deadline: number;
@@ -50,6 +55,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   listening = false;
   speaking = false;
   transcript = "";
+  sendProgress: number | undefined;
   private target: ConversationModeTarget | undefined;
   private revision = 0;
   private controller: AbortController | undefined;
@@ -186,6 +192,26 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     this.preroll = [];
     this.onset = 0;
     this.listening = false;
+    this.sendProgress = undefined;
+  }
+  cancelPendingSend(): void {
+    for (const run of [...this.finalizing, ...(this.utterance ? [this.utterance] : [])])
+      run.autoSend = false;
+    this.sendProgress = undefined;
+  }
+  private updateDraft(run: Utterance, text: string): void {
+    if (!this.target || run.draftInvalid) return;
+    const draft = this.target.draft();
+    if (run.draftText && !draft.endsWith(run.draftText)) {
+      // Manual editing or submission seals this insertion; never replace the user's edits.
+      run.draftInvalid = true;
+      run.autoSend = false;
+      this.sendProgress = undefined;
+      return;
+    }
+    const prefix = run.draftText ? draft.slice(0, -run.draftText.length) : draft;
+    run.draftText = `${prefix && !/\s$/.test(prefix) ? " " : ""}${text.trim()}`;
+    this.target.setDraft(prefix + run.draftText);
   }
   private stopOutput() {
     this.outputRevision++;
@@ -299,6 +325,9 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
         duration: 0,
         quiet: 0,
         finishing: false,
+        autoSend: true,
+        draftText: "",
+        draftInvalid: false,
         interruption: tentative
           ? { state: "pending", deadline: performance.now() + INTERRUPTION_WINDOW_MS }
           : undefined,
@@ -319,13 +348,26 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       run.samples += samples.length;
     }
     run.duration += samples.length;
-    run.quiet = speech ? 0 : run.quiet + samples.length;
+    if (speech) {
+      if (run.quiet > 0 && !run.draftInvalid) run.autoSend = true;
+      run.quiet = 0;
+      this.sendProgress = undefined;
+    } else {
+      run.quiet += samples.length;
+      this.sendProgress =
+        run.autoSend &&
+        run.interruption?.state !== "pending" &&
+        run.interruption?.state !== "rejected"
+          ? Math.min(1, run.quiet / 32000)
+          : undefined;
+    }
     const backlog = run.samples + this.finalizing.reduce((sum, item) => sum + item.samples, 0);
     if (backlog > 128000) {
       this.fail(new Error("Recognition cannot keep up. Re-enter conversation mode to retry."));
       return;
     }
-    if (run.quiet >= 28800 || run.duration >= 480000) {
+    if (run.quiet >= 32000 || run.duration >= 480000) {
+      run.autoSend = run.autoSend && run.quiet >= 32000;
       run.finishing = true;
       this.finalizing.push(run);
       this.utterance = undefined;
@@ -364,11 +406,22 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       }
       const rejected = run.interruption?.state === "rejected";
       this.transcript = rejected ? "" : text;
+      if (!rejected && run.interruption?.state !== "pending" && text.trim())
+        this.updateDraft(run, text);
       if (final) {
         this.clearInterruptionTimer(run);
         this.finalizing.shift();
-        if (!rejected && text.trim() && this.target) {
-          const accepted = await this.target.submitUtterance(text.trim());
+        if (!this.utterance) this.sendProgress = undefined;
+        if (
+          !rejected &&
+          !run.draftInvalid &&
+          run.autoSend &&
+          text.trim() &&
+          this.target &&
+          !this.utterance &&
+          !this.finalizing.length
+        ) {
+          const accepted = await this.target.submitUtterance();
           if (revision !== this.revision || signal.aborted) return;
           if (!accepted) {
             this.fail(

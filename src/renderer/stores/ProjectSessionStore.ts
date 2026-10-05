@@ -309,20 +309,16 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         this.props.isActive() &&
         this.props.canSubmit() &&
         !this.props.pendingSessions.isTemporary(this.sessionId),
-      submitUtterance: (text) => {
+      draft: () => this.conversationSessionStore.chatStore.draft,
+      setDraft: (text) => this.conversationSessionStore.chatStore.setDraft(text),
+      submitUtterance: () => {
         if (
           !this.props.isActive() ||
           !this.props.canSubmit() ||
           this.props.pendingSessions.isTemporary(this.sessionId)
         )
           return Promise.resolve(false);
-        return this.conversationSessionStore.composerStore.deliveryStore.send(
-          text,
-          [],
-          "prompt",
-          false,
-          false,
-        );
+        return this.conversationSessionStore.chatStore.submit();
       },
     };
   }

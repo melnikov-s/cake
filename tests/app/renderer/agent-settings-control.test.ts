@@ -597,6 +597,10 @@ describe("Agent Settings through the real application-control/Client/domain boun
     const select = vi.fn<Client["desktopHost"]["select"]>(async () => true);
     const release = vi.fn<Client["dictation"]["release"]>(async () => {});
     const setModelPath = vi.fn<Client["dictation"]["setModelPath"]>(async () => {});
+    const setVoice = vi.fn<Client["speechOutput"]["setVoice"]>(async () => {});
+    const listVoices = vi.fn<Client["speechOutput"]["listVoices"]>(async () => [
+      { id: "voice", name: "Saved voice" },
+    ]);
     let completeSharing: (state: DesktopSharingState) => void = () => {};
     const sharingPending = new Promise<DesktopSharingState>((resolve) => {
       completeSharing = resolve;
@@ -613,6 +617,7 @@ describe("Agent Settings through the real application-control/Client/domain boun
       desktopHost: { current: async () => ({ kind: "local" as const }), select },
       desktopSharing: { configure },
       dictation: { release, setModelPath },
+      speechOutput: { setVoice, listVoices },
     };
     const client = createTestClient(boundary);
     const connection = mount(
@@ -684,6 +689,34 @@ describe("Agent Settings through the real application-control/Client/domain boun
         "/validated-native-model",
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
+      origin.root.speechSettingsStore.applySettings({
+        keyConfigured: true,
+        modelId: "eleven_flash_v2_5",
+        speed: 1.1,
+        voices: [{ id: "voice", name: "Saved voice" }],
+      });
+      expect(await call("settings.speech.get")).toMatchObject({
+        value: { speed: 1.1, voices: [{ id: "voice", name: "Saved voice" }] },
+      });
+      expect(listVoices).not.toHaveBeenCalled();
+      await call("settings.speech.set-voice", { voiceId: "voice" });
+      expect(setVoice).toHaveBeenCalledWith(
+        "voice",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      await expect(call("settings.speech.set-voice", { voiceId: "unknown" })).rejects.toThrow(
+        "Choose a voice ID",
+      );
+      expect(setVoice).toHaveBeenCalledTimes(1);
+      expect(await call("settings.speech.refresh-voices")).toMatchObject({
+        value: [{ id: "voice", name: "Saved voice" }],
+      });
+      await expect(
+        otherWindow.root.applicationControlStore.invoke({
+          name: "settings.speech.get",
+          arguments: {},
+        }),
+      ).rejects.toThrow("originating Cake desktop");
       origin.root.dictationStore.devices = [{ id: "origin-microphone", label: "Origin" }];
       await call("settings.dictation.update", {
         action: "microphone",

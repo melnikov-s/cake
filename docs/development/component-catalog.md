@@ -55,15 +55,21 @@ shared spinner and microphone icon and never takes focus. See
 `VoiceConversationControls` is a shared stateless toolbar pattern composed from
 `IconButton` and `Badge`. Supply preparing/active, input-only mute, disabled and
 enter/mute/exit intents. The entry action uses the shared `AudioLinesIcon` waveform
-to distinguish voice conversation from dictation. Once active, a highlighted
-`EarIcon` combines listening status and input mute; clicking it switches to an
+to distinguish voice conversation from dictation. Once active, an accent-tinted
+`EarIcon` on a transparent circular target combines listening status and input mute; clicking it switches to an
 unhighlighted `EarOffIcon` with a diagonal slash. Tooltips and accessible names
 explain the mute/unmute action, and `aria-pressed` reflects input being enabled.
+The shared `IconButton` supports `pressedAppearance="subtle"` for tint-only pressed states; other controls retain the default solid pressed treatment.
+During the two-second send countdown, `sendProgress` adds a thin accent ring outside the ear with breathing room and its action becomes cancel-send (`onCancelSend`), retaining the draft and continuing capture. Resuming speech resets the ring. Outside the countdown it still toggles mute.
 A separate `StopIcon` exits conversation mode. Preparing retains its status badge.
 It owns no microphone,
 provider requests, timers or workflow state. `ChatConversationControls` maps the focused
 window `ConversationModeStore` and Project Session target into this primitive;
 other Chat kinds omit the capability. See [conversation mode](conversation-mode.md).
+
+## Slider
+
+`Slider` is the shared native range input with keyboard support, semantic accent/focus styling, and value-change/commit callbacks. Speech output settings use a compact 1×–1.2× range; changing the thumb updates the local draft and releasing it or a keyboard key commits the speed to native settings.
 
 ## Dismissible chips
 

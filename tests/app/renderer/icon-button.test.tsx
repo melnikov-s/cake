@@ -57,6 +57,27 @@ describe("IconButton shortcut labels", () => {
     expect(showTooltip()).toBe("Toggle sidebar");
   });
 
+  it("supports a tint-only pressed treatment without changing the default solid treatment", () => {
+    act(() =>
+      root.render(
+        <IconButton tooltip="Listening" aria-pressed pressedAppearance="subtle">
+          ear
+        </IconButton>,
+      ),
+    );
+    const button = container.querySelector("button")!;
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.classList.contains("aria-pressed:text-accent")).toBe(true);
+    act(() =>
+      root.render(
+        <IconButton tooltip="Selected" aria-pressed>
+          icon
+        </IconButton>,
+      ),
+    );
+    expect(button.classList.contains("aria-pressed:bg-primary")).toBe(true);
+  });
+
   it("does not add a shortcut to buttons without a hotkey", () => {
     act(() => root.render(<IconButton tooltip="Close pane">icon</IconButton>));
     const button = container.querySelector("button")!;

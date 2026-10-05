@@ -39,10 +39,31 @@ export const AudioLinesIcon = () => (
 );
 
 export const EarIcon = () => (
-  <Icon>
+  <Icon strokeWidth={1.6}>
     <path d="M6 8.5a6.5 6.5 0 0 1 13 0c0 6-6 6-6 10a3.5 3.5 0 0 1-7 0" />
-    <path d="M10 8.5a2.5 2.5 0 0 1 5 0c0 2-3 2-3 4" />
+    <path d="M10 8.5a2.5 2.5 0 0 1 5 0" />
   </Icon>
+);
+
+export const CountdownRingIcon = ({ progress }: { progress: number }) => (
+  <svg
+    aria-hidden="true"
+    className="pointer-events-none absolute -inset-0.5 size-[34px] -rotate-90 text-accent"
+    viewBox="0 0 32 32"
+    fill="none"
+  >
+    <circle
+      cx="16"
+      cy="16"
+      r="14.5"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinecap="round"
+      pathLength="1"
+      strokeDasharray="1"
+      strokeDashoffset={1 - progress}
+    />
+  </svg>
 );
 
 export const EarOffIcon = () => (

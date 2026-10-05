@@ -1,12 +1,14 @@
 import { Badge } from "./badge";
 import { IconButton } from "./icon-button";
-import { AudioLinesIcon, EarIcon, EarOffIcon, StopIcon } from "./icons";
+import { AudioLinesIcon, CountdownRingIcon, EarIcon, EarOffIcon, StopIcon } from "./icons";
 
 export interface VoiceConversationControlsProps {
   active: boolean;
   preparing: boolean;
   muted: boolean;
   disabled: boolean;
+  sendProgress?: number;
+  onCancelSend?(): void;
   onEnter(): void;
   onMute(muted: boolean): void;
   onExit(): void;
@@ -29,12 +31,33 @@ export function VoiceConversationControls(props: VoiceConversationControlsProps)
             <Badge>Preparing voice…</Badge>
           ) : (
             <IconButton
-              tooltip={props.muted ? "Input muted — unmute input" : "Listening — mute input"}
-              ariaLabel={props.muted ? "Unmute input" : "Mute input"}
+              tooltip={
+                props.sendProgress !== undefined
+                  ? "Sending after pause — cancel send"
+                  : props.muted
+                    ? "Input muted — unmute input"
+                    : "Listening — mute input"
+              }
+              ariaLabel={
+                props.sendProgress !== undefined
+                  ? "Cancel automatic send"
+                  : props.muted
+                    ? "Unmute input"
+                    : "Mute input"
+              }
+              className="relative rounded-full"
+              pressedAppearance="subtle"
               aria-pressed={!props.muted}
-              onClick={() => props.onMute(!props.muted)}
+              onClick={() =>
+                props.sendProgress !== undefined
+                  ? props.onCancelSend?.()
+                  : props.onMute(!props.muted)
+              }
             >
               {props.muted ? <EarOffIcon /> : <EarIcon />}
+              {props.sendProgress !== undefined && (
+                <CountdownRingIcon progress={props.sendProgress} />
+              )}
             </IconButton>
           )}
           <IconButton tooltip="Exit conversation mode" onClick={props.onExit}>

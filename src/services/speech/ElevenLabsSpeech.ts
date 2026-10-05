@@ -17,6 +17,7 @@ export class ElevenLabsSpeech extends Context.Service<
     readonly observeSettings: () => Stream.Stream<SpeechOutputSettings, SpeechOutputError>;
     readonly setApiKey: (key: string | null) => Effect.Effect<void, SpeechOutputError>;
     readonly setVoice: (voiceId: string) => Effect.Effect<void, SpeechOutputError>;
+    readonly setSpeed: (speed: number) => Effect.Effect<void, SpeechOutputError>;
     readonly listVoices: () => Effect.Effect<ReadonlyArray<SpeechOutputVoice>, SpeechOutputError>;
     readonly synthesize: (
       request: SpeechOutputRequest,

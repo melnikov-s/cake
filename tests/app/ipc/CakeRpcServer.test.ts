@@ -73,9 +73,15 @@ const makeBackend = Effect.fn("RpcEndpoint.test.makeBackend")(function* (failHom
         ElevenLabsSpeech,
         ElevenLabsSpeech.of({
           observeSettings: () =>
-            Stream.make({ keyConfigured: false, modelId: "eleven_flash_v2_5" }),
+            Stream.make({
+              keyConfigured: false,
+              modelId: "eleven_flash_v2_5",
+              speed: 1,
+              voices: [],
+            }),
           setApiKey: () => Effect.void,
           setVoice: () => Effect.void,
+          setSpeed: () => Effect.void,
           listVoices: () => Effect.succeed([]),
           synthesize: () => Stream.empty,
         }),

@@ -889,7 +889,7 @@ export class RootStore extends Store<{
           ? this.appShellStore.activeConversation.sessionId
           : undefined,
       deviceId: () => this.dictationStore.deviceId,
-      suspendDictation: () => this.dictationStore.setEnabled(false),
+      suspendDictation: async () => this.dictationStore.pauseCapture(),
     });
   }
 
@@ -898,7 +898,10 @@ export class RootStore extends Store<{
     return createStore(DictationStore, {
       client: this.client.dictation,
       microphone: this.props.microphone ?? microphone,
-      beforeEnable: () => this.conversationModeStore.exit(),
+      beforeCapture: () => this.conversationModeStore.exit(),
+      canReleaseRecognition: () =>
+        this.conversationModeStore.phase !== "active" &&
+        this.conversationModeStore.phase !== "preparing",
     });
   }
 

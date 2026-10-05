@@ -15,10 +15,14 @@ export function Composer({ className, ...props }: ComponentProps<"form">) {
   );
 }
 
-export function ComposerInput({ className, ...props }: ComponentProps<"textarea">) {
+export function ComposerInput({
+  className,
+  dictation = true,
+  ...props
+}: ComponentProps<typeof Textarea>) {
   return (
     <Textarea
-      dictation
+      dictation={dictation}
       rows={1}
       className={cn(
         "min-h-10 max-h-80 w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent px-2 py-2 text-sm leading-6 outline-none focus-visible:ring-0 [field-sizing:content] placeholder:text-muted-foreground",

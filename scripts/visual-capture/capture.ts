@@ -85,6 +85,7 @@ export async function captureVisual(
       cwd: repositoryRoot,
       env: {
         ...process.env,
+        ...scenario.environment?.(paths),
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: paths.userData,
         CAKE_HOME: paths.cakeHome,

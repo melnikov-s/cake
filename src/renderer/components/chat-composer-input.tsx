@@ -26,8 +26,14 @@ export const ChatComposerInput = observer(function ChatComposerInput({
   onPromptedReword(selection: ComposerSelection): void;
   onSubmit(value: string): Promise<void>;
 }) {
+  const conversation = store.conversationMode;
+  const voiceOwnsInput =
+    conversation &&
+    conversation.workflow.sessionId === conversation.target.sessionId &&
+    (conversation.workflow.phase === "active" || conversation.workflow.phase === "preparing");
   return (
     <SlashCommandCombobox
+      dictation={!voiceOwnsInput}
       autoFocus={focusEnabled}
       focusEnabled={focusEnabled}
       data-cake-hint-key="i"

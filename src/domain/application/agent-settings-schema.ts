@@ -19,6 +19,7 @@ import { DesktopHostSelection } from "./desktop-host-data";
 import { NativeMcpConfigEdit } from "../../services/pi/mcp-config-validation";
 import { cakeSettingsSections } from "./cake-settings-data";
 import { TurnId } from "../conversations/conversation-data";
+import { SpeechOutputSettings, SpeechOutputVoice } from "../speech/speech-output-data";
 
 const empty = Schema.Struct({});
 const scope = Schema.Literals(["backend", "project"]);
@@ -339,6 +340,27 @@ export const agentSettingsOperations = [
     ],
   ),
   setting(
+    "settings.speech.get",
+    empty,
+    "Read desktop speech settings and the persisted voice list; never credentials. No provider requests.",
+    {},
+    SpeechOutputSettings,
+  ),
+  setting(
+    "settings.speech.refresh-voices",
+    empty,
+    "Refresh and persist this desktop's ElevenLabs voice list. No generated audio.",
+    {},
+    Schema.Array(SpeechOutputVoice),
+  ),
+  setting(
+    "settings.speech.set-voice",
+    Schema.Struct({ voiceId: SpeechOutputVoice.fields.id }),
+    "Change the desktop's default speaking voice to an ID from settings.speech.get. Applies to subsequent synthesis, not audio already playing.",
+    { voiceId: "voice-from-list" },
+    Schema.Struct({ voiceId: SpeechOutputVoice.fields.id }),
+  ),
+  setting(
     "settings.dictation.get",
     empty,
     "Inspect originating desktop dictation installation, enablement and microphones; never audio.",
@@ -377,6 +399,13 @@ export type AgentSettingsInvocation = typeof AgentSettingsInvocation.Type;
 
 export const agentSettingsSections = [
   ...cakeSettingsSections,
+  {
+    id: "speech",
+    scope: "originating-desktop",
+    writable: true,
+    description: "Speech settings, persisted voices, refresh and default voice selection",
+    commands: ["settings.speech.*"],
+  },
   {
     id: "models",
     scope: "backend",

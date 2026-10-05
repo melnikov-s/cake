@@ -10,7 +10,13 @@ import type { SpeechOutputCommands } from "../client/Client";
 export class SpeechSettingsStore extends Store<{ client: SpeechOutputCommands }> {
   @snapshot enabled = true;
   settings: SpeechOutputSettings | undefined;
-  voices: readonly SpeechOutputVoice[] = [];
+  speedDraft: number | undefined;
+  get voices(): readonly SpeechOutputVoice[] {
+    return this.settings?.voices ?? [];
+  }
+  get speed(): number {
+    return this.speedDraft ?? this.settings?.speed ?? 1;
+  }
   apiKeyDraft = "";
   busy = false;
   refreshing = false;
@@ -29,6 +35,7 @@ export class SpeechSettingsStore extends Store<{ client: SpeechOutputCommands }>
   }
   applySettings(settings: SpeechOutputSettings): void {
     this.settings = settings;
+    if (settings.speed === this.speedDraft) this.speedDraft = undefined;
   }
   private async mutate(operation: () => Promise<void>): Promise<void> {
     if (this.busy || this.signal.aborted) return;
@@ -56,6 +63,12 @@ export class SpeechSettingsStore extends Store<{ client: SpeechOutputCommands }>
     if (!voiceId) return;
     await this.mutate(() => this.props.client.setVoice(voiceId, { signal: this.signal }));
   }
+  async saveSpeed(): Promise<void> {
+    if (this.speedDraft === undefined || this.busy) return;
+    const speed = this.speedDraft;
+    await this.mutate(() => this.props.client.setSpeed(speed, { signal: this.signal }));
+    if (this.error) this.speedDraft = undefined;
+  }
   async refreshVoices(): Promise<void> {
     const revision = ++this.refreshRevision;
     this.refresh?.abort();
@@ -64,10 +77,9 @@ export class SpeechSettingsStore extends Store<{ client: SpeechOutputCommands }>
     this.refreshing = true;
     this.error = undefined;
     try {
-      const voices = await this.props.client.listVoices({
+      await this.props.client.listVoices({
         signal: AbortSignal.any([this.signal, controller.signal]),
       });
-      if (!this.signal.aborted && revision === this.refreshRevision) this.voices = voices;
     } catch (error) {
       if (!this.signal.aborted && !controller.signal.aborted && revision === this.refreshRevision)
         this.error = error instanceof Error ? error.message : "Could not load voices";

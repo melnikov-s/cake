@@ -218,7 +218,8 @@ describe("Dictation writing-field workflow", () => {
     expect(screen.getAllByText("Preparing dictation… Wait to speak").length).toBeGreaterThan(0);
     expect(fixture.audio.getUserMedia).not.toHaveBeenCalled();
     await act(async () => model.resolve());
-    expect(fixture.prepare).toHaveBeenCalledOnce();
+    // Preparation is idempotent; each focus generation may re-prepare after a voice handoff.
+    expect(fixture.prepare).toHaveBeenCalled();
     expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce();
     expect(screen.queryByText("Listening")).toBeNull();
     await act(async () => microphone.resolve());

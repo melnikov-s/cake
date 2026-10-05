@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -17,7 +17,13 @@ async function launch({
   reasoning = false,
   recognizeSpeech = false,
   recognitionTexts = [],
-}: { reasoning?: boolean; recognizeSpeech?: boolean; recognitionTexts?: string[] } = {}) {
+  secondSession = false,
+}: {
+  reasoning?: boolean;
+  recognizeSpeech?: boolean;
+  recognitionTexts?: string[];
+  secondSession?: boolean;
+} = {}) {
   const directory = await mkdtemp(join(tmpdir(), "cake-conversation-"));
   const userData = join(directory, "user-data"),
     project = join(directory, "project"),
@@ -144,6 +150,30 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       .map((entry) => JSON.stringify(entry))
       .join("\n") + "\n",
   );
+  if (secondSession)
+    await writeFile(
+      join(sessions, "1970-01-01T00-00-00-000Z_second-session.jsonl"),
+      [
+        { type: "session", version: 3, id: "second-session", timestamp, cwd: project },
+        {
+          type: "model_change",
+          id: "model",
+          parentId: null,
+          timestamp,
+          provider: "fixture",
+          modelId: "fixture",
+        },
+        {
+          type: "message",
+          id: "history",
+          parentId: "model",
+          timestamp,
+          message: { role: "user", content: "Second session", timestamp: 0 },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
   const application = await electron.launch({
     args: [
       repositoryRoot,
@@ -214,7 +244,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     await key.fill("fixture-private-key");
     await page.getByRole("button", { name: "Save key", exact: true }).click();
     await expect(key).toHaveValue("");
-    await page.getByRole("button", { name: "Load voices" }).click();
+    await page.getByRole("button", { name: "Refresh voices" }).click();
     await expect(
       page.getByLabel("Voice").locator("option", { hasText: "Fixture voice" }),
     ).toHaveCount(1);
@@ -227,6 +257,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     page,
     responses,
     configure,
+    userData,
     async frames(chunks: [number, number][]) {
       await page.evaluate((chunks) => {
         const fixture = Reflect.get(globalThis, "conversationAudioFixture") as {
@@ -367,6 +398,106 @@ test("conversation controls enter, mute and exit with real capture and streaming
   }
 });
 
+test("live words appear in the focused composer, countdown cancellation retains them, and resumed speech sends the complete draft", async () => {
+  const f = await launch({ recognitionTexts: ["First thought", "and more"] });
+  try {
+    await f.configure();
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toBeVisible();
+    const input = f.page.getByRole("combobox", { name: "Message", exact: true });
+    await input.click();
+    await input.pressSequentially("Typed prefix ");
+    await expect(input).toBeFocused();
+    await f.frames([[0.1, 8]]);
+    await expect(input).toHaveValue("Typed prefix First thought");
+    await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await f.frames([[0, 5]]);
+    await f.page.getByRole("button", { name: "Cancel automatic send" }).click();
+    await f.frames([[0, 20]]);
+    await expect(input).toHaveValue("Typed prefix First thought");
+    expect(f.responses).toHaveLength(0);
+    await f.frames([[0.1, 8]]);
+    await expect(input).toHaveValue("Typed prefix First thought and more");
+    await f.frames([[0, 20]]);
+    await expect.poll(() => f.responses.length).toBe(1);
+    await expect(input).toHaveValue("");
+    await expect(
+      f.page.getByRole("article").filter({ hasText: "Typed prefix First thought and more" }),
+    ).toBeVisible();
+  } finally {
+    await f.close();
+  }
+});
+
+test("dictation stays enabled through voice mode and immediately works after switching sessions", async () => {
+  const f = await launch({
+    secondSession: true,
+    recognitionTexts: Array(10).fill("Dictated words"),
+  });
+  try {
+    await f.configure();
+    await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await f.page.getByRole("button", { name: /Dictation Local speech to text/ }).click();
+    const toggle = f.page.getByRole("switch", { name: "Dictation mode" });
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await f.page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await f.page.locator('[data-navigation-item][data-session-id="conversation-session"]').click();
+    const input = f.page.getByRole("combobox", { name: "Message", exact: true });
+    await input.click();
+    await expect(f.page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+    await f.frames([[0.1, 8]]);
+    await expect(input).toHaveValue("Dictated words");
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toBeVisible();
+    await input.click();
+    await expect(f.page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+    await f.page.locator('[data-navigation-item][data-session-id="second-session"]').click();
+    await expect(f.page.getByRole("button", { name: "Enter conversation mode" })).toBeVisible();
+    await input.click();
+    await expect(input).toBeFocused();
+    await expect(f.page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+    await f.frames([[0.1, 8]]);
+    await expect(input).toHaveValue("Dictated words");
+    await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await f.page.getByRole("button", { name: /Dictation Local speech to text/ }).click();
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+  } finally {
+    await f.close();
+  }
+});
+
+test("settings slider saves a faster speed alongside the persisted voice list", async () => {
+  const f = await launch();
+  try {
+    await f.configure();
+    await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await f.page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    const slider = f.page.getByRole("slider", { name: "Speaking speed" });
+    await slider.focus();
+    await slider.press("End");
+    await expect(slider).toHaveValue("1.2");
+    await expect(f.page.getByText("1.20×", { exact: true })).toBeVisible();
+    await expect(slider).toBeEnabled();
+    // Service tests cover reacquisition from this file without provider requests.
+    // Electron verifies native keyboard input and the real atomic persistence boundary.
+    await expect
+      .poll(async () => {
+        const saved = JSON.parse(
+          await readFile(join(f.userData, "speech-output", "settings.json"), "utf8"),
+        );
+        return { speed: saved.speed, voices: saved.voices };
+      })
+      .toEqual({ speed: 1.2, voices: [{ id: "fixture-voice", name: "Fixture voice" }] });
+    await expect(
+      f.page.getByLabel("Voice").locator("option", { hasText: "Fixture voice" }),
+    ).toHaveCount(1);
+  } finally {
+    await f.close();
+  }
+});
+
 test("quieter follow-up speech with syllable gaps is accepted after a spoken reply without restarting capture", async () => {
   const f = await launch({ recognizeSpeech: true });
   try {
@@ -378,7 +509,7 @@ test("quieter follow-up speech with syllable gaps is accepted after a spoken rep
     );
     await f.frames([
       [0.1, 8],
-      [0, 18],
+      [0, 20],
     ]);
     await expect.poll(() => f.responses.length).toBe(1);
     f.sendText("First answer. ");
@@ -403,7 +534,7 @@ test("quieter follow-up speech with syllable gaps is accepted after a spoken rep
       [0.02, 2],
       [0, 1],
       [0.02, 2],
-      [0, 18],
+      [0, 20],
     ]);
     await expect(f.page.getByRole("article").filter({ hasText: "Spoken request 2" })).toBeVisible();
     await expect.poll(() => f.responses.length).toBe(2);
@@ -447,7 +578,7 @@ for (const { text, frames } of [
       await emitSpeechPcm(f.application);
       await f.frames([
         [0.1, 8],
-        [0, 18],
+        [0, 20],
       ]);
       // The first provider stream is still open: a rejected snippet must not cancel it.
       f.sendText("Still speaking. ");
@@ -471,7 +602,7 @@ for (const { text, frames } of [
         .toBe(3);
       await f.frames([
         [0.1, frames],
-        [0, 18],
+        [0, 20],
       ]);
       await expect
         .poll(() =>

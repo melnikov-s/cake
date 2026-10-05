@@ -389,6 +389,12 @@ export function makeClient(
           withClient((client) => client.speechOutput.setVoice(voiceId)),
           options,
         ),
+      setSpeed: (speed, options) =>
+        run(
+          "speechOutput.setSpeed",
+          withClient((client) => client.speechOutput.setSpeed(speed)),
+          options,
+        ),
       listVoices: (options) =>
         run(
           "speechOutput.listVoices",
