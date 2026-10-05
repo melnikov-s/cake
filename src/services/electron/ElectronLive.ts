@@ -539,10 +539,10 @@ const makeElectronService = (
                 click: () => clipboard.writeText(request.sessionId),
               };
               const activeItems: MenuItemConstructorOptions[] = [
-                { label: "Rename", click: () => finish("rename") },
                 ...(request.unread === false
                   ? [{ label: "Mark as Unread", click: () => finish("mark-unread") }]
                   : []),
+                { label: "Rename", click: () => finish("rename") },
                 copyId,
               ];
               const menu = Menu.buildFromTemplate(

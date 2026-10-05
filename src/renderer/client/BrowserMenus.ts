@@ -106,8 +106,8 @@ export function browserMenus(
             ...(!input.familyChild ? [{ label: "Delete", action: "delete" }] : []),
           ]
         : [
-            { label: "Rename", action: "rename" },
             ...(input.unread === false ? [{ label: "Mark as Unread", action: "mark-unread" }] : []),
+            { label: "Rename", action: "rename" },
             copyId,
             ...(!input.draft ? [{ label: "Resolve", action: "resolve" }] : []),
           ];
