@@ -412,13 +412,18 @@ test("live words appear in the focused composer, countdown cancellation retains 
     await expect(input).toHaveValue("Typed prefix First thought");
     await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await f.frames([[0, 5]]);
+    await expect(f.page.getByRole("button", { name: "Cancel automatic send" })).toHaveCount(0);
+    await expect(f.page.getByRole("button", { name: "Mute input" }).locator("circle")).toHaveCount(
+      0,
+    );
+    await f.frames([[0, 5]]);
     await f.page.getByRole("button", { name: "Cancel automatic send" }).click();
-    await f.frames([[0, 20]]);
+    await f.frames([[0, 30]]);
     await expect(input).toHaveValue("Typed prefix First thought");
     expect(f.responses).toHaveLength(0);
     await f.frames([[0.1, 8]]);
     await expect(input).toHaveValue("Typed prefix First thought and more");
-    await f.frames([[0, 20]]);
+    await f.frames([[0, 30]]);
     await expect.poll(() => f.responses.length).toBe(1);
     await expect(input).toHaveValue("");
     await expect(
@@ -509,7 +514,7 @@ test("quieter follow-up speech with syllable gaps is accepted after a spoken rep
     );
     await f.frames([
       [0.1, 8],
-      [0, 20],
+      [0, 30],
     ]);
     await expect.poll(() => f.responses.length).toBe(1);
     f.sendText("First answer. ");
@@ -534,7 +539,7 @@ test("quieter follow-up speech with syllable gaps is accepted after a spoken rep
       [0.02, 2],
       [0, 1],
       [0.02, 2],
-      [0, 20],
+      [0, 30],
     ]);
     await expect(f.page.getByRole("article").filter({ hasText: "Spoken request 2" })).toBeVisible();
     await expect.poll(() => f.responses.length).toBe(2);
@@ -578,7 +583,7 @@ for (const { text, frames } of [
       await emitSpeechPcm(f.application);
       await f.frames([
         [0.1, 8],
-        [0, 20],
+        [0, 30],
       ]);
       // The first provider stream is still open: a rejected snippet must not cancel it.
       f.sendText("Still speaking. ");
@@ -602,7 +607,7 @@ for (const { text, frames } of [
         .toBe(3);
       await f.frames([
         [0.1, frames],
-        [0, 20],
+        [0, 30],
       ]);
       await expect
         .poll(() =>

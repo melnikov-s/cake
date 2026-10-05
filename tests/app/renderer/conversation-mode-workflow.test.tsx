@@ -191,7 +191,7 @@ function fixture(
     },
     async say() {
       await this.frames(0.1, 4);
-      await this.frames(0, 20);
+      await this.frames(0, 30);
       await waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
     },
     publish(next: UiPart[]) {
@@ -350,25 +350,45 @@ describe("Project Session conversation mode", () => {
       expect.any(Object),
     );
     expect(f.transcribe.mock.calls.filter(([input]) => input.final)).toHaveLength(1);
-    await f.frames(0, 20);
+    await f.frames(0, 30);
     expect(f.prompt).toHaveBeenCalledTimes(1);
   });
-  it("keeps a one-second thinking pause in the same utterance and waits for two seconds of quiet before submitting once", async () => {
+  it("hides the countdown for one second of each pause and submits once after three seconds of quiet", async () => {
     using f = fixture({ transcribe: async () => "First part and second part" });
     await f.enter();
     await f.frames(0.1, 4);
-    await f.frames(0, 10);
+    await f.frames(0, 9);
+    expect(screen.queryByRole("button", { name: "Cancel automatic send" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Mute input" }).querySelector("circle")).toBeNull();
+    await f.frames(0, 1);
+    expect(
+      screen
+        .getByRole("button", { name: "Cancel automatic send" })
+        .querySelector("circle")
+        ?.getAttribute("stroke-dashoffset"),
+    ).toBe("1");
     expect(f.prompt).not.toHaveBeenCalled();
     expect(f.transcribe.mock.calls.some(([request]) => request.final)).toBe(false);
     await f.frames(0.1, 4);
-    await f.frames(0, 19);
+    expect(screen.queryByRole("button", { name: "Cancel automatic send" })).toBeNull();
+    await f.frames(0, 9);
+    expect(screen.queryByRole("button", { name: "Cancel automatic send" })).toBeNull();
+    await f.frames(0, 11);
+    expect(
+      screen
+        .getByRole("button", { name: "Cancel automatic send" })
+        .querySelector("circle")
+        ?.getAttribute("stroke-dashoffset"),
+    ).toBe("0.5");
+    expect(f.prompt).not.toHaveBeenCalled();
+    await f.frames(0, 9);
     expect(f.prompt).not.toHaveBeenCalled();
     await f.frames(0, 1);
     await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(1));
     expect(f.prompt.mock.calls[0]![0].text).toBe("First part and second part");
     expect(new Set(f.transcribe.mock.calls.map(([request]) => request.utteranceId)).size).toBe(1);
     expect(f.transcribe.mock.calls.filter(([request]) => request.final)).toHaveLength(1);
-    await f.frames(0, 20);
+    await f.frames(0, 30);
     expect(f.prompt).toHaveBeenCalledTimes(1);
   });
   it("live transcription replaces partial words in the composer; cancelling retains them and resumed speech rearms the countdown", async () => {
@@ -381,19 +401,19 @@ describe("Project Session conversation mode", () => {
     text = "First thought";
     await f.frames(0.1, 8);
     expect(input.value).toBe("First thought");
-    await f.frames(0, 10);
+    await f.frames(0, 20);
     const cancel = screen.getByRole("button", { name: "Cancel automatic send" });
     expect(cancel.querySelector("circle")?.getAttribute("stroke-dashoffset")).toBe("0.5");
     expect(f.prompt).not.toHaveBeenCalled();
     await f.user.click(cancel);
-    await f.frames(0, 20);
+    await f.frames(0, 30);
     expect(input.value).toBe("First thought");
     expect(f.prompt).not.toHaveBeenCalled();
     expect(f.stopCapture).not.toHaveBeenCalled();
     text = "and more";
     await f.frames(0.1, 8);
     expect(input.value).toBe("First thought and more");
-    await f.frames(0, 19);
+    await f.frames(0, 29);
     expect(screen.getByRole("button", { name: "Cancel automatic send" })).toBeDefined();
     expect(f.prompt).not.toHaveBeenCalled();
     await f.frames(0, 1);
@@ -406,7 +426,7 @@ describe("Project Session conversation mode", () => {
     using f = fixture({ transcribe: async (request) => (request.final ? final.promise : "First") });
     await f.enter();
     await f.frames(0.1, 8);
-    await f.frames(0, 20);
+    await f.frames(0, 30);
     const cancel = screen.getByRole("button", { name: "Cancel automatic send" });
     expect(cancel.querySelector("circle")?.getAttribute("stroke-dashoffset")).toBe("0");
     await f.user.click(cancel);
@@ -423,7 +443,7 @@ describe("Project Session conversation mode", () => {
     const input = screen.getByRole("combobox", { name: "Message" });
     await f.user.clear(input);
     await f.user.type(input, "My correction");
-    await f.frames(0, 20);
+    await f.frames(0, 30);
     expect((input as HTMLTextAreaElement).value).toBe("My correction");
     expect(f.prompt).not.toHaveBeenCalled();
   });
@@ -431,13 +451,13 @@ describe("Project Session conversation mode", () => {
     using f = fixture({ transcribe: async () => "" });
     await f.enter();
     const stops = vi.mocked(f.playback.stop).mock.calls.length;
-    await f.frames(0, 20);
+    await f.frames(0, 30);
     await f.frames(0.1, 1);
     await f.frames(0, 10);
     expect(f.playback.stop).toHaveBeenCalledTimes(stops);
     expect(f.transcribe).not.toHaveBeenCalled();
     await f.frames(0.1, 4);
-    await f.frames(0, 20);
+    await f.frames(0, 30);
     expect(f.prompt).not.toHaveBeenCalled();
   });
   it("retains 600 ms of audio including the speech onset before recognition", async () => {
@@ -454,7 +474,7 @@ describe("Project Session conversation mode", () => {
     expect(samples).toHaveLength(12800);
     expect(samples.slice(0, 6400).every((value) => value === 0)).toBe(true);
     expect(samples.slice(6400).every((value) => value === Math.fround(0.03))).toBe(true);
-    await f.frames(0, 18);
+    await f.frames(0, 28);
     await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(1));
   });
   it.each([
@@ -480,7 +500,7 @@ describe("Project Session conversation mode", () => {
       await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(1));
       await waitFor(() => expect(f.root.conversationModeStore.speaking).toBe(false));
       for (const [value, count] of frames) await f.frames(value, count);
-      await f.frames(0, 20);
+      await f.frames(0, 30);
       await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(2));
       expect(f.microphone.open).toHaveBeenCalledTimes(1);
       const finalCalls = f.transcribe.mock.calls.filter(([request]) => request.final);
@@ -588,7 +608,7 @@ describe("Project Session conversation mode", () => {
       const stops = vi.mocked(f.playback.stop).mock.calls.length;
       await f.frames(0.1, 8);
       expect(f.playback.stop).toHaveBeenCalledTimes(stops);
-      await f.frames(0, 20);
+      await f.frames(0, 30);
       expect(f.transcribe.mock.calls.filter(([request]) => request.final)).toHaveLength(1);
       expect(f.playback.stop).toHaveBeenCalledTimes(stops);
       expect(f.root.conversationModeStore.speaking).toBe(true);
@@ -607,7 +627,7 @@ describe("Project Session conversation mode", () => {
       const stops = vi.mocked(f.playback.stop).mock.calls.length;
       await f.frames(0.1, 2);
       expect(f.playback.stop).toHaveBeenCalledTimes(stops);
-      await f.frames(0, 20);
+      await f.frames(0, 30);
       expect(f.playback.stop).toHaveBeenCalledTimes(stops + 1);
       expect(f.prompt.mock.calls[0]![0].text).toBe(text);
       expect(f.abort).not.toHaveBeenCalled();
@@ -621,7 +641,7 @@ describe("Project Session conversation mode", () => {
     await waitFor(() => expect(f.playback.drain).toHaveBeenCalledTimes(1));
     await f.frames(0.1, 8);
     await act(async () => output.resolve());
-    await f.frames(0, 20);
+    await f.frames(0, 30);
     expect(f.prompt).not.toHaveBeenCalled();
     expect(f.root.conversationModeStore.transcript).toBe("");
     await f.say();
@@ -643,13 +663,13 @@ describe("Project Session conversation mode", () => {
     expect(f.root.conversationModeStore.transcript).toBe("");
     await act(async () => recognition.resolve("Actually change that approach"));
     await f.frames(0.1, 8);
-    await f.frames(0, 20);
+    await f.frames(0, 30);
     expect(f.playback.stop).toHaveBeenCalledTimes(stops);
     expect(f.prompt).not.toHaveBeenCalled();
     // A quiet boundary, not another three seconds of continuous noise, admits a fresh candidate.
     await f.frames(0.1, 8);
     expect(f.playback.stop).toHaveBeenCalledTimes(stops + 1);
-    await f.frames(0, 20);
+    await f.frames(0, 30);
     expect(f.prompt).toHaveBeenCalledTimes(1);
     expect(f.release).toHaveBeenCalledTimes(releases);
     expect(f.microphone.open).toHaveBeenCalledTimes(1);
@@ -718,7 +738,7 @@ describe("Project Session conversation mode", () => {
     await consume?.({ encoding: "pcm_s16le", sampleRate: 24000, pcm: "AAA=" });
     expect(f.playback.enqueue).not.toHaveBeenCalled();
     expect(f.abort).not.toHaveBeenCalled();
-    await f.frames(0, 20);
+    await f.frames(0, 30);
     await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(1));
     expect(f.prompt.mock.calls[0]![0].text).toBe("Actually change that approach please");
     gate.resolve();
@@ -919,7 +939,7 @@ describe("Project Session conversation mode", () => {
       const f = fixture({ transcribe: async () => gate.promise });
       await f.enter();
       await f.frames(0.1, 8);
-      await f.frames(0, 20);
+      await f.frames(0, 30);
       if (action === "selection") act(() => f.root.appShellStore.showSettings());
       else if (action === "disposal") f.root[Symbol.dispose]();
       else

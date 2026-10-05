@@ -28,6 +28,9 @@ export interface ConversationModeStoreProps {
   suspendDictation(): Promise<void>;
 }
 export const ConversationModeContext = createContext<ConversationModeStore | undefined>();
+// Microphone PCM is 16 kHz: hide brief pauses, then show the remaining two-second countdown.
+const SEND_SILENCE_SAMPLES = 3 * 16000;
+const SEND_INDICATOR_DELAY_SAMPLES = 16000;
 interface Utterance {
   id: string;
   chunks: Float32Array[];
@@ -356,9 +359,14 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       run.quiet += samples.length;
       this.sendProgress =
         run.autoSend &&
+        run.quiet >= SEND_INDICATOR_DELAY_SAMPLES &&
         run.interruption?.state !== "pending" &&
         run.interruption?.state !== "rejected"
-          ? Math.min(1, run.quiet / 32000)
+          ? Math.min(
+              1,
+              (run.quiet - SEND_INDICATOR_DELAY_SAMPLES) /
+                (SEND_SILENCE_SAMPLES - SEND_INDICATOR_DELAY_SAMPLES),
+            )
           : undefined;
     }
     const backlog = run.samples + this.finalizing.reduce((sum, item) => sum + item.samples, 0);
@@ -366,8 +374,8 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       this.fail(new Error("Recognition cannot keep up. Re-enter conversation mode to retry."));
       return;
     }
-    if (run.quiet >= 32000 || run.duration >= 480000) {
-      run.autoSend = run.autoSend && run.quiet >= 32000;
+    if (run.quiet >= SEND_SILENCE_SAMPLES || run.duration >= 480000) {
+      run.autoSend = run.autoSend && run.quiet >= SEND_SILENCE_SAMPLES;
       run.finishing = true;
       this.finalizing.push(run);
       this.utterance = undefined;
