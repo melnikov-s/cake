@@ -18,11 +18,13 @@ async function launch({
   recognizeSpeech = false,
   recognitionTexts = [],
   secondSession = false,
+  foreground = false,
 }: {
   reasoning?: boolean;
   recognizeSpeech?: boolean;
   recognitionTexts?: string[];
   secondSession?: boolean;
+  foreground?: boolean;
 } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "cake-conversation-"));
   const userData = join(directory, "user-data"),
@@ -197,6 +199,13 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   await expect(page.getByRole("button", { name: "Enter conversation mode" })).toBeVisible({
     timeout: 20000,
   });
+  await expect
+    .poll(() =>
+      application.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().every((window) => !window.isVisible() && !window.isFocused()),
+      ),
+    )
+    .toBe(true);
   await installSpeechHttpFixture(application);
   await page.evaluate(() => {
     const tracks: MediaStreamTrack[] = [];
@@ -228,16 +237,6 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     });
   });
   const configure = async () => {
-    await application.evaluate(({ BrowserWindow }) => {
-      const window = BrowserWindow.getAllWindows()[0]!;
-      window.show();
-      window.focus();
-    });
-    await expect
-      .poll(() =>
-        application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.isFocused()),
-      )
-      .toBe(true);
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
     const key = page.getByLabel("ElevenLabs API key");
@@ -283,10 +282,23 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       }
     },
     async close() {
-      for (const response of responses) response.destroy();
-      await application.close();
-      await new Promise<void>((done) => server.close(() => done()));
-      await rm(directory, { recursive: true, force: true });
+      try {
+        if (!foreground)
+          await expect
+            .poll(() =>
+              application.evaluate(({ BrowserWindow }) =>
+                BrowserWindow.getAllWindows().every(
+                  (window) => !window.isVisible() && !window.isFocused(),
+                ),
+              ),
+            )
+            .toBe(true);
+      } finally {
+        for (const response of responses) response.destroy();
+        await application.close();
+        await new Promise<void>((done) => server.close(() => done()));
+        await rm(directory, { recursive: true, force: true });
+      }
     },
   };
 }
@@ -363,6 +375,19 @@ test("conversation controls enter, mute and exit with real capture and streaming
       "aria-pressed",
       "true",
     );
+  } finally {
+    await f.close();
+  }
+});
+
+test("@foreground conversation capture stops on native window blur", async () => {
+  test.skip(
+    process.env.CAKE_ELECTRON_FOREGROUND_TESTS !== "1",
+    "Native OS focus changes require explicit opt-in; ordinary microphone tests stay hidden.",
+  );
+  const f = await launch({ foreground: true });
+  try {
+    await f.configure();
     await f.application.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0]!;
       window.show();
@@ -372,6 +397,17 @@ test("conversation controls enter, mute and exit with real capture and streaming
       .poll(() =>
         f.application.evaluate(({ BrowserWindow }) =>
           BrowserWindow.getAllWindows()[0]!.isFocused(),
+        ),
+      )
+      .toBe(true);
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toBeVisible();
+    await expect
+      .poll(() =>
+        f.page.evaluate(() =>
+          (
+            Reflect.get(globalThis, "conversationAudioFixture") as { tracks: MediaStreamTrack[] }
+          ).tracks.some((track) => track.readyState === "live"),
         ),
       )
       .toBe(true);
