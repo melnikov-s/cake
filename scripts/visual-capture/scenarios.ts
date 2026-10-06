@@ -989,8 +989,8 @@ const projectCustomInstructionsScenario: VisualCaptureScenario = {
 
 const dictationInputScenario: VisualCaptureScenario = {
   name: "dictation-input",
-  description: "Real Chat composer with in-field dictation bars at rest or responding to speech",
-  states: ["default", "speaking"],
+  description: "Real Chat composer with leading dictation bars and first-line-only text spacing",
+  states: ["default", "speaking", "wrapped", "muted"],
   environment: conversationCountdownScenario.environment,
   seed: conversationCountdownScenario.seed,
   async prepare(page, state, application) {
@@ -1011,16 +1011,38 @@ const dictationInputScenario: VisualCaptureScenario = {
         }
       };
     });
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
-    await page.getByRole("button", { name: /Dictation Local speech to text/ }).click();
+    // Startup can finish opening the seeded session after its transcript is visible.
+    // Retry navigation if that one-time completion returns us to chat.
+    await expect(async () => {
+      const section = page.getByRole("button", { name: /Dictation Local speech to text/ });
+      if (!(await section.isVisible()))
+        await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await section.click({ timeout: 1000 });
+      await expect(page.getByRole("switch", { name: "Dictation mode" })).toBeVisible({
+        timeout: 1000,
+      });
+    }).toPass({ timeout: 15_000 });
     await page.getByRole("switch", { name: "Dictation mode" }).click();
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await page
       .locator('[data-navigation-item][data-session-id="visual-conversation-entry"]')
       .click();
     const input = page.getByRole("combobox", { name: "Message", exact: true });
-    await input.fill("Let’s refine the voice conversation together.");
+    await input.fill(
+      state === "wrapped"
+        ? "Let’s refine the voice conversation together. The speech bars sit at the beginning of the first line, while the rest of this longer dictated message wraps back to the normal left edge of the input."
+        : "Let’s refine the voice conversation together.",
+    );
+    await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
     await expect(page.locator('[data-slot="voice-meter"]')).toBeVisible();
+    if (state === "muted") {
+      await page.getByRole("button", { name: "Mute dictation", exact: true }).click();
+      await expect(
+        page.getByRole("button", { name: "Unmute dictation", exact: true }),
+      ).toBeVisible();
+      await page.mouse.move(1, 1);
+      return;
+    }
     await page.evaluate((speaking) => {
       const processor = Reflect.get(globalThis, "visualDictationProcessor") as AudioWorkletNode;
       processor.port.dispatchEvent(
@@ -1035,7 +1057,7 @@ const dictationInputScenario: VisualCaptureScenario = {
             Math.max(...bars.map((bar) => bar.getBoundingClientRect().height)),
           ),
       )
-      .toBeCloseTo(state === "speaking" ? 12.33 : 2.88, 0);
+      .toBeCloseTo(state === "speaking" ? 9.25 : 2.16, 0);
     await page.mouse.move(1, 1);
   },
   region: conversationEntryScenario.region,

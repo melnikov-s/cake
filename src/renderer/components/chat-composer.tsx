@@ -68,7 +68,8 @@ export const ChatComposer = observer(function ChatComposer({
         <Composer
           className={cn(
             "relative z-10 border-border/90 bg-composer shadow-[0_24px_80px_-30px_hsl(var(--shadow)/0.55),0_2px_10px_hsl(var(--shadow)/0.08)]",
-            leadingAccessory && "[&_textarea]:pl-12 @4xl/composer-dock:[&_textarea]:pl-2",
+            leadingAccessory &&
+              "[&_textarea]:pl-12 @4xl/composer-dock:[&_textarea]:pl-2 [&_[data-slot=dictation-indicator]]:left-12 @4xl/composer-dock:[&_[data-slot=dictation-indicator]]:left-2",
           )}
           onSubmit={onSubmit}
         >

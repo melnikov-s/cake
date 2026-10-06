@@ -448,26 +448,54 @@ describe("Dictation writing-field workflow", () => {
     expect(fixture.requests[2]!.audio.utteranceId).not.toBe(fixture.requests[1]!.audio.utteranceId);
   });
 
-  it("discards pending speech on dismissal and resumes the field only after refocus", async () => {
+  it("mutes pending speech, preserves typing across field changes, and unmutes from the same control", async () => {
     using fixture = renderDictation();
     await fixture.user.click(mode());
     await fixture.user.click(trial());
     await fixture.audio.push(new Float32Array(12_800));
-    await fixture.user.click(screen.getByRole("button", { name: "Stop dictation" }));
+    await fixture.recognize(0, "Keep this");
+    await fixture.audio.push(new Float32Array(12_800));
+    await fixture.user.click(screen.getByRole("button", { name: "Mute dictation" }));
     expect(mode().getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByText("Dictation paused")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Unmute dictation" }).getAttribute("aria-pressed"),
+    ).toBe("true");
     expect(fixture.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
-    await fixture.recognize(0, "Discard after dismissal");
-    expect(trial().value).toBe("");
+    expect(fixture.release).not.toHaveBeenCalled();
+    await fixture.recognize(1, "Discard after mute");
+    expect(trial().value).toBe("Keep this");
     await fixture.user.keyboard(" kept");
-    expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce();
-    await fixture.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+    await fixture.user.click(message());
+    expect(screen.getByRole("button", { name: "Unmute dictation" })).toBeDefined();
     await fixture.user.click(trial());
+    expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce();
+    await fixture.user.click(screen.getByRole("button", { name: "Unmute dictation" }));
+    listening();
+    expect(
+      screen.getByRole("button", { name: "Mute dictation" }).getAttribute("aria-pressed"),
+    ).toBe("false");
+    expect(fixture.audio.getUserMedia).toHaveBeenCalledTimes(2);
+    await fixture.audio.push(new Float32Array(12_800));
+    await fixture.recognize(2, "Resumed");
+    expect(trial().value).toBe("Keep this kept Resumed");
+  });
+
+  it("muting during microphone preparation stops a late capture and permits a fresh unmute", async () => {
+    const permission = deferred<void>();
+    using fixture = renderDictation({ permission: permission.promise });
+    await fixture.user.click(mode());
+    await fixture.user.click(trial());
+    await waitFor(() => expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce());
+    await fixture.user.click(screen.getByRole("button", { name: "Mute dictation" }));
+    await act(async () => permission.resolve());
+    expect(fixture.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Unmute dictation" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Unmute dictation" }));
     listening();
     expect(fixture.audio.getUserMedia).toHaveBeenCalledTimes(2);
     await fixture.audio.push(new Float32Array(12_800));
-    await fixture.recognize(1, "Resumed");
-    expect(trial().value).toBe(" kept Resumed");
+    await fixture.recognize(0, "Fresh speech");
+    expect(trial().value).toBe("Fresh speech");
   });
 
   it("drains pending and final audio before Enter submits exactly one complete message", async () => {

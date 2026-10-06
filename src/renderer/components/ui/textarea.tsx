@@ -52,17 +52,16 @@ export const Textarea = observer(function Textarea({
     return input.current;
   });
   const voice = useDictationInput(dictation && !props.disabled && !props.readOnly, input);
-  const active =
-    voice.store?.enabled &&
-    voice.store.activeTargetId === voice.id &&
-    !voice.store.isDismissed(voice.id);
+  const active = voice.store?.enabled && voice.store.activeTargetId === voice.id;
+  const compact = voice.store?.phase === "listening" || voice.store?.muted;
   const field = (
     <textarea
       ref={input}
       className={cn(
         textareaVariants({ size, font }),
         className,
-        active && (voice.store?.phase === "listening" ? "pr-24" : "pt-10"),
+        // Indent only the first line; soft wraps and newlines keep the full writing width.
+        active && (compact ? "indent-8" : "pt-10"),
       )}
       {...props}
       onFocus={(event) => {
@@ -70,7 +69,7 @@ export const Textarea = observer(function Textarea({
         voice.onFocus();
       }}
       onBlur={(event) => {
-        voice.onBlur();
+        voice.onBlur(event);
         onBlur?.(event);
       }}
       onChange={(event) => {

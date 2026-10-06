@@ -38,6 +38,12 @@ export const AudioLinesIcon = () => (
   </Icon>
 );
 
+export const AudioLinesOffIcon = () => (
+  <Icon size={14}>
+    <path d="M4 10v4M8 12v6M12 16v5M12 3v4M16 7v4M20 10v4M3 3l18 18" />
+  </Icon>
+);
+
 export const EarIcon = () => (
   <Icon strokeWidth={1.6}>
     <path d="M6 8.5a6.5 6.5 0 0 1 13 0c0 6-6 6-6 10a3.5 3.5 0 0 1-7 0" />
@@ -70,13 +76,6 @@ export const EarOffIcon = () => (
   <Icon>
     <path d="M8.2 3.6A6.5 6.5 0 0 1 19 8.5c0 1.8-.5 3-1.3 4M15.2 15.2C14 16.2 13 17.2 13 18.5a3.5 3.5 0 0 1-7 0M6 8.5c0-1 .2-1.9.6-2.7" />
     <path d="M10.4 7.1A2.5 2.5 0 0 1 15 8.5M12 12.5c0-.6.3-1.1.8-1.5M3 3l18 18" />
-  </Icon>
-);
-
-export const MicrophoneIcon = () => (
-  <Icon size={14}>
-    <rect x="9" y="2" width="6" height="12" rx="3" />
-    <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" />
   </Icon>
 );
 

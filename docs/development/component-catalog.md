@@ -45,17 +45,23 @@ the Artifact Library detail surface.
 unset for paths, search, code, and configuration syntax. Embedded surfaces never
 participate. Existing keyboard and controlled-value handlers remain authoritative.
 
-`DictationIndicator` sits inside the focused writing field, with a `VoiceMeter`
-and a shared stop action. Listening is announced accessibly, not displayed as a
-popup. Preparing, Finishing and failures remain visible in the field. Textarea
-reserves space so status and bars never cover typed or dictated text; stopping
-retains writing focus. See [local dictation](dictation.md) for lifecycle details.
+`DictationIndicator` sits at the beginning of the focused writing field. A circular
+`IconButton` contains a compact `VoiceMeter`; clicking toggles mute/unmute, with a
+crossed waveform while muted. Tooltips and accessible names describe the action,
+and `aria-pressed` reflects mute. The control remains visible while muted, and
+pointer or keyboard activation returns focus to writing. Mute is window-local,
+survives field changes, and never changes the Dictation mode preference.
+Listening/mute are announced accessibly, not displayed as a popup. Preparing,
+Finishing and failures remain visible in the field. Textarea reserves only the
+first line for the circle; wrapped lines use the normal writing edge.
+See [local dictation](dictation.md) for lifecycle details.
 
 `VoiceMeter` is a decorative seven-bar microphone-level display. Supply a normalized
 `level` from 0 to 1; silence leaves short bars and louder input raises them. It has
 no microphone, timers, or simulated animation, and respects reduced motion.
+Its `size="sm"` variant fits within the dictation circle and inherits its color.
 `DictationStore` derives its ephemeral level from the existing PCM capture at
-roughly 20Hz and resets it on finishing, blur, dismissal or capture replacement.
+roughly 20Hz and resets it on finishing, blur, mute or capture replacement.
 
 ## Voice conversation controls
 

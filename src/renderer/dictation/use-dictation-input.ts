@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef, type KeyboardEvent, type RefObject } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  type FocusEvent,
+  type KeyboardEvent,
+  type RefObject,
+} from "react";
 import { flushSync } from "react-dom";
 import { useOptionalStore } from "r-state-tree/react";
 import { DictationStore, type DictationTarget } from "../stores/DictationStore";
@@ -84,7 +91,15 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
       if (enabled && !input.current?.readOnly && !input.current?.disabled)
         store?.focus(target.current);
     },
-    onBlur() {
+    onBlur(event: FocusEvent<HTMLTextAreaElement>) {
+      // Keyboard navigation into the in-field mute control keeps this writing target.
+      if (
+        event.relatedTarget instanceof Element &&
+        event.currentTarget.parentElement
+          ?.querySelector('[data-slot="dictation-indicator"]')
+          ?.contains(event.relatedTarget)
+      )
+        return;
       if (enabled) store?.blur(id);
     },
     onChange() {
@@ -106,12 +121,12 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
         enabled &&
         store?.enabled &&
         store.activeTargetId === id &&
-        !store.isDismissed(id) &&
+        !store.muted &&
         event.key === "Escape"
       ) {
         event.preventDefault();
         event.stopPropagation();
-        store.dismiss(id);
+        store.setMuted(id, true);
         return true;
       }
       if (

@@ -34,6 +34,8 @@ export class DictationStore extends Store<{
 }> {
   state: DictationState | undefined;
   @snapshot enabled = false;
+  /** Window-local input mute; survives field changes, never persisted. */
+  muted = false;
   phase: DictationPhase = "off";
   /** Ephemeral level of the current capture; never persisted or shared across focus generations. */
   audioLevel = 0;
@@ -43,7 +45,6 @@ export class DictationStore extends Store<{
   devices: ReadonlyArray<{ id: string; label: string }> = [];
   busy = false;
   private target: DictationTarget | undefined;
-  private dismissedTargetId: string | undefined;
   private utterance: Utterance | undefined;
   private installation: AbortController | undefined;
   private modeRevision = 0;
@@ -65,17 +66,20 @@ export class DictationStore extends Store<{
   get activeTargetId() {
     return this.target?.id;
   }
-  isDismissed(id: string) {
-    return this.dismissedTargetId === id;
-  }
-  /** Stop only this focus's capture; blur makes the field eligible again. */
-  dismiss(id: string) {
-    if (!this.enabled || this.target?.id !== id || this.dismissedTargetId === id) return;
-    this.dismissedTargetId = id;
-    this.endUtterance();
-    this.phase = "paused";
+  /** Muting seals visible speech and drops pending results; unmuting starts at the current caret. */
+  setMuted(id: string, muted: boolean) {
+    if (!this.enabled || this.target?.id !== id || this.muted === muted) return;
+    this.muted = muted;
+    if (muted) {
+      this.endUtterance();
+      this.phase = "paused";
+    } else {
+      this.error = undefined;
+      void this.start(this.target);
+    }
   }
   get label() {
+    if (this.muted) return "Dictation muted";
     if (this.phase === "preparing") return "Preparing dictation… Wait to speak";
     if (this.phase === "listening") return "Listening";
     if (this.phase === "finishing") return "Finishing…";
@@ -110,7 +114,7 @@ export class DictationStore extends Store<{
   async setEnabled(enabled: boolean) {
     const revision = ++this.modeRevision;
     this.enabled = enabled;
-    this.dismissedTargetId = undefined;
+    this.muted = false;
     this.error = undefined;
     this.endUtterance();
     this.phase = enabled ? "preparing" : "off";
@@ -124,7 +128,7 @@ export class DictationStore extends Store<{
       await this.props.client.prepare({ signal: this.signal });
       if (revision !== this.modeRevision || this.signal.aborted) return;
       this.phase = "paused";
-      if (this.target) await this.start(this.target);
+      if (this.target && !this.muted) await this.start(this.target);
     } catch (error) {
       if (revision === this.modeRevision && !this.signal.aborted) this.reportError(error);
     }
@@ -132,9 +136,8 @@ export class DictationStore extends Store<{
   focus(target: DictationTarget) {
     if (this.target === target) return;
     this.endUtterance();
-    this.dismissedTargetId = undefined;
     this.target = target;
-    if (!this.enabled || this.busy) return;
+    if (!this.enabled || this.muted || this.busy) return;
     if (this.state?.status === "error")
       this.reportError(new Error(this.state.message ?? "Dictation unavailable"));
     else if (this.phase !== "preparing" || this.utterance) void this.start(target);
@@ -142,19 +145,12 @@ export class DictationStore extends Store<{
   blur(id: string) {
     if (this.target?.id !== id) return;
     this.endUtterance();
-    this.dismissedTargetId = undefined;
     this.target = undefined;
     if (this.enabled) this.phase = "paused";
   }
   /** Manual editing/cursor movement seals visible speech and starts a new insertion. */
   restart(id: string) {
-    if (
-      this.target?.id !== id ||
-      !this.enabled ||
-      this.isDismissed(id) ||
-      this.phase === "finishing"
-    )
-      return;
+    if (this.target?.id !== id || !this.enabled || this.muted || this.phase === "finishing") return;
     const run = this.utterance;
     if (run && this.phase === "listening") {
       // Editing starts a new decoding generation, not a new microphone acquisition.
@@ -165,7 +161,7 @@ export class DictationStore extends Store<{
     } else if (this.state?.status === "ready") void this.start(this.target);
   }
   private async start(target: DictationTarget) {
-    if (!this.enabled || this.busy || this.signal.aborted) return;
+    if (!this.enabled || this.muted || this.busy || this.signal.aborted) return;
     this.endUtterance();
     const run: Utterance = {
       id: crypto.randomUUID(),
@@ -274,7 +270,7 @@ export class DictationStore extends Store<{
     }
   }
   resume(id: string) {
-    if (this.target?.id === id && this.enabled && !this.isDismissed(id) && this.phase === "paused")
+    if (this.target?.id === id && this.enabled && !this.muted && this.phase === "paused")
       void this.start(this.target);
   }
   async refreshDevices() {
@@ -286,12 +282,7 @@ export class DictationStore extends Store<{
   }
   setDevice(id: string) {
     this.deviceId = id;
-    if (
-      this.target &&
-      this.enabled &&
-      !this.isDismissed(this.target.id) &&
-      this.state?.status === "ready"
-    )
+    if (this.target && this.enabled && !this.muted && this.state?.status === "ready")
       void this.start(this.target);
   }
   get installing() {

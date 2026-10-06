@@ -157,11 +157,24 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     );
     await expect(meter).toBeVisible();
     await expect(meter.locator('[data-slot="voice-meter-bar"]')).toHaveCount(7);
+    const circle = page.getByRole("button", { name: "Mute dictation" });
+    const circleStyle = await circle.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        width: parseFloat(style.width),
+        height: parseFloat(style.height),
+        radius: parseFloat(style.borderRadius),
+      };
+    });
+    expect(circleStyle.width).toBe(circleStyle.height);
+    expect(circleStyle.radius).toBeGreaterThanOrEqual(circleStyle.width / 2);
+    expect(await circle.locator('[data-slot="voice-meter"]').count()).toBe(1);
     // Verify real Electron layout: the meter is inside the input, not a floating popup.
     const inputBox = await sample.boundingBox();
     const meterBox = await meter.boundingBox();
     expect(inputBox).not.toBeNull();
     expect(meterBox!.x).toBeGreaterThan(inputBox!.x);
+    expect(meterBox!.x - inputBox!.x).toBeLessThan(16);
     expect(meterBox!.y).toBeGreaterThan(inputBox!.y);
     expect(meterBox!.x + meterBox!.width).toBeLessThan(inputBox!.x + inputBox!.width);
     expect(meterBox!.y + meterBox!.height).toBeLessThan(inputBox!.y + inputBox!.height);
@@ -190,6 +203,68 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await configure({ ready: true, text: "Spoken next." });
     await expect(composer).toHaveValue("Typed first. Spoken next.");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    const composerControl = composer.locator("..").getByRole("button", { name: "Mute dictation" });
+    const textInset = await composer.evaluate((element) =>
+      parseFloat(getComputedStyle(element).paddingLeft),
+    );
+    expect(
+      (await composerControl.boundingBox())!.x - (await composer.boundingBox())!.x,
+    ).toBeCloseTo(textInset, 0);
+    // Check Chromium's actual textarea rendering, not a mirror element: only the first
+    // line is inset for the leading meter, including both soft wraps and explicit newlines.
+    await configure({ ready: true, hold: true });
+    for (const text of ["M".repeat(500), "MMMM\nMMMM"]) {
+      await composer.fill(text);
+      await expect(composer).toHaveValue(text);
+      await expect(composer).toBeFocused();
+      const screenshot = await composer.screenshot({
+        caret: "hide",
+        scale: "css",
+        style: '[data-slot="dictation-indicator"] { visibility: hidden; }',
+      });
+      const positions = await composer.evaluate(async (element, png) => {
+        const style = getComputedStyle(element);
+        const image = new Image();
+        image.src = `data:image/png;base64,${png}`;
+        await image.decode();
+        const canvas = document.createElement("canvas");
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        // Resolve the semantic foreground color to RGB for pixel comparison.
+        context.fillStyle = style.color;
+        context.fillRect(0, 0, 1, 1);
+        const foreground = context.getImageData(0, 0, 1, 1).data;
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        const top = parseFloat(style.paddingTop) + parseFloat(style.borderTopWidth);
+        const lineHeight = parseFloat(style.lineHeight);
+        const left = parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth);
+        const lineStarts = [0, 1].map((line) => {
+          let start = canvas.width;
+          for (let y = Math.ceil(top + line * lineHeight); y < top + (line + 1) * lineHeight; y++)
+            for (let x = Math.floor(left); x < start; x++) {
+              const offset = (y * canvas.width + x) * 4;
+              if (
+                [0, 1, 2].every(
+                  (channel) => Math.abs(pixels[offset + channel]! - foreground[channel]!) < 30,
+                )
+              )
+                start = x;
+            }
+          return start;
+        });
+        return { lineStarts, left, indent: parseFloat(style.textIndent) };
+      }, screenshot.toString("base64"));
+      expect(positions.indent).toBeGreaterThan(24);
+      expect(positions.lineStarts[0]! - positions.left - positions.indent).toBeGreaterThanOrEqual(
+        0,
+      );
+      expect(positions.lineStarts[0]! - positions.left - positions.indent).toBeLessThan(5);
+      expect(positions.lineStarts[1]! - positions.left).toBeGreaterThanOrEqual(0);
+      expect(positions.lineStarts[1]! - positions.left).toBeLessThan(5);
+    }
+    await composer.fill("Typed first. Spoken next.");
     // Hold a result, leave the field, then complete it. It must not change the old draft.
     const before = JSON.parse(await readFile(join(model, "request.json"), "utf8")).count;
     await configure({ ready: true, hold: true, text: "Discard this tail" });
@@ -246,20 +321,23 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await details.getByRole("button", { name: "Edit annotation" }).click();
     const edit = page.getByLabel("Edit annotation comment");
     await expect(edit).toBeFocused();
-    await expect(page.getByRole("button", { name: "Stop dictation" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Mute dictation" })).toBeVisible();
     await edit.press("Escape");
-    await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Unmute dictation" })).toBeVisible();
     await expect(edit).toBeFocused();
     await expect(details).toBeVisible();
     await edit.pressSequentially(" typed instead");
     await expect(edit).toHaveValue(/ typed instead$/);
     await edit.evaluate((element: HTMLTextAreaElement) => element.blur());
     await edit.focus();
-    await expect(page.getByRole("button", { name: "Stop dictation" })).toBeVisible();
-    await page.getByRole("button", { name: "Stop dictation" }).click();
+    await expect(page.getByRole("button", { name: "Unmute dictation" })).toBeVisible();
+    await page.getByRole("button", { name: "Unmute dictation" }).click();
+    await expect(page.getByRole("button", { name: "Mute dictation" })).toBeVisible();
+    await expect(edit).toBeFocused();
+    await page.getByRole("button", { name: "Mute dictation" }).click();
     await expect(edit).toBeFocused();
     await expect(details).toBeVisible();
-    await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Unmute dictation" })).toBeVisible();
     await edit.press("Escape");
     await expect(edit).toHaveCount(0);
     await expect(details).toBeVisible();
@@ -269,24 +347,46 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await page.getByRole("button", { name: /Dictation Local speech to text/ }).click();
     await expect(page.getByRole("switch", { name: "Dictation mode" })).toBeChecked();
     await sample.focus();
-    await expect(page.getByRole("button", { name: "Stop dictation" })).toBeVisible();
-    await page.getByRole("button", { name: "Stop dictation" }).click();
+    const unmute = page.getByRole("button", { name: "Unmute dictation" });
+    const mute = page.getByRole("button", { name: "Mute dictation" });
+    await expect(unmute).toBeVisible();
+    await expect(unmute).toHaveAttribute("aria-pressed", "true");
+    await sample.fill("Kept text");
+    // Keyboard focus into the circle must not remove it or lose its writing target.
+    await unmute.focus();
+    await unmute.press("Enter");
     await expect(sample).toBeFocused();
-    await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+    await expect(mute).toHaveAttribute("aria-pressed", "false");
+    await configure({ ready: true, text: "Speech after unmuting" });
+    await expect(sample).toHaveValue("Kept text Speech after unmuting");
+    await mute.click();
+    await expect(sample).toBeFocused();
+    await expect(unmute).toHaveAttribute("aria-pressed", "true");
+    await sample.pressSequentially(" typed while muted");
+    await expect(sample).toHaveValue("Kept text Speech after unmuting typed while muted");
     await expect(page.getByRole("switch", { name: "Dictation mode" })).toBeChecked();
     await page.getByLabel("Use an existing Core ML Parakeet model folder").focus();
     await sample.focus();
-    await expect(page.getByRole("button", { name: "Stop dictation" })).toBeVisible();
+    await expect(unmute).toBeVisible();
+    await unmute.focus();
+    await unmute.press("Space");
+    await expect(sample).toBeFocused();
+    await expect(mute).toBeVisible();
+    await mute.click();
+    await expect(unmute).toHaveAttribute("aria-pressed", "true");
     await expect.poll(savedEnabled).toBe(true);
     await application.close();
     application = await launch();
     const restarted = await application.firstWindow();
-    // The settings surface itself is restored, as well as the preference.
+    // Settings and enablement are restored; temporary mute is not.
     await restarted.getByRole("button", { name: /Dictation Local speech to text/ }).click();
     const restartedMode = restarted.getByRole("switch", { name: "Dictation mode" });
     await expect(restartedMode).toBeChecked();
     await restarted.getByLabel("Try dictation").focus();
-    await expect(restarted.getByRole("button", { name: "Stop dictation" })).toBeVisible();
+    await expect(restarted.getByRole("button", { name: "Mute dictation" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
     await restartedMode.click();
     await expect(restartedMode).not.toBeChecked();
     await expect.poll(savedEnabled).toBe(false);

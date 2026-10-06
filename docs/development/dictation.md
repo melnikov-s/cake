@@ -16,6 +16,11 @@ It does not inject keystrokes into VS Code, terminals, browser pages, widgets, o
    Core ML's first load can take longer while macOS prepares the model for the device.
 5. Speech appears progressively. Where Enter already submits, it drains the final audio before
    submitting once. Shift+Enter and existing multiline/slash-menu behavior remain unchanged.
+6. Click the circular waveform at the start of the input to mute; click it again to unmute.
+   Muting stops microphone capture and discards pending recognition without changing visible
+   text or Dictation mode. The crossed waveform remains available while muted. Typing still
+   works, and unmuting resumes at the current caret. Escape mutes before a field's usual Escape action.
+   Mute survives field and session changes, but resets on restart or when Dictation mode is toggled.
 
 Installed Cake users need **no Python, uv, Swift, Xcode, or other developer tools**. Cake includes
 its compiled speech helper and FluidAudio; Core ML is part of macOS.
@@ -89,15 +94,15 @@ No user-side compilation, package manager, or executable download is involved.
 
 ## Ownership and concurrency
 
-| State/resource                        | Authority and owner                                  | Lifetime / persistence                         | Concurrency                                       |
-| ------------------------------------- | ---------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------- |
-| Model installation and selected path  | Main `Dictation` Service                             | Path persisted in private settings             | Mutations serialized with inference               |
-| Warm native worker and Core ML models | Main `Dictation` Service scope                       | Process-local; killed on disable/main teardown | One inference request at a time                   |
-| Installation/engine projection        | `DictationStore`, observed through validated RPC     | Window-local projection of main                | Ordered `SubscriptionRef` snapshots               |
-| Enabled mode and microphone choice    | Window `DictationStore`                              | Persisted window-state preferences             | Explicit user edits; last local edit wins         |
-| Capture phase, focus and audio queue  | Window `DictationStore`                              | Ephemeral; no audio persistence                | Focus takes latest; maintenance suspends capture  |
-| Draft text                            | Existing composer/annotation owner                   | Existing draft persistence                     | Dictation updates only its current insertion span |
-| Selection and status geometry         | Shared Textarea DOM adapter and `DictationIndicator` | Mounted field                                  | Native input events, no synthetic OS typing       |
+| State/resource                             | Authority and owner                                  | Lifetime / persistence                         | Concurrency                                       |
+| ------------------------------------------ | ---------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------- |
+| Model installation and selected path       | Main `Dictation` Service                             | Path persisted in private settings             | Mutations serialized with inference               |
+| Warm native worker and Core ML models      | Main `Dictation` Service scope                       | Process-local; killed on disable/main teardown | One inference request at a time                   |
+| Installation/engine projection             | `DictationStore`, observed through validated RPC     | Window-local projection of main                | Ordered `SubscriptionRef` snapshots               |
+| Enabled mode and microphone choice         | Window `DictationStore`                              | Persisted window-state preferences             | Explicit user edits; last local edit wins         |
+| Mute, capture phase, focus and audio queue | Window `DictationStore`                              | Ephemeral; no audio persistence                | Focus takes latest; mute/maintenance stop capture |
+| Draft text                                 | Existing composer/annotation owner                   | Existing draft persistence                     | Dictation updates only its current insertion span |
+| Selection and status geometry              | Shared Textarea DOM adapter and `DictationIndicator` | Mounted field                                  | Native input events, no synthetic OS typing       |
 
 The renderer captures mono 16 kHz float32 PCM through an AudioWorklet and batches about 800 ms.
 Main exchanges validated NDJSON with the helper over private stdio. The helper uses FluidAudio's
