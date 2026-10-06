@@ -20,8 +20,12 @@ It does not inject keystrokes into VS Code, terminals, browser pages, widgets, o
 Installed Cake users need **no Python, uv, Swift, Xcode, or other developer tools**. Cake includes
 its compiled speech helper and FluidAudio; Core ML is part of macOS.
 
-There are no ready sounds. Dictation mode starts off on each app launch. Model selection and
-installation persist; microphone selection and enabled mode are window-local for now.
+There are no ready sounds. Dictation mode defaults off until the user enables it. Enabled mode
+and microphone choice are window-owned preferences persisted through window-state snapshots and
+restored on launch. Only an explicit preference toggle changes enabled mode; voice-mode handoffs,
+model maintenance, focus changes, and errors pause capture without rewriting it. Restoring enabled
+mode does not restore a recording: capture prepares when an eligible writing field receives focus.
+Model selection and installation persist separately in main.
 [Conversation mode](conversation-mode.md) suppresses dictation only in its active composer, without changing the window's Dictation mode preference. Exiting voice mode or switching sessions allows focused-field dictation to resume automatically. Focusing a different opted-in writing field hands the shared recognizer back to dictation and exits voice mode. Toggling the dictation preference alone does not exit voice mode.
 Conversation mode updates and submits the normal composer draft and can speak assistant prose.
 Microphone access is requested on first capture. macOS permission denial can be repaired in
@@ -90,7 +94,8 @@ No user-side compilation, package manager, or executable download is involved.
 | Model installation and selected path  | Main `Dictation` Service                             | Path persisted in private settings             | Mutations serialized with inference               |
 | Warm native worker and Core ML models | Main `Dictation` Service scope                       | Process-local; killed on disable/main teardown | One inference request at a time                   |
 | Installation/engine projection        | `DictationStore`, observed through validated RPC     | Window-local projection of main                | Ordered `SubscriptionRef` snapshots               |
-| Mode, focus, microphone, audio queue  | Window `DictationStore`                              | Ephemeral; no audio persistence                | Focus takes latest; bounded audio backlog         |
+| Enabled mode and microphone choice    | Window `DictationStore`                              | Persisted window-state preferences             | Explicit user edits; last local edit wins         |
+| Capture phase, focus and audio queue  | Window `DictationStore`                              | Ephemeral; no audio persistence                | Focus takes latest; maintenance suspends capture  |
 | Draft text                            | Existing composer/annotation owner                   | Existing draft persistence                     | Dictation updates only its current insertion span |
 | Selection and status geometry         | Shared Textarea DOM adapter and `DictationIndicator` | Mounted field                                  | Native input events, no synthetic OS typing       |
 
@@ -119,11 +124,13 @@ or Store. Code/configuration editors, path/search fields, and embedded surfaces 
   cancellation, model selection/removal, platform/engine availability, and RPC-encodable state.
 - `tests/app/services/dictation-model-download.test.ts`: real installer with deterministic fake
   downloads; pinning/checksums, atomic publication, cancellation/retry, local model validation.
-- `tests/app/renderer/stores/DictationStore.test.ts`: startup gates, progressive results, focus
-  boundaries, manual edits, final-audio submission, and failures.
+- `tests/app/renderer/dictation-workflow.test.tsx`: startup gates, persisted preference restoration,
+  maintenance pauses, progressive results, focus boundaries, manual edits, final-audio submission,
+  and failures.
 - `tests/electron/dictation.smoke.spec.ts`: real Service/RPC/Store, fake external native process,
   Chromium's fake microphone, real AudioWorklet, controlled-input typing, settings, chat, and
-  annotation Enter submission. No model download or physical microphone required.
+  annotation Enter submission, and preference retention across app restarts. No model download or
+  physical microphone required.
 - `tests/integration/dictation-native.test.ts`: opt-in **real compiled helper and Core ML model**,
   using macOS-synthesized speech, progressive recognition, Enter-style final flushing, and new-focus
   isolation. Requires the built app and an existing compatible model folder:

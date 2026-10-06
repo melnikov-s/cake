@@ -1,4 +1,4 @@
-import { Store } from "r-state-tree";
+import { snapshot, Store, untracked } from "r-state-tree";
 import type { DictationState } from "../../domain/dictation/dictation-data";
 import type { Client } from "../client/Client";
 import { encodePcm, type Microphone, type MicrophoneCapture } from "../dictation/microphone";
@@ -23,7 +23,8 @@ interface Utterance {
 export type DictationPhase = "off" | "paused" | "preparing" | "listening" | "finishing" | "error";
 
 /** Window-owned voice-input workflow. Focus is take-latest; drafts retain their existing owners.
- * Installation is a projection of main; enabled mode/audio/focus are ephemeral, never persisted.
+ * Main owns installation. This window persists user enablement and microphone choice (last
+ * local edit wins); capture, maintenance pauses, audio and focus are ephemeral.
  */
 export class DictationStore extends Store<{
   client: Client["dictation"];
@@ -32,13 +33,13 @@ export class DictationStore extends Store<{
   canReleaseRecognition?(): boolean;
 }> {
   state: DictationState | undefined;
-  enabled = false;
+  @snapshot enabled = false;
   phase: DictationPhase = "off";
   /** Ephemeral level of the current capture; never persisted or shared across focus generations. */
   audioLevel = 0;
   error: string | undefined;
   modelPathDraft = "";
-  deviceId = "";
+  @snapshot deviceId = "";
   devices: ReadonlyArray<{ id: string; label: string }> = [];
   busy = false;
   private target: DictationTarget | undefined;
@@ -49,9 +50,15 @@ export class DictationStore extends Store<{
 
   constructor(props: DictationStore["props"]) {
     super(props);
-    this.effect(() => () => {
-      this.endUtterance();
-      this.installation?.abort();
+    this.effect(() => {
+      // Hydration restores intent, not a recording or an in-flight preparation.
+      untracked(() => {
+        this.phase = this.enabled ? "paused" : "off";
+      });
+      return () => {
+        this.endUtterance();
+        this.installation?.abort();
+      };
     });
   }
 
@@ -127,7 +134,7 @@ export class DictationStore extends Store<{
     this.endUtterance();
     this.dismissedTargetId = undefined;
     this.target = target;
-    if (!this.enabled) return;
+    if (!this.enabled || this.busy) return;
     if (this.state?.status === "error")
       this.reportError(new Error(this.state.message ?? "Dictation unavailable"));
     else if (this.phase !== "preparing" || this.utterance) void this.start(target);
@@ -158,6 +165,7 @@ export class DictationStore extends Store<{
     } else if (this.state?.status === "ready") void this.start(this.target);
   }
   private async start(target: DictationTarget) {
+    if (!this.enabled || this.busy || this.signal.aborted) return;
     this.endUtterance();
     const run: Utterance = {
       id: crypto.randomUUID(),
@@ -289,10 +297,21 @@ export class DictationStore extends Store<{
   get installing() {
     return this.installation !== undefined;
   }
+  /** Model maintenance suspends runtime capture without writing the user's preference. */
+  private async pauseForModelChange() {
+    ++this.modeRevision;
+    this.pauseCapture();
+    try {
+      if (this.props.canReleaseRecognition?.() ?? true)
+        await this.props.client.release({ signal: this.signal });
+    } catch (error) {
+      if (!this.signal.aborted) this.reportError(error);
+    }
+  }
   async install() {
     if (this.busy) return;
     this.busy = true;
-    await this.setEnabled(false);
+    await this.pauseForModelChange();
     this.error = undefined;
     const controller = new AbortController();
     this.installation = controller;
@@ -311,7 +330,7 @@ export class DictationStore extends Store<{
   async useModelPath(path: string) {
     if (this.busy || !path.trim()) return;
     this.busy = true;
-    await this.setEnabled(false);
+    await this.pauseForModelChange();
     try {
       await this.props.client.setModelPath(path.trim(), { signal: this.signal });
     } catch (error) {
@@ -323,7 +342,7 @@ export class DictationStore extends Store<{
   async remove() {
     if (this.busy) return;
     this.busy = true;
-    await this.setEnabled(false);
+    await this.pauseForModelChange();
     try {
       await this.props.client.remove({ signal: this.signal });
     } catch (error) {

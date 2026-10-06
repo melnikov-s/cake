@@ -54,6 +54,7 @@ export const SettingsSpeechSection = observer(function SettingsSpeechSection({
           id="speech-key"
           type="password"
           autoComplete="off"
+          placeholder={speech.settings?.keyConfigured ? "••••••••••••••••" : undefined}
           value={speech.apiKeyDraft}
           disabled={speech.busy}
           onChange={(event) => {

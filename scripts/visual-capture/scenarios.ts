@@ -434,8 +434,8 @@ const conversationCountdownScenario: VisualCaptureScenario = {
 
 const speechOutputSettingsScenario: VisualCaptureScenario = {
   name: "speech-output-settings",
-  description: "Actual Speech output Settings with an empty masked ElevenLabs API key input",
-  states: ["default", "faster"],
+  description: "Actual Speech output Settings with empty or saved-key masked ElevenLabs input",
+  states: ["default", "faster", "configured"],
   seed: conversationEntryScenario.seed,
   async prepare(page, state, application) {
     await conversationEntryScenario.prepare(page, "default", application);
@@ -448,6 +448,14 @@ const speechOutputSettingsScenario: VisualCaptureScenario = {
     await expect(key).toHaveAttribute("type", "password");
     await expect(key).toHaveValue("");
     await expect(page.getByText(/No key configured/)).toBeVisible();
+    if (state === "configured") {
+      // Save a non-secret fixture locally; no voice refresh or provider request.
+      await key.fill("visual-fixture-key");
+      await page.getByRole("button", { name: "Save key", exact: true }).click();
+      await expect(key).toHaveValue("");
+      await expect(key).toHaveAttribute("placeholder", "••••••••••••••••");
+      await expect(page.getByRole("button", { name: "Save key", exact: true })).toBeDisabled();
+    }
     const slider = page.getByRole("slider", { name: "Speaking speed" });
     await expect(slider).toBeVisible();
     if (state === "faster") {

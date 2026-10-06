@@ -115,17 +115,27 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
       .map((value) => JSON.stringify(value))
       .join("\n") + "\n",
   );
-  const application = await electron.launch({
-    args: [repositoryRoot, "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
-    cwd: repositoryRoot,
-    env: {
-      ...process.env,
-      CAKE_ELECTRON_SMOKE: "1",
-      CAKE_SMOKE_DICTATION_HELPER: helper,
-      CAKE_ELECTRON_USER_DATA: userData,
-      CAKE_HOME: cakeHome,
-    },
-  });
+  const launch = () =>
+    electron.launch({
+      args: [
+        repositoryRoot,
+        "--use-fake-ui-for-media-stream",
+        "--use-fake-device-for-media-stream",
+      ],
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        CAKE_ELECTRON_SMOKE: "1",
+        CAKE_SMOKE_DICTATION_HELPER: helper,
+        CAKE_ELECTRON_USER_DATA: userData,
+        CAKE_HOME: cakeHome,
+      },
+    });
+  let application = await launch();
+  const savedEnabled = async () => {
+    const document = JSON.parse(await readFile(join(userData, "window-state.json"), "utf8"));
+    return document.data?.children?.dictationStore?.state?.enabled;
+  };
   try {
     const page = await application.firstWindow();
     await expect(
@@ -267,6 +277,26 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await page.getByLabel("Use an existing Core ML Parakeet model folder").focus();
     await sample.focus();
     await expect(page.getByRole("button", { name: "Stop dictation" })).toBeVisible();
+    await expect.poll(savedEnabled).toBe(true);
+    await application.close();
+    application = await launch();
+    const restarted = await application.firstWindow();
+    // The settings surface itself is restored, as well as the preference.
+    await restarted.getByRole("button", { name: /Dictation Local speech to text/ }).click();
+    const restartedMode = restarted.getByRole("switch", { name: "Dictation mode" });
+    await expect(restartedMode).toBeChecked();
+    await restarted.getByLabel("Try dictation").focus();
+    await expect(restarted.getByRole("button", { name: "Stop dictation" })).toBeVisible();
+    await restartedMode.click();
+    await expect(restartedMode).not.toBeChecked();
+    await expect.poll(savedEnabled).toBe(false);
+    await application.close();
+    application = await launch();
+    const disabled = await application.firstWindow();
+    await disabled.getByRole("button", { name: /Dictation Local speech to text/ }).click();
+    await expect(disabled.getByRole("switch", { name: "Dictation mode" })).not.toBeChecked();
+    await disabled.getByLabel("Try dictation").focus();
+    await expect(disabled.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
   } finally {
     await application.close();
     await rm(root, { recursive: true, force: true });

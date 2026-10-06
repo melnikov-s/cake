@@ -1,13 +1,16 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/domain/conversations/conversation-data";
-import type { DictationAudio } from "../../../src/domain/dictation/dictation-data";
+import type { DictationAudio, DictationState } from "../../../src/domain/dictation/dictation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SettingsDictationSection } from "../../../src/renderer/components/settings-dictation-section";
+import { WindowStatePersistence } from "../../../src/renderer/persistence/WindowStatePersistence";
+import type { TestClientOverrides } from "./test-client";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { installedDictationState } from "../../helpers/dictation";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
@@ -116,6 +119,9 @@ function renderDictation(
     modelReady?: Promise<void>;
     permission?: Promise<void>;
     microphoneReady?: Promise<void>;
+    snapshot?: StoreSnapshot;
+    state?: DictationState;
+    client?: TestClientOverrides;
   } = {},
 ) {
   const audio = browserAudio(options);
@@ -123,7 +129,11 @@ function renderDictation(
   const prepare = vi.fn<Client["dictation"]["prepare"]>(async () => {
     await options.modelReady;
     // The native authority publishes Ready when its warmup completes.
-    fixture.root.dictationStore.applyState({ ...installedDictationState, status: "ready" });
+    fixture.root.dictationStore.applyState({
+      ...installedDictationState,
+      ...options.state,
+      status: "ready",
+    });
   });
   const release = vi.fn<Client["dictation"]["release"]>(async () => undefined);
   const transcribe = vi.fn<Client["dictation"]["transcribe"]>((input) => {
@@ -138,7 +148,12 @@ function renderDictation(
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project" })],
     sessions: [sessionSummary({ sessionId, projectPath: "/project" })],
-    client: { dictation: { prepare, release, transcribe }, sessionChats: { prompt } },
+    snapshot: options.snapshot,
+    client: {
+      ...options.client,
+      dictation: { prepare, release, transcribe, ...options.client?.dictation },
+      sessionChats: { prompt },
+    },
   });
   const session = fixture.root.sessionRegistry.load(sessionId, "/project");
   fixture.root.appShellStore.selectProjectSession(sessionId);
@@ -146,6 +161,7 @@ function renderDictation(
   fixture.root.dictationStore.applyState({
     ...installedDictationState,
     status: options.modelReady ? "loading" : "ready",
+    ...options.state,
   });
   applyConversationUpdate(fixture.models.projectConversation(sessionId, "/project"), {
     _tag: "Snapshot",
@@ -177,6 +193,8 @@ function renderDictation(
   );
   return {
     user: userEvent.setup(),
+    root: fixture.root,
+    client: fixture.client,
     audio,
     prepare,
     release,
@@ -203,6 +221,111 @@ const listening = () => expect(screen.getAllByText("Listening").length).toBeGrea
 afterEach(cleanup);
 
 describe("Dictation writing-field workflow", () => {
+  it("persists only user enablement and microphone choice, restoring capture on focus", async () => {
+    let saved: StoreSnapshot | undefined;
+    {
+      const save = vi.fn<Client["windowState"]["save"]>(async () => undefined);
+      using fixture = renderDictation({ client: { windowState: { save } } });
+      using persistence = new WindowStatePersistence(fixture.client, (error) => {
+        throw error;
+      });
+      persistence.observe(fixture.root);
+      await fixture.user.click(mode());
+      await fixture.user.selectOptions(screen.getByLabelText("Microphone"), "usb-mic");
+      await fixture.user.click(trial());
+      listening();
+      await fixture.user.keyboard("{Escape}");
+      expect(mode().getAttribute("aria-checked")).toBe("true");
+      await persistence.flush();
+      saved = toSnapshot(fixture.root);
+      expect(save).toHaveBeenLastCalledWith(saved);
+      expect(saved.children.dictationStore).toEqual({
+        state: { enabled: true, deviceId: "usb-mic" },
+        children: {},
+      });
+    }
+    {
+      using fixture = renderDictation({ snapshot: saved });
+      expect(mode().getAttribute("aria-checked")).toBe("true");
+      await waitFor(() =>
+        expect(screen.getByLabelText<HTMLSelectElement>("Microphone").value).toBe("usb-mic"),
+      );
+      expect(fixture.audio.getUserMedia).not.toHaveBeenCalled();
+      await fixture.user.click(trial());
+      listening();
+      expect(fixture.audio.getUserMedia).toHaveBeenCalledWith(
+        expect.objectContaining({
+          audio: expect.objectContaining({ deviceId: { exact: "usb-mic" } }),
+        }),
+      );
+      await fixture.user.click(mode());
+      expect(mode().getAttribute("aria-checked")).toBe("false");
+      saved = toSnapshot(fixture.root);
+    }
+    {
+      using fixture = renderDictation({ snapshot: saved });
+      expect(mode().getAttribute("aria-checked")).toBe("false");
+      await fixture.user.click(trial());
+      expect(fixture.audio.getUserMedia).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([
+    { operation: "folder", fail: false },
+    { operation: "folder", fail: true },
+    { operation: "install", fail: false },
+    { operation: "install", fail: true },
+    { operation: "remove", fail: false },
+    { operation: "remove", fail: true },
+  ])(
+    "pauses for model $operation (failure: $fail) without changing the user preference",
+    async ({ operation, fail }) => {
+      const pending = deferred<void>();
+      const mutation = vi.fn(async () => pending.promise);
+      using fixture = renderDictation({
+        state: { ...installedDictationState, status: "ready", modelPath: "/external/model" },
+        client: { dictation: { setModelPath: mutation, install: mutation, remove: mutation } },
+      });
+      await fixture.user.click(mode());
+      await fixture.user.click(trial());
+      listening();
+      const captures = fixture.audio.getUserMedia.mock.calls.length;
+      if (operation === "folder") {
+        await fixture.user.type(
+          screen.getByLabelText("Use an existing Core ML Parakeet model folder"),
+          "/other/model",
+        );
+        await fixture.user.click(screen.getByRole("button", { name: "Use model folder" }));
+      } else {
+        await fixture.user.click(
+          screen.getByRole("button", {
+            name: operation === "install" ? "Download Parakeet model" : "Remove Cake model data",
+          }),
+        );
+      }
+      expect(mutation).toHaveBeenCalledOnce();
+      expect(mode().getAttribute("aria-checked")).toBe("true");
+      await fixture.user.click(trial());
+      expect(fixture.audio.getUserMedia).toHaveBeenCalledTimes(captures);
+      await act(async () => {
+        if (fail) pending.reject(new Error("Model maintenance failed"));
+        else {
+          pending.resolve();
+          if (operation === "remove")
+            fixture.root.dictationStore.applyState({
+              ...installedDictationState,
+              status: "missing",
+              modelPath: undefined,
+            });
+        }
+      });
+      expect(mode().getAttribute("aria-checked")).toBe("true");
+      if (fail) expect(screen.getAllByText("Model maintenance failed").length).toBeGreaterThan(0);
+      await fixture.user.click(mode());
+      expect(mode().getAttribute("aria-checked")).toBe("false");
+    },
+  );
+
   it("shows in-field bars from microphone volume, decays on silence and resets on refocus", async () => {
     using fixture = renderDictation();
     await fixture.user.click(mode());

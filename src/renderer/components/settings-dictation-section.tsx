@@ -41,9 +41,12 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
       )}
       <SettingsToggle
         label="Dictation mode"
-        description="Focus a writing field, wait for the voice bars, then speak. Enter finishes your last words and submits where supported. Mode starts off when Cake opens."
+        description="Focus a writing field, wait for the voice bars, then speak. Enter finishes your last words and submits where supported. Your choice is remembered when Cake opens; temporary pauses do not turn it off."
         checked={store.enabled}
-        disabled={!state?.supported || !state.engineAvailable || !state.modelPath || installing}
+        disabled={
+          installing ||
+          (!store.enabled && (!state?.supported || !state.engineAvailable || !state.modelPath))
+        }
         onChange={(enabled) => void store.setEnabled(enabled)}
       />
       <div className="grid gap-3 rounded-lg border border-border p-4">

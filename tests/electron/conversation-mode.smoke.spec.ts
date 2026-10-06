@@ -814,11 +814,26 @@ test("speech settings accept a masked key and voice selection through native inp
     const key = f.page.getByLabel("ElevenLabs API key");
     await expect(key).toHaveAttribute("type", "password");
     await expect(key).toHaveValue("");
+    await expect(key).toHaveAttribute("placeholder", "••••••••••••••••");
+    await expect(f.page.getByRole("button", { name: "Save key", exact: true })).toBeDisabled();
     await expect(f.page.getByText(/Key configured/)).toBeVisible();
     await expect(f.page.getByLabel("Voice")).toHaveValue("fixture-voice");
+    await f.page.reload();
+    // Settings itself is restored by window-state persistence.
+    await f.page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    await expect(key).toHaveAttribute("placeholder", "••••••••••••••••");
+    await key.focus();
+    await key.pressSequentially("replacement-fixture-key");
+    await expect(key).toBeFocused();
+    await expect(key).toHaveValue("replacement-fixture-key");
+    await expect(f.page.getByRole("button", { name: "Save key", exact: true })).toBeEnabled();
+    await f.page.getByRole("button", { name: "Save key", exact: true }).click();
+    await expect(key).toHaveValue("");
+    await expect(key).toHaveAttribute("placeholder", "••••••••••••••••");
     expect(await speechHttpRequests(f.application)).toEqual([]);
     await f.page.getByRole("button", { name: "Remove key" }).click();
     await expect(f.page.getByText(/No key configured/)).toBeVisible();
+    await expect(key).not.toHaveAttribute("placeholder", "••••••••••••••••");
   } finally {
     await f.close();
   }
