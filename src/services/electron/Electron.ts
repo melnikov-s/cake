@@ -31,6 +31,22 @@ interface FullscreenSurfaceState {
 }
 
 export interface ElectronService {
+  readonly configureScreenCapture: (
+    connectionId: number,
+    request: Payload<"configure-screen-capture">,
+  ) => Effect.Effect<Success<"configure-screen-capture">, ElectronError>;
+  readonly startScreenCapture: (
+    connectionId: number,
+    request: Payload<"start-screen-capture">,
+  ) => Effect.Effect<Success<"start-screen-capture">, ElectronError>;
+  readonly screenCaptureState: (
+    connectionId: number,
+    request: Payload<"screen-capture-state">,
+  ) => Effect.Effect<Success<"screen-capture-state">, ElectronError>;
+  readonly finishScreenCapture: (
+    connectionId: number,
+    request: Payload<"finish-screen-capture">,
+  ) => Effect.Effect<Success<"finish-screen-capture">, ElectronError>;
   readonly chooseProject: (
     connectionId: number,
     request: Payload<"choose-project">,

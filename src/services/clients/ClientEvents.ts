@@ -25,6 +25,7 @@ export interface ClientEventsService {
       | "draw-control-requested"
       | "browser-native-requested"
       | "widget-capture-requested"
+      | "screen-capture-requested"
       | "application-hotkey-input"
       | "window-blurred"
       | "browser-entered"

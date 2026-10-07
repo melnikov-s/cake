@@ -1,6 +1,7 @@
 import { SettingsMcpSection } from "./settings-mcp-section";
 import { SettingsDictationSection } from "./settings-dictation-section";
 import { SettingsSpeechSection } from "./settings-speech-section";
+import { SettingsScreenCaptureSection } from "./settings-screen-capture-section";
 import { SettingsDesktopHostSection } from "./settings-desktop-host-section";
 import { useEffect, useState } from "react";
 import { observer } from "r-state-tree/react";
@@ -928,6 +929,12 @@ export const SettingsPage = observer(function SettingsPage({
               <SettingsSpeechSection speech={settings.speech} />
             ))}
           {activePage === "appearance" && <SettingsAppearanceSection appearance={appearance} />}
+          {activePage === "screen-capture" &&
+            (browserMode ? (
+              <Callout>Screen capture is available only in the Cake desktop app.</Callout>
+            ) : (
+              <SettingsScreenCaptureSection capture={settings.screenCapture} />
+            ))}
           {activePage === "hotkeys" && <SettingsHotkeysSection hotkeys={settings.hotkeys} />}
           {activePage === "editor" && (
             <SettingsEmbeddedEditorSection settings={settings.embeddedEditor} />

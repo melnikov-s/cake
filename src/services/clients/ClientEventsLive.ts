@@ -87,6 +87,7 @@ export const ClientEventsLive = Layer.effect(
           "draw-control-requested",
           "widget-capture-requested",
           "browser-native-requested",
+          "screen-capture-requested",
           "application-hotkey-input",
           "window-blurred",
           "browser-entered",

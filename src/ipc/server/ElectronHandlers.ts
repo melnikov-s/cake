@@ -8,6 +8,22 @@ const withConnection = <A, E, R>(operation: (connectionId: number) => Effect.Eff
   Effect.flatMap(RendererConnection, ({ connectionId }) => operation(connectionId));
 
 export const electronHandlers = ElectronRpc.of({
+  "electron.configure-screen-capture": (request) =>
+    withConnection((id) =>
+      Effect.flatMap(Electron, (service) => service.configureScreenCapture(id, request)),
+    ),
+  "electron.start-screen-capture": (request) =>
+    withConnection((id) =>
+      Effect.flatMap(Electron, (service) => service.startScreenCapture(id, request)),
+    ),
+  "electron.screen-capture-state": (request) =>
+    withConnection((id) =>
+      Effect.flatMap(Electron, (service) => service.screenCaptureState(id, request)),
+    ),
+  "electron.finish-screen-capture": (request) =>
+    withConnection((id) =>
+      Effect.flatMap(Electron, (service) => service.finishScreenCapture(id, request)),
+    ),
   "electron.choose-project": (request) =>
     withConnection((connectionId) =>
       Effect.flatMap(Electron, (service) => service.chooseProject(connectionId, request)),

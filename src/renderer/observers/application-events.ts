@@ -16,6 +16,10 @@ export const observeApplicationEvents = (
   runtime.observe(
     (client) => client.events.application(),
     (event) => {
+      if (event.type === "screen-capture-requested") {
+        if (host === "desktop") void root.screenCaptureStore.capture();
+        return;
+      }
       if (event.type === "window-blurred") {
         void root.conversationModeStore.exit();
         return;

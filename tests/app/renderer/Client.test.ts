@@ -92,6 +92,10 @@ describe("Client", () => {
       () => client.desktopSharing.configure({ enabled: true, bind: "127.0.0.1", port: 4317 }),
       () => client.windowState.load(),
       () => client.electron.chooseProject(),
+      () => client.electron.startScreenCapture(),
+      () => client.electron.configureScreenCapture({ shortcut: "Mod+Shift+6", maxDimension: 2048 }),
+      () => client.electron.screenCaptureState(),
+      () => client.electron.finishScreenCapture(),
       () => client.vscode.install(),
       () => client.browser.open("session"),
       () => client.models.login({ provider: "test", authType: "api_key" }),
@@ -241,6 +245,7 @@ describe("Client", () => {
     const client = makeClient(runtime);
 
     expect(Object.keys(client)).toEqual([
+      "speechOutput",
       "dictation",
       "desktopHost",
       "backendConnection",
@@ -249,6 +254,7 @@ describe("Client", () => {
       "windowState",
       "nonChatModels",
       "models",
+      "mcpSettings",
       "piSettings",
       "modelPresets",
       "draw",

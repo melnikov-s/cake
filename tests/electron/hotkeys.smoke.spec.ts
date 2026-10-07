@@ -177,7 +177,7 @@ test("remaps application hotkeys from Settings", async () => {
     await page.reload();
     await expect(messageInput).toBeVisible();
     await page.getByRole("complementary").getByLabel("Open settings", { exact: true }).click();
-    await page.getByRole("button", { name: "Hotkeys", exact: true }).click();
+    await page.getByRole("button", { name: /^Hotkeys\b/ }).click();
     await expect(sidebarShortcut).toHaveText(
       process.platform === "darwin" ? "⌘⇧B" : "Ctrl+Shift+B",
     );

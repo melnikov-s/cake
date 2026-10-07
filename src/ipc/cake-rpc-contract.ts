@@ -1,4 +1,9 @@
 import { Schema } from "effect";
+import {
+  CaptureImage,
+  ScreenCaptureSettings,
+  ScreenCaptureSnapshot,
+} from "../domain/screen-capture/screen-capture-data";
 import { artifactRecordSchema } from "./artifact-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { editorLocationSchema } from "./editor-location";
@@ -62,6 +67,7 @@ const embeddedEditorExplicitSelectionFields = {
 };
 
 const cakeEventSchemas = {
+  "screen-capture-requested": Schema.Struct({ type: Schema.Literal("screen-capture-requested") }),
   "window-blurred": Schema.Struct({ type: Schema.Literal("window-blurred") }),
   "renderer-events-ready": Schema.Struct({
     type: Schema.Literal("renderer-events-ready"),
@@ -258,6 +264,7 @@ const cakeEventSchemas = {
 } as const;
 
 export const applicationEventSchema = Schema.Union([
+  cakeEventSchemas["screen-capture-requested"],
   cakeEventSchemas["window-blurred"],
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["changelog-snapshot"],
@@ -310,6 +317,7 @@ export const surfaceEventSchema = Schema.Union([
 ]);
 
 export const cakeEventSchema = Schema.Union([
+  cakeEventSchemas["screen-capture-requested"],
   cakeEventSchemas["window-blurred"],
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["fullscreen-surface-close-requested"],
@@ -350,6 +358,10 @@ const terminalTarget = Schema.Struct({
 });
 
 export const cakeRpcPayloadSchemas = {
+  "configure-screen-capture": ScreenCaptureSettings,
+  "start-screen-capture": Schema.Struct({}),
+  "screen-capture-state": Schema.Struct({}),
+  "finish-screen-capture": Schema.Struct({ image: Schema.optionalKey(CaptureImage) }),
   "choose-project": Schema.Struct({}),
   "save-draw-export": Schema.Struct({
     format: Schema.Literals(["png", "svg", "excalidraw"]),
@@ -806,6 +818,12 @@ const cakeRpcResultSchemas = {
 } as const;
 
 export const cakeRpcSuccessSchemas = {
+  "configure-screen-capture": Schema.Struct({}),
+  "start-screen-capture": Schema.Struct({
+    data: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(20_000_000))),
+  }),
+  "screen-capture-state": ScreenCaptureSnapshot,
+  "finish-screen-capture": Schema.Struct({}),
   "choose-project": cakeRpcResultSchemas["project-chosen"],
   "save-draw-export": cakeRpcResultSchemas["draw-export-saved"],
   "open-external-url": cakeRpcResultSchemas["external-url-opened"],

@@ -1,5 +1,9 @@
 import type { Effect } from "effect";
 import type {
+  ScreenCaptureSettings,
+  ScreenCaptureSnapshot,
+} from "../../domain/screen-capture/screen-capture-data";
+import type {
   ArtifactLineageDetail,
   ArtifactLineageId,
   ArtifactLineagePage,
@@ -106,6 +110,13 @@ type SessionContextMenuAction = {
 };
 
 interface ElectronCommands {
+  configureScreenCapture(
+    settings: ScreenCaptureSettings,
+    options?: ClientCommandOptions,
+  ): Promise<void>;
+  startScreenCapture(options?: ClientCommandOptions): Promise<string | undefined>;
+  screenCaptureState(options?: ClientCommandOptions): Promise<ScreenCaptureSnapshot>;
+  finishScreenCapture(image?: string, options?: ClientCommandOptions): Promise<void>;
   chooseProject(options?: ClientCommandOptions): Promise<string | undefined>;
   saveDrawExport(
     input: {

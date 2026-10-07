@@ -32,6 +32,14 @@ fall back to the first). The New session workflow uses it for Cake Chat and
 registered Projects, remembering the last new-session Project choice in the
 window snapshot; opening Cake Chat or cancelling does not replace that choice.
 
+## Screen capture
+
+`CaptureCanvas` is the controlled screenshot gesture surface: pixel-coordinate pointer capture,
+frozen-image rendering, annotated arrows/labels, and a non-exported crop guide. It delegates
+crop/annotation policy to its owner. `CaptureToolbar` composes shared controls for mode switching,
+undo, full-display attachment, and cancellation. Both are used by the native capture overlay;
+only the flattened screenshot and annotations enter a chat draft.
+
 ## Inline links
 
 `Link` is the shared anchor for Markdown, source citations, session links, and

@@ -15,6 +15,7 @@ import {
   type WebContents,
 } from "electron";
 import { decodeDrawExportData, drawExportExtension, drawExportFilters } from "./DrawExportFile";
+import { ScreenCaptureWindow } from "./ScreenCaptureWindow";
 import { shouldAllowNavigation } from "./navigation-policy";
 import {
   CAKE_TITLE_BAR_HEIGHT,
@@ -64,6 +65,23 @@ const makeElectronService = (
   connections: ClientConnections["Service"],
 ) => {
   const windows = new Map<number, BrowserWindow>();
+  let lastFocusedWindow: BrowserWindow | undefined;
+  const capture = new ScreenCaptureWindow({
+    preloadPath: options.preloadPath,
+    rendererPath: options.rendererPath,
+    rendererUrl: process.env.ELECTRON_RENDERER_URL,
+    hidden: process.env.CAKE_ELECTRON_SMOKE === "1",
+    targetWindow: () => {
+      const focused = BrowserWindow.getFocusedWindow();
+      return focused && windows.has(focused.id)
+        ? focused
+        : lastFocusedWindow && !lastFocusedWindow.isDestroyed()
+          ? lastFocusedWindow
+          : [...windows.values()].at(-1);
+    },
+    requestCapture: (window) =>
+      clientEvents.sendTo(connectionForWindow(window), { type: "screen-capture-requested" }),
+  });
   const fullscreenSurfaces = new Map<number, Set<string>>();
   const fullscreenSurfaceListeners = new Set<
     (state: { readonly connectionId: number; readonly open: boolean }) => void
@@ -152,6 +170,20 @@ const makeElectronService = (
     const nativeId = window.webContents.id;
     const ownerId = connections.desktop(nativeId);
     windows.set(window.id, window);
+    lastFocusedWindow = window;
+    window.on("focus", () => {
+      lastFocusedWindow = window;
+      try {
+        capture.activate(window);
+      } catch (error) {
+        clientEvents.sendTo(connectionForWindow(window), {
+          type: "notification",
+          title: "Screen capture shortcut unavailable",
+          message: error instanceof Error ? error.message : String(error),
+          tone: "error",
+        });
+      }
+    });
     window.on("blur", () => {
       clientEvents.sendTo(connectionForWindow(window), { type: "window-blurred" });
     });
@@ -227,6 +259,7 @@ const makeElectronService = (
     });
     window.on("closed", () => {
       const workingDirectory = clientWorkspaces.workspaceForConnection(ownerId);
+      capture.release(window);
       windows.delete(window.id);
       clientWorkspaces.releaseConnection(ownerId);
       connections.release(ownerId);
@@ -353,6 +386,44 @@ const makeElectronService = (
   };
 
   const service = Electron.of({
+    configureScreenCapture: Effect.fn("Electron.configureScreenCapture")((connectionId, settings) =>
+      Effect.try({
+        try: () => {
+          const owner = BrowserWindow.fromWebContents(requireRendererConnection(connectionId));
+          if (!owner || !windows.has(owner.id))
+            throw new Error("Screen capture settings require a Cake window");
+          capture.configure(owner, settings);
+          return {};
+        },
+        catch: electronError,
+      }),
+    ),
+    startScreenCapture: Effect.fn("Electron.startScreenCapture")((connectionId) =>
+      Effect.tryPromise({
+        try: (signal) => {
+          const owner = BrowserWindow.fromWebContents(requireRendererConnection(connectionId));
+          if (!owner || !windows.has(owner.id))
+            throw new Error("Screen capture requires a Cake window");
+          return capture.start(owner, signal);
+        },
+        catch: electronError,
+      }),
+    ),
+    screenCaptureState: Effect.fn("Electron.screenCaptureState")((connectionId) =>
+      Effect.try({
+        try: () => capture.state(requireRendererConnection(connectionId).id),
+        catch: electronError,
+      }),
+    ),
+    finishScreenCapture: Effect.fn("Electron.finishScreenCapture")((connectionId, request) =>
+      Effect.try({
+        try: () => {
+          capture.finish(requireRendererConnection(connectionId).id, request.image);
+          return {};
+        },
+        catch: electronError,
+      }),
+    ),
     chooseProject: Effect.fn("Electron.chooseProject")(function* (connectionId) {
       const sender = yield* Effect.try({
         try: () => requireRendererConnection(connectionId),
@@ -687,6 +758,7 @@ const makeElectronService = (
         if (stopped) return;
         stopped = true;
         applicationQuitting = true;
+        capture.stop();
         options.application.removeListener("activate", onActivate);
         for (const menu of openSessionContextMenus) menu.closePopup();
         openSessionContextMenus.clear();

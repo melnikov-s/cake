@@ -697,6 +697,10 @@ export interface CakeIpcClientService {
     }) => Effect.Effect<void, SubagentError | TransportError>;
   };
   readonly electron: RpcOperations<
+    | "configure-screen-capture"
+    | "start-screen-capture"
+    | "screen-capture-state"
+    | "finish-screen-capture"
     | "choose-project"
     | "save-draw-export"
     | "open-external-url"
@@ -906,6 +910,7 @@ export interface CakeIpcClientService {
         | "draw-control-requested"
         | "browser-native-requested"
         | "widget-capture-requested"
+        | "screen-capture-requested"
         | "application-hotkey-input"
         | "window-blurred"
         | "browser-entered"
@@ -1351,6 +1356,18 @@ export const CakeIpcClientLive = Layer.effect(
         observe: () => client("desktopSharing.observe", undefined),
       },
       electron: {
+        "configure-screen-capture": Effect.fn("CakeIpcClient.electron.configure-screen-capture")(
+          (payload) => client("electron.configure-screen-capture", payload),
+        ),
+        "start-screen-capture": Effect.fn("CakeIpcClient.electron.start-screen-capture")(
+          (payload) => client("electron.start-screen-capture", payload),
+        ),
+        "screen-capture-state": Effect.fn("CakeIpcClient.electron.screen-capture-state")(
+          (payload) => client("electron.screen-capture-state", payload),
+        ),
+        "finish-screen-capture": Effect.fn("CakeIpcClient.electron.finish-screen-capture")(
+          (payload) => client("electron.finish-screen-capture", payload),
+        ),
         "choose-project": Effect.fn("CakeIpcClient.electron.choose-project")((payload) =>
           client("electron.choose-project", payload),
         ),

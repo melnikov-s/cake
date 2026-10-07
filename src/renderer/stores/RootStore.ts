@@ -1,4 +1,5 @@
 import { DictationStore } from "./DictationStore";
+import { ScreenCaptureAttachmentStore } from "./ScreenCaptureAttachmentStore";
 import { microphone, type Microphone } from "../dictation/microphone";
 import { createSpeechPlayback, type SpeechPlayback } from "../speech/playback";
 import { ConversationModeStore, ConversationModeContext } from "./ConversationModeStore";
@@ -62,6 +63,26 @@ export class RootStore extends Store<{
   speechPlayback?: SpeechPlayback;
 }> {
   private readonly defaultSpeechPlayback = createSpeechPlayback();
+  @child
+  get screenCaptureStore(): ScreenCaptureAttachmentStore {
+    return createStore(ScreenCaptureAttachmentStore, {
+      client: this.client.electron,
+      currentTarget: () => this.appShellStore.activeConversation,
+      findDraft: (target) => {
+        if (target.kind === "project-session") {
+          if (this.sessionCatalogStore.find(target.sessionId)?.resolved) return undefined;
+          return this.sessionRegistry.findSession(target.sessionId)?.conversationSessionStore
+            .composerStore.draftStore;
+        }
+        if (this.cakeChatCatalogModel.find(target.sessionId)?.resolved) return undefined;
+        return this.cakeChatCollectionStore.registry.find(target.sessionId)
+          ?.conversationSessionStore.composerStore.draftStore;
+      },
+      reportError: (message) =>
+        this.toastStore.show({ tone: "error", title: "Screen capture", message }),
+    });
+  }
+
   @child
   get drawControlStore(): DrawControlStore {
     return createStore(DrawControlStore, {
@@ -945,6 +966,7 @@ export class RootStore extends Store<{
     return createStore(SettingsStore, {
       dictation: this.dictationStore,
       speech: this.speechSettingsStore,
+      screenCapture: this.screenCaptureStore,
       desktopConnection: this.props.desktopConnection,
       operations: this.sessionOperationCoordinator,
       activeSession: () => {

@@ -14,6 +14,7 @@ export interface HotkeyRecorderProps {
   onChange(value: string): void;
   onClear(): void;
   onReset(): void;
+  onRecordingChange?(recording: boolean): void;
 }
 
 /** A keyboard-accessible control for recording one application shortcut. */
@@ -24,9 +25,18 @@ export function HotkeyRecorder({
   onChange,
   onClear,
   onReset,
+  onRecordingChange,
 }: HotkeyRecorderProps) {
   const [recording, setRecording] = useState(false);
   const container = useRef<HTMLDivElement>(null);
+  const recordingChanged = useRef(onRecordingChange);
+  recordingChanged.current = onRecordingChange;
+  useEffect(() => {
+    recordingChanged.current?.(recording);
+    return () => {
+      if (recording) recordingChanged.current?.(false);
+    };
+  }, [recording]);
 
   useEffect(() => {
     if (!recording) return;

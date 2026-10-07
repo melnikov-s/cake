@@ -178,6 +178,20 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
         ],
       },
       {
+        page: "screen-capture",
+        label: "Screen Capture",
+        description: "Screenshot attachments",
+        introduction: "Capture and annotate your screen directly into a chat draft.",
+        settings: [
+          {
+            label: "Capture shortcut and image size",
+            targetId: "screen-capture-title",
+            keywords:
+              "screenshot crop rectangle arrow annotation global shortcut image attachment resize",
+          },
+        ],
+      },
+      {
         page: "dictation",
         label: "Dictation",
         description: "Local speech to text",

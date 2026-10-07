@@ -472,6 +472,25 @@ const speechOutputSettingsScenario: VisualCaptureScenario = {
   },
 };
 
+const screenCaptureSettingsScenario: VisualCaptureScenario = {
+  name: "screen-capture-settings",
+  description: "Screen capture shortcut, image resizing, and crop/annotation instructions",
+  states: ["default"],
+  seed: assistantMarkdownCode.seed,
+  async prepare(page, state, application) {
+    await assistantMarkdownCode.prepare(page, state, application);
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /^Screen Capture/ }).click();
+    await expect(page.locator("#screen-capture-title")).toBeVisible();
+    await expect(page.getByLabel("Maximum image dimension")).toHaveValue("2048");
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page.locator("#settings-content-scroll");
+  },
+};
+
 const inlineLinks: VisualCaptureScenario = {
   name: "inline-links",
   description: "Consistent artifact, workspace, website, and session links in prose",
@@ -1594,6 +1613,7 @@ export const visualCaptureScenarios = [
   conversationEntryScenario,
   conversationCountdownScenario,
   speechOutputSettingsScenario,
+  screenCaptureSettingsScenario,
   inlineLinks,
   requestExplanationScenario,
   drawMermaidArchitectureScenario,

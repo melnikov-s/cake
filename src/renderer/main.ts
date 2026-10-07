@@ -10,6 +10,9 @@ import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { DesktopBridgeError } from "./components/desktop-bridge-error";
 import { RendererRoot } from "./components/renderer-root";
+import { ScreenCaptureOverlay } from "./components/screen-capture-overlay";
+import { ScreenCaptureOverlayStore } from "./stores/ScreenCaptureOverlayStore";
+import { renderCaptureImage } from "./screen-capture/render-capture";
 import { makeRuntime, makeRemoteRuntime, type Runtime } from "./runtime";
 import { makeClient } from "./client/ClientLive";
 import {
@@ -37,7 +40,25 @@ interface PersistenceRef {
 }
 
 if (!window.cake) root.render(createElement(DesktopBridgeError));
-else void bootstrap(window.cake);
+else if (new URLSearchParams(window.location.search).get("screenCapture") === "1") {
+  const runtime = makeRuntime(window.cake.rpc);
+  const store = mount(
+    createStore(ScreenCaptureOverlayStore, {
+      client: makeClient(runtime).electron,
+      renderImage: renderCaptureImage,
+    }),
+  );
+  root.render(createElement(ScreenCaptureOverlay, { store }));
+  void store.initialize();
+  window.addEventListener(
+    "pagehide",
+    () => {
+      store[Symbol.dispose]();
+      void runtime.dispose();
+    },
+    { once: true },
+  );
+} else void bootstrap(window.cake);
 
 async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   const initialRuntime = makeRuntime(bridge.rpc);
@@ -159,6 +180,7 @@ async function mountDesktop(runtime: Runtime, client: Client, connection: Deskto
   );
   persistenceRef.current = persistence;
   persistence.observe(rootStore);
+  void rootStore.screenCaptureStore.configure();
   const stopObservingModels = observeModels(runtime, projection, rootStore);
   const stopObservingEvents = observeEvents(runtime, projection, rootStore);
   const stopObservingSavedDrafts = observeSavedDrafts(

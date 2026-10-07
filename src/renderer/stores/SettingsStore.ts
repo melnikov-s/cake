@@ -1,4 +1,5 @@
 import type { DictationStore } from "./DictationStore";
+import type { ScreenCaptureAttachmentStore } from "./ScreenCaptureAttachmentStore";
 import type { SpeechSettingsStore } from "./SpeechSettingsStore";
 import type { DesktopConnectionStore } from "./DesktopConnectionStore";
 import { Store, child, createStore } from "r-state-tree";
@@ -40,11 +41,13 @@ export type SettingsPageId =
   | "hotkeys"
   | "editor"
   | "dictation"
-  | "speech";
+  | "speech"
+  | "screen-capture";
 
 export interface SettingsStoreProps {
   dictation: DictationStore;
   speech: SpeechSettingsStore;
+  screenCapture: ScreenCaptureAttachmentStore;
   desktopConnection?: DesktopConnectionStore;
   operations: SessionOperationCoordinatorStore;
   activeSession(): ProjectSessionStore | CakeChatSessionStore | undefined;
@@ -97,6 +100,10 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     return createStore(ProviderSettingsStore, {
       operations: this.props.operations,
     });
+  }
+
+  get screenCapture() {
+    return this.props.screenCapture;
   }
 
   get speech() {

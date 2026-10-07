@@ -3,6 +3,7 @@ import { createStore, mount } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
 import { SettingsStore } from "../../../../src/renderer/stores/SettingsStore";
+import { ScreenCaptureAttachmentStore } from "../../../../src/renderer/stores/ScreenCaptureAttachmentStore";
 import { SpeechSettingsStore } from "../../../../src/renderer/stores/SpeechSettingsStore";
 import { createTestClient } from "../test-client";
 
@@ -13,6 +14,14 @@ function createSettingsStore() {
       dictation: createDictationStore(),
       speech: mount(createStore(SpeechSettingsStore, { client: createTestClient().speechOutput })),
       operations,
+      screenCapture: mount(
+        createStore(ScreenCaptureAttachmentStore, {
+          client: createTestClient().electron,
+          currentTarget: () => undefined,
+          findDraft: () => undefined,
+          reportError: () => {},
+        }),
+      ),
       activeSession: () => undefined,
     }),
   );

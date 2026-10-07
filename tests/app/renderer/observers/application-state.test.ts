@@ -1,18 +1,11 @@
-import { createDictationStore } from "../../../helpers/dictation";
 import { Effect, Stream } from "effect";
-import { child, createStore, mount, Store } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import type { ModelPreset } from "../../../../src/ipc/session-contract";
-import type { Client } from "../../../../src/renderer/client/Client";
 import { observeApplicationState } from "../../../../src/renderer/observers/application-state";
 import { observeStream } from "../../../../src/renderer/observers/observe-stream";
 import type { Runtime } from "../../../../src/renderer/runtime";
-import type { RootStore } from "../../../../src/renderer/stores/RootStore";
-import { SettingsStore } from "../../../../src/renderer/stores/SettingsStore";
-import { SpeechSettingsStore } from "../../../../src/renderer/stores/SpeechSettingsStore";
-import { createTestClient } from "../test-client";
-import { ClientContext } from "../../../../src/renderer/stores/context/ClientContext";
+import { createRendererStoreFixture } from "../renderer-store-fixture";
 
 const runtimeFor = (client: CakeIpcClientService): Runtime => {
   const execute: Runtime["execute"] = (effect, signal) =>
@@ -26,32 +19,11 @@ const runtimeFor = (client: CakeIpcClientService): Runtime => {
     dispose: async () => undefined,
   };
 };
-
-class HarnessStore extends Store {
-  [ClientContext.provide]() {
-    return {} as Client;
-  }
-
-  @child get speech() {
-    return createStore(SpeechSettingsStore, { client: createTestClient().speechOutput });
-  }
-
-  @child get settings() {
-    return createStore(SettingsStore, {
-      dictation: createDictationStore(),
-      speech: this.speech,
-      operations: {} as never,
-      activeSession: () => undefined,
-    });
-  }
-}
-
 const externalStatus = {
   id: "b925b5dd-9661-4f1a-9f40-406be3c96c27",
   name: "In review",
   color: "cyan" as const,
 };
-
 const externalPreset: ModelPreset = {
   id: "00000000-0000-4000-8000-000000000001",
   name: "Changed elsewhere",
@@ -83,21 +55,16 @@ describe("observeApplicationState", () => {
           ),
       },
     } as unknown as CakeIpcClientService;
-    const harness = mount(createStore(HarnessStore));
-    const root = {
-      settingsStore: harness.settings,
-      projectWorkbenchStore: { setError: () => undefined },
-    } as unknown as RootStore;
-
-    const cancel = observeApplicationState(runtimeFor(client), root);
-
-    await expect
-      .poll(() => harness.settings.modelPresets.presets[0]?.name)
-      .toBe("Changed elsewhere");
-    expect(harness.settings.modelPresets.defaultPresetId).toBe(externalPreset.id);
-    expect(harness.settings.globalLabels.labels).toEqual([externalStatus]);
-
-    cancel();
-    harness[Symbol.dispose]();
+    using fixture = createRendererStoreFixture();
+    const cancel = observeApplicationState(runtimeFor(client), fixture.root);
+    try {
+      await expect
+        .poll(() => fixture.root.settingsStore.modelPresets.presets[0]?.name)
+        .toBe("Changed elsewhere");
+      expect(fixture.root.settingsStore.modelPresets.defaultPresetId).toBe(externalPreset.id);
+      expect(fixture.root.settingsStore.globalLabels.labels).toEqual([externalStatus]);
+    } finally {
+      cancel();
+    }
   });
 });
