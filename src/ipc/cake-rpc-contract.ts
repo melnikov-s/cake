@@ -18,7 +18,7 @@ import {
 } from "./inline-widget-contract";
 import { jsonValueSchema } from "./json-contract";
 import { ProjectSettings } from "../domain/application/application-data";
-import { CakePrompts } from "../domain/application/cake-prompts";
+import { CakePromptOverrides } from "../domain/application/cake-prompts";
 import { ProjectSessionControlRequest } from "../domain/project-sessions/project-session-data";
 import {
   applicationStateSchema,
@@ -592,7 +592,7 @@ export const cakeRpcPayloadSchemas = {
     model: Schema.optional(utilityModelSchema),
   }),
   "set-cake-prompts": Schema.Struct({
-    prompts: CakePrompts,
+    prompts: CakePromptOverrides,
   }),
   "set-global-custom-instructions": Schema.Struct({
     instructions: stringMax(16_384),

@@ -42,15 +42,12 @@ describe("Cake prompt settings workflow", () => {
       ...defaultApplicationState(),
       cakePrompts: {
         ...prompts,
-        worktreeCommit: prompts.worktreeCommit === draft ? authoritative : prompts.worktreeCommit,
+        ...(prompts.worktreeCommit === draft ? { worktreeCommit: authoritative } : {}),
       },
     }));
     const prompt = screen.getByRole("textbox", { name: "Commit before merge" });
-    expect(
-      screen.getByDisplayValue(defaultCakePrompts().worktreeCommit, {
-        normalizer: (value) => value,
-      }),
-    ).toBe(prompt);
+    expect(prompt).toHaveProperty("value", "");
+    expect(prompt.getAttribute("placeholder")).toBe(defaultCakePrompts().worktreeCommit);
     await fixture.user.click(prompt);
     await fixture.user.tab();
     expect(fixture.setCakePrompts).not.toHaveBeenCalled();
@@ -62,7 +59,7 @@ describe("Cake prompt settings workflow", () => {
 
     expect(await screen.findByDisplayValue(authoritative)).toBe(prompt);
     expect(fixture.setCakePrompts).toHaveBeenCalledWith(
-      { ...defaultCakePrompts(), worktreeCommit: draft },
+      { worktreeCommit: draft },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     const reset = within(screen.getByRole("region", { name: "Worktree automation" })).getAllByRole(
@@ -72,15 +69,32 @@ describe("Cake prompt settings workflow", () => {
     await fixture.user.click(reset);
     await waitFor(() => expect(fixture.setCakePrompts).toHaveBeenCalledTimes(2));
     expect(fixture.setCakePrompts).toHaveBeenLastCalledWith(
-      defaultCakePrompts(),
+      {},
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(
-      await screen.findByDisplayValue(defaultCakePrompts().worktreeCommit, {
-        normalizer: (value) => value,
-      }),
-    ).toBe(prompt);
+    await waitFor(() => expect(prompt).toHaveProperty("value", ""));
+    expect(prompt.getAttribute("placeholder")).toBe(defaultCakePrompts().worktreeCommit);
     expect(reset.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("clearing custom text restores the placeholder without persisting defaults", async () => {
+    using fixture = renderPrompts(async (prompts) => ({
+      ...defaultApplicationState(),
+      cakePrompts: prompts,
+    }));
+    const prompt = screen.getByRole("textbox", { name: "Commit before merge" });
+    await fixture.user.type(prompt, "Custom commit prompt");
+    await fixture.user.tab();
+    await waitFor(() => expect(fixture.setCakePrompts).toHaveBeenCalledTimes(1));
+    await fixture.user.clear(prompt);
+    await fixture.user.tab();
+    await waitFor(() => expect(fixture.setCakePrompts).toHaveBeenCalledTimes(2));
+    expect(fixture.setCakePrompts).toHaveBeenLastCalledWith(
+      {},
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(prompt).toHaveProperty("value", "");
+    expect(prompt.getAttribute("placeholder")).toBe(defaultCakePrompts().worktreeCommit);
   });
 
   it("shows a failed save, restores the persisted prompt, and allows another edit", async () => {
@@ -97,18 +111,15 @@ describe("Cake prompt settings workflow", () => {
     await fixture.user.type(prompt, "Unsaved prompt");
     await fixture.user.tab();
     expect(await screen.findByText("Prompt could not be saved")).toBeDefined();
-    expect(
-      await screen.findByDisplayValue(defaultCakePrompts().worktreeCommit, {
-        normalizer: (value) => value,
-      }),
-    ).toBe(prompt);
+    await waitFor(() => expect(prompt).toHaveProperty("value", ""));
+    expect(prompt.getAttribute("placeholder")).toBe(defaultCakePrompts().worktreeCommit);
 
     await fixture.user.clear(prompt);
     await fixture.user.type(prompt, "Try this prompt instead.");
     await fixture.user.tab();
     await waitFor(() => expect(fixture.setCakePrompts).toHaveBeenCalledTimes(2));
     expect(fixture.setCakePrompts).toHaveBeenLastCalledWith(
-      { ...defaultCakePrompts(), worktreeCommit: "Try this prompt instead." },
+      { worktreeCommit: "Try this prompt instead." },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(screen.getByDisplayValue("Try this prompt instead.")).toBe(prompt);

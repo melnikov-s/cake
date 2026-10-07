@@ -12,6 +12,7 @@ import {
   type ApplicationState as ApplicationValue,
 } from "../../../src/domain/application/application-data";
 import * as application from "../../../src/domain/application/application";
+import { defaultCakePrompts } from "../../../src/domain/application/cake-prompts";
 import * as presets from "../../../src/domain/model-presets/modelPresets";
 import { updateNonChatModelPreference } from "../../../src/domain/model-preferences/non-chat-model-preferences";
 import { loadMcpSettings, mutateMcpSettings } from "../../../src/domain/mcp/mcp-settings";
@@ -388,11 +389,14 @@ describe("Agent Settings through the real application-control/Client/domain boun
         instructions: "  Personal fixture instructions  ",
       });
       expect(h.saved().globalCustomInstructions).toBe("Personal fixture instructions");
-      for (const key of Object.keys(h.saved().cakePrompts)) {
+      for (const key of Object.keys(defaultCakePrompts())) {
         await h.call("settings.prompts.update", { key, value: "Customized fixture prompt" });
         expect(h.saved().cakePrompts).toHaveProperty(key, "Customized fixture prompt");
         await h.call("settings.prompts.update", { key, value: null });
-        expect(h.saved().cakePrompts).not.toHaveProperty(key, "Customized fixture prompt");
+        expect(h.saved().cakePrompts).toEqual({});
+        expect(value(await h.call("settings.instructions.get"))).toMatchObject({
+          prompts: defaultCakePrompts(),
+        });
       }
       expect(h.login).not.toHaveBeenCalled();
     } finally {

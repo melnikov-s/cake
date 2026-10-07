@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 import { SessionPluginControls } from "./session-plugin-controls";
 import { ThinkingLevel } from "../../services/pi/model-data";
 import { SESSION_LABEL_COLORS } from "../../utils/session-label-palette";
-import { CakePrompts, defaultCakePrompts } from "./cake-prompts";
+import { CakePromptOverrides } from "./cake-prompts";
 import { NonChatModelPreferences } from "../model-preferences/non-chat-model-data";
 
 export { SESSION_LABEL_COLORS } from "../../utils/session-label-palette";
@@ -234,7 +234,7 @@ const RendererApplicationFields = {
   vscodeServerPath: Schema.optionalKey(boundedString(4_096)),
   modelPresets: boundedArray(ModelPreset, 100),
   defaultModelPresetId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
-  cakePrompts: CakePrompts,
+  cakePrompts: CakePromptOverrides,
   globalCustomInstructions: boundedString(16_384).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed("")),
   ),
@@ -309,7 +309,7 @@ export const defaultApplicationState = (): ApplicationState => ({
   trustedProjectPaths: [],
   fastModeSessionIds: [],
   modelPresets: [],
-  cakePrompts: defaultCakePrompts(),
+  cakePrompts: {},
   globalCustomInstructions: "",
   sessionPlugins: [],
   sessionPluginSharedState: [],

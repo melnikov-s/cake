@@ -40,7 +40,7 @@ test("image/classifier preferences and native execution controls persist and rea
   await writeFile(
     appDocument,
     JSON.stringify({
-      version: 5,
+      version: 6,
       data: {
         ...defaultApplicationState(),
         projects: [

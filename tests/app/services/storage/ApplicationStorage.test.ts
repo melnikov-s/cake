@@ -15,6 +15,11 @@ import {
 import { defaultApplicationState } from "../../../../src/domain/application/application-data";
 import { ApplicationState } from "../../../../src/services/storage/ApplicationState";
 import { updateNonChatModelPreference } from "../../../../src/domain/model-preferences/non-chat-model-preferences";
+import {
+  defaultCakePrompts,
+  resolveCakePrompts,
+} from "../../../../src/domain/application/cake-prompts";
+import { setCakePrompts } from "../../../../src/domain/application/application";
 
 interface FakeFileSystemControls {
   readonly files: Map<string, string>;
@@ -184,7 +189,7 @@ describe("ApplicationStorage", () => {
   );
 
   it.effect("loads a current version envelope", () =>
-    withStorage({ [documentPath]: JSON.stringify({ version: 5, data: current }) }, (storage) =>
+    withStorage({ [documentPath]: JSON.stringify({ version: 6, data: current }) }, (storage) =>
       Effect.gen(function* () {
         const loaded = yield* storage.load();
         assert.strictEqual(loaded.source, "current");
@@ -197,7 +202,7 @@ describe("ApplicationStorage", () => {
     withStorage(
       {
         [documentPath]: JSON.stringify({
-          version: 5,
+          version: 6,
           data: {
             ...current,
             globalCustomInstructions: undefined,
@@ -228,7 +233,7 @@ describe("ApplicationStorage", () => {
     ),
   );
 
-  it.effect("adds default Cake prompts when migrating a version-four document", () => {
+  it.effect("uses unset Cake prompts when migrating a version-four document", () => {
     const versionFour = { ...current };
     Reflect.deleteProperty(versionFour, "cakePrompts");
     return withStorage(
@@ -237,10 +242,83 @@ describe("ApplicationStorage", () => {
         Effect.gen(function* () {
           const loaded = yield* storage.load();
           assert.strictEqual(loaded.source, "migrated");
-          assert.equal(loaded.state.cakePrompts.worktreeCommit, "Commit this change.");
+          assert.deepEqual(loaded.state.cakePrompts, {});
+          assert.equal(
+            resolveCakePrompts(loaded.state.cakePrompts).worktreeCommit,
+            "Commit this change.",
+          );
         }),
     );
   });
+
+  it.effect("removes copied defaults from version five while preserving custom prompts", () =>
+    Effect.gen(function* () {
+      const oldCommitDefault =
+        "Cake is preparing to merge this worktree into {{target}}, but it has uncommitted changes.\n\nInspect the complete working tree, verify the change, and commit all intended work with an appropriate commit message.\n\nDo not merge, rebase, push, switch branches, or modify the target checkout. Cake will merge the committed branch after this turn finishes.";
+      for (const worktreeCommit of [
+        oldCommitDefault,
+        defaultCakePrompts().worktreeCommit,
+        "Custom commit wording",
+      ]) {
+        yield* withStorage(
+          {
+            [documentPath]: JSON.stringify({
+              version: 5,
+              data: {
+                ...current,
+                cakePrompts: {
+                  ...defaultCakePrompts(),
+                  worktreeCommit,
+                  worktreeSquashMessage: "Custom squash wording",
+                },
+              },
+            }),
+          },
+          (storage, controls) =>
+            Effect.gen(function* () {
+              const loaded = yield* storage.load();
+              const expected = {
+                ...(worktreeCommit === "Custom commit wording" ? { worktreeCommit } : {}),
+                worktreeSquashMessage: "Custom squash wording",
+              };
+              assert.equal(loaded.source, "migrated");
+              assert.deepEqual(loaded.state.cakePrompts, expected);
+              const persistedText = controls.files.get(documentPath);
+              assert.ok(persistedText);
+              assert.deepEqual(JSON.parse(persistedText).data.cakePrompts, expected);
+              assert.equal((yield* storage.load()).source, "current");
+            }),
+        );
+      }
+    }),
+  );
+
+  it.effect("persists only custom overrides and resolves defaults after reset and reload", () =>
+    withStorage({}, (storage, controls) =>
+      Effect.gen(function* () {
+        const application = yield* ApplicationState;
+        yield* application.initialize();
+        yield* setCakePrompts({ worktreeCommit: "Custom commit wording" });
+        assert.deepEqual((yield* storage.load()).state.cakePrompts, {
+          worktreeCommit: "Custom commit wording",
+        });
+        yield* setCakePrompts({
+          worktreeCommit: "",
+          worktreeSquashMessage: defaultCakePrompts().worktreeSquashMessage,
+        });
+        const loaded = yield* storage.load();
+        assert.deepEqual(loaded.state.cakePrompts, {});
+        const persistedText = controls.files.get(documentPath);
+        assert.ok(persistedText);
+        assert.deepEqual(JSON.parse(persistedText).data.cakePrompts, {});
+        assert.deepEqual(resolveCakePrompts(loaded.state.cakePrompts), defaultCakePrompts());
+      }).pipe(
+        Effect.provide(
+          ApplicationState.layer.pipe(Layer.provide(Layer.succeed(ApplicationStorage)(storage))),
+        ),
+      ),
+    ),
+  );
 
   it.effect("migrates recognized legacy and version-zero documents", () =>
     Effect.gen(function* () {
@@ -253,7 +331,7 @@ describe("ApplicationStorage", () => {
             const persistedText = controls.files.get(documentPath);
             assert.ok(persistedText);
             const persisted = JSON.parse(persistedText);
-            assert.strictEqual(persisted.version, 5);
+            assert.strictEqual(persisted.version, 6);
             assert.ok(!("schemaVersion" in persisted.data));
           }),
         );
@@ -313,10 +391,10 @@ describe("ApplicationStorage", () => {
         ["{", ApplicationMalformedDocumentError],
         [JSON.stringify({ nope: true }), ApplicationMalformedDocumentError],
         [
-          JSON.stringify({ version: 5, data: { ...current, projects: "invalid" } }),
+          JSON.stringify({ version: 6, data: { ...current, projects: "invalid" } }),
           ApplicationDecodeError,
         ],
-        [JSON.stringify({ version: 6, data: current }), ApplicationUnsupportedVersionError],
+        [JSON.stringify({ version: 7, data: current }), ApplicationUnsupportedVersionError],
         [
           JSON.stringify({ version: 0, data: { schemaVersion: 1, projects: "invalid" } }),
           ApplicationMigrationError,

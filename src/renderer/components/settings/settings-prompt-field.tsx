@@ -38,11 +38,11 @@ export function SettingsPromptField({
           type="button"
           variant="ghost"
           size="sm"
-          disabled={draft === defaultValue}
+          disabled={!draft}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
-            setDraft(defaultValue);
-            if (value !== defaultValue) onApply(defaultValue);
+            setDraft("");
+            if (value) onApply("");
           }}
         >
           Reset
@@ -53,6 +53,7 @@ export function SettingsPromptField({
         aria-label={label}
         className="min-h-36 w-full font-mono text-xs"
         value={draft}
+        placeholder={defaultValue}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={() => {
           if (changed) onApply(draft);

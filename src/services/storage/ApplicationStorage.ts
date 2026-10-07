@@ -11,10 +11,14 @@ import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
 } from "../../domain/application/application-data";
-import { defaultCakePrompts } from "../../domain/application/cake-prompts";
+import {
+  CakePrompts,
+  defaultCakePrompts,
+  normalizeCakePromptOverrides,
+} from "../../domain/application/cake-prompts";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
-const APPLICATION_DOCUMENT_VERSION = 5;
+const APPLICATION_DOCUMENT_VERSION = 6;
 export const APPLICATION_DOCUMENT_NAME = "application.json";
 
 class ApplicationReadError extends Schema.TaggedError<ApplicationReadError>()(
@@ -164,6 +168,12 @@ const ApplicationStateV4 = Schema.Struct({
 });
 type ApplicationStateV4 = typeof ApplicationStateV4.Type;
 
+const ApplicationStateV5 = Schema.Struct({
+  ...ApplicationState.fields,
+  cakePrompts: CakePrompts,
+});
+type ApplicationStateV5 = typeof ApplicationStateV5.Type;
+
 const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
 
@@ -272,6 +282,23 @@ const migrateVersionThree = Effect.fn("ApplicationStorage.migrateVersionThree")(
 const migrateVersionFour = Effect.fn("ApplicationStorage.migrateVersionFour")(
   (state: ApplicationStateV4) => Effect.succeed({ ...state, cakePrompts: defaultCakePrompts() }),
 );
+
+// Version five stored copies of defaults, so remove known shipped wording while
+// retaining custom text. Version six stores only overrides and never copies defaults.
+const migrateVersionFive = Effect.fn("ApplicationStorage.migrateVersionFive")((
+  state: ApplicationStateV5,
+) => {
+  const prompts = { ...state.cakePrompts };
+  const oldCommitDefault = [
+    "Cake is preparing to merge this worktree into {{target}}, but it has uncommitted changes.",
+    "",
+    "Inspect the complete working tree, verify the change, and commit all intended work with an appropriate commit message.",
+    "",
+    "Do not merge, rebase, push, switch branches, or modify the target checkout. Cake will merge the committed branch after this turn finishes.",
+  ].join("\n");
+  if (prompts.worktreeCommit === oldCommitDefault) prompts.worktreeCommit = "";
+  return Effect.succeed({ ...state, cakePrompts: normalizeCakePromptOverrides(prompts) });
+});
 
 const writeError = (stage: AtomicFileStage, cause: unknown) =>
   new ApplicationWriteError({ stage, message: messageOf(cause) });
@@ -404,6 +431,17 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
               ),
             );
             data = yield* migrateVersionFour(previous);
+          } else if (version === 5) {
+            const previous = yield* Schema.decodeUnknownEffect(ApplicationStateV5)(data).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ApplicationMigrationError({
+                    fromVersion: 5,
+                    message: cause.message,
+                  }),
+              ),
+            );
+            data = yield* migrateVersionFive(previous);
           } else
             return yield* new ApplicationMigrationError({
               fromVersion: version,

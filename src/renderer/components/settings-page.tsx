@@ -834,7 +834,8 @@ export const SettingsPage = observer(function SettingsPage({
                   </h2>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     These prompts appear as user messages when Cake needs an agent to finish a merge
-                    or rebase step. Template variables are replaced when the message is sent.
+                    or rebase step. Leave a field empty to use the current default shown as its
+                    placeholder. Template variables are replaced when the message is sent.
                   </p>
                 </div>
                 <Badge variant="outline" size="xs" className="text-muted-foreground">
@@ -847,7 +848,7 @@ export const SettingsPage = observer(function SettingsPage({
                   label="Commit before merge"
                   description="Sent when a worktree has uncommitted changes before landing."
                   variables="{{target}}"
-                  value={settings.cakePrompts.prompts.worktreeCommit}
+                  value={settings.cakePrompts.prompts.worktreeCommit ?? ""}
                   defaultValue={cakePromptDefaults.worktreeCommit}
                   onApply={(value) => void settings.cakePrompts.update("worktreeCommit", value)}
                 />
@@ -856,7 +857,7 @@ export const SettingsPage = observer(function SettingsPage({
                   label="Rebase conflict"
                   description="Sent when a standalone worktree rebase stops on conflicts."
                   variables="{{target}}, {{files}}"
-                  value={settings.cakePrompts.prompts.worktreeRebaseConflict}
+                  value={settings.cakePrompts.prompts.worktreeRebaseConflict ?? ""}
                   defaultValue={cakePromptDefaults.worktreeRebaseConflict}
                   onApply={(value) =>
                     void settings.cakePrompts.update("worktreeRebaseConflict", value)
@@ -867,7 +868,7 @@ export const SettingsPage = observer(function SettingsPage({
                   label="Merge conflict"
                   description="Sent when preserving commits requires conflict resolution."
                   variables="{{target}}, {{files}}"
-                  value={settings.cakePrompts.prompts.worktreePreserveConflict}
+                  value={settings.cakePrompts.prompts.worktreePreserveConflict ?? ""}
                   defaultValue={cakePromptDefaults.worktreePreserveConflict}
                   onApply={(value) =>
                     void settings.cakePrompts.update("worktreePreserveConflict", value)
@@ -878,7 +879,7 @@ export const SettingsPage = observer(function SettingsPage({
                   label="Squash conflict"
                   description="Sent when a squash landing requires conflict resolution."
                   variables="{{target}}, {{files}}"
-                  value={settings.cakePrompts.prompts.worktreeSquashConflict}
+                  value={settings.cakePrompts.prompts.worktreeSquashConflict ?? ""}
                   defaultValue={cakePromptDefaults.worktreeSquashConflict}
                   onApply={(value) =>
                     void settings.cakePrompts.update("worktreeSquashConflict", value)
@@ -889,7 +890,7 @@ export const SettingsPage = observer(function SettingsPage({
                   label="Squash commit message"
                   description="Sent when Cake needs the agent to propose the squash commit message."
                   variables="{{target}}"
-                  value={settings.cakePrompts.prompts.worktreeSquashMessage}
+                  value={settings.cakePrompts.prompts.worktreeSquashMessage ?? ""}
                   defaultValue={cakePromptDefaults.worktreeSquashMessage}
                   onApply={(value) =>
                     void settings.cakePrompts.update("worktreeSquashMessage", value)

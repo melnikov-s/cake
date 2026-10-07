@@ -1,7 +1,7 @@
 import { Cause, Effect, FiberMap, Stream, SubscriptionRef } from "effect";
 import type { WorktreeLandRequest, WorktreeStatus } from "../../ipc/worktree-contract";
 import { ApplicationState } from "../../services/storage/ApplicationState";
-import { renderCakePrompt } from "../application/cake-prompts";
+import { renderCakePrompt, resolveCakePrompts } from "../application/cake-prompts";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { WorktreeLandingAgent } from "../../services/worktrees/WorktreeLandingAgent";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
@@ -65,7 +65,7 @@ const requireStatus = Effect.fn("WorktreeLandings.requireStatus")(function* (
 });
 
 const configuredPrompts = (application: ApplicationState["Service"]) =>
-  application.snapshot().cakePrompts;
+  resolveCakePrompts(application.snapshot().cakePrompts);
 
 const prompt = Effect.fn("WorktreeLandings.prompt")(function* (
   operation: WorktreeLandingOperation,

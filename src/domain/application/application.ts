@@ -1,5 +1,5 @@
 import { DateTime, Effect, Schema } from "effect";
-import type { CakePrompts } from "./cake-prompts";
+import { normalizeCakePromptOverrides, type CakePromptOverrides } from "./cake-prompts";
 import { jsonObjectSchema, type JsonObject } from "../../ipc/json-contract";
 import {
   ApplicationState as ApplicationStateSchema,
@@ -362,9 +362,12 @@ export const revokeProjectTrust = Effect.fn("Application.revokeProjectTrust")(fu
 });
 
 export const setCakePrompts = Effect.fn("Application.setCakePrompts")(function* (
-  cakePrompts: CakePrompts,
+  cakePrompts: CakePromptOverrides,
 ) {
-  return yield* update((current) => ({ ...current, cakePrompts }));
+  return yield* update((current) => ({
+    ...current,
+    cakePrompts: normalizeCakePromptOverrides(cakePrompts),
+  }));
 });
 
 export const setUtilityModel = Effect.fn("Application.setUtilityModel")(function* (

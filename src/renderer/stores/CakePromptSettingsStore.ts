@@ -1,5 +1,5 @@
 import { Store } from "r-state-tree";
-import type { CakePrompts } from "../../domain/application/cake-prompts";
+import type { CakePromptOverrides } from "../../domain/application/cake-prompts";
 import type { ApplicationState } from "../../ipc/session-contract";
 import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
@@ -10,13 +10,13 @@ export class CakePromptSettingsStore extends Store {
     return ClientContext.consume(this)!.workspaces;
   }
 
-  prompts: CakePrompts | undefined;
+  prompts: CakePromptOverrides | undefined;
   saving = false;
   error: string | undefined;
   errorDetails: string | undefined;
   private saveRevision = 0;
   private saveQueue: Promise<unknown> = Promise.resolve();
-  private persistedPrompts: CakePrompts | undefined;
+  private persistedPrompts: CakePromptOverrides | undefined;
   private applicationRevision = -1;
 
   applyApplicationState(revision: number, state: ApplicationState) {
@@ -26,12 +26,15 @@ export class CakePromptSettingsStore extends Store {
     if (!this.saving) this.prompts = state.cakePrompts;
   }
 
-  update<Key extends keyof CakePrompts>(key: Key, value: CakePrompts[Key]) {
+  update(key: keyof CakePromptOverrides, value: string) {
     if (!this.prompts) return Promise.resolve();
-    return this.save({ ...this.prompts, [key]: value });
+    const prompts = { ...this.prompts };
+    if (value.trim()) prompts[key] = value;
+    else delete prompts[key];
+    return this.save(prompts);
   }
 
-  private save(prompts: CakePrompts) {
+  private save(prompts: CakePromptOverrides) {
     const revision = ++this.saveRevision;
     this.prompts = prompts;
     this.saving = true;

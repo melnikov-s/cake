@@ -13,6 +13,32 @@ export const CakePrompts = Schema.Struct({
 
 export interface CakePrompts extends Schema.Schema.Type<typeof CakePrompts> {}
 
+/** Persist only custom text. Missing keys follow the current source defaults. */
+export const CakePromptOverrides = Schema.Struct({
+  worktreeCommit: Schema.optionalKey(promptTemplate),
+  worktreeRebaseConflict: Schema.optionalKey(promptTemplate),
+  worktreePreserveConflict: Schema.optionalKey(promptTemplate),
+  worktreeSquashConflict: Schema.optionalKey(promptTemplate),
+  worktreeSquashMessage: Schema.optionalKey(promptTemplate),
+});
+
+export interface CakePromptOverrides extends Schema.Schema.Type<typeof CakePromptOverrides> {}
+
+export function normalizeCakePromptOverrides(overrides: CakePromptOverrides): CakePromptOverrides {
+  const defaults = defaultCakePrompts();
+  const result: { -readonly [Key in keyof CakePrompts]?: string } = {};
+  // SAFETY: defaultCakePrompts constructs exactly the five declared CakePrompts keys.
+  for (const key of Object.keys(defaults) as Array<keyof CakePrompts>) {
+    const value = overrides[key];
+    if (value?.trim() && value !== defaults[key]) result[key] = value;
+  }
+  return result;
+}
+
+export function resolveCakePrompts(overrides: CakePromptOverrides): CakePrompts {
+  return { ...defaultCakePrompts(), ...normalizeCakePromptOverrides(overrides) };
+}
+
 export const defaultCakePrompts = (): CakePrompts => ({
   worktreeCommit: "Commit this change.",
   worktreeRebaseConflict: [

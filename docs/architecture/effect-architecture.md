@@ -602,6 +602,12 @@ persisted Managed Worktree fact until the main-owned completion policy resolves 
 Directory, so renderer remount, missing terminal operation projection, or failed terminal
 acknowledgement cannot lose it. Acknowledgement only retires terminal operation presentation.
 
+Worktree automation prompt settings persist only custom overrides in Application storage.
+Missing overrides resolve to the current source defaults when the domain sends a prompt;
+Settings shows those defaults as placeholders, not saved text. Clearing or resetting a
+field removes its override. `CakePromptSettingsStore` owns window-lifetime editing and
+serializes saves; the main Application domain owns normalization and durable authority.
+
 Bulk cleanup selection is also main-owned policy. The Managed Worktree domain previews and
 then authoritatively rediscovers landed Project worktrees that have effectively resolved sessions
 and no active sessions, including children whose root is archived while their own transcripts

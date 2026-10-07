@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
 import type { AgentSettingsInvocation } from "../../domain/application/agent-settings-schema";
-import { defaultCakePrompts } from "../../domain/application/cake-prompts";
+import { defaultCakePrompts, resolveCakePrompts } from "../../domain/application/cake-prompts";
 import { normalizeServerUrl } from "../../domain/application/desktop-host-data";
 import type { AgentControlSource } from "./AppControlBridge";
 import type { Client } from "../client/Client";
@@ -163,7 +163,7 @@ async function executeAgentSettings(
       const state = await application();
       return {
         instructions: state.globalCustomInstructions,
-        prompts: state.cakePrompts,
+        prompts: resolveCakePrompts(state.cakePrompts),
         defaults: defaultCakePrompts(),
       };
     }
@@ -176,9 +176,9 @@ async function executeAgentSettings(
       const { key, value } = invocation.arguments;
       if (!settings.cakePrompts.prompts)
         throw new Error("Settings are not hydrated; retry after application state loads.");
-      await settings.cakePrompts.update(key, value ?? defaultCakePrompts()[key]);
+      await settings.cakePrompts.update(key, value ?? "");
       if (settings.cakePrompts.error) throw new Error(settings.cakePrompts.error);
-      return { prompts: (await application()).cakePrompts };
+      return { prompts: resolveCakePrompts((await application()).cakePrompts) };
     }
     case "settings.labels.get":
       return (await application()).globalSessionLabels;
