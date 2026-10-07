@@ -749,6 +749,8 @@ const makeElectronService = (
           onActivate();
           return;
         }
+        // Background tests still handle second launches, but must never activate native windows.
+        if (process.env.CAKE_ELECTRON_SMOKE === "1") return;
         if (window.isMinimized()) window.restore();
         window.focus();
       }),

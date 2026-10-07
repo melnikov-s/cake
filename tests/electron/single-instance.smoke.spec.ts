@@ -38,13 +38,27 @@ test("a second launch on the same profile exits and hands its window request to 
   };
   const application = await electron.launch({ args: [repositoryRoot], cwd: repositoryRoot, env });
 
+  const expectBackgroundWindows = async () => {
+    await expect
+      .poll(() =>
+        application.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows().every(
+            (window) => !window.isVisible() && !window.isFocused(),
+          ),
+        ),
+      )
+      .toBe(true);
+  };
+
   try {
     const page = await application.firstWindow();
     await expect(page.locator("body")).toBeVisible({ timeout: 20_000 });
+    await expectBackgroundWindows();
 
     // The primary owns the profile: a second launch exits cleanly without opening anything.
     expect(await launchSecondInstance(env)).toBe(0);
     expect(application.windows()).toHaveLength(1);
+    await expectBackgroundWindows();
 
     if (process.platform !== "darwin") return;
     // macOS keeps the process alive without windows; a second launch is how the user gets
@@ -54,6 +68,7 @@ test("a second launch on the same profile exits and hands its window request to 
     const reopened = application.waitForEvent("window");
     expect(await launchSecondInstance(env)).toBe(0);
     await expect((await reopened).locator("body")).toBeVisible({ timeout: 20_000 });
+    await expectBackgroundWindows();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

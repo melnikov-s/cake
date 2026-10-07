@@ -25,15 +25,19 @@ Streamdown first renders a fallback code tree and then replaces it with highligh
 Ordinary Electron tests keep Cake windows hidden (`CAKE_ELECTRON_SMOKE=1`) and must not
 steal desktop focus. DOM input focus and real fake-device microphone capture work in hidden
 Electron windows; shared fixture setup must not call `BrowserWindow.show()` or `focus()`.
-The conversation fixture checks that ordinary tests remain hidden and natively unfocused.
+The conversation and single-instance fixtures check that ordinary tests remain hidden and
+natively unfocused, including windows recreated after a second launch. Smoke-mode
+second-instance handling creates missing windows without restoring or focusing existing ones.
 
 A test specifically verifying **native OS window focus/blur** is different from focusing a DOM
 input. Keep it separate, tagged `@foreground`, and skipped unless
-`CAKE_ELECTRON_FOREGROUND_TESTS=1` is explicitly supplied. Ask the user before running it on their
-active desktop, or run it on a dedicated CI/test desktop. For example:
+`CAKE_ELECTRON_FOREGROUND_TESTS=1` is explicitly supplied. The default `playwright.config.ts`
+excludes this tag even when the environment flag is inherited. Foreground tests require
+both the separate `playwright.foreground.config.ts` and the environment flag. Ask the user
+before running them on their active desktop, or run them on a dedicated CI/test desktop:
 
 ```sh
-CAKE_ELECTRON_FOREGROUND_TESTS=1 pnpm exec playwright test tests/electron/conversation-mode.smoke.spec.ts --grep @foreground
+CAKE_ELECTRON_FOREGROUND_TESTS=1 pnpm exec playwright test --config playwright.foreground.config.ts
 ```
 
 This opt-in preserves native window-blur coverage without opening/focusing a window for every

@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { it } from "@effect/vitest";
 import { Context, Effect, Layer, Queue, Stream } from "effect";
 import type { MenuItemConstructorOptions } from "electron";
-import { describe, expect, vi } from "vitest";
+import { afterEach, describe, expect, vi } from "vitest";
 import type { CakeEvent } from "../../../../src/ipc/cake-rpc-contract";
 import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
 import { ClientEventsLive } from "../../../../src/services/clients/ClientEventsLive";
@@ -15,6 +15,8 @@ import { makeElectronLive } from "../../../../src/services/electron/ElectronLive
 const native = vi.hoisted(() => ({
   template: [] as MenuItemConstructorOptions[],
   destroyed: false,
+  windowShows: [] as (boolean | undefined)[],
+  activations: [] as string[],
 }));
 vi.mock("electron", () => ({
   BrowserWindow: class extends EventEmitter {
@@ -23,8 +25,21 @@ vi.mock("electron", () => ({
       id: 42,
       setWindowOpenHandler: () => {},
     });
+    constructor(options: { show?: boolean }) {
+      super();
+      native.windowShows.push(options.show);
+    }
     static getFocusedWindow() {
       return undefined;
+    }
+    isMinimized() {
+      return true;
+    }
+    restore() {
+      native.activations.push("restore");
+    }
+    focus() {
+      native.activations.push("focus");
     }
     loadFile() {
       return Promise.resolve();
@@ -66,7 +81,45 @@ const live = makeElectronLive({
   Layer.provideMerge(Layer.mergeAll(ClientConnectionsLive, ClientEventsLive, ClientWorkspacesLive)),
 );
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe("ElectronLive client state", () => {
+  it.effect.each([
+    { mode: "background", smoke: "1", activations: [] },
+    { mode: "ordinary", smoke: undefined, activations: ["restore", "focus"] },
+  ])("$mode second launches obey native activation policy", ({ smoke, activations }) =>
+    Effect.gen(function* () {
+      vi.stubEnv("CAKE_ELECTRON_SMOKE", smoke);
+      native.destroyed = false;
+      native.windowShows = [];
+      native.activations = [];
+      const context = yield* Layer.build(live);
+      const electron = Context.get(context, Electron);
+      yield* electron.start({
+        backToAgentForWindow: () => false,
+        onWindowClosed: () => {},
+        allowProjectPath: () => Effect.void,
+        canRewordSelection: () => true,
+      });
+      yield* electron.focusOrCreateWindow();
+      expect(native.activations).toEqual(activations);
+      expect(native.windowShows).toEqual([smoke === "1" ? false : undefined]);
+      // A second launch must still recreate a closed window; smoke-mode creation stays hidden.
+      Context.get(context, ClientWorkspaces).associateWorkspace(1, "/project");
+      const windows = electron.windowsForWorkspace("/project");
+      expect(windows).toHaveLength(1);
+      windows[0]?.[1].destroy();
+      native.destroyed = false;
+      yield* electron.focusOrCreateWindow();
+      expect(native.windowShows).toEqual([
+        smoke === "1" ? false : undefined,
+        smoke === "1" ? false : undefined,
+      ]);
+      expect(native.activations).toEqual(activations);
+      yield* electron.stop();
+    }),
+  );
+
   it.effect("native window closure reads and releases the shared workspace authority", () =>
     Effect.gen(function* () {
       native.destroyed = false;
