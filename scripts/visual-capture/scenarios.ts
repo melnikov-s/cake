@@ -344,8 +344,9 @@ const conversationEntryScenario: VisualCaptureScenario = {
 
 const conversationCountdownScenario: VisualCaptureScenario = {
   name: "conversation-countdown",
-  description: "Live voice draft with the cancellable circular send countdown",
-  states: ["default", "cancelled"],
+  description:
+    "Voice preparation spinner and live draft with the cancellable circular send countdown",
+  states: ["default", "preparing", "cancelled"],
   environment: (paths) => ({
     CAKE_SMOKE_DICTATION_HELPER: join(paths.userData, "visual-dictation"),
   }),
@@ -384,10 +385,13 @@ const conversationCountdownScenario: VisualCaptureScenario = {
       .locator('[data-navigation-item][data-session-id="visual-conversation-entry"]')
       .click();
     // Only external audio is replaced. The real capture, recognition, Store and Chat remain in use.
-    await page.evaluate(() => {
+    await page.evaluate((preparing) => {
       const source = new AudioContext();
       const stream = source.createMediaStreamDestination().stream;
-      navigator.mediaDevices.getUserMedia = async () => stream;
+      navigator.mediaDevices.getUserMedia = async () => {
+        if (preparing) await new Promise(() => {});
+        return stream;
+      };
       const WorkletNode = AudioWorkletNode;
       globalThis.AudioWorkletNode = class extends WorkletNode {
         constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
@@ -398,8 +402,17 @@ const conversationCountdownScenario: VisualCaptureScenario = {
           Object.assign(globalThis, { visualConversationProcessor: this });
         }
       };
-    });
+    }, state === "preparing");
     await page.getByRole("button", { name: "Enter conversation mode" }).click();
+    if (state === "preparing") {
+      const control = page.getByRole("button", { name: "Preparing conversation mode" });
+      await expect(control).toHaveAttribute("aria-busy", "true");
+      await page
+        .getByRole("combobox", { name: "Message", exact: true })
+        .fill("Let’s refine the voice conversation together.");
+      await page.mouse.move(1, 1);
+      return;
+    }
     await expect(page.getByRole("button", { name: "Mute input" })).toBeVisible();
     await page.evaluate(() => {
       const processor = Reflect.get(globalThis, "visualConversationProcessor") as AudioWorkletNode;
@@ -1055,16 +1068,20 @@ const projectCustomInstructionsScenario: VisualCaptureScenario = {
 const dictationInputScenario: VisualCaptureScenario = {
   name: "dictation-input",
   description: "Real Chat composer with leading dictation bars and first-line-only text spacing",
-  states: ["default", "speaking", "wrapped", "muted"],
+  states: ["default", "preparing", "error", "speaking", "wrapped", "muted"],
   environment: conversationCountdownScenario.environment,
   seed: conversationCountdownScenario.seed,
   async prepare(page, state, application) {
     await conversationEntryScenario.prepare(page, "default", application);
     // Replace only the browser audio boundary; drive the real dictation workflow and PCM meter.
-    await page.evaluate(() => {
+    await page.evaluate((state) => {
       const source = new AudioContext();
       const stream = source.createMediaStreamDestination().stream;
-      navigator.mediaDevices.getUserMedia = async () => stream;
+      navigator.mediaDevices.getUserMedia = async () => {
+        if (state === "preparing") await new Promise(() => {});
+        if (state === "error") throw new Error("Microphone unavailable");
+        return stream;
+      };
       const WorkletNode = AudioWorkletNode;
       globalThis.AudioWorkletNode = class extends WorkletNode {
         constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
@@ -1075,7 +1092,7 @@ const dictationInputScenario: VisualCaptureScenario = {
           Object.assign(globalThis, { visualDictationProcessor: this });
         }
       };
-    });
+    }, state);
     // Startup can finish opening the seeded session after its transcript is visible.
     // Retry navigation if that one-time completion returns us to chat.
     await expect(async () => {
@@ -1098,6 +1115,22 @@ const dictationInputScenario: VisualCaptureScenario = {
         ? "Let’s refine the voice conversation together. The speech bars sit at the beginning of the first line, while the rest of this longer dictated message wraps back to the normal left edge of the input."
         : "Let’s refine the voice conversation together.",
     );
+    if (state === "preparing") {
+      const control = page.getByRole("button", { name: "Mute dictation", exact: true });
+      await expect(control).toHaveAttribute("aria-busy", "true");
+      await expect(control.locator('[role="status"]')).toBeVisible();
+      await page.mouse.move(1, 1);
+      return;
+    }
+    if (state === "error") {
+      const control = page.getByRole("button", { name: "Mute dictation", exact: true });
+      await expect(control).toHaveClass(/text-destructive/);
+      await expect(
+        page.locator('[data-slot="dictation-indicator"] [aria-live="polite"]'),
+      ).toHaveText("Microphone unavailable");
+      await page.mouse.move(1, 1);
+      return;
+    }
     await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
     await expect(page.locator('[data-slot="voice-meter"]')).toBeVisible();
     if (state === "muted") {

@@ -1,4 +1,4 @@
-import { Badge } from "./badge";
+import { LoadingSpinner } from "./loading-state";
 import { IconButton } from "./icon-button";
 import { AudioLinesIcon, CountdownRingIcon, EarIcon, EarOffIcon, StopIcon } from "./icons";
 
@@ -16,7 +16,7 @@ export interface VoiceConversationControlsProps {
 
 export function VoiceConversationControls(props: VoiceConversationControlsProps) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5" aria-label="Conversation mode">
+    <div className="flex shrink-0 items-center gap-1.5" aria-label="Conversation mode">
       {!props.active && !props.preparing ? (
         <IconButton
           tooltip="Enter conversation mode"
@@ -28,7 +28,17 @@ export function VoiceConversationControls(props: VoiceConversationControlsProps)
       ) : (
         <>
           {props.preparing ? (
-            <Badge>Preparing voice…</Badge>
+            <IconButton
+              tooltip="Preparing voice…"
+              ariaLabel="Preparing conversation mode"
+              aria-busy
+              disabled
+              className="rounded-full"
+            >
+              <span aria-hidden="true" className="grid">
+                <LoadingSpinner />
+              </span>
+            </IconButton>
           ) : (
             <IconButton
               tooltip={

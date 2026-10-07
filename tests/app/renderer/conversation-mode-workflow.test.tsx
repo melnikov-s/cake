@@ -321,11 +321,28 @@ describe("Project Session conversation mode", () => {
     expect(restored.setApiKey).not.toHaveBeenCalled();
     expect(restored.setVoice).not.toHaveBeenCalled();
   });
+  it("shows preparation in the speech icon until capture is ready, then replaces it with the listening ear", async () => {
+    const preparation = deferred<void>();
+    using f = fixture({ prepare: async () => preparation.promise });
+    await f.user.click(screen.getByRole("button", { name: "Enter conversation mode" }));
+    const control = screen.getByRole("button", { name: "Preparing conversation mode" });
+    expect(control.getAttribute("aria-busy")).toBe("true");
+    expect(control.hasAttribute("disabled")).toBe(true);
+    expect(control.querySelector('[role="status"]')).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Exit conversation mode" })).toBeDefined();
+    expect(f.microphone.open).not.toHaveBeenCalled();
+    await act(async () => preparation.resolve());
+    const ear = screen.getByRole("button", { name: "Mute input", pressed: true });
+    expect(ear.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    expect(f.microphone.open).toHaveBeenCalledOnce();
+  });
   it("disabling speech during preparation prevents late completion from restarting audio or reporting an error", async () => {
     const preparation = deferred<void>();
     using f = fixture({ prepare: async () => preparation.promise });
     await f.user.click(screen.getByRole("button", { name: "Enter conversation mode" }));
-    expect(screen.getByText("Preparing voice…")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Preparing conversation mode" }).getAttribute("aria-busy"),
+    ).toBe("true");
     render(<SettingsSpeechSection speech={f.root.speechSettingsStore} />);
     await f.user.click(screen.getByRole("switch", { name: "Enable speech" }));
     await act(async () => preparation.resolve());

@@ -314,11 +314,54 @@ test("conversation controls enter, mute and exit with real capture and streaming
   const f = await launch();
   try {
     await f.configure();
+    // Hold only the external microphone boundary so loading geometry is deterministic.
+    await f.page.evaluate(() => {
+      const open = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      let release!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      navigator.mediaDevices.getUserMedia = async (constraints) => {
+        await ready;
+        return open(constraints);
+      };
+      Object.assign(globalThis, { releaseConversationMicrophone: release });
+    });
+    const composer = f.page.getByRole("combobox", { name: "Message", exact: true });
+    await composer.focus();
+    await composer.pressSequentially("Typed while loading.");
+    const layout = () =>
+      composer.evaluate((element) => {
+        const field = element.getBoundingClientRect();
+        const frame = element.closest("form")!.getBoundingClientRect();
+        return { inputHeight: field.height, frameHeight: frame.height };
+      });
+    const restingLayout = await layout();
     await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
-    await expect(f.page.getByRole("button", { name: "Mute input" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    const preparing = f.page.getByRole("button", { name: "Preparing conversation mode" });
+    await expect(preparing).toHaveAttribute("aria-busy", "true");
+    await expect(preparing).toBeDisabled();
+    await expect(preparing.locator('[role="status"]')).toBeVisible();
+    const preparingSize = await preparing.boundingBox();
+    expect(preparingSize!.width).toBe(30);
+    expect(preparingSize!.height).toBe(30);
+    expect(await layout()).toEqual(restingLayout);
+    await composer.focus();
+    await composer.press("End");
+    await composer.pressSequentially(" Still typing.");
+    await expect(composer).toHaveValue("Typed while loading. Still typing.");
+    await expect(composer).toBeFocused();
+    await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await f.page.evaluate(() => {
+      const release = Reflect.get(globalThis, "releaseConversationMicrophone") as () => void;
+      release();
+    });
+    const earControl = f.page.getByRole("button", { name: "Mute input" });
+    await expect(earControl).toHaveAttribute("aria-pressed", "true");
+    const activeSize = await earControl.boundingBox();
+    expect(activeSize!.width).toBe(preparingSize!.width);
+    expect(activeSize!.height).toBe(preparingSize!.height);
+    expect(await layout()).toEqual(restingLayout);
     await expect
       .poll(() =>
         f.page.evaluate(
@@ -329,7 +372,6 @@ test("conversation controls enter, mute and exit with real capture and streaming
         ),
       )
       .toBe(1);
-    const composer = f.page.getByRole("combobox", { name: "Message", exact: true });
     await composer.fill("Speak a response");
     await f.page.getByRole("button", { name: "Send", exact: true }).click();
     await expect.poll(() => f.responses.length).toBe(1);

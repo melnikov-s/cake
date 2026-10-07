@@ -12,7 +12,8 @@ It does not inject keystrokes into VS Code, terminals, browser pages, widgets, o
    MLX, ONNX, Whisper, and NeMo weights are not interchangeable with these compiled bundles.
 3. Enable **Dictation mode**. Cake loads and warms the model, reusing it while available and re-preparing after a voice-mode handoff.
 4. Focus a Cake chat composer, annotation comment, or another opted-in writing field.
-   Wait for **Listening** before speaking. **Preparing dictation…** means capture is not ready.
+   Wait for the loading spinner inside the speech control to become waveform bars before
+   speaking. The spinner means capture is not ready; no preparation header is shown.
    Core ML's first load can take longer while macOS prepares the model for the device.
 5. Speech appears progressively. Where Enter already submits, it drains the final audio before
    submitting once. Shift+Enter and existing multiline/slash-menu behavior remain unchanged.
@@ -113,7 +114,9 @@ A new utterance ID discards the previous decoder and text while retaining loaded
 
 The helper runs a warm inference pass before advertising readiness. Latency depends on hardware
 and context: this is progressive transcription, not an instant-word guarantee. An audio backlog
-above eight seconds stops capture with a visible error rather than silently dropping audio.
+above eight seconds stops capture with an error-marked speech icon and tooltip details rather
+than silently dropping audio. Capture status and errors never reserve a header or change
+writing-field height; all status text remains available to screen readers.
 Request validation rejects malformed, excessive, nonfinite, or out-of-range PCM. Main enforces
 startup and inference timeouts and owns worker cancellation and teardown.
 

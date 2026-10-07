@@ -32,6 +32,7 @@ test("Cake dictation shows readiness, types into chat and annotations, and seals
     hold?: boolean;
     text?: string;
     finalText?: string;
+    error?: string;
   }) => writeFile(control, JSON.stringify(value));
   await configure({ ready: false, hold: true });
   await writeFile(join(dictation, "settings.json"), JSON.stringify({ modelPath: model }));
@@ -50,7 +51,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
   let count = 0;
   for await (const line of readline.createInterface({ input: process.stdin })) {
     const request = JSON.parse(line); fs.writeFileSync(path.join(directory, 'request.json'), JSON.stringify({ count: ++count, final: request.final, id: request.utteranceId }));
-    await wait(value => !value.hold); const value = config(); reply({ text: request.final ? (value.finalText ?? value.text ?? '') : (value.text ?? '') });
+    await wait(value => !value.hold); const value = config(); reply(value.error ? { error: value.error } : { text: request.final ? (value.finalText ?? value.text ?? '') : (value.text ?? '') });
   }
 })();
 `,
@@ -146,12 +147,38 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await page.getByRole("switch", { name: "Dictation mode" }).click();
     const sample = page.getByLabel("Try dictation");
     await sample.focus();
-    await expect(page.locator('[data-slot="dictation-indicator"]')).toContainText("Preparing");
+    const indicator = page.locator('[data-slot="dictation-indicator"]');
+    const loadingControl = indicator.getByRole("button", { name: "Mute dictation" });
+    await expect(loadingControl).toHaveAttribute("aria-busy", "true");
+    const spinner = loadingControl.locator('[role="status"]');
+    await expect(spinner).toBeVisible();
+    const spinnerSize = await spinner.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { width: parseFloat(style.width), height: parseFloat(style.height) };
+    });
+    expect(spinnerSize.width).toBe(12);
+    expect(spinnerSize.height).toBe(12);
+    await expect(indicator.locator('[aria-live="polite"]')).toHaveClass("sr-only");
+    const preparingLayout = await sample.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { top: style.paddingTop, indent: style.textIndent };
+    });
+    expect(parseFloat(preparingLayout.indent)).toBeGreaterThan(24);
+    await sample.pressSequentially("Typed while loading. ");
+    await expect(sample).toHaveValue("Typed while loading. ");
+    await expect(sample).toBeFocused();
     await configure({ ready: true, text: "Dictation is ready" });
     await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening", {
       timeout: 15_000,
     });
-    await expect(sample).toHaveValue("Dictation is ready");
+    await expect(sample).toHaveValue("Typed while loading. Dictation is ready");
+    await expect(loadingControl).toHaveAttribute("aria-busy", "false");
+    expect(
+      await sample.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { top: style.paddingTop, indent: style.textIndent };
+      }),
+    ).toEqual(preparingLayout);
     const meter = page.locator(
       '[data-slot="dictation-field"]:has(textarea[aria-label="Try dictation"]) [data-slot="voice-meter"]',
     );
@@ -276,6 +303,41 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await page.getByRole("button", { name: "Back to chat" }).click();
     await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
     await expect(composer).toHaveValue("Typed first. Spoken next.");
+    // Recognition failure stays in the icon, without adding input padding or a status row.
+    await configure({ ready: true, hold: true });
+    await composer.focus();
+    await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+    const fieldLayout = () =>
+      composer.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          inputHeight: element.getBoundingClientRect().height,
+          frameHeight: element.closest("form")!.getBoundingClientRect().height,
+          paddingTop: style.paddingTop,
+          indent: style.textIndent,
+        };
+      });
+    const listeningLayout = await fieldLayout();
+    await configure({ ready: true, error: "Speech engine stopped" });
+    const errorStatus = page.locator('[data-slot="dictation-indicator"] [aria-live="polite"]');
+    await expect(errorStatus).toHaveText("Speech engine stopped");
+    await expect(errorStatus).toHaveClass("sr-only");
+    const errorControl = page.getByRole("button", { name: "Mute dictation", exact: true });
+    await expect(errorControl).toHaveClass(/text-destructive/);
+    expect(await fieldLayout()).toEqual(listeningLayout);
+    await errorControl.hover();
+    await expect(page.getByRole("tooltip")).toContainText("Speech engine stopped");
+    await composer.focus();
+    await composer.press("End");
+    await composer.pressSequentially(" Still writable.");
+    await expect(composer).toHaveValue("Typed first. Spoken next. Still writable.");
+    await expect(composer).toBeFocused();
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await configure({ ready: true, hold: true });
+    await errorControl.click();
+    await page.getByRole("button", { name: "Unmute dictation", exact: true }).click();
+    await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+    await composer.fill("Typed first. Spoken next.");
     // Select transcript prose and exercise the real native context-menu path.
     await configure({ ready: true, hold: true });
     const prose = page.getByText("Inspect this implementation before changing it.", {

@@ -18,16 +18,13 @@ export const DictationIndicator = observer(function DictationIndicator({
   anchor: RefObject<HTMLTextAreaElement | null>;
 }) {
   if (!store.enabled || store.activeTargetId !== targetId) return null;
-  const compact = store.phase === "listening" || store.muted;
+  const failed = store.phase === "error" && !store.muted;
+  const loading = !store.muted && (store.phase === "preparing" || store.phase === "finishing");
   const action = store.muted ? "Unmute dictation" : "Mute dictation";
   return (
     <div
       data-slot="dictation-indicator"
-      className={cn(
-        "absolute top-2 left-2 flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground",
-        !compact && "right-2",
-        store.phase === "error" && "text-destructive",
-      )}
+      className="absolute top-2 left-2 flex items-center"
       onBlur={(event) => {
         if (
           event.relatedTarget === anchor.current ||
@@ -38,10 +35,14 @@ export const DictationIndicator = observer(function DictationIndicator({
       }}
     >
       <IconButton
-        className="size-6 shrink-0 rounded-full border border-border text-primary aria-pressed:text-muted-foreground aria-pressed:hover:bg-muted aria-pressed:hover:text-foreground"
-        tooltip={action}
+        className={cn(
+          "size-6 shrink-0 rounded-full border border-border text-primary aria-pressed:text-muted-foreground aria-pressed:hover:bg-muted aria-pressed:hover:text-foreground",
+          failed && "border-destructive text-destructive",
+        )}
+        tooltip={failed ? `${store.label} — ${action}` : action}
         ariaLabel={action}
         aria-pressed={store.muted}
+        aria-busy={loading}
         pressedAppearance="subtle"
         onPointerDown={(event) => {
           event.preventDefault();
@@ -59,17 +60,17 @@ export const DictationIndicator = observer(function DictationIndicator({
           anchor.current?.focus();
         }}
       >
-        {store.muted ? <AudioLinesOffIcon /> : <VoiceMeter level={store.audioLevel} size="sm" />}
+        {store.muted || failed ? (
+          <AudioLinesOffIcon />
+        ) : loading ? (
+          <span aria-hidden="true" className="grid">
+            <LoadingSpinner />
+          </span>
+        ) : (
+          <VoiceMeter level={store.audioLevel} size="sm" />
+        )}
       </IconButton>
-      {!compact && (store.phase === "preparing" || store.phase === "finishing") && (
-        <LoadingSpinner label={store.label} />
-      )}
-      <span
-        role="status"
-        aria-live="polite"
-        className={cn(compact ? "sr-only" : "min-w-0 flex-1 truncate")}
-        title={compact ? undefined : store.label}
-      >
+      <span role="status" aria-live="polite" className="sr-only">
         {store.label}
       </span>
     </div>

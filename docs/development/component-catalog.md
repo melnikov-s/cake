@@ -71,9 +71,12 @@ crossed waveform while muted. Tooltips and accessible names describe the action,
 and `aria-pressed` reflects mute. The control remains visible while muted, and
 pointer or keyboard activation returns focus to writing. Mute is window-local,
 survives field changes, and never changes the Dictation mode preference.
-Listening/mute are announced accessibly, not displayed as a popup. Preparing,
-Finishing and failures remain visible in the field. Textarea reserves only the
-first line for the circle; wrapped lines use the normal writing edge.
+Listening/mute are announced accessibly, not displayed as a popup. Preparing and
+finishing replace the meter with the shared `LoadingSpinner` inside the circle;
+`aria-busy` reflects loading and all status text is screen-reader-only, including
+failures. Errors use a destructive crossed-waveform icon with details in its tooltip.
+Textarea reserves only the first line for the circle in every state; wrapped lines
+use the normal writing edge. Settings omit the changing capture-status paragraph.
 See [local dictation](dictation.md) for lifecycle details.
 
 `VoiceMeter` is a decorative seven-bar microphone-level display. Supply a normalized
@@ -86,7 +89,7 @@ roughly 20Hz and resets it on finishing, blur, mute or capture replacement.
 ## Voice conversation controls
 
 `VoiceConversationControls` is a shared stateless toolbar pattern composed from
-`IconButton` and `Badge`. Supply preparing/active, input-only mute, disabled and
+`IconButton` and `LoadingSpinner`. Supply preparing/active, input-only mute, disabled and
 enter/mute/exit intents. The entry action uses the shared `AudioLinesIcon` waveform
 to distinguish voice conversation from dictation. Once active, an accent-tinted
 `EarIcon` on a transparent circular target combines listening status and input mute; clicking it switches to an
@@ -94,7 +97,9 @@ unhighlighted `EarOffIcon` with a diagonal slash. Tooltips and accessible names
 explain the mute/unmute action, and `aria-pressed` reflects input being enabled.
 The shared `IconButton` supports `pressedAppearance="subtle"` for tint-only pressed states; other controls retain the default solid pressed treatment.
 During the two-second send countdown, `sendProgress` adds a thin accent ring outside the ear with breathing room and its action becomes cancel-send (`onCancelSend`), retaining the draft and continuing capture. Resuming speech resets the ring. Outside the countdown it still toggles mute.
-A separate `StopIcon` exits conversation mode. Preparing retains its status badge.
+A separate `StopIcon` exits conversation mode. Preparing shows the shared spinner
+inside a disabled circular `IconButton` with `aria-busy`, the same size as the active
+ear control. Status changes never add a badge or wrap the controls into another row.
 It owns no microphone,
 provider requests, timers or workflow state. `ChatConversationControls` maps the focused
 window `ConversationModeStore` and Project Session target into this primitive;

@@ -383,15 +383,24 @@ describe("Dictation writing-field workflow", () => {
     await fixture.user.click(mode());
     await fixture.user.click(trial());
     await fixture.user.click(message());
-    expect(screen.getAllByText("Preparing dictation… Wait to speak").length).toBeGreaterThan(0);
+    const control = screen.getByRole("button", { name: "Mute dictation" });
+    const status = screen.getByText("Preparing dictation… Wait to speak", { selector: "span" });
+    expect(status.classList.contains("sr-only")).toBe(true);
+    expect(control.getAttribute("aria-busy")).toBe("true");
+    expect(control.querySelector('[role="status"]')).not.toBeNull();
+    expect(message().classList.contains("indent-8")).toBe(true);
     expect(fixture.audio.getUserMedia).not.toHaveBeenCalled();
     await act(async () => model.resolve());
     // Preparation is idempotent; each focus generation may re-prepare after a voice handoff.
     expect(fixture.prepare).toHaveBeenCalled();
     expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce();
     expect(screen.queryByText("Listening")).toBeNull();
+    expect(control.getAttribute("aria-busy")).toBe("true");
     await act(async () => microphone.resolve());
     listening();
+    expect(control.getAttribute("aria-busy")).toBe("false");
+    expect(control.querySelector('[data-slot="voice-meter"]')).not.toBeNull();
+    expect(message().classList.contains("indent-8")).toBe(true);
     await fixture.audio.push(new Float32Array(12_800));
     await fixture.recognize(0, "Latest field receives speech");
     expect(message().value).toBe("Latest field receives speech");
@@ -505,7 +514,13 @@ describe("Dictation writing-field workflow", () => {
     await fixture.audio.push(new Float32Array(12_800));
     await fixture.audio.push(new Float32Array(3200));
     await fixture.user.keyboard("{Enter}{Enter}");
-    expect(screen.getAllByText("Finishing…").length).toBeGreaterThan(0);
+    expect(screen.getByText("Finishing…", { selector: "span" }).classList.contains("sr-only")).toBe(
+      true,
+    );
+    const control = screen.getByRole("button", { name: "Mute dictation" });
+    expect(control.getAttribute("aria-busy")).toBe("true");
+    expect(control.querySelector('[role="status"]')).not.toBeNull();
+    expect(message().classList.contains("indent-8")).toBe(true);
     expect(fixture.prompt).not.toHaveBeenCalled();
     await fixture.recognize(0, "Beginning");
     await waitFor(() => expect(fixture.requests).toHaveLength(2));
@@ -556,7 +571,6 @@ describe("Dictation writing-field workflow", () => {
     await act(async () => permission.resolve());
     expect(fixture.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
     expect(fixture.audio.processors).toHaveLength(0);
-    expect(screen.getByText("Dictation paused")).toBeDefined();
     await fixture.user.click(trial());
     listening();
     expect(fixture.audio.getUserMedia).toHaveBeenCalledTimes(2);
@@ -573,7 +587,12 @@ describe("Dictation writing-field workflow", () => {
       fixture.requests[0]!.reply.reject(new Error("Engine stopped"));
       await fixture.requests[0]!.reply.promise.catch(() => undefined);
     });
-    expect(screen.getAllByText("Engine stopped").length).toBeGreaterThan(0);
+    const errorStatus = screen.getByText("Engine stopped", { selector: "span" });
+    expect(errorStatus.classList.contains("sr-only")).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Mute dictation" }).classList.contains("text-destructive"),
+    ).toBe(true);
+    expect(message().classList.contains("indent-8")).toBe(true);
     expect(fixture.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
     expect(fixture.prompt).not.toHaveBeenCalled();
     expect(message().value).toBe("Keep draft");

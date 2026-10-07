@@ -168,11 +168,6 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
           rows={3}
         />
       </div>
-      {store.enabled && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {store.label}
-        </p>
-      )}
       {(store.error || state?.status === "error") && (
         <Callout variant="error">{store.error ?? state?.message}</Callout>
       )}
