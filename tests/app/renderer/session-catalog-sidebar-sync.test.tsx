@@ -48,6 +48,7 @@ function sidebar(root: RootStore) {
       onOpenSettings={() => undefined}
       onOpenCakeChat={() => undefined}
       onCreateCakeChat={() => undefined}
+      onNewSession={() => root.newSessionStore.show()}
       onOpenSession={() => undefined}
       onCreateSession={() => undefined}
       onRemoveProject={async () => true}

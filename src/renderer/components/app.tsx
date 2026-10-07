@@ -416,6 +416,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       onOpenArtifactLibrary={openArtifactLibrary}
       onOpenCakeChat={openCakeChat}
       onCreateCakeChat={createCakeChat}
+      onNewSession={() => root.newSessionStore.show()}
       onOpenSession={openSession}
       onCreateSession={createSession}
       onRemoveProject={(path, deleteSessions) =>

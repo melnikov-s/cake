@@ -972,6 +972,52 @@ const appearanceSettingsScenario: VisualCaptureScenario = {
   region: cakePromptsSettingsScenario.region,
 };
 
+const newSessionScenario: VisualCaptureScenario = {
+  name: "new-session",
+  description: "Searchable Cake Chat and Project destination dialog",
+  states: ["default", "filtered", "empty"],
+  async seed(paths, theme) {
+    await cakePromptsSettingsScenario.seed(paths, theme);
+    const timestamp = new Date(0).toISOString();
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        projects: [
+          { path: paths.project, name: "Cake", addedAt: timestamp, lastOpenedAt: timestamp },
+          {
+            path: resolve(paths.project, "../website"),
+            name: "Website",
+            addedAt: timestamp,
+            lastOpenedAt: timestamp,
+          },
+          {
+            path: resolve(paths.project, "../research"),
+            name: "Research",
+            addedAt: timestamp,
+            lastOpenedAt: timestamp,
+          },
+        ],
+        trustedProjectPaths: [],
+      }),
+    );
+  },
+  async prepare(page, state) {
+    await page
+      .getByRole("combobox", { name: "Message", exact: true })
+      .waitFor({ state: "visible", timeout: 20_000 });
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+N" : "Control+N");
+    const filter = page.getByRole("combobox", { name: "Filter projects" });
+    await expect(filter).toBeFocused();
+    if (state !== "default") await filter.fill(state === "filtered" ? "web" : "missing");
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page.getByRole("dialog", { name: "New session", exact: true }).locator(":scope > div");
+  },
+};
+
 const projectCustomInstructionsScenario: VisualCaptureScenario = {
   name: "project-custom-instructions",
   description: "Personal project instructions in the Project Settings dialog",
@@ -1556,6 +1602,7 @@ export const visualCaptureScenarios = [
   mcpSettingsScenario,
   appearanceSettingsScenario,
   projectCustomInstructionsScenario,
+  newSessionScenario,
   dictationInputScenario,
   dictationSettingsScenario,
   serverClientSettingsScenario,

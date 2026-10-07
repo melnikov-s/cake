@@ -11,6 +11,13 @@ export interface HotkeyDefinition {
 
 export const hotkeyDefinitions: readonly HotkeyDefinition[] = [
   {
+    id: "new-session",
+    group: "Navigation",
+    label: "New session",
+    description: "Choose Cake Chat or a Project for a new session.",
+    defaultBinding: "Mod+N",
+  },
+  {
     id: "toggle-agent-editor",
     group: "Editor & tools",
     label: "Toggle Agent / VS Code",

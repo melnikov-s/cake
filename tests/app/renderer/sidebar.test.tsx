@@ -183,6 +183,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
     } as any,
     onOpenCakeChat: vi.fn(),
     onCreateCakeChat: vi.fn(),
+    onNewSession: vi.fn(),
     onOpenSession: fixture.openSession ?? vi.fn(),
     onCreateSession: fixture.startNewSession ?? vi.fn(),
     onRemoveProject: fixture.removeProjectFromRoot ?? vi.fn(async () => true),
@@ -2038,30 +2039,5 @@ describe("Sidebar projects", () => {
       ),
     ).toEqual(["parent", "child", "standalone"]);
     expect(family.parentElement?.className).toContain("pl-2");
-  });
-
-  it("opens a new-session picker for Cake Chat and registered Projects", async () => {
-    const startNewSession = vi.fn();
-    const store = {
-      recentProjectPaths: ["/work/cake"],
-      projects: [{ path: "/work/cake", name: "Cake" }],
-      projectSessions: vi.fn(() => []),
-      sessionLimit: () => 10,
-      sessionActivity: vi.fn(),
-      sessionActivityTime: vi.fn(),
-      nameFromPath: () => "cake",
-      showMoreSessions: vi.fn(),
-      startNewSession,
-    } as unknown as ProjectWorkbenchStore;
-
-    act(() =>
-      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
-    );
-    act(() => container.querySelector<HTMLButtonElement>('[aria-label="New session"]')!.click());
-    const projectOption = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent?.trim() === "Cake",
-    )!;
-    act(() => projectOption.click());
-    expect(startNewSession).toHaveBeenCalledWith("/work/cake");
   });
 });

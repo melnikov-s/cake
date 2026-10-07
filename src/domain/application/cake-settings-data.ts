@@ -23,6 +23,7 @@ export const cakeSettingsSections = [
 ] as const;
 
 export const cakeHotkeyActionIds = [
+  "new-session",
   "toggle-agent-editor",
   "open-editor",
   "open-changes",

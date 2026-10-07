@@ -20,6 +20,18 @@ artwork and row interactions; the preference is persisted in the window snapshot
 Project icons (generated or custom) are unchanged, including in the activity feed.
 The project/session avatar visibility switches remain independent.
 
+## Searchable choice dialog
+
+`SearchableChoiceDialog` composes the shared Dialog, Input, Button, and IconButton
+primitives for a compact searchable destination picker. Callers own filtering and
+selection policy; the primitive owns active-option highlighting, wrapping arrow-key
+navigation, Enter selection, Escape/backdrop dismissal, focus containment and
+restoration. The search input uses combobox/listbox semantics. Mount it only while
+open. Supply `initialActiveId` to preselect a choice on opening (missing choices
+fall back to the first). The New session workflow uses it for Cake Chat and
+registered Projects, remembering the last new-session Project choice in the
+window snapshot; opening Cake Chat or cancelling does not replace that choice.
+
 ## Inline links
 
 `Link` is the shared anchor for Markdown, source citations, session links, and

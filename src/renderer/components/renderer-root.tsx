@@ -5,6 +5,7 @@ import { StrictMode } from "react";
 import { observer, StoreProvider } from "r-state-tree/react";
 import type { RootStore } from "../stores/RootStore";
 import { App } from "./app";
+import { NewSessionDialog } from "./new-session-dialog";
 import { IconButtonHotkeyProvider } from "./ui/icon-button";
 import { MarkdownLinkProvider } from "./ai-elements/markdown";
 import { RendererErrorBoundary } from "./renderer-error-boundary";
@@ -72,6 +73,7 @@ export const RendererRoot = observer(function RendererRoot({
                     )}
                     <div className="min-h-0 flex-1">
                       <App browserMode={Boolean(browserConnection)} />
+                      <NewSessionDialog store={rootStore.newSessionStore} />
                     </div>
                   </div>
                 </IconButtonHotkeyProvider>

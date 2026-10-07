@@ -1,0 +1,58 @@
+import { Store, snapshot } from "r-state-tree";
+import type { ProjectCatalogStore } from "./ProjectCatalogStore";
+
+/** Owns the window's session destination picker. Only the last Project choice
+ * is persisted; open/filter state is ephemeral. Creation remains with the existing workflows. */
+export class NewSessionStore extends Store<{
+  projects: ProjectCatalogStore;
+  createCakeChat(): void;
+  createProjectSession(path: string): void;
+}> {
+  open = false;
+  query = "";
+  @snapshot lastProjectPath: string | undefined;
+
+  get initialChoiceId() {
+    // Keep the preference while the Project catalog is still loading. The dialog
+    // falls back to its first option whenever this destination is unavailable.
+    return this.lastProjectPath ?? "cake-chat";
+  }
+
+  rememberProject(path: string) {
+    this.lastProjectPath = path;
+  }
+
+  get choices() {
+    const query = this.query.trim().toLocaleLowerCase();
+    return [
+      { id: "cake-chat", label: "Cake Chat", description: "Chat with Cake" },
+      ...this.props.projects.orderedProjectPaths.map((path) => ({
+        id: path,
+        label: this.props.projects.nameForPath(path),
+        description: path,
+      })),
+    ].filter((choice) =>
+      `${choice.label} ${choice.description}`.toLocaleLowerCase().includes(query),
+    );
+  }
+
+  show() {
+    this.query = "";
+    this.open = true;
+  }
+
+  close() {
+    this.open = false;
+  }
+
+  setQuery(query: string) {
+    this.query = query;
+  }
+
+  select(id: string) {
+    if (!this.open || !this.choices.some((choice) => choice.id === id)) return;
+    this.close();
+    if (id === "cake-chat") this.props.createCakeChat();
+    else this.props.createProjectSession(id);
+  }
+}

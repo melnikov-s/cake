@@ -49,6 +49,7 @@ import { DrawControlStore } from "./DrawControlStore";
 import { ProjectSessionPlacementStore } from "./ProjectSessionPlacementStore";
 import { SessionRetirementStore } from "./SessionRetirementStore";
 import { ProjectRemovalStore } from "./ProjectRemovalStore";
+import { NewSessionStore } from "./NewSessionStore";
 
 export class RootStore extends Store<{
   client: Client;
@@ -143,6 +144,19 @@ export class RootStore extends Store<{
   get fullscreenSurfaceStore(): FullscreenSurfaceStore {
     return createStore(FullscreenSurfaceStore, {
       setOpen: (surfaceId, open) => this.client.electron.setFullscreenSurfaceOpen(surfaceId, open),
+    });
+  }
+
+  @child
+  get newSessionStore(): NewSessionStore {
+    return createStore(NewSessionStore, {
+      projects: this.projectCatalogStore,
+      createCakeChat: () => {
+        void this.startCakeChat();
+      },
+      createProjectSession: (path) => {
+        void this.createSession(path);
+      },
     });
   }
 
@@ -255,6 +269,7 @@ export class RootStore extends Store<{
   }
 
   async createSession(workspacePath: string) {
+    this.newSessionStore.rememberProject(workspacePath);
     await this.projectWorkbenchStore.startNewSession(workspacePath);
     const sessionId = this.projectWorkbenchStore.activeSession?.sessionId;
     if (sessionId) this.selectProjectSessionForShell(sessionId);
@@ -350,6 +365,9 @@ export class RootStore extends Store<{
           ? this.projectWorkbenchStore.activeSession?.conversationSessionStore.chatStore
           : undefined;
     switch (action) {
+      case "new-session":
+        this.newSessionStore.show();
+        break;
       case "toggle-agent-editor":
         if (projectSelected && !projectResolved)
           void this.projectWorkbenchStore.presentationStore.toggleIde();
@@ -497,6 +515,10 @@ export class RootStore extends Store<{
     this.projectWorkbenchStore.activeSession?.conversationSessionStore.composerStore.draftStore.requestFocus();
   }
   dismissTopSecondarySurface() {
+    if (this.newSessionStore.open) {
+      this.newSessionStore.close();
+      return;
+    }
     if (this.projectWorkbenchStore.commandPaneStore.navigationPrompt) {
       this.projectWorkbenchStore.commandPaneStore.cancelNavigation();
       return;

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -9,8 +8,6 @@ import {
   ArtifactIcon,
   BackIcon,
   BellIcon,
-  CakeIcon,
-  FolderIcon,
   FolderPlusIcon,
   ForwardIcon,
   PlusIcon,
@@ -30,7 +27,6 @@ import type { AppShellStore } from "../stores/AppShellStore";
 import type { ProjectSettingsStore } from "../stores/ProjectSettingsStore";
 import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore";
 import { SidebarActivityFeed } from "./sidebar-activity-feed";
-import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";
 import { SortableItem, type SortableItemDragHandleProps } from "./ui/sortable-item";
 
 export const Sidebar = observer(function Sidebar({
@@ -47,6 +43,7 @@ export const Sidebar = observer(function Sidebar({
   onOpenArtifactLibrary,
   onOpenCakeChat,
   onCreateCakeChat,
+  onNewSession,
   onOpenSession,
   onCreateSession,
   onRemoveProject,
@@ -68,6 +65,7 @@ export const Sidebar = observer(function Sidebar({
   onOpenArtifactLibrary?(): void;
   onOpenCakeChat(sessionId?: string): void;
   onCreateCakeChat(): void;
+  onNewSession(): void;
   onOpenSession(sessionId: string): void;
   onCreateSession(workspacePath: string): void;
   onRemoveProject(path: string, deleteSessions: boolean): Promise<boolean>;
@@ -76,7 +74,6 @@ export const Sidebar = observer(function Sidebar({
   onGoForward(): void;
   onToggle: () => void;
 }) {
-  const [newSessionMenuOpen, setNewSessionMenuOpen] = useState(false);
   const focusedProjectPath = store.focusModeProjectPath;
   const projectPaths = focusedProjectPath ? [focusedProjectPath] : projects.orderedProjectPaths;
   const focusMode = focusedProjectPath !== undefined;
@@ -121,42 +118,15 @@ export const Sidebar = observer(function Sidebar({
         </IconButton>
         {!focusMode && (
           <div className="ml-auto flex items-center gap-0.5 [app-region:no-drag]">
-            <Popover open={newSessionMenuOpen} onOpenChange={setNewSessionMenuOpen}>
-              <PopoverIconTrigger
-                data-cake-hint-key="n"
-                tooltip="New session"
-                ariaLabel="New session"
-              >
-                <PlusIcon />
-              </PopoverIconTrigger>
-              <PopoverContent side="bottom" align="end" className="w-56 p-1.5">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start gap-2"
-                  onClick={() => {
-                    setNewSessionMenuOpen(false);
-                    onCreateCakeChat();
-                  }}
-                >
-                  <CakeIcon />
-                  Cake Chat
-                </Button>
-                {projectPaths.map((path) => (
-                  <Button
-                    key={path}
-                    variant="ghost"
-                    className="w-full justify-start gap-2"
-                    onClick={() => {
-                      setNewSessionMenuOpen(false);
-                      onCreateSession(path);
-                    }}
-                  >
-                    <FolderIcon />
-                    <span className="truncate">{projects.nameForPath(path)}</span>
-                  </Button>
-                ))}
-              </PopoverContent>
-            </Popover>
+            <IconButton
+              data-cake-hint-key="n"
+              tooltip="New session"
+              ariaLabel="New session"
+              hotkey="new-session"
+              onClick={onNewSession}
+            >
+              <PlusIcon />
+            </IconButton>
             <IconButton
               className={cn(activityMode && "bg-sidebar-active text-foreground")}
               tooltip={activityMode ? "Show projects" : "Show activity"}
