@@ -8,6 +8,7 @@ import { defaultApplicationState } from "../../../src/domain/application/applica
 import type { ConversationSnapshot } from "../../../src/domain/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { App } from "../../../src/renderer/components/app";
+import { defaultHotkeyBinding } from "../../../src/renderer/lib/hotkeys";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -41,12 +42,16 @@ function deferred<Value>() {
   });
   return { promise, resolve };
 }
-function renderNavigation(open: Client["projectSessions"]["open"] = async () => undefined) {
+function renderNavigation(
+  open: Client["projectSessions"]["open"] = async () => undefined,
+  navigationSessions = sessions,
+) {
   const fixture = createRendererStoreFixture({
     projects,
-    sessions,
+    sessions: navigationSessions,
     client: {
       projectSessions: { open },
+      cakeChats: { open: async () => undefined },
       electron: { chooseProject: async () => "/beta" },
       workspaces: {
         inspect: async (request) => ({ ...request, trustRequired: false }),
@@ -55,12 +60,19 @@ function renderNavigation(open: Client["projectSessions"]["open"] = async () => 
       },
     },
   });
-  const publish = (id: string) =>
-    applyConversationUpdate(fixture.models.projectConversation(id, `/${id}`), {
-      _tag: "Snapshot",
-      revision: 1,
-      snapshot: snapshot(id),
-    });
+  let revision = 0;
+  const publish = (id: string, streaming = false) =>
+    applyConversationUpdate(
+      fixture.models.projectConversation(
+        id,
+        navigationSessions.find((session) => session.sessionId === id)!.workingDirectory,
+      ),
+      {
+        _tag: "Snapshot",
+        revision: ++revision,
+        snapshot: { ...snapshot(id), streaming },
+      },
+    );
   fixture.root.sessionRegistry.load("alpha", "/alpha");
   publish("alpha");
   fixture.root.appShellStore.selectProjectSession("alpha");
@@ -75,6 +87,30 @@ function renderNavigation(open: Client["projectSessions"]["open"] = async () => 
     user: userEvent.setup(),
     async hydrate(id: string) {
       await act(async () => publish(id));
+    },
+    async publishActivity(activeIds: readonly string[]) {
+      await act(async () => {
+        for (const session of navigationSessions) {
+          fixture.root.sessionRegistry.load(session.sessionId, session.workingDirectory);
+          publish(session.sessionId, activeIds.includes(session.sessionId));
+        }
+      });
+    },
+    async publishCakeChatActivity(streaming: boolean) {
+      await act(async () => {
+        applySnapshot(fixture.models.cakeChatCatalog, {
+          loaded: true,
+          sessions: [
+            sessionSummary({ sessionId: "cake", projectPath: "/", title: "Working Cake Chat" }),
+          ],
+        });
+        fixture.root.cakeChatCollectionStore.registry.load("cake");
+        applyConversationUpdate(fixture.models.cakeChatConversation("cake"), {
+          _tag: "Snapshot",
+          revision: ++revision,
+          snapshot: { ...snapshot("cake"), streaming },
+        });
+      });
     },
     async changeActivity() {
       await act(async () =>
@@ -118,7 +154,135 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// Supplementary workflow proof; real shifted key input is verified in Electron.
+function pressActiveSessionShortcut(direction: "next" | "previous") {
+  const binding = defaultHotkeyBinding(
+    direction === "next" ? "next-active-session" : "previous-active-session",
+  );
+  const mac = binding.startsWith("Mod+");
+  fireEvent.keyDown(window, {
+    key: mac
+      ? direction === "next"
+        ? "}"
+        : "{"
+      : direction === "next"
+        ? "ArrowRight"
+        : "ArrowLeft",
+    code: mac
+      ? direction === "next"
+        ? "BracketRight"
+        : "BracketLeft"
+      : direction === "next"
+        ? "ArrowRight"
+        : "ArrowLeft",
+    metaKey: mac,
+    altKey: !mac,
+    shiftKey: true,
+  });
+}
+
 describe("Project navigation workflow", () => {
+  it("cycles working sessions across projects in both directions, wraps, and skips sessions as they finish", async () => {
+    const navigationSessions = [
+      sessions[0]!,
+      sessionSummary({ sessionId: "idle", projectPath: "/alpha", unread: true }),
+      sessionSummary({
+        sessionId: "second",
+        projectPath: "/alpha",
+        modifiedAt: "2025-01-01T00:00:00.000Z",
+      }),
+      sessions[1]!,
+    ];
+    using fixture = renderNavigation(undefined, navigationSessions);
+    await fixture.publishActivity(["alpha", "second", "beta"]);
+    pressActiveSessionShortcut("next");
+    await waitFor(() =>
+      expect(document.querySelector(".session-item.active")?.getAttribute("data-session-id")).toBe(
+        "second",
+      ),
+    );
+    pressActiveSessionShortcut("next");
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+      ).toBe("beta"),
+    );
+    pressActiveSessionShortcut("next");
+    await waitFor(() =>
+      expect(document.querySelector(".session-item.active")?.getAttribute("data-session-id")).toBe(
+        "alpha",
+      ),
+    );
+    pressActiveSessionShortcut("previous");
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+      ).toBe("beta"),
+    );
+    await fixture.publishActivity(["alpha", "second"]);
+    pressActiveSessionShortcut("previous");
+    await waitFor(() =>
+      expect(document.querySelector(".session-item.active")?.getAttribute("data-session-id")).toBe(
+        "second",
+      ),
+    );
+    await fixture.publishActivity([]);
+    pressActiveSessionShortcut("next");
+    pressActiveSessionShortcut("previous");
+    expect(document.querySelector(".session-item.active")?.getAttribute("data-session-id")).toBe(
+      "second",
+    );
+  });
+
+  it("reaches a running child inside a collapsed family instead of its idle parent", async () => {
+    using fixture = renderNavigation(undefined, [
+      sessionSummary({ ...sessions[0]!, familyChildSessionIds: ["child"] }),
+      sessionSummary({
+        sessionId: "child",
+        projectPath: "/alpha",
+        familyParentSessionId: "alpha",
+        familyDepth: 1,
+        familyChildOrder: 0,
+      }),
+      sessions[1]!,
+    ]);
+    await fixture.publishActivity(["child"]);
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Collapse children of alpha session" }),
+    );
+    pressActiveSessionShortcut("next");
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+      ).toBe("child"),
+    );
+    pressActiveSessionShortcut("previous");
+    expect(
+      document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+    ).toBe("child");
+  });
+
+  it("includes working Cake Chats, but not idle Cake Chats", async () => {
+    using fixture = renderNavigation();
+    await fixture.publishActivity(["alpha", "beta"]);
+    await fixture.publishCakeChatActivity(true);
+    pressActiveSessionShortcut("previous");
+    expect(await screen.findByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
+    pressActiveSessionShortcut("previous");
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+      ).toBe("beta"),
+    );
+    await fixture.publishCakeChatActivity(false);
+    pressActiveSessionShortcut("next");
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+      ).toBe("alpha"),
+    );
+  });
+
   it("selects the existing session when reopening a registered project", async () => {
     const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
     using fixture = renderNavigation(open);

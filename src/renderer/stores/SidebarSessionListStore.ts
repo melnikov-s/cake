@@ -118,6 +118,41 @@ export class SidebarSessionListStore extends Store<{
     return this.flattenProjectSessionRoots(byId, visibleRoots);
   }
 
+  /** Canonical project-sidebar order, independent of pagination, collapse, or focus mode. */
+  adjacentActiveSession(direction: "next" | "previous") {
+    const conversations = [
+      ...this.cakeChatSessions().map((session) => ({
+        kind: "cake-chat" as const,
+        sessionId: session.sessionId,
+        active: this.props.cakeChat().registry.find(session.sessionId)?.streaming === true,
+      })),
+      ...this.props.projects.orderedProjectPaths.flatMap((path) => {
+        const { byId, roots } = this.orderedProjectSessionRoots(path, false);
+        return this.flattenProjectSessionRoots(byId, roots, true).map((session) => ({
+          kind: "project-session" as const,
+          sessionId: session.sessionId,
+          active: isActiveSessionActivity(
+            this.props.sessionMetadata.sessionActivity(session.sessionId),
+          ),
+        }));
+      }),
+    ];
+    const selected = this.props.selectedConversation?.();
+    const currentIndex = conversations.findIndex(
+      (conversation) =>
+        conversation.kind === selected?.kind && conversation.sessionId === selected.sessionId,
+    );
+    const step = direction === "next" ? 1 : -1;
+    const start = currentIndex >= 0 ? currentIndex : direction === "next" ? -1 : 0;
+    for (let offset = 1; offset <= conversations.length; offset++) {
+      const index = (start + step * offset + conversations.length) % conversations.length;
+      const conversation = conversations[index]!;
+      if (index !== currentIndex && conversation.active)
+        return { kind: conversation.kind, sessionId: conversation.sessionId };
+    }
+    return undefined;
+  }
+
   isFamilyCollapsed(parentSessionId: string) {
     return this.collapsedFamilies[parentSessionId] === true;
   }
@@ -248,9 +283,13 @@ export class SidebarSessionListStore extends Store<{
   private flattenProjectSessionRoots(
     byId: ReturnType<SidebarSessionListStore["sortedProjectSessionRoots"]>["byId"],
     roots: ReturnType<SidebarSessionListStore["sortedProjectSessionRoots"]>["roots"],
+    includeCollapsed = false,
   ) {
     const flatten = (session: (typeof roots)[number]): Array<(typeof roots)[number]> => {
-      if (!session.familyChildSessionIds?.length || this.isFamilyCollapsed(session.sessionId))
+      if (
+        !session.familyChildSessionIds?.length ||
+        (!includeCollapsed && this.isFamilyCollapsed(session.sessionId))
+      )
         return [session];
       const children = session.familyChildSessionIds
         .flatMap((id) => (byId.get(id) ? [byId.get(id)!] : []))

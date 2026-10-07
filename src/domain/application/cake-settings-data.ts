@@ -44,6 +44,8 @@ export const cakeHotkeyActionIds = [
   "focus-pane-4",
   "history-back",
   "history-forward",
+  "next-active-session",
+  "previous-active-session",
   "show-ui-hints",
   "toggle-work-logs",
   "cycle-work-log-view",

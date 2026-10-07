@@ -317,6 +317,13 @@ export class RootStore extends Store<{
     else void this.navigateToHistoryEntry(this.appShellStore.goForward());
   }
 
+  navigateActiveSession(direction: "next" | "previous") {
+    const target = this.sidebarStore.sessionListStore.adjacentActiveSession(direction);
+    if (!target) return;
+    if (target.kind === "cake-chat") void this.openCakeChat(target.sessionId);
+    else void this.openSession(target.sessionId);
+  }
+
   focusSessionPane(paneId: string) {
     const sessionId = this.sessionLayoutStore.focusPane(paneId);
     if (!sessionId || this.projectWorkbenchStore.activeSessionId === sessionId) return;
@@ -427,6 +434,12 @@ export class RootStore extends Store<{
         break;
       case "history-forward":
         this.navigateForward();
+        break;
+      case "next-active-session":
+        this.navigateActiveSession("next");
+        break;
+      case "previous-active-session":
+        this.navigateActiveSession("previous");
         break;
       case "show-ui-hints":
         this.uiHintModeStore.toggle();

@@ -158,6 +158,22 @@ export const hotkeyDefinitions: readonly HotkeyDefinition[] = [
     defaultBinding: isMacPlatform ? "Mod+]" : "Alt+ArrowRight",
   },
   {
+    id: "next-active-session",
+    group: "Navigation",
+    label: "Next active session",
+    description:
+      "Cycle forward through running or waiting sessions in sidebar order, wrapping around.",
+    defaultBinding: isMacPlatform ? "Mod+Shift+]" : "Alt+Shift+ArrowRight",
+  },
+  {
+    id: "previous-active-session",
+    group: "Navigation",
+    label: "Previous active session",
+    description:
+      "Cycle backward through running or waiting sessions in sidebar order, wrapping around.",
+    defaultBinding: isMacPlatform ? "Mod+Shift+[" : "Alt+Shift+ArrowLeft",
+  },
+  {
     id: "open-settings",
     group: "Navigation",
     label: "Toggle Settings",
