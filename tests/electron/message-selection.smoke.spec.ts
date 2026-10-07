@@ -7,7 +7,12 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("focuses annotation input and opens a responsive, resizable selection side chat", async () => {
+test("focuses annotation input and opens a responsive, resizable selection side chat", () =>
+  verifyMessageSelection(false));
+test("keeps annotation highlights in transcript and fullscreen readers", () =>
+  verifyMessageSelection(true));
+
+async function verifyMessageSelection(highlightsOnly: boolean) {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-message-selection-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -214,23 +219,25 @@ test("focuses annotation input and opens a responsive, resizable selection side 
     await expect
       .poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
       .toBe("UtilityModePreferences");
-    await application.evaluate(({ Menu }) => {
+    await application.evaluate(({ Menu }, highlightsOnly) => {
       const buildFromTemplate = Menu.buildFromTemplate.bind(Menu);
-      let nextLabel = "Add annotation";
+      const labels = highlightsOnly
+        ? ["Add annotation", "Add annotation"]
+        : ["Add annotation", "Chat about this"];
       Menu.buildFromTemplate = (template) => {
         const menu = buildFromTemplate(template);
         menu.popup = (options) => {
+          const nextLabel = labels.shift();
           const item = menu.items.find((candidate) => candidate.label === nextLabel);
           if (!item?.click) throw new Error(`Expected ${nextLabel} menu item`);
           if (!item.icon || item.icon.isEmpty())
             throw new Error(`Expected ${nextLabel} menu item to have an icon`);
-          nextLabel = "Chat about this";
           item.click(item, options.window!, { triggeredByAccelerator: false });
           options.callback?.();
         };
         return menu;
       };
-    });
+    }, highlightsOnly);
     const openSelectionMenu = () =>
       page.evaluate(({ x, y }) => {
         const target = document.elementFromPoint(x, y);
@@ -255,6 +262,84 @@ test("focuses annotation input and opens a responsive, resizable selection side 
     await expect(annotationDialog.getByRole("button", { name: "Add annotation" })).toBeEnabled();
     await annotationInput.press("Enter");
     await expect(annotationDialog).toHaveCount(0);
+
+    if (highlightsOnly) {
+      const highlightedText = (inFullscreen: boolean) =>
+        page.evaluate((inFullscreen) => {
+          const registry = (CSS as typeof CSS & { highlights: Map<string, Set<Range>> }).highlights;
+          return [...(registry.get("cake-message-comment") ?? [])]
+            .filter((range) => {
+              const element = range.startContainer.parentElement;
+              return (
+                element?.isConnected && Boolean(element.closest('[role="dialog"]')) === inFullscreen
+              );
+            })
+            .map((range) => range.toString())
+            .sort();
+        }, inFullscreen);
+      await expect.poll(() => highlightedText(false)).toEqual(["UtilityModePreferences"]);
+
+      // The message's own fullscreen button keeps a second, independent range.
+      await page.getByRole("button", { name: "View response fullscreen" }).click({ force: true });
+      await expect(fullscreen).toBeVisible();
+      await page.waitForFunction(() =>
+        Array.from(
+          document.querySelectorAll<HTMLElement>(
+            '[role="dialog"] [data-streamdown="code-block-body"] code span span',
+          ),
+        ).some((token) => token.style.getPropertyValue("--sdm-c") !== "inherit"),
+      );
+      await expect.poll(() => highlightedText(true)).toEqual(["UtilityModePreferences"]);
+      await expect.poll(() => highlightedText(false)).toEqual(["UtilityModePreferences"]);
+
+      // An annotation created in the reader appears there immediately, including
+      // prose as well as the asynchronously highlighted fenced-code selection.
+      const proseTarget = await fullscreen
+        .getByText("The unconfigured state stays empty.")
+        .evaluate((element) => {
+          const node = element.firstChild!;
+          const start = node.textContent!.indexOf("unconfigured");
+          const range = document.createRange();
+          range.setStart(node, start);
+          range.setEnd(node, start + "unconfigured".length);
+          const rect = range.getBoundingClientRect();
+          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        });
+      await page.mouse.dblclick(proseTarget.x, proseTarget.y);
+      await expect
+        .poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
+        .toBe("unconfigured");
+      await page.mouse.click(proseTarget.x, proseTarget.y, { button: "right" });
+      await expect(annotationInput).toBeFocused();
+      await annotationInput.pressSequentially("Keep this empty");
+      await annotationInput.press("Enter");
+      await expect(annotationDialog).toHaveCount(0);
+      await expect
+        .poll(() => highlightedText(true))
+        .toEqual(["UtilityModePreferences", "unconfigured"]);
+      await fullscreen.getByRole("button", { name: "Exit fullscreen Cake" }).click();
+      await expect.poll(() => highlightedText(true)).toEqual([]);
+      await expect
+        .poll(() => highlightedText(false))
+        .toEqual(["UtilityModePreferences", "unconfigured"]);
+
+      // The no-hover application shortcut has its own reader entry point.
+      await page.mouse.move(0, 0);
+      await page.keyboard.press(process.platform === "darwin" ? "Meta+Enter" : "Alt+Enter");
+      await expect(fullscreen).toBeVisible();
+      await expect
+        .poll(() => highlightedText(true))
+        .toEqual(["UtilityModePreferences", "unconfigured"]);
+      await fullscreen.getByRole("button", { name: "Exit fullscreen Cake" }).click();
+      await page.getByRole("button", { name: "View annotation 2", exact: true }).click();
+      await page.getByRole("button", { name: "Delete annotation", exact: true }).click();
+      await expect.poll(() => highlightedText(false)).toEqual(["UtilityModePreferences"]);
+      await page.getByRole("button", { name: "View response fullscreen" }).click({ force: true });
+      await expect.poll(() => highlightedText(true)).toEqual(["UtilityModePreferences"]);
+      await fullscreen.getByRole("button", { name: "Exit fullscreen Cake" }).click();
+      await expect.poll(() => highlightedText(true)).toEqual([]);
+      return;
+    }
 
     await page.mouse.dblclick(selectionTarget.x, selectionTarget.y);
     await expect
@@ -315,7 +400,7 @@ test("focuses annotation input and opens a responsive, resizable selection side 
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
   }
-});
+}
 
 function digestKey(value: string) {
   return createHash("sha256").update(value).digest("hex");

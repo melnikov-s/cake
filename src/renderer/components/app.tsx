@@ -1339,6 +1339,9 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
           markdown
           streaming={fullscreenPart.status === "streaming"}
           partId={fullscreenPart.id}
+          highlightAnchors={currentChatSession?.conversationSessionStore.chatStore.annotations.filter(
+            (annotation) => annotation.messageId === fullscreenPart.id,
+          )}
           onOpenSourceLocation={
             surface === "workbench" && session
               ? projectTranscriptBehaviorFor(session).openSourceLocation

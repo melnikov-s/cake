@@ -4,6 +4,15 @@
 @source "../../node_modules/@streamdown/math/dist/*.js";
 @source "../../node_modules/@streamdown/mermaid/dist/*.js";
 
+/* Native range highlights are shared by transcript and fullscreen content. */
+::highlight(cake-message-comment) {
+  background: color-mix(in oklab, var(--accent) 28%, transparent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--accent) 75%, transparent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
 /* Map Tailwind's `dark:` variant to Cake's data-theme attribute. Third-party
    utilities (notably Streamdown's dual-theme Shiki token spans) must follow
    the app theme, not the OS color scheme, or dark-palette token colors render

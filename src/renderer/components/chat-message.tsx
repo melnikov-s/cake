@@ -13,6 +13,7 @@ import { observer } from "r-state-tree/react";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { cakeHotkeyEventName } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
+import { rangeAtOffsets, useMessageHighlights } from "@/lib/message-highlights";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { FullscreenMessage } from "@/components/fullscreen-message";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
@@ -136,68 +137,13 @@ export const ChatTextMessage = forwardRef<
   );
 });
 
-const messageHighlightRanges = new Map<string, Range[]>();
 const ASSISTANT_FULLSCREEN_MIN_CHARACTERS = 500;
-
-type HighlightValue = { readonly priority?: number };
-type HighlightRegistry = {
-  set(name: string, value: HighlightValue): void;
-  delete(name: string): void;
-};
-type HighlightConstructor = new (...ranges: Range[]) => HighlightValue;
-
-function refreshMessageHighlights() {
-  // SAFETY: CSS.highlights is feature-detected before use; TypeScript's DOM
-  // declarations do not yet expose the experimental registry consistently.
-  const css = globalThis.CSS;
-  // SAFETY: the guarded CSS object may expose the experimental HighlightRegistry.
-  const registry = css
-    ? (css as typeof globalThis.CSS & { highlights?: HighlightRegistry }).highlights
-    : undefined;
-  // SAFETY: the experimental Highlight constructor is feature-detected and is
-  // invoked only with DOM Range instances.
-  const HighlightClass = (globalThis as typeof globalThis & { Highlight?: HighlightConstructor })
-    .Highlight;
-  if (!registry || !HighlightClass) return;
-  if (!document.getElementById("cake-message-comment-highlight-style")) {
-    const style = document.createElement("style");
-    style.id = "cake-message-comment-highlight-style";
-    style.textContent =
-      "::highlight(cake-message-comment){background:color-mix(in oklab,var(--accent) 28%,transparent);text-decoration:underline;text-decoration-color:color-mix(in oklab,var(--accent) 75%,transparent);text-decoration-thickness:2px;text-underline-offset:2px}";
-    document.head.appendChild(style);
-  }
-  const ranges = [...messageHighlightRanges.values()].flat();
-  if (ranges.length === 0) registry.delete("cake-message-comment");
-  else registry.set("cake-message-comment", new HighlightClass(...ranges));
-}
 
 function textOffset(container: Node, node: Node, offset: number) {
   const range = document.createRange();
   range.selectNodeContents(container);
   range.setEnd(node, offset);
   return range.toString().length;
-}
-
-function rangeAtOffsets(container: Node, start: number, end: number) {
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  let traversed = 0;
-  let startPoint: { node: Node; offset: number } | undefined;
-  let endPoint: { node: Node; offset: number } | undefined;
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const length = node.textContent?.length ?? 0;
-    if (!startPoint && start <= traversed + length)
-      startPoint = { node, offset: Math.max(0, start - traversed) };
-    if (end <= traversed + length) {
-      endPoint = { node, offset: Math.max(0, end - traversed) };
-      break;
-    }
-    traversed += length;
-  }
-  if (!startPoint || !endPoint) return undefined;
-  const range = document.createRange();
-  range.setStart(startPoint.node, startPoint.offset);
-  range.setEnd(endPoint.node, endPoint.offset);
-  return range;
 }
 
 export function captureMessageSelection(
@@ -344,42 +290,8 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
     return () => window.clearTimeout(timeout);
   }, [copied]);
 
-  useLayoutEffect(() => {
-    const key = `${part.id}:${part.entryId ?? ""}`;
-    const container = contentRef.current;
-    const threadRanges = container
-      ? commentThreads.flatMap((thread) => {
-          const start = thread.anchor.startOffset;
-          const end = thread.anchor.endOffset;
-          if (start === undefined || end === undefined) return [];
-          const range = rangeAtOffsets(container, start, end);
-          return range ? [range] : [];
-        })
-      : [];
-    const annotationRanges = container
-      ? draftAnnotations.flatMap((annotation) => {
-          const start = annotation.startOffset;
-          const end = annotation.endOffset;
-          if (start === undefined || end === undefined) return [];
-          const range = rangeAtOffsets(container, start, end);
-          return range ? [range] : [];
-        })
-      : [];
-    messageHighlightRanges.set(key, [...threadRanges, ...annotationRanges]);
-    refreshMessageHighlights();
-    return () => {
-      messageHighlightRanges.delete(key);
-      refreshMessageHighlights();
-    };
-  }, [
-    part.id,
-    part.entryId,
-    part.text,
-    commentThreads.map((thread) => `${thread.id}:${thread.updatedAt}`).join("|"),
-    draftAnnotations
-      .map((a) => `${a.id}:${a.startOffset}:${a.endOffset}:${a.comment ?? ""}`)
-      .join("|"),
-  ]);
+  const highlightAnchors = [...commentThreads.map((thread) => thread.anchor), ...draftAnnotations];
+  useMessageHighlights(contentRef, highlightAnchors, part.text);
 
   useLayoutEffect(() => {
     const message = messageRef.current;
@@ -553,6 +465,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
           markdown
           streaming={part.status === "streaming"}
           partId={part.id}
+          highlightAnchors={highlightAnchors}
           onOpenSourceLocation={behavior.openSourceLocation}
           onClose={closeFullscreen}
         />
