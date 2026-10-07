@@ -13,6 +13,7 @@ const workspaceRpc = <Type extends keyof typeof cakeRpcPayloadSchemas>(
   });
 
 export const WorkspaceRpc = RpcGroup.make(
+  workspaceRpc("workspaces.post-process-dictation", "post-process-dictation"),
   workspaceRpc("workspaces.reword-composer-selection", "reword-composer-selection"),
   workspaceRpc("workspaces.generate-session-title", "generate-session-title"),
   workspaceRpc("workspaces.set-utility-model", "set-utility-model"),

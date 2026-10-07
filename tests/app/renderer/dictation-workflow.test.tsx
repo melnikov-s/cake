@@ -13,6 +13,7 @@ import { WindowStatePersistence } from "../../../src/renderer/persistence/Window
 import type { TestClientOverrides } from "./test-client";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { installedDictationState } from "../../helpers/dictation";
+import { detectFixtureSpeech } from "../../helpers/speech-detection";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -151,7 +152,14 @@ function renderDictation(
     snapshot: options.snapshot,
     client: {
       ...options.client,
-      dictation: { prepare, release, transcribe, ...options.client?.dictation },
+      dictation: {
+        prepare,
+        release,
+        transcribe,
+        detectSpeech: detectFixtureSpeech,
+        ...options.client?.dictation,
+      },
+      workspaces: { postProcessDictation: async (text) => text, ...options.client?.workspaces },
       sessionChats: { prompt },
     },
   });
@@ -218,7 +226,10 @@ const trial = () => screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Tr
 const message = () => screen.getByRole<HTMLTextAreaElement>("combobox", { name: "Message" });
 const mode = () => screen.getByRole("switch", { name: "Dictation mode" });
 const listening = () => expect(screen.getAllByText("Listening").length).toBeGreaterThan(0);
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("Dictation writing-field workflow", () => {
   it("persists only user enablement and microphone choice, restoring capture on focus", async () => {
@@ -240,7 +251,7 @@ describe("Dictation writing-field workflow", () => {
       saved = toSnapshot(fixture.root);
       expect(save).toHaveBeenLastCalledWith(saved);
       expect(saved.children.dictationStore).toEqual({
-        state: { enabled: true, deviceId: "usb-mic" },
+        state: { enabled: true, deviceId: "usb-mic", postProcessEnabled: true },
         children: {},
       });
     }
@@ -439,6 +450,24 @@ describe("Dictation writing-field workflow", () => {
     expect(fixture.requests[3]!.audio.utteranceId).not.toBe(fixture.requests[0]!.audio.utteranceId);
   });
 
+  it("replaces punctuation revisions without duplicating or stripping recognizer punctuation", async () => {
+    using fixture = renderDictation();
+    await fixture.user.click(mode());
+    await fixture.user.click(message());
+    await fixture.user.type(message(), "Typed prefix:");
+    const revisions = [
+      "Why?",
+      "Why??",
+      "Why??",
+      "Why does this happen?",
+      "Why does this happen? Next phrase.",
+    ];
+    for (const [index, text] of revisions.entries()) {
+      await fixture.audio.push(new Float32Array(12_800));
+      await fixture.recognize(index, text);
+      expect(message().value).toBe(`Typed prefix: ${text}`);
+    }
+  });
   it("preserves manual edits and invalidates recognition without reacquiring the microphone", async () => {
     using fixture = renderDictation();
     await fixture.user.click(mode());
@@ -505,6 +534,267 @@ describe("Dictation writing-field workflow", () => {
     await fixture.audio.push(new Float32Array(12_800));
     await fixture.recognize(0, "Fresh speech");
     expect(trial().value).toBe("Fresh speech");
+  });
+
+  it("cleans the current insertion before submission without rewriting typed text", async () => {
+    const result = deferred<string>();
+    const postProcessDictation = vi.fn<Client["workspaces"]["postProcessDictation"]>(
+      () => result.promise,
+    );
+    using fixture = renderDictation({ client: { workspaces: { postProcessDictation } } });
+    expect(
+      screen
+        .getByRole("switch", { name: "Post-process with utility model" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    await fixture.user.type(message(), "Typed prefix: ");
+    await fixture.user.click(mode());
+    await fixture.user.click(message());
+    await fixture.audio.push(new Float32Array(12_800));
+    await fixture.recognize(0, "Um, use Redis. Never mind, scratch that. Use SQLite.");
+    await fixture.user.keyboard("{Enter}");
+    await fixture.recognize(1, "Um, use Redis. Never mind, scratch that. Use SQLite.");
+    expect(postProcessDictation).toHaveBeenCalledWith(
+      "Um, use Redis. Never mind, scratch that. Use SQLite.",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(fixture.prompt).not.toHaveBeenCalled();
+    const pending = document.querySelector('[data-slot="provisional-text"]');
+    expect(pending?.textContent).toBe("Um, use Redis. Never mind, scratch that. Use SQLite.");
+    expect(pending?.className).toContain("text-muted-foreground");
+    expect(message().value).toBe(
+      "Typed prefix: Um, use Redis. Never mind, scratch that. Use SQLite.",
+    );
+    await act(async () => result.resolve("Use SQLite."));
+    expect(document.querySelector('[data-slot="provisional-text"]')).toBeNull();
+    await waitFor(() =>
+      expect(fixture.prompt).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Typed prefix: Use SQLite." }),
+        expect.any(Object),
+      ),
+    );
+  });
+
+  it("retracts only the dictated insertion when cleanup returns empty text", async () => {
+    const result = deferred<string>();
+    using fixture = renderDictation({
+      client: { workspaces: { postProcessDictation: () => result.promise } },
+    });
+    await fixture.user.type(message(), "Typed prefix: ");
+    await fixture.user.click(mode());
+    await fixture.user.click(message());
+    await fixture.user.keyboard("{Enter}");
+    await fixture.recognize(0, "Use Redis. Never mind, scratch that.");
+    await act(async () => result.resolve(""));
+    await waitFor(() =>
+      expect(fixture.prompt).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Typed prefix:" }),
+        expect.any(Object),
+      ),
+    );
+  });
+
+  it("cancels submission and protects edits while Enter cleanup is pending", async () => {
+    const result = deferred<string>();
+    const postProcessDictation = vi.fn<Client["workspaces"]["postProcessDictation"]>(
+      () => result.promise,
+    );
+    using fixture = renderDictation({ client: { workspaces: { postProcessDictation } } });
+    await fixture.user.click(mode());
+    await fixture.user.click(message());
+    await fixture.user.keyboard("{Enter}");
+    await fixture.recognize(0, "Raw. Words.");
+    await fixture.user.type(message(), " edited");
+    await act(async () => result.resolve("Clean words."));
+    expect(message().value).toBe("Raw. Words. edited");
+    expect(document.querySelector('[data-slot="provisional-text"]')).toBeNull();
+    expect(fixture.prompt).not.toHaveBeenCalled();
+  });
+
+  it("ignores a late cleanup when the user changes focus during finishing", async () => {
+    const result = deferred<string>();
+    const postProcessDictation = vi.fn<Client["workspaces"]["postProcessDictation"]>(
+      () => result.promise,
+    );
+    using fixture = renderDictation({ client: { workspaces: { postProcessDictation } } });
+    await fixture.user.click(mode());
+    await fixture.user.click(message());
+    await fixture.user.keyboard("{Enter}");
+    await fixture.recognize(0, "Raw. Words.");
+    expect(postProcessDictation).toHaveBeenCalledOnce();
+    await fixture.user.click(trial());
+    expect(postProcessDictation.mock.calls[0]![1]?.signal?.aborted).toBe(true);
+    await act(async () => result.resolve("Clean words."));
+    expect(message().value).toBe("Raw. Words.");
+    expect(trial().value).toBe("");
+    expect(fixture.prompt).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { changed: false, pending: false },
+    { changed: true, pending: false },
+    { changed: false, pending: true },
+    { changed: true, pending: true },
+  ])(
+    "after a three-second pause Enter reuses cleanup unless text changed ($changed, pending $pending)",
+    async ({ changed, pending }) => {
+      let raw = "We need to. Do that.";
+      const result = deferred<string>();
+      const postProcessDictation = vi
+        .fn<Client["workspaces"]["postProcessDictation"]>()
+        .mockImplementationOnce(() => result.promise)
+        .mockResolvedValue("We need to do that. Next question?");
+      using fixture = renderDictation({
+        client: {
+          dictation: { transcribe: async () => raw },
+          workspaces: { postProcessDictation },
+        },
+      });
+      await fixture.user.click(mode());
+      await fixture.user.click(message());
+      await fixture.audio.push(new Float32Array(16_384).fill(0.1));
+      expect(postProcessDictation).not.toHaveBeenCalled();
+      // Eleven detector frames are 2.816 seconds: not yet a cleanup trigger.
+      for (let i = 0; i < 11; i++) await fixture.audio.push(new Float32Array(4096));
+      expect(postProcessDictation).not.toHaveBeenCalled();
+      await fixture.audio.push(new Float32Array(4096));
+      await waitFor(() => expect(postProcessDictation).toHaveBeenCalledOnce());
+      // More silence does not cause another call.
+      for (let i = 0; i < 4; i++) await fixture.audio.push(new Float32Array(4096));
+      expect(postProcessDictation).toHaveBeenCalledOnce();
+      if (!pending) {
+        await act(async () => result.resolve("We need to do that."));
+        expect(message().value).toBe("We need to do that.");
+        expect(document.querySelector('[data-slot="provisional-text"]')).toBeNull();
+      }
+      if (changed) raw = "We need to. Do that. Next question?";
+      await fixture.user.keyboard("{Enter}");
+      if (pending) {
+        expect(fixture.prompt).not.toHaveBeenCalled();
+        await act(async () => result.resolve("We need to do that."));
+      }
+      await waitFor(() =>
+        expect(fixture.prompt).toHaveBeenCalledWith(
+          expect.objectContaining({
+            text: changed ? "We need to do that. Next question?" : "We need to do that.",
+          }),
+          expect.any(Object),
+        ),
+      );
+      expect(postProcessDictation).toHaveBeenCalledTimes(changed ? 2 : 1);
+    },
+  );
+
+  it("does not clean noise-only input and resets the silence countdown on resumed speech", async () => {
+    const postProcessDictation = vi.fn<Client["workspaces"]["postProcessDictation"]>(
+      async () => "Clean words",
+    );
+    using fixture = renderDictation({
+      client: {
+        dictation: { transcribe: async () => "Raw words" },
+        workspaces: { postProcessDictation },
+      },
+    });
+    await fixture.user.click(mode());
+    await fixture.user.click(trial());
+    for (let i = 0; i < 12; i++) await fixture.audio.push(new Float32Array(4096));
+    expect(postProcessDictation).not.toHaveBeenCalled();
+    await fixture.audio.push(new Float32Array(16_384).fill(0.1));
+    for (let i = 0; i < 11; i++) await fixture.audio.push(new Float32Array(4096));
+    await fixture.audio.push(new Float32Array(16_384).fill(0.1));
+    for (let i = 0; i < 11; i++) await fixture.audio.push(new Float32Array(4096));
+    expect(postProcessDictation).not.toHaveBeenCalled();
+    await fixture.audio.push(new Float32Array(4096));
+    await waitFor(() => expect(trial().value).toBe("Clean words"));
+    expect(postProcessDictation).toHaveBeenCalledOnce();
+  });
+
+  it("rejects outdated pause cleanup when more words arrive", async () => {
+    let raw = "We need to. Do that.";
+    const result = deferred<string>();
+    const postProcessDictation = vi.fn<Client["workspaces"]["postProcessDictation"]>(
+      () => result.promise,
+    );
+    using fixture = renderDictation({
+      client: { dictation: { transcribe: async () => raw }, workspaces: { postProcessDictation } },
+    });
+    await fixture.user.click(mode());
+    await fixture.user.click(trial());
+    await fixture.audio.push(new Float32Array(16_384).fill(0.1));
+    for (let i = 0; i < 12; i++) await fixture.audio.push(new Float32Array(4096));
+    await waitFor(() => expect(postProcessDictation).toHaveBeenCalledOnce());
+    raw += " Next question?";
+    await fixture.audio.push(new Float32Array(16_384).fill(0.1));
+    await act(async () => result.resolve("We need to do that."));
+    expect(trial().value).toBe(raw);
+    expect(postProcessDictation).toHaveBeenCalledOnce();
+  });
+
+  it("submits the raw transcript if the optional cleanup transport fails", async () => {
+    using fixture = renderDictation({
+      client: {
+        workspaces: {
+          postProcessDictation: async () => {
+            throw new Error("Offline");
+          },
+        },
+      },
+    });
+    await fixture.user.click(mode());
+    await fixture.user.click(message());
+    await fixture.user.keyboard("{Enter}");
+    await fixture.recognize(0, "Keep raw speech.");
+    await waitFor(() =>
+      expect(fixture.prompt).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Keep raw speech." }),
+        expect.any(Object),
+      ),
+    );
+  });
+
+  it("cancels pause cleanup on manual edits", async () => {
+    const result = deferred<string>();
+    const postProcessDictation = vi.fn<Client["workspaces"]["postProcessDictation"]>(
+      () => result.promise,
+    );
+    using fixture = renderDictation({
+      client: {
+        dictation: { transcribe: async () => "We need to. Do that." },
+        workspaces: { postProcessDictation },
+      },
+    });
+    await fixture.user.click(mode());
+    await fixture.user.click(trial());
+    await fixture.audio.push(new Float32Array(16_384).fill(0.1));
+    for (let i = 0; i < 12; i++) await fixture.audio.push(new Float32Array(4096));
+    await waitFor(() => expect(postProcessDictation).toHaveBeenCalledOnce());
+    await fixture.user.type(trial(), " Manual addition");
+    await act(async () => result.resolve("We need to do that."));
+    expect(trial().value).toBe("We need to. Do that. Manual addition");
+  });
+
+  it("remembers opting out and submits raw speech without a utility call", async () => {
+    const postProcessDictation = vi.fn<Client["workspaces"]["postProcessDictation"]>(
+      async () => "Unexpected",
+    );
+    using fixture = renderDictation({ client: { workspaces: { postProcessDictation } } });
+    await fixture.user.click(
+      screen.getByRole("switch", { name: "Post-process with utility model" }),
+    );
+    expect(toSnapshot(fixture.root).children.dictationStore).toMatchObject({
+      state: { postProcessEnabled: false },
+    });
+    await fixture.user.click(mode());
+    await fixture.user.click(message());
+    await fixture.user.keyboard("{Enter}");
+    await fixture.recognize(0, "Um raw. Speech.");
+    await waitFor(() =>
+      expect(fixture.prompt).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Um raw. Speech." }),
+        expect.any(Object),
+      ),
+    );
+    expect(postProcessDictation).not.toHaveBeenCalled();
   });
 
   it("drains pending and final audio before Enter submits exactly one complete message", async () => {

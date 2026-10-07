@@ -20,6 +20,26 @@ const browserDevices = () => ({
 });
 
 describe("Client", () => {
+  it("cancelled optional cleanup does not block remote commands as uncertain delivery", async () => {
+    const controller = new AbortController();
+    const uncertain = vi.fn();
+    const client = makeClient(
+      controlledRuntime(async () => {
+        throw new Error("Cancelled");
+      }),
+      {
+        kind: "remote",
+        connected: () => true,
+        blocked: () => false,
+        uncertain,
+      },
+    );
+    controller.abort();
+    await expect(
+      client.workspaces.postProcessDictation("Speech", { signal: controller.signal }),
+    ).rejects.toMatchObject({ kind: "interrupted" });
+    expect(uncertain).not.toHaveBeenCalled();
+  });
   it("browser file tokens never resolve to browser paths after their tab grant is gone", () => {
     expect(() => new BrowserFiles().get("browser-file:expired")).toThrowError(
       "Selected browser file is no longer available. Select it again.",
@@ -89,6 +109,7 @@ describe("Client", () => {
     });
     for (const command of [
       () => client.dictation.install(),
+      () => client.dictation.detectSpeech({ captureId: "browser-capture", pcm: "AAAAAA==" }),
       () => client.desktopSharing.configure({ enabled: true, bind: "127.0.0.1", port: 4317 }),
       () => client.windowState.load(),
       () => client.electron.chooseProject(),

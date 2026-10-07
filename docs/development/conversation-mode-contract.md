@@ -104,11 +104,14 @@ The code diff contains the actual destination contracts:
 
 ## Recognition and spoken-text policy
 
-Use the existing echo-cancelled/noise-suppressed microphone PCM frames. First version uses a local
-energy/noise gate with sustained-speech detection, short preroll and a quiet-period boundary;
-no additional VAD model download or voice-agent service. Suggested starting tuning: about 200 ms
-sustained onset, 900 ms silence, 200 ms preroll and 30-second maximum utterance. Numeric tuning is
-an implementation detail; the contract is no noise-only submission, prompt interruption on real
+Use the existing echo-cancelled/noise-suppressed microphone PCM frames and the bundled offline
+Silero detector shared with dictation. Detection runs in 256 ms frames with a 0.6 entry / 0.4
+continuation speech-probability threshold, short preroll, a three-second quiet send boundary and
+30-second maximum utterance. Noise loudness must not reset the send countdown; classified quiet
+speech must be eligible to start an utterance and a transcript-confirmed interruption. Native
+recognition separately finalizes phrases after 1.5 seconds of non-speech without submitting a draft.
+No runtime VAD model download or voice-agent service is involved. Numeric tuning is an
+implementation detail; the contract is no noise-only submission, prompt interruption on real
 speech, bounded queues and exactly-once finalization. Headphones are recommended when speaker
 leakage defeats browser echo cancellation; do not claim phone-grade full-duplex robustness.
 

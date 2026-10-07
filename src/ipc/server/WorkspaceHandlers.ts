@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { postProcessDictation } from "../../domain/dictation/post-process";
 import * as projects from "../../domain/projects/projects";
 import { WorkspaceRpc } from "../protocol/WorkspaceRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
@@ -7,6 +8,7 @@ const withConnection = <A, E, R>(operation: (connectionId: number) => Effect.Eff
   Effect.flatMap(RendererConnection, ({ connectionId }) => operation(connectionId));
 
 export const workspaceHandlers = WorkspaceRpc.of({
+  "workspaces.post-process-dictation": ({ text }) => postProcessDictation(text),
   "workspaces.reword-composer-selection": (request) =>
     withConnection((connectionId) => projects.rewordComposerSelection(connectionId, request)),
   "workspaces.generate-session-title": (request) =>

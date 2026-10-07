@@ -233,6 +233,7 @@ interface FilesystemCommands {
 }
 
 interface WorkspaceCommands {
+  postProcessDictation(text: string, options?: ClientCommandOptions): Promise<string>;
   rewordComposerSelection(
     input: { selection: string; prompt?: string; workingDirectory?: string },
     options?: ClientCommandOptions,

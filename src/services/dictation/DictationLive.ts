@@ -5,6 +5,7 @@ import {
   DictationError,
   type DictationAudio,
   type DictationState,
+  type SpeechDetectionAudio,
 } from "../../domain/dictation/dictation-data";
 import { Dictation } from "./Dictation";
 import {
@@ -170,6 +171,24 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
           // Kill immediately, including a loading/in-flight worker; do not wait behind inference.
           stop();
           yield* lock.withPermits(1)(refresh());
+        }),
+        detectSpeech: Effect.fn("Dictation.detectSpeech")(function* (audio: SpeechDetectionAudio) {
+          return yield* guarded(
+            Effect.gen(function* () {
+              const active = worker;
+              if (!active)
+                return yield* new DictationError({
+                  message: "The speech detector is not ready. Enable dictation again to retry.",
+                });
+              return yield* native((signal) => {
+                const cancel = () => active.close();
+                signal.addEventListener("abort", cancel, { once: true });
+                return active
+                  .detectSpeech(audio)
+                  .finally(() => signal.removeEventListener("abort", cancel));
+              });
+            }),
+          );
         }),
         transcribe: Effect.fn("Dictation.transcribe")(function* (audio: DictationAudio) {
           return yield* guarded(

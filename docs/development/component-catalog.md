@@ -65,6 +65,15 @@ the Artifact Library detail surface.
 unset for paths, search, code, and configuration syntax. Embedded surfaces never
 participate. Existing keyboard and controlled-value handlers remain authoritative.
 
+`TextareaProvisionalText` is the shared decorative mirror for a provisional dictated span.
+Raw words appear immediately in `text-muted-foreground`; typed prefixes/suffixes retain their
+normal color. The original native textarea still owns value, selection, focus, keyboard input
+and accessibility. The mirror is aria-hidden and pointer-transparent, follows the native scroll
+position and measured padding/indent (including composer accessories), and never owns a draft.
+Exact-value span matching prevents stale highlighting after manual edits. `Textarea` can receive
+`provisionalText` from voice mode; ordinary dictation supplies its registered insertion span.
+Cleanup completion, fallback, opting out, focus changes and sealing edits restore normal styling.
+
 `DictationIndicator` sits at the beginning of the focused writing field. A circular
 `IconButton` contains a compact `VoiceMeter`; clicking toggles mute/unmute, with a
 crossed waveform while muted. Tooltips and accessible names describe the action,

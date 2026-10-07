@@ -27,8 +27,8 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
           Voice input
         </h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Speak into focused Cake writing fields. Entirely local, with no saved recordings or ready
-          sounds. VS Code, terminals, and embedded pages are excluded.
+          Speak into focused Cake writing fields. Speech recognition is local, with no saved
+          recordings or ready sounds. VS Code, terminals, and embedded pages are excluded.
         </p>
       </header>
       {state && !state.supported && (
@@ -48,6 +48,12 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
           (!store.enabled && (!state?.supported || !state.engineAvailable || !state.modelPath))
         }
         onChange={(enabled) => void store.setEnabled(enabled)}
+      />
+      <SettingsToggle
+        label="Post-process with utility model"
+        description="After three seconds of silence or when you press Enter, lightly clean punctuation, fillers, stutters, and clear spoken corrections in dictation and voice mode. Unchanged text reuses its last cleanup. Dictated text is sent to your configured utility model’s provider, which may incur costs. Without a configured model, or if cleanup fails, the original transcription is kept."
+        checked={store.postProcessEnabled}
+        onChange={(enabled) => store.setPostProcessEnabled(enabled)}
       />
       <div className="grid gap-3 rounded-lg border border-border p-4">
         <h3 className="text-sm font-medium">Parakeet TDT 0.6B v2 · English · Core ML</h3>

@@ -392,6 +392,7 @@ export const cakeRpcPayloadSchemas = {
     x: coordinate,
     y: coordinate,
   }),
+  "post-process-dictation": Schema.Struct({ text: bounded(0, 32_000) }),
   "reword-composer-selection": Schema.Struct({
     selection: bounded(1, 32_000),
     prompt: Schema.optional(stringMax(4_096)),
@@ -843,6 +844,7 @@ export const cakeRpcSuccessSchemas = {
   "suggest-files": cakeRpcResultSchemas["file-suggestions"],
   "read-workspace-file": cakeRpcResultSchemas["workspace-file"],
   "read-workspace-image": cakeRpcResultSchemas["workspace-image"],
+  "post-process-dictation": Schema.Struct({ text: bounded(0, 32_000) }),
   "reword-composer-selection": cakeRpcResultSchemas["composer-selection-reworded"],
   "generate-session-title": cakeRpcResultSchemas["session-title-generated"],
   "set-utility-model": cakeRpcResultSchemas["application-state-updated"],

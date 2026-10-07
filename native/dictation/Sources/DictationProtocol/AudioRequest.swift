@@ -21,8 +21,11 @@ public struct AudioRequest: Decodable, Sendable {
     return request
   }
 
-  public func samples() throws -> [Float] {
-    guard let data = Data(base64Encoded: pcm), data.count % 4 == 0, data.count <= 640_000
+  public func samples() throws -> [Float] { try Self.decodeSamples(pcm) }
+
+  public static func decodeSamples(_ pcm: String) throws -> [Float] {
+    guard pcm.utf8.count <= 854_000,
+      let data = Data(base64Encoded: pcm), data.count % 4 == 0, data.count <= 640_000
     else { throw ProtocolError.invalidRequest }
     return try data.withUnsafeBytes { bytes in
       try stride(from: 0, to: bytes.count, by: 4).map { offset in

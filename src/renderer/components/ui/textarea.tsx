@@ -3,6 +3,8 @@ import { observer } from "r-state-tree/react";
 import { useRef, useImperativeHandle, type Ref, type TextareaHTMLAttributes } from "react";
 import { useDictationInput } from "../../dictation/use-dictation-input";
 import { DictationIndicator } from "./dictation-indicator";
+import { TextareaProvisionalText } from "./textarea-provisional-text";
+import type { ProvisionalTextSpan } from "../../dictation/provisional-text";
 import { cn } from "@/lib/utils";
 
 const textareaVariants = cva(
@@ -30,6 +32,8 @@ export interface TextareaProps
   extends TextareaHTMLAttributes<HTMLTextAreaElement>, VariantProps<typeof textareaVariants> {
   /** Opt in only Cake-owned prose fields; never code, paths or embedded surfaces. */
   dictation?: boolean;
+  /** Optional voice-mode span; dictation supplies its own through the registered target. */
+  provisionalText?: ProvisionalTextSpan;
   ref?: Ref<HTMLTextAreaElement>;
 }
 
@@ -39,6 +43,7 @@ export const Textarea = observer(function Textarea({
   size,
   font,
   dictation = false,
+  provisionalText,
   onFocus,
   onBlur,
   onChange,
@@ -53,16 +58,33 @@ export const Textarea = observer(function Textarea({
   });
   const voice = useDictationInput(dictation && !props.disabled && !props.readOnly, input);
   const active = voice.store?.enabled && voice.store.activeTargetId === voice.id;
+  const candidate = provisionalText ?? (active ? voice.store?.provisionalText : undefined);
+  const pending =
+    candidate &&
+    candidate.value === props.value &&
+    candidate.start >= 0 &&
+    candidate.end > candidate.start &&
+    candidate.end <= candidate.value.length
+      ? candidate
+      : undefined;
+  const presentation = cn(
+    textareaVariants({ size, font }),
+    className,
+    // Keep the first-line inset stable through preparation, listening and finishing.
+    active && "indent-8",
+  );
   const field = (
     <textarea
       ref={input}
-      className={cn(
-        textareaVariants({ size, font }),
-        className,
-        // Indent only the first line; soft wraps and newlines keep the full writing width.
-        active && "indent-8",
-      )}
+      className={cn(presentation, pending && "text-transparent caret-foreground")}
       {...props}
+      aria-description={
+        pending
+          ? [props["aria-description"], "Dictated text is provisional until cleanup finishes."]
+              .filter(Boolean)
+              .join(" ")
+          : props["aria-description"]
+      }
       onFocus={(event) => {
         onFocus?.(event);
         voice.onFocus();
@@ -91,6 +113,9 @@ export const Textarea = observer(function Textarea({
       data-slot={dictation ? "dictation-field" : "textarea-field"}
     >
       {field}
+      {pending && (
+        <TextareaProvisionalText anchor={input} span={pending} className={presentation} />
+      )}
       {voice.store && <DictationIndicator store={voice.store} targetId={voice.id} anchor={input} />}
     </div>
   );

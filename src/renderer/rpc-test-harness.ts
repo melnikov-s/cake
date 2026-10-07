@@ -73,6 +73,10 @@ function invokeSmokeCommand(
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["read-workspace-file"])(payload).pipe(
         Effect.flatMap(client.filesystem["read-workspace-file"]),
       );
+    case "post-process-dictation":
+      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["post-process-dictation"])(
+        payload,
+      ).pipe(Effect.flatMap(client.workspaces["post-process-dictation"]));
     case "reword-composer-selection":
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["reword-composer-selection"])(
         payload,

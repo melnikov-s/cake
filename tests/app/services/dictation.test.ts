@@ -10,6 +10,7 @@ const native = vi.hoisted(() => ({
   available: true,
   ready: () => Promise.resolve(),
   transcribe: vi.fn(async () => "hello"),
+  detectSpeech: vi.fn(async () => true),
   constructed: vi.fn(),
   close: vi.fn(),
   install: vi.fn<
@@ -35,6 +36,7 @@ vi.mock("../../../src/services/dictation/local-parakeet", () => ({
       this.ready = native.ready();
     }
     transcribe = native.transcribe;
+    detectSpeech = native.detectSpeech;
     close = native.close;
   },
 }));
@@ -101,6 +103,7 @@ it.effect("concurrent prepare calls acquire one bundled worker and wait for warm
     expect(yield* service.transcribe({ utteranceId: "focus-1", pcm: "", final: true })).toBe(
       "hello",
     );
+    expect(yield* service.detectSpeech({ captureId: "capture-1", pcm: "AAAAAA==" })).toBe(true);
     yield* service.release();
     expect(native.close).toHaveBeenCalledTimes(1);
     expect((yield* state(service)).status).toBe("installed");
@@ -193,6 +196,58 @@ it.effect("a missing bundled helper is a repairable app error, not a runtime ins
     expect((yield* service.prepare().pipe(Effect.result))._tag).toBe("Failure");
     expect((yield* state(service)).message).toContain("Reinstall or update Cake");
     expect(native.install).not.toHaveBeenCalled();
+  }).pipe(Effect.provide(live())),
+);
+
+it.effect("speech detection and recognition share the serialized worker", () =>
+  Effect.gen(function* () {
+    const started = yield* Deferred.make<void>();
+    const finish = yield* Deferred.make<void>();
+    let detecting = false;
+    native.detectSpeech.mockImplementationOnce(async () => {
+      detecting = true;
+      Effect.runSync(Deferred.succeed(started, undefined));
+      await Effect.runPromise(Deferred.await(finish));
+      detecting = false;
+      return false;
+    });
+    native.transcribe.mockImplementationOnce(async () => {
+      expect(detecting).toBe(false);
+      return "Quiet speech";
+    });
+    const service = yield* Dictation;
+    yield* service.prepare();
+    const detection = yield* service
+      .detectSpeech({ captureId: "capture-1", pcm: "AAAAAA==" })
+      .pipe(Effect.forkChild);
+    yield* Deferred.await(started);
+    const transcription = yield* service
+      .transcribe({ utteranceId: "field-1", pcm: "", final: true })
+      .pipe(Effect.forkChild);
+    yield* Deferred.succeed(finish, undefined);
+    expect(yield* Fiber.join(detection)).toBe(false);
+    expect(yield* Fiber.join(transcription)).toBe("Quiet speech");
+    expect(native.constructed).toHaveBeenCalledTimes(1);
+  }).pipe(Effect.provide(live())),
+);
+
+it.effect("interrupted speech detection discards the worker and allows re-preparation", () =>
+  Effect.gen(function* () {
+    const started = yield* Deferred.make<void>();
+    native.detectSpeech.mockImplementationOnce(() => {
+      Effect.runSync(Deferred.succeed(started, undefined));
+      return new Promise<boolean>(() => {});
+    });
+    const service = yield* Dictation;
+    yield* service.prepare();
+    const detection = yield* service
+      .detectSpeech({ captureId: "abandoned", pcm: "AAAAAA==" })
+      .pipe(Effect.forkChild);
+    yield* Deferred.await(started);
+    yield* Fiber.interrupt(detection);
+    expect((yield* state(service)).status).toBe("installed");
+    yield* service.prepare();
+    expect(native.constructed).toHaveBeenCalledTimes(2);
   }).pipe(Effect.provide(live())),
 );
 

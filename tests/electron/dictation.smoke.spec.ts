@@ -42,15 +42,18 @@ test("Cake dictation shows readiness, types into chat and annotations, and seals
     helper,
     `#!${process.execPath}
 const fs = require('node:fs'); const path = require('node:path'); const readline = require('node:readline');
-const directory = process.argv.at(-1); const control = path.join(directory, 'control.json');
+const directory = process.argv[2]; const control = path.join(directory, 'control.json');
 const config = () => JSON.parse(fs.readFileSync(control, 'utf8'));
 const wait = (predicate) => new Promise(resolve => { const check = () => { try { if (predicate(config())) { watcher.close(); resolve(); } } catch {} }; const watcher = fs.watch(directory, check); check(); });
 const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
 (async () => {
   await wait(value => value.ready); reply({ ready: true });
-  let count = 0;
+  const requestPath = path.join(directory, 'request.json');
+  let count = fs.existsSync(requestPath) ? JSON.parse(fs.readFileSync(requestPath, 'utf8')).count : 0;
   for await (const line of readline.createInterface({ input: process.stdin })) {
-    const request = JSON.parse(line); fs.writeFileSync(path.join(directory, 'request.json'), JSON.stringify({ count: ++count, final: request.final, id: request.utteranceId }));
+    const request = JSON.parse(line);
+    if (request.operation === 'detectSpeech') { const data = Buffer.from(request.pcm, 'base64'); let energy = 0; for (let i = 0; i < data.length; i += 4) energy += data.readFloatLE(i) ** 2; reply({ speech: data.length > 0 && Math.sqrt(energy / (data.length / 4)) > 0.003 }); continue; }
+    fs.writeFileSync(path.join(directory, 'request.json'), JSON.stringify({ count: ++count, final: request.final, id: request.utteranceId }));
     await wait(value => !value.hold); const value = config(); reply(value.error ? { error: value.error } : { text: request.final ? (value.finalText ?? value.text ?? '') : (value.text ?? '') });
   }
 })();
@@ -144,6 +147,8 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     ).toBeVisible({ timeout: 20_000 });
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await page.getByRole("button", { name: /Dictation Local speech to text/ }).click();
+    const postProcess = page.getByRole("switch", { name: "Post-process with utility model" });
+    await expect(postProcess).toHaveAttribute("aria-checked", "true");
     await page.getByRole("switch", { name: "Dictation mode" }).click();
     const sample = page.getByLabel("Try dictation");
     await sample.focus();
@@ -179,6 +184,19 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
         return { top: style.paddingTop, indent: style.textIndent };
       }),
     ).toEqual(preparingLayout);
+    await expect(page.locator('[data-slot="provisional-text"]')).toHaveText("Dictation is ready");
+    const mirrored = await sample.evaluate((element) => {
+      const overlay = element.parentElement!.querySelector(
+        '[data-slot="textarea-provisional-overlay"]',
+      )!.firstElementChild!;
+      const native = getComputedStyle(element),
+        mirror = getComputedStyle(overlay);
+      return {
+        native: [native.paddingLeft, native.paddingTop, native.textIndent, native.lineHeight],
+        mirror: [mirror.paddingLeft, mirror.paddingTop, mirror.textIndent, mirror.lineHeight],
+      };
+    });
+    expect(mirrored.mirror).toEqual(mirrored.native);
     const meter = page.locator(
       '[data-slot="dictation-field"]:has(textarea[aria-label="Try dictation"]) [data-slot="voice-meter"]',
     );
@@ -215,6 +233,9 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
       )
       .toBeGreaterThan(4);
     await expect(sample).toBeFocused();
+    await postProcess.click();
+    await expect(postProcess).toHaveAttribute("aria-checked", "false");
+    await expect(page.locator('[data-slot="provisional-text"]')).toHaveCount(0);
     // A path/search input is not a dictation target.
     await page.getByLabel("Use an existing Core ML Parakeet model folder").focus();
     await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
@@ -292,6 +313,17 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
       expect(positions.lineStarts[1]! - positions.left).toBeLessThan(5);
     }
     await composer.fill("Typed first. Spoken next.");
+    // Editing while Enter is draining must cancel submission and preserve the edit.
+    await configure({ ready: true, hold: true });
+    await composer.press("Enter");
+    await expect(page.locator('[data-slot="dictation-indicator"]')).toContainText("Finishing");
+    await composer.pressSequentially(" Manual correction");
+    await configure({ ready: true, text: "", finalText: "Late replacement must be discarded" });
+    await expect(composer).toHaveValue("Typed first. Spoken next. Manual correction");
+    await expect(composer).toBeFocused();
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await composer.fill("Typed first. Spoken next.");
+    await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
     // Hold a result, leave the field, then complete it. It must not change the old draft.
     const before = JSON.parse(await readFile(join(model, "request.json"), "utf8")).count;
     await configure({ ready: true, hold: true, text: "Discard this tail" });
@@ -444,6 +476,9 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await restarted.getByRole("button", { name: /Dictation Local speech to text/ }).click();
     const restartedMode = restarted.getByRole("switch", { name: "Dictation mode" });
     await expect(restartedMode).toBeChecked();
+    await expect(
+      restarted.getByRole("switch", { name: "Post-process with utility model" }),
+    ).not.toBeChecked();
     await restarted.getByLabel("Try dictation").focus();
     await expect(restarted.getByRole("button", { name: "Mute dictation" })).toHaveAttribute(
       "aria-pressed",

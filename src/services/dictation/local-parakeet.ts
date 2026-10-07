@@ -15,7 +15,8 @@ import { isAbsolute, join, dirname } from "node:path";
 import { createInterface } from "node:readline";
 import { Schema } from "effect";
 import manifest from "./parakeet-coreml-manifest.json";
-import type { DictationAudio } from "../../domain/dictation/dictation-data";
+import vadManifest from "../../../native/dictation/vad-manifest.json";
+import type { DictationAudio, SpeechDetectionAudio } from "../../domain/dictation/dictation-data";
 
 const modelBase = `https://huggingface.co/${manifest.repository}/resolve/${manifest.revision}`;
 const modelBytes = manifest.files.reduce((total, file) => total + file.bytes, 0);
@@ -27,6 +28,7 @@ export interface InstallProgress {
 const WorkerReply = Schema.Union([
   Schema.Struct({ ready: Schema.Literal(true) }),
   Schema.Struct({ text: Schema.String }),
+  Schema.Struct({ speech: Schema.Boolean }),
   Schema.Struct({ error: Schema.String }),
 ]);
 const Config = Schema.Struct({ modelPath: Schema.String });
@@ -178,7 +180,9 @@ export class ParakeetWorker {
   readonly ready: Promise<void>;
 
   constructor(executable: string, modelPath: string) {
-    this.process = spawn(executable, [modelPath], { stdio: "pipe" });
+    this.process = spawn(executable, [modelPath, join(dirname(executable), vadManifest.model)], {
+      stdio: "pipe",
+    });
     this.ready = this.response(180_000).then((reply) => {
       if (!("ready" in reply)) throw new Error("Invalid native dictation startup response");
     });
@@ -239,10 +243,18 @@ export class ParakeetWorker {
   async transcribe(audio: DictationAudio) {
     if (this.failure) throw this.failure;
     const response = this.response(30_000);
-    this.process.stdin.write(`${JSON.stringify(audio)}\n`);
+    this.process.stdin.write(`${JSON.stringify({ operation: "transcribe", ...audio })}\n`);
     const reply = await response;
     if (!("text" in reply)) throw new Error("Invalid native transcription response");
     return reply.text;
+  }
+  async detectSpeech(audio: SpeechDetectionAudio) {
+    if (this.failure) throw this.failure;
+    const response = this.response(30_000);
+    this.process.stdin.write(`${JSON.stringify({ operation: "detectSpeech", ...audio })}\n`);
+    const reply = await response;
+    if (!("speech" in reply)) throw new Error("Invalid native speech detection response");
+    return reply.speech;
   }
   close() {
     this.fail(new Error("Dictation stopped"));

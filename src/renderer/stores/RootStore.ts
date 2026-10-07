@@ -921,6 +921,8 @@ export class RootStore extends Store<{
     return createStore(ConversationModeStore, {
       speech: this.client.speechOutput,
       recognition: this.client.dictation,
+      postProcess: this.client.workspaces.postProcessDictation,
+      postProcessEnabled: () => this.dictationStore.postProcessEnabled,
       microphone: this.props.microphone ?? microphone,
       playback: this.props.speechPlayback ?? this.defaultSpeechPlayback,
       settings: () => this.speechSettingsStore.settings,
@@ -953,6 +955,7 @@ export class RootStore extends Store<{
   get dictationStore(): DictationStore {
     return createStore(DictationStore, {
       client: this.client.dictation,
+      postProcess: this.client.workspaces.postProcessDictation,
       microphone: this.props.microphone ?? microphone,
       beforeCapture: () => this.conversationModeStore.exit(),
       canReleaseRecognition: () =>

@@ -34,6 +34,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
   return (
     <SlashCommandCombobox
       dictation={!voiceOwnsInput}
+      provisionalText={voiceOwnsInput ? conversation.workflow.provisionalInput : undefined}
       autoFocus={focusEnabled}
       focusEnabled={focusEnabled}
       data-cake-hint-key="i"

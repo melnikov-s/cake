@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { Deferred, Effect, Queue } from "effect";
 import { createElement } from "react";
 import { afterEach, describe, expect, vi } from "vitest";
+import { detectFixtureSpeech } from "../../../helpers/speech-detection";
 import { TurnId } from "../../../../src/domain/conversations/conversation-data";
 import type { CakeEvent } from "../../../../src/ipc/cake-rpc-contract";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
@@ -74,7 +75,12 @@ async function workflow(events: ClientEvents["Service"]) {
     projects: [projectRecord({ path: "/project", name: "Project" })],
     sessions: [sessionSummary({ sessionId: "one", projectPath: "/project" })],
     client: {
-      dictation: { prepare: async () => {}, release, transcribe },
+      dictation: {
+        prepare: async () => {},
+        release,
+        transcribe,
+        detectSpeech: detectFixtureSpeech,
+      },
       speechOutput: { synthesize },
       sessionChats: { prompt, abort },
     },

@@ -38,10 +38,9 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
         store?.restart(id);
         return;
       }
-      if (!text.trim()) return;
       const prefix = range.before && !/\s$/.test(range.before) ? " " : "";
       const suffix = range.after && !/^\s/.test(range.after) ? " " : "";
-      const speech = prefix + text.trim() + suffix;
+      const speech = text.trim() ? prefix + text.trim() + suffix : "";
       const value = range.before + speech + range.after;
       const caret = range.before.length + speech.length;
       inserting.current = true;
@@ -57,6 +56,7 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
       } finally {
         inserting.current = false;
       }
+      return speech ? { value, start: range.before.length, end: caret } : undefined;
     },
   });
 

@@ -20,6 +20,13 @@ export const DictationAudio = Schema.Struct({
 });
 export interface DictationAudio extends Schema.Schema.Type<typeof DictationAudio> {}
 
+/** One detector frame (at most 256 ms), scoped to a microphone capture generation. */
+export const SpeechDetectionAudio = Schema.Struct({
+  captureId: DictationAudio.fields.utteranceId,
+  pcm: Schema.String.check(Schema.isMaxLength(21_848), Schema.isPattern(/^[A-Za-z0-9+/]*={0,2}$/)),
+});
+export interface SpeechDetectionAudio extends Schema.Schema.Type<typeof SpeechDetectionAudio> {}
+
 export class DictationError extends Schema.TaggedError<DictationError>()("DictationError", {
   message: Schema.String,
 }) {}

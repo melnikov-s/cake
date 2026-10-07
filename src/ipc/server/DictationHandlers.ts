@@ -11,6 +11,8 @@ export const dictationHandlers = DictationRpc.of({
   "dictation.remove": () => Effect.flatMap(Dictation, (service) => service.remove()),
   "dictation.prepare": () => Effect.flatMap(Dictation, (service) => service.prepare()),
   "dictation.release": () => Effect.flatMap(Dictation, (service) => service.release()),
+  "dictation.detectSpeech": (audio) =>
+    Effect.flatMap(Dictation, (service) => service.detectSpeech(audio)),
   "dictation.transcribe": (audio) =>
     Effect.flatMap(Dictation, (service) => service.transcribe(audio)),
 });

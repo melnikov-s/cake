@@ -3,6 +3,8 @@ import type { UiPart } from "../../ipc/session-contract";
 import type { SpeechOutputSettings } from "../../domain/speech/speech-output-data";
 import type { SpeechOutputCommands, Client } from "../client/Client";
 import { encodePcm, type Microphone, type MicrophoneCapture } from "../dictation/microphone";
+import { openSpeechCapture } from "../dictation/speech-capture";
+import type { ProvisionalTextSpan } from "../dictation/provisional-text";
 import type { SpeechPlayback } from "../speech/playback";
 import { takeSpokenPhrases } from "../speech/spoken-text";
 import { INTERRUPTION_WINDOW_MS, isSpeechInterruption } from "../speech/interruption";
@@ -17,8 +19,10 @@ export interface ConversationModeTarget {
 }
 export interface ConversationModeStoreProps {
   speech: SpeechOutputCommands;
-  recognition: Pick<Client["dictation"], "prepare" | "release" | "transcribe">;
+  recognition: Pick<Client["dictation"], "prepare" | "release" | "transcribe" | "detectSpeech">;
   microphone: Microphone;
+  postProcess: Client["workspaces"]["postProcessDictation"];
+  postProcessEnabled(): boolean;
   playback: SpeechPlayback;
   settings(): SpeechOutputSettings | undefined;
   enabled(): boolean;
@@ -31,6 +35,8 @@ export const ConversationModeContext = createContext<ConversationModeStore | und
 // Microphone PCM is 16 kHz: hide brief pauses, then show the remaining two-second countdown.
 const SEND_SILENCE_SAMPLES = 3 * 16000;
 const SEND_INDICATOR_DELAY_SAMPLES = 16000;
+// Three 256 ms detector frames keep progressive recognition close to its existing 800 ms cadence.
+const RECOGNITION_BATCH_SAMPLES = 12_288;
 interface Utterance {
   id: string;
   chunks: Float32Array[];
@@ -58,6 +64,12 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   listening = false;
   speaking = false;
   transcript = "";
+  private provisionalText: ProvisionalTextSpan | undefined;
+  get provisionalInput(): ProvisionalTextSpan | undefined {
+    return this.props.postProcessEnabled() && this.provisionalText?.value === this.target?.draft()
+      ? this.provisionalText
+      : undefined;
+  }
   sendProgress: number | undefined;
   private target: ConversationModeTarget | undefined;
   private revision = 0;
@@ -194,6 +206,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     await this.cleanup;
   }
   private stopInput() {
+    this.provisionalText = undefined;
     this.captureController?.abort();
     this.captureController = undefined;
     this.capture?.stop();
@@ -215,19 +228,25 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       run.autoSend = false;
     this.sendProgress = undefined;
   }
-  private updateDraft(run: Utterance, text: string): void {
+  private updateDraft(run: Utterance, text: string, provisional: boolean): void {
     if (!this.target || run.draftInvalid) return;
     const draft = this.target.draft();
     if (run.draftText && !draft.endsWith(run.draftText)) {
       // Manual editing or submission seals this insertion; never replace the user's edits.
       run.draftInvalid = true;
+      this.provisionalText = undefined;
       run.autoSend = false;
       this.sendProgress = undefined;
       return;
     }
     const prefix = run.draftText ? draft.slice(0, -run.draftText.length) : draft;
-    run.draftText = `${prefix && !/\s$/.test(prefix) ? " " : ""}${text.trim()}`;
-    this.target.setDraft(prefix + run.draftText);
+    run.draftText = text.trim() ? `${prefix && !/\s$/.test(prefix) ? " " : ""}${text.trim()}` : "";
+    const value = prefix + run.draftText;
+    this.provisionalText =
+      provisional && this.props.postProcessEnabled() && run.draftText
+        ? { value, start: prefix.length, end: value.length }
+        : undefined;
+    this.target.setDraft(value);
   }
   private stopOutput() {
     this.outputRevision++;
@@ -293,9 +312,15 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       // same capture generation before accepting input after mute.
       if (prepare) await this.props.recognition.prepare({ signal });
       if (signal.aborted || revision !== this.revision) return;
-      const capture = await this.props.microphone.open(
-        (samples) => {
-          if (!signal.aborted && revision === this.revision && !this.muted) this.audio(samples);
+      const capture = await openSpeechCapture(
+        this.props.microphone,
+        this.props.recognition.detectSpeech,
+        (samples, speech) => {
+          if (!signal.aborted && revision === this.revision && !this.muted)
+            this.audio(samples, speech);
+        },
+        (error) => {
+          if (!signal.aborted && revision === this.revision) this.fail(error);
         },
         signal,
         this.props.deviceId(),
@@ -314,13 +339,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       if (!signal.aborted && revision === this.revision) throw error;
     }
   }
-  private audio(samples: Float32Array) {
-    let energy = 0;
-    for (const value of samples) energy += value * value;
-    // Background-noise rejection for barge-in must not make ordinary listening less sensitive.
-    const speech =
-      Math.sqrt(energy / Math.max(1, samples.length)) >
-      (this.speaking && !this.utterance ? 0.025 : 0.015);
+  private audio(samples: Float32Array, speech: boolean) {
     let run = this.utterance;
     if (!run) {
       this.preroll.push(samples);
@@ -398,7 +417,8 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   private async pumpRecognition() {
     if (this.recognitionRunning) return;
     const run = this.finalizing[0] ?? this.utterance;
-    if (!run || (!run.finishing && run.samples < 12800) || !this.controller) return;
+    if (!run || (!run.finishing && run.samples < RECOGNITION_BATCH_SAMPLES) || !this.controller)
+      return;
     const revision = this.revision;
     const inputSignal = this.captureController?.signal;
     const signal = AbortSignal.any([
@@ -412,7 +432,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     const final = run.finishing;
     this.recognitionRunning = true;
     try {
-      const text = await this.props.recognition.transcribe(
+      let text = await this.props.recognition.transcribe(
         { utteranceId: run.id, pcm: encodePcm(chunks), final },
         { signal },
       );
@@ -428,8 +448,26 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       const rejected = run.interruption?.state === "rejected";
       this.transcript = rejected ? "" : text;
       if (!rejected && run.interruption?.state !== "pending" && text.trim())
-        this.updateDraft(run, text);
+        this.updateDraft(run, text, true);
       if (final) {
+        if (
+          !rejected &&
+          run.interruption?.state !== "pending" &&
+          !run.draftInvalid &&
+          text.trim() &&
+          this.props.postProcessEnabled()
+        ) {
+          const raw = text;
+          try {
+            text = await this.props.postProcess(raw, { signal });
+          } catch {
+            text = raw;
+          }
+          if (signal.aborted || revision !== this.revision) return;
+          if (!this.props.postProcessEnabled()) text = raw;
+          this.updateDraft(run, text, false);
+          this.transcript = text;
+        }
         this.clearInterruptionTimer(run);
         this.finalizing.shift();
         if (!this.utterance) this.sendProgress = undefined;

@@ -22,6 +22,7 @@ async function launch({
   secondSession = false,
   foreground = false,
   localInstalled = false,
+  postProcessedText,
 }: {
   reasoning?: boolean;
   recognizeSpeech?: boolean;
@@ -29,6 +30,7 @@ async function launch({
   secondSession?: boolean;
   foreground?: boolean;
   localInstalled?: boolean;
+  postProcessedText?: string;
 } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "cake-conversation-"));
   const userData = join(directory, "user-data"),
@@ -44,7 +46,22 @@ async function launch({
     mkdir(join(cakeHome, "state"), { recursive: true }),
   ]);
   const responses: ServerResponse[] = [];
-  const server = createServer((_request, response) => {
+  const utilityRequests: string[] = [];
+  const server = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const body = Buffer.concat(chunks).toString("utf8");
+    if (
+      postProcessedText !== undefined &&
+      body.includes("Lightly clean a speech-to-text transcript")
+    ) {
+      utilityRequests.push(body);
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(
+        `data: ${JSON.stringify({ id: "utility", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { content: JSON.stringify({ text: postProcessedText }) }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+      );
+      return;
+    }
     response.writeHead(200, { "content-type": "text/event-stream" });
     response.flushHeaders();
     responses.push(response);
@@ -89,6 +106,12 @@ const utterances = new Map();
 process.stdout.write(JSON.stringify({ready:true})+'\\n');
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
   const request = JSON.parse(line);
+  if (request.operation === 'detectSpeech') {
+    const pcm = Buffer.from(request.pcm, 'base64'); let voiced = 0;
+    for (let offset = 0; offset < pcm.length; offset += 4) if (Math.abs(pcm.readFloatLE(offset)) >= 0.015) voiced++;
+    process.stdout.write(JSON.stringify({ speech: voiced > pcm.length / 8 }) + '\\n');
+    return;
+  }
   if (!utterances.has(request.utteranceId)) utterances.set(request.utteranceId, utterances.size);
   const index = utterances.get(request.utteranceId);
   const text = texts[index] ?? (${recognizeSpeech} && request.final ? 'Spoken request ' + (index + 1) : '');
@@ -166,6 +189,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       schemaVersion: 1,
       projects: [{ path: project, name: "Project", addedAt: timestamp, lastOpenedAt: timestamp }],
       trustedProjectPaths: [],
+      ...(postProcessedText !== undefined
+        ? { utilityModel: { provider: "fixture", modelId: "fixture", thinkingLevel: "off" } }
+        : {}),
     }),
   );
   await writeFile(
@@ -295,6 +321,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     application,
     page,
     responses,
+    utilityRequests,
     configure,
     userData,
     localRequests,
@@ -349,6 +376,114 @@ test.beforeEach(() => {
     "Native Parakeet requires Apple Silicon/macOS 14+",
   );
   test.setTimeout(60000);
+});
+
+test("utility post-processing cleans voice input through real RPC and Pi completion before sending", async () => {
+  const f = await launch({
+    recognizeSpeech: true,
+    recognitionTexts: ["Um, we need to. Do that."],
+    postProcessedText: "We need to do that.",
+  });
+  try {
+    await f.configure();
+    const composer = f.page.getByRole("combobox", { name: "Message" });
+    await composer.click();
+    await composer.pressSequentially("Typed prefix:");
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toBeVisible();
+    await composer.click();
+    await expect(composer).toBeFocused();
+    await f.frames([[0.1, 10]]);
+    await expect(composer).toHaveValue("Typed prefix: Um, we need to. Do that.");
+    const raw = f.page.locator('[data-slot="provisional-text"]');
+    await expect(raw).toHaveText("Um, we need to. Do that.");
+    await expect(raw).toHaveClass(/text-muted-foreground/);
+    const colors = await raw.evaluate((element) => ({
+      raw: getComputedStyle(element).color,
+      typed: getComputedStyle(element.parentElement!).color,
+    }));
+    expect(colors.raw).not.toBe(colors.typed);
+    await expect(f.page.locator('[data-slot="textarea-provisional-overlay"]')).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    await expect(composer).toBeFocused();
+    await f.frames([[0, 40]]);
+    await expect.poll(() => f.utilityRequests.length).toBe(1);
+    await expect(
+      f.page.getByRole("article").filter({ hasText: "Typed prefix: We need to do that." }),
+    ).toBeVisible();
+    await expect(composer).toHaveValue("");
+    await expect(raw).toHaveCount(0);
+    expect(f.utilityRequests[0]).toContain("Um, we need to. Do that.");
+    expect(f.utilityRequests[0]).not.toContain("Typed prefix:");
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially("Still editable");
+    await expect(composer).toHaveValue("Still editable");
+    await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+  } finally {
+    await f.close();
+  }
+});
+
+test("provisional speech wraps and scrolls with the native composer without taking focus", async () => {
+  const rawText = "We need to. Do that. ".repeat(140);
+  const f = await launch({ recognizeSpeech: true, recognitionTexts: [rawText] });
+  try {
+    await f.configure();
+    const composer = f.page.getByRole("combobox", { name: "Message" });
+    await composer.fill("Typed prefix:\n");
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toBeVisible();
+    await composer.click();
+    await f.frames([[0.1, 10]]);
+    await expect(composer).toHaveValue("Typed prefix:\n" + rawText.trim());
+    await expect(f.page.locator('[data-slot="provisional-text"]')).toBeVisible();
+    const layout = await composer.evaluate((element) => {
+      const overlay = element.parentElement!.querySelector(
+        '[data-slot="textarea-provisional-overlay"]',
+      )!;
+      const mirror = overlay.firstElementChild!;
+      const native = getComputedStyle(element),
+        mirrored = getComputedStyle(mirror);
+      const frame = overlay.getBoundingClientRect(),
+        input = element.getBoundingClientRect();
+      element.scrollTop = element.scrollHeight;
+      element.dispatchEvent(new Event("scroll"));
+      return {
+        scrollable: element.scrollHeight > element.clientHeight,
+        width: frame.width,
+        inputWidth: element.clientWidth,
+        top: frame.top,
+        inputTop: input.top + element.clientTop,
+        font: [native.fontFamily, native.fontSize, native.lineHeight],
+        mirrorFont: [mirrored.fontFamily, mirrored.fontSize, mirrored.lineHeight],
+        padding: [native.paddingLeft, native.paddingRight, native.textIndent],
+        mirrorPadding: [mirrored.paddingLeft, mirrored.paddingRight, mirrored.textIndent],
+      };
+    });
+    expect(layout.scrollable).toBe(true);
+    expect(layout.width).toBe(layout.inputWidth);
+    expect(layout.top).toBe(layout.inputTop);
+    expect(layout.font).toEqual(layout.mirrorFont);
+    expect(layout.padding).toEqual(layout.mirrorPadding);
+    await expect
+      .poll(() =>
+        composer.evaluate((element) => {
+          const mirror = element.parentElement!.querySelector(
+            '[data-slot="textarea-provisional-overlay"]',
+          )!.firstElementChild!;
+          return new DOMMatrixReadOnly(getComputedStyle(mirror).transform).m42 + element.scrollTop;
+        }),
+      )
+      .toBe(0);
+    await expect(composer).toBeFocused();
+    await composer.pressSequentially(" edited");
+    await expect(f.page.locator('[data-slot="provisional-text"]')).toHaveCount(0);
+    await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+  } finally {
+    await f.close();
+  }
 });
 
 test("conversation controls enter, mute and exit with real capture and streaming playback", async () => {

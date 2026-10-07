@@ -2,11 +2,13 @@ import { snapshot, Store, untracked } from "r-state-tree";
 import type { DictationState } from "../../domain/dictation/dictation-data";
 import type { Client } from "../client/Client";
 import { encodePcm, type Microphone, type MicrophoneCapture } from "../dictation/microphone";
+import { openSpeechCapture } from "../dictation/speech-capture";
+import type { ProvisionalTextSpan } from "../dictation/provisional-text";
 
 export interface DictationTarget {
   readonly id: string;
   begin(): void;
-  replace(text: string): void;
+  replace(text: string): ProvisionalTextSpan | void;
 }
 interface Utterance {
   id: string;
@@ -19,26 +21,40 @@ interface Utterance {
   meterSamples: number;
   pending?: Promise<void>;
   finishing: boolean;
+  rawText: string;
+  cleanedRaw?: string;
+  cleanedText?: string;
+  cleanupController: AbortController;
+  quietSamples: number;
+  heardSpeech: boolean;
+  cleanupDue: boolean;
+  cleanupPending?: Promise<void>;
 }
 export type DictationPhase = "off" | "paused" | "preparing" | "listening" | "finishing" | "error";
+const CLEANUP_SILENCE_SAMPLES = 3 * 16_000;
 
 /** Window-owned voice-input workflow. Focus is take-latest; drafts retain their existing owners.
- * Main owns installation. This window persists user enablement and microphone choice (last
+ * Main owns installation. This window persists enablement, microphone and cleanup choice (last
  * local edit wins); capture, maintenance pauses, audio and focus are ephemeral.
  */
 export class DictationStore extends Store<{
   client: Client["dictation"];
   microphone: Microphone;
+  postProcess: Client["workspaces"]["postProcessDictation"];
   beforeCapture?(): Promise<void>;
   canReleaseRecognition?(): boolean;
 }> {
   state: DictationState | undefined;
   @snapshot enabled = false;
+  /** Window preference shared with voice mode; text/results remain insertion-local and ephemeral. */
+  @snapshot postProcessEnabled = true;
   /** Window-local input mute; survives field changes, never persisted. */
   muted = false;
   phase: DictationPhase = "off";
   /** Ephemeral level of the current capture; never persisted or shared across focus generations. */
   audioLevel = 0;
+  /** Exact DOM insertion awaiting optional cleanup; never persisted. */
+  provisionalText: ProvisionalTextSpan | undefined;
   error: string | undefined;
   modelPathDraft = "";
   @snapshot deviceId = "";
@@ -97,7 +113,9 @@ export class DictationStore extends Store<{
   private endUtterance() {
     const run = this.utterance;
     this.utterance = undefined;
+    this.provisionalText = undefined;
     this.audioLevel = 0;
+    run?.cleanupController.abort();
     run?.controller.abort();
     run?.capture?.stop();
     if (run) {
@@ -150,10 +168,26 @@ export class DictationStore extends Store<{
   }
   /** Manual editing/cursor movement seals visible speech and starts a new insertion. */
   restart(id: string) {
-    if (this.target?.id !== id || !this.enabled || this.muted || this.phase === "finishing") return;
+    if (this.target?.id !== id || !this.enabled || this.muted) return;
+    if (this.phase === "finishing") {
+      this.endUtterance();
+      this.phase = "paused";
+      void this.start(this.target);
+      return;
+    }
     const run = this.utterance;
+    this.provisionalText = undefined;
     if (run && this.phase === "listening") {
       // Editing starts a new decoding generation, not a new microphone acquisition.
+      run.quietSamples = 0;
+      run.heardSpeech = false;
+      run.cleanupDue = false;
+      run.cleanupController.abort();
+      run.cleanupController = new AbortController();
+      run.cleanupPending = undefined;
+      run.rawText = "";
+      run.cleanedRaw = undefined;
+      run.cleanedText = undefined;
       run.id = crypto.randomUUID();
       run.chunks = [];
       run.samples = 0;
@@ -172,6 +206,11 @@ export class DictationStore extends Store<{
       meterEnergy: 0,
       meterSamples: 0,
       finishing: false,
+      rawText: "",
+      cleanupController: new AbortController(),
+      quietSamples: 0,
+      heardSpeech: false,
+      cleanupDue: false,
     };
     this.utterance = run;
     this.phase = "preparing";
@@ -182,7 +221,35 @@ export class DictationStore extends Store<{
       // Voice mode can have released the shared recognizer. Preparation is warm/idempotent.
       await this.props.client.prepare({ signal: this.signal });
       if (this.utterance !== run) return;
-      const capture = await this.props.microphone.open(
+      const capture = await openSpeechCapture(
+        this.props.microphone,
+        this.props.client.detectSpeech,
+        (samples, speech) => {
+          if (this.utterance !== run || run.finishing) return;
+          if (speech) {
+            run.heardSpeech = true;
+            run.quietSamples = 0;
+            run.cleanupDue = false;
+          } else if (run.heardSpeech) {
+            const previous = run.quietSamples;
+            run.quietSamples += samples.length;
+            if (previous < CLEANUP_SILENCE_SAMPLES && run.quietSamples >= CLEANUP_SILENCE_SAMPLES) {
+              run.cleanupDue = true;
+              this.scheduleCleanup(run);
+            }
+          }
+        },
+        (error) => {
+          if (this.utterance === run) this.reportError(error);
+        },
+        run.controller.signal,
+        this.deviceId,
+        () => {
+          if (this.utterance === run)
+            this.reportError(
+              new Error("Microphone disconnected. Choose a microphone and enable dictation again."),
+            );
+        },
         (samples) => {
           if (this.utterance !== run) return;
           if (!run.finishing) {
@@ -207,14 +274,6 @@ export class DictationStore extends Store<{
           }
           if (run.samples >= 12_800 && !run.pending && !run.finishing) this.pump(run);
         },
-        run.controller.signal,
-        this.deviceId,
-        () => {
-          if (this.utterance === run)
-            this.reportError(
-              new Error("Microphone disconnected. Choose a microphone and enable dictation again."),
-            );
-        },
       );
       if (this.utterance !== run) {
         capture.stop();
@@ -235,7 +294,65 @@ export class DictationStore extends Store<{
       { utteranceId, pcm: encodePcm(chunks), final },
       { signal: this.signal },
     );
-    if (this.utterance === run && run.id === utteranceId) run.target.replace(text);
+    if (this.utterance === run && run.id === utteranceId) {
+      run.rawText = text;
+      const cleaned = this.postProcessEnabled && run.cleanedRaw === text;
+      const span = run.target.replace(cleaned ? (run.cleanedText ?? text) : text);
+      this.provisionalText = this.postProcessEnabled && !cleaned && span ? span : undefined;
+    }
+  }
+  setPostProcessEnabled(enabled: boolean) {
+    this.postProcessEnabled = enabled;
+    this.provisionalText = undefined;
+    const run = this.utterance;
+    if (!run) return;
+    run.cleanupDue = false;
+    run.cleanupController.abort();
+    run.cleanupController = new AbortController();
+    run.cleanupPending = undefined;
+    run.cleanedRaw = undefined;
+    run.cleanedText = undefined;
+  }
+  private scheduleCleanup(run: Utterance) {
+    if (
+      !run.cleanupDue ||
+      run.pending ||
+      !this.postProcessEnabled ||
+      run.finishing ||
+      run.cleanupPending
+    )
+      return;
+    run.cleanupDue = false;
+    const pending = this.clean(run).finally(() => {
+      if (run.cleanupPending !== pending) return;
+      run.cleanupPending = undefined;
+      if (this.utterance === run) this.scheduleCleanup(run);
+    });
+    run.cleanupPending = pending;
+  }
+  private async clean(run: Utterance) {
+    if (!this.postProcessEnabled || !run.rawText.trim() || run.cleanedRaw === run.rawText) return;
+    const raw = run.rawText;
+    const id = run.id;
+    const signal = AbortSignal.any([
+      this.signal,
+      run.controller.signal,
+      run.cleanupController.signal,
+    ]);
+    let text = raw;
+    try {
+      text = await this.props.postProcess(raw, { signal });
+    } catch {
+      // Optional cleanup must not lose speech or prevent submission.
+    }
+    if (signal.aborted || this.utterance !== run || run.id !== id || !this.postProcessEnabled)
+      return;
+    run.cleanedRaw = raw;
+    run.cleanedText = text;
+    if (run.rawText === raw) {
+      run.target.replace(text);
+      this.provisionalText = undefined;
+    }
   }
   private pump(run: Utterance) {
     run.pending = this.transcribe(run, false)
@@ -244,7 +361,10 @@ export class DictationStore extends Store<{
       })
       .finally(() => {
         run.pending = undefined;
-        if (this.utterance === run && !run.finishing && run.samples >= 12_800) this.pump(run);
+        if (this.utterance === run && !run.finishing) {
+          if (run.samples >= 12_800) this.pump(run);
+          else this.scheduleCleanup(run);
+        }
       });
   }
   /** Returns false if focus changed or recognition failed: never submit a truncated draft. */
@@ -260,6 +380,10 @@ export class DictationStore extends Store<{
       await run.pending;
       if (this.utterance !== run) return false;
       await this.transcribe(run, true);
+      if (this.utterance !== run) return false;
+      await run.cleanupPending;
+      if (this.utterance !== run) return false;
+      await this.clean(run);
       if (this.utterance !== run) return false;
       this.endUtterance();
       this.phase = "paused";

@@ -226,7 +226,8 @@ export function makeClient(
       /^(backendConnection\.connect|projectSessions\.open|cakeChats\.open|modelPresets\.resolve)$/.test(
         operation,
       ) ||
-      operation === "terminals.get-terminal-status";
+      operation === "terminals.get-terminal-status" ||
+      operation === "workspaces.post-process-dictation";
     const stop = /\.(abort|cancel)/i.test(operation);
     if (host?.kind === "browser") {
       if (
@@ -463,6 +464,12 @@ export function makeClient(
         run(
           "dictation.release",
           withClient((client) => client.dictation.release()),
+          options,
+        ),
+      detectSpeech: (audio, options) =>
+        run(
+          "dictation.detectSpeech",
+          withClient((client) => client.dictation.detectSpeech(audio)),
           options,
         ),
       transcribe: (audio, options) =>

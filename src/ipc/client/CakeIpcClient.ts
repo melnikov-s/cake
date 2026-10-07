@@ -2,6 +2,7 @@ import type {
   DictationAudio,
   DictationError,
   DictationState,
+  SpeechDetectionAudio,
 } from "../../domain/dictation/dictation-data";
 import type {
   SpeechOutputSettings,
@@ -269,6 +270,9 @@ export interface CakeIpcClientService {
     readonly remove: () => Effect.Effect<void, DictationError | TransportError>;
     readonly prepare: () => Effect.Effect<void, DictationError | TransportError>;
     readonly release: () => Effect.Effect<void, DictationError | TransportError>;
+    readonly detectSpeech: (
+      audio: SpeechDetectionAudio,
+    ) => Effect.Effect<boolean, DictationError | TransportError>;
     readonly transcribe: (
       audio: DictationAudio,
     ) => Effect.Effect<string, DictationError | TransportError>;
@@ -731,6 +735,7 @@ export interface CakeIpcClientService {
     WorkspaceFileError
   >;
   readonly workspaces: RpcOperations<
+    | "post-process-dictation"
     | "reword-composer-selection"
     | "generate-session-title"
     | "set-utility-model"
@@ -1029,6 +1034,9 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         release: Effect.fn("CakeIpcClient.dictation.release")(() =>
           client("dictation.release", undefined),
+        ),
+        detectSpeech: Effect.fn("CakeIpcClient.dictation.detectSpeech")((audio) =>
+          client("dictation.detectSpeech", audio),
         ),
         transcribe: Effect.fn("CakeIpcClient.dictation.transcribe")((audio) =>
           client("dictation.transcribe", audio),
@@ -1443,6 +1451,9 @@ export const CakeIpcClientLive = Layer.effect(
         ),
       },
       workspaces: {
+        "post-process-dictation": Effect.fn("CakeIpcClient.workspaces.post-process-dictation")(
+          (payload) => client("workspaces.post-process-dictation", payload),
+        ),
         "reword-composer-selection": Effect.fn(
           "CakeIpcClient.workspaces.reword-composer-selection",
         )((payload) => client("workspaces.reword-composer-selection", payload)),

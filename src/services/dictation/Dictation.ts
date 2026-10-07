@@ -3,6 +3,7 @@ import type {
   DictationAudio,
   DictationError,
   DictationState,
+  SpeechDetectionAudio,
 } from "../../domain/dictation/dictation-data";
 
 /** Main-owned installation and one warm local inference process. Audio is ephemeral. */
@@ -16,5 +17,6 @@ export class Dictation extends Context.Service<
     readonly prepare: () => Effect.Effect<void, DictationError>;
     readonly release: () => Effect.Effect<void, DictationError>;
     readonly transcribe: (audio: DictationAudio) => Effect.Effect<string, DictationError>;
+    readonly detectSpeech: (audio: SpeechDetectionAudio) => Effect.Effect<boolean, DictationError>;
   }
 >()("cake/services/dictation/Dictation") {}

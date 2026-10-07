@@ -150,6 +150,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
         ),
     },
     workspaces: {
+      postProcessDictation: (text, options) =>
+        execute(
+          "workspaces.post-process-dictation",
+          (client) => client.workspaces["post-process-dictation"]({ text }),
+          options,
+        ).then((response) => response.text),
       rewordComposerSelection: (input, options) =>
         execute(
           "workspaces.reword-composer-selection",

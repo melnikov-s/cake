@@ -19,6 +19,7 @@ export function createDictationStore(
 ) {
   return mount(
     createStore(DictationStore, {
+      postProcess: async (text) => text,
       client: {
         install: async () => {},
         setModelPath: async () => {},
@@ -26,6 +27,7 @@ export function createDictationStore(
         prepare: async () => {},
         release: async () => {},
         transcribe: async () => "",
+        detectSpeech: async () => false,
         ...client,
       },
       microphone: {
