@@ -1,5 +1,6 @@
 import { homedir, release } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { makePocketTtsLive } from "../services/speech/PocketTtsLive";
 import { safeStorage, type App } from "electron";
 import { ElevenLabsSpeechLive } from "../services/speech/ElevenLabsSpeechLive";
 import { makeSpeechOutputDiagnosticsLive } from "../services/speech/SpeechOutputDiagnosticsLive";
@@ -59,6 +60,13 @@ export const makeMainLive = (options: MainLiveOptions) => {
       ElectronLive,
       ViewsLive,
       DictationLive,
+      makePocketTtsLive(
+        join(options.userData, "speech-output", "pocket-tts"),
+        process.platform === "darwin" &&
+          process.arch === "arm64" &&
+          Number.parseInt(release(), 10) >= 23,
+        join(dirname(options.dictationHelperPath), "cake-speech"),
+      ),
       ElevenLabsSpeechLive.pipe(
         Layer.provide(makeSpeechOutputDiagnosticsLive(join(options.userData, "speech-output"))),
         Layer.provide(

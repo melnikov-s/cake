@@ -10,6 +10,7 @@ import type {
   SpeechOutputRequest,
   SpeechOutputAudio,
 } from "../../domain/speech/speech-output-data";
+import type { SpeechOutputProvider } from "../../domain/speech/pocket-tts-data";
 import type {
   DesktopHostError,
   DesktopHostSelection,
@@ -245,6 +246,11 @@ type ModelPresetResolutionError =
 export interface CakeIpcClientService {
   readonly speechOutput: {
     observeSettings(): Stream.Stream<SpeechOutputSettings, SpeechOutputError | TransportError>;
+    setProvider(
+      provider: SpeechOutputProvider,
+    ): Effect.Effect<void, SpeechOutputError | TransportError>;
+    installLocal(): Effect.Effect<void, SpeechOutputError | TransportError>;
+    removeLocal(): Effect.Effect<void, SpeechOutputError | TransportError>;
     setApiKey(key: string | null): Effect.Effect<void, SpeechOutputError | TransportError>;
     setVoice(voiceId: string): Effect.Effect<void, SpeechOutputError | TransportError>;
     setSpeed(speed: number): Effect.Effect<void, SpeechOutputError | TransportError>;
@@ -984,6 +990,15 @@ export const CakeIpcClientLive = Layer.effect(
     return CakeIpcClient.of({
       speechOutput: {
         observeSettings: () => client("speechOutput.observeSettings", undefined),
+        setProvider: Effect.fn("CakeIpcClient.speechOutput.setProvider")((provider) =>
+          client("speechOutput.setProvider", { provider }),
+        ),
+        installLocal: Effect.fn("CakeIpcClient.speechOutput.installLocal")(() =>
+          client("speechOutput.installLocal", undefined),
+        ),
+        removeLocal: Effect.fn("CakeIpcClient.speechOutput.removeLocal")(() =>
+          client("speechOutput.removeLocal", undefined),
+        ),
         setApiKey: Effect.fn("CakeIpcClient.speechOutput.setApiKey")((key) =>
           client("speechOutput.setApiKey", { key }),
         ),

@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import { it } from "@effect/vitest";
+import { speechOutputSettings } from "../../../helpers/speech-output";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Deferred, Effect, Queue } from "effect";
@@ -80,6 +81,7 @@ async function workflow(events: ClientEvents["Service"]) {
   });
   const { root } = fixture;
   root.speechSettingsStore.applySettings({
+    ...speechOutputSettings(),
     keyConfigured: true,
     voiceId: "voice",
     modelId: "eleven_flash_v2_5",

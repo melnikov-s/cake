@@ -15,6 +15,7 @@ import type { Microphone } from "../../../src/renderer/dictation/microphone";
 import type { SpeechPlayback } from "../../../src/renderer/speech/playback";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SettingsSpeechSection } from "../../../src/renderer/components/settings-speech-section";
+import { speechOutputSettings, pocketTtsState } from "../../helpers/speech-output";
 import { SettingsDictationSection } from "../../../src/renderer/components/settings-dictation-section";
 import { ToastHost } from "../../../src/renderer/components/toast-host";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
@@ -121,6 +122,7 @@ function fixture(
   });
   const { root } = rootFixture;
   root.speechSettingsStore.applySettings({
+    ...speechOutputSettings(),
     keyConfigured: true,
     voiceId: "voice",
     modelId: "eleven_flash_v2_5",
@@ -240,6 +242,7 @@ describe("Project Session conversation mode", () => {
       });
       if (kind === "key" || kind === "voice")
         f.root.speechSettingsStore.applySettings({
+          ...speechOutputSettings(),
           keyConfigured: kind !== "key",
           modelId: "eleven_flash_v2_5",
           speed: 1,
@@ -260,6 +263,7 @@ describe("Project Session conversation mode", () => {
     using f = fixture();
     act(() =>
       f.root.speechSettingsStore.applySettings({
+        ...speechOutputSettings(),
         keyConfigured: false,
         modelId: "eleven_flash_v2_5",
         speed: 1,
@@ -1080,6 +1084,60 @@ describe("Project Session conversation mode", () => {
     expect(screen.getByRole("button", { name: "Copy full error details" })).toBeDefined();
     await f.user.click(screen.getByRole("button", { name: "Dismiss notification" }));
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+  it("enters and speaks with installed local output without an ElevenLabs key", async () => {
+    using f = fixture();
+    act(() =>
+      f.root.speechSettingsStore.applySettings(
+        speechOutputSettings({
+          provider: "pocket-tts",
+          modelId: "pocket-tts-8bit",
+          keyConfigured: false,
+          voiceId: "alba",
+          voices: [{ id: "alba", name: "Alba" }],
+          localModel: pocketTtsState({ selected: true, installed: true }),
+        }),
+      ),
+    );
+    await f.enter();
+    f.publish([consumed(), assistant("Speaking locally. ")]);
+    await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(1));
+    expect(f.synthesize.mock.calls[0]?.[0].text).toBe("Speaking locally.");
+    expect(f.playback.enqueue).toHaveBeenCalledTimes(1);
+    expect(f.setApiKey).not.toHaveBeenCalled();
+  });
+  it.each([
+    { name: "not installed", installed: false, engineAvailable: true, installing: false },
+    { name: "engine missing", installed: true, engineAvailable: false, installing: false },
+    { name: "installation in progress", installed: true, engineAvailable: true, installing: true },
+  ])("blocks unready local output ($name) even when the cloud key is configured", async (model) => {
+    using f = fixture();
+    act(() =>
+      f.root.speechSettingsStore.applySettings(
+        speechOutputSettings({
+          provider: "pocket-tts",
+          modelId: "pocket-tts-8bit",
+          keyConfigured: true,
+          voiceId: "alba",
+          localModel: pocketTtsState({
+            selected: true,
+            installed: model.installed,
+            engineAvailable: model.engineAvailable,
+            installing: model.installing,
+          }),
+        }),
+      ),
+    );
+    await f.user.click(screen.getByRole("button", { name: "Enter conversation mode" }));
+    await screen.findByText(
+      "Download Pocket TTS in Settings → Speech output before entering voice mode.",
+    );
+    expect(f.synthesize).not.toHaveBeenCalled();
+    expect(f.playback.start).not.toHaveBeenCalled();
+    await f.user.type(screen.getByRole("combobox", { name: "Message" }), "Text still works");
+    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
   });
   it("the settings speed slider commits a faster speed through the service and reflects its authoritative projection", async () => {
     using f = fixture();

@@ -377,6 +377,24 @@ export function makeClient(
   }
   return {
     speechOutput: {
+      setProvider: (provider, options) =>
+        run(
+          "speechOutput.setProvider",
+          withClient((client) => client.speechOutput.setProvider(provider)),
+          options,
+        ),
+      installLocal: (options) =>
+        run(
+          "speechOutput.installLocal",
+          withClient((client) => client.speechOutput.installLocal()),
+          options,
+        ),
+      removeLocal: (options) =>
+        run(
+          "speechOutput.removeLocal",
+          withClient((client) => client.speechOutput.removeLocal()),
+          options,
+        ),
       setApiKey: (key, options) =>
         run(
           "speechOutput.setApiKey",

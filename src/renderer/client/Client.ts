@@ -48,6 +48,7 @@ import type {
   UtilityModel,
 } from "../../ipc/session-contract";
 import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
+import type { SpeechOutputProvider } from "../../domain/speech/pocket-tts-data";
 import type {
   SpeechOutputAudio,
   SpeechOutputRequest,
@@ -62,6 +63,9 @@ export interface ClientCommandOptions {
  * Synthesis consumes the RPC stream through runtime.execute, never observation retry machinery.
  */
 export interface SpeechOutputCommands {
+  setProvider(provider: SpeechOutputProvider, options?: ClientCommandOptions): Promise<void>;
+  installLocal(options?: ClientCommandOptions): Promise<void>;
+  removeLocal(options?: ClientCommandOptions): Promise<void>;
   setApiKey(key: string | null, options?: ClientCommandOptions): Promise<void>;
   setVoice(voiceId: string, options?: ClientCommandOptions): Promise<void>;
   setSpeed(speed: number, options?: ClientCommandOptions): Promise<void>;

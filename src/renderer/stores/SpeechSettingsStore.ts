@@ -23,11 +23,26 @@ export class SpeechSettingsStore extends Store<{ client: SpeechOutputCommands }>
   error: string | undefined;
   private refreshRevision = 0;
   private refresh: AbortController | undefined;
+  downloading = false;
+  private download: AbortController | undefined;
+  get localSelected(): boolean {
+    return this.settings?.provider === "pocket-tts";
+  }
+  get localModel() {
+    return this.settings?.localModel;
+  }
+  get installing(): boolean {
+    return this.downloading || this.localModel?.installing === true;
+  }
+  get canCancelDownload(): boolean {
+    return this.download !== undefined;
+  }
   constructor(props: SpeechSettingsStore["props"]) {
     super(props);
     this.effect(() => () => {
       this.apiKeyDraft = "";
       this.refresh?.abort();
+      this.download?.abort();
     });
   }
   setEnabled(enabled: boolean): void {
@@ -50,6 +65,36 @@ export class SpeechSettingsStore extends Store<{ client: SpeechOutputCommands }>
       this.apiKeyDraft = "";
       this.busy = false;
     }
+  }
+  async selectProvider(provider: string): Promise<void> {
+    if (provider !== "elevenlabs" && provider !== "pocket-tts") return;
+    if (this.installing) return;
+    await this.mutate(() => this.props.client.setProvider(provider, { signal: this.signal }));
+  }
+  async downloadLocalModel(): Promise<void> {
+    if (this.installing || this.signal.aborted) return;
+    const controller = new AbortController();
+    this.download = controller;
+    this.downloading = true;
+    this.error = undefined;
+    try {
+      await this.props.client.installLocal({
+        signal: AbortSignal.any([this.signal, controller.signal]),
+      });
+    } catch (error) {
+      if (!this.signal.aborted && !controller.signal.aborted)
+        this.error = error instanceof Error ? error.message : "Could not download Pocket TTS";
+    } finally {
+      this.download = undefined;
+      this.downloading = false;
+    }
+  }
+  cancelDownload(): void {
+    this.download?.abort();
+  }
+  async removeLocalModel(): Promise<void> {
+    if (this.installing) return;
+    await this.mutate(() => this.props.client.removeLocal({ signal: this.signal }));
   }
   async saveApiKey(): Promise<void> {
     const key = this.apiKeyDraft.trim();

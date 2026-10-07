@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { PocketTtsState, SpeechOutputProvider } from "./pocket-tts-data";
 
 const voiceId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 
@@ -13,13 +14,27 @@ export const SpeechOutputVoice = Schema.Struct({
 export interface SpeechOutputVoice extends Schema.Schema.Type<typeof SpeechOutputVoice> {}
 
 /** Main-owned, secret-free settings projection. The API key never comes back over RPC. */
-export const SpeechOutputSettings = Schema.Struct({
+export const ElevenLabsSpeechSettings = Schema.Struct({
   keyConfigured: Schema.Boolean,
   voiceId: Schema.optionalKey(voiceId),
   modelId: Schema.Literal("eleven_flash_v2_5"),
   speed: SpeechOutputSpeed,
   voices: Schema.Array(SpeechOutputVoice).check(Schema.isMaxLength(1_000)),
 });
+export interface ElevenLabsSpeechSettings extends Schema.Schema.Type<
+  typeof ElevenLabsSpeechSettings
+> {}
+
+/** One coherent native settings projection: selected provider and actual local installation state.
+ * Existing ElevenLabs credentials/voice preferences are preserved when selecting local output.
+ */
+export const SpeechOutputSettings = ElevenLabsSpeechSettings.pipe(
+  Schema.fieldsAssign({
+    provider: SpeechOutputProvider,
+    modelId: Schema.Literals(["eleven_flash_v2_5", "pocket-tts-8bit"]),
+    localModel: PocketTtsState,
+  }),
+);
 export interface SpeechOutputSettings extends Schema.Schema.Type<typeof SpeechOutputSettings> {}
 
 /** One bounded plain-language phrase. No provider override, credentials, or microphone audio. */

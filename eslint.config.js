@@ -18,6 +18,7 @@ export default tseslint.config(
       "**/dist/**",
       "**/out/**",
       "**/node_modules/**",
+      "native/**/.build/**",
       // The companion extension is a Node CJS asset executed by the embedded
       // server's extension host, not application source.
       "src/assets/vscode-companion/**",

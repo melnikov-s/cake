@@ -5,7 +5,8 @@ import { makeSpeechOutputDiagnosticsLive } from "../services/speech/SpeechOutput
 import { makeSpeechOutputStorageLive } from "../services/speech/SpeechOutputStorageLive";
 import { SpeechOutputRpc } from "../ipc/protocol/SpeechOutputRpc";
 import { speechOutputHandlers } from "../ipc/server/SpeechOutputHandlers";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { makePocketTtsLive } from "../services/speech/PocketTtsLive";
 import { DictationRpc } from "../ipc/protocol/DictationRpc";
 import { dictationHandlers } from "../ipc/server/DictationHandlers";
 import { makeDictationLive } from "../services/dictation/DictationLive";
@@ -72,6 +73,13 @@ export const makeRemoteMainLive = (
   const Host = Layer.mergeAll(
     Clients,
     Native,
+    makePocketTtsLive(
+      join(options.userData, "speech-output", "pocket-tts"),
+      process.platform === "darwin" &&
+        process.arch === "arm64" &&
+        Number.parseInt(release(), 10) >= 23,
+      join(dirname(options.dictationHelperPath), "cake-speech"),
+    ),
     ElevenLabsSpeechLive.pipe(
       Layer.provide(makeSpeechOutputDiagnosticsLive(join(options.userData, "speech-output"))),
       Layer.provide(

@@ -1,8 +1,10 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import pocketManifest from "../../src/services/speech/pocket-tts-manifest.json" with { type: "json" };
 import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import {
@@ -19,12 +21,14 @@ async function launch({
   recognitionTexts = [],
   secondSession = false,
   foreground = false,
+  localInstalled = false,
 }: {
   reasoning?: boolean;
   recognizeSpeech?: boolean;
   recognitionTexts?: string[];
   secondSession?: boolean;
   foreground?: boolean;
+  localInstalled?: boolean;
 } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "cake-conversation-"));
   const userData = join(directory, "user-data"),
@@ -93,6 +97,41 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
 `,
   );
   await chmod(helper, 0o755);
+  // Fake only the external native inference/model assets, keeping real installation
+  // inspection, provider selection, RPC, Store, Chat, capture and playback.
+  const speechHelper = join(directory, "cake-speech");
+  const localRequests = join(directory, "pocket-requests.jsonl");
+  await writeFile(localRequests, "");
+  await writeFile(
+    speechHelper,
+    `#!${process.execPath}
+const readline = require('node:readline');
+const fs = require('node:fs');
+process.stdout.write(JSON.stringify({ ready: true }) + '\\n');
+readline.createInterface({ input: process.stdin }).on('line', (line) => {
+  const request = JSON.parse(line);
+  fs.appendFileSync(${JSON.stringify(localRequests)}, JSON.stringify(request) + '\\n');
+  process.stdout.write(JSON.stringify({ pcm: Buffer.alloc(4800).toString('base64') }) + '\\n');
+  process.stdout.write(JSON.stringify({ done: true }) + '\\n');
+});
+`,
+  );
+  await chmod(speechHelper, 0o755);
+  await writeFile(join(directory, "mlx.metallib"), "fake shader artifact");
+  if (localInstalled) {
+    const localModel = join(userData, "speech-output", "pocket-tts", "model");
+    for (const file of pocketManifest.files) {
+      const path = join(localModel, file.path);
+      await mkdir(dirname(path), { recursive: true });
+      const handle = await open(path, "w");
+      await handle.truncate(file.bytes);
+      await handle.close();
+    }
+    await writeFile(
+      join(localModel, "installation.sha256"),
+      createHash("sha256").update(JSON.stringify(pocketManifest)).digest("hex"),
+    );
+  }
   // Silence keeps the real worklet/capture path active without artificially barging into output.
   const wav = Buffer.alloc(44 + 16000 * 2 * 2);
   wav.write("RIFF", 0);
@@ -248,6 +287,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       page.getByLabel("Voice").locator("option", { hasText: "Fixture voice" }),
     ).toHaveCount(1);
     await page.getByLabel("Voice").selectOption("fixture-voice");
+    await expect(page.getByLabel("Voice")).toHaveValue("fixture-voice");
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
   };
@@ -257,6 +297,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     responses,
     configure,
     userData,
+    localRequests,
     async frames(chunks: [number, number][]) {
       await page.evaluate((chunks) => {
         const fixture = Reflect.get(globalThis, "conversationAudioFixture") as {
@@ -546,6 +587,96 @@ test("dictation stays enabled through voice mode and immediately works after swi
     await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
     await f.page.getByRole("button", { name: /Dictation Local speech to text/ }).click();
     await expect(toggle).toHaveAttribute("aria-checked", "true");
+  } finally {
+    await f.close();
+  }
+});
+
+test("local speech provider uses native selection, persists, and speaks without an ElevenLabs key", async () => {
+  const f = await launch({ localInstalled: true });
+  try {
+    await f.configure();
+    await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await f.page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    await f.page.getByRole("button", { name: "Remove key" }).click();
+    await expect(f.page.getByText(/No key configured/)).toBeVisible();
+    const provider = f.page.getByLabel("Speech provider");
+    await provider.focus();
+    await provider.selectOption("pocket-tts");
+    await expect(provider).toHaveValue("pocket-tts");
+    await expect(
+      f.page.getByText("Pocket TTS is installed and ready for voice mode."),
+    ).toBeVisible();
+    await expect
+      .poll(async () =>
+        JSON.parse(
+          await readFile(join(f.userData, "speech-output", "pocket-tts", "settings.json"), "utf8"),
+        ),
+      )
+      .toEqual({ selected: true });
+    await f.page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toBeVisible();
+    const composer = f.page.getByRole("combobox", { name: "Message", exact: true });
+    await composer.click();
+    await composer.pressSequentially("Speak locally");
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue("Speak locally");
+    const send = f.page.getByRole("button", { name: "Send", exact: true });
+    await expect(send).toBeEnabled();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toBeVisible();
+    await send.click();
+    await expect.poll(() => f.responses.length).toBe(1);
+    await expect(composer).toHaveValue("");
+    f.sendText("A locally spoken sentence. ");
+    await expect(f.page.getByText("A locally spoken sentence.", { exact: true })).toBeVisible();
+    await expect
+      .poll(async () => (await readFile(f.localRequests, "utf8")).trim())
+      .toBe(JSON.stringify({ text: "A locally spoken sentence.", voice: "alba" }));
+    await expect
+      .poll(() =>
+        f.page.evaluate(
+          () =>
+            (
+              Reflect.get(globalThis, "conversationAudioFixture") as {
+                nodes: AudioBufferSourceNode[];
+              }
+            ).nodes.length,
+        ),
+      )
+      .toBeGreaterThan(0);
+    expect(await speechHttpRequests(f.application)).toEqual([]);
+    f.sendText("", true);
+    await f.page.getByRole("button", { name: "Exit conversation mode" }).click();
+  } finally {
+    await f.close();
+  }
+});
+
+test("uninstalled local output offers one download button and never falls back to configured cloud speech", async () => {
+  const f = await launch();
+  try {
+    await f.configure();
+    await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await f.page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    await f.page.getByLabel("Speech provider").selectOption("pocket-tts");
+    await expect(
+      f.page.getByRole("button", { name: "Download Pocket TTS · 141 MB" }),
+    ).toBeEnabled();
+    await f.page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(
+      f.page.getByText(
+        "Download Pocket TTS in Settings → Speech output before entering voice mode.",
+      ),
+    ).toBeVisible();
+    expect(await speechHttpRequests(f.application)).toEqual([]);
+    const composer = f.page.getByRole("combobox", { name: "Message", exact: true });
+    await composer.click();
+    await composer.pressSequentially("Text still works");
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue("Text still works");
+    await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
   } finally {
     await f.close();
   }

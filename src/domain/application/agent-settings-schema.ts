@@ -342,14 +342,14 @@ export const agentSettingsOperations = [
   setting(
     "settings.speech.get",
     empty,
-    "Read desktop speech settings and the persisted voice list; never credentials. No provider requests.",
+    "Read desktop speech settings, provider, local installation state and selected provider's voice list; never credentials. No provider requests.",
     {},
     SpeechOutputSettings,
   ),
   setting(
     "settings.speech.refresh-voices",
     empty,
-    "Refresh and persist this desktop's ElevenLabs voice list. No generated audio.",
+    "Refresh and persist ElevenLabs voices when selected, or return the built-in local voice without HTTP. No generated audio.",
     {},
     Schema.Array(SpeechOutputVoice),
   ),

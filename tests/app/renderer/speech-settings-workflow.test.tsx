@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
 import { SettingsSpeechSection } from "../../../src/renderer/components/settings-speech-section";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { speechOutputSettings } from "../../helpers/speech-output";
 
 afterEach(cleanup);
 
@@ -14,20 +15,14 @@ describe("Speech settings credentials", () => {
     "shows a saved-key mask only when configured (%s), never submitting the mask",
     async (configured) => {
       const setApiKey = vi.fn<Client["speechOutput"]["setApiKey"]>(async (key) => {
-        fixture.root.speechSettingsStore.applySettings({
-          keyConfigured: key !== null,
-          voices: [],
-          modelId: "eleven_flash_v2_5",
-          speed: 1,
-        });
+        fixture.root.speechSettingsStore.applySettings(
+          speechOutputSettings({ keyConfigured: key !== null }),
+        );
       });
       using fixture = createRendererStoreFixture({ client: { speechOutput: { setApiKey } } });
-      fixture.root.speechSettingsStore.applySettings({
-        keyConfigured: configured,
-        voices: [],
-        modelId: "eleven_flash_v2_5",
-        speed: 1,
-      });
+      fixture.root.speechSettingsStore.applySettings(
+        speechOutputSettings({ keyConfigured: configured }),
+      );
       const view = render(<SettingsSpeechSection speech={fixture.root.speechSettingsStore} />);
       try {
         const user = userEvent.setup();

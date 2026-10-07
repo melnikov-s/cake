@@ -20,7 +20,7 @@ import {
   SpeechOutputError,
   SpeechOutputRequest,
   SpeechOutputSpeed,
-  type SpeechOutputSettings,
+  type ElevenLabsSpeechSettings,
   SpeechOutputVoice,
   type SpeechOutputAudio,
 } from "../../domain/speech/speech-output-data";
@@ -49,8 +49,8 @@ const providerError = () =>
     kind: "provider",
     message: "ElevenLabs could not complete this request. No automatic retry was made.",
   });
-const project = (settings: StoredSpeechOutputSettings): SpeechOutputSettings => {
-  const snapshot: Types.Mutable<SpeechOutputSettings> = {
+const project = (settings: StoredSpeechOutputSettings): ElevenLabsSpeechSettings => {
+  const snapshot: Types.Mutable<ElevenLabsSpeechSettings> = {
     keyConfigured: settings.apiKey !== undefined,
     modelId: "eleven_flash_v2_5",
     speed: settings.speed ?? 1,
@@ -125,7 +125,7 @@ export const ElevenLabsSpeechLive: Layer.Layer<
     const settingsLock = yield* Semaphore.make(1);
     const synthesisLock = yield* Semaphore.make(1);
     const settings = yield* Ref.make(Option.none<StoredSpeechOutputSettings>());
-    const projection = yield* SubscriptionRef.make(Option.none<SpeechOutputSettings>());
+    const projection = yield* SubscriptionRef.make(Option.none<ElevenLabsSpeechSettings>());
 
     const readSettings = Effect.fn("ElevenLabsSpeech.readSettings")(function* () {
       const current = yield* Ref.get(settings);

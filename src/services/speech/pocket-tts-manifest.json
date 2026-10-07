@@ -1,0 +1,35 @@
+{
+  "name": "Pocket TTS 8-bit",
+  "license": "CC-BY-4.0",
+  "voice": "alba",
+  "files": [
+    {
+      "path": "config.json",
+      "repository": "mlx-community/pocket-tts-8bit",
+      "revision": "ee0d088c10729a33640bac050b8796993f468a53",
+      "bytes": 2203,
+      "sha256": "15bdb4b153bf6b01cc1eb24dfa19947bbc6a207ece0b83f1f678c848d4e1c727"
+    },
+    {
+      "path": "model.safetensors",
+      "repository": "mlx-community/pocket-tts-8bit",
+      "revision": "ee0d088c10729a33640bac050b8796993f468a53",
+      "bytes": 140230187,
+      "sha256": "ab014261d3ac916abe7c67406798dfc48a5898d262b93ca5c709c2e4b43e0d37"
+    },
+    {
+      "path": "tokenizer.json",
+      "repository": "mlx-community/pocket-tts",
+      "revision": "cbf71d5f6657bbc3f4bc02f85ee408261225bec7",
+      "bytes": 244993,
+      "sha256": "ef29c4871fd62c7beb928150edc095be1327f0924c0eab9e06b95918b39eff5f"
+    },
+    {
+      "path": "embeddings/alba.safetensors",
+      "repository": "mlx-community/pocket-tts",
+      "revision": "cbf71d5f6657bbc3f4bc02f85ee408261225bec7",
+      "bytes": 512088,
+      "sha256": "ad234695323e4030336b6afc8a050c97e3110603e11ecd8226d9562488300a50"
+    }
+  ]
+}

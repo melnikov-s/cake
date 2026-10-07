@@ -1,18 +1,18 @@
-import { Effect, Stream } from "effect";
+import { Effect } from "effect";
+import * as speechOutput from "../../domain/speech/speech-output";
+import { PocketTts } from "../../services/speech/PocketTts";
 import { ElevenLabsSpeech } from "../../services/speech/ElevenLabsSpeech";
 import { SpeechOutputRpc } from "../protocol/SpeechOutputRpc";
 
 export const speechOutputHandlers = SpeechOutputRpc.of({
-  "speechOutput.observeSettings": () =>
-    Stream.unwrap(Effect.map(ElevenLabsSpeech, (service) => service.observeSettings())),
+  "speechOutput.observeSettings": () => speechOutput.observeSettings(),
+  "speechOutput.setProvider": ({ provider }) => speechOutput.setProvider(provider),
+  "speechOutput.installLocal": () => Effect.flatMap(PocketTts, (service) => service.install()),
+  "speechOutput.removeLocal": () => Effect.flatMap(PocketTts, (service) => service.remove()),
   "speechOutput.setApiKey": ({ key }) =>
     Effect.flatMap(ElevenLabsSpeech, (service) => service.setApiKey(key)),
-  "speechOutput.setVoice": ({ voiceId }) =>
-    Effect.flatMap(ElevenLabsSpeech, (service) => service.setVoice(voiceId)),
-  "speechOutput.setSpeed": ({ speed }) =>
-    Effect.flatMap(ElevenLabsSpeech, (service) => service.setSpeed(speed)),
-  "speechOutput.listVoices": () =>
-    Effect.flatMap(ElevenLabsSpeech, (service) => service.listVoices()),
-  "speechOutput.synthesize": (request) =>
-    Stream.unwrap(Effect.map(ElevenLabsSpeech, (service) => service.synthesize(request))),
+  "speechOutput.setVoice": ({ voiceId }) => speechOutput.setVoice(voiceId),
+  "speechOutput.setSpeed": ({ speed }) => speechOutput.setSpeed(speed),
+  "speechOutput.listVoices": () => speechOutput.listVoices(),
+  "speechOutput.synthesize": (request) => speechOutput.synthesize(request),
 });

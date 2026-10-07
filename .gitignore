@@ -12,3 +12,6 @@ test-results/
 .DS_Store
 native/dictation/.build/
 native/dictation/.swiftpm/
+native/speech/.build/
+native/speech/.swiftpm/
+native/speech/.model-test/

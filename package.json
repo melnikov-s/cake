@@ -7,6 +7,7 @@
   "scripts": {
     "build": "electron-vite build && pnpm build:browser",
     "build:dictation": "node scripts/build-dictation.mjs",
+    "build:speech": "node scripts/build-speech.mjs",
     "build:server": "node scripts/build-server.mjs && vite build --config vite.browser.config.ts",
     "build:browser": "vite build --config vite.browser.config.ts",
     "start:server": "node out/server/main.mjs",

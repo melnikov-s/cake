@@ -134,8 +134,21 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     try {
       if (!target.canEnter() || this.props.activeSessionId() !== target.sessionId)
         throw new Error("Select an existing writable Project Session to enter conversation mode.");
-      if (!this.props.settings()?.keyConfigured || !this.props.settings()?.voiceId)
+      const settings = this.props.settings();
+      if (settings?.provider === "pocket-tts") {
+        if (!settings.localModel.supported)
+          throw new Error("Local Pocket TTS requires Apple Silicon and macOS 14 or later.");
+        if (
+          !settings.localModel.engineAvailable ||
+          !settings.localModel.installed ||
+          settings.localModel.installing
+        )
+          throw new Error(
+            "Download Pocket TTS in Settings → Speech output before entering voice mode.",
+          );
+      } else if (!settings?.keyConfigured || !settings.voiceId) {
         throw new Error("Configure an ElevenLabs key and voice in Settings → Speech output.");
+      }
       await this.props.suspendDictation();
       signal.throwIfAborted();
       await this.cleanup;

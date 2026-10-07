@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { SpeechOutputProvider } from "../../domain/speech/pocket-tts-data";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import {
   SpeechOutputAudio,
@@ -15,6 +16,19 @@ export const SpeechOutputRpc = RpcGroup.make(
     success: SpeechOutputSettings,
     error: SpeechOutputError,
     stream: true,
+  }),
+  Rpc.make("speechOutput.setProvider", {
+    payload: { provider: SpeechOutputProvider },
+    success: Schema.Void,
+    error: SpeechOutputError,
+  }),
+  Rpc.make("speechOutput.installLocal", {
+    success: Schema.Void,
+    error: SpeechOutputError,
+  }),
+  Rpc.make("speechOutput.removeLocal", {
+    success: Schema.Void,
+    error: SpeechOutputError,
   }),
   Rpc.make("speechOutput.setApiKey", {
     payload: {

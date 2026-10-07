@@ -18,6 +18,8 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { unusedEndpointServices } from "./rpc-endpoint-test-backend";
 import { ElevenLabsSpeech } from "../../../src/services/speech/ElevenLabsSpeech";
+import { PocketTts } from "../../../src/services/speech/PocketTts";
+import { pocketTtsState } from "../../helpers/speech-output";
 
 const endpoint = makeCakeRpcServerLive("/home/test", {
   agentDirectory: "/agent",
@@ -69,6 +71,17 @@ const makeBackend = Effect.fn("RpcEndpoint.test.makeBackend")(function* (failHom
       observedClientEvents,
       ClientWorkspacesLive,
       unusedEndpointServices,
+      Layer.succeed(
+        PocketTts,
+        PocketTts.of({
+          observeState: () => Stream.make(pocketTtsState()),
+          getState: () => Effect.succeed(pocketTtsState()),
+          select: () => Effect.void,
+          install: () => Effect.void,
+          remove: () => Effect.void,
+          synthesize: () => Stream.empty,
+        }),
+      ),
       Layer.succeed(
         ElevenLabsSpeech,
         ElevenLabsSpeech.of({

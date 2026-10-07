@@ -17,18 +17,20 @@ export default defineConfig({
     plugins: [
       externalizeDepsPlugin(),
       {
-        name: "cake-native-dictation",
+        name: "cake-native-speech",
         async writeBundle() {
-          const { stdout, stderr } = await promisify(execFile)(
-            process.execPath,
-            [
-              resolve(import.meta.dirname, "scripts/build-dictation.mjs"),
-              resolve(import.meta.dirname, "out/main/native"),
-            ],
-            { maxBuffer: 8 * 1024 * 1024 },
-          );
-          if (stdout) console.log(stdout.trim());
-          if (stderr) console.warn(stderr.trim());
+          for (const script of ["build-dictation.mjs", "build-speech.mjs"]) {
+            const { stdout, stderr } = await promisify(execFile)(
+              process.execPath,
+              [
+                resolve(import.meta.dirname, "scripts", script),
+                resolve(import.meta.dirname, "out/main/native"),
+              ],
+              { maxBuffer: 8 * 1024 * 1024 },
+            );
+            if (stdout) console.log(stdout.trim());
+            if (stderr) console.warn(stderr.trim());
+          }
         },
       },
     ],

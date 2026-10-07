@@ -3,7 +3,7 @@ import type {
   SpeechOutputAudio,
   SpeechOutputError,
   SpeechOutputRequest,
-  SpeechOutputSettings,
+  ElevenLabsSpeechSettings,
   SpeechOutputVoice,
 } from "../../domain/speech/speech-output-data";
 
@@ -14,7 +14,7 @@ import type {
 export class ElevenLabsSpeech extends Context.Service<
   ElevenLabsSpeech,
   {
-    readonly observeSettings: () => Stream.Stream<SpeechOutputSettings, SpeechOutputError>;
+    readonly observeSettings: () => Stream.Stream<ElevenLabsSpeechSettings, SpeechOutputError>;
     readonly setApiKey: (key: string | null) => Effect.Effect<void, SpeechOutputError>;
     readonly setVoice: (voiceId: string) => Effect.Effect<void, SpeechOutputError>;
     readonly setSpeed: (speed: number) => Effect.Effect<void, SpeechOutputError>;

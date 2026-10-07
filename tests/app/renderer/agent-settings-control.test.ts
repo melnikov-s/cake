@@ -7,6 +7,7 @@ import { applySnapshot, toSnapshot, createStore, mount } from "r-state-tree";
 import { DesktopConnectionStore } from "../../../src/renderer/stores/DesktopConnectionStore";
 import type { DesktopSharingState } from "../../../src/domain/application/desktop-sharing-data";
 import { createTestClient } from "./test-client";
+import { speechOutputSettings } from "../../helpers/speech-output";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationValue,
@@ -694,6 +695,7 @@ describe("Agent Settings through the real application-control/Client/domain boun
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
       origin.root.speechSettingsStore.applySettings({
+        ...speechOutputSettings(),
         keyConfigured: true,
         modelId: "eleven_flash_v2_5",
         speed: 1.1,

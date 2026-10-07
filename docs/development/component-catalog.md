@@ -105,6 +105,11 @@ provider requests, timers or workflow state. `ChatConversationControls` maps the
 window `ConversationModeStore` and Project Session target into this primitive;
 other Chat kinds omit the capability. See [conversation mode](conversation-mode.md).
 
+Speech output settings compose the shared `Select`, `Button` and `Callout` for provider
+selection and explicit local-model download/progress/cancel/removal; native readiness
+comes from `SpeechSettingsStore`, not component-local workflow state. See
+[local speech output](local-speech-output.md).
+
 ## Slider
 
 `Slider` is the shared native range input with keyboard support, semantic accent/focus styling, and value-change/commit callbacks. Speech output settings use a compact 1×–1.2× range; changing the thumb updates the local draft and releasing it or a keyboard key commits the speed to native settings.
