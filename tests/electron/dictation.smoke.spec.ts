@@ -261,6 +261,11 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await configure({ ready: true, text: "Spoken next." });
     await expect(composer).toHaveValue("Typed first. Spoken next.");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    // In the wide layout the assistant has its own gutter and dictation leads the first line.
+    // Compact assistant/voice stacking is covered by composer-voice-layout.smoke.spec.ts.
+    await application.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]!.setContentSize(1600, 900);
+    });
     const composerControl = composer.locator("..").getByRole("button", { name: "Mute dictation" });
     const textInset = await composer.evaluate((element) =>
       parseFloat(getComputedStyle(element).paddingLeft),

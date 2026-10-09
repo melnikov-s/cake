@@ -69,7 +69,12 @@ export const ChatComposer = observer(function ChatComposer({
           className={cn(
             "relative z-10 border-border/90 bg-composer shadow-[0_24px_80px_-30px_hsl(var(--shadow)/0.55),0_2px_10px_hsl(var(--shadow)/0.08)]",
             leadingAccessory &&
-              "[&_textarea]:pl-12 @4xl/composer-dock:[&_textarea]:pl-2 [&_[data-slot=dictation-indicator]]:left-12 @4xl/composer-dock:[&_[data-slot=dictation-indicator]]:left-2",
+              "[&_textarea]:pl-12 @4xl/composer-dock:[&_textarea]:pl-2 @4xl/composer-dock:[&_[data-slot=dictation-indicator]]:left-2",
+            // Inset assistant and dictation share a column; reserve it on every text line.
+            leadingAccessory &&
+              (leadingAccessoryVisible
+                ? "@max-4xl/composer-dock:[&_textarea]:min-h-18 @max-4xl/composer-dock:[&_textarea]:indent-0 @max-4xl/composer-dock:[&_[data-slot=dictation-indicator]]:left-[calc(0.5rem-1px)] @max-4xl/composer-dock:[&_[data-slot=dictation-indicator]]:top-[calc(2.5rem-1px)]"
+                : "@max-4xl/composer-dock:[&_[data-slot=dictation-indicator]]:left-12"),
           )}
           onSubmit={onSubmit}
         >
