@@ -19,11 +19,11 @@ import {
 import {
   SpeechOutputError,
   SpeechOutputRequest,
-  SpeechOutputSpeed,
   type ElevenLabsSpeechSettings,
   SpeechOutputVoice,
   type SpeechOutputAudio,
 } from "../../domain/speech/speech-output-data";
+import { ElevenLabsSpeechSpeed } from "../../domain/speech/speech-output-speed";
 import { ElevenLabsSpeech } from "./ElevenLabsSpeech";
 import { SpeechOutputDiagnostic, SpeechOutputDiagnostics } from "./SpeechOutputDiagnostics";
 import { SpeechOutputStorage, StoredSpeechOutputSettings } from "./SpeechOutputStorage";
@@ -166,7 +166,7 @@ export const ElevenLabsSpeechLive: Layer.Layer<
     }, settingsLock.withPermit);
     const setSpeed = Effect.fn("ElevenLabsSpeech.setSpeed")(function* (speed: number) {
       const current = yield* readSettings();
-      yield* Schema.decodeUnknownEffect(SpeechOutputSpeed)(speed).pipe(
+      yield* Schema.decodeUnknownEffect(ElevenLabsSpeechSpeed)(speed).pipe(
         Effect.mapError(providerError),
       );
       yield* saveSettings({ ...current, speed });

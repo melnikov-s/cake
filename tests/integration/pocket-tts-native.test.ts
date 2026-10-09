@@ -18,6 +18,7 @@ test.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !model)
       await worker.ready;
       await worker.synthesize(
         "Hello. This is Cake speaking locally on your Mac.",
+        2,
         new AbortController().signal,
         (frame) => frames.push(frame),
       );
@@ -35,7 +36,7 @@ test.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !model)
       expect(pcm.some((byte) => byte !== 0)).toBe(true);
       const cancellation = new AbortController();
       await expect(
-        worker.synthesize("Cancel this generated phrase.", cancellation.signal, () =>
+        worker.synthesize("Cancel this generated phrase.", 2, cancellation.signal, () =>
           cancellation.abort(),
         ),
       ).rejects.toThrow();
@@ -48,6 +49,7 @@ test.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !model)
       let samples = 0;
       await fresh.synthesize(
         "A fresh request works after cancellation.",
+        1,
         new AbortController().signal,
         (frame) => {
           samples += Buffer.from(frame.pcm, "base64").length / 2;

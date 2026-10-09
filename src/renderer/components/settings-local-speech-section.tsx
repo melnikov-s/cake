@@ -65,7 +65,7 @@ export const SettingsLocalSpeechSection = observer(function SettingsLocalSpeechS
       {model?.message && <Callout variant="error">{model.message}</Callout>}
       <p className="text-xs text-muted-foreground">
         Pocket TTS by Kyutai; MLX conversion by mlx-community; Alba voice by Alba MacKenna. Model
-        and voice licensed CC BY 4.0. Local output currently uses normal speaking speed.
+        and voice licensed CC BY 4.0. Speaking speed is adjusted locally without changing pitch.
       </p>
     </div>
   );

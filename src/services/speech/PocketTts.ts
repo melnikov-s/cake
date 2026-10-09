@@ -15,6 +15,7 @@ export class PocketTts extends Context.Service<
     readonly observeState: () => Stream.Stream<PocketTtsState>;
     readonly getState: () => Effect.Effect<PocketTtsState>;
     readonly select: (selected: boolean) => Effect.Effect<void, SpeechOutputError>;
+    readonly setSpeed: (speed: number) => Effect.Effect<void, SpeechOutputError>;
     readonly install: () => Effect.Effect<void, SpeechOutputError>;
     readonly remove: () => Effect.Effect<void, SpeechOutputError>;
     readonly synthesize: (

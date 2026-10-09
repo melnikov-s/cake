@@ -94,6 +94,7 @@ export class PocketTtsWorker {
 
   async synthesize(
     text: string,
+    speed: number,
     signal: AbortSignal,
     audio: (audio: SpeechOutputAudio) => void,
   ): Promise<void> {
@@ -102,7 +103,7 @@ export class PocketTtsWorker {
     signal.addEventListener("abort", cancel, { once: true });
     try {
       const done = this.response(audio);
-      this.process.stdin.write(`${JSON.stringify({ text, voice: "alba" })}\n`);
+      this.process.stdin.write(`${JSON.stringify({ text, voice: "alba", speed })}\n`);
       await done;
     } finally {
       signal.removeEventListener("abort", cancel);

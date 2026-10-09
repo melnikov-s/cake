@@ -29,7 +29,7 @@ export const observeSettings = () =>
               modelId: "pocket-tts-8bit",
               voiceId: "alba",
               voices: localVoices,
-              speed: 1,
+              speed: localModel.speed,
               localModel,
             };
           return { ...cloudSettings, provider: "elevenlabs", localModel };
@@ -59,14 +59,7 @@ export const setVoice = Effect.fn("speechOutput.setVoice")(function* (voiceId: s
 });
 export const setSpeed = Effect.fn("speechOutput.setSpeed")(function* (speed: number) {
   const local = yield* PocketTts;
-  if ((yield* local.getState()).selected) {
-    if (speed !== 1)
-      return yield* new SpeechOutputError({
-        kind: "not-configured",
-        message: "Local Pocket TTS currently speaks at normal speed.",
-      });
-    return;
-  }
+  if ((yield* local.getState()).selected) return yield* local.setSpeed(speed);
   const cloud = yield* ElevenLabsSpeech;
   yield* cloud.setSpeed(speed);
 });

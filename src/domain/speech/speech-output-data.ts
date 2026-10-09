@@ -1,11 +1,8 @@
 import { Schema } from "effect";
 import { PocketTtsState, SpeechOutputProvider } from "./pocket-tts-data";
+import { ElevenLabsSpeechSpeed, SpeechOutputSpeed } from "./speech-output-speed";
 
 const voiceId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
-
-export const SpeechOutputSpeed = Schema.Number.check(
-  Schema.isBetween({ minimum: 1, maximum: 1.2 }),
-);
 
 export const SpeechOutputVoice = Schema.Struct({
   id: voiceId,
@@ -18,7 +15,7 @@ export const ElevenLabsSpeechSettings = Schema.Struct({
   keyConfigured: Schema.Boolean,
   voiceId: Schema.optionalKey(voiceId),
   modelId: Schema.Literal("eleven_flash_v2_5"),
-  speed: SpeechOutputSpeed,
+  speed: ElevenLabsSpeechSpeed,
   voices: Schema.Array(SpeechOutputVoice).check(Schema.isMaxLength(1_000)),
 });
 export interface ElevenLabsSpeechSettings extends Schema.Schema.Type<
@@ -32,6 +29,7 @@ export const SpeechOutputSettings = ElevenLabsSpeechSettings.pipe(
   Schema.fieldsAssign({
     provider: SpeechOutputProvider,
     modelId: Schema.Literals(["eleven_flash_v2_5", "pocket-tts-8bit"]),
+    speed: SpeechOutputSpeed,
     localModel: PocketTtsState,
   }),
 );

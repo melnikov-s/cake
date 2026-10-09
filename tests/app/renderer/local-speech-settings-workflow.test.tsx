@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SpeechOutputSettings } from "../../../src/domain/speech/speech-output-data";
@@ -17,7 +17,7 @@ function fixture(supported = true) {
     voices: [{ id: "cloud-voice", name: "Saved cloud voice" }],
     localModel: pocketTtsState({ supported }),
   });
-  const cloud = authority;
+  let cloud = authority;
   let download: { signal: AbortSignal; finish: () => void } | undefined;
   const cancelled = vi.fn();
   const publish = (next: SpeechOutputSettings) => {
@@ -65,12 +65,20 @@ function fixture(supported = true) {
             provider,
             modelId: "pocket-tts-8bit",
             voiceId: "alba",
-            speed: 1,
+            speed: localModel.speed,
             voices: [{ id: "alba", name: "Alba" }],
             localModel,
           }
         : { ...cloud, localModel },
     );
+  });
+  const setSpeed = vi.fn(async (speed: number) => {
+    if (authority.provider === "pocket-tts")
+      publish({ ...authority, speed, localModel: { ...authority.localModel, speed } });
+    else {
+      cloud = { ...cloud, speed };
+      publish({ ...authority, speed });
+    }
   });
   const removeLocal = vi.fn(async () =>
     publish({
@@ -79,7 +87,7 @@ function fixture(supported = true) {
     }),
   );
   const rootFixture = createRendererStoreFixture({
-    client: { speechOutput: { setProvider, installLocal, removeLocal } },
+    client: { speechOutput: { setProvider, setSpeed, installLocal, removeLocal } },
   });
   const { root } = rootFixture;
   root.speechSettingsStore.applySettings(authority);
@@ -89,6 +97,7 @@ function fixture(supported = true) {
     root,
     user,
     setProvider,
+    setSpeed,
     installLocal,
     removeLocal,
     cancelled,
@@ -110,6 +119,9 @@ describe("local speech settings", () => {
     await f.user.selectOptions(screen.getByLabelText("Speech provider"), "pocket-tts");
     const download = await screen.findByRole("button", { name: "Download Pocket TTS · 141 MB" });
     expect(screen.getByText(/no Python or API key/)).toBeDefined();
+    expect((screen.getByRole("slider", { name: "Speaking speed" }) as HTMLInputElement).value).toBe(
+      "1",
+    );
     await f.user.click(download);
     await screen.findByText("Downloading Pocket TTS… 50.0 / 141 MB");
     expect(f.installLocal).toHaveBeenCalledTimes(1);
@@ -123,6 +135,31 @@ describe("local speech settings", () => {
     await f.user.click(await screen.findByRole("button", { name: "Remove local model" }));
     await screen.findByRole("button", { name: "Download Pocket TTS · 141 MB" });
     expect(f.removeLocal).toHaveBeenCalledTimes(1);
+  });
+
+  it("remembers distinct provider speeds and clears an uncommitted draft on provider changes", async () => {
+    using f = fixture();
+    const provider = screen.getByLabelText("Speech provider");
+    const slider = screen.getByRole("slider", { name: "Speaking speed" }) as HTMLInputElement;
+    expect(slider.max).toBe("1.2");
+    await f.user.selectOptions(provider, "pocket-tts");
+    expect(slider.max).toBe("2");
+    fireEvent.change(slider, { target: { value: "1.75" } });
+    fireEvent.pointerUp(slider);
+    await waitFor(() => expect(f.setSpeed).toHaveBeenCalledWith(1.75, expect.any(Object)));
+    await f.user.selectOptions(provider, "elevenlabs");
+    expect(slider.value).toBe("1.1");
+    expect(slider.max).toBe("1.2");
+    fireEvent.change(slider, { target: { value: "1.2" } });
+    fireEvent.pointerUp(slider);
+    await waitFor(() => expect(f.setSpeed).toHaveBeenCalledWith(1.2, expect.any(Object)));
+    await f.user.selectOptions(provider, "pocket-tts");
+    expect(slider.value).toBe("1.75");
+    fireEvent.change(slider, { target: { value: "2" } });
+    await f.user.selectOptions(provider, "elevenlabs");
+    expect(slider.value).toBe("1.2");
+    await f.user.selectOptions(provider, "pocket-tts");
+    expect(slider.value).toBe("1.75");
   });
 
   it("cancels an explicit download, retains no installed state, and allows a clean retry", async () => {

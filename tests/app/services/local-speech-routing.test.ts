@@ -22,7 +22,12 @@ const fixture = Effect.fn("SpeechRoutingTest.fixture")(function* () {
     voiceId: "saved-cloud-voice",
     voices: [{ id: "saved-cloud-voice", name: "Saved cloud voice" }],
   });
-  const calls = { cloud: [] as string[], local: [] as string[], refreshCloud: 0 };
+  const calls = {
+    cloud: [] as string[],
+    local: [] as string[],
+    localSpeeds: [] as number[],
+    refreshCloud: 0,
+  };
   const layer = Layer.merge(
     Layer.succeed(
       PocketTts,
@@ -32,6 +37,7 @@ const fixture = Effect.fn("SpeechRoutingTest.fixture")(function* () {
         select: (selected) => SubscriptionRef.update(local, (state) => ({ ...state, selected })),
         install: () => SubscriptionRef.update(local, (state) => ({ ...state, installed: true })),
         remove: () => SubscriptionRef.update(local, (state) => ({ ...state, installed: false })),
+        setSpeed: (speed) => SubscriptionRef.update(local, (state) => ({ ...state, speed })),
         synthesize: (request) =>
           Stream.unwrap(
             Effect.gen(function* () {
@@ -41,6 +47,7 @@ const fixture = Effect.fn("SpeechRoutingTest.fixture")(function* () {
                   message: "Download Pocket TTS first",
                 });
               calls.local.push(request.text);
+              calls.localSpeeds.push((yield* SubscriptionRef.get(local)).speed);
               return Stream.succeed(pcm);
             }),
           ),
@@ -99,15 +106,18 @@ describe("speech provider routing", () => {
           });
           expect(yield* speechOutput.listVoices()).toEqual([{ id: "alba", name: "Alba" }]);
           yield* speechOutput.setVoice("alba");
-          yield* speechOutput.setSpeed(1);
-          const rejected = yield* speechOutput.setSpeed(1.2).pipe(Effect.result);
-          expect(rejected._tag).toBe("Failure");
+          yield* speechOutput.setSpeed(2);
+          expect(yield* current()).toMatchObject({ provider: "pocket-tts", speed: 2 });
           yield* speechOutput.setProvider("elevenlabs");
           expect(yield* current()).toMatchObject({
             provider: "elevenlabs",
             voiceId: "saved-cloud-voice",
             speed: 1.15,
           });
+          yield* speechOutput.setSpeed(1.1);
+          yield* speechOutput.setProvider("pocket-tts");
+          expect(yield* current()).toMatchObject({ provider: "pocket-tts", speed: 2 });
+          expect((yield* SubscriptionRef.get(f.cloud)).speed).toBe(1.1);
           expect(f.calls.refreshCloud).toBe(0);
         }).pipe(Effect.provide(f.layer));
       }),
@@ -121,13 +131,17 @@ describe("speech provider routing", () => {
         expect(
           yield* speechOutput.synthesize({ text: "Local reply." }).pipe(Stream.runCollect),
         ).toEqual([pcm]);
+        expect(f.calls.localSpeeds).toEqual([1]);
+        yield* speechOutput.setSpeed(2);
+        yield* speechOutput.synthesize({ text: "Faster local reply." }).pipe(Stream.runDrain);
+        expect(f.calls.localSpeeds).toEqual([1, 2]);
         yield* SubscriptionRef.update(f.local, (state) => ({ ...state, installed: false }));
         const failure = yield* speechOutput
           .synthesize({ text: "Unready local reply." })
           .pipe(Stream.runCollect, Effect.result);
         expect(failure._tag).toBe("Failure");
         expect(f.calls.cloud).toEqual([]);
-        expect(f.calls.local).toEqual(["Local reply."]);
+        expect(f.calls.local).toEqual(["Local reply.", "Faster local reply."]);
         yield* speechOutput.setProvider("elevenlabs");
         yield* speechOutput.synthesize({ text: "Cloud reply." }).pipe(Stream.runDrain);
         expect(f.calls.cloud).toEqual(["Cloud reply."]);

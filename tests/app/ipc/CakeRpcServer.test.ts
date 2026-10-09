@@ -77,6 +77,7 @@ const makeBackend = Effect.fn("RpcEndpoint.test.makeBackend")(function* (failHom
           observeState: () => Stream.make(pocketTtsState()),
           getState: () => Effect.succeed(pocketTtsState()),
           select: () => Effect.void,
+          setSpeed: () => Effect.void,
           install: () => Effect.void,
           remove: () => Effect.void,
           synthesize: () => Stream.empty,

@@ -49,8 +49,9 @@ export class SpeechSettingsStore extends Store<{ client: SpeechOutputCommands }>
     this.enabled = enabled;
   }
   applySettings(settings: SpeechOutputSettings): void {
+    if (this.settings?.provider !== settings.provider || settings.speed === this.speedDraft)
+      this.speedDraft = undefined;
     this.settings = settings;
-    if (settings.speed === this.speedDraft) this.speedDraft = undefined;
   }
   private async mutate(operation: () => Promise<void>): Promise<void> {
     if (this.busy || this.signal.aborted) return;

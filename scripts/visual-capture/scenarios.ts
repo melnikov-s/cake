@@ -447,8 +447,9 @@ const conversationCountdownScenario: VisualCaptureScenario = {
 
 const speechOutputSettingsScenario: VisualCaptureScenario = {
   name: "speech-output-settings",
-  description: "Actual Speech output Settings with empty or saved-key masked ElevenLabs input",
-  states: ["default", "faster", "configured"],
+  description:
+    "Actual Speech output Settings with ElevenLabs credentials or local pitch-preserving speed",
+  states: ["default", "faster", "configured", "local"],
   seed: conversationEntryScenario.seed,
   async prepare(page, state, application) {
     await conversationEntryScenario.prepare(page, "default", application);
@@ -471,10 +472,14 @@ const speechOutputSettingsScenario: VisualCaptureScenario = {
     }
     const slider = page.getByRole("slider", { name: "Speaking speed" });
     await expect(slider).toBeVisible();
-    if (state === "faster") {
+    if (state === "local") {
+      await page.getByLabel("Speech provider").selectOption("pocket-tts");
+      await expect(page.getByText(/Speaking speed is adjusted locally/)).toBeVisible();
+    }
+    if (state === "faster" || state === "local") {
       await slider.focus();
       await slider.press("End");
-      await expect(slider).toHaveValue("1.2");
+      await expect(slider).toHaveValue(state === "local" ? "2" : "1.2");
     }
     await slider.scrollIntoViewIfNeeded();
     await page.waitForFunction(() => document.fonts.status === "loaded");

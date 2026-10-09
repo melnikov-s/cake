@@ -2,12 +2,14 @@ import Foundation
 import MLX
 import MLXAudioTTS
 import MLXNN
+import SpeechTempo
 
 // Serialized local-only NDJSON protocol. Model and voice files are supplied by Cake;
 // never use fromPretrained or a runtime download API here.
 private struct Request: Decodable {
     let text: String
     let voice: String
+    let speed: Double
 }
 
 private struct Reply: Encodable {
@@ -100,7 +102,8 @@ private func run() async throws {
         do {
             let request = try JSONDecoder().decode(Request.self, from: Data(line.utf8))
             guard !request.text.isEmpty, request.text.count <= 2_000,
-                  request.voice == "alba" else {
+                  request.voice == "alba", request.speed.isFinite,
+                  (1...2).contains(request.speed) else {
                 throw NSError(domain: "CakeSpeech", code: 4, userInfo: [
                     NSLocalizedDescriptionKey: "Invalid speech request.",
                 ])
@@ -110,7 +113,7 @@ private func run() async throws {
                 voice: request.voice,
                 generationParameters: model.defaultGenerationParameters
             )
-            let samples = audio.asArray(Float.self)
+            let samples = try SpeechTempo.adjust(audio.asArray(Float.self), speed: request.speed)
             guard !samples.isEmpty, samples.allSatisfy({ $0.isFinite }) else {
                 throw NSError(domain: "CakeSpeech", code: 5, userInfo: [
                     NSLocalizedDescriptionKey: "Local model returned invalid audio.",

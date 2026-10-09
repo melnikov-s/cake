@@ -739,6 +739,38 @@ test("local speech provider uses native selection, persists, and speaks without 
     await provider.focus();
     await provider.selectOption("pocket-tts");
     await expect(provider).toHaveValue("pocket-tts");
+    const slider = f.page.getByRole("slider", { name: "Speaking speed" });
+    await slider.focus();
+    await slider.press("End");
+    await expect(slider).toHaveValue("2");
+    await expect(f.page.getByText("2.00×", { exact: true })).toBeVisible();
+    await expect(slider).toHaveAttribute("max", "2");
+    await expect
+      .poll(async () => {
+        const saved = JSON.parse(
+          await readFile(join(f.userData, "speech-output", "pocket-tts", "settings.json"), "utf8"),
+        );
+        return saved.speed;
+      })
+      .toBe(2);
+    await provider.selectOption("elevenlabs");
+    await expect(slider).toHaveValue("1");
+    await expect(slider).toHaveAttribute("max", "1.2");
+    await expect(
+      f.page.getByText("ElevenLabs speed is saved separately; its limit is 1.2×."),
+    ).toBeVisible();
+    await slider.focus();
+    await slider.press("End");
+    await expect(slider).toHaveValue("1.2");
+    await expect
+      .poll(
+        async () =>
+          JSON.parse(await readFile(join(f.userData, "speech-output", "settings.json"), "utf8"))
+            .speed,
+      )
+      .toBe(1.2);
+    await provider.selectOption("pocket-tts");
+    await expect(slider).toHaveValue("2");
     await expect(
       f.page.getByText("Pocket TTS is installed and ready for voice mode."),
     ).toBeVisible();
@@ -748,7 +780,7 @@ test("local speech provider uses native selection, persists, and speaks without 
           await readFile(join(f.userData, "speech-output", "pocket-tts", "settings.json"), "utf8"),
         ),
       )
-      .toEqual({ selected: true });
+      .toEqual({ selected: true, speed: 2 });
     await f.page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
     await expect(f.page.getByRole("button", { name: "Mute input" })).toBeVisible();
@@ -767,7 +799,7 @@ test("local speech provider uses native selection, persists, and speaks without 
     await expect(f.page.getByText("A locally spoken sentence.", { exact: true })).toBeVisible();
     await expect
       .poll(async () => (await readFile(f.localRequests, "utf8")).trim())
-      .toBe(JSON.stringify({ text: "A locally spoken sentence.", voice: "alba" }));
+      .toBe(JSON.stringify({ text: "A locally spoken sentence.", voice: "alba", speed: 2 }));
     await expect
       .poll(() =>
         f.page.evaluate(

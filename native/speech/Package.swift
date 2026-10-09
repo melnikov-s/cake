@@ -13,9 +13,17 @@ let package = Package(
         .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", exact: "3.31.3"),
     ],
     targets: [
+        .target(name: "SpeechTempo"),
+        // Standalone runner works with Command Line Tools without XCTest/Swift Testing.
+        // It is never copied into Cake's application bundle.
+        .executableTarget(
+            name: "SpeechTempoTests", dependencies: ["SpeechTempo"],
+            path: "Tests/SpeechTempoTests"
+        ),
         .executableTarget(
             name: "cake-speech",
             dependencies: [
+                "SpeechTempo",
                 .product(name: "MLXAudioTTS", package: "mlx-audio-swift"),
                 .product(name: "MLX", package: "mlx-swift"),
                 .product(name: "MLXNN", package: "mlx-swift"),

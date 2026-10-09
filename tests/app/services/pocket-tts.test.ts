@@ -15,6 +15,7 @@ const fixture = vi.hoisted(() => ({
   constructed: 0,
   closed: 0,
   requests: [] as string[],
+  speeds: [] as number[],
   blocked: false,
   started: undefined as (() => void) | undefined,
 }));
@@ -44,8 +45,14 @@ vi.mock("../../../src/services/speech/pocket-tts-worker", () => ({
     constructor() {
       fixture.constructed++;
     }
-    async synthesize(text: string, signal: AbortSignal, audio: (audio: SpeechOutputAudio) => void) {
+    async synthesize(
+      text: string,
+      speed: number,
+      signal: AbortSignal,
+      audio: (audio: SpeechOutputAudio) => void,
+    ) {
       fixture.requests.push(text);
+      fixture.speeds.push(speed);
       fixture.started?.();
       if (fixture.blocked) {
         await new Promise<void>((_resolve, reject) => {
@@ -70,6 +77,7 @@ beforeEach(async () => {
   fixture.constructed = 0;
   fixture.closed = 0;
   fixture.requests = [];
+  fixture.speeds = [];
   fixture.blocked = false;
   fixture.started = undefined;
   root = await mkdtemp(join(tmpdir(), "cake-pocket-service-"));
@@ -112,18 +120,53 @@ describe("native Pocket TTS Service", () => {
           JSON.parse(
             yield* Effect.promise(() => readFile(join(root, "speech", "settings.json"), "utf8")),
           ),
-        ).toEqual({ selected: true });
+        ).toEqual({ selected: true, speed: 1 });
         yield* local.install();
         expect(yield* local.getState()).toMatchObject({ installed: true, installing: false });
         yield* local.synthesize({ text: "First phrase." }).pipe(Stream.runDrain);
+        yield* local.setSpeed(2);
         yield* local.synthesize({ text: "Second phrase." }).pipe(Stream.runDrain);
         expect(fixture.constructed).toBe(1);
+        expect(fixture.requests).toEqual(["First phrase.", "Second phrase."]);
+        expect(fixture.speeds).toEqual([1, 2]);
+        for (const speed of [0.9, 2.01, NaN]) {
+          const invalid = yield* local.setSpeed(speed).pipe(Effect.result);
+          expect(invalid._tag).toBe("Failure");
+        }
         expect(fixture.requests).toEqual(["First phrase.", "Second phrase."]);
         yield* local.select(false);
         expect(fixture.closed).toBe(1);
         yield* local.remove();
         expect(yield* local.getState()).toMatchObject({ installed: false, selected: false });
       }).pipe(Effect.provide(layer())),
+  );
+
+  it.effect(
+    "loads selected-only settings at 1× and persists local speed through selection, removal and reacquisition",
+    () =>
+      Effect.gen(function* () {
+        yield* Effect.promise(async () => {
+          await mkdir(join(root, "speech"));
+          await writeFile(
+            join(root, "speech", "settings.json"),
+            JSON.stringify({ selected: true }),
+          );
+        });
+        yield* Effect.gen(function* () {
+          const local = yield* PocketTts;
+          expect(yield* local.getState()).toMatchObject({ selected: true, speed: 1 });
+          yield* local.setSpeed(1.75);
+          yield* local.select(false);
+          yield* local.remove();
+          expect(yield* local.getState()).toMatchObject({ selected: false, speed: 1.75 });
+        }).pipe(Effect.provide(layer()));
+        yield* Effect.gen(function* () {
+          const local = yield* PocketTts;
+          expect(yield* local.getState()).toMatchObject({ selected: false, speed: 1.75 });
+          yield* local.select(true);
+          expect(yield* local.getState()).toMatchObject({ selected: true, speed: 1.75 });
+        }).pipe(Effect.provide(layer()));
+      }),
   );
 
   it.effect(

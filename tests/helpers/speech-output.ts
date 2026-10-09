@@ -5,6 +5,7 @@ export const pocketTtsState = (overrides: Partial<PocketTtsState> = {}): PocketT
   supported: true,
   engineAvailable: true,
   selected: false,
+  speed: 1,
   installed: false,
   installing: false,
   downloadedBytes: 0,

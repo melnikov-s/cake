@@ -1275,19 +1275,34 @@ describe("Project Session conversation mode", () => {
       false,
     );
   });
-  it("the settings speed slider commits a faster speed through the service and reflects its authoritative projection", async () => {
-    using f = fixture();
-    render(<SettingsSpeechSection speech={f.root.speechSettingsStore} />);
-    const slider = screen.getByRole("slider", { name: "Speaking speed" });
-    expect(slider.getAttribute("min")).toBe("1");
-    expect(slider.getAttribute("max")).toBe("1.2");
-    fireEvent.change(slider, { target: { value: "1.15" } });
-    expect(screen.getByText("1.15×")).toBeDefined();
-    fireEvent.pointerUp(slider);
-    await waitFor(() => expect(f.setSpeed).toHaveBeenCalledWith(1.15, expect.any(Object)));
-    expect((slider as HTMLInputElement).value).toBe("1.15");
-    expect(f.synthesize).not.toHaveBeenCalled();
-  });
+  it.each(["elevenlabs", "pocket-tts"] as const)(
+    "the %s speed slider commits through the service and reflects its authoritative projection",
+    async (provider) => {
+      using f = fixture();
+      if (provider === "pocket-tts")
+        act(() =>
+          f.root.speechSettingsStore.applySettings(
+            speechOutputSettings({
+              provider,
+              modelId: "pocket-tts-8bit",
+              keyConfigured: false,
+              voiceId: "alba",
+              localModel: pocketTtsState({ selected: true, installed: true }),
+            }),
+          ),
+        );
+      render(<SettingsSpeechSection speech={f.root.speechSettingsStore} />);
+      const slider = screen.getByRole("slider", { name: "Speaking speed" });
+      expect(slider.getAttribute("min")).toBe("1");
+      expect(slider.getAttribute("max")).toBe(provider === "pocket-tts" ? "2" : "1.2");
+      fireEvent.change(slider, { target: { value: "1.15" } });
+      expect(screen.getByText("1.15×")).toBeDefined();
+      fireEvent.pointerUp(slider);
+      await waitFor(() => expect(f.setSpeed).toHaveBeenCalledWith(1.15, expect.any(Object)));
+      expect((slider as HTMLInputElement).value).toBe("1.15");
+      expect(f.synthesize).not.toHaveBeenCalled();
+    },
+  );
   it("speech settings save a masked transient key, clear its draft and select a voice without exposing stored credentials", async () => {
     using f = fixture();
     render(<SettingsSpeechSection speech={f.root.speechSettingsStore} />);

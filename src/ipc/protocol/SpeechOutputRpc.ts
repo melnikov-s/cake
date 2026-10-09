@@ -6,9 +6,10 @@ import {
   SpeechOutputError,
   SpeechOutputRequest,
   SpeechOutputSettings,
-  SpeechOutputSpeed,
   SpeechOutputVoice,
 } from "../../domain/speech/speech-output-data";
+
+import { SpeechOutputSpeed } from "../../domain/speech/speech-output-speed";
 
 /** Native-only desktop group. Streaming synthesis is a command, not a retried observation. */
 export const SpeechOutputRpc = RpcGroup.make(

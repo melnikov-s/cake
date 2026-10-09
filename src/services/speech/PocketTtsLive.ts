@@ -7,6 +7,7 @@ import {
   SpeechOutputRequest,
   type SpeechOutputAudio,
 } from "../../domain/speech/speech-output-data";
+import { SpeechOutputSpeed } from "../../domain/speech/speech-output-speed";
 import { PocketTts } from "./PocketTts";
 import {
   installPocketTts,
@@ -17,7 +18,13 @@ import {
 } from "./pocket-tts-model";
 import { PocketTtsWorker } from "./pocket-tts-worker";
 
-const preferences = Schema.fromJsonString(Schema.Struct({ selected: Schema.Boolean }));
+// Selected-only persisted records predate provider-specific speed; they load at 1×.
+const preferences = Schema.fromJsonString(
+  Schema.Struct({
+    selected: Schema.Boolean,
+    speed: Schema.optionalKey(SpeechOutputSpeed),
+  }),
+);
 const failure = (error: unknown) =>
   new SpeechOutputError({
     kind: "provider",
@@ -37,6 +44,7 @@ export const makePocketTtsLive = (root: string, supported: boolean, helperPath: 
         supported,
         engineAvailable: false,
         selected: false,
+        speed: 1,
         installed: false,
         installing: false,
         downloadedBytes: 0,
@@ -98,7 +106,7 @@ export const makePocketTtsLive = (root: string, supported: boolean, helperPath: 
                 }),
             ),
           );
-          yield* patch({ selected: saved.selected });
+          yield* patch({ selected: saved.selected, speed: saved.speed ?? 1 });
         }
       });
       yield* refresh().pipe(Effect.catch((error) => patch({ message: error.message })));
@@ -160,16 +168,28 @@ export const makePocketTtsLive = (root: string, supported: boolean, helperPath: 
         yield* refresh();
         yield* patch({ downloadedBytes: pocketTtsBytes });
       }, lock.withPermit);
-      const select = Effect.fn("PocketTts.select")(function* (selected: boolean) {
-        if (selected) yield* requireEngine();
+      const savePreferences = Effect.fn("PocketTts.savePreferences")(function* (next: {
+        selected: boolean;
+        speed: number;
+      }) {
         yield* native(async () => {
           await mkdir(root, { recursive: true, mode: 0o700 });
-          await writeFile(join(root, "settings.json.tmp"), JSON.stringify({ selected }), {
+          await writeFile(join(root, "settings.json.tmp"), JSON.stringify(next), {
             mode: 0o600,
           });
           await rename(join(root, "settings.json.tmp"), join(root, "settings.json"));
-        }).pipe(Effect.andThen(patch({ selected })), Effect.uninterruptible);
+        }).pipe(Effect.andThen(patch(next)), Effect.uninterruptible);
+      });
+      const select = Effect.fn("PocketTts.select")(function* (selected: boolean) {
+        if (selected) yield* requireEngine();
+        const current = yield* SubscriptionRef.get(state);
+        yield* savePreferences({ selected, speed: current.speed });
         if (!selected) stop();
+      }, lock.withPermit);
+      const setSpeed = Effect.fn("PocketTts.setSpeed")(function* (speed: number) {
+        yield* Schema.decodeUnknownEffect(SpeechOutputSpeed)(speed).pipe(Effect.mapError(failure));
+        const current = yield* SubscriptionRef.get(state);
+        yield* savePreferences({ selected: current.selected, speed });
       }, lock.withPermit);
       const remove = Effect.fn("PocketTts.remove")(function* () {
         stop();
@@ -208,7 +228,9 @@ export const makePocketTtsLive = (root: string, supported: boolean, helperPath: 
               }
               const active = worker;
               yield* native((signal) =>
-                active.synthesize(request.text, signal, (audio) => Queue.offerUnsafe(queue, audio)),
+                active.synthesize(request.text, current.speed, signal, (audio) =>
+                  Queue.offerUnsafe(queue, audio),
+                ),
               );
               Queue.endUnsafe(queue);
             },
@@ -228,6 +250,7 @@ export const makePocketTtsLive = (root: string, supported: boolean, helperPath: 
         observeState: () => SubscriptionRef.changes(state),
         getState: () => SubscriptionRef.get(state),
         select,
+        setSpeed,
         install,
         remove,
         synthesize,
