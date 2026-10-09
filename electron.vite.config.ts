@@ -72,11 +72,14 @@ export default defineConfig({
         "@": resolve(import.meta.dirname, "src/renderer"),
       },
     },
-    plugins: [react(), tailwindcss(), excalidrawFonts()],
+    // Vite's esbuild CSS optimizer supports native ::highlight(); Tailwind's
+    // redundant Lightning CSS pass reports this valid selector as unsupported.
+    plugins: [react(), tailwindcss({ optimize: false }), excalidrawFonts()],
     worker: { format: "es" },
     build: {
       // Keep third-party editor assets as local files under Cake's intentionally narrow CSP.
       assetsInlineLimit: 0,
+      cssMinify: "esbuild",
       rollupOptions: {
         input: {
           index: resolve(import.meta.dirname, "src/renderer/index.html"),

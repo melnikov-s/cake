@@ -7,13 +7,15 @@ import { excalidrawFonts } from "./scripts/excalidraw-fonts";
 export default defineConfig({
   root: resolve(import.meta.dirname, "src/renderer/browser"),
   resolve: { alias: { "@": resolve(import.meta.dirname, "src/renderer") } },
-  plugins: [react(), tailwindcss(), excalidrawFonts()],
+  // Use Vite's esbuild CSS optimizer, which recognizes native ::highlight().
+  plugins: [react(), tailwindcss({ optimize: false }), excalidrawFonts()],
   esbuild: { target: "es2022" },
   worker: { format: "es" },
   build: {
     outDir: resolve(import.meta.dirname, "out/browser"),
     emptyOutDir: true,
     assetsInlineLimit: 0,
+    cssMinify: "esbuild",
     sourcemap: false,
   },
 });

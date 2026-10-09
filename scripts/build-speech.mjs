@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { cp, mkdir, open, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { forwardSwiftBuildDiagnostics } from "./swift-build-diagnostics.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = resolve(process.argv[2] ?? join(root, "out", "main", "native"));
@@ -20,6 +21,7 @@ const digest = (data) => createHash("sha256").update(data).digest("hex");
 const run = (command, args, stdio = "inherit") =>
   new Promise((resolveRun, reject) => {
     const child = spawn(command, args, { stdio });
+    if (child.stderr) forwardSwiftBuildDiagnostics(child.stderr, process.stderr);
     child.once("error", reject);
     child.once("close", (code) =>
       code === 0
@@ -29,17 +31,22 @@ const run = (command, args, stdio = "inherit") =>
   });
 
 if (process.platform === "darwin" && process.arch === "arm64") {
-  await run("xcrun", [
-    "swift",
-    "build",
-    "--package-path",
-    packagePath,
-    "-c",
-    "release",
-    "--product",
-    "cake-speech",
-    "--force-resolved-versions",
-  ]);
+  await run(
+    "xcrun",
+    [
+      "swift",
+      "build",
+      "--package-path",
+      packagePath,
+      "-c",
+      "release",
+      "--product",
+      "cake-speech",
+      "--force-resolved-versions",
+      "--no-color-diagnostics",
+    ],
+    ["inherit", "inherit", "pipe"],
+  );
   const release = join(packagePath, ".build", "release");
   const artifact = join(packagePath, ".build", "mlx-metal-0.31.1.whl");
   let cached;
