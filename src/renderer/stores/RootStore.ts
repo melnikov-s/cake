@@ -925,7 +925,10 @@ export class RootStore extends Store<{
 
   @child
   get speechSettingsStore(): SpeechSettingsStore {
-    return createStore(SpeechSettingsStore, { client: this.client.speechOutput });
+    return createStore(SpeechSettingsStore, {
+      client: this.client.speechOutput,
+      copyText: (text) => navigator.clipboard.writeText(text),
+    });
   }
 
   @child

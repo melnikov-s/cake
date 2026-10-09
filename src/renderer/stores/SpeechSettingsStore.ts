@@ -4,10 +4,14 @@ import type {
   SpeechOutputVoice,
 } from "../../domain/speech/speech-output-data";
 import type { SpeechOutputCommands } from "../client/Client";
+import { voiceDiagnosticReport } from "../speech/diagnostics";
 
 /** Native main owns credentials/voice persistence. This window owns the projection,
  * transient interaction and snapshotted speech-control visibility preference (last local edit wins). */
-export class SpeechSettingsStore extends Store<{ client: SpeechOutputCommands }> {
+export class SpeechSettingsStore extends Store<{
+  client: SpeechOutputCommands;
+  copyText(text: string): Promise<void>;
+}> {
   @snapshot enabled = true;
   settings: SpeechOutputSettings | undefined;
   speedDraft: number | undefined;
@@ -21,6 +25,17 @@ export class SpeechSettingsStore extends Store<{ client: SpeechOutputCommands }>
   busy = false;
   refreshing = false;
   error: string | undefined;
+  diagnosticsCopyStatus: "idle" | "copying" | "copied" | "failed" = "idle";
+  async copyDiagnostics(): Promise<void> {
+    if (this.diagnosticsCopyStatus === "copying" || this.signal.aborted) return;
+    this.diagnosticsCopyStatus = "copying";
+    try {
+      await this.props.copyText(voiceDiagnosticReport());
+      if (!this.signal.aborted) this.diagnosticsCopyStatus = "copied";
+    } catch {
+      if (!this.signal.aborted) this.diagnosticsCopyStatus = "failed";
+    }
+  }
   private refreshRevision = 0;
   private refresh: AbortController | undefined;
   downloading = false;

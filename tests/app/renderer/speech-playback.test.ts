@@ -8,7 +8,7 @@ function audio(samples: number[]): SpeechOutputAudio {
   samples.forEach((sample, index) => view.setInt16(index * 2, sample, true));
   return { encoding: "pcm_s16le", sampleRate: 24000, pcm: btoa(String.fromCharCode(...bytes)) };
 }
-function webAudio() {
+function webAudio(resume?: () => Promise<void>) {
   const contexts: Context[] = [];
   class Node {
     buffer: { data: Float32Array } | undefined;
@@ -28,8 +28,17 @@ function webAudio() {
     currentTime = 0;
     destination = {};
     nodes: Node[] = [];
-    close = vi.fn(async () => {});
-    resume = vi.fn(async () => {});
+    state: AudioContextState = "suspended";
+    onstatechange: (() => void) | null = null;
+    close = vi.fn(async () => {
+      this.state = "closed";
+    });
+    resume = vi.fn(
+      resume ??
+        (async () => {
+          this.state = "running";
+        }),
+    );
     constructor() {
       contexts.push(this);
     }
@@ -46,7 +55,10 @@ function webAudio() {
   vi.stubGlobal("AudioContext", Context);
   return contexts;
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 describe("streaming speech playback", () => {
   it("schedules mono signed little-endian PCM in chunk order without waiting for the whole reply", async () => {
     const contexts = webAudio(),
@@ -112,6 +124,58 @@ describe("streaming speech playback", () => {
     controller.abort();
     await rejection;
     expect(contexts[0]!.close).toHaveBeenCalledOnce();
+  });
+  it("reuses the entry context for output and transfers cancellation to the new owner", async () => {
+    const contexts = webAudio(),
+      playback = createSpeechPlayback();
+    const entry = new AbortController(),
+      output = new AbortController();
+    await playback.start(entry.signal);
+    await playback.start(output.signal);
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]!.close).not.toHaveBeenCalled();
+    entry.abort();
+    await playback.enqueue(audio([100]), output.signal);
+    output.abort();
+    expect(contexts[0]!.close).toHaveBeenCalledOnce();
+  });
+  it("reports an audio context that stays suspended instead of scheduling inaudible output", async () => {
+    const contexts = webAudio(async () => {}),
+      playback = createSpeechPlayback();
+    await expect(playback.start(new AbortController().signal)).rejects.toThrow(
+      "Speech audio is suspended",
+    );
+    expect(contexts[0]!.close).toHaveBeenCalledOnce();
+  });
+  it("bounds a hung resume and promptly cancels it on exit", async () => {
+    vi.useFakeTimers();
+    const contexts = webAudio(() => new Promise(() => {})),
+      playback = createSpeechPlayback();
+    const stalled = playback.start(new AbortController().signal);
+    const rejection = expect(stalled).rejects.toThrow("Speech audio did not start");
+    await vi.advanceTimersByTimeAsync(5000);
+    await rejection;
+    expect(contexts[0]!.close).toHaveBeenCalledOnce();
+    const controller = new AbortController();
+    const cancelled = playback.start(controller.signal);
+    const aborted = expect(cancelled).rejects.toThrow();
+    controller.abort();
+    await aborted;
+    expect(contexts[1]!.close).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("wakes a pending drain when the output device suspends and surfaces an actionable error", async () => {
+    const contexts = webAudio(),
+      playback = createSpeechPlayback(),
+      signal = new AbortController().signal;
+    await playback.start(signal);
+    await playback.enqueue(audio([100]), signal);
+    const drained = playback.drain(signal);
+    const rejection = expect(drained).rejects.toThrow("Speech audio is suspended");
+    contexts[0]!.state = "suspended";
+    contexts[0]!.onstatechange?.();
+    await rejection;
+    playback.stop();
   });
   it("rejects malformed base64, oversized or sample-misaligned PCM before playback", async () => {
     const contexts = webAudio(),

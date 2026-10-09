@@ -173,6 +173,25 @@ export const SettingsSpeechSection = observer(function SettingsSpeechSection({
         No generated preview, automatic billed retry or fallback. Exit voice mode to use ordinary
         text chat. Speech capture and output stop on window blur.
       </p>
+      <div className="grid gap-2">
+        <Button
+          className="w-fit"
+          variant="outline"
+          disabled={speech.diagnosticsCopyStatus === "copying"}
+          onClick={() => void speech.copyDiagnostics()}
+        >
+          {speech.diagnosticsCopyStatus === "copied"
+            ? "Voice diagnostics copied"
+            : speech.diagnosticsCopyStatus === "failed"
+              ? "Copy failed — try again"
+              : "Copy voice diagnostics"}
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Try voice mode first, then copy the recent trace here. Includes reply detection, synthesis
+          timing and playback state; no conversation text, credentials or audio. Also logged in the
+          developer console under [cake.voice].
+        </p>
+      </div>
       {speech.error && <Callout variant="error">{speech.error}</Callout>}
     </section>
   );

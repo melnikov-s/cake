@@ -9,6 +9,7 @@ import { openSpeechCapture } from "../dictation/speech-capture";
 import type { ProvisionalTextSpan } from "../dictation/provisional-text";
 import type { SpeechPlayback } from "../speech/playback";
 import { takeSpokenPhrases } from "../speech/spoken-text";
+import { recordVoiceDiagnostic, voiceDiagnosticReport } from "../speech/diagnostics";
 import { INTERRUPTION_WINDOW_MS, isSpeechInterruption } from "../speech/interruption";
 
 export interface ConversationModeTarget {
@@ -153,6 +154,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       if (!target.canEnter() || this.props.activeSessionId() !== target.sessionId)
         throw new Error("Select an existing writable Project Session to enter conversation mode.");
       const settings = this.props.settings();
+      recordVoiceDiagnostic("enter", { provider: settings?.provider, phase: this.phase });
       if (settings?.provider === "pocket-tts") {
         if (!settings.localModel.supported)
           throw new Error("Local Pocket TTS requires Apple Silicon and macOS 14 or later.");
@@ -180,6 +182,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       if (revision !== this.revision) return false;
       this.phase = "active";
       this.listening = true;
+      recordVoiceDiagnostic("active");
       return true;
     } catch (error) {
       if (revision === this.revision && !signal.aborted) this.fail(error);
@@ -191,6 +194,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       await this.cleanup;
       return;
     }
+    recordVoiceDiagnostic("exit", { phase: this.phase });
     this.revision++;
     this.controller?.abort();
     this.controller = undefined;
@@ -284,6 +288,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     }
   }
   interrupt(): void {
+    recordVoiceDiagnostic("interrupt", { state: this.speaking ? "speaking" : "idle" });
     this.stopOutput();
     this.outputEligible = false;
     // Advance raw cursors now; the interrupted reply never gets replayed.
@@ -307,12 +312,18 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   private fail(error: unknown) {
     const message =
       error instanceof Error ? error.message : "Conversation mode failed. Re-enter to retry.";
-    void this.exit();
-    this.phase = "error";
-    this.props.onError(
+    recordVoiceDiagnostic("error", { phase: this.phase });
+    const details = [
       message,
       this.transcript ? `Unaccepted speech: ${this.transcript}` : undefined,
-    );
+      "Voice diagnostics (metadata only):",
+      voiceDiagnosticReport(),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    void this.exit();
+    this.phase = "error";
+    this.props.onError(message, details);
   }
   private async startCapture(revision: number, prepare = false) {
     const controller = new AbortController();
@@ -550,6 +561,12 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       if (part.kind !== "text" || part.role !== "assistant") continue;
       const key = part.renderKey ?? part.id;
       const offset = this.cursors.get(key) ?? 0;
+      if (this.phase === "active" && !this.cursors.has(key))
+        recordVoiceDiagnostic("reply", {
+          status: part.status,
+          characters: part.text.length,
+          state: this.outputEligible ? "eligible" : "ineligible",
+        });
       // Live completed messages have no durable entryId. A fast reply can reach
       // us only as complete after projection coalescing; it is still a new reply.
       // Durable history/reconnection snapshots and parts present at entry stay sealed.
@@ -613,20 +630,44 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
           }
           continue;
         }
+        const started = performance.now();
+        let chunks = 0;
+        recordVoiceDiagnostic("synthesis-start", {
+          provider: this.props.settings()?.provider,
+          characters: text.length,
+          phrases: this.phrases.length,
+        });
         await this.props.speech.synthesize(
           { text },
           async (audio) => {
-            if (!signal.aborted && revision === this.outputRevision)
+            if (!signal.aborted && revision === this.outputRevision) {
+              if (++chunks === 1)
+                recordVoiceDiagnostic("first-audio", {
+                  elapsedMillis: Math.round(performance.now() - started),
+                });
               await this.props.playback.enqueue(audio, signal);
+            }
           },
           { signal },
         );
+        if (signal.aborted || revision !== this.outputRevision) break;
+        recordVoiceDiagnostic("synthesis-complete", {
+          chunks,
+          elapsedMillis: Math.round(performance.now() - started),
+        });
+        if (!chunks)
+          throw new Error("The speech provider returned no audio. Re-enter voice mode to retry.");
       }
     } catch (error) {
       if (!signal.aborted && revision === this.outputRevision) this.fail(error);
     } finally {
       this.outputRunning = false;
-      if (revision === this.outputRevision) this.speaking = false;
+      if (revision === this.outputRevision) {
+        this.speaking = false;
+        recordVoiceDiagnostic("output-complete", {
+          state: signal.aborted ? "cancelled" : "finished",
+        });
+      }
       if (this.phase === "active" && this.phrases.length) void this.pumpOutput();
     }
   }

@@ -1328,6 +1328,36 @@ describe("Project Session conversation mode", () => {
       expect(f.synthesize).toHaveBeenCalledTimes(1);
     },
   );
+  it("reports a successful-but-empty synthesis instead of silently leaving voice mode active", async () => {
+    using f = fixture({ synthesize: async () => {} });
+    await f.enter();
+    f.publish([consumed(), assistant("Visible answer. ")]);
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "The speech provider returned no audio",
+    );
+    expect(f.root.conversationModeStore.phase).toBe("error");
+    expect(f.synthesize).toHaveBeenCalledTimes(1);
+    expect(f.abort).not.toHaveBeenCalled();
+    await f.user.click(screen.getByRole("button", { name: "Technical details" }));
+    expect(screen.getByRole("alert").textContent).toContain("synthesis-complete");
+  });
+  it("copies a metadata-only trace of successful speech from settings without synthesizing a preview", async () => {
+    using f = fixture();
+    await f.enter();
+    f.publish([consumed(), assistant("Private spoken answer. ")]);
+    await waitFor(() => expect(f.playback.drain).toHaveBeenCalled());
+    render(<SettingsSpeechSection speech={f.root.speechSettingsStore} />);
+    await f.user.click(screen.getByRole("button", { name: "Copy voice diagnostics" }));
+    await screen.findByRole("button", { name: "Voice diagnostics copied" });
+    const report = await navigator.clipboard.readText();
+    expect(report).toContain("first-audio");
+    expect(report).toContain("synthesis-complete");
+    expect(report).not.toContain("Private spoken answer");
+    expect(report).not.toContain("New request");
+    expect(report).not.toContain('"voiceId"');
+    expect(report).not.toContain('"pcm"');
+    expect(f.synthesize).toHaveBeenCalledTimes(1);
+  });
   it("retains unaccepted recognized text in the error toast details for manual recovery", async () => {
     using f = fixture({
       synthesize: async () => {

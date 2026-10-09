@@ -12,7 +12,12 @@ function createSettingsStore() {
   return mount(
     createStore(SettingsStore, {
       dictation: createDictationStore(),
-      speech: mount(createStore(SpeechSettingsStore, { client: createTestClient().speechOutput })),
+      speech: mount(
+        createStore(SpeechSettingsStore, {
+          client: createTestClient().speechOutput,
+          copyText: async () => {},
+        }),
+      ),
       operations,
       screenCapture: mount(
         createStore(ScreenCaptureAttachmentStore, {

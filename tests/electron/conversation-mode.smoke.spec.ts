@@ -274,6 +274,12 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   await installSpeechHttpFixture(application);
   await page.evaluate(() => {
     const tracks: MediaStreamTrack[] = [];
+    const contexts: AudioContext[] = [];
+    const resume = AudioContext.prototype.resume;
+    AudioContext.prototype.resume = function () {
+      if (!contexts.includes(this)) contexts.push(this);
+      return resume.call(this);
+    };
     const nodes: AudioBufferSourceNode[] = [];
     const endedNodes: AudioBufferSourceNode[] = [];
     const processors: AudioWorkletNode[] = [];
@@ -298,7 +304,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       return node;
     };
     Object.assign(globalThis, {
-      conversationAudioFixture: { tracks, nodes, endedNodes, processors },
+      conversationAudioFixture: { tracks, contexts, nodes, endedNodes, processors },
     });
   });
   const configure = async () => {
@@ -598,6 +604,89 @@ test("conversation controls enter, mute and exit with real capture and streaming
       "aria-pressed",
       "true",
     );
+  } finally {
+    await f.close();
+  }
+});
+
+test("a fast reply reuses the ready output context and produces copyable voice diagnostics", async () => {
+  const f = await launch();
+  try {
+    await f.configure();
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toBeVisible();
+    await f.page
+      .getByRole("combobox", { name: "Message", exact: true })
+      .fill("Speak a fast response");
+    await f.page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => f.responses.length).toBe(1);
+    f.sendText("A fast spoken answer.", true);
+    await expect.poll(() => speechHttpRequests(f.application)).toEqual(["A fast spoken answer."]);
+    await emitSpeechPcm(f.application, true);
+    await expect
+      .poll(() =>
+        f.page.evaluate(() => {
+          const fixture = Reflect.get(globalThis, "conversationAudioFixture") as {
+            nodes: AudioBufferSourceNode[];
+          };
+          return fixture.nodes.length;
+        }),
+      )
+      .toBe(1);
+    expect(
+      await f.page.evaluate(() => {
+        const fixture = Reflect.get(globalThis, "conversationAudioFixture") as {
+          contexts: AudioContext[];
+        };
+        return fixture.contexts.filter((context) => context.sampleRate === 24000).length;
+      }),
+    ).toBe(1);
+    await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    await f.page.getByRole("button", { name: "Copy voice diagnostics", exact: true }).click();
+    await expect(
+      f.page.getByRole("button", { name: "Voice diagnostics copied", exact: true }),
+    ).toBeVisible();
+    const report = await f.application.evaluate(({ clipboard }) => clipboard.readText());
+    expect(report).toContain('"playback-ready"');
+    expect(report).toContain('"playback-chunk"');
+    expect(report).toContain('"first-audio"');
+    expect(report).not.toContain("A fast spoken answer");
+    expect(report).not.toContain("fixture-private-key");
+    expect(report).not.toContain('"pcm"');
+  } finally {
+    await f.close();
+  }
+});
+
+test("suspended output reports an error with copyable diagnostics instead of silent voice mode", async () => {
+  const f = await launch();
+  try {
+    await f.configure();
+    await f.page.evaluate(() => {
+      const resume = AudioContext.prototype.resume;
+      AudioContext.prototype.resume = function () {
+        // Electron may start a new context automatically. Hold the real output
+        // context suspended to model a device that cannot resume.
+        return this.sampleRate === 24000 ? this.suspend() : resume.call(this);
+      };
+    });
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    const toast = f.page.getByRole("alert");
+    await expect(toast).toContainText("Speech audio is suspended");
+    await toast.getByRole("button", { name: "Technical details" }).click();
+    await toast.getByRole("button", { name: "Copy full error details" }).click();
+    await expect(toast.getByRole("button", { name: "Copied full error details" })).toBeVisible();
+    const details = await f.application.evaluate(({ clipboard }) => clipboard.readText());
+    expect(details).toContain('"playback-start"');
+    expect(details).toContain('"state": "suspended"');
+    expect(await speechHttpRequests(f.application)).toEqual([]);
+    const composer = f.page.getByRole("combobox", { name: "Message", exact: true });
+    await composer.focus();
+    await composer.pressSequentially("Text still works");
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue("Text still works");
+    await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
   } finally {
     await f.close();
   }
