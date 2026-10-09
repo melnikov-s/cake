@@ -6,7 +6,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { applySnapshot, effect, toSnapshot } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Sidebar } from "../../../src/renderer/components/sidebar";
+import { createTestClient } from "./test-client";
 import type { Client } from "../../../src/renderer/client/Client";
+import { TurnId } from "../../../src/domain/conversations/conversation-data";
 import { mountRootStore } from "../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../src/renderer/models/RootProjection";
 import type { RootStore } from "../../../src/renderer/stores/RootStore";
@@ -66,7 +68,7 @@ describe("Project Session catalog to sidebar synchronization", () => {
   let models: RootProjection;
   let root: RootStore;
   let savedDrafts: FakeSavedDrafts;
-  let start: ReturnType<typeof vi.fn>;
+  let start: ReturnType<typeof vi.fn<Client["projectSessions"]["start"]>>;
 
   beforeEach(async () => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -99,15 +101,17 @@ describe("Project Session catalog to sidebar synchronization", () => {
       ),
     });
     savedDrafts = fakeSavedDrafts();
-    start = vi.fn(async () => undefined);
-    const client = {
+    start = vi.fn<Client["projectSessions"]["start"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000001"),
+    );
+    const client = createTestClient({
       electron: {
         showProjectContextMenu: async () => undefined,
         showSessionContextMenu: async () => undefined,
       },
       savedDrafts: savedDrafts.client,
       projectSessions: { start },
-    } as unknown as Client;
+    });
     root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
     await act(async () => reactRoot.render(sidebar(root)));
   });

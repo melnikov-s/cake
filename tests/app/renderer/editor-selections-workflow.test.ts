@@ -6,7 +6,7 @@ import type {
   EditorSelectionReveal,
 } from "../../../src/ipc/editor-selection";
 import type { JsonObject } from "../../../src/ipc/json-contract";
-import type { Client } from "../../../src/renderer/client/Client";
+import { createTestClient } from "./test-client";
 import { mountRootStore } from "../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../src/renderer/models/RootProjection";
 
@@ -51,7 +51,8 @@ function harness() {
       void [_workspace, _highlights];
     },
   );
-  const client = {
+  const client = createTestClient({
+    savedDrafts: { list: async () => [] },
     vscode: {
       open: vi.fn(async () => undefined),
       reveal,
@@ -59,7 +60,7 @@ function harness() {
       updateBounds: vi.fn(async () => undefined),
       updateAnnotations: vi.fn(async () => undefined),
     },
-  } as unknown as Client;
+  });
   const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
   const a = root.sessionRegistry.load("a", workspace);
   const b = root.sessionRegistry.load("b", workspace);

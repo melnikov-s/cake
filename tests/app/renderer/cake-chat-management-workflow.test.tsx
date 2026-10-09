@@ -213,6 +213,7 @@ describe("Cake Chat management workflows", () => {
         {
           sessionId: request.sessionId,
           text: "Follow up",
+          responseMode: "text",
           renderUserMessageAsMarkdown: false,
           attachments: [],
         },

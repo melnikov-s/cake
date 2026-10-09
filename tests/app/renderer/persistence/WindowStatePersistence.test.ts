@@ -3,6 +3,7 @@ import { createStore, mount, snapshot, Store, toSnapshot, type StoreSnapshot } f
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JsonValue } from "../../../../src/ipc/json-contract";
 import type { Client } from "../../../../src/renderer/client/Client";
+import { createTestClient } from "../test-client";
 import { mountRootStore } from "../../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { WindowStatePersistence } from "../../../../src/renderer/persistence/WindowStatePersistence";
@@ -24,7 +25,10 @@ function harness({
 } = {}) {
   const save = vi.fn<Client["windowState"]["save"]>(async () => undefined);
   const reportError = vi.fn();
-  const client = { windowState: { save } } as unknown as Client;
+  const client = createTestClient({
+    windowState: { save },
+    savedDrafts: { list: async () => [] },
+  });
   const models = RootProjection.create();
   const persistence = new WindowStatePersistence(client, reportError, savedDraftsReady);
   const root = mountRootStore(client, loaded, () => persistence.flush(), models);
@@ -257,7 +261,7 @@ describe("WindowStatePersistence", () => {
     const save = vi.fn<Client["windowState"]["save"]>(async () => undefined);
     const root = mount(createStore(NormalizationStore));
     const persistence = new WindowStatePersistence(
-      { windowState: { save } } as unknown as Client,
+      createTestClient({ windowState: { save } }),
       vi.fn(),
     );
     persistence.observe(root);

@@ -1,8 +1,16 @@
 import { applySnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../../src/renderer/client/Client";
+import { TurnId } from "../../../../src/domain/conversations/conversation-data";
+import { createTestClient as createClient, type TestClientOverrides } from "../test-client";
+import { defaultApplicationState } from "../../../../src/domain/application/application-data";
 import { mountRootStore } from "../../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
+
+// Mounting Root refreshes the main-owned Saved Draft catalog even in navigation tests.
+function createTestClient(overrides: TestClientOverrides = {}) {
+  return createClient({ savedDrafts: { list: async () => [] }, ...overrides });
+}
 
 const projectPath = "/projects/example";
 const worktreePath = "/projects/.cake-worktrees/example-task";
@@ -38,7 +46,7 @@ describe("RootStore session navigation", () => {
       resolvedHasMoreByProject: {},
     });
     const root = mountRootStore(
-      {} as Client,
+      createTestClient(),
       { state: {}, children: {} },
       async () => undefined,
       models,
@@ -93,7 +101,7 @@ describe("RootStore session navigation", () => {
   });
   it("keeps the current session selected while a new session is prepared", async () => {
     const models = RootProjection.create();
-    const client = {} as Client;
+    const client = createTestClient();
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
     const preparation = deferred();
     vi.spyOn(root.projectWorkbenchStore, "startNewSession").mockReturnValue(preparation.promise);
@@ -123,13 +131,23 @@ describe("RootStore session navigation", () => {
       ...input,
       trustRequired: false,
     }));
-    const client = {
+    const client = createTestClient({
       workspaces: {
         inspect,
-        registerProject: vi.fn(async () => undefined),
+        registerProject: vi.fn(async (path, name) => ({
+          ...defaultApplicationState(),
+          projects: [
+            {
+              path,
+              name,
+              addedAt: "2026-01-01T00:00:00.000Z",
+              lastOpenedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        })),
         loadStagedSlashCommands: vi.fn(async () => []),
       },
-    } as unknown as Client;
+    });
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
 
     try {
@@ -184,9 +202,9 @@ describe("RootStore session navigation", () => {
     });
     const open = vi.fn(async () => undefined);
     const respondControl = vi.fn(async () => undefined);
-    const client = {
+    const client = createTestClient({
       projectSessions: { open, respondControl },
-    } as unknown as Client;
+    });
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
 
     try {
@@ -277,7 +295,7 @@ describe("RootStore session navigation", () => {
       resolvedHasMoreByProject: {},
     });
     const respondControl = vi.fn(async () => undefined);
-    const client = { projectSessions: { respondControl } } as unknown as Client;
+    const client = createTestClient({ projectSessions: { respondControl } });
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
 
     try {
@@ -318,7 +336,7 @@ describe("RootStore session navigation", () => {
   it("does not navigate to a background session for a Draw control", async () => {
     const models = RootProjection.create();
     const root = mountRootStore(
-      {} as Client,
+      createTestClient(),
       { state: {}, children: {} },
       async () => undefined,
       models,
@@ -364,10 +382,10 @@ describe("RootStore session navigation", () => {
     }));
     const discard = vi.fn(async () => undefined);
     const respondControl = vi.fn(async () => undefined);
-    const client = {
+    const client = createTestClient({
       managedWorktrees: { startLanding, discard },
       projectSessions: { respondControl },
-    } as unknown as Client;
+    });
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
 
     try {
@@ -420,12 +438,14 @@ describe("RootStore session navigation", () => {
     const fork = vi.fn(async () => ({ sessionId: "forked" }));
     const open = vi.fn(async () => undefined);
     const rename = vi.fn(async () => undefined);
-    const prompt = vi.fn(async () => "turn-1");
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000001"),
+    );
     const respondControl = vi.fn(async () => undefined);
-    const client = {
+    const client = createTestClient({
       projectSessions: { fork, open, rename, respondControl },
       sessionChats: { prompt },
-    } as unknown as Client;
+    });
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
 
     try {
@@ -495,9 +515,11 @@ describe("RootStore session navigation", () => {
       sessions: [sessionSummary("source", projectPath)],
       resolvedHasMoreByProject: {},
     });
-    const prompt = vi.fn(async () => "turn-1");
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000001"),
+    );
     const respondControl = vi.fn(async () => undefined);
-    const client = {
+    const client = createTestClient({
       projectSessions: {
         fork: vi.fn(async () => ({ sessionId: "failed-fork" })),
         open: vi.fn(async () => {
@@ -506,7 +528,7 @@ describe("RootStore session navigation", () => {
         respondControl,
       },
       sessionChats: { prompt },
-    } as unknown as Client;
+    });
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
 
     try {
@@ -543,14 +565,14 @@ describe("RootStore session navigation", () => {
       resolvedHasMoreByProject: {},
     });
     const respondControl = vi.fn(async () => undefined);
-    const client = {
+    const client = createTestClient({
       projectSessions: {
         open: vi.fn(async () => {
           throw new Error("child runtime failed");
         }),
         respondControl,
       },
-    } as unknown as Client;
+    });
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
 
     try {
@@ -590,7 +612,7 @@ describe("RootStore session navigation", () => {
       resolvedHasMoreByProject: {},
     });
     const resolve = vi.fn(async () => undefined);
-    const client = { projectSessions: { resolve } } as unknown as Client;
+    const client = createTestClient({ projectSessions: { resolve } });
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
     const createSession = vi.spyOn(root, "createSession").mockResolvedValue(undefined);
 
@@ -639,17 +661,19 @@ describe("RootStore session navigation", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
     };
     const createWorktree = vi.fn(async () => managedWorktree);
-    const start = vi.fn(async () => undefined);
+    const start = vi.fn<Client["projectSessions"]["start"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000001"),
+    );
     const controlResults: unknown[] = [];
     const respondControl = vi.fn(
       async (_sessionId: string, _controlRequestId: string, result: unknown) => {
         controlResults.push(result);
       },
     );
-    const client = {
+    const client = createTestClient({
       managedWorktrees: { create: createWorktree },
       projectSessions: { start, respondControl },
-    } as unknown as Client;
+    });
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
     const model = {
       provider: "openai-codex",
@@ -756,7 +780,9 @@ describe("RootStore session navigation", () => {
       sessions: [sessionSummary("source-session", projectPath)],
       resolvedHasMoreByProject: {},
     });
-    const start = vi.fn(async () => undefined);
+    const start = vi.fn<Client["projectSessions"]["start"]>(async () =>
+      TurnId.make("10000000-0000-4000-8000-000000000001"),
+    );
     const responses: Array<{
       sessionId: string;
       controlRequestId: string;
@@ -768,14 +794,14 @@ describe("RootStore session navigation", () => {
         responses.push({ sessionId, controlRequestId, result, options });
       },
     );
-    const client = {
+    const client = createTestClient({
       managedWorktrees: {
         create: vi.fn(async () => {
           throw new Error("managed checkout setup failed");
         }),
       },
       projectSessions: { start, respondControl },
-    } as unknown as Client;
+    });
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
 
     try {
@@ -831,8 +857,10 @@ describe("RootStore session navigation", () => {
       sessions: [sessionSummary("removed-session", projectPath)],
       resolvedHasMoreByProject: {},
     });
-    const removeProject = vi.fn(async () => ({ projects: [] }));
-    const client = { workspaces: { removeProject } } as unknown as Client;
+    const removeProject = vi.fn<Client["workspaces"]["removeProject"]>(async () =>
+      defaultApplicationState(),
+    );
+    const client = createTestClient({ workspaces: { removeProject } });
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
 
     try {
@@ -870,9 +898,9 @@ describe("RootStore session navigation", () => {
       resolvedSessionIds: string[];
       failures: [];
     }>();
-    const client = {
+    const client = createTestClient({
       projectSessions: { resolveWorkingDirectory: vi.fn(() => resolution.promise) },
-    } as unknown as Client;
+    });
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
     const createSession = vi.spyOn(root, "createSession").mockResolvedValue(undefined);
 

@@ -195,7 +195,7 @@ describe("Terminal workflow", () => {
     expect(fixture.open).toHaveBeenCalledTimes(1);
   });
 
-  it("shares and switches tabs within a directory, keeps another checkout separate, and moves the panel", async () => {
+  it("shares and switches tabs between sessions in the same directory", async () => {
     using fixture = renderTerminal();
     await fixture.user.click(screen.getByRole("button", { name: "Terminal" }));
     await screen.findByRole("tab", { name: "zsh" });
@@ -209,6 +209,15 @@ describe("Terminal workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: /^Second task / }));
     expect(screen.getByRole("tab", { name: "zsh 1" }).getAttribute("aria-selected")).toBe("true");
     expect(fixture.open).toHaveBeenCalledTimes(2);
+    expect(fixture.close).not.toHaveBeenCalled();
+  });
+
+  it("keeps another checkout separate and restores the original directory's tabs", async () => {
+    using fixture = renderTerminal();
+    await fixture.user.click(screen.getByRole("button", { name: "Terminal" }));
+    await screen.findByRole("tab", { name: "zsh" });
+    await fixture.user.click(screen.getByRole("button", { name: "New terminal tab" }));
+    await fixture.user.click(await screen.findByRole("tab", { name: "zsh 1" }));
     await fixture.user.click(screen.getByRole("button", { name: /^Other checkout / }));
     expect(await screen.findByRole("tab", { name: "zsh" })).toBeDefined();
     expect(screen.getAllByRole("tab")).toHaveLength(1);
@@ -222,9 +231,21 @@ describe("Terminal workflow", () => {
     expect(screen.getByRole("tab", { name: "zsh 1" }).getAttribute("aria-selected")).toBe("true");
     expect(fixture.open).toHaveBeenCalledTimes(3);
     expect(fixture.close).not.toHaveBeenCalled();
+  });
+
+  it("moves the panel without replacing tabs and closes only the selected shell", async () => {
+    using fixture = renderTerminal();
+    await fixture.user.click(screen.getByRole("button", { name: "Terminal" }));
+    await screen.findByRole("tab", { name: "zsh" });
+    await fixture.user.click(screen.getByRole("button", { name: "New terminal tab" }));
+    await fixture.user.click(await screen.findByRole("tab", { name: "zsh 1" }));
     await fixture.user.click(screen.getByRole("button", { name: "Pin terminal to bottom" }));
     await fixture.user.click(screen.getByRole("button", { name: "Move terminal to top" }));
     expect(screen.getByRole("button", { name: "Pin terminal to bottom" })).toBeDefined();
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(screen.getByRole("tab", { name: "zsh 1" }).getAttribute("aria-selected")).toBe("true");
+    expect(fixture.open).toHaveBeenCalledTimes(2);
+    expect(fixture.close).not.toHaveBeenCalled();
     await fixture.user.click(screen.getByRole("button", { name: "Close zsh tab" }));
     expect(await screen.findByRole("tab", { name: "zsh" })).toBeDefined();
     expect(screen.getAllByRole("tab")).toHaveLength(1);

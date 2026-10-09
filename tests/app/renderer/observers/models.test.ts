@@ -20,7 +20,7 @@ import {
   observeStream,
 } from "../../../../src/renderer/observers";
 import { mountRootStore } from "../../../../src/renderer/bootstrap/mount-root-store";
-import type { Client } from "../../../../src/renderer/client/Client";
+import { createTestClient } from "../test-client";
 import type { Runtime } from "../../../../src/renderer/runtime";
 import { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
 import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
@@ -301,7 +301,7 @@ describe("focused projection lifetimes", () => {
   it("observes selected, visible, and running pins alongside the real four-session idle LRU", async () => {
     const projection = RootProjection.create();
     const root = mountRootStore(
-      {} as Client,
+      createTestClient({ savedDrafts: { list: async () => [] } }),
       { state: {}, children: {} },
       async () => undefined,
       projection,

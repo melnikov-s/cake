@@ -74,6 +74,11 @@ it("renders live nested events and metadata-only saved history in the real proje
       });
     },
   });
+  // jsdom cannot settle Virtuoso's initial bottom alignment. Start at the top, as in
+  // session-artifacts-workflow; this case verifies tool content, not native scrolling.
+  session.conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+    kind: "top",
+  });
   const view = render(
     <VirtuosoMockContext.Provider value={{ viewportHeight: 800, itemHeight: 100 }}>
       <Chat
