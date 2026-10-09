@@ -1,35 +1,121 @@
 {
-  "name": "Pocket TTS 8-bit",
+  "name": "Pocket TTS Core ML",
   "license": "CC-BY-4.0",
   "voice": "alba",
+  "repository": "FluidInference/pocket-tts-coreml",
+  "revision": "91748676fe3c8b2eb3007b3125253bcd898202c3",
+  "remoteDirectory": "v2.1/english",
+  "modelDirectory": "Models/pocket-tts-coreml/v2.1/english",
   "files": [
     {
-      "path": "config.json",
-      "repository": "mlx-community/pocket-tts-8bit",
-      "revision": "ee0d088c10729a33640bac050b8796993f468a53",
-      "bytes": 2203,
-      "sha256": "15bdb4b153bf6b01cc1eb24dfa19947bbc6a207ece0b83f1f678c848d4e1c727"
+      "path": "cond_prefill.mlmodelc/analytics/coremldata.bin",
+      "bytes": 243,
+      "sha256": "324406d83f9685577c6665f231fdfa02518b8addceb54a780feaa968a04c33df"
     },
     {
-      "path": "model.safetensors",
-      "repository": "mlx-community/pocket-tts-8bit",
-      "revision": "ee0d088c10729a33640bac050b8796993f468a53",
-      "bytes": 140230187,
-      "sha256": "ab014261d3ac916abe7c67406798dfc48a5898d262b93ca5c709c2e4b43e0d37"
+      "path": "cond_prefill.mlmodelc/coremldata.bin",
+      "bytes": 1151,
+      "sha256": "12714da8d2ebae282e353e6785d4472ff5b87f656661d60eff769c584969f415"
     },
     {
-      "path": "tokenizer.json",
-      "repository": "mlx-community/pocket-tts",
-      "revision": "cbf71d5f6657bbc3f4bc02f85ee408261225bec7",
-      "bytes": 244993,
-      "sha256": "ef29c4871fd62c7beb928150edc095be1327f0924c0eab9e06b95918b39eff5f"
+      "path": "cond_prefill.mlmodelc/model.mil",
+      "bytes": 228662,
+      "sha256": "7a93a23c94ec90b583531b6f9edf32aa34edb1de7564bcbef9354b8069f2d140"
     },
     {
-      "path": "embeddings/alba.safetensors",
-      "repository": "mlx-community/pocket-tts",
-      "revision": "cbf71d5f6657bbc3f4bc02f85ee408261225bec7",
-      "bytes": 512088,
-      "sha256": "ad234695323e4030336b6afc8a050c97e3110603e11ecd8226d9562488300a50"
+      "path": "cond_prefill.mlmodelc/weights/weight.bin",
+      "bytes": 133237248,
+      "sha256": "3a40a5ef3158ef91bfbf932be1c6ee44daca10a856fbb30b9a6720ad9424df8c"
+    },
+    {
+      "path": "constants_bin/alba.safetensors",
+      "bytes": 6194424,
+      "sha256": "69c32db63ca56843d994f81f343f62e0bf2d73f7e4c9bc73e44bb1110b1d8845"
+    },
+    {
+      "path": "constants_bin/bos_before_voice.bin",
+      "bytes": 4096,
+      "sha256": "6ac530a104e3f3d2b2ff15f3fad63540f2619b31db78b159c0595a108f142caf"
+    },
+    {
+      "path": "constants_bin/bos_emb.bin",
+      "bytes": 128,
+      "sha256": "52f1a157fa35fc100213e6e0fafa74703be99db8faa42de3e99feda607ac7b63"
+    },
+    {
+      "path": "constants_bin/text_embed_table.bin",
+      "bytes": 16388096,
+      "sha256": "2512f9edd82ab0c68bb42a5fcd329a371eaf63ee6fb5275dfb1bc9536592bb0e"
+    },
+    {
+      "path": "constants_bin/tokenizer.model",
+      "bytes": 59339,
+      "sha256": "d461765ae179566678c93091c5fa6f2984c31bbe990bf1aa62d92c64d91bc3f6"
+    },
+    {
+      "path": "flow_decoder_fused.mlmodelc/analytics/coremldata.bin",
+      "bytes": 243,
+      "sha256": "17cf344fd2be66e934982944a7a252da17087efbc9daac0d3dfb4e8e95797264"
+    },
+    {
+      "path": "flow_decoder_fused.mlmodelc/coremldata.bin",
+      "bytes": 413,
+      "sha256": "69ff9affa07e38b1a511ac8d71c594eeeb236389ddbe74f4fabdfa45db4edf7a"
+    },
+    {
+      "path": "flow_decoder_fused.mlmodelc/model.mil",
+      "bytes": 333331,
+      "sha256": "0257898b9a6ce06c961959aae993bb27c558f509fbea7407d094b879f872ec3f"
+    },
+    {
+      "path": "flow_decoder_fused.mlmodelc/weights/weight.bin",
+      "bytes": 19012608,
+      "sha256": "f28a1bd0af940a195802e9d702c9e050f3e69d265e582f3d0fdf4001709eb30c"
+    },
+    {
+      "path": "flowlm_step.mlmodelc/analytics/coremldata.bin",
+      "bytes": 243,
+      "sha256": "fcc771807d303b09425871201b9c20fd82b92bdb869ca567e9011402b6b844b3"
+    },
+    {
+      "path": "flowlm_step.mlmodelc/coremldata.bin",
+      "bytes": 1191,
+      "sha256": "4cf9fcee17a690def93f29ebdffbe3fd4cbfda442666e282f2bc8673947c1707"
+    },
+    {
+      "path": "flowlm_step.mlmodelc/model.mil",
+      "bytes": 236884,
+      "sha256": "9f3d6b3d0441d083f39e293d8878c58a53b8156e0d1e434c123d325dcc8c9030"
+    },
+    {
+      "path": "flowlm_step.mlmodelc/weights/weight.bin",
+      "bytes": 152186240,
+      "sha256": "5f63c2466dd9c1a29b074c467cc32b1fe47d77afa745e86f03ae7e862ac05aa7"
+    },
+    {
+      "path": "mimi_decoder.mlmodelc/analytics/coremldata.bin",
+      "bytes": 243,
+      "sha256": "be4199b44838e2fb199bb44b7649531d28fe847a1a6633fd9f8ca89576c5a7f8"
+    },
+    {
+      "path": "mimi_decoder.mlmodelc/coremldata.bin",
+      "bytes": 1777,
+      "sha256": "9d8644e2caad1513153ac28f1ba8090fcd2facdbd5d2621bf8016186fa932bf8"
+    },
+    {
+      "path": "mimi_decoder.mlmodelc/metadata.json",
+      "bytes": 16844,
+      "sha256": "aaca1b55b078095e72ee4826a94297fc070526d9f4cd3507464e7f2afaa73376"
+    },
+    {
+      "path": "mimi_decoder.mlmodelc/model.mil",
+      "bytes": 107403,
+      "sha256": "f7176b3b3d800de308ac01cb83d1f3e9b555e70b44d299efd4a21c9c27eecc16"
+    },
+    {
+      "path": "mimi_decoder.mlmodelc/weights/weight.bin",
+      "bytes": 41768256,
+      "sha256": "c93d182f9ad8c1042ec8302093aabb4e310d76616932dd12720e03b5d07f7c64"
     }
   ]
 }

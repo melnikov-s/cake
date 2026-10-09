@@ -11,19 +11,26 @@ import {
 
 const fixture = vi.hoisted(() => ({
   content: "fixture weights\n",
-  paths: ["config.json", "model.safetensors", "tokenizer.json", "embeddings/alba.safetensors"],
+  paths: [
+    "cond_prefill.mlmodelc/weights/weight.bin",
+    "flowlm_step.mlmodelc/weights/weight.bin",
+    "constants_bin/tokenizer.model",
+    "constants_bin/alba.safetensors",
+  ],
 }));
 vi.mock("../../../src/services/speech/pocket-tts-manifest.json", async () => {
   const { createHash } = await import("node:crypto");
   return {
     default: {
-      name: "Pocket TTS 8-bit",
+      name: "Pocket TTS Core ML",
       license: "CC-BY-4.0",
       voice: "alba",
+      repository: "fixture/pocket-tts",
+      revision: "pinned-revision",
+      remoteDirectory: "v2.1/english",
+      modelDirectory: "Models/pocket-tts-coreml/v2.1/english",
       files: fixture.paths.map((path) => ({
         path,
-        repository: "fixture/pocket-tts",
-        revision: "pinned-revision",
         bytes: Buffer.byteLength(fixture.content),
         sha256: createHash("sha256").update(fixture.content).digest("hex"),
       })),
@@ -52,7 +59,7 @@ describe("Pocket TTS model installation", () => {
     const model = await existingModel();
     const fetchFile = vi.fn<typeof fetch>(async (url) => {
       expect(String(url)).toContain(
-        "https://huggingface.co/fixture/pocket-tts/resolve/pinned-revision/",
+        "https://huggingface.co/fixture/pocket-tts/resolve/pinned-revision/v2.1/english/",
       );
       expect(await readFile(join(model, "model.safetensors"), "utf8")).toBe("old weights");
       return new Response(fixture.content);
@@ -109,7 +116,10 @@ describe("Pocket TTS model installation", () => {
     expect(await pocketTtsInstalled(model)).toBe(false);
     await installPocketTts(root, new AbortController().signal, () => {}, goodFetch);
     expect(await pocketTtsInstalled(model)).toBe(true);
-    await writeFile(join(model, "model.safetensors"), "truncated");
+    await writeFile(
+      join(model, "Models/pocket-tts-coreml/v2.1/english", fixture.paths[0]!),
+      "truncated",
+    );
     expect(await pocketTtsInstalled(model)).toBe(false);
     await rm(join(model, "installation.sha256"));
     expect(await pocketTtsInstalled(model)).toBe(false);

@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
+import { dirname, join } from "node:path";
 import { Schema } from "effect";
 import { SpeechOutputAudio } from "../../domain/speech/speech-output-data";
 
@@ -27,7 +28,11 @@ export class PocketTtsWorker {
   readonly ready: Promise<void>;
 
   constructor(executable: string, modelPath: string) {
-    this.process = spawn(executable, [modelPath], { stdio: "pipe" });
+    this.process = spawn(
+      executable,
+      [modelPath, join(dirname(executable), "pocket-tts-manifest.json")],
+      { stdio: "pipe" },
+    );
     this.ready = this.response();
     const lines = createInterface({ input: this.process.stdout });
     lines.on("line", (line) => {

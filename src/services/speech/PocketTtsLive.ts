@@ -69,7 +69,7 @@ export const makePocketTtsLive = (root: string, supported: boolean, helperPath: 
       const available = async () => {
         try {
           await access(helperPath, constants.X_OK);
-          await access(join(dirname(helperPath), "mlx.metallib"), constants.R_OK);
+          await access(join(dirname(helperPath), "pocket-tts-manifest.json"), constants.R_OK);
           return true;
         } catch (error) {
           if (

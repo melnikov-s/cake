@@ -84,7 +84,8 @@ export function takeSpokenPhrases(
       if (!complete && !final && (/^\s*[`~|]/.test(raw) || raw.includes("<system-reminder>")))
         break;
       let last = Math.max(lineStart, consumed);
-      const boundary = /[.!?](?=\s|$)|[,;:](?=\s)|\n/g;
+      // Preserve clause context: commas/colons are model prosody, not requests.
+      const boundary = /[.!?]["'”’)]*(?=\s|$)|\n/g;
       for (const match of raw.matchAll(boundary)) {
         const position = rawStart + (match.index ?? 0) + match[0].length;
         const fragment = text.slice(last, position);

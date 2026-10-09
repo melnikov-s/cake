@@ -775,6 +775,74 @@ describe("Project Session conversation mode", () => {
     await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(2));
     expect(f.synthesize.mock.calls[1]?.[0].text).toBe("Second phrase.");
   });
+  it("speaks a live completed reply even when no streaming projection was observed, but never replays durable reconnection history", async () => {
+    using f = fixture();
+    await f.enter();
+    const project = createLiveMessageProjector();
+    const input = { role: "user" as const, content: "A new request", timestamp: 100 };
+    const reply = {
+      role: "assistant" as const,
+      content: [{ type: "text" as const, text: "A fast spoken answer." }],
+      api: "openai-completions" as const,
+      provider: "openai",
+      model: "fixture",
+      timestamp: 200,
+      stopReason: "stop" as const,
+      usage: {
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 2,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+    };
+    const liveInput = project({ type: "message_start", message: input });
+    project({ type: "message_start", message: reply });
+    // Runtime coalescing can suppress all text deltas before message_end.
+    const completed = project({ type: "message_end", message: reply });
+    f.publish([...liveInput, ...completed]);
+    await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(1));
+    expect(f.synthesize.mock.calls[0]?.[0].text).toBe("A fast spoken answer.");
+    const history = SessionManager.inMemory("/project");
+    history.appendMessage(input);
+    history.appendMessage(reply);
+    history.appendMessage({
+      ...reply,
+      timestamp: 300,
+      content: [{ type: "text", text: "An unseen historical answer." }],
+    });
+    const snapshot = projectConversationDisplay(history);
+    f.publish(snapshot);
+    expect(
+      f.session.model.uiParts.some(
+        (part) => part.kind === "text" && part.text === "An unseen historical answer.",
+      ),
+    ).toBe(true);
+    await act(async () => {});
+    expect(f.synthesize).toHaveBeenCalledTimes(1);
+  });
+  it("preserves comma context and synthesizes new sentences while earlier audio is still draining", async () => {
+    using f = fixture({ drain: untilAborted });
+    await f.enter();
+    f.publish([consumed(), assistant("Hello, this isn't broken; it's one sentence. ")]);
+    await waitFor(() => expect(f.playback.drain).toHaveBeenCalledTimes(1));
+    expect(f.synthesize.mock.calls.map(([request]) => request.text)).toEqual([
+      "Hello, this isn't broken; it's one sentence.",
+    ]);
+    const starts = vi.mocked(f.playback.start).mock.calls.length;
+    f.publish([
+      consumed(),
+      assistant("Hello, this isn't broken; it's one sentence. Next sentence. "),
+    ]);
+    await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(2));
+    expect(f.synthesize.mock.calls[1]?.[0].text).toBe("Next sentence.");
+    expect(f.playback.enqueue).toHaveBeenCalledTimes(2);
+    expect(f.playback.start).toHaveBeenCalledTimes(starts);
+    expect(f.root.conversationModeStore.speaking).toBe(true);
+    await f.user.click(screen.getByRole("button", { name: "Exit conversation mode" }));
+    expect(f.root.conversationModeStore.speaking).toBe(false);
+  });
   it("entering never speaks historical messages or the reply already running at entry", async () => {
     using f = fixture();
     f.publish([assistant("Already running", "streaming")]);
@@ -1283,7 +1351,7 @@ describe("Project Session conversation mode", () => {
       f.root.speechSettingsStore.applySettings(
         speechOutputSettings({
           provider: "pocket-tts",
-          modelId: "pocket-tts-8bit",
+          modelId: "pocket-tts-coreml",
           keyConfigured: false,
           voiceId: "alba",
           voices: [{ id: "alba", name: "Alba" }],
@@ -1308,7 +1376,7 @@ describe("Project Session conversation mode", () => {
       f.root.speechSettingsStore.applySettings(
         speechOutputSettings({
           provider: "pocket-tts",
-          modelId: "pocket-tts-8bit",
+          modelId: "pocket-tts-coreml",
           keyConfigured: true,
           voiceId: "alba",
           localModel: pocketTtsState({
@@ -1340,7 +1408,7 @@ describe("Project Session conversation mode", () => {
           f.root.speechSettingsStore.applySettings(
             speechOutputSettings({
               provider,
-              modelId: "pocket-tts-8bit",
+              modelId: "pocket-tts-coreml",
               keyConfigured: false,
               voiceId: "alba",
               localModel: pocketTtsState({ selected: true, installed: true }),

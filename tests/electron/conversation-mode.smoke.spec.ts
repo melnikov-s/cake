@@ -140,11 +140,11 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
 `,
   );
   await chmod(speechHelper, 0o755);
-  await writeFile(join(directory, "mlx.metallib"), "fake shader artifact");
+  await writeFile(join(directory, "pocket-tts-manifest.json"), JSON.stringify(pocketManifest));
   if (localInstalled) {
     const localModel = join(userData, "speech-output", "pocket-tts", "model");
     for (const file of pocketManifest.files) {
-      const path = join(localModel, file.path);
+      const path = join(localModel, pocketManifest.modelDirectory, file.path);
       await mkdir(dirname(path), { recursive: true });
       const handle = await open(path, "w");
       await handle.truncate(file.bytes);
@@ -800,11 +800,14 @@ test("local speech provider uses native selection, persists, and speaks without 
     await send.click();
     await expect.poll(() => f.responses.length).toBe(1);
     await expect(composer).toHaveValue("");
-    f.sendText("A locally spoken sentence. ");
-    await expect(f.page.getByText("A locally spoken sentence.", { exact: true })).toBeVisible();
+    // Finish in the same provider event: no 50ms streaming projection is needed
+    // for live completed text to speak. Commas and contractions stay together.
+    const reply = "This isn’t broken, and it’s spoken as one sentence.";
+    f.sendText(reply, true);
+    await expect(f.page.getByText(reply, { exact: true })).toBeVisible();
     await expect
       .poll(async () => (await readFile(f.localRequests, "utf8")).trim())
-      .toBe(JSON.stringify({ text: "A locally spoken sentence.", voice: "alba", speed: 2 }));
+      .toBe(JSON.stringify({ text: reply, voice: "alba", speed: 2 }));
     await expect
       .poll(() =>
         f.page.evaluate(
@@ -818,7 +821,6 @@ test("local speech provider uses native selection, persists, and speaks without 
       )
       .toBeGreaterThan(0);
     expect(await speechHttpRequests(f.application)).toEqual([]);
-    f.sendText("", true);
     await f.page.getByRole("button", { name: "Exit conversation mode" }).click();
   } finally {
     await f.close();
@@ -833,7 +835,7 @@ test("uninstalled local output offers one download button and never falls back t
     await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await f.page.getByLabel("Speech provider").selectOption("pocket-tts");
     await expect(
-      f.page.getByRole("button", { name: "Download Pocket TTS · 141 MB" }),
+      f.page.getByRole("button", { name: "Download Pocket TTS · 370 MB" }),
     ).toBeEnabled();
     await f.page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await f.page.getByRole("button", { name: "Enter conversation mode" }).click();

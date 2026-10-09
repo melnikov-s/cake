@@ -1,65 +1,53 @@
 # Local speech output
 
-Pocket TTS is an optional speech-output provider for desktop conversation mode, alongside ElevenLabs. It uses a bundled Swift/MLX executable on Apple Silicon/macOS 14+; installed users need no Python, Swift, Xcode or developer-tools permission. Unsupported hosts keep cloud output and ordinary text chat available.
+Pocket TTS is an optional speech-output provider for desktop conversation mode, alongside ElevenLabs. Cake bundles a Swift/Core ML helper using **FluidAudio 0.17.4**, the same framework as dictation. Recognition and synthesis retain independent workers so listening/interruption is not blocked by generation. Requires Apple Silicon/macOS 14+; installed users need no Python, Swift, Xcode or API key.
 
 ## Installation and privacy
 
-Select **Pocket TTS (local)** in **Settings → Voice & Dictation**, under **Speech output**, then explicitly choose **Download Pocket TTS · 141 MB**. There is one model, no format picker or automatic download:
+Select **Pocket TTS (local)** in **Settings → Voice & Dictation**, then explicitly choose **Download Pocket TTS · 370 MB**. One English fp16 model and the Alba voice are offered; there is no automatic download or cloud fallback.
 
-- English Pocket TTS 8-bit weights: 140,230,187 bytes.
-- Config, tokenizer and Alba voice bring the pinned total to **140,989,471 bytes**.
-- Download URLs, revisions, sizes and SHA-256 digests live in `src/services/speech/pocket-tts-manifest.json`.
-- Data installs under `<Electron userData>/speech-output/pocket-tts/model`. The selected provider and Pocket TTS speed persist separately in `pocket-tts/settings.json`; cloud secrets, voice, ElevenLabs speed and voice list remain in their existing secure storage. Each provider retains its own rate across switching/restarts; selected-only local records load at 1×.
-- Downloads stage separately, enforce exact size and digest, then publish an installation marker. Failure/cancellation removes staging and preserves any previous working installation. Removal deletes only managed model data, not keys, provider choice or the bundled engine.
-- Switching to local neither refreshes ElevenLabs voices nor synthesizes remotely. A missing local model or engine blocks voice mode with an actionable error, never silently falls back.
+- The minimal v2.1 English Core ML installation is **369,779,063 bytes**, across 22 pinned files. This excludes unused precision/placement variants, source `.mlpackage` bundles, cloning assets and other voices. fp16 removes the previous MLX 8-bit conversion from the quality path.
+- Repository, revision, exact sizes and SHA-256 digests are in `src/services/speech/pocket-tts-manifest.json`. Data comes from `FluidInference/pocket-tts-coreml`; Cake does not modify model weights.
+- Data installs under `<Electron userData>/speech-output/pocket-tts/model/Models/pocket-tts-coreml/v2.1/english`. The enclosing `model` directory is the helper's private FluidAudio cache root.
+- Selection and local speed persist in `pocket-tts/settings.json`, independently from cloud credentials/voice/speed. Each provider retains its rate across switching/restarts.
+- Downloads stage separately and publish an installation identity only after all hashes pass. Failure/cancellation preserves any existing installation. Removal touches only managed model data.
+- The former MLX installation is incompatible: its marker does not match the new manifest, so it is shown as uninstalled. Users must explicitly download the Core ML model; a successful install replaces the old managed data atomically. Provider choice, speed and cloud preferences are retained.
 
-After installation, synthesis loads only local files. Microphone inference remains Parakeet. Chat requests still follow the active chat provider; local speech does not make cloud chat offline.
+Before loading, the helper verifies every manifest asset's size and SHA-256. This includes all graphs, constants, Alba and `bos_before_voice.bin`, ensuring FluidAudio's cache loader never enters its download/backfill paths. No voice cloning or alternate voices are exposed. Inference is offline; microphone capture and recognition are unchanged. Chat and optional utility cleanup still follow their selected providers' network policies.
 
-Model and voice attribution ship in `ATTRIBUTION.txt`: Pocket TTS by Kyutai, MLX conversion by mlx-community, and Alba voice by Alba MacKenna, under CC BY 4.0. The [voice source](https://huggingface.co/kyutai/tts-voices#alba-mackenna) explicitly documents Alba's license. Other upstream voices can have different licenses and are not included.
+Attribution ships in `ATTRIBUTION.txt`: Pocket TTS by Kyutai, Core ML conversion by FluidInference, and Alba voice by Alba MacKenna, under CC BY 4.0. See [Alba's source/license](https://huggingface.co/kyutai/tts-voices#alba-mackenna).
 
-## Ownership and protocol
+## Ownership and streaming
 
-`PocketTtsLive` owns native-process lifecycle, a warm engine, serial installation/selection/inference, cancellation and authoritative secret-free installation state. `speech-output.ts` combines that state with ElevenLabs settings and routes operations by the selected provider, including speed updates. Pocket TTS owns its persisted speed (1–2×); ElevenLabs owns its separate speed (1–1.2×). Thin RPC exposes provider selection, explicit install/remove and shared synthesis/settings observations; neither RPC nor renderer duplicates provider policy.
-
-`SpeechSettingsStore` owns UI operation/cancellation policy and disposes active downloads. `ConversationModeStore` consumes actual provider readiness: local requires a supported host, bundled engine and installed model, not an ElevenLabs key. Existing conversation capture, phrase extraction, playback and transcript ownership remain unchanged.
+`PocketTtsLive` owns the scoped warm process, serial installation/selection/inference, cancellation, preferences and secret-free installation state. `speech-output.ts` routes selected-provider operations. RPC and renderer do not duplicate provider policy. `SpeechSettingsStore` owns UI operation/cancellation policy. `ConversationModeStore` owns ephemeral phrase queues, cursors, output arrival wakeups and playback cancellation; these never persist.
 
 The private helper uses NDJSON stdin/stdout:
 
-- Start with the managed model directory; emit `{"ready":true}` only after local graph/weights/tokenizer load.
-- Requests are `{"text":"...","voice":"alba","speed":2}`. Speed is required and validated in the 1–2 range. Each phrase snapshots Pocket TTS's persisted preference; already generated/queued audio is unchanged.
-- At 1×, generated samples pass through unchanged. Faster local speech uses AVFoundation's offline `AVAudioUnitTimePitch` at zero pitch shift before PCM chunking. This opens no audio device and makes no network/provider calls; it changes audio duration, not model inference speed.
-- Emit sample-aligned signed 16-bit little-endian mono PCM at 24 kHz as base64 `pcm` frames, bounded to 65,536 decoded bytes, then `{"done":true}`.
-- Fail with a generic `error`, never source text or audio diagnostics. Unexpected replies, invalid PCM and subprocess exit fail the active request.
-- Canceling inference kills the worker; the next request explicitly reloads it. Scoped teardown closes warmed processes. Callback-producer failure explicitly fails its output queue so RPC cannot hang.
+- Arguments: managed cache root and bundled manifest path. Emit `{"ready":true}` only after verified local loading.
+- Requests: `{"text":"...","voice":"alba","speed":1.5}`; text is bounded to 2,000 UTF-16 characters and speed to 1–2×.
+- FluidAudio sessions emit **80 ms / 1,920-sample frames at 24 kHz** as generated, not after an entire phrase. Shipped voice conditioning is cached; FluidAudio handles sentence chunking, short-input padding and smart-quote/apostrophe normalization.
+- At 1×, samples pass through unchanged. Faster output uses one offline `AVAudioUnitTimePitch` engine per phrase, preserving pitch across frame boundaries with 8,192 input samples (~341 ms) of lookahead. It never opens an audio device or waits for the whole phrase. Completion flushes the exact tempo-adjusted duration.
+- Emit sample-aligned signed 16-bit little-endian mono PCM as base64 `pcm` frames, bounded to 65,536 decoded bytes, followed by `{"done":true}`. Non-finite, empty or wholly silent generation fails rather than reporting success.
+- Cancellation kills inference; a subsequent explicit request reloads the engine. Unexpected protocol replies/invalid PCM/process exits fail the active stream. Source text, PCM and raw upstream diagnostics are not logged or persisted.
 
-The selected model is 8-bit on disk. The helper rebuilds quantized modules using the pinned checkpoint metadata, preserves heterogeneous FlowLM module arrays, and dequantizes only the conditioner embedding in memory because the pinned quantized embedding cannot handle Pocket's zero-token conditioning.
+Cake sends sentence-level prose, not a separate request for every comma/semicolon/colon. Generation of the next sentence overlaps playback of earlier audio, including sentences arriving while playback is draining. Playback retains its five-second scheduling bound and immediate cancellation.
 
-## Build and size
+Live completed messages without durable entry IDs are eligible even if coalescing suppressed their streaming projection. Durable reconnection/history snapshots, entry-time messages and interrupted replies remain sealed; stable render keys/cursors prevent replay.
 
-`pnpm build:speech` builds `native/speech/Package.swift` with the checked-in resolution and copies the helper, resource bundles and licenses beside native dictation output. It strips local linker symbols without removing Swift runtime metadata. Full Electron builds run both native builders.
+## Build and macOS placement
 
-The MLX C++ core is 0.31.1. Its exact matching Metal shaders are extracted from a checksum-verified official `mlx-metal` wheel during the build, avoiding a requirement for the separately installed Metal compiler. No Python interpreter or wheel dylibs ship or run. Builder network access is distinct from runtime/model installation.
+`pnpm build:speech` builds `native/speech/Package.swift` with its checked-in resolution, strips local linker symbols, and copies the executable, resource bundles, pinned manifest and FluidAudio licenses into `out/main/native`. Full Electron builds run both native builders. No MLX engine/Metal shader artifact or Python runtime is needed for speech output.
 
-The **141 MB button describes model data only**. The native engine is bundled with Cake: on the current release build the stripped helper is approximately 28 MiB and `mlx.metallib` approximately 102 MiB, plus small resource/license files. These are unpacked sizes, not compressed application-download estimates. Release packaging/signing/notarization must include all native assets outside any executable-inaccessible archive, like dictation.
+The helper uses FluidAudio's `.avoidNeuralEngine` routing: transformer/flow stages can use CPU/GPU, while Mimi remains CPU-only to avoid upstream-documented feedback artifacts and ANE graph failures on some Macs. This is an explicit placement choice, not an automatic retry. The stripped helper is approximately 6 MB on this build; the 370 MB button describes model data only. Package/sign/notarize native assets outside ASAR alongside dictation.
 
-## Current limitations
-
-- English and Alba only; no voice cloning or per-call voice overrides. Pocket TTS speaking speed ranges from 1× to 2×, independent of ElevenLabs's 1–1.2× setting. Local tempo adjustment preserves pitch but can introduce processing artifacts; listening quality is not guaranteed by numerical tests.
-- The pinned Swift API generates a whole phrase before emitting PCM. Playback can begin before the complete assistant answer, but this is **not** upstream Pocket's incremental within-phrase streaming.
-- 8-bit is a conservative starting point versus 4-bit, not demonstrated quality parity with unquantized weights. The smaller checkpoint is not offered without comparative listening/evaluation.
-- Native integration verifies valid non-silent audio, not intelligibility, naturalness or quality equivalence. Physical audition and release-package validation are separate checks.
-
-## Verification
-
-Run `swift run --package-path native/speech SpeechTempoTests` for native, device-free tests of tempo duration, unchanged 1× samples, pitch/amplitude preservation, short audio and input validation. The standalone test runner works with Command Line Tools and is not bundled.
-
-Fast tests cover pinned/corrupt/canceled downloads, old-model preservation, Service lifecycle and queued removal, provider routing without cloud fallback, schema-valid observations, real Root/Stores/settings workflows, and local-ready/unready conversation entry. Electron smoke fixtures replace native inference/model assets but retain real main services, installation inspection, RPC, controls, typing, capture and playback.
-
-Opt into actual offline inference with explicitly supplied model files:
+## Verification and release gates
 
 ```sh
+swift run --package-path native/speech SpeechTempoTests
 pnpm build:speech
-CAKE_SPEECH_TEST_MODEL=/path/to/model pnpm test:integration tests/integration/pocket-tts-native.test.ts
+CAKE_SPEECH_TEST_MODEL=/path/to/managed/cache/root pnpm test:integration tests/integration/pocket-tts-native.test.ts
 ```
 
-This validates bundled helper/resource loading, faster (2×) bounded non-silent 24 kHz PCM, cancellation and a subsequent fresh worker at 1×. It downloads nothing and uses no microphone or billed provider.
+Native tempo tests are device-free and cover incremental output, unchanged 1× samples, duration, pitch/amplitude, short input, ending preservation and invalid input/lifecycle. Fast tests cover installation integrity/cancellation, warm lifecycle, provider routing, real Root/Stores/settings/Chat workflows, completed-only live replies versus reconnection history, sentence boundaries and overlapping playback. Hidden Electron smoke tests retain real RPC/capture/playback with controlled external inference and model assets.
+
+Actual native inference is opt-in with explicitly supplied pinned assets; it checks non-silent PCM, streaming frame sizes, cancellation/reload and incomplete-installation rejection. It downloads nothing and uses no microphone or billed provider. Neither numerical checks nor ASR prove naturalness: contraction pronunciation, punctuation prosody and faster-speed quality require listening before release. Signing/notarization and minimum-supported macOS validation remain separate release checks. There is no claim of quality parity with Kyutai's Python runtime.

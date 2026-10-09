@@ -10,9 +10,8 @@ export interface PocketTtsInstallProgress {
 }
 
 const attribution =
-  "Pocket TTS by Kyutai. MLX conversion by mlx-community.\n" +
-  "Model: https://huggingface.co/mlx-community/pocket-tts-8bit\n" +
-  "Tokenizer and Alba voice: https://huggingface.co/mlx-community/pocket-tts\n" +
+  "Pocket TTS by Kyutai. Core ML conversion by FluidInference.\n" +
+  "Model, tokenizer and Alba voice: https://huggingface.co/FluidInference/pocket-tts-coreml\n" +
   "Alba voice by Alba MacKenna (CC BY 4.0).\n" +
   "Voice source and license: https://huggingface.co/kyutai/tts-voices#alba-mackenna\n" +
   "Base model: https://huggingface.co/kyutai/pocket-tts\n" +
@@ -28,7 +27,7 @@ export async function pocketTtsInstalled(directory: string): Promise<boolean> {
   try {
     if ((await readFile(join(directory, "installation.sha256"), "utf8")) !== identity) return false;
     for (const file of manifest.files) {
-      const info = await stat(join(directory, file.path));
+      const info = await stat(join(directory, manifest.modelDirectory, file.path));
       if (!info.isFile() || info.size !== file.bytes) return false;
     }
     return true;
@@ -45,7 +44,7 @@ async function downloadFile(
   progress: (bytes: number) => void,
   fetchFile: typeof fetch,
 ) {
-  const url = `https://huggingface.co/${file.repository}/resolve/${file.revision}/${file.path}`;
+  const url = `https://huggingface.co/${manifest.repository}/resolve/${manifest.revision}/${manifest.remoteDirectory}/${file.path}`;
   const response = await fetchFile(url, { signal });
   if (!response.ok || !response.body)
     throw new Error(`Pocket TTS download failed: HTTP ${response.status}`);
@@ -93,7 +92,7 @@ export async function installPocketTts(
     for (const file of manifest.files) {
       await downloadFile(
         file,
-        join(staging, file.path),
+        join(staging, manifest.modelDirectory, file.path),
         signal,
         (bytes) => {
           progress({ downloadedBytes: downloadedBytes + bytes, totalBytes: pocketTtsBytes });

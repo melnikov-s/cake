@@ -28,7 +28,7 @@ export interface ElevenLabsSpeechSettings extends Schema.Schema.Type<
 export const SpeechOutputSettings = ElevenLabsSpeechSettings.pipe(
   Schema.fieldsAssign({
     provider: SpeechOutputProvider,
-    modelId: Schema.Literals(["eleven_flash_v2_5", "pocket-tts-8bit"]),
+    modelId: Schema.Literals(["eleven_flash_v2_5", "pocket-tts-coreml"]),
     speed: SpeechOutputSpeed,
     localModel: PocketTtsState,
   }),

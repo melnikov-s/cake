@@ -26,7 +26,7 @@ export const observeSettings = () =>
             return {
               ...cloudSettings,
               provider: "pocket-tts",
-              modelId: "pocket-tts-8bit",
+              modelId: "pocket-tts-coreml",
               voiceId: "alba",
               voices: localVoices,
               speed: localModel.speed,

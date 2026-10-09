@@ -63,7 +63,7 @@ function fixture(supported = true) {
         ? {
             ...authority,
             provider,
-            modelId: "pocket-tts-8bit",
+            modelId: "pocket-tts-coreml",
             voiceId: "alba",
             speed: localModel.speed,
             voices: [{ id: "alba", name: "Alba" }],
@@ -117,13 +117,13 @@ describe("local speech settings", () => {
     using f = fixture();
     expect(f.installLocal).not.toHaveBeenCalled();
     await f.user.selectOptions(screen.getByLabelText("Speech provider"), "pocket-tts");
-    const download = await screen.findByRole("button", { name: "Download Pocket TTS · 141 MB" });
+    const download = await screen.findByRole("button", { name: "Download Pocket TTS · 370 MB" });
     expect(screen.getByText(/no Python or API key/)).toBeDefined();
     expect((screen.getByRole("slider", { name: "Speaking speed" }) as HTMLInputElement).value).toBe(
       "1",
     );
     await f.user.click(download);
-    await screen.findByText("Downloading Pocket TTS… 50.0 / 141 MB");
+    await screen.findByText("Downloading Pocket TTS… 50.0 / 370 MB");
     expect(f.installLocal).toHaveBeenCalledTimes(1);
     await act(async () => f.finishDownload());
     await screen.findByText("Pocket TTS is installed and ready for voice mode.");
@@ -133,7 +133,7 @@ describe("local speech settings", () => {
     expect(screen.getByText("1.10×")).toBeDefined();
     await f.user.selectOptions(screen.getByLabelText("Speech provider"), "pocket-tts");
     await f.user.click(await screen.findByRole("button", { name: "Remove local model" }));
-    await screen.findByRole("button", { name: "Download Pocket TTS · 141 MB" });
+    await screen.findByRole("button", { name: "Download Pocket TTS · 370 MB" });
     expect(f.removeLocal).toHaveBeenCalledTimes(1);
   });
 

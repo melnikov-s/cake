@@ -22,7 +22,7 @@ export const SettingsSpeechSection = observer(function SettingsSpeechSection({
         </h2>
         <p className="mt-1 text-xs text-muted-foreground">
           {speech.localSelected
-            ? "Pocket TTS · local 8-bit model · 24 kHz audio"
+            ? "Pocket TTS · local Core ML model · streaming 24 kHz audio"
             : "ElevenLabs Flash · eleven_flash_v2_5 · streaming 24 kHz audio"}
         </p>
       </header>

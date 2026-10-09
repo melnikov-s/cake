@@ -23,13 +23,15 @@ vi.mock("../../../src/services/speech/pocket-tts-manifest.json", async () => {
   const { createHash } = await import("node:crypto");
   return {
     default: {
-      name: "Pocket TTS 8-bit",
+      name: "Pocket TTS Core ML",
       voice: "alba",
       license: "CC-BY-4.0",
+      repository: "fixture/pocket",
+      revision: "pinned",
+      remoteDirectory: "v2.1/english",
+      modelDirectory: "Models/pocket-tts-coreml/v2.1/english",
       files: fixture.paths.map((path) => ({
         path,
-        repository: "fixture/pocket",
-        revision: "pinned",
         bytes: Buffer.byteLength(fixture.content),
         sha256: createHash("sha256").update(fixture.content).digest("hex"),
       })),
@@ -86,7 +88,7 @@ beforeEach(async () => {
   helper = join(bin, "cake-speech");
   await writeFile(helper, "fixture executable");
   await chmod(helper, 0o700);
-  await writeFile(join(bin, "mlx.metallib"), "fixture shader artifact");
+  await writeFile(join(bin, "pocket-tts-manifest.json"), "fixture manifest");
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => new Response(fixture.content)),

@@ -83,6 +83,8 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   private outputController: AbortController | undefined;
   private outputRevision = 0;
   private outputRunning = false;
+  // Ephemeral output-generation wakeup: lets synthesis continue while audio drains.
+  private outputWake: (() => void) | undefined;
   private phrases: string[] = [];
   private cursors = new Map<string, number>();
   private users = new Set<string>();
@@ -264,6 +266,8 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     this.outputController?.abort();
     this.outputController = undefined;
     this.props.playback.stop();
+    this.outputWake?.();
+    this.outputWake = undefined;
     this.phrases = [];
     this.speaking = false;
   }
@@ -546,8 +550,15 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       if (part.kind !== "text" || part.role !== "assistant") continue;
       const key = part.renderKey ?? part.id;
       const offset = this.cursors.get(key) ?? 0;
-      // A settled-only snapshot is history/reconnection data, not a new live reply to replay.
-      if (part.status === "streaming" && this.phase === "active" && this.outputEligible)
+      // Live completed messages have no durable entryId. A fast reply can reach
+      // us only as complete after projection coalescing; it is still a new reply.
+      // Durable history/reconnection snapshots and parts present at entry stay sealed.
+      if (
+        this.phase === "active" &&
+        this.outputEligible &&
+        (part.status === "streaming" ||
+          (part.status === "complete" && !part.entryId && !this.cursors.has(key)))
+      )
         this.liveReplies.add(key);
       if (part.status === "complete" && !this.liveReplies.has(key)) {
         this.cursors.set(key, part.text.length);
@@ -567,6 +578,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       );
       return;
     }
+    if (this.phrases.length) this.outputWake?.();
     if (this.phase === "active") void this.pumpOutput();
   }
   private async pumpOutput() {
@@ -579,9 +591,28 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     this.speaking = true;
     try {
       await this.props.playback.start(signal);
-      while (this.phrases.length && !signal.aborted && revision === this.outputRevision) {
+      while (!signal.aborted && revision === this.outputRevision) {
         const text = this.phrases.shift();
-        if (!text) break;
+        if (!text) {
+          // Race arrival of the next sentence with actual playback completion.
+          // Do not insert a drain barrier between synthesis requests, including
+          // sentences that arrive while the previous audio is still playing.
+          let wake: (() => void) | undefined;
+          const ready = new Promise<void>((resolve) => {
+            wake = resolve;
+          });
+          this.outputWake = wake;
+          try {
+            const drained = await Promise.race([
+              this.props.playback.drain(signal).then(() => true),
+              ready.then(() => false),
+            ]);
+            if (drained && !this.phrases.length) break;
+          } finally {
+            if (this.outputWake === wake) this.outputWake = undefined;
+          }
+          continue;
+        }
         await this.props.speech.synthesize(
           { text },
           async (audio) => {
@@ -590,7 +621,6 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
           },
           { signal },
         );
-        await this.props.playback.drain(signal);
       }
     } catch (error) {
       if (!signal.aborted && revision === this.outputRevision) this.fail(error);

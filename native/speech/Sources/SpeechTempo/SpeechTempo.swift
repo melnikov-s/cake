@@ -1,26 +1,27 @@
 import AVFoundation
 
-/// Offline, pitch-preserving tempo adjustment. No audio device or network is opened.
-/// Pocket currently supplies a whole phrase, so processing precedes bounded PCM emission.
-public enum SpeechTempo {
-    public static func adjust(_ samples: [Float], speed: Double) throws -> [Float] {
-        guard speed.isFinite, (1...2).contains(speed),
-              !samples.isEmpty, samples.allSatisfy({ $0.isFinite }) else {
-            throw failure("Invalid local speech tempo input.")
-        }
-        if speed == 1 { return samples }
+/// Incremental, pitch-preserving tempo processing with no audio device. One engine
+/// spans all model frames in a phrase; never independently stretch 80ms fragments.
+/// At 1x PCM passes through unchanged. Faster rates retain only 8192 input samples
+/// of lookahead (~341ms), not the entire phrase. finish() flushes the exact duration.
+public final class SpeechTempo {
+    private let speed: Double
+    private let format: AVAudioFormat
+    private var engine: AVAudioEngine?
+    private var player: AVAudioPlayerNode?
+    private var output: AVAudioPCMBuffer?
+    private var inputCount = 0
+    private var outputCount = 0
+    private var finished = false
+    private let lookahead = 8_192
 
-        let format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
-        guard let input = AVAudioPCMBuffer(
-            pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)
-        ), let inputData = input.floatChannelData else {
-            throw failure("Could not allocate local speech audio.")
+    public init(speed: Double) throws {
+        guard speed.isFinite, (1...2).contains(speed) else {
+            throw Self.failure("Invalid local speech tempo rate.")
         }
-        input.frameLength = input.frameCapacity
-        samples.withUnsafeBufferPointer { source in
-            inputData[0].update(from: source.baseAddress!, count: samples.count)
-        }
-
+        self.speed = speed
+        self.format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
+        if speed == 1 { return }
         let engine = AVAudioEngine()
         let player = AVAudioPlayerNode()
         let tempo = AVAudioUnitTimePitch()
@@ -31,44 +32,75 @@ public enum SpeechTempo {
         engine.connect(player, to: tempo, format: format)
         engine.connect(tempo, to: engine.mainMixerNode, format: format)
         try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 4_096)
-        defer {
-            player.stop()
-            engine.stop()
-            engine.disableManualRenderingMode()
-        }
-        player.scheduleBuffer(input)
-        try engine.start()
-        player.play()
-
         guard let output = AVAudioPCMBuffer(
             pcmFormat: engine.manualRenderingFormat,
             frameCapacity: engine.manualRenderingMaximumFrameCount
-        ) else {
-            throw failure("Could not allocate local speech tempo output.")
+        ) else { throw Self.failure("Could not allocate local speech tempo output.") }
+        self.engine = engine
+        self.player = player
+        self.output = output
+        // Start only after the first buffer is scheduled.
+    }
+
+    deinit {
+        player?.stop()
+        engine?.stop()
+        engine?.disableManualRenderingMode()
+    }
+
+    public func append(_ samples: [Float]) throws -> [Float] {
+        guard !finished, !samples.isEmpty, samples.allSatisfy({ $0.isFinite }) else {
+            throw Self.failure("Invalid local speech tempo input.")
         }
-        let count = Int(ceil(Double(samples.count) / speed))
+        inputCount += samples.count
+        if speed == 1 { return samples }
+        guard let player, let engine, let input = AVAudioPCMBuffer(
+            pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)
+        ), let inputData = input.floatChannelData else {
+            throw Self.failure("Could not allocate local speech audio.")
+        }
+        input.frameLength = input.frameCapacity
+        samples.withUnsafeBufferPointer { source in
+            inputData[0].update(from: source.baseAddress!, count: samples.count)
+        }
+        player.scheduleBuffer(input)
+        if !engine.isRunning {
+            try engine.start()
+            player.play()
+        }
+        let available = max(0, Int(floor(Double(inputCount - lookahead) / speed)))
+        return try render(until: available)
+    }
+
+    public func finish() throws -> [Float] {
+        guard !finished, inputCount > 0 else {
+            throw Self.failure("Invalid local speech tempo completion.")
+        }
+        finished = true
+        if speed == 1 { return [] }
+        return try render(until: Int(ceil(Double(inputCount) / speed)))
+    }
+
+    private func render(until target: Int) throws -> [Float] {
+        guard let engine, let output else { throw Self.failure("Local speech tempo stopped.") }
         var result: [Float] = []
-        result.reserveCapacity(count)
-        while result.count < count {
-            let frames = AVAudioFrameCount(min(Int(output.frameCapacity), count - result.count))
+        result.reserveCapacity(max(0, target - outputCount))
+        while outputCount < target {
+            let frames = AVAudioFrameCount(min(Int(output.frameCapacity), target - outputCount))
             let status = try engine.renderOffline(frames, to: output)
-            guard status == .success, output.frameLength > 0,
-                  let data = output.floatChannelData else {
-                throw failure("Could not render local speech tempo.")
+            guard status == .success, output.frameLength > 0, let data = output.floatChannelData else {
+                throw Self.failure("Could not render local speech tempo.")
             }
-            result.append(contentsOf: UnsafeBufferPointer(
-                start: data[0], count: Int(output.frameLength)
-            ))
+            result.append(contentsOf: UnsafeBufferPointer(start: data[0], count: Int(output.frameLength)))
+            outputCount += Int(output.frameLength)
         }
         guard result.allSatisfy({ $0.isFinite }) else {
-            throw failure("Invalid local speech tempo output.")
+            throw Self.failure("Invalid local speech tempo output.")
         }
         return result
     }
 
     private static func failure(_ message: String) -> NSError {
-        NSError(domain: "CakeSpeechTempo", code: 1, userInfo: [
-            NSLocalizedDescriptionKey: message,
-        ])
+        NSError(domain: "CakeSpeechTempo", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
     }
 }

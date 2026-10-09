@@ -1,14 +1,16 @@
-import { resolve } from "node:path";
+import { resolve, join } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { expect, test } from "vitest";
 import { PocketTtsWorker } from "../../src/services/speech/pocket-tts-worker";
 import type { SpeechOutputAudio } from "../../src/domain/speech/speech-output-data";
 
 const model = process.env.CAKE_SPEECH_TEST_MODEL;
 
-// Explicit opt-in: actual pinned 8-bit weights and compiled helper, no microphone/network.
+// Explicit opt-in: pinned fp16 Core ML assets and compiled helper, no microphone/network.
 // pnpm build:speech && CAKE_SPEECH_TEST_MODEL=/path/to/model pnpm test:integration tests/integration/pocket-tts-native.test.ts
 test.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !model)(
-  "bundled Pocket TTS loads offline, emits bounded non-silent PCM, and supports cancellation/reload",
+  "bundled FluidAudio Pocket TTS loads offline, streams non-silent PCM, and supports cancellation/reload",
   async () => {
     if (!model) throw new Error("Set CAKE_SPEECH_TEST_MODEL to a local model directory");
     const executable = resolve("out/main/native/cake-speech");
@@ -17,7 +19,7 @@ test.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !model)
     try {
       await worker.ready;
       await worker.synthesize(
-        "Hello. This is Cake speaking locally on your Mac.",
+        "Hello, this isn’t a cloud service; it’s Cake speaking locally on your Mac.",
         2,
         new AbortController().signal,
         (frame) => frames.push(frame),
@@ -52,7 +54,11 @@ test.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !model)
         1,
         new AbortController().signal,
         (frame) => {
-          samples += Buffer.from(frame.pcm, "base64").length / 2;
+          const bytes = Buffer.from(frame.pcm, "base64");
+          // 1× output must retain the native 80ms frame boundary, not wait for
+          // a phrase-sized array and then split it into 16K-sample chunks.
+          expect(bytes.length).toBe(1_920 * 2);
+          samples += bytes.length / 2;
         },
       );
       expect(samples).toBeGreaterThan(1_200);
@@ -61,4 +67,18 @@ test.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !model)
     }
   },
   180_000,
+);
+
+test.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !model)(
+  "an incomplete Core ML installation fails before entering FluidAudio download paths",
+  async () => {
+    const empty = await mkdtemp(join(tmpdir(), "cake-pocket-incomplete-"));
+    const worker = new PocketTtsWorker(resolve("out/main/native/cake-speech"), empty);
+    try {
+      await expect(worker.ready).rejects.toThrow("local speech engine stopped");
+    } finally {
+      worker.close();
+      await rm(empty, { recursive: true, force: true });
+    }
+  },
 );

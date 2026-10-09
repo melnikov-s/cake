@@ -9,7 +9,7 @@ export const pocketTtsState = (overrides: Partial<PocketTtsState> = {}): PocketT
   installed: false,
   installing: false,
   downloadedBytes: 0,
-  totalBytes: 140_989_471,
+  totalBytes: 369_779_063,
   ...overrides,
 });
 

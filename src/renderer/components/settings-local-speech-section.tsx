@@ -9,13 +9,13 @@ export const SettingsLocalSpeechSection = observer(function SettingsLocalSpeechS
   speech: SpeechSettingsStore;
 }) {
   const model = speech.localModel;
-  const megabytes = Math.round((model?.totalBytes ?? 140_989_471) / 1_000_000);
+  const size = model ? `${Math.round(model.totalBytes / 1_000_000)} MB` : "model data";
   const downloaded = ((model?.downloadedBytes ?? 0) / 1_000_000).toFixed(1);
   return (
     <div className="grid gap-3">
       <p className="text-xs text-muted-foreground">
-        Pocket TTS 8-bit · English · Alba voice. One-time {megabytes} MB model download from Hugging
-        Face. The native engine is included with Cake; no Python or API key is needed.
+        Pocket TTS Core ML · English · Alba voice. One-time download of {size} from Hugging Face.
+        The native engine is included with Cake; no Python or API key is needed.
       </p>
       <Callout>
         Microphone recognition and speech output stay on this Mac. After installation, local speech
@@ -33,7 +33,7 @@ export const SettingsLocalSpeechSection = observer(function SettingsLocalSpeechS
       {speech.installing ? (
         <div className="grid gap-2">
           <p role="status" className="text-xs tabular-nums text-muted-foreground">
-            Downloading Pocket TTS… {downloaded} / {megabytes} MB
+            Downloading Pocket TTS… {downloaded} / {size}
           </p>
           {speech.canCancelDownload && (
             <Button variant="outline" onClick={() => speech.cancelDownload()}>
@@ -59,13 +59,14 @@ export const SettingsLocalSpeechSection = observer(function SettingsLocalSpeechS
           disabled={speech.busy || !model?.supported || !model.engineAvailable}
           onClick={() => void speech.downloadLocalModel()}
         >
-          Download Pocket TTS · {megabytes} MB
+          Download Pocket TTS · {size}
         </Button>
       )}
       {model?.message && <Callout variant="error">{model.message}</Callout>}
       <p className="text-xs text-muted-foreground">
-        Pocket TTS by Kyutai; MLX conversion by mlx-community; Alba voice by Alba MacKenna. Model
-        and voice licensed CC BY 4.0. Speaking speed is adjusted locally without changing pitch.
+        Pocket TTS by Kyutai; Core ML conversion by FluidInference; Alba voice by Alba MacKenna.
+        Model and voice licensed CC BY 4.0. Speaking speed is adjusted locally without changing
+        pitch.
       </p>
     </div>
   );

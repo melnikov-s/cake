@@ -99,7 +99,7 @@ describe("speech provider routing", () => {
           yield* speechOutput.setProvider("pocket-tts");
           expect(yield* current()).toMatchObject({
             provider: "pocket-tts",
-            modelId: "pocket-tts-8bit",
+            modelId: "pocket-tts-coreml",
             voiceId: "alba",
             speed: 1,
             localModel: { selected: true, installed: true },

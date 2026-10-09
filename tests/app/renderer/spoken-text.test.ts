@@ -10,6 +10,18 @@ describe("spoken assistant prose", () => {
       "More",
     ]);
   });
+  it("holds commas, semicolons and colons inside sentences and preserves contractions", () => {
+    const first = takeSpokenPhrases("Well, this isn’t done; here’s why: more", 0, false);
+    expect(first.phrases).toEqual([]);
+    expect(first.consumedCharacters).toBe(0);
+    const text = "Well, this isn’t done; here’s why: more context. Tail";
+    const next = takeSpokenPhrases(text, first.consumedCharacters, false);
+    expect(next.phrases).toEqual(["Well, this isn’t done; here’s why: more context."]);
+    expect(takeSpokenPhrases(text, next.consumedCharacters, true).phrases).toEqual(["Tail"]);
+    expect(takeSpokenPhrases("He said, ‘It isn't done.’ Next", 0, false).phrases).toEqual([
+      "He said, ‘It isn't done.’",
+    ]);
+  });
   it("skips fenced code and tables even when their delimiters arrive across streamed updates", () => {
     const chunks = [
       "Intro. \n`",

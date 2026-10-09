@@ -1,11 +1,8 @@
+import CryptoKit
+import FluidAudio
 import Foundation
-import MLX
-import MLXAudioTTS
-import MLXNN
 import SpeechTempo
 
-// Serialized local-only NDJSON protocol. Model and voice files are supplied by Cake;
-// never use fromPretrained or a runtime download API here.
 private struct Request: Decodable {
     let text: String
     let voice: String
@@ -19,13 +16,18 @@ private struct Reply: Encodable {
     var error: String?
 }
 
-private struct QuantizationConfig: Decodable {
-    struct Quantization: Decodable {
-        let bits: Int
-        let group_size: Int
-        let mode: String
+private struct Manifest: Decodable {
+    struct File: Decodable {
+        let path: String
+        let bytes: Int
+        let sha256: String
     }
-    let quantization: Quantization
+    let modelDirectory: String
+    let files: [File]
+}
+
+private func failure(_ message: String) -> NSError {
+    NSError(domain: "CakeSpeech", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
 }
 
 private func emit(_ reply: Reply) throws {
@@ -34,105 +36,87 @@ private func emit(_ reply: Reply) throws {
     try FileHandle.standardOutput.write(contentsOf: data)
 }
 
-private func loadModel(_ directory: URL) async throws -> PocketTTSModel {
-    let configURL = directory.appendingPathComponent("config.json")
-    let quantization = try JSONDecoder().decode(
-        QuantizationConfig.self, from: Data(contentsOf: configURL)
-    ).quantization
-    guard quantization.bits == 8, quantization.group_size == 64,
-          quantization.mode == "affine" else {
-        throw NSError(domain: "CakeSpeech", code: 1, userInfo: [
-            NSLocalizedDescriptionKey: "Expected the Pocket TTS 8-bit model.",
-        ])
+/// Validate the complete pinned installation before calling FluidAudio's cache loader.
+/// All required graphs, constants, the BOS backfill and Alba are present, so neither
+/// initialize nor makeSession can enter its downloader. No voices/cloning are exposed.
+private func validateInstallation(_ directory: URL, manifestURL: URL) throws {
+    let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: manifestURL))
+    guard manifest.modelDirectory == "Models/pocket-tts-coreml/v2.1/english",
+          !manifest.files.isEmpty else {
+        throw failure("Invalid local speech installation manifest.")
     }
-    let config = try PocketTTSModelConfig.load(from: configURL)
-    let model = try await PocketTTSModel.fromConfig(config, modelFolder: directory)
-    var weights = try MLX.loadArrays(url: directory.appendingPathComponent("model.safetensors"))
-    // QuantizedEmbedding in this MLX release cannot process the zero-token
-    // conditioning calls Pocket uses between frames. Expand only the small
-    // lookup table in memory, preserving the checkpoint's quantized values.
-    let embedding = "flow_lm.conditioner.embed"
-    if let weight = weights["\(embedding).weight"], let scales = weights["\(embedding).scales"] {
-        weights["\(embedding).weight"] = dequantized(
-            weight, scales: scales, biases: weights["\(embedding).biases"],
-            groupSize: 64, bits: 8, mode: .affine
-        )
-        weights.removeValue(forKey: "\(embedding).scales")
-        weights.removeValue(forKey: "\(embedding).biases")
-    }
-    // Upstream Pocket's Swift loader only handles unquantized weights. Match the
-    // published checkpoint exactly, including its quantized embeddings/codec layers.
-    let replacements: [(String, Module)] = model.leafModules().flattened().compactMap { path, layer in
-        if weights["\(path).scales"] != nil {
-            guard let replacement = quantizeSingle(layer: layer, groupSize: 64, bits: 8, mode: .affine) else {
-                return nil
-            }
-            return (path, replacement)
+    let languageRoot = directory.appendingPathComponent(manifest.modelDirectory)
+    for file in manifest.files {
+        let components = file.path.split(separator: "/", omittingEmptySubsequences: false)
+        guard !components.isEmpty, components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }),
+              file.bytes > 0 else {
+            throw failure("Invalid local speech asset path.")
         }
-        // Preserve every member of FlowLM's heterogeneous Module arrays:
-        // MLX 0.31.3 cannot replace a sparse array beginning with nil, and a
-        // partial replacement drops trailing unquantized normalization layers.
-        if path.hasPrefix("flow_lm.flow_net."),
-           path.range(of: #"\.(mlp|adaLN_modulation)\.[0-9]+$"#, options: .regularExpression) != nil {
-            return (path, layer)
+        let data = try Data(contentsOf: languageRoot.appendingPathComponent(file.path), options: .mappedIfSafe)
+        guard data.count == file.bytes,
+              SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined() == file.sha256 else {
+            throw failure("Local speech model is incomplete or corrupt. Download it again in Settings.")
         }
-        return nil
     }
-    try model.update(modules: ModuleChildren.unflattened(replacements), verify: .none)
-    try model.update(parameters: ModuleParameters.unflattened(weights), verify: .all)
-    eval(model)
-    return model
+}
+
+private func emitSamples(_ samples: [Float]) throws -> Bool {
+    guard samples.allSatisfy({ $0.isFinite }) else {
+        throw failure("Local model returned invalid audio.")
+    }
+    var audible = false
+    for offset in stride(from: 0, to: samples.count, by: 16_384) {
+        var data = Data(capacity: 32_768)
+        for sample in samples[offset..<min(offset + 16_384, samples.count)] {
+            var pcm = Int16((max(-1, min(1, sample)) * 32_767).rounded()).littleEndian
+            audible = audible || abs(Int(pcm)) > 3
+            withUnsafeBytes(of: &pcm) { data.append(contentsOf: $0) }
+        }
+        try emit(Reply(pcm: data.base64EncodedString()))
+    }
+    return audible
 }
 
 private func run() async throws {
-    guard CommandLine.arguments.count == 2 else {
-        throw NSError(domain: "CakeSpeech", code: 2, userInfo: [
-            NSLocalizedDescriptionKey: "Expected a local model directory.",
-        ])
+    // Upstream informational logs can contain source text. Never mirror or retain them.
+    AppLogger.minimumLevel = .error
+    AppLogger.mirrorsToConsole = false
+    guard CommandLine.arguments.count == 3 else {
+        throw failure("Expected a local model directory and bundled manifest.")
     }
     let directory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
-    let model = try await loadModel(directory)
-    guard model.sampleRate == 24_000 else {
-        throw NSError(domain: "CakeSpeech", code: 3, userInfo: [
-            NSLocalizedDescriptionKey: "Expected 24 kHz speech output.",
-        ])
-    }
+    try validateInstallation(directory, manifestURL: URL(fileURLWithPath: CommandLine.arguments[2]))
+    // Keep Mimi on CPU as upstream recommends; avoid ANE graph failures on some
+    // supported Macs without implementing a hidden retry or provider fallback.
+    let manager = PocketTtsManager(directory: directory, precision: .fp16, computeUnits: .avoidNeuralEngine)
+    try await manager.initialize()
     try emit(Reply(ready: true))
     while let line = readLine() {
         do {
             let request = try JSONDecoder().decode(Request.self, from: Data(line.utf8))
-            guard !request.text.isEmpty, request.text.count <= 2_000,
-                  request.voice == "alba", request.speed.isFinite,
-                  (1...2).contains(request.speed) else {
-                throw NSError(domain: "CakeSpeech", code: 4, userInfo: [
-                    NSLocalizedDescriptionKey: "Invalid speech request.",
-                ])
+            guard !request.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  request.text.utf16.count <= 2_000, request.voice == "alba",
+                  request.speed.isFinite, (1...2).contains(request.speed) else {
+                throw failure("Invalid speech request.")
             }
-            let audio = try await model.generate(
-                text: request.text,
-                voice: request.voice,
-                generationParameters: model.defaultGenerationParameters
-            )
-            let samples = try SpeechTempo.adjust(audio.asArray(Float.self), speed: request.speed)
-            guard !samples.isEmpty, samples.allSatisfy({ $0.isFinite }) else {
-                throw NSError(domain: "CakeSpeech", code: 5, userInfo: [
-                    NSLocalizedDescriptionKey: "Local model returned invalid audio.",
-                ])
-            }
-            // Upstream currently generates an entire phrase before returning it.
-            // Emit bounded PCM frames compatible with Cake's existing playback path.
-            for offset in stride(from: 0, to: samples.count, by: 16_384) {
-                var data = Data(capacity: 32_768)
-                for sample in samples[offset..<min(offset + 16_384, samples.count)] {
-                    var pcm = Int16((max(-1, min(1, sample)) * 32_767).rounded()).littleEndian
-                    withUnsafeBytes(of: &pcm) { data.append(contentsOf: $0) }
+            let tempo = try SpeechTempo(speed: request.speed)
+            let session = try await manager.makeSession(voice: request.voice)
+            session.enqueue(request.text)
+            session.finish()
+            var audible = false
+            do {
+                for try await frame in session.frames {
+                    let output = try tempo.append(frame.samples)
+                    audible = try emitSamples(output) || audible
                 }
-                try emit(Reply(pcm: data.base64EncodedString()))
+                audible = try emitSamples(tempo.finish()) || audible
+                guard audible else { throw failure("Local model returned silent audio.") }
+            } catch {
+                await session.cancel()
+                throw error
             }
             try emit(Reply(done: true))
-            Memory.clearCache()
         } catch {
-            // Do not include text or raw model/provider diagnostics in protocol errors.
             try emit(Reply(error: "Local speech generation failed. Exit and re-enter voice mode to retry."))
         }
     }
@@ -141,6 +125,6 @@ private func run() async throws {
 do {
     try await run()
 } catch {
-    try? emit(Reply(error: "Could not load the local speech engine or Pocket TTS model."))
+    try? emit(Reply(error: "Could not load the local speech engine or Pocket TTS model. Download the Core ML model in Settings."))
     exit(1)
 }
