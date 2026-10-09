@@ -15,9 +15,10 @@ const pages: Array<{ page: SettingsPageId; title: string; introduction?: string 
   { page: "appearance", title: "Appearance" },
   { page: "editor", title: "VS Code" },
   {
-    page: "dictation",
-    title: "Dictation",
-    introduction: "Local speech to text for Cake's writing surfaces.",
+    page: "voice",
+    title: "Voice & Dictation",
+    introduction:
+      "Shared speech recognition, text processing, and voice output for dictation and conversation mode.",
   },
   {
     page: "labels",

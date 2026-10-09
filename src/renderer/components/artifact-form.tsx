@@ -1,6 +1,8 @@
 import { Option, Schema } from "effect";
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { CheckIcon } from "@/components/ui/icons";
 import { StepProgress } from "@/components/ui/step-progress";
 import { cn } from "@/lib/utils";
@@ -69,7 +71,8 @@ function answerText(field: ArtifactFormField, value: ArtifactFormValue | undefin
  *  progress bar can jump there early); Skip is available on every step and
  *  nothing is sent until the user submits. Once an answer
  *  has been submitted the form shows every question disabled with the
- *  submitted values so it cannot be submitted again. */
+ *  submitted values so it cannot be submitted again. Prose answers, including
+ *  Other, use the shared dictation field; numeric choices stay keyboard-only. */
 export function ArtifactForm({
   fields,
   requested,
@@ -91,7 +94,7 @@ export function ArtifactForm({
   const [step, setStep] = useState(0);
   const navigated = useRef(false);
   const stepContent = useRef<HTMLDivElement>(null);
-  const otherInputs = useRef(new Map<string, HTMLInputElement>());
+  const otherInputs = useRef(new Map<string, HTMLTextAreaElement>());
   const group = useId();
   const answers = answersRecord(submittedAnswer) ?? localAnswers;
   const submitted = answers !== null;
@@ -133,6 +136,19 @@ export function ArtifactForm({
     if (submitted) return;
     setLocalAnswers({ ...values });
     onSubmit?.(values);
+  };
+  const advanceFromText = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.nativeEvent.isComposing
+    )
+      return;
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
   };
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -230,7 +246,8 @@ export function ArtifactForm({
                 {field.label}
               </label>
               {field.type === "textarea" ? (
-                <textarea
+                <Textarea
+                  dictation
                   id={`${group}-${field.id}`}
                   className={cn(inputClassName, "min-h-28 resize-y py-2")}
                   placeholder={field.placeholder}
@@ -287,18 +304,21 @@ export function ArtifactForm({
                         otherInputs.current.get(field.id)?.focus();
                       }}
                     />
-                    <input
-                      type="text"
+                    <Textarea
+                      dictation
+                      rows={1}
                       aria-label={`${field.label} other option`}
                       placeholder="Other…"
-                      className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                      className="min-h-9 resize-none border-0 bg-transparent text-sm"
                       disabled={submitted}
                       value={isCustomRow(field) ? String(shown[field.id] ?? "") : ""}
                       onFocus={() => selectCustomRow(field)}
                       onChange={(event) => {
                         selectCustomRow(field);
-                        setValues((current) => ({ ...current, [field.id]: event.target.value }));
+                        const value = event.target.value;
+                        setValues((current) => ({ ...current, [field.id]: value }));
                       }}
+                      onKeyDown={advanceFromText}
                       ref={(element) => {
                         if (element) otherInputs.current.set(field.id, element);
                         else otherInputs.current.delete(field.id);
@@ -306,10 +326,22 @@ export function ArtifactForm({
                     />
                   </div>
                 </div>
-              ) : (
-                <input
+              ) : field.type === "text" ? (
+                <Textarea
+                  dictation
+                  rows={1}
                   id={`${group}-${field.id}`}
-                  type={field.type}
+                  className={cn(inputClassName, "min-h-9 resize-none px-2.5")}
+                  placeholder={field.placeholder}
+                  disabled={submitted}
+                  value={String(shown[field.id] ?? "")}
+                  onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
+                  onKeyDown={advanceFromText}
+                />
+              ) : (
+                <Input
+                  id={`${group}-${field.id}`}
+                  type="number"
                   className={cn(inputClassName, "h-9 px-2.5")}
                   placeholder={field.placeholder}
                   disabled={submitted}
@@ -317,8 +349,7 @@ export function ArtifactForm({
                   onChange={(event) =>
                     setValues({
                       ...values,
-                      [field.id]:
-                        field.type === "number" ? event.target.valueAsNumber : event.target.value,
+                      [field.id]: event.target.valueAsNumber,
                     })
                   }
                 />

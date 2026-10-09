@@ -5,7 +5,7 @@ import {
   type SavedDraft as SavedDraftValue,
 } from "../../domain/project-sessions/saved-draft-data";
 
-const WINDOW_STATE_DOCUMENT_VERSION = 12;
+const WINDOW_STATE_DOCUMENT_VERSION = 13;
 const WINDOW_STATE_DOCUMENT_NAME = "window-state.json";
 
 const JsonRecord = Schema.Record(Schema.String, Schema.Json);
@@ -918,6 +918,20 @@ const migrateVersion11WindowState = (snapshot: Schema.Schema.Type<typeof Schema.
   };
 };
 
+/** Replaces the persisted cleanup toggle with one shared raw/local/utility selection. */
+const migrateVersion12WindowState = (snapshot: Schema.Schema.Type<typeof Schema.Json>) => {
+  const root = decodeJsonRecord(snapshot);
+  const children = decodeJsonRecord(root?.children);
+  const dictation = decodeJsonRecord(children?.dictationStore);
+  const state = decodeJsonRecord(dictation?.state);
+  if (!root || !children || !dictation || !state) return snapshot;
+  const next = { ...state };
+  next.textProcessingMode =
+    state.textProcessingMode ?? (state.postProcessEnabled === false ? "raw" : "utility");
+  delete next.postProcessEnabled;
+  return { ...root, children: { ...children, dictationStore: { ...dictation, state: next } } };
+};
+
 const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(function* (
   legacy: LegacyWindowState,
 ) {
@@ -1157,14 +1171,16 @@ const migrateLegacyWindowState = Effect.fn("WindowStateStorage.migrateLegacy")(f
   ).pipe(
     Effect.mapError((cause) => new WindowStateMalformedDocumentError({ message: cause.message })),
   );
-  return migrateVersion11WindowState(
-    migrateVersion10WindowState(
-      migrateVersion9WindowState(
-        migrateVersion8WindowState(
-          migrateVersion7WindowState(
-            migrateVersion6WindowState(
-              migrateVersion5WindowState(
-                migrateVersion4WindowState(migrateVersion3WindowState(decoded)),
+  return migrateVersion12WindowState(
+    migrateVersion11WindowState(
+      migrateVersion10WindowState(
+        migrateVersion9WindowState(
+          migrateVersion8WindowState(
+            migrateVersion7WindowState(
+              migrateVersion6WindowState(
+                migrateVersion5WindowState(
+                  migrateVersion4WindowState(migrateVersion3WindowState(decoded)),
+                ),
               ),
             ),
           ),
@@ -1216,7 +1232,7 @@ export const makeWindowStateStorageLive = (userDataDirectory: string) =>
         if (envelope._tag === "Success") {
           if (envelope.success.version === WINDOW_STATE_DOCUMENT_VERSION)
             return envelope.success.data;
-          if (envelope.success.version >= 2 && envelope.success.version <= 11) {
+          if (envelope.success.version >= 2 && envelope.success.version <= 12) {
             let migrated = envelope.success.data;
             if (envelope.success.version <= 2) migrated = migrateVersion2WindowState(migrated);
             if (envelope.success.version <= 3) migrated = migrateVersion3WindowState(migrated);
@@ -1227,7 +1243,8 @@ export const makeWindowStateStorageLive = (userDataDirectory: string) =>
             if (envelope.success.version <= 8) migrated = migrateVersion8WindowState(migrated);
             if (envelope.success.version <= 9) migrated = migrateVersion9WindowState(migrated);
             if (envelope.success.version <= 10) migrated = migrateVersion10WindowState(migrated);
-            migrated = migrateVersion11WindowState(migrated);
+            if (envelope.success.version <= 11) migrated = migrateVersion11WindowState(migrated);
+            migrated = migrateVersion12WindowState(migrated);
             yield* saveUnlocked(migrated);
             return migrated;
           }

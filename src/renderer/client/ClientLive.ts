@@ -436,6 +436,24 @@ export function makeClient(
         ),
     },
     dictation: {
+      installPunctuation: (options) =>
+        run(
+          "dictation.installPunctuation",
+          withClient((client) => client.dictation.installPunctuation()),
+          options,
+        ),
+      removePunctuation: (options) =>
+        run(
+          "dictation.removePunctuation",
+          withClient((client) => client.dictation.removePunctuation()),
+          options,
+        ),
+      punctuate: (input, options) =>
+        run(
+          "dictation.punctuate",
+          withClient((client) => client.dictation.punctuate(input)),
+          options,
+        ),
       install: (options) =>
         run(
           "dictation.install",

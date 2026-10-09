@@ -141,7 +141,7 @@ describe("ArtifactHost", () => {
     act(() => root.render(<ArtifactHost record={form} requested onSubmit={submit} />));
     expect(container.querySelector(".fullscreen-trigger")).toBeNull();
     act(() => {
-      const input = container.querySelector("input") as HTMLInputElement;
+      const input = container.querySelector<HTMLTextAreaElement>("textarea")!;
       setInputValue(input, "yes");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
@@ -151,7 +151,7 @@ describe("ArtifactHost", () => {
       ),
     );
     expect(submit).toHaveBeenCalledWith({ answer: "yes" });
-    const submittedInput = container.querySelector("input") as HTMLInputElement;
+    const submittedInput = container.querySelector<HTMLTextAreaElement>("textarea")!;
     expect(submittedInput.disabled).toBe(true);
     expect(submittedInput.value).toBe("yes");
     expect(container.textContent).toContain("Submitted");
@@ -380,7 +380,7 @@ describe("ArtifactHost", () => {
     pressEnter();
     expect(submit).not.toHaveBeenCalled();
     expect(container.textContent).toContain("Question 2 of 3");
-    const name = container.querySelector<HTMLInputElement>('input[type="text"]')!;
+    const name = container.querySelector<HTMLTextAreaElement>("textarea")!;
     act(() => {
       setInputValue(name, "Ada");
       name.dispatchEvent(new Event("input", { bubbles: true }));
@@ -389,7 +389,7 @@ describe("ArtifactHost", () => {
     expect(container.querySelector<HTMLInputElement>('input[value="eu"]')!.checked).toBe(true);
     act(() => button("Next")!.click());
     act(() => button("Next")!.click());
-    expect(container.querySelector<HTMLInputElement>('input[type="text"]')!.value).toBe("");
+    expect(container.querySelector<HTMLTextAreaElement>("textarea")!.value).toBe("");
     expect(button("Review")).toBeDefined();
     act(() => button("Review")!.click());
 
@@ -407,7 +407,7 @@ describe("ArtifactHost", () => {
     expect(submit).toHaveBeenCalledWith({ region: "eu", name: "Ada" });
     // The settled form shows every question for the record.
     expect(container.textContent).toContain("Submitted");
-    expect(container.querySelectorAll('input[type="text"]').length).toBeGreaterThanOrEqual(2);
+    expect(container.querySelectorAll("textarea").length).toBeGreaterThanOrEqual(2);
     expect(button("Next")).toBeUndefined();
   });
 
@@ -438,7 +438,7 @@ describe("ArtifactHost", () => {
       interaction: { mode: "request", responseSchema: request.responseSchema },
     });
     act(() => root.render(<ArtifactHost record={artifact} requested onSubmit={submit} />));
-    const input = container.querySelector<HTMLInputElement>('input[type="text"]')!;
+    const input = container.querySelector<HTMLTextAreaElement>("textarea")!;
     act(() => {
       setInputValue(input, "only this");
       input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -496,8 +496,8 @@ describe("ArtifactHost", () => {
       ),
     );
     const radios = [...container.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
-    const customInput = container.querySelector<HTMLInputElement>(
-      'input[aria-label="Choice other option"]',
+    const customInput = container.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Choice other option"]',
     )!;
     expect(radios).toHaveLength(2);
     expect(radios[0]!.checked).toBe(true);
@@ -558,8 +558,8 @@ describe("ArtifactHost", () => {
     });
 
     act(() => root.render(<ArtifactHost record={artifact} onSubmit={submit} />));
-    const customInput = container.querySelector<HTMLInputElement>(
-      'input[aria-label="Choice other option"]',
+    const customInput = container.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Choice other option"]',
     )!;
     const otherRadio = container.querySelector<HTMLInputElement>(
       'input[type="radio"][aria-label="Other"]',
@@ -822,6 +822,10 @@ describe("ArtifactHost", () => {
   });
 });
 
-function setInputValue(input: HTMLInputElement, value: string) {
-  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+function setInputValue(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  const prototype =
+    input instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(input, value);
 }

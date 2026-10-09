@@ -10,7 +10,10 @@ import type { Client } from "../../../src/renderer/client/Client";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
-function renderPrompts(service: Client["workspaces"]["setCakePrompts"]) {
+function renderPrompts(
+  service: Client["workspaces"]["setCakePrompts"],
+  page: "prompts" | "voice" = "prompts",
+) {
   let revision = 0;
   const setCakePrompts = vi.fn<Client["workspaces"]["setCakePrompts"]>(async (prompts, options) => {
     const state = await service(prompts, options);
@@ -20,7 +23,7 @@ function renderPrompts(service: Client["workspaces"]["setCakePrompts"]) {
   });
   const fixture = createRendererStoreFixture({ client: { workspaces: { setCakePrompts } } });
   fixture.root.settingsStore.applyApplicationState(revision, defaultApplicationState());
-  fixture.root.settingsStore.selectPage("prompts");
+  fixture.root.settingsStore.selectPage(page);
   const view = render(<SettingsPage settings={fixture.root.settingsStore} />);
   return {
     user: userEvent.setup(),
@@ -35,6 +38,31 @@ function renderPrompts(service: Client["workspaces"]["setCakePrompts"]) {
 afterEach(cleanup);
 
 describe("Cake prompt settings workflow", () => {
+  it("edits and resets the shared utility cleanup prompt in combined Voice & Dictation settings", async () => {
+    using fixture = renderPrompts(
+      async (prompts) => ({ ...defaultApplicationState(), cakePrompts: prompts }),
+      "voice",
+    );
+    expect(screen.getByRole("heading", { name: "Voice & Dictation" })).toBeDefined();
+    expect(screen.getByRole("region", { name: "Voice input" })).toBeDefined();
+    expect(screen.getByRole("region", { name: "Speech output" })).toBeDefined();
+    const prompt = screen.getByRole("textbox", { name: "Utility cleanup prompt" });
+    expect(prompt.getAttribute("placeholder")).toBe(defaultCakePrompts().dictationCleanup);
+    await fixture.user.type(prompt, "Condense the rambling, preserving every requirement.");
+    await fixture.user.tab();
+    await waitFor(() =>
+      expect(fixture.setCakePrompts).toHaveBeenCalledWith(
+        { dictationCleanup: "Condense the rambling, preserving every requirement." },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
+    );
+    await fixture.user.click(screen.getByRole("button", { name: "Reset" }));
+    await waitFor(() =>
+      expect(fixture.setCakePrompts).toHaveBeenLastCalledWith({}, expect.any(Object)),
+    );
+    expect(prompt).toHaveProperty("value", "");
+    expect(prompt.getAttribute("placeholder")).toBe(defaultCakePrompts().dictationCleanup);
+  });
   it("saves on blur, displays the authoritative prompt, and resets to the default", async () => {
     const draft = "Commit the worktree now.";
     const authoritative = "Commit the worktree now. Include a summary.";

@@ -92,6 +92,40 @@ const CakeChatComposerProjection = Schema.Struct({
 });
 
 describe("WindowStateStorage", () => {
+  for (const enabled of [true, false]) {
+    it.effect(
+      `migrates the version-12 cleanup preference to ${enabled ? "utility" : "raw"}`,
+      () => {
+        const snapshot = {
+          state: {},
+          children: {
+            dictationStore: {
+              state: { enabled: true, deviceId: "microphone", postProcessEnabled: enabled },
+              children: {},
+            },
+          },
+        };
+        return withStorage(JSON.stringify({ version: 12, data: snapshot }), (storage) =>
+          Effect.gen(function* () {
+            const loaded = yield* storage.load();
+            assert.deepStrictEqual(loaded, {
+              state: {},
+              children: {
+                dictationStore: {
+                  state: {
+                    enabled: true,
+                    deviceId: "microphone",
+                    textProcessingMode: enabled ? "utility" : "raw",
+                  },
+                  children: {},
+                },
+              },
+            });
+          }),
+        );
+      },
+    );
+  }
   it.effect("migrates Cake Chat composer input into the shared composer Store", () => {
     const attachment = {
       kind: "image",

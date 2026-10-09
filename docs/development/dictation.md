@@ -5,13 +5,14 @@ It does not inject keystrokes into VS Code, terminals, browser pages, widgets, o
 
 ## Using it
 
-1. Open **Settings → Dictation** on Apple Silicon running **macOS 14 or later**.
+1. Open **Settings → Voice & Dictation** on Apple Silicon running **macOS 14 or later**.
 2. Choose **Download Parakeet model**, or supply an absolute path to an existing compatible
    **Parakeet TDT v2 Core ML** folder. It must contain `Preprocessor.mlmodelc`, `Encoder.mlmodelc`,
    `Decoder.mlmodelc`, `JointDecision.mlmodelc`, and `parakeet_vocab.json`.
    MLX, ONNX, Whisper, and NeMo weights are not interchangeable with these compiled bundles.
 3. Enable **Dictation mode**. Cake loads and warms the model, reusing it while available and re-preparing after a voice-mode handoff.
-4. Focus a Cake chat composer, annotation comment, or another opted-in writing field.
+4. Focus a Cake chat composer, annotation comment, interview prose answer (including a select's
+   **Other** response), or another opted-in writing field.
    Wait for the loading spinner inside the speech control to become waveform bars before
    speaking. The spinner means capture is not ready; no preparation header is shown.
    Core ML's first load can take longer while macOS prepares the model for the device.
@@ -27,7 +28,7 @@ Installed Cake users need **no Python, uv, Swift, Xcode, or other developer tool
 its compiled speech helper, FluidAudio, and a small local Silero speech detector; Core ML is part of macOS.
 
 There are no ready sounds. Dictation mode defaults off until the user enables it. Enabled mode
-and microphone choice, along with the default-on text post-processing preference, are window-owned
+and microphone choice, along with the shared text-processing mode (utility cleanup by default), are window-owned
 preferences persisted through window-state snapshots and
 restored on launch. Only an explicit preference toggle changes enabled mode; voice-mode handoffs,
 model maintenance, focus changes, and errors pause capture without rewriting it. Restoring enabled
@@ -60,8 +61,8 @@ Managed model data lives in that directory's `model/` subdirectory. Downloads ar
 
 Nothing downloads on app startup. Installation requires explicit user action, reports progress,
 and supports cancellation/retry. Files are staged separately; incomplete or corrupt downloads
-never replace the active model. Removal clears Cake's private model data and selection, not
-external model folders or the bundled engine. A missing helper is an application repair error,
+never replace the active model. Recognition removal clears only Cake's private Parakeet data and selection, not
+external model folders, the separately installed punctuation model, or the bundled engine. A missing helper is an application repair error,
 not a reason to install a runtime on the user's computer.
 
 Model: [NVIDIA Parakeet TDT 0.6B v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2),
@@ -77,7 +78,7 @@ MIT licensed. Its five compiled files total **1,063,425 bytes** (about 1 MiB). T
 byte counts and SHA-256 hashes in `native/dictation/vad-manifest.json`. The model and Silero
 license ship beside the helper; existing user-selected Parakeet folders need no changes.
 
-Speech detection and recognition need no network access after installation. Optional utility-model
+Speech detection, recognition, and optional local punctuation need no network access after installation. Optional utility-model
 post-processing can use the network as described below. The helper uses `AsrModels.loadLocal`, never the
 library's download APIs. PCM and recognition buffers live only in memory; Cake does not record
 audio files or log transcripts. FluidAudio's debug/info logging and console mirroring are disabled.
@@ -103,18 +104,32 @@ installation; Dictation displays its platform requirement. Distribution packagin
 these native files outside an ASAR archive and sign/notarize the helper along with the app.
 No user-side compilation, package manager, or executable download is involved.
 
+Optional local punctuation uses the bundled `onnxruntime-node` CPU runtime and JavaScript
+Unigram tokenizer. Snapshot launches retain `node_modules`; distribution packaging must likewise
+carry ONNX Runtime's native bindings/libraries outside ASAR. The native runtime is imported lazily
+only when local punctuation is first requested. Python is used solely for developer model evaluation
+and the reproducible `scripts/export-punctuation-tokenizer.py` export, never in installed Cake.
+
 ## Ownership and concurrency
 
-| State/resource                                    | Authority and owner                                   | Lifetime / persistence                          | Concurrency                                        |
-| ------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------- |
-| Model installation and selected path              | Main `Dictation` Service                              | Path persisted in private settings              | Mutations serialized with inference                |
-| Warm native worker and Core ML models             | Main `Dictation` Service scope                        | Process-local; killed on disable/main teardown  | One inference request at a time                    |
-| Speech classifications and phrase gate            | Native helper; independent capture/recognition states | Ephemeral per capture/insertion; no persistence | Detection and transcription share the Service lock |
-| Installation/engine projection                    | `DictationStore`, observed through validated RPC      | Window-local projection of main                 | Ordered `SubscriptionRef` snapshots                |
-| Enabled mode, microphone, text cleanup preference | Window `DictationStore`                               | Persisted window-state preferences              | Explicit user edits; last local edit wins          |
-| Mute, capture phase, focus and audio queue        | Window `DictationStore`                               | Ephemeral; no audio persistence                 | Focus takes latest; mute/maintenance stop capture  |
-| Draft text                                        | Existing composer/annotation owner                    | Existing draft persistence                      | Dictation updates only its current insertion span  |
-| Selection and status geometry                     | Shared Textarea DOM adapter and `DictationIndicator`  | Mounted field                                   | Native input events, no synthetic OS typing        |
+| State/resource                                 | Authority and owner                                   | Lifetime / persistence                          | Concurrency                                        |
+| ---------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------- |
+| Model installation and selected path           | Main `Dictation` Service                              | Path persisted in private settings              | Mutations serialized with inference                |
+| Warm native worker and Core ML models          | Main `Dictation` Service scope                        | Process-local; killed on disable/main teardown  | One inference request at a time                    |
+| Speech classifications and phrase gate         | Native helper; independent capture/recognition states | Ephemeral per capture/insertion; no persistence | Detection and transcription share the Service lock |
+| Installation/engine projection                 | `DictationStore`, observed through validated RPC      | Window-local projection of main                 | Ordered `SubscriptionRef` snapshots                |
+| Enabled mode, microphone, text-processing mode | Window `DictationStore`                               | Persisted window-state preferences              | Explicit user edits; last local edit wins          |
+| Mute, capture phase, focus and audio queue     | Window `DictationStore`                               | Ephemeral; no audio persistence                 | Focus takes latest; mute/maintenance stop capture  |
+| Draft text                                     | Existing composer/annotation owner                    | Existing draft persistence                      | Dictation updates only its current insertion span  |
+| Selection and status geometry                  | Shared Textarea DOM adapter and `DictationIndicator`  | Mounted field                                   | Native input events, no synthetic OS typing        |
+
+The main Service also owns optional punctuation installation, its warm CPU inference session,
+and one ephemeral insertion context keyed by utterance ID. It retains settled labels and reruns
+approximately the latest 96 words with 16 earlier words as context; an older ASR word correction
+reopens the affected suffix. This is not a persisted transcript or a multi-session cache. A separate
+semaphore serializes punctuation download/removal/inference without blocking recognition.
+The editable cleanup prompt is application-owned, persisted through `cakePrompts`, and projected
+by `CakePromptSettingsStore`; neither dictated passages nor local labels are persisted there.
 
 The renderer captures mono 16 kHz float32 PCM through an AudioWorklet and batches about 800 ms.
 Main exchanges validated NDJSON with the helper over private stdio. The helper uses FluidAudio's
@@ -138,32 +153,55 @@ advance the recognizer's detector. `speech-capture.ts` serializes detection, buf
 seconds, flushes partial frames on finish, and drops stale results on cancellation. The voice Store
 still owns its three-second auto-send policy and transcript-confirmed interruption policy.
 
-## Light text post-processing
+## Text processing: three exclusive modes
 
-**Post-process with utility model**, in Settings → Dictation, defaults on and is a persisted
-window preference shared by dictation and voice mode. With no explicitly configured utility model,
-text stays raw; Cake never substitutes the conversation model. Turn it off for fully local input.
-When on, the current dictated insertion is sent to the configured utility model's provider; this
-can incur costs and follows that provider's retention policy. Typed text, project files, previous
-messages, and microphone audio are not sent for cleanup.
+**Text processing**, in Settings → Voice & Dictation, is a persisted window preference shared
+by dictation and voice mode. The choices are mutually exclusive:
 
-The dedicated prompt requests punctuation/capitalization/spacing fixes, filler and accidental
-stutter removal, and clear nearby spoken self-corrections. It preserves content, language, tone,
-uncertainty, negations, intentional repetitions, technical identifiers, paths, and code. Ambiguous
-retractions and quoted correction phrases should be retained. This is not the broader **Reword**
-action and does not resolve technical terminology or consult workspace files.
+- **Raw** leaves Parakeet's words, capitalization and punctuation unchanged.
+- **Local punctuation** revises punctuation and initial-letter case with an offline English CPU
+  classifier. It neither removes filler words nor summarizes. Choose **Download punctuation model**
+  explicitly before selecting this mode. The pinned published FP32 model is **209,532,928 bytes**
+  (about 210 MB), larger than the original ~100 MB target because the ~53 MB quantized candidate
+  changed question boundaries in evaluation. Downloads show progress, support cancellation/removal,
+  verify byte count and SHA-256, and leave installed weights intact on incomplete transfers.
+  Weights live in `<userData>/dictation/punctuation/model/` with attribution and Apache-2.0 license.
+- **Utility cleanup** (default) uses only the explicitly configured utility model. Without one,
+  recognition remains raw; Cake never substitutes the conversation model. This sends only the
+  current dictated insertion to that provider and can incur costs and its retention policy.
+  Typed text, project files, previous messages, and microphone audio are not sent for cleanup.
+
+The editable **Utility cleanup prompt** and **Reset** live on the same page and apply to both
+input workflows. Its default requests punctuation/capitalization/spacing fixes, filler and accidental
+stutter removal, and nearby spoken self-corrections while preserving meaning, uncertainty, negations,
+technical identifiers, paths and code. Custom guidance may instead condense rambling. The fixed
+JSON output contract and transcript-as-data guard remain outside that editable guidance. This is
+not the broader **Reword** action and does not consult workspace files.
+
+The English model is
+[`1-800-BAD-CODE/punctuation_fullstop_truecase_english`](https://huggingface.co/1-800-BAD-CODE/punctuation_fullstop_truecase_english),
+revision `b26fd1c40e88678859048898218ea4edcc24c84a`, Apache-2.0. Cake does not alter its weights.
+Its SentencePiece vocabulary is exported into a bundled Unigram tokenizer, with source hash,
+transformation notice and license. Predictions are applied to original source words, not decoded
+vocabulary pieces. Code spans, identifiers, URLs, paths, decimals and other symbol-bearing text
+are protected from normalization. Bounded overlapping windows of at most 254 subtokens plus
+special tokens limit each inference pass. A tentative terminal mark is withheld during live speech;
+recent words stay revisable across audio phrase boundaries, and finalization supplies the last mark.
+This is a news-trained English model, not a perfect conversational grammar or technical-term model.
 
 Raw recognition appears immediately at the existing progressive cadence, without waiting for
-utility work. Only the current insertion awaiting cleanup is muted gray; typed prefixes/suffixes
-stay normal. Cleanup completion (including raw-text fallback) restores normal text styling.
+text processing. Utility mode marks the current insertion awaiting cleanup gray; local mode keeps
+its last four words provisional after inference. Typed prefixes/suffixes stay normal. Cleanup completion (including raw-text fallback) restores normal text styling.
 Opting out, manual edits, blur and mute seal the span and clear the temporary display treatment.
-Both modes use the shared native `Textarea` with an aria-hidden, pointer-transparent text mirror;
+Both processed modes use the shared native `Textarea` with an aria-hidden, pointer-transparent text mirror;
 editing, selection, accessibility and focus still belong to the real input. The mirror matches
 its measured padding, first-line indent, wrapping and scroll position. Highlight metadata is
 capture/insertion-local and not persisted.
 
-Dictation cleans the full current insertion after three seconds of detected non-speech following
-speech, or on Enter. Ongoing speech and shorter pauses never trigger utility work, and a sustained
+Local mode processes each progressive recognition result and keeps its terminal mark provisional
+through thinking pauses; dictation finalizes on Enter. Utility mode cleans the full insertion
+after three seconds of detected non-speech or on Enter. Voice mode's deliberate auto-send finalizes
+either processed mode before submission. Ongoing speech and shorter pauses never trigger utility work, and a sustained
 pause triggers only once. There is at most one cleanup in flight per insertion. Enter waits for
 pending cleanup and reuses the result when the finalized raw text matches its input; only changed
 text causes another call. It does not reprocess its own cleaned output. Voice mode cleans the final utterance before auto-send; raw recognition still
@@ -171,12 +209,13 @@ controls interruption acceptance. Empty cleanup may retract an entire insertion 
 Corrections only affect the current insertion/utterance, never earlier submitted messages or
 manually edited text. New audio boundaries do not force punctuation boundaries in cleanup.
 
-Each backend call is bounded to 32,000 input/output characters and ten seconds, with no retry,
+Each utility backend call is bounded to 32,000 input/output characters and ten seconds, with no retry,
 tools, or persisted utility transcript. Output is a validated JSON text field; provider failures,
 invalid output, and disconnected transport keep raw speech. Focus changes, typing/cursor movement,
 mute and disposal invalidate dictation cleanup. Voice cleanup verifies capture generation and
 manual draft edits before applying. Cleanup never gates microphone readiness or changes the
-recognizer's punctuation output. Model instructions are not a guarantee of semantic fidelity;
+native recognizer's output. Local inference failure likewise retains raw speech and exposes an
+error without invoking utility cleanup or preventing submission. Model instructions are not a guarantee of semantic fidelity;
 real hesitant-speech quality still needs user evaluation.
 
 The helper runs a warm inference pass before advertising readiness. Latency depends on hardware
@@ -188,8 +227,11 @@ Request validation rejects malformed, excessive, nonfinite, or out-of-range PCM.
 startup and inference timeouts and owns worker cancellation and teardown.
 
 `Textarea` has an explicit `dictation` prop. `ComposerInput` opts in, so all authoritative `Chat`
-consumers share the same behavior. Additional prose fields can opt in without another composer
-or Store. Code/configuration editors, path/search fields, and embedded surfaces stay excluded.
+consumers share the same behavior. `ArtifactForm` uses it for text, multiline, and select **Other**
+answers in interviews and form artifacts. Enter in a single-line answer drains final recognition
+before advancing or submitting; multiline answers retain newline behavior. Numeric fields, radio
+choices, and checkboxes do not capture speech. Additional prose fields can opt in without another
+composer or Store. Code/configuration editors, path/search fields, and embedded surfaces stay excluded.
 
 ## Verification
 
@@ -201,6 +243,13 @@ or Store. Code/configuration editors, path/search fields, and embedded surfaces 
   downloads; pinning/checksums, atomic publication, cancellation/retry, local model validation.
 - `tests/app/domain/dictation-post-process.test.ts`: real bounded PiModels policy with a fake provider;
   configured-model selection, prompt scope, invalid/empty output, timeout and cancellation.
+- `tests/app/services/punctuation-model-download.test.ts`: pinned data download, progress,
+  checksum/size rejection, staging cleanup, cancellation, retry, attribution and license.
+- `tests/app/services/local-punctuation.test.ts`: original-word/symbol preservation, paused-question
+  revision, provisional/final labels, bounded rolling/overlapping windows, context capitalization,
+  correction reopening, insertion isolation and cancellation.
+- `tests/app/renderer/cake-prompt-settings-workflow.test.tsx`: real application persistence,
+  shared processing selector, editable cleanup prompt and reset.
 - `tests/app/renderer/dictation-workflow.test.tsx`: startup gates, persisted preference restoration,
   maintenance pauses, progressive results, focus boundaries, manual edits, final-audio submission,
   pause-triggered cleanup, completed/in-flight result reuse on Enter, changed-text reprocessing,
@@ -208,7 +257,15 @@ or Store. Code/configuration editors, path/search fields, and embedded surfaces 
 - `tests/electron/dictation.smoke.spec.ts`: real Service/RPC/Store, fake external native process,
   Chromium's fake microphone, real AudioWorklet, controlled-input typing, settings, chat, and
   annotation Enter submission, and preference retention across app restarts. No model download or
-  physical microphone required.
+  physical microphone required. Set `CAKE_PUNCTUATION_TEST_ROOT` to an existing punctuation
+  installation root to also verify real local CPU inference, typed-prefix preservation, gray tail,
+  question continuation and final Enter in the native annotation dialog.
+- `tests/integration/local-punctuation.test.ts`: opt-in production tokenizer/runtime/weights,
+  paused-question revision and technical-text preservation; no downloads:
+  `CAKE_PUNCTUATION_TEST_ROOT=/absolute/punctuation/root pnpm test:integration tests/integration/local-punctuation.test.ts`.
+- `tests/electron/interview-open.smoke.spec.ts`: real `interview.open` tool request and response,
+  shared form fields, fake external recognizer, typed and dictated custom/text/multiline answers,
+  Enter final-audio draining, focus handoffs, and keyboard-only numeric fields.
 - `tests/integration/dictation-native.test.ts`: opt-in **real compiled helper and Core ML model**,
   using macOS-synthesized speech, quiet speech, short commands, progressive recognition, Enter-style
   final flushing, new-focus isolation, noise-only input, and speech/noisy-pause/resumed-speech stability. Requires the built app and an existing compatible model folder:

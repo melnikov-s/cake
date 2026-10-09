@@ -3,6 +3,8 @@ import type {
   DictationError,
   DictationState,
   SpeechDetectionAudio,
+  PunctuationInput,
+  PunctuationResult,
 } from "../../domain/dictation/dictation-data";
 import type {
   SpeechOutputSettings,
@@ -266,6 +268,11 @@ export interface CakeIpcClientService {
   readonly dictation: {
     readonly observeState: () => Stream.Stream<DictationState, TransportError>;
     readonly install: () => Effect.Effect<void, DictationError | TransportError>;
+    readonly installPunctuation: () => Effect.Effect<void, DictationError | TransportError>;
+    readonly removePunctuation: () => Effect.Effect<void, DictationError | TransportError>;
+    readonly punctuate: (
+      input: PunctuationInput,
+    ) => Effect.Effect<PunctuationResult, DictationError | TransportError>;
     readonly setModelPath: (path: string) => Effect.Effect<void, DictationError | TransportError>;
     readonly remove: () => Effect.Effect<void, DictationError | TransportError>;
     readonly prepare: () => Effect.Effect<void, DictationError | TransportError>;
@@ -1020,6 +1027,15 @@ export const CakeIpcClientLive = Layer.effect(
       },
       dictation: {
         observeState: () => client("dictation.observeState", undefined),
+        installPunctuation: Effect.fn("CakeIpcClient.dictation.installPunctuation")(() =>
+          client("dictation.installPunctuation", undefined),
+        ),
+        removePunctuation: Effect.fn("CakeIpcClient.dictation.removePunctuation")(() =>
+          client("dictation.removePunctuation", undefined),
+        ),
+        punctuate: Effect.fn("CakeIpcClient.dictation.punctuate")((input: PunctuationInput) =>
+          client("dictation.punctuate", input),
+        ),
         install: Effect.fn("CakeIpcClient.dictation.install")(() =>
           client("dictation.install", undefined),
         ),

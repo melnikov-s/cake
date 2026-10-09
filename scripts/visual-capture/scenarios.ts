@@ -371,15 +371,15 @@ const conversationCountdownScenario: VisualCaptureScenario = {
     await installSpeechHttpFixture(application);
     // Smoke windows start hidden. Presentation captures must never show or focus them.
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
-    await page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await page.getByLabel("ElevenLabs API key").fill("visual-fixture-only");
     await page.getByRole("button", { name: "Save key", exact: true }).click();
     await expect(page.getByLabel("ElevenLabs API key")).toHaveValue("");
     await page.getByRole("button", { name: "Refresh voices" }).click();
     await expect(
-      page.getByLabel("Voice").locator("option", { hasText: "Fixture voice" }),
+      page.getByLabel("Voice", { exact: true }).locator("option", { hasText: "Fixture voice" }),
     ).toHaveCount(1);
-    await page.getByLabel("Voice").selectOption("fixture-voice");
+    await page.getByLabel("Voice", { exact: true }).selectOption("fixture-voice");
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await page
       .locator('[data-navigation-item][data-session-id="visual-conversation-entry"]')
@@ -455,7 +455,7 @@ const speechOutputSettingsScenario: VisualCaptureScenario = {
     await conversationEntryScenario.prepare(page, "default", application);
     if (!application) throw new Error("Speech settings capture requires Electron");
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
-    await page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await expect(page.locator("#speech-output-title")).toBeVisible();
     const key = page.getByLabel("ElevenLabs API key", { exact: true });
     await expect(key).toBeVisible();
@@ -1256,7 +1256,7 @@ const dictationInputScenario: VisualCaptureScenario = {
     // Startup can finish opening the seeded session after its transcript is visible.
     // Retry navigation if that one-time completion returns us to chat.
     await expect(async () => {
-      const section = page.getByRole("button", { name: /Dictation Local speech to text/ });
+      const section = page.getByRole("button", { name: /Voice & Dictation/ });
       if (!(await section.isVisible()))
         await page.getByRole("button", { name: "Open settings", exact: true }).click();
       await section.click({ timeout: 1000 });
@@ -1322,15 +1322,16 @@ const dictationInputScenario: VisualCaptureScenario = {
 };
 
 const dictationSettingsScenario: VisualCaptureScenario = {
-  name: "dictation-settings",
-  description: "Local Parakeet installation and focus-driven dictation settings",
+  name: "voice-dictation-settings",
+  description:
+    "Shared voice/dictation recognition, processing mode and editable utility prompt settings",
   states: ["default"],
   seed: assistantMarkdownCode.seed,
   async prepare(page) {
     await assistantMarkdownCode.prepare(page, "default");
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
-    await page.getByRole("button", { name: /Dictation Local speech to text/ }).click();
-    await page.getByRole("heading", { name: "Dictation", exact: true }).waitFor();
+    await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    await page.getByRole("heading", { name: "Voice & Dictation", exact: true }).waitFor();
     await page.waitForFunction(() => document.fonts.status === "loaded");
   },
   region: cakePromptsSettingsScenario.region,

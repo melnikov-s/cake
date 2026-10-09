@@ -10,6 +10,7 @@ export const installedDictationState: DictationState = {
   modelPath: "/fixture/model",
   managedModelPath: "/fixture/model",
   engineAvailable: true,
+  punctuation: { status: "missing", downloadedBytes: 0, totalBytes: 0 },
   downloadedBytes: 0,
   totalBytes: 0,
 };
@@ -22,6 +23,9 @@ export function createDictationStore(
       postProcess: async (text) => text,
       client: {
         install: async () => {},
+        installPunctuation: async () => {},
+        removePunctuation: async () => {},
+        punctuate: async ({ text }) => ({ text, pendingStart: text.length }),
         setModelPath: async () => {},
         remove: async () => {},
         prepare: async () => {},

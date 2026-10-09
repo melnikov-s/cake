@@ -166,10 +166,27 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     label: "Application",
     items: [
       {
-        page: "speech",
-        label: "Speech output",
-        description: "Conversation voice",
+        page: "voice",
+        label: "Voice & Dictation",
+        description: "Speech input, cleanup, and output",
+        introduction:
+          "Shared speech recognition, text processing, and voice output for dictation and conversation mode.",
         settings: [
+          {
+            label: "Dictation mode and microphone",
+            targetId: "dictation-title",
+            keywords: "voice microphone speech Parakeet download model recognition local",
+          },
+          {
+            label: "Text processing",
+            targetId: "setting-text-processing",
+            keywords: "punctuation capitalization raw utility cleanup fillers",
+          },
+          {
+            label: "Utility cleanup prompt",
+            targetId: "setting-prompt-dictation-cleanup",
+            keywords: "dictation voice speech instructions summarize rambling post processing",
+          },
           {
             label: "ElevenLabs key and voice",
             targetId: "speech-output-title",
@@ -188,19 +205,6 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
             targetId: "screen-capture-title",
             keywords:
               "screenshot crop rectangle arrow annotation global shortcut image attachment resize",
-          },
-        ],
-      },
-      {
-        page: "dictation",
-        label: "Dictation",
-        description: "Local speech to text",
-        introduction: "Local speech to text for Cake's writing surfaces.",
-        settings: [
-          {
-            label: "Dictation mode",
-            targetId: "dictation-title",
-            keywords: "voice microphone speech Parakeet download model",
           },
         ],
       },

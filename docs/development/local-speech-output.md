@@ -4,7 +4,7 @@ Pocket TTS is an optional speech-output provider for desktop conversation mode, 
 
 ## Installation and privacy
 
-Select **Pocket TTS (local)** in **Settings → Speech output**, then explicitly choose **Download Pocket TTS · 141 MB**. There is one model, no format picker or automatic download:
+Select **Pocket TTS (local)** in **Settings → Voice & Dictation**, under **Speech output**, then explicitly choose **Download Pocket TTS · 141 MB**. There is one model, no format picker or automatic download:
 
 - English Pocket TTS 8-bit weights: 140,230,187 bytes.
 - Config, tokenizer and Alba voice bring the pinned total to **140,989,471 bytes**.

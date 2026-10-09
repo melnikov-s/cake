@@ -915,19 +915,19 @@ export const SettingsPage = observer(function SettingsPage({
               providerGroups={providers.allModelsByProvider}
             />
           )}
-          {activePage === "dictation" &&
+          {activePage === "voice" &&
             (browserMode ? (
               <Callout variant="info">
-                Native dictation and microphone controls are available only in the Cake desktop app.
+                Native voice and dictation controls are available only in the Cake desktop app.
               </Callout>
             ) : (
-              <SettingsDictationSection store={settings.dictation} />
-            ))}
-          {activePage === "speech" &&
-            (browserMode ? (
-              <Callout>Native speech output is available only in the Cake desktop app.</Callout>
-            ) : (
-              <SettingsSpeechSection speech={settings.speech} />
+              <>
+                <SettingsDictationSection
+                  store={settings.dictation}
+                  prompts={settings.cakePrompts}
+                />
+                <SettingsSpeechSection speech={settings.speech} />
+              </>
             ))}
           {activePage === "appearance" && <SettingsAppearanceSection appearance={appearance} />}
           {activePage === "screen-capture" &&

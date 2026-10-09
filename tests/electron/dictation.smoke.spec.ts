@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -26,6 +26,16 @@ test("Cake dictation shows readiness, types into chat and annotations, and seals
     mkdir(join(cakeHome, "state"), { recursive: true }),
     mkdir(model, { recursive: true }),
   ]);
+  // Optional real local CPU model, supplied explicitly; no test downloads weights.
+  const localRoot = process.env.CAKE_PUNCTUATION_TEST_ROOT;
+  if (localRoot) {
+    const punctuationModel = join(dictation, "punctuation", "model");
+    await mkdir(punctuationModel, { recursive: true });
+    await cp(
+      join(localRoot, "model", "punct_cap_seg_en.onnx"),
+      join(punctuationModel, "punct_cap_seg_en.onnx"),
+    );
+  }
   const control = join(model, "control.json");
   const configure = (value: {
     ready: boolean;
@@ -146,9 +156,9 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
       page.getByText("Inspect this implementation before changing it.", { exact: true }),
     ).toBeVisible({ timeout: 20_000 });
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
-    await page.getByRole("button", { name: /Dictation Local speech to text/ }).click();
-    const postProcess = page.getByRole("switch", { name: "Post-process with utility model" });
-    await expect(postProcess).toHaveAttribute("aria-checked", "true");
+    await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    const postProcess = page.getByLabel("Text processing", { exact: true });
+    await expect(postProcess).toHaveValue("utility");
     await page.getByRole("switch", { name: "Dictation mode" }).click();
     const sample = page.getByLabel("Try dictation");
     await sample.focus();
@@ -233,8 +243,8 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
       )
       .toBeGreaterThan(4);
     await expect(sample).toBeFocused();
-    await postProcess.click();
-    await expect(postProcess).toHaveAttribute("aria-checked", "false");
+    await postProcess.selectOption("raw");
+    await expect(postProcess).toHaveValue("raw");
     await expect(page.locator('[data-slot="provisional-text"]')).toHaveCount(0);
     // A path/search input is not a dictation target.
     await page.getByLabel("Use an existing Core ML Parakeet model folder").focus();
@@ -372,6 +382,13 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await composer.fill("Typed first. Spoken next.");
     // Select transcript prose and exercise the real native context-menu path.
     await configure({ ready: true, hold: true });
+    if (localRoot) {
+      await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+      await page.getByLabel("Text processing", { exact: true }).selectOption("local");
+      await page.getByRole("button", { name: "Back to chat" }).click();
+      await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
+    }
     const prose = page.getByText("Inspect this implementation before changing it.", {
       exact: true,
     });
@@ -398,19 +415,28 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await prose.dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
     const annotation = page.getByLabel("Annotation comment");
     await expect(annotation).toBeFocused();
-    await configure({
-      ready: true,
-      text: "Please change",
-      finalText: "Please change this implementation carefully.",
-    });
-    await expect(annotation).toHaveValue("Please change");
+    const annotationText = localRoot
+      ? "Typed: Is this a question that I should be asking?"
+      : "Please change this implementation carefully.";
+    if (localRoot) {
+      await annotation.pressSequentially("Typed:");
+      await expect(annotation).toHaveValue("Typed:");
+      await expect(annotation).toBeFocused();
+      await configure({ ready: true, text: "Is this a question that I should?" });
+      await expect(annotation).toHaveValue("Typed: Is this a question that I should");
+      await configure({ ready: true, text: "Is this a question that I should? Be asking?" });
+      await expect(annotation).toHaveValue("Typed: Is this a question that I should be asking");
+      await expect(page.locator('[data-slot="provisional-text"]')).toHaveText("I should be asking");
+      await expect(annotation).toBeFocused();
+    } else {
+      await configure({ ready: true, text: "Please change", finalText: annotationText });
+      await expect(annotation).toHaveValue("Please change");
+    }
     await annotation.press("Enter");
     await expect(page.getByRole("dialog", { name: "Add annotation" })).toHaveCount(0);
     await configure({ ready: true, hold: true });
     await page.getByRole("button", { name: "View annotation 1", exact: true }).click();
-    await expect(
-      page.getByText("Please change this implementation carefully.", { exact: true }),
-    ).toBeVisible();
+    await expect(page.getByText(annotationText, { exact: true })).toBeVisible();
     const details = page.getByRole("dialog", { name: "Annotation details" });
     await details.getByRole("button", { name: "Edit annotation" }).click();
     const edit = page.getByLabel("Edit annotation comment");
@@ -438,7 +464,8 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await page.keyboard.press("Escape");
     await expect(details).toHaveCount(0);
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
-    await page.getByRole("button", { name: /Dictation Local speech to text/ }).click();
+    await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    await page.getByLabel("Text processing", { exact: true }).selectOption("raw");
     await expect(page.getByRole("switch", { name: "Dictation mode" })).toBeChecked();
     await sample.focus();
     const unmute = page.getByRole("button", { name: "Unmute dictation" });
@@ -473,12 +500,10 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     application = await launch();
     const restarted = await application.firstWindow();
     // Settings and enablement are restored; temporary mute is not.
-    await restarted.getByRole("button", { name: /Dictation Local speech to text/ }).click();
+    await restarted.getByRole("button", { name: /Voice & Dictation/ }).click();
     const restartedMode = restarted.getByRole("switch", { name: "Dictation mode" });
     await expect(restartedMode).toBeChecked();
-    await expect(
-      restarted.getByRole("switch", { name: "Post-process with utility model" }),
-    ).not.toBeChecked();
+    await expect(restarted.getByLabel("Text processing", { exact: true })).toHaveValue("raw");
     await restarted.getByLabel("Try dictation").focus();
     await expect(restarted.getByRole("button", { name: "Mute dictation" })).toHaveAttribute(
       "aria-pressed",
@@ -490,7 +515,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await application.close();
     application = await launch();
     const disabled = await application.firstWindow();
-    await disabled.getByRole("button", { name: /Dictation Local speech to text/ }).click();
+    await disabled.getByRole("button", { name: /Voice & Dictation/ }).click();
     await expect(disabled.getByRole("switch", { name: "Dictation mode" })).not.toBeChecked();
     await disabled.getByLabel("Try dictation").focus();
     await expect(disabled.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);

@@ -5,11 +5,20 @@ import {
   DictationError,
   DictationState,
   SpeechDetectionAudio,
+  PunctuationInput,
+  PunctuationResult,
 } from "../../domain/dictation/dictation-data";
 
 export const DictationRpc = RpcGroup.make(
   Rpc.make("dictation.observeState", { success: DictationState, stream: true }),
   Rpc.make("dictation.install", { success: Schema.Void, error: DictationError }),
+  Rpc.make("dictation.installPunctuation", { success: Schema.Void, error: DictationError }),
+  Rpc.make("dictation.removePunctuation", { success: Schema.Void, error: DictationError }),
+  Rpc.make("dictation.punctuate", {
+    payload: PunctuationInput,
+    success: PunctuationResult,
+    error: DictationError,
+  }),
   Rpc.make("dictation.setModelPath", {
     payload: { path: Schema.String },
     success: Schema.Void,

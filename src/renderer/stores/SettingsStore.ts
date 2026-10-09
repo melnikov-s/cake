@@ -40,8 +40,7 @@ export type SettingsPageId =
   | "appearance"
   | "hotkeys"
   | "editor"
-  | "dictation"
-  | "speech"
+  | "voice"
   | "screen-capture";
 
 export interface SettingsStoreProps {

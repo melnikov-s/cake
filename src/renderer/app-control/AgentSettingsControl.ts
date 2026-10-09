@@ -76,6 +76,9 @@ async function executeAgentSettings(
       devices: store.devices,
       busy: store.busy,
       installing: store.installing,
+      textProcessingMode: store.textProcessingMode,
+      installingPunctuation: store.installingPunctuation,
+      processingError: store.processingError ?? null,
       error: store.error ?? null,
     };
   };
@@ -274,6 +277,21 @@ async function executeAgentSettings(
         );
       store.error = undefined;
       switch (input.action) {
+        case "processing":
+          if (!store.setTextProcessingMode(input.mode))
+            throw new Error(
+              "Download the local punctuation model before choosing local processing.",
+            );
+          break;
+        case "install-punctuation":
+          await store.installPunctuation();
+          break;
+        case "remove-punctuation":
+          await store.removePunctuation();
+          break;
+        case "cancel-punctuation-install":
+          store.cancelPunctuationInstall();
+          break;
         case "enable":
           await store.setEnabled(input.enabled);
           break;
@@ -302,6 +320,7 @@ async function executeAgentSettings(
           break;
       }
       if (store.error) throw new Error(store.error);
+      if (store.processingError) throw new Error(store.processingError);
       return dictationView();
     }
   }

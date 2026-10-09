@@ -61,6 +61,7 @@ function fixture(
     prepare?: Client["dictation"]["prepare"];
     transcribe?: Client["dictation"]["transcribe"];
     postProcess?: Client["workspaces"]["postProcessDictation"];
+    punctuate?: Client["dictation"]["punctuate"];
     detectSpeech?: Client["dictation"]["detectSpeech"];
     synthesize?: Client["speechOutput"]["synthesize"];
     enqueue?: SpeechPlayback["enqueue"];
@@ -117,6 +118,7 @@ function fixture(
         release,
         transcribe,
         detectSpeech: options.detectSpeech ?? detectFixtureSpeech,
+        ...(options.punctuate ? { punctuate: options.punctuate } : {}),
       },
       speechOutput: {
         synthesize,
@@ -226,6 +228,50 @@ afterEach(() => {
 });
 
 describe("Project Session conversation mode", () => {
+  it("uses shared local processing before auto-send without invoking utility cleanup", async () => {
+    const result = deferred<{ text: string; pendingStart: number }>();
+    const punctuate = vi.fn<Client["dictation"]["punctuate"]>((input) =>
+      input.final
+        ? result.promise
+        : Promise.resolve({ text: "Is this a question that I should be asking", pendingStart: 24 }),
+    );
+    const postProcess = vi.fn<Client["workspaces"]["postProcessDictation"]>(
+      async () => "Unexpected utility work",
+    );
+    using f = fixture({
+      transcribe: async () => "Is this a question that I should? Be asking?",
+      punctuate,
+      postProcess,
+      snapshot: {
+        state: {},
+        children: { dictationStore: { state: { textProcessingMode: "local" }, children: {} } },
+      },
+    });
+    await f.enter();
+    await f.frames(0.1, 4);
+    await f.frames(0, 33);
+    await waitFor(() =>
+      expect(punctuate).toHaveBeenLastCalledWith(
+        {
+          utteranceId: expect.any(String),
+          text: "Is this a question that I should? Be asking?",
+          final: true,
+        },
+        expect.any(Object),
+      ),
+    );
+    expect(f.prompt).not.toHaveBeenCalled();
+    await act(async () =>
+      result.resolve({ text: "Is this a question that I should be asking?", pendingStart: 43 }),
+    );
+    await waitFor(() =>
+      expect(f.prompt).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ text: "Is this a question that I should be asking?" }),
+        expect.any(Object),
+      ),
+    );
+    expect(postProcess).not.toHaveBeenCalled();
+  });
   it("waits for light cleanup before automatically sending voice input", async () => {
     const result = deferred<string>();
     const postProcess = vi.fn<Client["workspaces"]["postProcessDictation"]>(() => result.promise);
@@ -314,7 +360,7 @@ describe("Project Session conversation mode", () => {
       await f.user.click(screen.getByRole("button", { name: "Enter conversation mode" }));
       const toast = await screen.findByRole("alert");
       expect(toast.textContent).toContain("Conversation mode unavailable");
-      expect(screen.getByRole("button", { name: "Open Speech output settings" })).toBeDefined();
+      expect(screen.getByRole("button", { name: "Open Voice & Dictation settings" })).toBeDefined();
       await f.user.type(screen.getByRole("combobox", { name: "Message" }), "Text works");
       expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(
         false,
@@ -335,11 +381,11 @@ describe("Project Session conversation mode", () => {
     );
     await f.user.click(screen.getByRole("button", { name: "Enter conversation mode" }));
     const message = await screen.findByText(
-      "Configure an ElevenLabs key and voice in Settings → Speech output.",
+      "Configure an ElevenLabs key and voice in Settings → Voice & Dictation.",
     );
     await f.user.click(message);
     expect(f.root.appShellStore.surface).toBe("settings");
-    expect(f.root.settingsStore.activePage).toBe("speech");
+    expect(f.root.settingsStore.activePage).toBe("voice");
     expect(screen.queryByRole("alert")).toBeNull();
   });
   it("speech-error toasts expire without requiring navigation or dismissal", async () => {
@@ -1117,7 +1163,12 @@ describe("Project Session conversation mode", () => {
   it("voice mode suppresses only its composer while dictation stays enabled and resumes after exit", async () => {
     using f = fixture();
     act(() => f.root.dictationStore.applyState({ ...installedDictationState, status: "ready" }));
-    render(<SettingsDictationSection store={f.root.dictationStore} />);
+    render(
+      <SettingsDictationSection
+        store={f.root.dictationStore}
+        prompts={f.root.settingsStore.cakePrompts}
+      />,
+    );
     const toggle = screen.getByRole("switch", { name: "Dictation mode" });
     await f.user.click(toggle);
     const input = screen.getByRole("combobox", { name: "Message" });
@@ -1143,7 +1194,12 @@ describe("Project Session conversation mode", () => {
   it("turning dictation on or off does not disable voice mode or release its recognizer", async () => {
     using f = fixture();
     act(() => f.root.dictationStore.applyState({ ...installedDictationState, status: "ready" }));
-    render(<SettingsDictationSection store={f.root.dictationStore} />);
+    render(
+      <SettingsDictationSection
+        store={f.root.dictationStore}
+        prompts={f.root.settingsStore.cakePrompts}
+      />,
+    );
     await f.enter();
     const releases = f.release.mock.calls.length;
     const toggle = screen.getByRole("switch", { name: "Dictation mode" });
@@ -1266,7 +1322,7 @@ describe("Project Session conversation mode", () => {
     );
     await f.user.click(screen.getByRole("button", { name: "Enter conversation mode" }));
     await screen.findByText(
-      "Download Pocket TTS in Settings → Speech output before entering voice mode.",
+      "Download Pocket TTS in Settings → Voice & Dictation before entering voice mode.",
     );
     expect(f.synthesize).not.toHaveBeenCalled();
     expect(f.playback.start).not.toHaveBeenCalled();

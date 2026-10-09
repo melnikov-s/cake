@@ -302,18 +302,23 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     });
   });
   const configure = async () => {
-    await page.getByRole("button", { name: "Open settings", exact: true }).click();
-    await page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    await expect(async () => {
+      const section = page.getByRole("button", { name: /Voice & Dictation/ });
+      if (!(await section.isVisible()))
+        await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await section.click({ timeout: 1000 });
+      await expect(page.getByLabel("ElevenLabs API key")).toBeVisible({ timeout: 1000 });
+    }).toPass({ timeout: 10_000 });
     const key = page.getByLabel("ElevenLabs API key");
     await key.fill("fixture-private-key");
     await page.getByRole("button", { name: "Save key", exact: true }).click();
     await expect(key).toHaveValue("");
     await page.getByRole("button", { name: "Refresh voices" }).click();
     await expect(
-      page.getByLabel("Voice").locator("option", { hasText: "Fixture voice" }),
+      page.getByLabel("Voice", { exact: true }).locator("option", { hasText: "Fixture voice" }),
     ).toHaveCount(1);
-    await page.getByLabel("Voice").selectOption("fixture-voice");
-    await expect(page.getByLabel("Voice")).toHaveValue("fixture-voice");
+    await page.getByLabel("Voice", { exact: true }).selectOption("fixture-voice");
+    await expect(page.getByLabel("Voice", { exact: true })).toHaveValue("fixture-voice");
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
   };
@@ -696,7 +701,7 @@ test("dictation stays enabled through voice mode and immediately works after swi
   try {
     await f.configure();
     await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
-    await f.page.getByRole("button", { name: /Dictation Local speech to text/ }).click();
+    await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
     const toggle = f.page.getByRole("switch", { name: "Dictation mode" });
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-checked", "true");
@@ -720,7 +725,7 @@ test("dictation stays enabled through voice mode and immediately works after swi
     await expect(input).toHaveValue("Dictated words");
     await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
-    await f.page.getByRole("button", { name: /Dictation Local speech to text/ }).click();
+    await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await expect(toggle).toHaveAttribute("aria-checked", "true");
   } finally {
     await f.close();
@@ -732,7 +737,7 @@ test("local speech provider uses native selection, persists, and speaks without 
   try {
     await f.configure();
     await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
-    await f.page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await f.page.getByRole("button", { name: "Remove key" }).click();
     await expect(f.page.getByText(/No key configured/)).toBeVisible();
     const provider = f.page.getByLabel("Speech provider");
@@ -825,7 +830,7 @@ test("uninstalled local output offers one download button and never falls back t
   try {
     await f.configure();
     await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
-    await f.page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await f.page.getByLabel("Speech provider").selectOption("pocket-tts");
     await expect(
       f.page.getByRole("button", { name: "Download Pocket TTS · 141 MB" }),
@@ -834,7 +839,7 @@ test("uninstalled local output offers one download button and never falls back t
     await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
     await expect(
       f.page.getByText(
-        "Download Pocket TTS in Settings → Speech output before entering voice mode.",
+        "Download Pocket TTS in Settings → Voice & Dictation before entering voice mode.",
       ),
     ).toBeVisible();
     expect(await speechHttpRequests(f.application)).toEqual([]);
@@ -854,7 +859,7 @@ test("settings slider saves a faster speed alongside the persisted voice list", 
   try {
     await f.configure();
     await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
-    await f.page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
     const slider = f.page.getByRole("slider", { name: "Speaking speed" });
     await slider.focus();
     await slider.press("End");
@@ -872,7 +877,7 @@ test("settings slider saves a faster speed alongside the persisted voice list", 
       })
       .toEqual({ speed: 1.2, voices: [{ id: "fixture-voice", name: "Fixture voice" }] });
     await expect(
-      f.page.getByLabel("Voice").locator("option", { hasText: "Fixture voice" }),
+      f.page.getByLabel("Voice", { exact: true }).locator("option", { hasText: "Fixture voice" }),
     ).toHaveCount(1);
   } finally {
     await f.close();
@@ -1168,7 +1173,7 @@ test("speech error toast opens settings and speech can be hidden and re-enabled 
     await expect(composer).toHaveValue("Text chat still works");
     await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
-    await f.page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await enabled.click();
     await expect(enabled).toBeChecked();
     await f.page.getByRole("button", { name: "Back to chat", exact: true }).click();
@@ -1186,17 +1191,17 @@ test("speech settings accept a masked key and voice selection through native inp
   try {
     await f.configure();
     await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
-    await f.page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
     const key = f.page.getByLabel("ElevenLabs API key");
     await expect(key).toHaveAttribute("type", "password");
     await expect(key).toHaveValue("");
     await expect(key).toHaveAttribute("placeholder", "••••••••••••••••");
     await expect(f.page.getByRole("button", { name: "Save key", exact: true })).toBeDisabled();
     await expect(f.page.getByText(/Key configured/)).toBeVisible();
-    await expect(f.page.getByLabel("Voice")).toHaveValue("fixture-voice");
+    await expect(f.page.getByLabel("Voice", { exact: true })).toHaveValue("fixture-voice");
     await f.page.reload();
     // Settings itself is restored by window-state persistence.
-    await f.page.getByRole("button", { name: /Speech output Conversation voice/ }).click();
+    await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
     await expect(key).toHaveAttribute("placeholder", "••••••••••••••••");
     await key.focus();
     await key.pressSequentially("replacement-fixture-key");

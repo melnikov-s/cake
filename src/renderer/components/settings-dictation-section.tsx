@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { DictationStore } from "../stores/DictationStore";
+import type { CakePromptSettingsStore } from "../stores/CakePromptSettingsStore";
+import { defaultCakePrompts } from "../../domain/application/cake-prompts";
+import { SettingsPromptField } from "./settings/settings-prompt-field";
 import { SettingsToggle } from "./settings/settings-toggle";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -11,8 +14,10 @@ import { LoadingSpinner } from "./ui/loading-state";
 
 export const SettingsDictationSection = observer(function SettingsDictationSection({
   store,
+  prompts,
 }: {
   store: DictationStore;
+  prompts: CakePromptSettingsStore;
 }) {
   const state = store.state;
   const [testDraft, setTestDraft] = useState("");
@@ -49,12 +54,97 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
         }
         onChange={(enabled) => void store.setEnabled(enabled)}
       />
-      <SettingsToggle
-        label="Post-process with utility model"
-        description="After three seconds of silence or when you press Enter, lightly clean punctuation, fillers, stutters, and clear spoken corrections in dictation and voice mode. Unchanged text reuses its last cleanup. Dictated text is sent to your configured utility model’s provider, which may incur costs. Without a configured model, or if cleanup fails, the original transcription is kept."
-        checked={store.postProcessEnabled}
-        onChange={(enabled) => store.setPostProcessEnabled(enabled)}
-      />
+      <div id="setting-text-processing" className="grid gap-2">
+        <label htmlFor="text-processing-mode" className="text-xs font-medium">
+          Text processing
+        </label>
+        <Select
+          id="text-processing-mode"
+          value={store.textProcessingMode}
+          onChange={(event) => {
+            const mode = event.target.value;
+            if (mode === "raw" || mode === "local" || mode === "utility")
+              store.setTextProcessingMode(mode);
+          }}
+        >
+          <option value="raw">Raw · no additional processing</option>
+          <option
+            value="local"
+            disabled={
+              !["installed", "ready", "loading"].includes(state?.punctuation.status ?? "missing")
+            }
+          >
+            Local punctuation · CPU, offline
+          </option>
+          <option value="utility">Utility model · customizable cleanup</option>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Shared by dictation and voice mode. Raw keeps recognition unchanged. Local revises
+          punctuation and capitalization across pauses without removing words; its recent gray tail
+          stays provisional until more context or finalization. Utility cleanup runs after three
+          seconds of silence or on submission and can remove fillers or follow your custom prompt.
+          Only utility mode sends dictated text to your configured utility provider and may incur
+          costs. The modes do not run together; failures keep raw recognition.
+        </p>
+      </div>
+      {store.textProcessingMode === "utility" && prompts.prompts && (
+        <SettingsPromptField
+          id="setting-prompt-dictation-cleanup"
+          label="Utility cleanup prompt"
+          description="Shared by dictation and voice mode. Customize cleanup or ask for concise wording. Reset restores meaning-preserving cleanup. Only the dictated passage is supplied; Cake handles the JSON response format."
+          value={prompts.prompts.dictationCleanup ?? ""}
+          defaultValue={defaultCakePrompts().dictationCleanup}
+          onApply={(value) => void prompts.update("dictationCleanup", value)}
+        />
+      )}
+      {prompts.error && <Callout variant="error">{prompts.error}</Callout>}
+      {store.processingError && (
+        <Callout variant="warning">{store.processingError} Raw recognition is retained.</Callout>
+      )}
+      <div className="grid gap-3 rounded-lg border border-border p-4">
+        <h3 className="text-sm font-medium">Local punctuation · English · CPU</h3>
+        <p className="text-xs text-muted-foreground">
+          Optional one-time 210 MB download from Hugging Face. English punctuation and
+          capitalization by 1-800-BAD-CODE, Apache-2.0. Runs offline on the CPU; no chat model,
+          audio upload, filler removal, or summarization. A smaller quantized version was not
+          selected because it reduced question-boundary accuracy in evaluation.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            disabled={store.installingPunctuation}
+            onClick={() => void store.installPunctuation()}
+          >
+            Download punctuation model
+          </Button>
+          {store.installingPunctuation && (
+            <Button variant="outline" onClick={() => store.cancelPunctuationInstall()}>
+              Cancel punctuation download
+            </Button>
+          )}
+          {state?.punctuation.status !== "missing" && state?.punctuation.status !== undefined && (
+            <Button
+              variant="outline"
+              disabled={store.installingPunctuation}
+              onClick={() => void store.removePunctuation()}
+            >
+              Remove punctuation model
+            </Button>
+          )}
+        </div>
+        {state?.punctuation.status === "installing" && (
+          <div className="flex items-center gap-2 text-xs" role="status">
+            <LoadingSpinner label="Installing punctuation" />
+            {state.punctuation.message}
+            {state.punctuation.totalBytes > 0 &&
+              ` ${Math.min(100, Math.floor((state.punctuation.downloadedBytes / state.punctuation.totalBytes) * 100))}%`}
+          </div>
+        )}
+        {state?.punctuation.status === "error" && (
+          <Callout variant="warning">
+            {state.punctuation.message} Raw recognition is retained.
+          </Callout>
+        )}
+      </div>
       <div className="grid gap-3 rounded-lg border border-border p-4">
         <h3 className="text-sm font-medium">Parakeet TDT 0.6B v2 · English · Core ML</h3>
         <p className="text-xs text-muted-foreground">

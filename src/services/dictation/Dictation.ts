@@ -4,6 +4,8 @@ import type {
   DictationError,
   DictationState,
   SpeechDetectionAudio,
+  PunctuationInput,
+  PunctuationResult,
 } from "../../domain/dictation/dictation-data";
 
 /** Main-owned installation and one warm local inference process. Audio is ephemeral. */
@@ -12,6 +14,11 @@ export class Dictation extends Context.Service<
   {
     readonly observeState: () => Stream.Stream<DictationState>;
     readonly install: () => Effect.Effect<void, DictationError>;
+    readonly installPunctuation: () => Effect.Effect<void, DictationError>;
+    readonly removePunctuation: () => Effect.Effect<void, DictationError>;
+    readonly punctuate: (
+      input: PunctuationInput,
+    ) => Effect.Effect<PunctuationResult, DictationError>;
     readonly setModelPath: (path: string) => Effect.Effect<void, DictationError>;
     readonly remove: () => Effect.Effect<void, DictationError>;
     readonly prepare: () => Effect.Effect<void, DictationError>;

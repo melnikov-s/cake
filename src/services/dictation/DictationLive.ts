@@ -6,6 +6,8 @@ import {
   type DictationAudio,
   type DictationState,
   type SpeechDetectionAudio,
+  type PunctuationInput,
+  type PunctuationState,
 } from "../../domain/dictation/dictation-data";
 import { Dictation } from "./Dictation";
 import {
@@ -18,6 +20,12 @@ import {
   type InstallProgress,
 } from "./local-parakeet";
 
+import {
+  installPunctuation,
+  loadPunctuationEngine,
+  punctuationInstalled,
+} from "./local-punctuation";
+
 const failure = (error: unknown) =>
   new DictationError({ message: error instanceof Error ? error.message : String(error) });
 
@@ -27,11 +35,17 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
     Dictation,
     Effect.gen(function* () {
       const managedModelPath = join(root, "model");
+      // Main authority for the optional text model. Its CPU session has a separate lock so a
+      // model download cannot hold up microphone detection/recognition in another consumer.
+      const punctuationRoot = join(root, "punctuation");
+      const punctuationLock = yield* Semaphore.make(1);
+      let punctuationEngine: Awaited<ReturnType<typeof loadPunctuationEngine>> | undefined;
       const state = yield* SubscriptionRef.make<DictationState>({
         supported,
         status: "missing",
         managedModelPath,
         engineAvailable: false,
+        punctuation: { status: "missing", downloadedBytes: 0, totalBytes: 0 },
         downloadedBytes: 0,
         totalBytes: 0,
       });
@@ -46,6 +60,41 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
         SubscriptionRef.update(state, (previous) => ({ ...previous, ...value }));
       const native = <A>(run: (signal: AbortSignal) => Promise<A>) =>
         Effect.tryPromise({ try: run, catch: failure });
+      const patchPunctuation = (value: Partial<PunctuationState>) =>
+        SubscriptionRef.update(state, (previous) => ({
+          ...previous,
+          punctuation: { ...previous.punctuation, ...value },
+        }));
+      const closePunctuation = Effect.fn("Dictation.closePunctuation")(function* () {
+        const current = punctuationEngine;
+        punctuationEngine = undefined;
+        if (current) yield* native(() => current.close());
+      });
+      yield* Effect.addFinalizer(() => closePunctuation().pipe(Effect.ignore));
+      const refreshPunctuation = Effect.fn("Dictation.refreshPunctuation")(function* () {
+        const installed = yield* native(() => punctuationInstalled(punctuationRoot));
+        yield* patchPunctuation({
+          status: installed ? "installed" : "missing",
+          message: undefined,
+          downloadedBytes: 0,
+          totalBytes: 0,
+        });
+      });
+      yield* refreshPunctuation().pipe(
+        Effect.catch((error) => patchPunctuation({ status: "error", message: error.message })),
+      );
+      const punctuationGuarded = <A>(operation: Effect.Effect<A, DictationError>) =>
+        operation.pipe(
+          Effect.onInterrupt(() =>
+            closePunctuation().pipe(Effect.andThen(refreshPunctuation()), Effect.ignore),
+          ),
+          Effect.catch((error) =>
+            patchPunctuation({ status: "error", message: error.message }).pipe(
+              Effect.andThen(Effect.fail(error)),
+            ),
+          ),
+          punctuationLock.withPermits(1),
+        );
       const refresh = Effect.fn("Dictation.refresh")(function* () {
         const modelPath = yield* native(() => loadModelPath(root));
         const engineAvailable = yield* native(() => helperAvailable(helperPath));
@@ -99,7 +148,80 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
         Effect.forkScoped,
       );
 
+      const punctuationProgress = yield* Queue.unbounded<InstallProgress>();
+      yield* Stream.fromQueue(punctuationProgress).pipe(
+        Stream.runForEach((value) =>
+          SubscriptionRef.update(state, (previous) =>
+            previous.punctuation.status === "installing"
+              ? { ...previous, punctuation: { ...previous.punctuation, ...value } }
+              : previous,
+          ),
+        ),
+        Effect.forkScoped,
+      );
+
       return Dictation.of({
+        installPunctuation: Effect.fn("Dictation.installPunctuation")(function* () {
+          yield* punctuationGuarded(
+            Effect.gen(function* () {
+              yield* closePunctuation();
+              yield* patchPunctuation({
+                status: "installing",
+                message: "Preparing punctuation download…",
+                downloadedBytes: 0,
+                totalBytes: 0,
+              });
+              yield* native((signal) =>
+                installPunctuation(punctuationRoot, signal, (value) =>
+                  Queue.offerUnsafe(punctuationProgress, value),
+                ),
+              );
+              yield* refreshPunctuation();
+            }),
+          );
+        }),
+        removePunctuation: Effect.fn("Dictation.removePunctuation")(function* () {
+          yield* punctuationGuarded(
+            Effect.gen(function* () {
+              yield* closePunctuation();
+              yield* native(() => rm(punctuationRoot, { recursive: true, force: true }));
+              yield* refreshPunctuation();
+            }),
+          );
+        }),
+        punctuate: Effect.fn("Dictation.punctuate")(function* (input: PunctuationInput) {
+          return yield* punctuationGuarded(
+            Effect.gen(function* () {
+              if (!punctuationEngine) {
+                if (!(yield* native(() => punctuationInstalled(punctuationRoot))))
+                  return yield* new DictationError({
+                    message:
+                      "Download the local punctuation model in Settings → Voice & Dictation first.",
+                  });
+                yield* patchPunctuation({
+                  status: "loading",
+                  message: "Loading punctuation model…",
+                });
+                const loaded = yield* native(async (signal) => {
+                  const engine = await loadPunctuationEngine(punctuationRoot);
+                  if (signal.aborted) {
+                    await engine.close();
+                    signal.throwIfAborted();
+                  }
+                  return engine;
+                });
+                punctuationEngine = loaded;
+                yield* patchPunctuation({ status: "ready", message: undefined });
+              }
+              const active = punctuationEngine;
+              const result = yield* native((signal) =>
+                active.engine.punctuate(input.text, input.final, signal, input.utteranceId),
+              );
+              yield* patchPunctuation({ status: "ready", message: undefined });
+              return result;
+            }),
+          );
+        }),
         observeState: () => SubscriptionRef.changes(state),
         install: Effect.fn("Dictation.install")(function* () {
           yield* guarded(
@@ -136,7 +258,12 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
             Effect.gen(function* () {
               stop();
               // Never delete a user-selected model folder, only Cake's private installation.
-              yield* native(() => rm(root, { recursive: true, force: true }));
+              yield* native(() =>
+                Promise.all([
+                  rm(managedModelPath, { recursive: true, force: true }),
+                  rm(join(root, "settings.json"), { force: true }),
+                ]),
+              );
               yield* refresh();
             }),
           );
@@ -149,7 +276,7 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
               const current = yield* SubscriptionRef.get(state);
               if (!current.modelPath || !current.engineAvailable)
                 return yield* new DictationError({
-                  message: "Install Parakeet in Settings → Dictation first.",
+                  message: "Install Parakeet in Settings → Voice & Dictation first.",
                 });
               yield* patch({ status: "loading", message: "Preparing dictation…" });
               const next = new ParakeetWorker(helperPath, current.modelPath);
@@ -171,6 +298,9 @@ export const makeDictationLive = (root: string, supported: boolean, helperPath: 
           // Kill immediately, including a loading/in-flight worker; do not wait behind inference.
           stop();
           yield* lock.withPermits(1)(refresh());
+          yield* punctuationLock.withPermits(1)(
+            closePunctuation().pipe(Effect.andThen(refreshPunctuation())),
+          );
         }),
         detectSpeech: Effect.fn("Dictation.detectSpeech")(function* (audio: SpeechDetectionAudio) {
           return yield* guarded(

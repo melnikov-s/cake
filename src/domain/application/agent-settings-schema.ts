@@ -13,7 +13,7 @@ import {
 } from "../model-preferences/non-chat-model-data";
 import { McpSettingsSnapshot, McpSettingsMutation } from "../mcp/mcp-settings-data";
 import { PiNonChatModel } from "../../services/pi/model-data";
-import { DictationState } from "../dictation/dictation-data";
+import { DictationState, TextProcessingMode } from "../dictation/dictation-data";
 import { DesktopSharingInput, DesktopSharingState } from "./desktop-sharing-data";
 import { DesktopHostSelection } from "./desktop-host-data";
 import { NativeMcpConfigEdit } from "../../services/pi/mcp-config-validation";
@@ -48,6 +48,9 @@ const dictationView = Schema.Struct({
   devices: Schema.Array(Schema.Struct({ id: Schema.String, label: Schema.String })),
   busy: Schema.Boolean,
   installing: Schema.Boolean,
+  textProcessingMode: TextProcessingMode,
+  installingPunctuation: Schema.Boolean,
+  processingError: Schema.NullOr(Schema.String),
   error: Schema.NullOr(Schema.String),
 });
 
@@ -278,6 +281,7 @@ export const agentSettingsOperations = [
         "worktreePreserveConflict",
         "worktreeSquashConflict",
         "worktreeSquashMessage",
+        "dictationCleanup",
       ]),
       value: Schema.NullOr(CakePrompts.fields.worktreeCommit),
     }),
@@ -371,19 +375,28 @@ export const agentSettingsOperations = [
     "settings.dictation.update",
     Schema.Union([
       Schema.Struct({ action: Schema.Literal("enable"), enabled: Schema.Boolean }),
+      Schema.Struct({ action: Schema.Literal("processing"), mode: TextProcessingMode }),
       Schema.Struct({
         action: Schema.Literal("microphone"),
         deviceId: Schema.String.check(Schema.isMaxLength(4096)),
       }),
       Schema.Struct({
-        action: Schema.Literals(["refresh-microphones", "install", "cancel-install", "remove"]),
+        action: Schema.Literals([
+          "refresh-microphones",
+          "install",
+          "cancel-install",
+          "remove",
+          "install-punctuation",
+          "remove-punctuation",
+          "cancel-punctuation-install",
+        ]),
       }),
       Schema.Struct({
         action: Schema.Literal("model-path"),
         path: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
       }),
     ]),
-    "Use the originating desktop's manual dictation controls, including install/cancel, model path and microphone selection.",
+    "Use the originating desktop's shared Voice & Dictation controls, including raw/local/utility text processing, explicit punctuation download/removal, recognition model and microphone selection.",
     { action: "enable", enabled: false },
     dictationView,
     [
@@ -452,7 +465,8 @@ export const agentSettingsSections = [
     id: "instructions",
     scope: "backend",
     writable: true,
-    description: "Global custom instructions and all five worktree automation prompts/reset",
+    description:
+      "Global custom instructions, worktree automation prompts and speech cleanup prompt/reset",
     commands: ["settings.instructions.*", "settings.prompts.update"],
   },
   {

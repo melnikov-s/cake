@@ -934,7 +934,8 @@ export class RootStore extends Store<{
       speech: this.client.speechOutput,
       recognition: this.client.dictation,
       postProcess: this.client.workspaces.postProcessDictation,
-      postProcessEnabled: () => this.dictationStore.postProcessEnabled,
+      textProcessingMode: () => this.dictationStore.textProcessingMode,
+      punctuate: (input, options) => this.client.dictation.punctuate(input, options),
       microphone: this.props.microphone ?? microphone,
       playback: this.props.speechPlayback ?? this.defaultSpeechPlayback,
       settings: () => this.speechSettingsStore.settings,
@@ -947,9 +948,9 @@ export class RootStore extends Store<{
           details,
           coalesceKey: "conversation-mode-error",
           action: {
-            label: "Open Speech output settings",
+            label: "Open Voice & Dictation settings",
             run: () => {
-              this.settingsStore.selectPage("speech");
+              this.settingsStore.selectPage("voice");
               this.showSettings();
             },
           },
