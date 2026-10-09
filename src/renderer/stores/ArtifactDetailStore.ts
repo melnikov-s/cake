@@ -45,7 +45,7 @@ export class ArtifactDetailStore extends Store<{
       : [];
   }
 
-  async select(lineageId: ArtifactLineageId) {
+  async select(lineageId: ArtifactLineageId, initialRevision?: ArtifactRevisionNumber) {
     this.props.clearReferenceOperationError();
     const selectionRequest = ++this.selectionRequest;
     this.historyRequest += 1;
@@ -71,17 +71,16 @@ export class ArtifactDetailStore extends Store<{
         const value = await this.client.artifacts.detail(lineageId, { signal: this.signal });
         if (!this.isCurrentSelection(selectionRequest, lineageId)) return;
         this.props.model.applyDetail(value);
-        this.selectedRevision = value.lineage.latestRevision;
+        const targetRevision = initialRevision ?? value.lineage.latestRevision;
+        this.selectedRevision = targetRevision;
         revisionRequest = ++this.revisionRequest;
-        const revision = await this.client.artifacts.readExact(
-          lineageId,
-          value.lineage.latestRevision,
-          { signal: this.signal },
-        );
+        const revision = await this.client.artifacts.readExact(lineageId, targetRevision, {
+          signal: this.signal,
+        });
         if (
           this.isCurrentSelection(selectionRequest, lineageId) &&
           revisionRequest === this.revisionRequest &&
-          this.selectedRevision === value.lineage.latestRevision
+          this.selectedRevision === targetRevision
         )
           this.props.model.upsertRevision(revision);
       } catch (error) {

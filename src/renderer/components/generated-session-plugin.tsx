@@ -3,23 +3,13 @@ import { useEffect, useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { SessionPlugin } from "../../domain/application/application-data";
 import type { JsonObject, JsonValue } from "../../ipc/json-contract";
-import { sessionPluginThemeTokens } from "../../utils/session-plugin-theme";
+import { readWidgetTheme } from "../lib/widget-theme";
 import { useResolvedColorTheme } from "../lib/resolved-color-theme";
 import { inlineWidgetMessageSchema } from "../../utils/inline-widget-message";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { InlineWidgetFrame } from "./inline-widget-frame";
 import { Callout } from "./ui/callout";
 import { LoadingState } from "./ui/loading-state";
-
-function readTheme(colorScheme: "light" | "dark") {
-  const styles = getComputedStyle(document.documentElement);
-  return {
-    colorScheme,
-    tokens: Object.fromEntries(
-      sessionPluginThemeTokens.map((name) => [name, styles.getPropertyValue(`--${name}`).trim()]),
-    ),
-  };
-}
 
 export const GeneratedSessionPlugin = observer(function GeneratedSessionPlugin({
   plugin,
@@ -51,7 +41,7 @@ export const GeneratedSessionPlugin = observer(function GeneratedSessionPlugin({
         source: "cake-session-plugin-host",
         token: compiled.token,
         type: "context",
-        value: { pluginState: plugin.state, sharedState, theme: readTheme(colorScheme) },
+        value: { pluginState: plugin.state, sharedState, theme: readWidgetTheme(colorScheme) },
       },
       "*",
     );
@@ -82,7 +72,7 @@ export const GeneratedSessionPlugin = observer(function GeneratedSessionPlugin({
             source: "cake-session-plugin-host",
             token: compiledState.compiled.token,
             type: "context",
-            value: { pluginState: plugin.state, sharedState, theme: readTheme(colorScheme) },
+            value: { pluginState: plugin.state, sharedState, theme: readWidgetTheme(colorScheme) },
           },
           "*",
         );

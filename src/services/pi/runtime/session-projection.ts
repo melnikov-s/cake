@@ -194,6 +194,22 @@ function projectedArtifactId(value: unknown) {
   return Option.isSome(parsed) ? parsed.value : undefined;
 }
 
+const projectedArtifactRevisionSchema = Schema.Int.check(
+  Schema.isGreaterThan(0),
+  Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
+);
+
+export function toolArtifactRevision(value: unknown): number | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const direct = Schema.decodeUnknownOption(projectedArtifactRevisionSchema)(
+    Reflect.get(value, "artifactRevision"),
+  );
+  if (Option.isSome(direct)) return direct.value;
+  const details = Reflect.get(value, "details");
+  if (typeof details !== "object" || details === null) return undefined;
+  return toolArtifactRevision(details) ?? toolArtifactRevision(Reflect.get(details, "result"));
+}
+
 export function toolArtifactId(value: unknown) {
   if (typeof value !== "object" || value === null) return undefined;
   const direct = projectedArtifactId(Reflect.get(value, "artifactId"));
@@ -565,6 +581,7 @@ function partsFromMessage(
         outputContent: projectToolOutputContent(content),
         nestedCalls: projectNestedToolCalls(Reflect.get(message, "nestedCalls")),
         artifactId: toolArtifactId({ details }),
+        artifactRevision: toolArtifactRevision({ details }),
         diff: toolResultDiff(name, { details }),
         state: Reflect.get(message, "isError") ? "error" : "success",
       },
@@ -786,7 +803,7 @@ export function projectSessionEntries(
 ) {
   const projected: UiPart[] = [];
   const indexes = new Map<string, number>();
-  const artifactOrigins = new Map<string, string>();
+  const artifactOrigins = new Map<string, { lineageId: string; revision: number }>();
   const syntheticArtifactPartIds = new Set<string>();
   const append = (part: UiPart) => {
     const existingIndex = indexes.get(part.id);
@@ -930,7 +947,11 @@ export function projectSessionEntries(
               (content) => content.type === "toolCall" && content.id === origin.toolCallId,
             ),
         );
-        if (originatingAssistant) artifactOrigins.set(origin.toolCallId, pointer.lineageId);
+        if (originatingAssistant)
+          artifactOrigins.set(origin.toolCallId, {
+            lineageId: pointer.lineageId,
+            revision: pointer.revision,
+          });
       }
       if (
         pointer?.kind === "request" &&
@@ -955,10 +976,15 @@ export function projectSessionEntries(
       if (Option.isSome(run)) append(reviewRunPart(run.value));
     }
   }
-  for (const [toolCallId, artifactId] of artifactOrigins) {
+  for (const [toolCallId, artifact] of artifactOrigins) {
     const index = indexes.get(boundedProjectionKey(`tool-${toolCallId}`));
     const part = index === undefined ? undefined : projected[index];
-    if (index !== undefined && part?.kind === "tool") projected[index] = { ...part, artifactId };
+    if (index !== undefined && part?.kind === "tool")
+      projected[index] = {
+        ...part,
+        artifactId: artifact.lineageId,
+        artifactRevision: artifact.revision,
+      };
   }
   // Durable entries are settled history. A tool call still marked "running"
   // after the full walk has no recorded result, which means the run was

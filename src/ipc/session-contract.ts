@@ -327,6 +327,12 @@ export const uiPartSchema = Schema.Union([
     ...workLogOrigin,
     ...toolActivityFields,
     artifactId: Schema.optional(stringRange(1, 256)),
+    artifactRevision: Schema.optional(
+      Schema.Int.check(
+        Schema.isGreaterThan(0),
+        Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
+      ),
+    ),
     inputStreaming: Schema.optional(Schema.Boolean),
     nestedCalls: Schema.optional(nestedToolCallsSchema),
     response: Schema.optional(promptCacheResponseSchema),

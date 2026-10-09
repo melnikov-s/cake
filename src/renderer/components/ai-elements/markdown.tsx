@@ -54,6 +54,7 @@ type MarkdownLinkActions = {
     signal: AbortSignal,
   ): Promise<{ readonly data: string; readonly mimeType: string }>;
   renderArtifactReference?(reference: string, label?: ReactNode): ReactNode;
+  renderArtifactEmbed?(reference: string, label?: string): ReactNode;
 };
 
 const MarkdownLinkContext = createContext<MarkdownLinkActions | undefined>(undefined);
@@ -533,6 +534,25 @@ function MarkdownRenderer({
   const components = useMemo<Components>(() => {
     const openSourceLocation = onOpenSourceLocation;
     return {
+      p({ node, children, ...paragraphProps }) {
+        // Only a standalone artifact image is a block embed. Prose links and
+        // images mixed with text retain their ordinary inline link behavior.
+        const image = node?.children.length === 1 ? node.children[0] : undefined;
+        if (
+          image?.type === "element" &&
+          image.tagName === "img" &&
+          linkActions?.renderArtifactEmbed
+        ) {
+          const src = image.properties.src;
+          const reference = src ? artifactReferenceFromHref(String(src)) : undefined;
+          if (reference)
+            return linkActions.renderArtifactEmbed(
+              reference,
+              image.properties.alt === undefined ? undefined : String(image.properties.alt),
+            );
+        }
+        return <p {...paragraphProps}>{children}</p>;
+      },
       a(allProps: AnchorProps) {
         if (!openSourceLocation) return linkAnchor(allProps, linkActions);
         const href = allProps.href;

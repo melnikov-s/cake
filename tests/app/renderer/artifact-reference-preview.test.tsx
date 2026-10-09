@@ -97,7 +97,7 @@ describe("ArtifactReferencePreview", () => {
     expect(link.classList.contains("text-inherit")).toBe(true);
     expect(link.classList.contains("font-semibold")).toBe(true);
     act(() => link.click());
-    expect(onOpen).toHaveBeenCalledWith("report");
+    expect(onOpen).toHaveBeenCalledWith("report", 2);
 
     await act(async () => {
       reactRoot.render(
@@ -154,7 +154,7 @@ describe("ArtifactReferencePreview", () => {
     expect(link.textContent).toBe("report");
     expect(link.getAttribute("aria-description")).toBe(metadata.exactRef);
     act(() => link.click());
-    expect(onOpen).toHaveBeenCalledWith("report");
+    expect(onOpen).toHaveBeenCalledWith("report", 2);
     mounted.root[Symbol.dispose]();
   });
 

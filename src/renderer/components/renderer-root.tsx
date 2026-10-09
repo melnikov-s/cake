@@ -10,6 +10,7 @@ import { IconButtonHotkeyProvider } from "./ui/icon-button";
 import { MarkdownLinkProvider } from "./ai-elements/markdown";
 import { RendererErrorBoundary } from "./renderer-error-boundary";
 import { ArtifactReferencePreview } from "./artifact-reference-preview";
+import { InlineArtifactPreview } from "./inline-artifact-preview";
 import { formatArtifactRef, parseArtifactRef } from "../../domain/artifacts/artifact-lineage";
 
 interface RendererRootProps {
@@ -49,13 +50,29 @@ export const RendererRoot = observer(function RendererRoot({
                       signal,
                     });
                   },
+                  renderArtifactEmbed: (reference, label) => (
+                    <InlineArtifactPreview
+                      reference={formatArtifactRef(parseArtifactRef(reference))}
+                      label={label}
+                      store={rootStore.inlineArtifactPreviewStore}
+                      inlineWidgets={rootStore.inlineWidgetStore}
+                      onOpen={(exactRef) => {
+                        const parsed = parseArtifactRef(exactRef);
+                        rootStore.showArtifactLibrary(
+                          activeSessionId,
+                          parsed.lineageId,
+                          parsed.revision,
+                        );
+                      }}
+                    />
+                  ),
                   renderArtifactReference: (reference, label) => (
                     <ArtifactReferencePreview
                       reference={formatArtifactRef(parseArtifactRef(reference))}
                       store={rootStore.artifactReferencePreviewStore}
                       children={label}
-                      onOpen={(lineageId) =>
-                        rootStore.showArtifactLibrary(activeSessionId, lineageId)
+                      onOpen={(lineageId, revision) =>
+                        rootStore.showArtifactLibrary(activeSessionId, lineageId, revision)
                       }
                     />
                   ),

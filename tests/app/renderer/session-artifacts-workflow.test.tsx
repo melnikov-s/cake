@@ -1,11 +1,13 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { VirtuosoMockContext } from "react-virtuoso";
 import { Schema } from "effect";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EffectiveArtifactProjection } from "../../../src/domain/artifacts/artifact-lineage";
 import type { Client } from "../../../src/renderer/client/Client";
+import type { UiPart } from "../../../src/ipc/session-contract";
 import { App } from "../../../src/renderer/components/app";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
@@ -60,6 +62,8 @@ function gate<Value>() {
 function renderSessionArtifacts(
   artifacts: Partial<Client["artifacts"]> = {},
   initial?: EffectiveArtifactProjection[],
+  parts: UiPart[] = [],
+  inlineWidgets: Partial<Client["inlineWidgets"]> = {},
 ) {
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project", name: "Project" })],
@@ -77,6 +81,7 @@ function renderSessionArtifacts(
     client: {
       projectSessions: { open: async () => undefined },
       workspaces: { loadStagedSlashCommands: async () => [] },
+      inlineWidgets,
       artifacts: {
         effective: async () => [effective()],
         history: async () => ({
@@ -100,7 +105,7 @@ function renderSessionArtifacts(
       snapshot: {
         sessionId: id,
         sessionFile: `/sessions/${id}.jsonl`,
-        parts: [],
+        parts: id === "session-1" ? parts : [],
         models: [],
         thinkingLevel: "off",
         availableThinkingLevels: ["off"],
@@ -116,10 +121,17 @@ function renderSessionArtifacts(
   fixture.root.appShellStore.selectProjectSession("session-1");
   fixture.root.projectWorkbenchStore.showLoadedSession("session-1");
   fixture.root.sessionLayoutStore.ensureSession("session-1");
+  fixture.root.sessionRegistry
+    .load("session-1", "/project")
+    .conversationSessionStore.chatStore.transcriptInteraction.setTranscriptScrollPosition({
+      kind: "top",
+    });
   const view = render(
-    <StoreProvider store={fixture.root}>
-      <App />
-    </StoreProvider>,
+    <VirtuosoMockContext.Provider value={{ viewportHeight: 900, itemHeight: 160 }}>
+      <StoreProvider store={fixture.root}>
+        <App />
+      </StoreProvider>
+    </VirtuosoMockContext.Provider>,
   );
   return {
     user: userEvent.setup(),
@@ -153,7 +165,152 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const visual = (revision: number) => {
+  const value = effective(revision, "visual", "Visual explanation");
+  return Schema.decodeUnknownSync(EffectiveArtifactProjection)({
+    ...value,
+    latestRevision: 2,
+    revision: {
+      ...value.revision,
+      metadata: { ...value.revision.metadata, kind: "widget" },
+      snapshot: {
+        ...value.revision.snapshot,
+        kind: "widget",
+        payload: {
+          language: "html",
+          source: `<strong>Explanation r${revision}</strong>`,
+          brief: "A visual explanation",
+          generationSessionId: "generation-session",
+        },
+        fallback: { markdown: `Explanation r${revision}` },
+      },
+    },
+  });
+};
+
+const visualPart: UiPart = {
+  id: "tool-visual",
+  kind: "tool",
+  name: "cake",
+  command: "widgets.present",
+  input: "",
+  state: "success",
+  artifactId: "visual",
+  artifactRevision: 1,
+};
+
+const visualMetadata = () => ({
+  lineage: {
+    id: visual(2).revision.lineageId,
+    createdAt: "2025-01-01T00:00:00.000Z",
+    latestRevision: visual(2).revision.metadata.revision,
+    latest: visual(2).revision.metadata,
+    title: "Visual explanation",
+    stableRef: visual(2).stableRef,
+  },
+  revision: visual(1).revision.metadata,
+  links: [visual(2).link],
+  stableRef: visual(2).stableRef,
+  exactRef: visual(1).exactRef,
+});
+
 describe("Session artifact workflows", () => {
+  it("lazily expands the published revision, retries failed reads, and opens that revision in the panel", async () => {
+    const readExact = vi
+      .fn<Client["artifacts"]["readExact"]>()
+      .mockRejectedValueOnce(new Error("Read temporarily unavailable"))
+      .mockImplementation(async (_id, revision) => visual(revision).revision);
+    // A controlled compiler failure exercises the readable fallback. Actual
+    // script execution and theme/size changes are verified in Electron.
+    const compile = vi
+      .fn<Client["inlineWidgets"]["compile"]>()
+      .mockRejectedValue(new Error("Compiler unavailable"));
+    using fixture = renderSessionArtifacts(
+      {
+        effective: async () => [visual(2)],
+        referenceMetadata: async () => visualMetadata(),
+        readExact,
+      },
+      [visual(2)],
+      [visualPart],
+      { compile },
+    );
+    const disclosure = await screen.findByRole("button", {
+      name: "Visual explanation Show inline",
+    });
+    expect(readExact).not.toHaveBeenCalled();
+    expect(compile).not.toHaveBeenCalled();
+    await fixture.user.click(disclosure);
+    expect(await screen.findByText("Read temporarily unavailable")).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Retry preview" }));
+    await waitFor(() =>
+      expect(document.querySelector('[data-artifact-id="visual"]')).not.toBeNull(),
+    );
+    expect(readExact).toHaveBeenLastCalledWith("visual", 1, expect.anything());
+    expect(await screen.findByText("Explanation r1")).toBeDefined();
+    expect(compile).toHaveBeenCalledWith("html", "<strong>Explanation r1</strong>", "display");
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Visual explanation Hide inline" }),
+    );
+    expect(screen.queryByText("Explanation r1")).toBeNull();
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Visual explanation Show inline" }),
+    );
+    expect(await screen.findByText("Explanation r1")).toBeDefined();
+    expect(readExact).toHaveBeenCalledTimes(2);
+    await fixture.user.click(screen.getByRole("link", { name: "Open artifact" }));
+    await waitFor(() => expect(readExact).toHaveBeenCalledTimes(3));
+    expect(readExact).toHaveBeenLastCalledWith("visual", 1, expect.anything());
+    expect(await screen.findByRole("button", { name: "Close Visual explanation" })).toBeDefined();
+  });
+
+  it("keeps ordinary document publications as references", async () => {
+    const readExact = vi.fn<Client["artifacts"]["readExact"]>(async () => effective().revision);
+    using fixture = renderSessionArtifacts(
+      { readExact },
+      [effective()],
+      [
+        {
+          ...visualPart,
+          artifactId: "shared",
+          artifactRevision: 2,
+        },
+      ],
+    );
+    await screen.findByRole("button", { name: "1 artifacts" });
+    expect(
+      await screen.findByRole("link", { name: "Artifact created · Family report" }),
+    ).toBeDefined();
+    expect(readExact).not.toHaveBeenCalled();
+    await fixture.user.click(
+      screen.getByRole("link", { name: "Artifact created · Family report" }),
+    );
+    expect(await screen.findByText("Family report content r2")).toBeDefined();
+  });
+
+  it("does not reopen a collapsed preview when its read finishes", async () => {
+    const pending = gate<ReturnType<typeof visual>["revision"]>();
+    const readExact = vi.fn<Client["artifacts"]["readExact"]>(() => pending.promise);
+    using fixture = renderSessionArtifacts(
+      {
+        effective: async () => [visual(2)],
+        referenceMetadata: async () => visualMetadata(),
+        readExact,
+      },
+      [visual(2)],
+      [visualPart],
+    );
+    await fixture.user.click(
+      await screen.findByRole("button", { name: "Visual explanation Show inline" }),
+    );
+    await waitFor(() => expect(readExact).toHaveBeenCalledOnce());
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Visual explanation Hide inline" }),
+    );
+    await act(async () => pending.resolve(visual(1).revision));
+    expect(screen.getByRole("button", { name: "Visual explanation Show inline" })).toBeDefined();
+    expect(screen.queryByText("Explanation r1")).toBeNull();
+  });
   it("opens a sole artifact directly, closes it, and reopens its content", async () => {
     using fixture = renderSessionArtifacts();
     await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));

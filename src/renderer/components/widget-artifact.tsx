@@ -1,5 +1,5 @@
 import { Option, Schema } from "effect";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { observer } from "r-state-tree/react";
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
@@ -11,10 +11,12 @@ export const WidgetArtifact = observer(function WidgetArtifact({
   artifact,
   inlineWidgets,
   fill = false,
+  presentation = "workspace",
 }: {
   artifact: Extract<CakeArtifactV1, { kind: "widget" }>;
   inlineWidgets?: InlineWidgetStore;
   fill?: boolean;
+  presentation?: "inline" | "workspace";
 }) {
   const id = `${artifact.sessionId}:widget:${artifact.id}:${artifact.revision}`;
   const state = inlineWidgets?.state(id);
@@ -24,7 +26,7 @@ export const WidgetArtifact = observer(function WidgetArtifact({
     if (inlineWidgets)
       inlineWidgets.prepare(id, artifact.payload.language, artifact.payload.source);
   }, [artifact.payload.language, artifact.payload.source, id, inlineWidgets]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!inlineWidgets) return;
     const receive = (event: MessageEvent) => {
       const parsed = Schema.decodeUnknownOption(inlineWidgetMessageSchema)(event.data);
@@ -46,13 +48,14 @@ export const WidgetArtifact = observer(function WidgetArtifact({
 
   if (!inlineWidgets || state?.status === "error")
     return <Markdown>{artifact.fallback.markdown}</Markdown>;
-  if (!state?.compiled) return <div className="min-h-30" aria-busy="true" />;
+  if (!state?.compiled) return <div className="min-h-55" aria-busy="true" />;
   return (
     <InlineWidgetFrame
       ref={iframe}
       className={fill ? "h-full" : undefined}
       title={artifact.title ?? artifact.id}
       compiled={state.compiled}
+      presentation={presentation}
       style={fill ? undefined : { height }}
     />
   );

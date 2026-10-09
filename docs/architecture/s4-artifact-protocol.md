@@ -25,9 +25,12 @@ panel through an explicit session or Session Family link. The panel opens from
 that session's header, not from a permanent application-wide workspace and not
 by replacing the transcript. Creating a new artifact automatically opens the
 panel and selects that artifact; later updates may refresh the selected artifact
-without stealing focus. The originating assistant message renders a compact
-`Artifact created · <title>` reference that opens the artifact rather than a second
-copy of its contents. The selected-artifact surface uses one quiet navigation row
+without stealing focus. The originating assistant publication renders an exact-revision
+reference. Visual widget, HTML, and diagram artifacts can expand that reference inline;
+ordinary documents remain compact links. `Open artifact` opens the same exact revision
+in the panel, not a second artifact or a copied payload. Ordinary Markdown artifact
+links stay inline links. A standalone `![Title](cake://artifact/<id>@rN)` paragraph
+explicitly requests an expandable visual reference elsewhere in a reply. The selected-artifact surface uses one quiet navigation row
 for the collection, previous/next traversal, fullscreen, and close actions; the
 artifact content is not wrapped in repeated titles, status headers, or source
 controls. The durable pointer records the originating assistant entry
@@ -243,6 +246,23 @@ ordinary `widgets.present` path performs automatic rendered screenshot review;
 viewing an existing widget does not trigger capture. Blocking request widgets
 remain separate interactions and do not automatically run this generation-only
 review policy.
+
+Inline disclosures mount a live renderer only while expanded. A focused window-owned
+`InlineArtifactPreviewStore` owns per-mount expansion and read status; exact payloads
+stay in the shared Artifact Catalog Model. Metadata resolution freezes stable embed
+references to an exact revision for that mount. Reads deduplicate while active, ignore
+stale/disposed results, and expose retry; collapse never changes artifact links or panel
+selection. Separate inline, panel, and fullscreen mounts have independent ephemeral
+React interaction state. Compiler/runtime failures retain the readable fallback.
+
+Every widget receives the host's semantic color/font tokens before first paint through
+a URL fragment, and live theme changes through a source- and token-bound message.
+Changing themes does not change `src` or reset interaction state. Inline presentation
+removes outer padding/background; the artifact workspace retains its framing. Content
+height reports track both expansion and shrinkage (not the iframe viewport minimum),
+including responsive reflow, and the host bounds them to 120–1200 CSS pixels. Generated
+pages must not use viewport-dependent root heights. Review hosts without app tokens
+use browser system-color defaults, not another Cake palette.
 
 The widget runs in an `allow-scripts` iframe without same-origin privilege.
 CSP blocks fetch/XHR/WebSocket (including D3's network helpers), while generic

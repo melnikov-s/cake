@@ -46,6 +46,7 @@ export class Message extends Model {
   outputContent: readonly ToolOutputContent[] | undefined;
   nestedCalls: NestedToolCalls | undefined;
   artifactId: string | undefined;
+  artifactRevision: number | undefined;
   filePath: string | undefined;
   diff: string | undefined;
   inputStreaming: boolean | undefined;
@@ -118,6 +119,7 @@ export class Message extends Model {
         this.outputContent = part.outputContent ? [...part.outputContent] : undefined;
         this.nestedCalls = part.nestedCalls;
         this.artifactId = part.artifactId;
+        this.artifactRevision = part.artifactRevision;
         this.filePath = part.filePath;
         this.diff = part.diff;
         this.inputStreaming = part.inputStreaming;
@@ -227,6 +229,7 @@ export class Message extends Model {
           outputContent: this.outputContent,
           nestedCalls: this.nestedCalls,
           artifactId: this.artifactId,
+          artifactRevision: this.artifactRevision,
           filePath: this.filePath,
           diff: this.diff,
           inputStreaming: this.inputStreaming,

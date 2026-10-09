@@ -1951,6 +1951,7 @@ describe("Pi 1.0.0 foundation contract", () => {
         id: "tool-widget-call",
         kind: "tool",
         artifactId: "widget-1",
+        artifactRevision: 1,
       }),
     ]);
     expect(projectSessionEntries(entries.slice(0, 1) as never)).toEqual([

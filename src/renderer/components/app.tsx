@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { parseArtifactRef } from "../../domain/artifacts/artifact-lineage";
 import { observer, StoreProvider, useStore } from "r-state-tree/react";
 import {
   Confirmation,
@@ -328,11 +329,12 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
         : (input: { canChat: boolean; canAnnotate: boolean }) =>
             root.showTranscriptSelectionContextMenu(input),
       inlineWidgets: root.inlineWidgetStore,
+      inlineArtifactPreviews: root.inlineArtifactPreviewStore,
       artifacts: {
         records: paneSession.sessionArtifactsStore.records,
         interaction: paneSession.artifactInteractionStore,
-        openArtifact: (artifactId: string) =>
-          paneSession.sessionArtifactsStore.openArtifact(artifactId),
+        openArtifact: (artifactId: string, revision?: number) =>
+          paneSession.sessionArtifactsStore.openArtifact(artifactId, revision),
       },
     };
   };
@@ -383,7 +385,14 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
         Boolean(paneSession.model.sessionFile) ||
         root.cakeChatCollectionStore.pendingSessions.isPending(paneSession.sessionId),
     },
-    transcriptBehavior: {},
+    transcriptBehavior: {
+      inlineWidgets: root.inlineWidgetStore,
+      inlineArtifactPreviews: root.inlineArtifactPreviewStore,
+      openArtifactReference: (reference: string) => {
+        const parsed = parseArtifactRef(reference);
+        root.showArtifactLibrary(paneSession.sessionId, parsed.lineageId, parsed.revision);
+      },
+    },
     empty: (
       <div className="grid min-h-[calc(100vh-330px)] place-items-center content-center p-10 text-center">
         <span className="grid size-14 rotate-3 place-items-center rounded-bl-[14px] rounded-br-[20px] rounded-tl-[20px] rounded-tr-[14px] border border-border bg-card/75 shadow-[0_20px_70px_-30px_hsl(var(--shadow)/0.5)]">

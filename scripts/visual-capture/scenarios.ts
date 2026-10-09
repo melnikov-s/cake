@@ -578,6 +578,7 @@ async function seedArtifactScenario(
   paths: ScenarioFixturePaths,
   theme: "light" | "dark",
   artifact: CakeArtifactV1,
+  inline = false,
 ) {
   const sessionId = artifact.sessionId;
   const timestamp = new Date(0).toISOString();
@@ -645,9 +646,21 @@ async function seedArtifactScenario(
         message: {
           role: "assistant",
           content: [
+            ...(inline
+              ? [
+                  {
+                    type: "toolCall",
+                    id: "inline-publication",
+                    name: "cake",
+                    arguments: { command: "widgets.present", input: {} },
+                  },
+                ]
+              : []),
             {
               type: "text",
-              text: "Open the source-backed explanation to explore Cake’s process boundaries and who owns the conversation.",
+              text: inline
+                ? `The [saved visualization](cake://artifact/${artifact.id}) is also available here:\n\n![${artifact.title}](cake://artifact/${artifact.id}@r${artifact.revision})`
+                : "Open the source-backed explanation to explore Cake’s process boundaries and who owns the conversation.",
             },
           ],
           api: "anthropic-messages",
@@ -661,7 +674,7 @@ async function seedArtifactScenario(
             totalTokens: 0,
             cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
           },
-          stopReason: "stop",
+          stopReason: inline ? "toolUse" : "stop",
           timestamp: 1,
         },
       },
@@ -670,7 +683,149 @@ async function seedArtifactScenario(
       .join("\n")}\n`,
   );
   await seedArtifact(paths, artifact, timestamp);
+  if (inline) {
+    const file = join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`);
+    const transcript = await readFile(file, "utf8");
+    await writeFile(
+      file,
+      transcript +
+        [
+          {
+            type: "message",
+            id: "inline-result",
+            parentId: "assistant-architecture",
+            timestamp,
+            message: {
+              role: "toolResult",
+              toolCallId: "inline-publication",
+              toolName: "cake",
+              content: [{ type: "text", text: "Published" }],
+              details: { artifactId: artifact.id, artifactRevision: artifact.revision },
+              isError: false,
+              timestamp: 2,
+            },
+          },
+          {
+            type: "custom",
+            id: "inline-pointer",
+            parentId: "inline-result",
+            timestamp,
+            customType: "cake.artifact/v1",
+            data: {
+              protocol: "cake.artifact/v1",
+              lineageId: artifact.id,
+              revision: artifact.revision,
+              kind: artifact.kind,
+              digest: sha256(`${JSON.stringify(artifact, null, 2)}\n`),
+              title: artifact.title,
+              stableRef: `cake://artifact/${artifact.id}`,
+              exactRef: `cake://artifact/${artifact.id}@r${artifact.revision}`,
+              origin: {
+                assistantEntryId: "assistant-architecture",
+                toolCallId: "inline-publication",
+              },
+            },
+          },
+          {
+            type: "message",
+            id: "inline-finished",
+            parentId: "inline-pointer",
+            timestamp,
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: "Both views use the same saved artifact." }],
+              api: "anthropic-messages",
+              provider: "anthropic",
+              model: "visual-fixture",
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              },
+              stopReason: "stop",
+              timestamp: 3,
+            },
+          },
+        ]
+          .map((entry) => JSON.stringify(entry))
+          .join("\n") +
+        "\n",
+    );
+  }
 }
+
+const inlineArtifactScenario: VisualCaptureScenario = {
+  name: "inline-artifact",
+  description: "One saved visualization with independent inline and artifact-panel views",
+  states: ["default", "expanded", "fullscreen"],
+  async seed(paths, theme) {
+    await seedArtifactScenario(
+      paths,
+      theme,
+      {
+        protocol: "cake.artifact/v1",
+        id: "inline-visual",
+        sessionId: "visual-inline-artifact",
+        revision: 1,
+        kind: "widget",
+        title: "Inline visualization",
+        payload: {
+          language: "react",
+          brief: "An interactive comparison using Cake's theme tokens",
+          generationSessionId: "visual-inline-generation",
+          source: `import React, { useState } from "react";
+export default function Visual() {
+  const [expanded, setExpanded] = useState(false);
+  return <main style={{ color: "var(--foreground,CanvasText)", fontFamily: "var(--font-sans,system-ui)" }}>
+    <h2 style={{ margin: "0 0 12px", fontSize: 20 }}>One artifact, two views</h2>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12 }}>
+      {[["Conversation", "Explain in context"], ["Artifact", "Revisit and explore"]].map(([name, text]) =>
+        <section key={name} style={{ padding: 16, border: "1px solid var(--border,GrayText)", borderRadius: 12 }}>
+          <strong>{name}</strong><p>{text}</p>
+        </section>)}
+    </div>
+    <button onClick={() => setExpanded(!expanded)} style={{ marginTop: 12, padding: 8, color: "var(--foreground,CanvasText)", background: "var(--muted,Canvas)", border: "1px solid var(--border,GrayText)" }}>
+      {expanded ? "Hide detail" : "Explore detail"}
+    </button>
+    {expanded && <section style={{ minHeight: 480, paddingTop: 16 }}>Expanded detail stays in this view.</section>}
+  </main>;
+}`,
+        },
+        fallback: {
+          markdown: "One durable artifact can appear in the conversation and in its panel.",
+        },
+        interaction: { mode: "present" },
+      },
+      true,
+    );
+  },
+  async prepare(page, state) {
+    const disclosure = page.locator('[data-slot="artifact-disclosure"]').first();
+    await expect(disclosure).toBeVisible();
+    if (state === "default") return;
+    await disclosure.getByRole("button", { name: "Inline visualization Show inline" }).click();
+    await expect(
+      disclosure
+        .locator("iframe")
+        .contentFrame()
+        .getByRole("heading", { name: "One artifact, two views" }),
+    ).toBeVisible();
+    if (state === "fullscreen")
+      await disclosure
+        .getByRole("button", { name: "View Inline visualization fullscreen" })
+        .click();
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page
+      .getByRole("dialog")
+      .or(page.locator('[data-slot="artifact-disclosure"]').first())
+      .last();
+  },
+};
 
 const requestExplanationScenario: VisualCaptureScenario = {
   name: "cake-request-explanation",
@@ -1649,6 +1804,7 @@ export const visualCaptureScenarios = [
   screenCaptureSettingsScenario,
   inlineLinks,
   requestExplanationScenario,
+  inlineArtifactScenario,
   drawMermaidArchitectureScenario,
   drawCompositionScenario,
   cakePromptsSettingsScenario,

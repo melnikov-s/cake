@@ -17,6 +17,7 @@ import { TableArtifact } from "./table-artifact";
 
 interface ArtifactHostProps {
   record: ArtifactRecord;
+  presentation?: "workspace" | "inline";
   requested?: boolean;
   submittedAnswer?: JsonValue;
   onSubmit?(value: JsonValue): void;
@@ -27,6 +28,7 @@ interface ArtifactHostProps {
 
 export const ArtifactHost = observer(function ArtifactHost({
   record,
+  presentation = "workspace",
   requested = false,
   submittedAnswer,
   onSubmit,
@@ -65,7 +67,12 @@ export const ArtifactHost = observer(function ArtifactHost({
       {artifact.kind === "html" ? <HtmlArtifact artifact={artifact} /> : null}
       {artifact.kind === "file" ? <FileArtifact artifact={artifact} /> : null}
       {artifact.kind === "widget" ? (
-        <WidgetArtifact artifact={artifact} inlineWidgets={inlineWidgets} fill={fill} />
+        <WidgetArtifact
+          artifact={artifact}
+          inlineWidgets={inlineWidgets}
+          fill={fill}
+          presentation={fill ? "workspace" : presentation}
+        />
       ) : null}
       {artifact.kind === "request" ? (
         <RequestArtifact

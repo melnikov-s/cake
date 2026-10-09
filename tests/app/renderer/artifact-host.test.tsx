@@ -625,7 +625,13 @@ describe("ArtifactHost", () => {
     expect(client.compile).toHaveBeenCalledWith("html", request.view.source, "request");
     const frame = container.querySelector("iframe")!;
     expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
-    expect(frame.getAttribute("src")).toBe(`http://localhost:3000/widget-assets/document/${token}`);
+    expect(frame.src.split("#")[0]).toBe(`http://localhost:3000/widget-assets/document/${token}`);
+    expect(
+      JSON.parse(new URLSearchParams(new URL(frame.src).hash.slice(1)).get("cake-widget")!),
+    ).toMatchObject({
+      theme: { colorScheme: "light" },
+      presentation: "workspace",
+    });
     expect(container.textContent).not.toContain("cakeRequest.submit");
     act(() =>
       window.dispatchEvent(
@@ -690,7 +696,7 @@ describe("ArtifactHost", () => {
     const fullscreen = document.body.querySelector<HTMLElement>('[role="dialog"]');
     const fullscreenFrame = fullscreen?.querySelector<HTMLIFrameElement>("iframe");
     expect(fullscreen?.textContent).toContain("Comparison");
-    expect(fullscreenFrame?.getAttribute("src")).toBe(
+    expect(fullscreenFrame?.src.split("#")[0]).toBe(
       `http://localhost:3000/widget-assets/document/${token}`,
     );
     expect(fullscreenFrame?.getAttribute("sandbox")).toBe("allow-scripts");

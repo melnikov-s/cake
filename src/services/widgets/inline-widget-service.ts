@@ -1,4 +1,4 @@
-import { sessionPluginThemeTokens } from "../../utils/session-plugin-theme";
+import { widgetThemeColorTokens, widgetThemeFontTokens } from "../../utils/widget-theme";
 import { dirname } from "node:path";
 import { TextEncoder } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -79,6 +79,32 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
   return `<script>
 (() => {
   const token = ${JSON.stringify(token)};
+  const applyTheme = (theme) => {
+    if (!theme || (theme.colorScheme !== "light" && theme.colorScheme !== "dark")) return;
+    document.documentElement.style.colorScheme = theme.colorScheme;
+    document.documentElement.dataset.theme = theme.colorScheme;
+    for (const name of ${JSON.stringify(widgetThemeColorTokens)}) {
+      const value = theme.tokens?.[name];
+      if (typeof value === "string" && CSS.supports("color", value)) document.documentElement.style.setProperty("--" + name, value);
+    }
+    for (const name of ${JSON.stringify(widgetThemeFontTokens)}) {
+      const value = theme.tokens?.[name];
+      if (typeof value === "string" && CSS.supports("font-family", value)) document.documentElement.style.setProperty("--" + name, value);
+    }
+  };
+  const applyPresentation = (value) => {
+    applyTheme(value?.theme);
+    if (value?.presentation === "inline" || value?.presentation === "workspace") document.documentElement.dataset.presentation = value.presentation;
+  };
+  try {
+    const initial = new URLSearchParams(location.hash.slice(1)).get("cake-widget");
+    if (initial) applyPresentation(JSON.parse(initial));
+  } catch {}
+  addEventListener("message", (event) => {
+    const message = event.data;
+    if (event.source !== parent || message?.source !== "cake-widget-host" || message.token !== token || message.type !== "presentation") return;
+    applyPresentation(message.value);
+  });
   const send = (type, value) => parent.postMessage({ source: "cake-inline-widget", token, type, value }, "*");
   addEventListener("error", (event) => send("error", event.error?.stack || event.message || "Widget runtime error"));
   addEventListener("unhandledrejection", (event) => send("error", event.reason?.stack || String(event.reason || "Unhandled widget rejection")));
@@ -95,15 +121,7 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
     const message = event.data;
     if (event.source !== parent || !message || message.source !== "cake-session-plugin-host" || message.token !== token) return;
     if (message.type === "context") {
-      const theme = message.value.theme;
-      if (theme && (theme.colorScheme === "light" || theme.colorScheme === "dark")) {
-        document.documentElement.style.colorScheme = theme.colorScheme;
-        document.documentElement.dataset.theme = theme.colorScheme;
-        for (const name of ${JSON.stringify(sessionPluginThemeTokens)}) {
-          const value = theme.tokens?.[name];
-          if (typeof value === "string" && CSS.supports("color", value)) document.documentElement.style.setProperty("--" + name, value);
-        }
-      }
+      applyTheme(message.value.theme);
       publish({ hasContext: true, pluginState: message.value.pluginState, sharedState: Object.freeze(message.value.sharedState || {}) });
     }
     if (message.type === "call-result") {
@@ -135,11 +153,16 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
     let changedAt = startedAt;
     const reportSize = () => {
       changedAt = performance.now();
-      send("height", Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0));
+      const root = document.documentElement;
+      // Fractional iframe sizes can round scrollHeight one pixel above
+      // clientHeight without content overflow. Treating that as overflow pins
+      // the old viewport height forever after content shrinks.
+      send("height", Math.ceil(root.scrollHeight > root.clientHeight + 1 ? root.scrollHeight : root.getBoundingClientRect().height));
     };
     const resize = new ResizeObserver(reportSize);
     const mutations = new MutationObserver(() => { changedAt = performance.now(); });
     resize.observe(document.documentElement);
+    if (document.body) resize.observe(document.body);
     mutations.observe(document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true });
     reportSize();
     Promise.resolve(document.fonts?.ready).catch(() => undefined).finally(() => {
@@ -161,6 +184,29 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
 }
 
 function documentShell(token: string, body: string, capability: InlineWidgetCapability) {
+  // System-color defaults keep standalone review captures readable without
+  // inventing a second Cake palette; the host overrides these before paint.
+  const defaults = widgetThemeColorTokens
+    .map((name) => {
+      const value =
+        name.endsWith("foreground") || name === "foreground"
+          ? "CanvasText"
+          : ["border", "input"].includes(name)
+            ? "GrayText"
+            : [
+                  "accent",
+                  "ring",
+                  "primary",
+                  "success",
+                  "warning",
+                  "attention",
+                  "destructive",
+                ].includes(name)
+              ? "Highlight"
+              : "Canvas";
+      return `--${name}:${value}`;
+    })
+    .join(";");
   // Generated documents cannot inherit CSS across their opaque origin. These base
   // element rules consume the host's live tokens, never a second hardcoded palette.
   const pluginStyles =
@@ -177,7 +223,7 @@ button[data-variant="primary"]:not(:disabled):hover{background:color-mix(in srgb
 :where(button,input,select,textarea):disabled{opacity:.45;cursor:default}
 </style>`
       : "";
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:light dark;font:14px/1.5 system-ui,sans-serif;background:transparent}body{min-width:0;margin:0;padding:16px;overflow:auto;color:CanvasText;background:Canvas}*,*::before,*::after{box-sizing:border-box}body>*{max-width:100%}#cake-widget-root{min-width:0;max-width:100%}:where(h1,h2,h3,h4,h5,h6,p,span,a,button,label,legend,th,td){overflow-wrap:anywhere}img,svg,video,canvas{max-width:100%;height:auto}button,input,select,textarea{max-width:100%;font:inherit}</style>${pluginStyles}${runtimeBridge(token, capability)}</head><body>${body}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{${defaults};--font-sans:system-ui,sans-serif;--font-mono:monospace}html{color-scheme:light dark;font:14px/1.5 var(--font-sans,system-ui),sans-serif;background:transparent}body{min-width:0;margin:0;padding:16px;overflow:auto;color:var(--foreground,CanvasText);background:var(--background,Canvas)}html[data-presentation="inline"] body{padding:0;background:transparent}code,pre,kbd{font-family:var(--font-mono,monospace)}*,*::before,*::after{box-sizing:border-box}body>*{max-width:100%}#cake-widget-root{min-width:0;max-width:100%}:where(h1,h2,h3,h4,h5,h6,p,span,a,button,label,legend,th,td){overflow-wrap:anywhere}img,svg,video,canvas{max-width:100%;height:auto}button,input,select,textarea{max-width:100%;font:inherit}</style>${pluginStyles}${runtimeBridge(token, capability)}</head><body>${body}</body></html>`;
 }
 
 function widgetModulePlugin(source: string): Plugin {

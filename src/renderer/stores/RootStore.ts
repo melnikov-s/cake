@@ -7,7 +7,10 @@ import { SpeechSettingsStore } from "./SpeechSettingsStore";
 import type { DesktopConnectionStore } from "./DesktopConnectionStore";
 import { Store, child, createStore, untracked } from "r-state-tree";
 import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
-import { decodeArtifactLineageId } from "../../domain/artifacts/artifact-lineage";
+import {
+  decodeArtifactLineageId,
+  decodeArtifactRevisionNumber,
+} from "../../domain/artifacts/artifact-lineage";
 import type { Client } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
 import { TerminalTopInsetContext } from "./context/TerminalTopInsetContext";
@@ -28,6 +31,7 @@ import { createSessionPluginOperationAdapter } from "../app-control/SessionPlugi
 import { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { AppShellStore } from "./AppShellStore";
 import { InlineWidgetStore } from "./InlineWidgetStore";
+import { InlineArtifactPreviewStore } from "./InlineArtifactPreviewStore";
 import { SessionPluginStore } from "./SessionPluginStore";
 import { SessionCatalogStore } from "./SessionCatalogStore";
 import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -149,6 +153,11 @@ export class RootStore extends Store<{
           session.sessionArtifactsStore.receive(lineageId);
       },
     });
+  }
+
+  @child
+  get inlineArtifactPreviewStore(): InlineArtifactPreviewStore {
+    return createStore(InlineArtifactPreviewStore, { model: this.props.projection.artifacts });
   }
 
   @child
@@ -589,12 +598,15 @@ export class RootStore extends Store<{
     return this.client.electron.showTranscriptSelectionContextMenu(input, { signal: this.signal });
   }
 
-  showArtifactLibrary(sessionId?: string, lineageId?: string) {
+  showArtifactLibrary(sessionId?: string, lineageId?: string, revision?: number) {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.artifactLibraryStore.open(sessionId);
     this.appShellStore.showArtifactLibrary();
     if (lineageId)
-      void this.artifactLibraryStore.detailStore.select(decodeArtifactLineageId(lineageId));
+      void this.artifactLibraryStore.detailStore.select(
+        decodeArtifactLineageId(lineageId),
+        revision === undefined ? undefined : decodeArtifactRevisionNumber(revision),
+      );
   }
   showSettings() {
     this.projectWorkbenchStore.dismissSecondarySurfaces();

@@ -701,6 +701,7 @@ The window Store hierarchy mirrors the product surfaces:
   and reviewed from actual widget-only screenshots captured in a serialized, main-owned hidden offscreen Electron host before publication,
   with at most two replacements. Original historical graph blobs
   and Pi pointers remain immutable; storage projects their readable Markdown fallbacks instead of maintaining a second graph renderer.
+  Visual artifact publication references may also expand inline through the shared `ArtifactHost`, with exact revisions carried by the Pi transcript projection. Standalone Markdown artifact-image paragraphs explicitly opt into the same disclosure; ordinary prose references remain links. A focused window-owned `InlineArtifactPreviewStore` owns lazy read and per-mount disclosure state, while payloads remain in the shared Artifact Catalog Model. Inline and panel views never duplicate artifact storage. Widget presentation receives live host theme/font tokens without reload and reports content growth and shrinkage independently of viewport height.
   The session header opens the panel, and creating an artifact opens and selects it automatically. Creation from a family session links the
   lineage to that family by default. Session-tree branch changes and tool compaction neither move nor duplicate artifacts. Stable refs use
   `cake://artifact/<lineage-id>` and exact refs append `@rN`. Project agents discover linked artifacts explicitly through Cake's artifact

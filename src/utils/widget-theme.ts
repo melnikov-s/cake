@@ -1,5 +1,5 @@
-/** Semantic colors available inside the opaque-origin Session Plugin document. */
-export const sessionPluginThemeTokens = [
+/** Shared semantic colors available to every opaque-origin Cake widget. */
+export const widgetThemeColorTokens = [
   "background",
   "foreground",
   "card",
@@ -24,3 +24,10 @@ export const sessionPluginThemeTokens = [
   "destructive-foreground",
   "composer",
 ] as const;
+
+export const widgetThemeFontTokens = ["font-sans", "font-mono"] as const;
+
+export interface WidgetTheme {
+  colorScheme: "light" | "dark";
+  tokens: Record<string, string>;
+}

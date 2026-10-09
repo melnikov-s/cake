@@ -152,7 +152,7 @@ export class SessionArtifactsStore extends Store<{
     this.historyLoading = false;
     this.historyError = undefined;
   }
-  openArtifact(artifactId: string) {
+  openArtifact(artifactId: string, revision?: number) {
     const association = this.associations.find((value) => value.lineage?.id === artifactId);
     if (!association) return;
     const selectionRequest = ++this.selectionRequest;
@@ -167,6 +167,11 @@ export class SessionArtifactsStore extends Store<{
     this.historyError = undefined;
     this.open = true;
     void this.loadHistoryPage(decodeArtifactLineageId(artifactId), 0, selectionRequest);
+    if (revision !== undefined)
+      void this.viewRevision(
+        decodeArtifactLineageId(artifactId),
+        decodeArtifactRevisionNumber(revision),
+      );
   }
   async loadOlderHistory() {
     const lineageId = this.selectedArtifactId;

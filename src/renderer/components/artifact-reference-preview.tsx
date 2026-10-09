@@ -14,7 +14,7 @@ export const ArtifactReferencePreview = observer(function ArtifactReferencePrevi
   reference: ArtifactStableRef;
   children?: ReactNode;
   store: ArtifactReferencePreviewStore;
-  onOpen(lineageId: string): void;
+  onOpen(lineageId: string, revision?: number): void;
 }) {
   useEffect(() => {
     void store.previewReference(reference);
@@ -27,7 +27,7 @@ export const ArtifactReferencePreview = observer(function ArtifactReferencePrevi
       href={reference}
       onClick={(event) => {
         event.preventDefault();
-        onOpen(parsed.lineageId);
+        onOpen(parsed.lineageId, parsed.revision);
       }}
     >
       {children ?? state?.metadata?.lineage.title ?? parsed.lineageId}

@@ -33,6 +33,7 @@ import type { UiPart } from "../../ipc/session-contract";
 import type { ArtifactInteractionStore } from "../stores/ArtifactInteractionStore";
 import type { ChatStore } from "../stores/ChatStore";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
+import type { InlineArtifactPreviewStore } from "../stores/InlineArtifactPreviewStore";
 import type { MessageCommentsStore, MessageSelectionAnchor } from "../stores/MessageCommentsStore";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
 import type { SideChatTarget } from "../stores/SideChatStore";
@@ -230,10 +231,12 @@ export interface ChatTranscriptBehavior {
   openSourceLocation?(location: SourceLocation): void;
   waitingForUser?: boolean;
   inlineWidgets?: InlineWidgetStore;
+  inlineArtifactPreviews?: InlineArtifactPreviewStore;
+  openArtifactReference?(reference: string): void;
   artifacts?: {
     records: ArtifactRecord[];
     interaction: ArtifactInteractionStore;
-    openArtifact?(artifactId: string): void;
+    openArtifact?(artifactId: string, revision?: number): void;
   };
   messageComments?: MessageCommentsStore;
   subagents?: SubagentActivityStore;
