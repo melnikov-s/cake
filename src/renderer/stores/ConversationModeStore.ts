@@ -40,6 +40,7 @@ export interface ConversationModeStoreProps {
   activeSessionId(): string | undefined;
   deviceId(): string;
   suspendDictation(): Promise<void>;
+  canReleaseRecognition(): boolean;
 }
 export const ConversationModeContext = createContext<ConversationModeStore | undefined>();
 // Microphone PCM is 16 kHz. Preferences are captured once per voice-mode entry.
@@ -183,7 +184,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       signal.throwIfAborted();
       await this.cleanup;
       signal.throwIfAborted();
-      await this.props.recognition.prepare({ signal });
+      await this.props.recognition.prepare({ signal: this.signal });
       signal.throwIfAborted();
       await this.props.playback.start(signal);
       signal.throwIfAborted();
@@ -221,7 +222,10 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     // Do not use the disposed Store signal: release is resource cleanup, not agent cancellation.
     this.cleanup = this.cleanup
       .catch(() => {})
-      .then(() => this.props.recognition.release())
+      .then(() => {
+        // Dictation's enabled preference retains the shared model across voice handoffs.
+        if (this.props.canReleaseRecognition()) return this.props.recognition.release();
+      })
       .catch(() => {});
     await this.cleanup;
   }
@@ -366,13 +370,12 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       this.signal,
     ]);
     try {
-      // Native cancellation can invalidate a warm recognizer. Re-prepare under the
-      // same capture generation before accepting input after mute.
-      if (prepare) await this.props.recognition.prepare({ signal });
+      // Preparation is idempotent if the shared recognizer is already warm.
+      if (prepare) await this.props.recognition.prepare({ signal: this.signal });
       if (signal.aborted || revision !== this.revision) return;
       const capture = await openSpeechCapture(
         this.props.microphone,
-        (audio, options) =>
+        (audio) =>
           this.props.recognition.detectSpeech(
             {
               ...audio,
@@ -381,7 +384,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
                 continuation: this.preferences.speechContinueThreshold,
               },
             },
-            options,
+            { signal: this.signal },
           ),
         (samples, speech) => {
           if (!signal.aborted && revision === this.revision && !this.muted)
@@ -506,7 +509,9 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
           final,
           settings: speechRecognitionSettings(this.preferences),
         },
-        { signal },
+        // Let an in-flight request drain; cancellation would kill the shared model.
+        // The capture signal/revision below still discards stale words immediately.
+        { signal: this.signal },
       );
       if (signal.aborted || revision !== this.revision) return;
       if (run.interruption?.state === "pending") {

@@ -1030,6 +1030,7 @@ export class RootStore extends Store<{
           : undefined,
       deviceId: () => this.dictationStore.deviceId,
       suspendDictation: async () => this.dictationStore.pauseCapture(),
+      canReleaseRecognition: () => !this.dictationStore.enabled,
     });
   }
 

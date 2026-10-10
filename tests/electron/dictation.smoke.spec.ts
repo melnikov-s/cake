@@ -40,6 +40,8 @@ test("Cake dictation shows readiness, types into chat and annotations, and seals
   const configure = (value: {
     ready: boolean;
     hold?: boolean;
+    holdDetection?: boolean;
+    speech?: boolean;
     text?: string;
     finalText?: string;
     error?: string;
@@ -57,12 +59,18 @@ const config = () => JSON.parse(fs.readFileSync(control, 'utf8'));
 const wait = (predicate) => new Promise(resolve => { const check = () => { try { if (predicate(config())) { watcher.close(); resolve(); } } catch {} }; const watcher = fs.watch(directory, check); check(); });
 const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
 (async () => {
+  fs.appendFileSync(path.join(directory, 'starts.jsonl'), JSON.stringify({ pid: process.pid }) + '\\n');
   await wait(value => value.ready); reply({ ready: true });
   const requestPath = path.join(directory, 'request.json');
   let count = fs.existsSync(requestPath) ? JSON.parse(fs.readFileSync(requestPath, 'utf8')).count : 0;
   for await (const line of readline.createInterface({ input: process.stdin })) {
     const request = JSON.parse(line);
-    if (request.operation === 'detectSpeech') { const data = Buffer.from(request.pcm, 'base64'); let energy = 0; for (let i = 0; i < data.length; i += 4) energy += data.readFloatLE(i) ** 2; reply({ speech: data.length > 0 && Math.sqrt(energy / (data.length / 4)) > 0.003 }); continue; }
+    if (request.operation === 'detectSpeech') {
+      if (config().holdDetection) fs.writeFileSync(path.join(directory, 'detection.json'), JSON.stringify({ held: true }));
+      await wait(value => !value.holdDetection);
+      const data = Buffer.from(request.pcm, 'base64'); let energy = 0; for (let i = 0; i < data.length; i += 4) energy += data.readFloatLE(i) ** 2;
+      reply({ speech: config().speech ?? (data.length > 0 && Math.sqrt(energy / (data.length / 4)) > 0.003) }); continue;
+    }
     fs.writeFileSync(path.join(directory, 'request.json'), JSON.stringify({ count: ++count, final: request.final, id: request.utteranceId }));
     await wait(value => !value.hold); const value = config(); reply(value.error ? { error: value.error } : { text: request.final ? (value.finalText ?? value.text ?? '') : (value.text ?? '') });
   }
@@ -250,11 +258,50 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await page.getByLabel("Use an existing Core ML Parakeet model folder").focus();
     await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
     await expect(page.getByLabel("Use an existing Core ML Parakeet model folder")).toHaveValue("");
-    await configure({ ready: true, hold: true });
+    await configure({ ready: true, speech: false, text: "" });
+    await page.evaluate(() => {
+      const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      Reflect.set(window, "dictationCaptures", 0);
+      navigator.mediaDevices.getUserMedia = (...args) => {
+        Reflect.set(window, "dictationCaptures", Reflect.get(window, "dictationCaptures") + 1);
+        return original(...args);
+      };
+    });
     await page.getByRole("button", { name: "Back to chat" }).click();
     await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await composer.click();
+    await expect(indicator).toHaveText("Listening");
+    await expect(composer).toHaveValue("");
+    const captures = await page.evaluate(() => Reflect.get(window, "dictationCaptures"));
+    const starts = await readFile(join(model, "starts.jsonl"), "utf8");
+    await composer.press("Enter");
+    await expect(indicator).toHaveText("Listening");
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue("");
+    expect(await page.evaluate(() => Reflect.get(window, "dictationCaptures"))).toBe(captures);
+    // Cancel capture with a native detection in flight: retain the loaded helper.
+    await configure({ ready: true, speech: false, text: "", holdDetection: true });
+    await expect
+      .poll(async () => {
+        try {
+          return JSON.parse(await readFile(join(model, "detection.json"), "utf8")).held;
+        } catch {
+          return false;
+        }
+      })
+      .toBe(true);
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await configure({ ready: true, speech: false, text: "" });
+    await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    await sample.focus();
+    await expect(indicator).toHaveText("Listening");
+    await page.getByRole("button", { name: "Back to chat" }).click();
+    await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
+    await composer.click();
+    await expect(indicator).toHaveText("Listening");
+    expect(await readFile(join(model, "starts.jsonl"), "utf8")).toBe(starts);
+    await configure({ ready: true, hold: true });
     await composer.pressSequentially("Typed first. ");
     await expect(composer).toHaveValue("Typed first. ");
     await expect(composer).toBeFocused();

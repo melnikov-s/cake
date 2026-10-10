@@ -240,6 +240,59 @@ afterEach(() => {
 });
 
 describe("Dictation writing-field workflow", () => {
+  it("empty Enter keeps listening without reopening capture, including pending noise-only recognition", async () => {
+    using f = renderDictation();
+    await f.user.click(mode());
+    await f.user.click(message());
+    const preparations = f.prepare.mock.calls.length;
+    await f.user.keyboard("{Enter}{Enter}");
+    listening();
+    expect(f.requests).toHaveLength(0);
+    await f.audio.push(new Float32Array(12_800));
+    await f.user.keyboard("{Enter}");
+    listening();
+    expect(f.requests).toHaveLength(1);
+    expect(f.requests[0]!.audio.final).toBe(false);
+    await f.recognize(0, "");
+    expect(f.audio.getUserMedia).toHaveBeenCalledOnce();
+    expect(f.audio.tracks[0]!.stop).not.toHaveBeenCalled();
+    expect(f.prepare).toHaveBeenCalledTimes(preparations);
+    expect(f.release).not.toHaveBeenCalled();
+    expect(f.prompt).not.toHaveBeenCalled();
+    expect(message().value).toBe("");
+    // Detected speech awaiting its first words must still be finalized from an empty field.
+    await f.audio.push(new Float32Array(4096).fill(0.1));
+    await f.user.keyboard("{Enter}");
+    expect(f.requests[1]!.audio.final).toBe(true);
+    await f.recognize(1, "Spoken request");
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+  });
+
+  it("field changes discard pending detection without cancelling the warm recognition request", async () => {
+    const detection = deferred<boolean>();
+    const detectSpeech = vi
+      .fn<Client["dictation"]["detectSpeech"]>()
+      .mockImplementationOnce(() => detection.promise)
+      .mockImplementation(detectFixtureSpeech);
+    using f = renderDictation({ client: { dictation: { detectSpeech } } });
+    await f.user.click(mode());
+    await f.user.click(message());
+    await f.audio.push(new Float32Array(4096).fill(0.1));
+    await waitFor(() => expect(detectSpeech).toHaveBeenCalledOnce());
+    const signal = detectSpeech.mock.calls[0]![1]?.signal;
+    await f.user.click(trial());
+    expect(signal?.aborted).toBe(false);
+    expect(f.release).not.toHaveBeenCalled();
+    await act(async () => detection.resolve(true));
+    listening();
+    expect(message().value).toBe("");
+    expect(trial().value).toBe("");
+    await f.audio.push(new Float32Array(12_800).fill(0.1));
+    await f.recognize(0, "Fresh field speech");
+    expect(trial().value).toBe("Fresh field speech");
+    expect(message().value).toBe("");
+  });
+
   it("shared speech controls reach dictation detection and recognition, freeze per capture and exclude voice-only policy", async () => {
     const detect = vi.fn<Client["dictation"]["detectSpeech"]>(
       async (input) => 0.7 >= (input.thresholds?.start ?? 0.6),
@@ -854,6 +907,7 @@ describe("Dictation writing-field workflow", () => {
     using fixture = renderDictation({ client: { workspaces: { postProcessDictation } } });
     await fixture.user.click(mode());
     await fixture.user.click(message());
+    await fixture.audio.push(new Float32Array(4096).fill(0.1));
     await fixture.user.keyboard("{Enter}");
     await fixture.recognize(0, "Raw. Words.");
     await fixture.user.type(message(), " edited");
@@ -871,6 +925,7 @@ describe("Dictation writing-field workflow", () => {
     using fixture = renderDictation({ client: { workspaces: { postProcessDictation } } });
     await fixture.user.click(mode());
     await fixture.user.click(message());
+    await fixture.audio.push(new Float32Array(4096).fill(0.1));
     await fixture.user.keyboard("{Enter}");
     await fixture.recognize(0, "Raw. Words.");
     expect(postProcessDictation).toHaveBeenCalledOnce();
@@ -994,6 +1049,7 @@ describe("Dictation writing-field workflow", () => {
     });
     await fixture.user.click(mode());
     await fixture.user.click(message());
+    await fixture.audio.push(new Float32Array(4096).fill(0.1));
     await fixture.user.keyboard("{Enter}");
     await fixture.recognize(0, "Keep raw speech.");
     await waitFor(() =>
@@ -1039,6 +1095,7 @@ describe("Dictation writing-field workflow", () => {
     });
     await fixture.user.click(mode());
     await fixture.user.click(message());
+    await fixture.audio.push(new Float32Array(4096).fill(0.1));
     await fixture.user.keyboard("{Enter}");
     await fixture.recognize(0, "Um raw. Speech.");
     await waitFor(() =>
@@ -1054,7 +1111,7 @@ describe("Dictation writing-field workflow", () => {
     using fixture = renderDictation();
     await fixture.user.click(mode());
     await fixture.user.click(message());
-    await fixture.audio.push(new Float32Array(12_800));
+    await fixture.audio.push(new Float32Array(12_800).fill(0.1));
     await fixture.audio.push(new Float32Array(3200));
     await fixture.user.keyboard("{Enter}{Enter}");
     expect(screen.getByText("Finishing…", { selector: "span" }).classList.contains("sr-only")).toBe(

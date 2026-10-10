@@ -1372,45 +1372,27 @@ describe("Project Session conversation mode", () => {
     await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(1));
     expect(f.abort).not.toHaveBeenCalled();
   });
-  it("mute during native-like in-flight recognition re-prepares the invalidated worker before the next utterance", async () => {
-    let ready = false;
-    let first = true;
-    const started = deferred<void>();
-    const prepare = vi.fn<Client["dictation"]["prepare"]>(async () => {
-      ready = true;
-    });
-    using f = fixture({
-      prepare,
-      transcribe: async (request, options) => {
-        if (!ready) throw new Error("The speech model is not ready");
-        if (first) {
-          first = false;
-          started.resolve();
-          return new Promise<string>((_resolve, reject) => {
-            options?.signal?.addEventListener(
-              "abort",
-              () => {
-                // Mirrors DictationLive interruption: abort closes/resets the worker.
-                ready = false;
-                reject(new DOMException("Aborted", "AbortError"));
-              },
-              { once: true },
-            );
-          });
-        }
-        return request.final ? "Recognized after mute" : "Progress";
-      },
-    });
+  it("mute drains in-flight recognition without aborting the warm worker and discards its stale words", async () => {
+    const result = deferred<string>();
+    const transcribe = vi
+      .fn<Client["dictation"]["transcribe"]>()
+      .mockImplementationOnce(() => result.promise)
+      .mockImplementation(async (request) =>
+        request.final ? "Recognized after mute" : "Progress",
+      );
+    using f = fixture({ transcribe });
     await f.enter();
     await f.frames(0.1, 8);
-    await started.promise;
+    await waitFor(() => expect(transcribe).toHaveBeenCalledOnce());
+    const signal = transcribe.mock.calls[0]![1]?.signal;
     await f.user.click(screen.getByRole("button", { name: "Mute input" }));
-    expect(ready).toBe(false);
-    expect(f.root.conversationModeStore.phase).toBe("active");
+    expect(signal?.aborted).toBe(false);
+    await act(async () => result.resolve("Stale words must not be inserted"));
+    expect(screen.getByRole("combobox", { name: "Message" })).toHaveProperty("value", "");
+    expect(f.prompt).not.toHaveBeenCalled();
+    expect(f.release).not.toHaveBeenCalled();
     await f.user.click(screen.getByRole("button", { name: "Unmute input" }));
     await waitFor(() => expect(f.microphone.open).toHaveBeenCalledTimes(2));
-    expect(prepare).toHaveBeenCalledTimes(2);
-    expect(ready).toBe(true);
     await f.say();
     expect(f.prompt.mock.calls[0]?.[0]).toMatchObject({
       text: "Recognized after mute",
@@ -1442,7 +1424,8 @@ describe("Project Session conversation mode", () => {
           name: action === "remute" ? "Mute input" : "Exit conversation mode",
         }),
       );
-      expect(signal?.aborted).toBe(true);
+      // Capture cancellation drops the late startup, but does not abort shared model preparation.
+      expect(signal?.aborted).toBe(false);
       gate.resolve();
       await act(async () => {
         await gate.promise;
@@ -1534,6 +1517,9 @@ describe("Project Session conversation mode", () => {
     expect(toggle.getAttribute("aria-checked")).toBe("true");
     expect(f.microphone.open).toHaveBeenCalledTimes(opens + 1);
     expect(f.prompt).not.toHaveBeenCalled();
+    expect(f.release).not.toHaveBeenCalled();
+    await f.user.click(toggle);
+    expect(f.release).toHaveBeenCalledOnce();
   });
   it("turning dictation on or off does not disable voice mode or release its recognizer", async () => {
     using f = fixture();

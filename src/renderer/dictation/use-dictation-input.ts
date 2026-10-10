@@ -141,7 +141,11 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
         event.ctrlKey ||
         event.metaKey ||
         event.nativeEvent.isComposing ||
-        event.currentTarget.getAttribute("aria-expanded") === "true"
+        event.currentTarget.getAttribute("aria-expanded") === "true" ||
+        // Empty Enter must not stop capture. Let the field handle attachment-only submits too.
+        (store.phase === "listening" &&
+          !event.currentTarget.value.trim() &&
+          !store.hasSpeechToFinish(id))
       )
         return false;
       event.preventDefault();

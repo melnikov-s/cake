@@ -10,14 +10,16 @@ It does not inject keystrokes into VS Code, terminals, browser pages, widgets, o
    **Parakeet TDT v2 Core ML** folder. It must contain `Preprocessor.mlmodelc`, `Encoder.mlmodelc`,
    `Decoder.mlmodelc`, `JointDecision.mlmodelc`, and `parakeet_vocab.json`.
    MLX, ONNX, Whisper, and NeMo weights are not interchangeable with these compiled bundles.
-3. Enable **Dictation mode**. Cake loads and warms the model, reusing it while available and re-preparing after a voice-mode handoff.
+3. Enable **Dictation mode**. Cake loads and warms the model, retaining it across field changes,
+   chat switches, mute and voice-mode handoffs while dictation remains enabled.
 4. Focus a Cake chat composer, annotation comment, interview prose answer (including a select's
    **Other** response), or another opted-in writing field.
    Wait for the loading spinner inside the speech control to become waveform bars before
    speaking. The spinner means capture is not ready; no preparation header is shown.
    Core ML's first load can take longer while macOS prepares the model for the device.
 5. Speech appears progressively. Where Enter already submits, it drains the final audio before
-   submitting once. Shift+Enter and existing multiline/slash-menu behavior remain unchanged.
+   submitting once. Empty Enter without detected or recognized speech leaves dictation listening;
+   speech awaiting its first transcription still drains normally. Shift+Enter and existing multiline/slash-menu behavior remain unchanged.
 6. Click the circular waveform at the start of the input to mute; click it again to unmute.
    Muting stops microphone capture and discards pending recognition without changing visible
    text or Dictation mode. The crossed waveform remains available while muted. Typing still
@@ -43,7 +45,10 @@ Focus is the destination: blurring a field immediately seals its visible text an
 pending recognition. No old result can modify the previous field or spill into a new field.
 Moving the cursor or typing seals the current speech span and starts a new decoding generation
 without reopening the microphone. Leaving Cake or the last eligible field stops capture but
-keeps the model warm. Recognition failure blocks the pending dictation submission; ordinary
+keeps the model warm. In-flight recognition/detection drains under the Store lifetime signal,
+while capture cancellation immediately discards stale results; cancelling a native request would
+kill the shared helper. Voice mode releases the model on exit only when dictation is disabled.
+Recognition failure blocks the pending dictation submission; ordinary
 keyboard editing remains available.
 
 ## Model installation and attribution

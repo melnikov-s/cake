@@ -99,6 +99,8 @@ async function launch({
     JSON.stringify({ modelPath: model }),
   );
   const helper = join(directory, "dictation");
+  const modelStarts = join(directory, "model-starts.jsonl");
+  await writeFile(modelStarts, "");
   const recognitionRequests = join(directory, "recognition-requests.jsonl");
   const detectionRequests = join(directory, "detection-requests.jsonl");
   await writeFile(recognitionRequests, "");
@@ -112,6 +114,7 @@ const texts = ${JSON.stringify(recognitionTexts)};
 const utterances = new Map();
 const recognition = new Map();
 const speaking = new Map();
+fs.appendFileSync(${JSON.stringify(modelStarts)}, JSON.stringify({ pid: process.pid }) + '\\n');
 process.stdout.write(JSON.stringify({ready:true})+'\\n');
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
   const request = JSON.parse(line);
@@ -362,6 +365,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     configure,
     userData,
     localRequests,
+    modelStarts,
     recognitionRequests,
     detectionRequests,
     async frames(chunks: [number, number][]) {
@@ -1078,6 +1082,8 @@ test("dictation stays enabled through voice mode and immediately works after swi
     await expect(f.page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
     await f.frames([[0.1, 8]]);
     await expect(input).toHaveValue("Dictated words");
+    const starts = await readFile(f.modelStarts, "utf8");
+    expect(starts.trim().split("\n")).toHaveLength(1);
     await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
     await expect(f.page.getByRole("button", { name: "Mute input" })).toBeVisible();
     await input.click();
@@ -1089,6 +1095,10 @@ test("dictation stays enabled through voice mode and immediately works after swi
     await expect(f.page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
     await f.frames([[0.1, 8]]);
     await expect(input).toHaveValue("Dictated words");
+    expect(await readFile(f.modelStarts, "utf8")).toBe(starts);
+    await input.pressSequentially(" Typed too.");
+    await expect(input).toHaveValue("Dictated words Typed too.");
+    await expect(input).toBeFocused();
     await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
     await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();

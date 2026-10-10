@@ -237,10 +237,11 @@ export class DictationStore extends Store<{
       if (this.utterance !== run) return;
       const capture = await openSpeechCapture(
         this.props.microphone,
-        (audio, options) =>
+        // Focus cancellation drops capture-local results, not the shared warm worker.
+        (audio) =>
           this.props.client.detectSpeech(
             { ...audio, thresholds: run.settings.thresholds },
-            options,
+            { signal: this.signal },
           ),
         (samples, speech) => {
           if (this.utterance !== run || run.finishing) return;
@@ -495,6 +496,11 @@ export class DictationStore extends Store<{
           else this.scheduleCleanup(run);
         }
       });
+  }
+  /** Detected speech may still be waiting for its first transcription. Silence is not a draft. */
+  hasSpeechToFinish(id: string): boolean {
+    const run = this.utterance;
+    return !!run && run.target.id === id && (run.heardSpeech || !!run.rawText.trim());
   }
   /** Returns false if focus changed or recognition failed: never submit a truncated draft. */
   async finish(id: string): Promise<boolean> {
