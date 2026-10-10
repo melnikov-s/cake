@@ -11,6 +11,7 @@ public struct AudioRequest: Decodable, Sendable {
   public let utteranceId: String
   public let pcm: String
   public let final: Bool
+  public let settings: SpeechRecognitionSettings?
 
   public static func decode(_ line: String) throws -> AudioRequest {
     guard line.utf8.count <= 855_000 else { throw ProtocolError.invalidRequest }
@@ -18,6 +19,7 @@ public struct AudioRequest: Decodable, Sendable {
     guard !request.utteranceId.isEmpty, request.utteranceId.utf8.count <= 400,
       request.pcm.utf8.count <= 854_000
     else { throw ProtocolError.invalidRequest }
+    try request.settings?.validate()
     return request
   }
 

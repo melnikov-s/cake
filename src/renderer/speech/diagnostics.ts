@@ -1,3 +1,5 @@
+import type { SpeechInputPreferences } from "../../utils/speech-input-settings";
+
 type VoiceDiagnosticEvent =
   | "enter"
   | "active"
@@ -16,6 +18,7 @@ type VoiceDiagnosticEvent =
   | "playback-chunk";
 
 interface VoiceDiagnosticMetadata {
+  preferences?: SpeechInputPreferences;
   provider?: string;
   state?: string;
   phase?: string;

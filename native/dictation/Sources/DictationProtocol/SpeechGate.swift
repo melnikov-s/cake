@@ -7,6 +7,8 @@ public struct SpeechGate: Sendable {
     case audio([Float])
     case end
   }
+  private let settings: SpeechRecognitionSettings
+  private var candidate: [Float] = []
   private var preroll: [Float] = []
   private var active = false
   private var quiet = 0
@@ -15,23 +17,34 @@ public struct SpeechGate: Sendable {
   public static let frameSamples = 4096
   private let paddingSamples = 4096
   private let endpointSamples = 24_000  // 1.5 seconds; ordinary thinking pauses stay within a phrase.
-  private let maximumSamples = 480_000  // Bound a continuous phrase to 30 seconds.
+  private var maximumSamples: Int { settings.maximumUtteranceSeconds * 16_000 }
+  private var minimumSamples: Int { settings.minimumSpeechMs * 16 }
+  private var lookbackSamples: Int { settings.prerollMs * 16 }
 
-  public init() {}
+  public init(settings: SpeechRecognitionSettings = .standard) {
+    self.settings = settings
+  }
 
   public mutating func append(_ samples: [Float], speech: Bool) -> [Event] {
     guard !samples.isEmpty else { return [] }
     if !active {
       if !speech {
+        // A broken onset does not qualify as sustained speech. Keep it only
+        // within lookback, so the next accepted onset can preserve word beginnings.
+        preroll.append(contentsOf: candidate)
+        candidate = []
         preroll.append(contentsOf: samples)
-        if preroll.count > paddingSamples { preroll.removeFirst(preroll.count - paddingSamples) }
+        if preroll.count > lookbackSamples { preroll.removeFirst(preroll.count - lookbackSamples) }
         return []
       }
+      candidate.append(contentsOf: samples)
+      if candidate.count < minimumSamples { return [] }
       active = true
       duration = 0
       quiet = 0
-      let audio = preroll + samples
+      let audio = preroll + candidate
       preroll = []
+      candidate = []
       duration += audio.count
       return [.audio(audio)]
     }
@@ -60,7 +73,7 @@ public struct SpeechGate: Sendable {
 
   public mutating func finish() -> [Event] {
     let wasActive = active
-    self = SpeechGate()
+    self = SpeechGate(settings: settings)
     return wasActive ? [.end] : []
   }
 }

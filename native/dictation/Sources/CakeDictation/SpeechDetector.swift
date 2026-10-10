@@ -24,7 +24,4 @@ actor SpeechDetector {
     return try await manager.processStreamingChunk(padded, state: state)
   }
 
-  static func isSpeech(_ probability: Float, previouslySpeaking: Bool) -> Bool {
-    probability >= (previouslySpeaking ? 0.4 : 0.6)
-  }
 }

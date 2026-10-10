@@ -18,6 +18,7 @@ const repositoryRoot = resolve(import.meta.dirname, "../..");
 async function launch({
   reasoning = false,
   recognizeSpeech = false,
+  detectionProbability = 0.9,
   recognitionTexts = [],
   secondSession = false,
   foreground = false,
@@ -26,6 +27,7 @@ async function launch({
 }: {
   reasoning?: boolean;
   recognizeSpeech?: boolean;
+  detectionProbability?: number;
   recognitionTexts?: string[];
   secondSession?: boolean;
   foreground?: boolean;
@@ -97,24 +99,48 @@ async function launch({
     JSON.stringify({ modelPath: model }),
   );
   const helper = join(directory, "dictation");
+  const recognitionRequests = join(directory, "recognition-requests.jsonl");
+  const detectionRequests = join(directory, "detection-requests.jsonl");
+  await writeFile(recognitionRequests, "");
+  await writeFile(detectionRequests, "");
   await writeFile(
     helper,
     `#!${process.execPath}
 const readline = require('node:readline');
+const fs = require('node:fs');
 const texts = ${JSON.stringify(recognitionTexts)};
 const utterances = new Map();
+const recognition = new Map();
+const speaking = new Map();
 process.stdout.write(JSON.stringify({ready:true})+'\\n');
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
   const request = JSON.parse(line);
   if (request.operation === 'detectSpeech') {
     const pcm = Buffer.from(request.pcm, 'base64'); let voiced = 0;
     for (let offset = 0; offset < pcm.length; offset += 4) if (Math.abs(pcm.readFloatLE(offset)) >= 0.015) voiced++;
-    process.stdout.write(JSON.stringify({ speech: voiced > pcm.length / 8 }) + '\\n');
+    const probability = voiced > pcm.length / 8 ? ${JSON.stringify(detectionProbability)} : 0.01;
+    const thresholds = request.thresholds ?? { start: 0.6, continuation: 0.4 };
+    const speech = probability >= (speaking.get(request.captureId) ? thresholds.continuation : thresholds.start);
+    speaking.set(request.captureId, speech);
+    fs.appendFileSync(${JSON.stringify(detectionRequests)}, JSON.stringify({thresholds: request.thresholds, speech}) + '\\n');
+    process.stdout.write(JSON.stringify({ speech }) + '\\n');
     return;
   }
-  if (!utterances.has(request.utteranceId)) utterances.set(request.utteranceId, utterances.size);
+  fs.appendFileSync(${JSON.stringify(recognitionRequests)}, JSON.stringify({utteranceId: request.utteranceId, final: request.final, settings: request.settings}) + '\\n');
+  if (!utterances.has(request.utteranceId)) {
+    utterances.set(request.utteranceId, utterances.size);
+    recognition.set(request.utteranceId, { samples: 0, accepted: false });
+  }
+  const pcm = Buffer.from(request.pcm, 'base64'); let voiced = 0;
+  for (let offset = 0; offset < pcm.length; offset += 4) if (Math.abs(pcm.readFloatLE(offset)) >= 0.015) voiced++;
+  const state = recognition.get(request.utteranceId);
+  const threshold = state.accepted ? request.settings?.thresholds.continuation ?? 0.4 : request.settings?.thresholds.start ?? 0.6;
+  if (voiced && ${JSON.stringify(detectionProbability)} >= threshold) {
+    state.samples += voiced;
+    if (state.samples >= (request.settings?.minimumSpeechMs ?? 200) * 16) state.accepted = true;
+  } else if (!state.accepted) state.samples = 0;
   const index = utterances.get(request.utteranceId);
-  const text = texts[index] ?? (${recognizeSpeech} && request.final ? 'Spoken request ' + (index + 1) : '');
+  const text = state.accepted ? texts[index] ?? (${recognizeSpeech} && request.final ? 'Spoken request ' + (index + 1) : '') : '';
   process.stdout.write(JSON.stringify({text})+'\\n');
 });
 `,
@@ -336,6 +362,8 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     configure,
     userData,
     localRequests,
+    recognitionRequests,
+    detectionRequests,
     async frames(chunks: [number, number][]) {
       await page.evaluate((chunks) => {
         const fixture = Reflect.get(globalThis, "conversationAudioFixture") as {
@@ -387,6 +415,207 @@ test.beforeEach(() => {
     "Native Parakeet requires Apple Silicon/macOS 14+",
   );
   test.setTimeout(60000);
+});
+
+test("speech input sliders support keyboard input, scope labels, persistence and native detection", async () => {
+  const f = await launch({ recognitionTexts: ["Recognized speech"] });
+  try {
+    await f.configure();
+    await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    await f.page.getByRole("button", { name: "Advanced speech input" }).click();
+    const sensitivity = f.page.getByRole("slider", { name: "Speech detection sensitivity" });
+    await sensitivity.focus();
+    await sensitivity.press("End");
+    await expect(sensitivity).toBeFocused();
+    await expect(sensitivity).toHaveValue("0.95");
+    await sensitivity.press("ArrowLeft");
+    await sensitivity.press("ArrowLeft");
+    await expect(sensitivity).toHaveValue("0.85");
+    await expect(sensitivity).toHaveAttribute("aria-valuetext", "85%");
+    await expect(sensitivity).toHaveAccessibleDescription(/Dictation \+ voice mode/);
+    await expect(
+      f.page.getByRole("slider", { name: "Maximum utterance length" }),
+    ).toHaveAccessibleDescription(/Dictation \+ voice mode/);
+    await expect(
+      f.page.getByRole("slider", { name: "Pause before automatic send" }),
+    ).toHaveAccessibleDescription(/Voice mode only/);
+    await expect(
+      f.page.getByRole("switch", { name: "Allow short interruption commands" }),
+    ).toHaveAccessibleDescription(/Voice mode only/);
+    const continuation = f.page.getByRole("slider", { name: "Speech continuation threshold" });
+    await continuation.press("ArrowRight");
+    await continuation.press("ArrowRight");
+    await expect(continuation).toHaveValue("0.5");
+    await f.page.getByRole("slider", { name: "Pause before automatic send" }).press("Home");
+    const countdown = f.page.getByRole("slider", { name: "Countdown display delay" });
+    await expect(countdown).toHaveValue("0.75");
+    await countdown.press("Home");
+    await countdown.press("ArrowRight");
+    await f.page.getByRole("slider", { name: "Minimum speech duration" }).press("End");
+    await f.page.getByRole("slider", { name: "Audio lookback" }).press("Home");
+    await f.page.getByRole("slider", { name: "Maximum utterance length" }).press("Home");
+    await f.page.getByRole("slider", { name: "Words required to interrupt" }).press("End");
+    await f.page.getByRole("slider", { name: "Interruption recognition window" }).press("Home");
+    await f.page.getByRole("switch", { name: "Allow short interruption commands" }).click();
+    await expect
+      .poll(async () => {
+        const document = JSON.parse(await readFile(join(f.userData, "window-state.json"), "utf8"));
+        return document.data?.children?.speechInputSettingsStore?.state?.preferences;
+      })
+      .toEqual({
+        speechStartThreshold: 0.85,
+        speechContinueThreshold: 0.5,
+        minimumSpeechMs: 1000,
+        prerollMs: 0,
+        sendPauseSeconds: 1,
+        countdownDelaySeconds: 0.25,
+        maximumUtteranceSeconds: 5,
+        interruptionWords: 10,
+        interruptionWindowMs: 500,
+        shortCommands: false,
+      });
+    await f.page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    const composer = f.page.getByRole("combobox", { name: "Message" });
+    await composer.click();
+    await composer.pressSequentially("Typed prefix:");
+    await expect(composer).toBeFocused();
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toBeVisible();
+    await f.frames([[0.1, 20]]);
+    await expect(composer).toHaveValue("Typed prefix: Recognized speech");
+    await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await expect
+      .poll(async () =>
+        (await readFile(f.detectionRequests, "utf8"))
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line))
+          .some(
+            (request) =>
+              request.speech &&
+              request.thresholds?.start === 0.85 &&
+              request.thresholds?.continuation === 0.5,
+          ),
+      )
+      .toBe(true);
+    await f.frames([[0, 11]]);
+    await expect.poll(() => f.responses.length).toBe(1);
+  } finally {
+    await f.close();
+  }
+});
+
+test("shared sensitivity rejects ambiguous noise in both workflows and lowering it restores dictation", async () => {
+  const f = await launch({
+    detectionProbability: 0.7,
+    recognitionTexts: ["Recognized speech", "Recognized speech"],
+  });
+  try {
+    await f.configure();
+    await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    await f.page.getByRole("button", { name: "Advanced speech input" }).click();
+    const sensitivity = f.page.getByRole("slider", { name: "Speech detection sensitivity" });
+    await sensitivity.press("End");
+    await sensitivity.press("ArrowLeft");
+    await sensitivity.press("ArrowLeft");
+    await expect(sensitivity).toHaveValue("0.85");
+    await f.page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    const composer = f.page.getByRole("combobox", { name: "Message" });
+    await composer.click();
+    await composer.pressSequentially("Typed prefix:");
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toBeVisible();
+    await f.frames([
+      [0.8, 20],
+      [0, 35],
+    ]);
+    await expect
+      .poll(
+        async () =>
+          (await readFile(f.detectionRequests, "utf8")).split("\n").filter(Boolean).length,
+      )
+      .toBeGreaterThanOrEqual(18);
+    expect(await readFile(f.recognitionRequests, "utf8")).toBe("");
+    await expect(composer).toHaveValue("Typed prefix:");
+    await expect(f.page.getByRole("button", { name: "Cancel automatic send" })).toHaveCount(0);
+    expect(f.responses).toHaveLength(0);
+    await f.page.getByRole("button", { name: "Exit conversation mode" }).click();
+    await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    await f.page.getByRole("switch", { name: "Dictation mode" }).click();
+    await f.page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await composer.click();
+    await expect(composer).toBeFocused();
+    await expect
+      .poll(() =>
+        f.page.evaluate(
+          () =>
+            (
+              Reflect.get(globalThis, "conversationAudioFixture") as {
+                processors: AudioWorkletNode[];
+              }
+            ).processors.length,
+        ),
+      )
+      .toBe(2);
+    await f.frames([[0.1, 20]]);
+    await expect
+      .poll(
+        async () =>
+          (await readFile(f.recognitionRequests, "utf8")).split("\n").filter(Boolean).length,
+      )
+      .toBeGreaterThan(0);
+    await expect(composer).toHaveValue("Typed prefix:");
+    await expect
+      .poll(async () =>
+        (await readFile(f.recognitionRequests, "utf8"))
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line))
+          .every((request) => request.settings.thresholds.start === 0.85),
+      )
+      .toBe(true);
+    // A shared setting change applies to the next dictation capture, without
+    // changing voice-only send policy or submitting a dictated draft.
+    await f.page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await f.page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    await sensitivity.focus();
+    await sensitivity.press("Home");
+    for (let i = 0; i < 10; i++) await sensitivity.press("ArrowRight");
+    await expect(sensitivity).toHaveValue("0.6");
+    await f.page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await composer.click();
+    await expect(composer).toBeFocused();
+    await expect
+      .poll(() =>
+        f.page.evaluate(
+          () =>
+            (
+              Reflect.get(globalThis, "conversationAudioFixture") as {
+                processors: AudioWorkletNode[];
+              }
+            ).processors.length,
+        ),
+      )
+      .toBe(3);
+    await f.frames([[0.1, 20]]);
+    await expect(composer).toHaveValue("Typed prefix: Recognized speech");
+    await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await expect
+      .poll(async () =>
+        (await readFile(f.detectionRequests, "utf8"))
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line))
+          .some((request) => request.speech && request.thresholds.start === 0.6),
+      )
+      .toBe(true);
+    expect(f.responses).toHaveLength(0);
+  } finally {
+    await f.close();
+  }
 });
 
 test("utility post-processing cleans voice input through real RPC and Pi completion before sending", async () => {
@@ -741,6 +970,54 @@ test("@foreground conversation capture stops on native window blur", async () =>
         ),
       )
       .toBe(true);
+  } finally {
+    await f.close();
+  }
+});
+
+test("voice countdown ignores empty noise recognition, preserves typed text and still accepts a genuine yeah", async () => {
+  const f = await launch({ recognitionTexts: ["", "yeah"] });
+  try {
+    await f.configure();
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toBeVisible();
+    const composer = f.page.getByRole("combobox", { name: "Message", exact: true });
+    await composer.focus();
+    await composer.pressSequentially("Typed draft stays");
+    await f.frames([
+      [0.1, 8],
+      [0, 20],
+    ]);
+    // Wait for the external recognizer to consume the silence, rather than
+    // asserting absence before the asynchronous detector/recognizer have run.
+    const requests = async () =>
+      (await readFile(f.recognitionRequests, "utf8"))
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { final: boolean });
+    await expect.poll(async () => (await requests()).length).toBeGreaterThanOrEqual(3);
+    // Do not retry an absence assertion until a wrongly-started timer expires.
+    expect(await f.page.getByRole("button", { name: "Cancel automatic send" }).count()).toBe(0);
+    await expect(composer).toHaveValue("Typed draft stays");
+    await f.frames([[0, 15]]);
+    await expect.poll(async () => (await requests()).some((request) => request.final)).toBe(true);
+    await expect(f.page.getByRole("button", { name: "Cancel automatic send" })).toHaveCount(0);
+    expect(f.responses).toHaveLength(0);
+    await f.frames([[0.1, 8]]);
+    await expect(composer).toHaveValue("Typed draft stays yeah");
+    await f.frames([[0, 20]]);
+    await expect(f.page.getByRole("button", { name: "Cancel automatic send" })).toBeVisible();
+    await f.page.getByRole("button", { name: "Cancel automatic send" }).click();
+    await f.frames([[0, 15]]);
+    await expect(composer).toHaveValue("Typed draft stays yeah");
+    await composer.focus();
+    await composer.press("End");
+    await composer.pressSequentially(" edited");
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue("Typed draft stays yeah edited");
+    await expect(f.page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    expect(f.responses).toHaveLength(0);
   } finally {
     await f.close();
   }

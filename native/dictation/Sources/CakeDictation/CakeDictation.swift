@@ -10,6 +10,7 @@ private struct Operation: Decodable {
 private struct DetectionRequest: Decodable {
   let captureId: String
   let pcm: String
+  let thresholds: SpeechThresholds?
 }
 
 @MainActor
@@ -22,6 +23,7 @@ private final class Recognition {
   private var expectedWindows = 0
   private var schedule = WindowSchedule()
   private var utteranceId: String?
+  private var settings = SpeechRecognitionSettings.standard
   private var gate = SpeechGate()
   private var pendingSamples: [Float] = []
   private var completed: [String] = []
@@ -79,6 +81,8 @@ private final class Recognition {
       throw ProtocolError.invalidRequest
     }
     let samples = try AudioRequest.decodeSamples(request.pcm)
+    let thresholds = request.thresholds ?? .standard
+    try thresholds.validate()
     if captureId != request.captureId {
       captureId = request.captureId
       captureState = .initial()
@@ -86,7 +90,7 @@ private final class Recognition {
     }
     let result = try await detector.classify(samples, state: captureState)
     captureState = result.state
-    captureSpeech = SpeechDetector.isSpeech(result.probability, previouslySpeaking: captureSpeech)
+    captureSpeech = thresholds.isSpeech(result.probability, previouslySpeaking: captureSpeech)
     return captureSpeech
   }
 
@@ -134,21 +138,25 @@ private final class Recognition {
   private func classifyRecognition(_ samples: [Float]) async throws {
     let result = try await detector.classify(samples, state: recognitionState)
     recognitionState = result.state
-    recognitionSpeech = SpeechDetector.isSpeech(
+    recognitionSpeech = settings.thresholds.isSpeech(
       result.probability, previouslySpeaking: recognitionSpeech)
     try await consume(gate.append(samples, speech: recognitionSpeech))
   }
 
   func transcribe(_ request: AudioRequest) async throws -> String {
     let samples = try request.samples()
+    let requestedSettings = request.settings ?? .standard
     if utteranceId != request.utteranceId {
       await cancelStream()
       utteranceId = request.utteranceId
-      gate = SpeechGate()
+      settings = requestedSettings
+      gate = SpeechGate(settings: settings)
       pendingSamples = []
       completed = []
       recognitionState = .initial()
       recognitionSpeech = false
+    } else if requestedSettings != settings {
+      throw ProtocolError.invalidRequest
     }
     pendingSamples.append(contentsOf: samples)
     while pendingSamples.count >= SpeechGate.frameSamples {

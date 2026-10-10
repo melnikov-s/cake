@@ -1,6 +1,7 @@
 import { SettingsMcpSection } from "./settings-mcp-section";
 import { SettingsDictationSection } from "./settings-dictation-section";
 import { SettingsSpeechSection } from "./settings-speech-section";
+import { SettingsSpeechInputSection } from "./settings-speech-input-section";
 import { SettingsScreenCaptureSection } from "./settings-screen-capture-section";
 import { SettingsDesktopHostSection } from "./settings-desktop-host-section";
 import { useEffect, useState } from "react";
@@ -927,6 +928,7 @@ export const SettingsPage = observer(function SettingsPage({
                   prompts={settings.cakePrompts}
                 />
                 <SettingsSpeechSection speech={settings.speech} />
+                <SettingsSpeechInputSection store={settings.speechInput} />
               </>
             ))}
           {activePage === "appearance" && <SettingsAppearanceSection appearance={appearance} />}

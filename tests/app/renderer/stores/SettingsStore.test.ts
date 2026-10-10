@@ -5,6 +5,7 @@ import { SessionOperationCoordinatorStore } from "../../../../src/renderer/store
 import { SettingsStore } from "../../../../src/renderer/stores/SettingsStore";
 import { ScreenCaptureAttachmentStore } from "../../../../src/renderer/stores/ScreenCaptureAttachmentStore";
 import { SpeechSettingsStore } from "../../../../src/renderer/stores/SpeechSettingsStore";
+import { SpeechInputSettingsStore } from "../../../../src/renderer/stores/SpeechInputSettingsStore";
 import { createTestClient } from "../test-client";
 
 function createSettingsStore() {
@@ -12,6 +13,7 @@ function createSettingsStore() {
   return mount(
     createStore(SettingsStore, {
       dictation: createDictationStore(),
+      speechInput: mount(createStore(SpeechInputSettingsStore)),
       speech: mount(
         createStore(SpeechSettingsStore, {
           client: createTestClient().speechOutput,

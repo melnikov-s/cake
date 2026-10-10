@@ -16,6 +16,7 @@ import type { Microphone } from "../../../src/renderer/dictation/microphone";
 import type { SpeechPlayback } from "../../../src/renderer/speech/playback";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SettingsSpeechSection } from "../../../src/renderer/components/settings-speech-section";
+import { SettingsSpeechInputSection } from "../../../src/renderer/components/settings-speech-input-section";
 import { speechOutputSettings, pocketTtsState } from "../../helpers/speech-output";
 import { SettingsDictationSection } from "../../../src/renderer/components/settings-dictation-section";
 import { ToastHost } from "../../../src/renderer/components/toast-host";
@@ -483,6 +484,188 @@ describe("Project Session conversation mode", () => {
     await f.frames(0, 33);
     expect(f.prompt).toHaveBeenCalledTimes(1);
   });
+  it("advanced voice thresholds reject ambiguous noise and reach detection without changing an active run", async () => {
+    let probability = 0.7;
+    const detect = vi.fn<Client["dictation"]["detectSpeech"]>(
+      async (request) => probability >= (request.thresholds?.start ?? 0.6),
+    );
+    using f = fixture({ detectSpeech: detect });
+    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+    await f.user.click(screen.getByRole("button", { name: "Advanced speech input" }));
+    await f.enter();
+    const sensitivity = screen.getByRole("slider", { name: "Speech detection sensitivity" });
+    fireEvent.change(sensitivity, { target: { value: "0.85" } });
+    // Editing preferences cannot change the current capture underneath the user.
+    await f.detectorFrames(0.1, 3);
+    expect(detect.mock.calls.at(-1)?.[0].thresholds).toEqual({ start: 0.6, continuation: 0.4 });
+    await f.user.click(screen.getByRole("button", { name: "Exit conversation mode" }));
+    await f.enter();
+    const transcriptions = f.transcribe.mock.calls.length;
+    await f.detectorFrames(0.8, 4);
+    expect(f.transcribe).toHaveBeenCalledTimes(transcriptions);
+    expect(detect.mock.calls.at(-1)?.[0].thresholds).toEqual({ start: 0.85, continuation: 0.4 });
+    probability = 0.9;
+    await f.detectorFrames(0.01, 3);
+    expect(f.transcribe.mock.calls.length).toBeGreaterThan(transcriptions);
+    expect(
+      (screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).value,
+    ).toContain("Recognized speech");
+  });
+  it("advanced pause and countdown controls drive the actual auto-send boundary", async () => {
+    using f = fixture();
+    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+    await f.user.click(screen.getByRole("button", { name: "Advanced speech input" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Pause before automatic send" }), {
+      target: { value: "1" },
+    });
+    fireEvent.change(screen.getByRole("slider", { name: "Countdown display delay" }), {
+      target: { value: "0.25" },
+    });
+    await f.enter();
+    await f.detectorFrames(0.1, 3);
+    await f.detectorFrames(0, 1);
+    expect(screen.getByRole("button", { name: "Cancel automatic send" })).toBeDefined();
+    await f.detectorFrames(0, 2);
+    expect(f.prompt).not.toHaveBeenCalled();
+    await f.detectorFrames(0, 1);
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(1));
+  });
+  it("a zero countdown delay still waits for a real pause and clears when speech resumes", async () => {
+    using f = fixture();
+    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+    await f.user.click(screen.getByRole("button", { name: "Advanced speech input" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Countdown display delay" }), {
+      target: { value: "0" },
+    });
+    await f.enter();
+    await f.detectorFrames(0.1, 3);
+    expect(screen.queryByRole("button", { name: "Cancel automatic send" })).toBeNull();
+    await f.detectorFrames(0, 1);
+    expect(screen.getByRole("button", { name: "Cancel automatic send" })).toBeDefined();
+    await f.detectorFrames(0.1, 1);
+    expect(screen.queryByRole("button", { name: "Cancel automatic send" })).toBeNull();
+    expect(f.prompt).not.toHaveBeenCalled();
+  });
+  it("minimum speech and utterance limits preserve the onset but never auto-submit at the length cap", async () => {
+    using f = fixture();
+    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+    await f.user.click(screen.getByRole("button", { name: "Advanced speech input" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Minimum speech duration" }), {
+      target: { value: "1000" },
+    });
+    fireEvent.change(screen.getByRole("slider", { name: "Audio lookback" }), {
+      target: { value: "0" },
+    });
+    fireEvent.change(screen.getByRole("slider", { name: "Maximum utterance length" }), {
+      target: { value: "5" },
+    });
+    await f.enter();
+    await f.detectorFrames(0.1, 3);
+    expect(f.transcribe).not.toHaveBeenCalled();
+    await f.detectorFrames(0.1, 1);
+    expect(Buffer.from(f.transcribe.mock.calls[0]![0].pcm, "base64").length / 4).toBe(4 * 4096);
+    await f.detectorFrames(0.1, 20);
+    expect(f.transcribe.mock.calls.some(([request]) => request.final)).toBe(true);
+    expect(f.prompt).not.toHaveBeenCalled();
+    expect((screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).value).toBe(
+      "Recognized speech",
+    );
+  });
+  it("advanced interruption word count and short-command switch control real barge-in", async () => {
+    let text = "Stop!";
+    using f = fixture({ drain: untilAborted, transcribe: async () => text });
+    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+    await f.user.click(screen.getByRole("button", { name: "Advanced speech input" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Words required to interrupt" }), {
+      target: { value: "6" },
+    });
+    await f.user.click(screen.getByRole("switch", { name: "Allow short interruption commands" }));
+    await f.enter();
+    f.publish([consumed(), assistant("First answer. ")]);
+    await waitFor(() => expect(f.playback.drain).toHaveBeenCalled());
+    const stops = vi.mocked(f.playback.stop).mock.calls.length;
+    await f.detectorFrames(0.1, 3);
+    expect(f.playback.stop).toHaveBeenCalledTimes(stops);
+    text = "Actually change that approach";
+    await f.detectorFrames(0.1, 3);
+    expect(f.playback.stop).toHaveBeenCalledTimes(stops);
+    text = "Actually please change that entire approach";
+    await f.detectorFrames(0.1, 3);
+    expect(f.playback.stop).toHaveBeenCalledTimes(stops + 1);
+    expect(f.abort).not.toHaveBeenCalled();
+  });
+  it("advanced interruption window expires a late recognized request without cancelling playback", async () => {
+    const result = deferred<string>();
+    using f = fixture({ drain: untilAborted, transcribe: async () => result.promise });
+    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+    await f.user.click(screen.getByRole("button", { name: "Advanced speech input" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Interruption recognition window" }), {
+      target: { value: "1000" },
+    });
+    await f.enter();
+    f.publish([consumed(), assistant("Still speaking. ")]);
+    await waitFor(() => expect(f.playback.drain).toHaveBeenCalled());
+    const stops = vi.mocked(f.playback.stop).mock.calls.length;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    await f.detectorFrames(0.1, 3);
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    await act(async () => result.resolve("Actually change that approach"));
+    expect(f.playback.stop).toHaveBeenCalledTimes(stops);
+    expect(f.prompt).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+  });
+  it("advanced settings persist, constrain coupled dials and reset without persisting live audio state", async () => {
+    using f = fixture();
+    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+    await f.user.click(screen.getByRole("button", { name: "Advanced speech input" }));
+    expect(screen.getAllByRole("slider")).toHaveLength(9);
+    fireEvent.change(screen.getByRole("slider", { name: "Speech detection sensitivity" }), {
+      target: { value: "0.3" },
+    });
+    expect(
+      (screen.getByRole("slider", { name: "Speech continuation threshold" }) as HTMLInputElement)
+        .value,
+    ).toBe("0.3");
+    fireEvent.change(screen.getByRole("slider", { name: "Pause before automatic send" }), {
+      target: { value: "1" },
+    });
+    expect(
+      (screen.getByRole("slider", { name: "Countdown display delay" }) as HTMLInputElement).value,
+    ).toBe("0.75");
+    await f.user.click(screen.getByRole("switch", { name: "Allow short interruption commands" }));
+    await f.enter();
+    const saved = toSnapshot(f.root);
+    cleanup();
+    f[Symbol.dispose]();
+    using restored = fixture({ snapshot: saved });
+    render(<SettingsSpeechInputSection store={restored.root.speechInputSettingsStore} />);
+    await restored.user.click(screen.getByRole("button", { name: "Advanced speech input" }));
+    expect(
+      (screen.getByRole("slider", { name: "Speech detection sensitivity" }) as HTMLInputElement)
+        .value,
+    ).toBe("0.3");
+    expect(
+      screen
+        .getByRole("switch", { name: "Allow short interruption commands" })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
+    expect(screen.getByRole("button", { name: "Enter conversation mode" })).toBeDefined();
+    await restored.user.click(screen.getByRole("button", { name: "Reset speech input settings" }));
+    expect(
+      (screen.getByRole("slider", { name: "Speech detection sensitivity" }) as HTMLInputElement)
+        .value,
+    ).toBe("0.6");
+    expect(
+      (screen.getByRole("slider", { name: "Pause before automatic send" }) as HTMLInputElement)
+        .value,
+    ).toBe("3");
+    expect(
+      screen
+        .getByRole("switch", { name: "Allow short interruption commands" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
   it("uses detected quiet time for the one-second countdown delay and three-second send boundary", async () => {
     using f = fixture({ transcribe: async () => "First part and second part" });
     await f.enter();
@@ -523,6 +706,65 @@ describe("Project Session conversation mode", () => {
     expect(f.transcribe.mock.calls.filter(([request]) => request.final)).toHaveLength(1);
     await f.detectorFrames(0, 12);
     expect(f.prompt).toHaveBeenCalledTimes(1);
+  });
+  it.each(["", "Typed draft"])(
+    "empty noise recognition never starts a countdown or sends the existing draft '%s'",
+    async (prefix) => {
+      let text = "";
+      using f = fixture({ transcribe: async () => text });
+      await f.enter();
+      const composer = screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement;
+      if (prefix) await f.user.type(composer, prefix);
+      await f.detectorFrames(0.1, 3);
+      await f.detectorFrames(0, 8);
+      expect(f.transcribe).toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: "Cancel automatic send" })).toBeNull();
+      expect(composer.value).toBe(prefix);
+      await f.detectorFrames(0, 4);
+      expect(f.prompt).not.toHaveBeenCalled();
+      expect(composer.value).toBe(prefix);
+      // Do not blacklist short answers: genuinely recognized 'yeah' remains valid.
+      text = "yeah";
+      await f.detectorFrames(0.1, 3);
+      await f.detectorFrames(0, 8);
+      expect(screen.getByRole("button", { name: "Cancel automatic send" })).toBeDefined();
+      await f.detectorFrames(0, 4);
+      await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(1));
+      expect(f.prompt.mock.calls[0]?.[0].text).toBe(prefix ? `${prefix} yeah` : "yeah");
+    },
+  );
+  it("starts showing the pause countdown when delayed recognition supplies text, not before", async () => {
+    const result = deferred<string>();
+    using f = fixture({ transcribe: async () => result.promise });
+    await f.enter();
+    await f.detectorFrames(0.1, 3);
+    await f.detectorFrames(0, 8);
+    expect(screen.queryByRole("button", { name: "Cancel automatic send" })).toBeNull();
+    await act(async () => result.resolve("Actual words"));
+    expect((screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).value).toBe(
+      "Actual words",
+    );
+    expect(screen.getByRole("button", { name: "Cancel automatic send" })).toBeDefined();
+    expect(f.prompt).not.toHaveBeenCalled();
+    await f.detectorFrames(0, 4);
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledTimes(1));
+  });
+  it("withdrawn recognition clears a provisional yeah and the countdown without deleting typed text", async () => {
+    let text = "yeah";
+    using f = fixture({ transcribe: async () => text });
+    await f.enter();
+    const composer = screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement;
+    await f.user.type(composer, "Typed prefix");
+    await f.detectorFrames(0.1, 3);
+    await f.detectorFrames(0, 8);
+    expect(composer.value).toBe("Typed prefix yeah");
+    expect(screen.getByRole("button", { name: "Cancel automatic send" })).toBeDefined();
+    text = "";
+    await f.detectorFrames(0, 1);
+    expect(composer.value).toBe("Typed prefix");
+    expect(screen.queryByRole("button", { name: "Cancel automatic send" })).toBeNull();
+    await f.detectorFrames(0, 3);
+    expect(f.prompt).not.toHaveBeenCalled();
   });
   it("live transcription replaces partial words in the composer; cancelling retains them and resumed speech rearms the countdown", async () => {
     let text = "First";

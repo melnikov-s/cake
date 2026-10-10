@@ -215,6 +215,30 @@ it.effect("concurrent prepare calls acquire one bundled worker and wait for warm
       "hello",
     );
     expect(yield* service.detectSpeech({ captureId: "capture-1", pcm: "AAAAAA==" })).toBe(true);
+    expect(native.detectSpeech).toHaveBeenLastCalledWith({
+      captureId: "capture-1",
+      pcm: "AAAAAA==",
+    });
+    const tuned = {
+      captureId: "voice-capture",
+      pcm: "AAAAAA==",
+      thresholds: { start: 0.85, continuation: 0.65 },
+    };
+    expect(yield* service.detectSpeech(tuned)).toBe(true);
+    expect(native.detectSpeech).toHaveBeenLastCalledWith(tuned);
+    const configuredAudio = {
+      utteranceId: "dictation-shared",
+      pcm: "",
+      final: true,
+      settings: {
+        thresholds: tuned.thresholds,
+        minimumSpeechMs: 1000,
+        prerollMs: 300,
+        maximumUtteranceSeconds: 5,
+      },
+    };
+    expect(yield* service.transcribe(configuredAudio)).toBe("hello");
+    expect(native.transcribe).toHaveBeenLastCalledWith(configuredAudio);
     yield* service.release();
     expect(native.close).toHaveBeenCalledTimes(1);
     expect((yield* state(service)).status).toBe("installed");

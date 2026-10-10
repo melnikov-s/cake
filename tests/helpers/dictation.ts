@@ -1,5 +1,6 @@
 import { createStore, mount } from "r-state-tree";
 import { DictationStore } from "../../src/renderer/stores/DictationStore";
+import { SpeechInputSettingsStore } from "../../src/renderer/stores/SpeechInputSettingsStore";
 import type { Client } from "../../src/renderer/client/Client";
 import type { Microphone } from "../../src/renderer/dictation/microphone";
 import type { DictationState } from "../../src/domain/dictation/dictation-data";
@@ -20,6 +21,7 @@ export function createDictationStore(
 ) {
   return mount(
     createStore(DictationStore, {
+      preferences: mount(createStore(SpeechInputSettingsStore)),
       postProcess: async (text) => text,
       client: {
         install: async () => {},

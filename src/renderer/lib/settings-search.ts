@@ -192,6 +192,17 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
             targetId: "speech-output-title",
             keywords: "conversation hands-free Flash speech audio microphone quota billing",
           },
+          {
+            label: "Speech detection sensitivity",
+            targetId: "voice-speechStartThreshold",
+            keywords: "voice threshold background noise detection microphone quiet speech",
+          },
+          {
+            label: "Advanced speech input",
+            targetId: "advanced-voice-title",
+            keywords:
+              "countdown automatic send pause duration interruption barge-in lookback continuation",
+          },
         ],
       },
       {

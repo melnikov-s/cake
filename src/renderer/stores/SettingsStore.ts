@@ -1,6 +1,7 @@
 import type { DictationStore } from "./DictationStore";
 import type { ScreenCaptureAttachmentStore } from "./ScreenCaptureAttachmentStore";
 import type { SpeechSettingsStore } from "./SpeechSettingsStore";
+import type { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
 import type { DesktopConnectionStore } from "./DesktopConnectionStore";
 import { Store, child, createStore } from "r-state-tree";
 import type {
@@ -46,6 +47,7 @@ export type SettingsPageId =
 export interface SettingsStoreProps {
   dictation: DictationStore;
   speech: SpeechSettingsStore;
+  speechInput: SpeechInputSettingsStore;
   screenCapture: ScreenCaptureAttachmentStore;
   desktopConnection?: DesktopConnectionStore;
   operations: SessionOperationCoordinatorStore;
@@ -107,6 +109,10 @@ export class SettingsStore extends Store<SettingsStoreProps> {
 
   get speech() {
     return this.props.speech;
+  }
+
+  get speechInput() {
+    return this.props.speechInput;
   }
 
   get dictation() {

@@ -1,5 +1,11 @@
 import { snapshot, Store, untracked } from "r-state-tree";
-import type { DictationState, TextProcessingMode } from "../../domain/dictation/dictation-data";
+import type {
+  DictationState,
+  TextProcessingMode,
+  SpeechRecognitionSettings,
+} from "../../domain/dictation/dictation-data";
+import type { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
+import { speechRecognitionSettings } from "../../utils/speech-input-settings";
 import { punctuationPreview } from "../../utils/punctuation-text";
 import type { Client } from "../client/Client";
 import { encodePcm, type Microphone, type MicrophoneCapture } from "../dictation/microphone";
@@ -12,6 +18,7 @@ export interface DictationTarget {
   replace(text: string): ProvisionalTextSpan | void;
 }
 interface Utterance {
+  settings: SpeechRecognitionSettings;
   id: string;
   target: DictationTarget;
   controller: AbortController;
@@ -39,6 +46,7 @@ const CLEANUP_SILENCE_SAMPLES = 3 * 16_000;
  * local edit wins); capture, maintenance pauses, audio and focus are ephemeral.
  */
 export class DictationStore extends Store<{
+  preferences: SpeechInputSettingsStore;
   client: Client["dictation"];
   microphone: Microphone;
   postProcess: Client["workspaces"]["postProcessDictation"];
@@ -203,6 +211,7 @@ export class DictationStore extends Store<{
     if (!this.enabled || this.muted || this.busy || this.signal.aborted) return;
     this.endUtterance();
     const run: Utterance = {
+      settings: speechRecognitionSettings(this.props.preferences.values),
       id: crypto.randomUUID(),
       target,
       controller: new AbortController(),
@@ -228,7 +237,11 @@ export class DictationStore extends Store<{
       if (this.utterance !== run) return;
       const capture = await openSpeechCapture(
         this.props.microphone,
-        this.props.client.detectSpeech,
+        (audio, options) =>
+          this.props.client.detectSpeech(
+            { ...audio, thresholds: run.settings.thresholds },
+            options,
+          ),
         (samples, speech) => {
           if (this.utterance !== run || run.finishing) return;
           if (speech) {
@@ -296,7 +309,7 @@ export class DictationStore extends Store<{
     run.chunks = [];
     run.samples = 0;
     const text = await this.props.client.transcribe(
-      { utteranceId, pcm: encodePcm(chunks), final },
+      { utteranceId, pcm: encodePcm(chunks), final, settings: run.settings },
       { signal: this.signal },
     );
     if (this.utterance === run && run.id === utteranceId) {

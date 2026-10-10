@@ -3,6 +3,7 @@ import { ScreenCaptureAttachmentStore } from "./ScreenCaptureAttachmentStore";
 import { microphone, type Microphone } from "../dictation/microphone";
 import { createSpeechPlayback, type SpeechPlayback } from "../speech/playback";
 import { ConversationModeStore, ConversationModeContext } from "./ConversationModeStore";
+import { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
 import { SpeechSettingsStore } from "./SpeechSettingsStore";
 import type { DesktopConnectionStore } from "./DesktopConnectionStore";
 import { Store, child, createStore, untracked } from "r-state-tree";
@@ -932,8 +933,14 @@ export class RootStore extends Store<{
   }
 
   @child
+  get speechInputSettingsStore(): SpeechInputSettingsStore {
+    return createStore(SpeechInputSettingsStore);
+  }
+
+  @child
   get conversationModeStore(): ConversationModeStore {
     return createStore(ConversationModeStore, {
+      preferences: this.speechInputSettingsStore,
       speech: this.client.speechOutput,
       recognition: this.client.dictation,
       postProcess: this.client.workspaces.postProcessDictation,
@@ -970,6 +977,7 @@ export class RootStore extends Store<{
   @child
   get dictationStore(): DictationStore {
     return createStore(DictationStore, {
+      preferences: this.speechInputSettingsStore,
       client: this.client.dictation,
       postProcess: this.client.workspaces.postProcessDictation,
       microphone: this.props.microphone ?? microphone,
@@ -985,6 +993,7 @@ export class RootStore extends Store<{
     return createStore(SettingsStore, {
       dictation: this.dictationStore,
       speech: this.speechSettingsStore,
+      speechInput: this.speechInputSettingsStore,
       screenCapture: this.screenCaptureStore,
       desktopConnection: this.props.desktopConnection,
       operations: this.sessionOperationCoordinator,

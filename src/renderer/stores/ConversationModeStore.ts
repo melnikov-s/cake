@@ -10,7 +10,12 @@ import type { ProvisionalTextSpan } from "../dictation/provisional-text";
 import type { SpeechPlayback } from "../speech/playback";
 import { takeSpokenPhrases } from "../speech/spoken-text";
 import { recordVoiceDiagnostic, voiceDiagnosticReport } from "../speech/diagnostics";
-import { INTERRUPTION_WINDOW_MS, isSpeechInterruption } from "../speech/interruption";
+import { isSpeechInterruption } from "../speech/interruption";
+import type { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
+import {
+  defaultSpeechInputPreferences,
+  speechRecognitionSettings,
+} from "../../utils/speech-input-settings";
 
 export interface ConversationModeTarget {
   readonly sessionId: string;
@@ -21,6 +26,7 @@ export interface ConversationModeTarget {
   submitUtterance(): Promise<boolean>;
 }
 export interface ConversationModeStoreProps {
+  preferences: SpeechInputSettingsStore;
   speech: SpeechOutputCommands;
   recognition: Pick<Client["dictation"], "prepare" | "release" | "transcribe" | "detectSpeech">;
   microphone: Microphone;
@@ -36,9 +42,7 @@ export interface ConversationModeStoreProps {
   suspendDictation(): Promise<void>;
 }
 export const ConversationModeContext = createContext<ConversationModeStore | undefined>();
-// Microphone PCM is 16 kHz: hide brief pauses, then show the remaining two-second countdown.
-const SEND_SILENCE_SAMPLES = 3 * 16000;
-const SEND_INDICATOR_DELAY_SAMPLES = 16000;
+// Microphone PCM is 16 kHz. Preferences are captured once per voice-mode entry.
 // Three 256 ms detector frames keep progressive recognition close to its existing 800 ms cadence.
 const RECOGNITION_BATCH_SAMPLES = 12_288;
 interface Utterance {
@@ -77,6 +81,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   }
   sendProgress: number | undefined;
   private target: ConversationModeTarget | undefined;
+  private preferences = { ...defaultSpeechInputPreferences };
   private revision = 0;
   private controller: AbortController | undefined;
   private captureController: AbortController | undefined;
@@ -140,6 +145,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     this.phase = "preparing";
     this.sessionId = target.sessionId;
     this.target = target;
+    this.preferences = this.props.preferences.values;
     this.transcript = "";
     this.muted = false;
     this.outputEligible = false;
@@ -154,7 +160,11 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       if (!target.canEnter() || this.props.activeSessionId() !== target.sessionId)
         throw new Error("Select an existing writable Project Session to enter conversation mode.");
       const settings = this.props.settings();
-      recordVoiceDiagnostic("enter", { provider: settings?.provider, phase: this.phase });
+      recordVoiceDiagnostic("enter", {
+        provider: settings?.provider,
+        phase: this.phase,
+        preferences: { ...this.preferences },
+      });
       if (settings?.provider === "pocket-tts") {
         if (!settings.localModel.supported)
           throw new Error("Local Pocket TTS requires Apple Silicon and macOS 14 or later.");
@@ -264,6 +274,28 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
           }
         : undefined;
     this.target.setDraft(value);
+    this.updateSendProgress(run);
+  }
+  private updateSendProgress(run: Utterance): void {
+    // This utterance must contribute recognized text; an existing typed draft
+    // is not evidence that a detected noise was speech. Async recognition can
+    // arrive mid-pause, so refresh here as well as at the audio boundary.
+    if (run !== (this.utterance ?? this.finalizing.at(-1))) return;
+    this.sendProgress =
+      run.autoSend &&
+      !run.draftInvalid &&
+      run.draftText.trim().length > 0 &&
+      run.quiet > 0 &&
+      run.quiet >= this.preferences.countdownDelaySeconds * 16000 &&
+      run.interruption?.state !== "pending" &&
+      run.interruption?.state !== "rejected"
+        ? Math.min(
+            1,
+            (run.quiet - this.preferences.countdownDelaySeconds * 16000) /
+              ((this.preferences.sendPauseSeconds - this.preferences.countdownDelaySeconds) *
+                16000),
+          )
+        : undefined;
   }
   private stopOutput() {
     this.outputRevision++;
@@ -340,7 +372,17 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       if (signal.aborted || revision !== this.revision) return;
       const capture = await openSpeechCapture(
         this.props.microphone,
-        this.props.recognition.detectSpeech,
+        (audio, options) =>
+          this.props.recognition.detectSpeech(
+            {
+              ...audio,
+              thresholds: {
+                start: this.preferences.speechStartThreshold,
+                continuation: this.preferences.speechContinueThreshold,
+              },
+            },
+            options,
+          ),
         (samples, speech) => {
           if (!signal.aborted && revision === this.revision && !this.muted)
             this.audio(samples, speech);
@@ -370,13 +412,17 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     if (!run) {
       this.preroll.push(samples);
       while (
-        this.preroll.reduce((sum, chunk) => sum + chunk.length, 0) > 9600 &&
+        this.preroll.reduce((sum, chunk) => sum + chunk.length, 0) >
+          Math.max(
+            this.preferences.prerollMs * 16,
+            Math.ceil((this.preferences.minimumSpeechMs * 16) / 4096) * 4096,
+          ) &&
         this.preroll.length > 1
       )
         this.preroll.shift();
       this.onset = speech ? this.onset + samples.length : 0;
       // Recognition now decides barge-in; a short spoken "stop" must reach it too.
-      if (this.onset < 3200) return;
+      if (this.onset < this.preferences.minimumSpeechMs * 16) return;
       // Quiet input is not an interruption. Cancelling here would suppress an
       // upcoming reply (or its next sentence) even if recognition returns empty.
       // Only the transcript-confirmed barge-in path below suppresses output.
@@ -392,14 +438,17 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
         draftText: "",
         draftInvalid: false,
         interruption: tentative
-          ? { state: "pending", deadline: performance.now() + INTERRUPTION_WINDOW_MS }
+          ? {
+              state: "pending",
+              deadline: performance.now() + this.preferences.interruptionWindowMs,
+            }
           : undefined,
       };
       if (run.interruption) {
         const candidate = run;
         run.interruption.timer = setTimeout(
           () => this.rejectInterruption(candidate),
-          INTERRUPTION_WINDOW_MS,
+          this.preferences.interruptionWindowMs,
         );
       }
       this.preroll = [];
@@ -414,28 +463,18 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     if (speech) {
       if (run.quiet > 0 && !run.draftInvalid) run.autoSend = true;
       run.quiet = 0;
-      this.sendProgress = undefined;
-    } else {
-      run.quiet += samples.length;
-      this.sendProgress =
-        run.autoSend &&
-        run.quiet >= SEND_INDICATOR_DELAY_SAMPLES &&
-        run.interruption?.state !== "pending" &&
-        run.interruption?.state !== "rejected"
-          ? Math.min(
-              1,
-              (run.quiet - SEND_INDICATOR_DELAY_SAMPLES) /
-                (SEND_SILENCE_SAMPLES - SEND_INDICATOR_DELAY_SAMPLES),
-            )
-          : undefined;
-    }
+    } else run.quiet += samples.length;
+    this.updateSendProgress(run);
     const backlog = run.samples + this.finalizing.reduce((sum, item) => sum + item.samples, 0);
     if (backlog > 128000) {
       this.fail(new Error("Recognition cannot keep up. Re-enter conversation mode to retry."));
       return;
     }
-    if (run.quiet >= SEND_SILENCE_SAMPLES || run.duration >= 480000) {
-      run.autoSend = run.autoSend && run.quiet >= SEND_SILENCE_SAMPLES;
+    if (
+      run.quiet >= this.preferences.sendPauseSeconds * 16000 ||
+      run.duration >= this.preferences.maximumUtteranceSeconds * 16000
+    ) {
+      run.autoSend = run.autoSend && run.quiet >= this.preferences.sendPauseSeconds * 16000;
       run.finishing = true;
       this.finalizing.push(run);
       this.utterance = undefined;
@@ -461,13 +500,18 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     this.recognitionRunning = true;
     try {
       let text = await this.props.recognition.transcribe(
-        { utteranceId: run.id, pcm: encodePcm(chunks), final },
+        {
+          utteranceId: run.id,
+          pcm: encodePcm(chunks),
+          final,
+          settings: speechRecognitionSettings(this.preferences),
+        },
         { signal },
       );
       if (signal.aborted || revision !== this.revision) return;
       if (run.interruption?.state === "pending") {
         if (performance.now() >= run.interruption.deadline) this.rejectInterruption(run);
-        else if (isSpeechInterruption(text)) {
+        else if (isSpeechInterruption(text, this.preferences)) {
           this.clearInterruptionTimer(run);
           run.interruption.state = "confirmed";
           this.interrupt();
@@ -475,6 +519,10 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       }
       const rejected = run.interruption?.state === "rejected";
       this.transcript = rejected ? "" : text;
+      // Cumulative recognition may withdraw a provisional word. Remove only
+      // this run's insertion and disarm the countdown, preserving typed text.
+      if (!rejected && run.interruption?.state !== "pending" && !text.trim() && run.draftText)
+        this.updateDraft(run, "", false);
       if (!rejected && run.interruption?.state !== "pending" && text.trim()) {
         const raw = text;
         const local = this.props.textProcessingMode() === "local";

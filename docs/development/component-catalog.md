@@ -129,6 +129,10 @@ comes from `SpeechSettingsStore`, not component-local workflow state. See
 
 `Slider` is the shared native range input with keyboard support, semantic accent/focus styling, and value-change/commit callbacks. Speech output settings use a compact 1×–1.2× range; changing the thumb updates the local draft and releasing it or a keyboard key commits the speed to native settings.
 
+### SettingSlider
+
+`SettingSlider` composes `Slider` with an associated label, formatted value, accessible description, optional scope label and endpoint captions. It owns no preference state or persistence. Speech input uses it for shared dictation/voice detection controls and voice-only send-timing/interruption controls; `SpeechInputSettingsStore` owns their values. Scope labels are visible and included in the accessible description.
+
 ## Dismissible chips
 
 `DismissibleChip` composes sibling `Chip` and `IconButton` controls for separate

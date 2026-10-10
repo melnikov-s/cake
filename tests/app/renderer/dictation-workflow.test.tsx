@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
@@ -13,6 +13,7 @@ import type {
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SettingsDictationSection } from "../../../src/renderer/components/settings-dictation-section";
+import { SettingsSpeechInputSection } from "../../../src/renderer/components/settings-speech-input-section";
 import { WindowStatePersistence } from "../../../src/renderer/persistence/WindowStatePersistence";
 import type { TestClientOverrides } from "./test-client";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
@@ -239,6 +240,83 @@ afterEach(() => {
 });
 
 describe("Dictation writing-field workflow", () => {
+  it("shared speech controls reach dictation detection and recognition, freeze per capture and exclude voice-only policy", async () => {
+    const detect = vi.fn<Client["dictation"]["detectSpeech"]>(
+      async (input) => 0.7 >= (input.thresholds?.start ?? 0.6),
+    );
+    using f = renderDictation({ client: { dictation: { detectSpeech: detect } } });
+    render(<SettingsSpeechInputSection store={f.root.speechInputSettingsStore} />);
+    await f.user.click(screen.getByRole("button", { name: "Advanced speech input" }));
+    const sensitivity = screen.getByRole("slider", { name: "Speech detection sensitivity" });
+    fireEvent.change(sensitivity, { target: { value: "0.85" } });
+    fireEvent.change(screen.getByRole("slider", { name: "Speech continuation threshold" }), {
+      target: { value: "0.5" },
+    });
+    fireEvent.change(screen.getByRole("slider", { name: "Minimum speech duration" }), {
+      target: { value: "1000" },
+    });
+    fireEvent.change(screen.getByRole("slider", { name: "Audio lookback" }), {
+      target: { value: "300" },
+    });
+    fireEvent.change(screen.getByRole("slider", { name: "Maximum utterance length" }), {
+      target: { value: "5" },
+    });
+    fireEvent.change(screen.getByRole("slider", { name: "Pause before automatic send" }), {
+      target: { value: "1" },
+    });
+    await f.user.click(screen.getByRole("switch", { name: "Allow short interruption commands" }));
+    for (const label of [
+      "Speech detection sensitivity",
+      "Speech continuation threshold",
+      "Minimum speech duration",
+      "Audio lookback",
+      "Maximum utterance length",
+    ]) {
+      const slider = screen.getByRole("slider", { name: label });
+      expect(
+        document.getElementById(slider.getAttribute("aria-describedby")!)?.textContent,
+      ).toContain("Dictation + voice mode");
+    }
+    for (const label of [
+      "Pause before automatic send",
+      "Countdown display delay",
+      "Words required to interrupt",
+      "Interruption recognition window",
+    ]) {
+      const slider = screen.getByRole("slider", { name: label });
+      expect(
+        document.getElementById(slider.getAttribute("aria-describedby")!)?.textContent,
+      ).toContain("Voice mode only");
+    }
+    await f.user.click(mode());
+    await f.user.click(message());
+    listening();
+    await f.audio.push(new Float32Array(12_800).fill(0.1));
+    const shared = {
+      thresholds: { start: 0.85, continuation: 0.5 },
+      minimumSpeechMs: 1000,
+      prerollMs: 300,
+      maximumUtteranceSeconds: 5,
+    };
+    expect(f.requests[0]!.audio.settings).toEqual(shared);
+    await waitFor(() => expect(detect).toHaveBeenCalled());
+    expect(detect.mock.calls[0]![0].thresholds).toEqual(shared.thresholds);
+    await f.recognize(0, "");
+    fireEvent.change(sensitivity, { target: { value: "0.6" } });
+    await f.audio.push(new Float32Array(12_800).fill(0.1));
+    expect(f.requests[1]!.audio.settings).toEqual(shared);
+    await f.recognize(1, "");
+    await f.user.click(trial());
+    await f.audio.push(new Float32Array(12_800).fill(0.1));
+    expect(f.requests[2]!.audio.settings).toEqual({
+      ...shared,
+      thresholds: { start: 0.6, continuation: 0.5 },
+    });
+    await f.recognize(2, "Recognized speech");
+    expect(trial().value).toBe("Recognized speech");
+    await f.audio.push(new Float32Array(48_000));
+    expect(f.prompt).not.toHaveBeenCalled();
+  });
   it("streams a revisable local passage across premature audio endings and finalizes before Enter without utility work", async () => {
     const first = deferred<PunctuationResult>(),
       final = deferred<PunctuationResult>();

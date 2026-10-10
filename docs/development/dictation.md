@@ -90,13 +90,30 @@ Submitting the resulting draft to an agent is separate and follows that agent's 
 **Building Cake from source** on Apple Silicon requires the Swift 6.2+ toolchain (Command Line
 Tools is sufficient). This is a build-machine requirement, not an installed-app requirement.
 
-The Electron Vite main build calls `scripts/build-dictation.mjs`. It compiles the release helper
+The Electron Vite main build calls `scripts/build-dictation.mjs`. It builds the release helper
+with pinned dependency resolution (`--force-resolved-versions`) and consistent diagnostic flags,
 and copies the executable, SwiftPM resource bundle, bundled detector, and license notices into
 `out/main/native/`. The build fetches and verifies detector data when it is not in the worktree's
 ignored `.build/cake-vad/` cache; installed-app startup and recognition never download it.
 FluidAudio is linked into the helper; the only dynamic runtime dependencies are Apple system
 frameworks/libraries. The optional NeMo text-processing trait is disabled. SwiftPM may fetch
 its declared binary artifact while resolving the package, but it is not linked or shipped.
+
+Both native build scripts use `scripts/native-build-cache.mjs` to retain complete bundles under
+`native/<package>/.build/cake-bundle-<product>/`, separately from Vite's disposable `out/`.
+Content hashes cover native sources, `Package.swift`, `Package.resolved`, packaging scripts,
+asset manifests/licenses, and the selected compiler, SDK, architecture, OS and build environment.
+Unchanged inputs log **Reusing cached** and do not invoke `swift build`, strip executables or
+fetch detector data; deleting `out/` only restages the cached bundle. Cache validation checks
+artifact contents and permissions. Failed builds do not replace the last successful cache.
+Changes to TypeScript/UI code or source timestamps alone do not rebuild Swift.
+
+Use `CAKE_NATIVE_REBUILD=1 pnpm build` to bypass Cake's bundle cache and rerun native build steps
+(SwiftPM still uses its own incremental compilation). This is also necessary after manually
+editing downloaded dependency checkouts, which are normally treated as immutable pinned inputs.
+Deleting a product's `cake-bundle-*` directory also invalidates that entry; there is no need to
+delete the entire Swift `.build/` tree or its downloaded detector cache. Native compilation is a
+source-build operation, not part of restarting an already-built Cake.
 
 Main locates the helper relative to its compiled module, so `pnpm start` snapshots carry the
 helper and resources with the rest of `out/`. Other platforms can build Cake without a Swift
@@ -139,19 +156,31 @@ silently accumulate an unbounded audio backlog. Final requests flush all remaini
 A new utterance ID discards the previous decoder and text while retaining loaded model weights.
 
 The helper classifies 256 ms frames with the bundled detector, using speech-probability hysteresis
-(0.6 to enter, 0.4 to continue), not a microphone-volume cutoff. A 256 ms preroll and tail protect
-word boundaries. Longer quiet frames are held back; if speech resumes before the 1.5-second phrase
+(0.6 to enter, 0.4 to continue by default), not a microphone-volume cutoff.
+**Settings → Voice & Dictation → Speech input** shares sensitivity, continuation threshold,
+minimum speech duration, audio lookback and maximum utterance length between dictation and voice
+mode. The settings UI labels every shared control **Dictation + voice mode**; send/countdown and
+interruption controls are labeled **Voice mode only** and never submit or interrupt dictation.
+See [control scope and defaults](conversation-mode.md#speech-input-settings).
+
+Each microphone capture freezes the current shared settings. Dictation detector requests receive
+its thresholds, and every PCM request carries the same validated native recognition settings.
+A new native utterance ID captures the settings; changing them mid-ID is rejected rather than
+silently changing segmentation. The native gate waits for sustained speech (200 ms by default),
+retains its full onset plus lookback (600 ms by default, replacing the old fixed 256 ms preroll),
+and keeps a fixed 256 ms tail to protect word boundaries. Refocus a writing field to apply edits
+on the next dictation capture. Recognition text still belongs only to the current insertion. Longer quiet frames are held back; if speech resumes before the 1.5-second phrase
 boundary, their timing is retained as zeros rather than room noise. Otherwise the phrase is finalized
-and its text retained unchanged. Continuous speech is finalized in bounded 30-second segments.
+and its text retained unchanged. Continuous speech is finalized in configurable segments (30 seconds by default).
 Resumed phrases append exactly once to the same insertion; every response is a full replacement,
 never a text delta. Explicit finalization supplies 400 ms of silent decoder lookahead to protect
 short commands and final syllables. Pauses in dictation do **not** submit the draft.
 
-Voice mode uses the same detector/model for capture decisions through `dictation.detectSpeech`.
+Both dictation and voice mode use the same detector/model for capture decisions through `dictation.detectSpeech`.
 Its capture-scoped recurrent state is separate from recognition state, so detecting ahead cannot
 advance the recognizer's detector. `speech-capture.ts` serializes detection, buffers at most eight
 seconds, flushes partial frames on finish, and drops stale results on cancellation. The voice Store
-still owns its three-second auto-send policy and transcript-confirmed interruption policy.
+still owns its configurable auto-send policy (three seconds by default) and transcript-confirmed interruption policy; neither applies to dictation.
 
 ## Text processing: three exclusive modes
 
