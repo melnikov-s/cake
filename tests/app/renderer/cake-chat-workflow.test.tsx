@@ -17,7 +17,7 @@ const Surface = observer(function Surface({ root }: { root: RootStore }) {
       <SidebarCakeChatGroup
         cakeChat={root.cakeChatCollectionStore}
         shell={root.appShellStore}
-        onOpenCakeChat={(id) => void root.openCakeChat(id)}
+        onOpenCakeChat={(id) => void root.navigationStore.openCakeChat(id)}
       />
       {chat && (
         <Chat

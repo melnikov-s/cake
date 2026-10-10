@@ -46,8 +46,8 @@ describe("Settings error ownership", () => {
           path={projectPath}
           resolved={false}
           flattenSessions
-          onCreateSession={(path) => void root.createSession(path)}
-          onOpenSession={(id) => void root.openSession(id)}
+          onCreateSession={(path) => void root.navigationStore.createSession(path)}
+          onOpenSession={(id) => void root.navigationStore.openSession(id)}
           onRemoveProject={(path, deleteSessions) =>
             root.projectRemovalStore.remove(path, deleteSessions)
           }

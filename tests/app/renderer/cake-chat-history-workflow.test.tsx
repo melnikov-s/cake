@@ -27,7 +27,7 @@ it("loads older originals through the shared Chat, retries failure, and retains 
     .mockResolvedValueOnce({ parts: [older], cursor: undefined });
   using fixture = createRendererStoreFixture({ client: { sessionChats: { history } } });
   applySnapshot(fixture.models.cakeChatCatalog, { loaded: true, sessions: [] });
-  await fixture.root.openCakeChat(CAKE_CHAT_SESSION_ID);
+  await fixture.root.navigationStore.openCakeChat(CAKE_CHAT_SESSION_ID);
   const session = fixture.root.cakeChatCollectionStore.activeSession!;
   const model = session.model;
   const snapshot: ConversationSnapshot = {

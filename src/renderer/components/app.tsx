@@ -161,7 +161,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     window.innerWidth - (sidebarCollapsed ? 0 : displayedSidebarWidth) - 360,
   );
   const returnToWorkbench = useCallback(() => {
-    root.returnToWorkbench();
+    root.navigationStore.returnToWorkbench();
   }, [root]);
   const toggleSidebar = useCallback(() => sidebar.toggle(), [sidebar]);
   const setSidebarWidth = useCallback((width: number) => sidebar.setWidth(width), [sidebar]);
@@ -175,31 +175,31 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     },
     [sidebar.focusModeProjectPath, sidebarMax],
   );
-  const openSettings = useCallback(() => root.showSettings(), [root]);
-  const openArtifactLibrary = useCallback(() => root.showArtifactLibrary(), [root]);
+  const openSettings = useCallback(() => root.navigationStore.showSettings(), [root]);
+  const openArtifactLibrary = useCallback(() => root.navigationStore.showArtifactLibrary(), [root]);
   const openCakeChat = useCallback(
     (sessionId?: string) => {
-      void root.openCakeChat(sessionId);
+      void root.navigationStore.openCakeChat(sessionId);
     },
     [root],
   );
   const openSession = useCallback(
     (sessionId: string) => {
-      void root.openSession(sessionId);
+      void root.navigationStore.openSession(sessionId);
     },
     [root],
   );
   const createSession = useCallback(
     (workspacePath: string) => {
-      void root.createSession(workspacePath);
+      void root.navigationStore.createSession(workspacePath);
     },
     [root],
   );
   const chooseProject = useCallback(() => {
-    void root.chooseProject();
+    void root.navigationStore.chooseProject();
   }, [root]);
-  const goBack = useCallback(() => root.navigateBack(), [root]);
-  const goForward = useCallback(() => root.navigateForward(), [root]);
+  const goBack = useCallback(() => root.navigationStore.navigateBack(), [root]);
+  const goForward = useCallback(() => root.navigationStore.navigateForward(), [root]);
   useEffect(() => {
     document.documentElement.dataset.theme = settings.appearance.theme;
     return () => {
@@ -211,7 +211,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
   }, [extensionUi.title]);
   useEffect(() => {
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") root.dismissTopSecondarySurface();
+      if (event.key === "Escape") root.navigationStore.dismissTopSecondarySurface();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
@@ -241,7 +241,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
         );
         if (current && part)
           setFullscreenResponse({ sessionId: current.sessionId, partId: part.id });
-      } else root.handleHotkey(action);
+      } else root.commands.execute(action);
     };
     const runHotkey = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -279,7 +279,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       onFork: resolved
         ? undefined
         : (entryId: string) => {
-            root.focusSessionPane(
+            root.navigationStore.focusSessionPane(
               root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
             );
             void store.sessionContinuationStore.forkAt(entryId);
@@ -287,7 +287,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       onTree: resolved
         ? undefined
         : (entryId: string) => {
-            root.focusSessionPane(
+            root.navigationStore.focusSessionPane(
               root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
             );
             store.commandPaneStore.requestNavigation(entryId);
@@ -295,7 +295,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       openSourceLocation: resolved
         ? undefined
         : (location: SourceLocation) => {
-            root.focusSessionPane(
+            root.navigationStore.focusSessionPane(
               root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
             );
             void store.presentationStore
@@ -310,7 +310,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       onOpenReviewRun: resolved
         ? undefined
         : (threadId?: string) => {
-            root.focusSessionPane(
+            root.navigationStore.focusSessionPane(
               root.sessionLayoutStore.paneForSession(paneSession.sessionId)!.paneId,
             );
             if (threadId) void store.presentationStore.openReviewThread(threadId);
@@ -367,7 +367,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
           disabled={!terminal.available}
           aria-pressed={paneSession.sessionId === cakeChatCollection.sessionId && terminal.open}
           onClick={() => {
-            root.focusCakeChatPane(pane.paneId);
+            root.navigationStore.focusCakeChatPane(pane.paneId);
             void terminal.toggle();
           }}
         >
@@ -388,7 +388,11 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       inlineArtifactPreviews: root.inlineArtifactPreviewStore,
       openArtifactReference: (reference: string) => {
         const parsed = parseArtifactRef(reference);
-        root.showArtifactLibrary(paneSession.sessionId, parsed.lineageId, parsed.revision);
+        root.navigationStore.showArtifactLibrary(
+          paneSession.sessionId,
+          parsed.lineageId,
+          parsed.revision,
+        );
       },
     },
     empty: (
@@ -539,7 +543,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     pane: SessionPaneNode,
     paneSession: NonNullable<typeof session>,
   ) => {
-    const focusPane = () => root.focusSessionPane(pane.paneId);
+    const focusPane = () => root.navigationStore.focusSessionPane(pane.paneId);
     const focused = root.sessionLayoutStore.focusedPaneId === pane.paneId;
     const firstPane = root.sessionLayoutStore.panes[0]?.paneId === pane.paneId;
     const resolved = root.sessionCatalogStore.find(paneSession.sessionId)?.resolved === true;
@@ -815,7 +819,9 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
             inlineWidgets={root.inlineWidgetStore}
             onOpenSourceLocation={projectTranscriptBehavior.openSourceLocation}
             showSelectionContextMenu={projectTranscriptBehavior.showSelectionContextMenu}
-            onOpenLibrary={(lineageId) => root.showArtifactLibrary(session.sessionId, lineageId)}
+            onOpenLibrary={(lineageId) =>
+              root.navigationStore.showArtifactLibrary(session.sessionId, lineageId)
+            }
           >
             {children}
           </ArtifactWorkspaceLayout>
@@ -1021,7 +1027,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
             data-cake-hint-key="g"
             tooltip="Open settings"
             hotkey="open-settings"
-            onClick={() => root.showSettings()}
+            onClick={() => root.navigationStore.showSettings()}
           >
             <SettingsIcon />
           </IconButton>
@@ -1129,8 +1135,8 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
                   : undefined
               }
               renderHeader={renderCakeChatPaneHeader}
-              onFocus={(paneId) => root.focusCakeChatPane(paneId)}
-              onClose={(paneId) => root.closeCakeChatPane(paneId)}
+              onFocus={(paneId) => root.navigationStore.focusCakeChatPane(paneId)}
+              onClose={(paneId) => root.navigationStore.closeCakeChatPane(paneId)}
             />
           ) : (
             <div className="flex h-screen flex-col items-center justify-center gap-3.5 bg-background text-muted-foreground">
@@ -1172,7 +1178,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
                   size="lg"
                   data-cake-hint-key="o"
                   disabled={store.agentAvailability !== "available" || projectOpen.isBusy}
-                  onClick={() => void root.chooseProject()}
+                  onClick={() => void root.navigationStore.chooseProject()}
                 >
                   <FolderIcon /> Open project
                 </Button>
@@ -1181,7 +1187,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
                   variant="outline"
                   data-cake-hint-key="q"
                   disabled={store.agentAvailability !== "available" || projectOpen.isBusy}
-                  onClick={() => void root.startOneOffChat()}
+                  onClick={() => void root.navigationStore.startOneOffChat()}
                 >
                   <ChatIcon /> One-off chat
                 </Button>
@@ -1238,15 +1244,15 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
                   projectTranscriptBehaviorFor(paneSession).showSelectionContextMenu
                 }
                 onOpenLibrary={(lineageId) =>
-                  root.showArtifactLibrary(paneSession.sessionId, lineageId)
+                  root.navigationStore.showArtifactLibrary(paneSession.sessionId, lineageId)
                 }
               >
                 {children}
               </ArtifactWorkspaceLayout>
             )}
-            onFocus={(paneId) => root.focusSessionPane(paneId)}
-            onSplit={(axis) => root.splitFocusedSession(axis)}
-            onClose={(paneId) => root.closeSessionPane(paneId)}
+            onFocus={(paneId) => root.navigationStore.focusSessionPane(paneId)}
+            onSplit={(axis) => root.navigationStore.splitFocusedSession(axis)}
+            onClose={(paneId) => root.navigationStore.closeSessionPane(paneId)}
           />
         )}
         {terminal.docked && (

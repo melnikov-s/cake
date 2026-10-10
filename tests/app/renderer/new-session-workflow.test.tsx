@@ -61,25 +61,25 @@ function renderPicker(options: Pick<RendererStoreFixtureOptions, "projects" | "s
           shell={root.appShellStore}
           projectSettings={root.projectSettingsStore}
           appearance={root.settingsStore.appearance}
-          onOpenSettings={() => root.showSettings()}
+          onOpenSettings={() => root.navigationStore.showSettings()}
           onOpenCakeChat={(id) => {
-            void root.openCakeChat(id);
+            void root.navigationStore.openCakeChat(id);
           }}
           onNewSession={() => root.newSessionStore.show()}
           onOpenSession={(id) => {
-            void root.openSession(id);
+            void root.navigationStore.openSession(id);
           }}
           onCreateSession={(path) => {
-            void root.createSession(path);
+            void root.navigationStore.createSession(path);
           }}
           onRemoveProject={(path, deleteSessions) =>
             root.projectRemovalStore.remove(path, deleteSessions)
           }
           onChooseProject={() => {
-            void root.chooseProject();
+            void root.navigationStore.chooseProject();
           }}
-          onGoBack={() => root.navigateBack()}
-          onGoForward={() => root.navigateForward()}
+          onGoBack={() => root.navigationStore.navigateBack()}
+          onGoForward={() => root.navigationStore.navigateForward()}
           onToggle={() => root.sidebarStore.toggle()}
         />
         <NewSessionDialog store={root.newSessionStore} />

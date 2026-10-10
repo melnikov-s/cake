@@ -16,6 +16,7 @@ import type { ToastStore } from "../stores/ToastStore";
 import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
 import type { ProjectSessionCreationStore } from "../stores/ProjectSessionCreationStore";
 import type { SessionRetirementStore } from "../stores/SessionRetirementStore";
+import type { NavigationStore } from "../stores/NavigationStore";
 import { defaultProjectSettings } from "../../services/storage/application-data";
 import { crossSessionContextSnapshot } from "../../services/pi/cross-session-message";
 
@@ -38,13 +39,9 @@ export interface RootApplicationControlCapabilities {
   toastStore: ToastStore;
   requireProjectSessionWorkingDirectory(sessionId: string): string;
   prepareProjectSessionChat(sessionId: string): Promise<void>;
-  openSession(sessionId: string, messageId?: string): Promise<boolean>;
-  openCakeChat(sessionId?: string): Promise<void>;
+  navigationStore: NavigationStore;
   sessionCreationStore: ProjectSessionCreationStore;
   sessionRetirementStore: SessionRetirementStore;
-  focusCakeChatPane(paneId: string): void;
-  focusSessionPane(paneId: string): void;
-  splitFocusedSession(axis: "x" | "y"): { paneId: string; sessionId: string } | undefined;
 }
 
 /** Adapts focused renderer owners to the application-control protocol host. */
@@ -240,7 +237,8 @@ export function createRootApplicationControlHost(
       },
       inspect: (sessionId) =>
         capabilities.client.projectSessions.inspect({ sessionId }, { signal: capabilities.signal }),
-      open: (sessionId, messageId) => capabilities.openSession(sessionId, messageId),
+      open: (sessionId, messageId) =>
+        capabilities.navigationStore.openSession(sessionId, messageId),
       create: (input) => capabilities.sessionCreationStore.createPromptedSession(input),
       createDraft: (input) => capabilities.sessionCreationStore.createDraftSession(input),
       sendMessage: (sessionId, text, delivery, crossSession) =>
@@ -366,8 +364,8 @@ export function createRootApplicationControlHost(
         if (source.kind === "cake-chat") return undefined;
         const pane = capabilities.sessionLayoutStore.paneForSession(source.sessionId);
         if (!pane) return undefined;
-        capabilities.focusSessionPane(pane.paneId);
-        const split = capabilities.splitFocusedSession(axis);
+        capabilities.navigationStore.focusSessionPane(pane.paneId);
+        const split = capabilities.navigationStore.splitFocusedSession(axis);
         return split ? { kind: source.kind, ...split } : undefined;
       },
       showNotification: (input) => capabilities.notificationStore.enqueue(input),
@@ -377,8 +375,9 @@ export function createRootApplicationControlHost(
             ? {
                 label: "View",
                 run: async () => {
-                  if (targetKind === "cake-chat") await capabilities.openCakeChat(targetSessionId);
-                  else await capabilities.openSession(targetSessionId);
+                  if (targetKind === "cake-chat")
+                    await capabilities.navigationStore.openCakeChat(targetSessionId);
+                  else await capabilities.navigationStore.openSession(targetSessionId);
                 },
               }
             : undefined;

@@ -797,8 +797,10 @@ React mounts the root Store outside render, finds it through r-state-tree's
 is lookup, not Store lifetime. React keeps only DOM-local behavior and isolated
 component state.
 
-`RootStore` remains the window composition and application-intent boundary. It
-does not own event subscriptions or every workflow. Named product surfaces
+`RootStore` remains the window composition and event-routing boundary. It
+does not own event subscriptions or every workflow. `NavigationStore` coordinates
+session, pane, history, and surface navigation; a stateless typed command registry
+dispatches application hotkeys to focused owners. Named product surfaces
 retain focused Stores. Every chat surface uses the authoritative shared `Chat`
 component and `ChatStore`.
 

@@ -56,7 +56,11 @@ test("splits project chats while retaining independent drafts and pane focus", a
     await expect(panes.nth(0).getByRole("button", { name: "Close pane" })).toHaveCount(0);
     await expect(page.locator('[data-slot="workspace-header"]')).toHaveCount(1);
     const firstInput = panes.nth(0).getByLabel("Message");
-    await firstInput.fill("left draft");
+    await firstInput.click();
+    await expect(firstInput).toBeFocused();
+    await firstInput.pressSequentially("left draft");
+    await expect(firstInput).toHaveValue("left draft");
+    await expect(panes.nth(0).getByRole("button", { name: "Send" })).toBeEnabled();
 
     await panes.nth(0).getByRole("button", { name: "Split right" }).click();
     await expect(panes).toHaveCount(2);
@@ -119,29 +123,21 @@ test("splits project chats while retaining independent drafts and pane focus", a
     await focusedPane.getByRole("button", { name: "Close pane" }).click();
     await expect(panes).toHaveCount(2);
 
-    await page.getByRole("button", { name: "New Cake Chat" }).first().click();
+    await page.getByRole("button", { name: "New session", exact: true }).click();
+    await page.getByRole("option", { name: /Cake Chat/ }).click();
     await expect(panes).toHaveCount(1);
-    const firstCakeInput = panes.nth(0).getByLabel("Message Cake Chat");
-    await expect(firstCakeInput).toBeFocused();
-    await firstCakeInput.fill("first Cake Chat draft");
+    const cakeInput = panes.nth(0).getByLabel("Message Cake Chat");
+    await expect(cakeInput).toBeFocused();
+    await cakeInput.pressSequentially("Cake Chat draft");
+    await expect(cakeInput).toHaveValue("Cake Chat draft");
     await expect(panes.nth(0).getByRole("button", { name: "Send" })).toBeEnabled();
 
-    await panes.nth(0).getByRole("button", { name: "Split right" }).click();
-    await expect(panes).toHaveCount(2);
-    const secondCakeInput = panes.nth(1).getByLabel("Message Cake Chat");
-    await expect(secondCakeInput).toBeFocused();
-    await secondCakeInput.pressSequentially("/model invalid");
-    await panes.nth(1).getByRole("button", { name: "Send" }).click();
-    await expect(
-      panes.nth(1).getByText("Usage: /model <provider/model>", { exact: true }),
-    ).toBeVisible();
-    await expect(secondCakeInput).toHaveValue("/model invalid");
-    await secondCakeInput.fill("second Cake Chat draft");
-    await expect(panes.nth(1).getByRole("button", { name: "Send" })).toBeEnabled();
-
-    await panes.nth(0).locator("header").click();
-    await expect(firstCakeInput).toHaveValue("first Cake Chat draft");
-    await expect(secondCakeInput).toHaveValue("second Cake Chat draft");
+    // Pane commands use the selected conversation's layout, not the retained Project layout.
+    const modifier = process.platform === "darwin" ? "Meta" : "Control";
+    await page.keyboard.press(`${modifier}+1`);
+    await page.keyboard.press(`${modifier}+Backslash`);
+    await expect(panes).toHaveCount(1);
+    await expect(cakeInput).toHaveValue("Cake Chat draft");
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

@@ -59,12 +59,12 @@ describe("RootStore session navigation", () => {
       const ide = vi.spyOn(presentation, "toggleIde").mockResolvedValue();
       const changes = vi.spyOn(presentation, "toggleWorkspaceChanges").mockResolvedValue();
       const browser = vi.spyOn(presentation, "toggleBrowser").mockResolvedValue();
-      root.handleHotkey("open-editor");
-      root.handleHotkey("open-editor");
-      root.handleHotkey("open-changes");
-      root.handleHotkey("open-changes");
-      root.handleHotkey("toggle-browser");
-      root.handleHotkey("toggle-browser");
+      root.commands.execute("open-editor");
+      root.commands.execute("open-editor");
+      root.commands.execute("open-changes");
+      root.commands.execute("open-changes");
+      root.commands.execute("toggle-browser");
+      root.commands.execute("toggle-browser");
       expect(ide).toHaveBeenCalledTimes(2);
       expect(changes).toHaveBeenCalledTimes(2);
       expect(browser).toHaveBeenCalledTimes(2);
@@ -90,9 +90,9 @@ describe("RootStore session navigation", () => {
       expect(openChanges).toHaveBeenCalledOnce();
       expect(openBrowser).toHaveBeenCalledOnce();
 
-      root.handleHotkey("open-settings");
+      root.commands.execute("open-settings");
       expect(root.appShellStore.surface).toBe("settings");
-      root.handleHotkey("open-settings");
+      root.commands.execute("open-settings");
       expect(root.appShellStore.surface).toBe("workbench");
     } finally {
       root[Symbol.dispose]();
@@ -109,7 +109,7 @@ describe("RootStore session navigation", () => {
     try {
       root.appShellStore.selectProjectSession("current-session");
 
-      const creating = root.createSession("/projects/another");
+      const creating = root.navigationStore.createSession("/projects/another");
 
       expect(root.appShellStore.activeConversation).toEqual({
         kind: "project-session",
@@ -151,20 +151,20 @@ describe("RootStore session navigation", () => {
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
 
     try {
-      await root.createSession(projectPath);
+      await root.navigationStore.createSession(projectPath);
       const first = root.projectWorkbenchStore.activeSession!;
       const firstDraft = first.conversationSessionStore.composerStore.draftStore;
       firstDraft.setText("First project draft");
       const focusRevision = firstDraft.focusRequestRevision;
 
       // Repeated requests in the same Project must reuse and focus its composer.
-      await root.createSession(projectPath);
+      await root.navigationStore.createSession(projectPath);
       expect(root.projectWorkbenchStore.activeSession).toBe(first);
       expect(firstDraft.text).toBe("First project draft");
       expect(firstDraft.focusRequestRevision).toBeGreaterThan(focusRevision);
       expect(inspect).toHaveBeenCalledTimes(1);
 
-      await root.createSession(otherProjectPath);
+      await root.navigationStore.createSession(otherProjectPath);
       const second = root.projectWorkbenchStore.activeSession!;
       expect(second.sessionId).not.toBe(first.sessionId);
       expect(second.workspacePath).toBe(otherProjectPath);
@@ -178,10 +178,10 @@ describe("RootStore session navigation", () => {
       secondDraft.setText("Second project draft");
       expect(inspect).toHaveBeenCalledTimes(2);
 
-      await root.createSession(projectPath);
+      await root.navigationStore.createSession(projectPath);
       expect(root.projectWorkbenchStore.activeSession).toBe(first);
       expect(firstDraft.text).toBe("First project draft");
-      await root.createSession(otherProjectPath);
+      await root.navigationStore.createSession(otherProjectPath);
       expect(root.projectWorkbenchStore.activeSession).toBe(second);
       expect(secondDraft.text).toBe("Second project draft");
       expect(root.sessionRegistry.pendingSessions.isStaged(first.sessionId)).toBe(true);
@@ -614,7 +614,9 @@ describe("RootStore session navigation", () => {
     const resolve = vi.fn(async () => undefined);
     const client = createTestClient({ projectSessions: { resolve } });
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
-    const createSession = vi.spyOn(root, "createSession").mockResolvedValue(undefined);
+    const createSession = vi
+      .spyOn(root.navigationStore, "createSession")
+      .mockResolvedValue(undefined);
 
     try {
       root.sessionRegistry.load("active", projectPath);
@@ -902,7 +904,9 @@ describe("RootStore session navigation", () => {
       projectSessions: { resolveWorkingDirectory: vi.fn(() => resolution.promise) },
     });
     const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
-    const createSession = vi.spyOn(root, "createSession").mockResolvedValue(undefined);
+    const createSession = vi
+      .spyOn(root.navigationStore, "createSession")
+      .mockResolvedValue(undefined);
 
     try {
       root.appShellStore.selectProjectSession("worktree-session");

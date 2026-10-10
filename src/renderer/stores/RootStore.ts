@@ -7,11 +7,8 @@ import { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
 import { SpeechSettingsStore } from "./SpeechSettingsStore";
 import type { DesktopConnectionStore } from "./DesktopConnectionStore";
 import { Store, child, createStore, untracked } from "r-state-tree";
-import type { CakeHotkeyActionId } from "../../ipc/cake-settings-data";
-import {
-  decodeArtifactLineageId,
-  decodeArtifactRevisionNumber,
-} from "../../services/storage/artifact-lineage";
+import { createApplicationCommandRegistry } from "../commands/application-commands";
+import { NavigationStore } from "./NavigationStore";
 import type { Client } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
@@ -21,7 +18,6 @@ import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import { TerminalTopInsetContext } from "./context/TerminalTopInsetContext";
 import { DeliveryAvailabilityContext } from "./context/DeliveryAvailabilityContext";
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
-import type { SessionHistoryEntry } from "./AppShellStore";
 import { SessionRegistryStore } from "./SessionRegistryStore";
 import { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
 import { SidebarStore } from "./SidebarStore";
@@ -47,7 +43,7 @@ import { NotificationStore } from "./NotificationStore";
 import { ToastStore } from "./ToastStore";
 import { TerminalStore, type TerminalTarget } from "./TerminalStore";
 import { WorkingDirectoryRetirementStore } from "./WorkingDirectoryRetirementStore";
-import { SessionLayoutStore, type SessionSplitAxis } from "./SessionLayoutStore";
+import { SessionLayoutStore } from "./SessionLayoutStore";
 import { SessionCoordinationStore } from "./SessionCoordinationStore";
 import { resolveDraftUpdate } from "../../utils/resolve-draft-update";
 import type { RootProjection } from "../models/RootProjection";
@@ -74,6 +70,34 @@ export class RootStore extends Store<{
   // Typed Context.consume(), not dynamic symbol lookup, owns each provider's value contract.
   [key: symbol]: () => void;
   private readonly defaultSpeechPlayback = createSpeechPlayback();
+  readonly commands = createApplicationCommandRegistry({
+    shell: () => this.appShellStore,
+    metadata: () => this.sessionMetadataStore,
+    workbench: () => this.projectWorkbenchStore,
+    cakeChat: () => this.cakeChatCollectionStore,
+    navigation: () => this.navigationStore,
+    newSession: () => this.newSessionStore,
+    sidebar: () => this.sidebarStore,
+    terminal: () => this.terminalStore,
+    hints: () => this.uiHintModeStore,
+  });
+
+  @child
+  get navigationStore(): NavigationStore {
+    return createStore(NavigationStore, {
+      shell: this.appShellStore,
+      layout: this.sessionLayoutStore,
+      registry: this.sessionRegistry,
+      catalog: this.sessionCatalogStore,
+      metadata: () => this.sessionMetadataStore,
+      workbench: () => this.projectWorkbenchStore,
+      sidebar: () => this.sidebarStore,
+      cakeChat: () => this.cakeChatCollectionStore,
+      newSession: () => this.newSessionStore,
+      settings: () => this.settingsStore,
+      artifacts: () => this.artifactLibraryStore,
+    });
+  }
   @child
   get screenCaptureStore(): ScreenCaptureAttachmentStore {
     return createStore(ScreenCaptureAttachmentStore, {
@@ -121,7 +145,7 @@ export class RootStore extends Store<{
             throw new Error("The destination Project is no longer available.");
           const sessionId = crypto.randomUUID();
           this.sessionRegistry.pendingSessions.prepareStaged(destination.projectPath, sessionId);
-          if (!(await this.openSession(sessionId)))
+          if (!(await this.navigationStore.openSession(sessionId)))
             throw new Error("Cake could not create the destination session.");
           return { kind: "project-session", sessionId };
         }
@@ -134,17 +158,15 @@ export class RootStore extends Store<{
             (!loaded.model.sessionFile &&
               !this.sessionRegistry.pendingSessions.isTemporary(destination.sessionId))
           ) {
-            if (!(await this.openSession(destination.sessionId)))
+            if (!(await this.navigationStore.openSession(destination.sessionId)))
               throw new Error("Cake could not open the destination session.");
           } else {
-            this.sessionLayoutStore.ensureSession(destination.sessionId);
-            this.projectWorkbenchStore.showLoadedSession(destination.sessionId);
-            this.selectProjectSessionForShell(destination.sessionId);
+            this.navigationStore.showLoadedProjectSession(destination.sessionId);
           }
         } else {
           if (this.cakeChatCatalogModel.find(destination.sessionId)?.resolved)
             throw new Error("The destination chat is no longer editable.");
-          await this.openCakeChat(destination.sessionId);
+          await this.navigationStore.openCakeChat(destination.sessionId);
         }
         return destination;
       },
@@ -268,10 +290,10 @@ export class RootStore extends Store<{
   get newSessionStore(): NewSessionStore {
     return createStore(NewSessionStore, {
       createCakeChat: () => {
-        void this.startCakeChat();
+        void this.navigationStore.startCakeChat();
       },
       createProjectSession: (path) => {
-        void this.createSession(path);
+        void this.navigationStore.createSession(path);
       },
     });
   }
@@ -321,32 +343,6 @@ export class RootStore extends Store<{
       throw new Error("Cake could not open that session");
   }
 
-  async openSession(sessionId: string, messageId?: string) {
-    this.requireProjectSessionWorkingDirectory(sessionId);
-    this.projectWorkbenchStore.dismissSecondarySurfaces();
-    this.sessionLayoutStore.focusSession(sessionId);
-    const opened = await this.projectWorkbenchStore.openSession(sessionId);
-    if (opened === false || this.projectWorkbenchStore.activeSession?.sessionId !== sessionId)
-      return false;
-    if (!messageId) return true;
-    const session = this.sessionRegistry.findSession(sessionId);
-    if (!session) return false;
-    const message = session.conversationSessionStore.chatStore.parts.find(
-      (part) =>
-        part.id === messageId ||
-        (part.kind === "text" && part.entryId !== undefined && part.entryId === messageId),
-    );
-    if (!message) return false;
-    session.conversationSessionStore.chatStore.transcriptInteraction.navigateToMessage(message.id);
-    return true;
-  }
-
-  private selectProjectSessionForShell(sessionId: string) {
-    if (this.sessionMetadataStore.isResolved(sessionId))
-      this.appShellStore.previewResolvedProjectSession(sessionId);
-    else this.appShellStore.selectProjectSession(sessionId);
-  }
-
   initialize() {
     this.applicationControlStore.start();
     const selection = this.appShellStore.selection;
@@ -361,28 +357,8 @@ export class RootStore extends Store<{
     return Promise.resolve();
   }
 
-  /** Opens the project or Cake Chat session addressed by a Markdown session link. */
-  async openSessionLink(sessionId: string) {
-    if (this.sessionMetadataStore.exists(sessionId)) {
-      await this.openSession(sessionId);
-      return;
-    }
-    if (this.cakeChatCollectionStore.summaries.some((session) => session.sessionId === sessionId)) {
-      await this.openCakeChat(sessionId);
-      return;
-    }
-    throw new Error("Cake could not find the linked session");
-  }
-
   openExternalUrl(url: string) {
     return this.client.electron.openExternalUrl(url, { signal: this.signal });
-  }
-
-  async createSession(workspacePath: string) {
-    this.newSessionStore.rememberProject(workspacePath);
-    await this.projectWorkbenchStore.startNewSession(workspacePath);
-    const sessionId = this.projectWorkbenchStore.activeSession?.sessionId;
-    if (sessionId) this.selectProjectSessionForShell(sessionId);
   }
 
   private projectControlSource(sessionId: string): AgentControlSource {
@@ -403,312 +379,8 @@ export class RootStore extends Store<{
     };
   }
 
-  async startOneOffChat() {
-    this.showEmptyWorkbench();
-    await this.projectWorkbenchStore.projectOpenStore.startOneOffChat();
-  }
-
-  async chooseProject() {
-    this.showEmptyWorkbench();
-    await this.projectWorkbenchStore.projectOpenStore.chooseProject();
-  }
-
-  private sessionInNavigationScope(entry: SessionHistoryEntry) {
-    const projectPath = this.sidebarStore.focusModeProjectPath;
-    return (
-      projectPath === undefined ||
-      (entry.kind === "project-session" &&
-        this.projectControlSource(entry.sessionId).projectPath === projectPath)
-    );
-  }
-
-  navigateBack() {
-    // In Project focus, use the scoped visit history rather than unfiltered pane history.
-    const sessionId =
-      !this.sidebarStore.focusModeProjectPath &&
-      this.appShellStore.surface === "workbench" &&
-      this.sessionLayoutStore.goBack();
-    if (sessionId) void this.openSession(sessionId);
-    else void this.navigateToHistoryEntry(this.appShellStore.goBack());
-  }
-  navigateForward() {
-    const sessionId =
-      !this.sidebarStore.focusModeProjectPath &&
-      this.appShellStore.surface === "workbench" &&
-      this.sessionLayoutStore.goForward();
-    if (sessionId) void this.openSession(sessionId);
-    else void this.navigateToHistoryEntry(this.appShellStore.goForward());
-  }
-
-  navigateActiveSession(direction: "next" | "previous") {
-    const target = this.sidebarStore.sessionListStore.adjacentActiveSession(
-      direction,
-      this.sidebarStore.focusModeProjectPath,
-    );
-    if (!target) return;
-    if (target.kind === "cake-chat") void this.openCakeChat(target.sessionId);
-    else void this.openSession(target.sessionId);
-  }
-
-  focusSessionPane(paneId: string) {
-    const sessionId = this.sessionLayoutStore.focusPane(paneId);
-    if (!sessionId || this.projectWorkbenchStore.activeSessionId === sessionId) return;
-    this.selectProjectSessionForShell(sessionId);
-    this.projectWorkbenchStore.showLoadedSession(sessionId);
-  }
-
-  focusAdjacentSessionPane(direction: "left" | "right" | "above" | "below") {
-    if (this.appShellStore.selection.kind === "cake-chat") {
-      const layout = this.cakeChatCollectionStore.sessionLayoutStore;
-      const sessionId = layout.focusedSessionId;
-      const target = sessionId ? layout.neighbors(sessionId)[direction][0] : undefined;
-      if (target) this.focusCakeChatPane(target.paneId);
-      return;
-    }
-    const sessionId = this.sessionLayoutStore.focusedSessionId;
-    const target = sessionId
-      ? this.sessionLayoutStore.neighbors(sessionId)[direction][0]
-      : undefined;
-    if (target) this.focusSessionPane(target.paneId);
-  }
-
-  focusSessionPaneNumber(number: number) {
-    if (this.appShellStore.selection.kind === "cake-chat") {
-      const pane = this.cakeChatCollectionStore.sessionLayoutStore.panes[number - 1];
-      if (pane) this.focusCakeChatPane(pane.paneId);
-      return;
-    }
-    const pane = this.sessionLayoutStore.panes[number - 1];
-    if (pane) this.focusSessionPane(pane.paneId);
-  }
-
-  handleHotkey(action: CakeHotkeyActionId) {
-    if (action !== "show-ui-hints") this.uiHintModeStore.close();
-    const selection = this.appShellStore.selection;
-    const projectSelected = selection.kind === "project-session";
-    const projectResolved =
-      projectSelected && this.sessionMetadataStore.isResolved(selection.sessionId);
-    const chat =
-      selection.kind === "cake-chat"
-        ? selection.sessionId
-          ? this.cakeChatCollectionStore.registry.find(selection.sessionId)
-              ?.conversationSessionStore.chatStore
-          : undefined
-        : projectSelected
-          ? this.projectWorkbenchStore.activeSession?.conversationSessionStore.chatStore
-          : undefined;
-    switch (action) {
-      case "new-session":
-        this.newSessionStore.show();
-        break;
-      case "toggle-agent-editor":
-        if (projectSelected && !projectResolved)
-          void this.projectWorkbenchStore.presentationStore.toggleIde();
-        break;
-      case "open-editor":
-        if (projectSelected && !projectResolved)
-          void this.projectWorkbenchStore.presentationStore.toggleIde();
-        break;
-      case "open-changes":
-        if (projectSelected && !projectResolved)
-          void this.projectWorkbenchStore.presentationStore.toggleWorkspaceChanges();
-        break;
-      case "toggle-browser":
-        if (projectSelected && !projectResolved)
-          void this.projectWorkbenchStore.presentationStore.toggleBrowser();
-        break;
-      case "toggle-terminal":
-        if (!projectResolved) void this.terminalStore.toggle();
-        break;
-      case "new-terminal-tab":
-        if (!projectResolved && this.terminalStore.open) void this.terminalStore.newTab();
-        break;
-      case "toggle-sidebar":
-        this.sidebarStore.toggle();
-        break;
-      case "toggle-session-tree":
-        if (projectSelected && !projectResolved)
-          this.projectWorkbenchStore.commandPaneStore.toggle("tree");
-        break;
-      case "split-right":
-      case "split-down": {
-        const axis = action === "split-right" ? "x" : "y";
-        if (projectSelected) this.splitFocusedSession(axis);
-        break;
-      }
-      case "focus-left":
-        this.focusAdjacentSessionPane("left");
-        break;
-      case "focus-right":
-        this.focusAdjacentSessionPane("right");
-        break;
-      case "focus-above":
-        this.focusAdjacentSessionPane("above");
-        break;
-      case "focus-below":
-        this.focusAdjacentSessionPane("below");
-        break;
-      case "focus-pane-1":
-      case "focus-pane-2":
-      case "focus-pane-3":
-      case "focus-pane-4":
-        this.focusSessionPaneNumber(Number(action.at(-1)));
-        break;
-      case "history-back":
-        this.navigateBack();
-        break;
-      case "history-forward":
-        this.navigateForward();
-        break;
-      case "next-active-session":
-        this.navigateActiveSession("next");
-        break;
-      case "previous-active-session":
-        this.navigateActiveSession("previous");
-        break;
-      case "show-ui-hints":
-        this.uiHintModeStore.toggle();
-        break;
-      case "toggle-work-logs":
-        chat?.workLogPresentation.cycleExpansion();
-        break;
-      case "cycle-work-log-view":
-        chat?.workLogPresentation.cycleViewMode();
-        break;
-      case "open-hovered-message":
-        break;
-      case "open-settings":
-        if (this.appShellStore.surface === "settings") this.returnToWorkbench();
-        else this.showSettings();
-        break;
-    }
-  }
-
-  splitFocusedSession(axis: SessionSplitAxis) {
-    const source = this.projectWorkbenchStore.activeSession;
-    if (!source || !this.sessionLayoutStore.canSplit) return;
-    const sessionId = crypto.randomUUID();
-    const session = this.sessionRegistry.pendingSessions.prepareStaged(
-      source.workspacePath,
-      sessionId,
-    );
-    const paneId = this.sessionLayoutStore.splitFocused(sessionId, axis);
-    if (!paneId) {
-      this.sessionRegistry.removeSession(sessionId);
-      return;
-    }
-    this.selectProjectSessionForShell(sessionId);
-    this.projectWorkbenchStore.showLoadedSession(sessionId);
-    void session.stagedCommandStore.load(source.workspacePath);
-    return { paneId, sessionId };
-  }
-
-  focusCakeChatPane(paneId: string) {
-    const sessionId = this.cakeChatCollectionStore.focusPane(paneId);
-    if (sessionId) this.appShellStore.selectCakeChat(sessionId);
-  }
-
-  closeCakeChatPane(paneId: string) {
-    const result = this.cakeChatCollectionStore.closePane(paneId);
-    if (result?.focusedSessionId) this.appShellStore.selectCakeChat(result.focusedSessionId);
-  }
-
-  closeSessionPane(paneId: string) {
-    const result = this.sessionLayoutStore.closePane(paneId);
-    if (!result) return;
-    for (const sessionId of result.removedSessionIds) {
-      if (this.sessionRegistry.pendingSessions.isStaged(sessionId))
-        this.sessionRegistry.removeSession(sessionId);
-    }
-    if (result.focusedSessionId) {
-      this.selectProjectSessionForShell(result.focusedSessionId);
-      this.projectWorkbenchStore.showLoadedSession(result.focusedSessionId);
-    }
-  }
-  private async navigateToHistoryEntry(entry: SessionHistoryEntry | undefined) {
-    if (!entry) return;
-    if (entry.kind === "cake-chat") await this.openCakeChat(entry.sessionId);
-    else await this.openSession(entry.sessionId);
-  }
-  showWorkbench() {
-    this.projectWorkbenchStore.dismissSecondarySurfaces();
-    const context = this.projectWorkbenchStore.sessionContext();
-    if (context) this.appShellStore.selectProjectSession(context.sessionId);
-    else this.appShellStore.showWorkbench();
-    this.projectWorkbenchStore.presentationStore.restore();
-  }
-  returnToWorkbench() {
-    const active = this.appShellStore.activeConversation;
-    if (active?.kind === "cake-chat") {
-      this.appShellStore.selectCakeChat(active.sessionId);
-      return;
-    }
-    this.showWorkbench();
-    this.projectWorkbenchStore.activeSession?.conversationSessionStore.composerStore.draftStore.requestFocus();
-  }
-  dismissTopSecondarySurface() {
-    if (this.newSessionStore.open) {
-      this.newSessionStore.close();
-      return;
-    }
-    if (this.projectWorkbenchStore.commandPaneStore.navigationPrompt) {
-      this.projectWorkbenchStore.commandPaneStore.cancelNavigation();
-      return;
-    }
-    if (this.projectWorkbenchStore.sessionContinuationStore.prompt) {
-      this.projectWorkbenchStore.sessionContinuationStore.cancelPrompt();
-      return;
-    }
-    if (this.projectWorkbenchStore.presentationStore.embeddedEditorStore.visible) {
-      this.projectWorkbenchStore.presentationStore.backToAgent();
-      return;
-    }
-    if (this.projectWorkbenchStore.commandPaneStore.pane)
-      this.projectWorkbenchStore.commandPaneStore.close();
-  }
-  showCakeChat(sessionId = this.cakeChatCollectionStore.sessionId) {
-    this.projectWorkbenchStore.dismissSecondarySurfaces();
-    this.appShellStore.selectCakeChat(sessionId);
-  }
-  async openCakeChat(sessionId?: string) {
-    if (!sessionId) return this.startCakeChat();
-    this.projectWorkbenchStore.dismissSecondarySurfaces();
-    this.appShellStore.selectCakeChat(sessionId);
-    await this.cakeChatCollectionStore.openSession(sessionId);
-  }
-  async startCakeChat(prompt?: string) {
-    this.projectWorkbenchStore.dismissSecondarySurfaces();
-    this.appShellStore.selectCakeChat();
-    await this.cakeChatCollectionStore.activate(prompt);
-    this.appShellStore.selectCakeChat(this.cakeChatCollectionStore.sessionId);
-  }
   showTranscriptSelectionContextMenu(input: { canChat: boolean; canAnnotate: boolean }) {
     return this.client.electron.showTranscriptSelectionContextMenu(input, { signal: this.signal });
-  }
-
-  showArtifactLibrary(sessionId?: string, lineageId?: string, revision?: number) {
-    this.projectWorkbenchStore.dismissSecondarySurfaces();
-    this.artifactLibraryStore.open(sessionId);
-    this.appShellStore.showArtifactLibrary();
-    if (lineageId)
-      void this.artifactLibraryStore.detailStore.select(
-        decodeArtifactLineageId(lineageId),
-        revision === undefined ? undefined : decodeArtifactRevisionNumber(revision),
-      );
-  }
-  showSettings() {
-    this.projectWorkbenchStore.dismissSecondarySurfaces();
-    this.appShellStore.showSettings();
-  }
-  showModelPresetSettings() {
-    this.settingsStore.selectPage("models");
-    this.settingsStore.modelPresets.requestSection();
-    this.showSettings();
-  }
-
-  private showEmptyWorkbench() {
-    this.projectWorkbenchStore.dismissSecondarySurfaces();
-    this.appShellStore.showWorkbench();
   }
 
   @child
@@ -716,7 +388,7 @@ export class RootStore extends Store<{
     return createStore(ProjectSessionPlacementStore, {
       layout: this.sessionLayoutStore,
       dismissSecondarySurfaces: () => this.projectWorkbenchStore.dismissSecondarySurfaces(),
-      selectSession: (sessionId) => this.selectProjectSessionForShell(sessionId),
+      selectSession: (sessionId) => this.navigationStore.selectProjectSessionForShell(sessionId),
       showLoadedSession: (sessionId) => this.projectWorkbenchStore.showLoadedSession(sessionId),
     });
   }
@@ -729,8 +401,8 @@ export class RootStore extends Store<{
       registry: this.sessionRegistry,
       layout: this.sessionLayoutStore,
       projectSessions: this.projectWorkbenchStore.sessionManagementStore,
-      navigate: (target) => this.navigateToHistoryEntry(target),
-      createProjectSession: (projectPath) => this.createSession(projectPath),
+      navigate: (target) => this.navigationStore.navigateToHistoryEntry(target),
+      createProjectSession: (projectPath) => this.navigationStore.createSession(projectPath),
     });
   }
 
@@ -743,8 +415,8 @@ export class RootStore extends Store<{
       clearOpenProject: (path) => this.projectWorkbenchStore.projectOpenStore.clear(path),
       focusedProjectPath: () => this.sidebarStore.focusedProjectPath,
       leaveProjectFocus: () => this.sidebarStore.leaveProjectFocus(),
-      navigate: (target) => this.navigateToHistoryEntry(target),
-      showEmptyWorkbench: () => this.showEmptyWorkbench(),
+      navigate: (target) => this.navigationStore.navigateToHistoryEntry(target),
+      showEmptyWorkbench: () => this.navigationStore.showEmptyWorkbench(),
       reportError: (error) => this.projectWorkbenchStore.setError(error),
     });
   }
@@ -790,7 +462,7 @@ export class RootStore extends Store<{
         this.projectWorkbenchStore.sessionContinuationStore.toolCompactAt(entryId, prompt),
       modelPresets: () => this.settingsStore.modelPresets.presets,
       assistantTools: () => this.applicationControlStore.sessionAssistantTools(),
-      openModelPresetSettings: () => this.showModelPresetSettings(),
+      openModelPresetSettings: () => this.navigationStore.showModelPresetSettings(),
       newSessionConfiguration: (sessionId) =>
         this.projectWorkbenchStore.sessionCreationStore.request(sessionId)?.configuration,
       startNewSession: (sessionId, input) =>
@@ -964,7 +636,7 @@ export class RootStore extends Store<{
         this.props.projection.discussionConversation(sessionId, workingDirectory),
       operations: this.sessionOperationCoordinator,
       modelPresets: () => this.settingsStore.modelPresets.presets,
-      openModelPresetSettings: () => this.showModelPresetSettings(),
+      openModelPresetSettings: () => this.navigationStore.showModelPresetSettings(),
       settings: () => this.settingsStore.appearance,
     });
   }
@@ -1010,7 +682,7 @@ export class RootStore extends Store<{
             label: "Open Voice & Dictation settings",
             run: () => {
               this.settingsStore.selectPage("voice");
-              this.showSettings();
+              this.navigationStore.showSettings();
             },
           },
         }),
@@ -1092,7 +764,7 @@ export class RootStore extends Store<{
       reviews: () => this.reviewsStore,
       extensionUi: () => this.extensionUiStore,
       catalog: this.sessionCatalogStore,
-      startCakeChat: (prompt) => this.startCakeChat(prompt),
+      startCakeChat: (prompt) => this.navigationStore.startCakeChat(prompt),
       browserHost: this.props.browserHost,
       onBrowserUnavailable: () =>
         this.toastStore.show({
@@ -1103,31 +775,14 @@ export class RootStore extends Store<{
       onWorktreeSessionsResolved: (sessionIds, projectPath) =>
         this.sessionRetirementStore.forgetProjectSessions(sessionIds, projectPath),
       openSessionById: async (sessionId) => {
-        await this.openSession(sessionId);
+        await this.navigationStore.openSession(sessionId);
       },
       activeSessionId: () => {
         const active = this.appShellStore.activeConversation;
         return active?.kind === "project-session" ? active.sessionId : undefined;
       },
-      restoreStagedSession: (projectPath) => {
-        const sessionId = this.sessionLayoutStore.focusedSessionHistory.findLast((candidateId) => {
-          if (!this.sessionRegistry.pendingSessions.isStaged(candidateId)) return false;
-          const session = this.sessionRegistry.findSession(candidateId);
-          if (!session) return false;
-          const candidateProjectPath =
-            this.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
-            session.workspacePath;
-          return candidateProjectPath === projectPath;
-        });
-        if (!sessionId) return undefined;
-        return this.sessionLayoutStore.restoreFocusedHistorySession(sessionId)
-          ? sessionId
-          : undefined;
-      },
-      selectSession: (sessionId) => {
-        this.sessionLayoutStore.showSession(sessionId);
-        this.selectProjectSessionForShell(sessionId);
-      },
+      restoreStagedSession: (projectPath) => this.navigationStore.restoreStagedSession(projectPath),
+      selectSession: (sessionId) => this.navigationStore.selectProjectSession(sessionId),
       toggleProjectSidebar: () => this.sidebarStore.toggle(),
       enterIdeSidebarMode: () => this.sidebarStore.enterIdeMode(),
       leaveIdeSidebarMode: () => this.sidebarStore.leaveIdeMode(),
@@ -1145,7 +800,7 @@ export class RootStore extends Store<{
       tools: () => this.applicationControlStore.tools(),
       modelPresets: () => this.settingsStore.modelPresets.presets,
       defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,
-      openModelPresetSettings: () => this.showModelPresetSettings(),
+      openModelPresetSettings: () => this.navigationStore.showModelPresetSettings(),
       settings: () => this.settingsStore.appearance,
     });
   }
@@ -1153,7 +808,7 @@ export class RootStore extends Store<{
   @child
   get appShellStore(): AppShellStore {
     return createStore(AppShellStore, {
-      sessionInNavigationScope: (entry) => this.sessionInNavigationScope(entry),
+      sessionInNavigationScope: (entry) => this.navigationStore.sessionInNavigationScope(entry),
       onProjectSessionDeparted: (sessionId) =>
         this.sessionRegistry.findSession(sessionId)?.depart(),
     });
@@ -1183,13 +838,9 @@ export class RootStore extends Store<{
         requireProjectSessionWorkingDirectory: (sessionId) =>
           this.requireProjectSessionWorkingDirectory(sessionId),
         prepareProjectSessionChat: (sessionId) => this.prepareProjectSessionChat(sessionId),
-        openSession: (sessionId, messageId) => this.openSession(sessionId, messageId),
-        openCakeChat: (sessionId) => this.openCakeChat(sessionId),
+        navigationStore: this.navigationStore,
         sessionCreationStore: this.projectWorkbenchStore.sessionCreationStore,
         sessionRetirementStore: this.sessionRetirementStore,
-        focusCakeChatPane: (paneId) => this.focusCakeChatPane(paneId),
-        focusSessionPane: (paneId) => this.focusSessionPane(paneId),
-        splitFocusedSession: (axis) => this.splitFocusedSession(axis),
       }),
       operations: this.sessionOperationCoordinator,
       cakeChatRequests: () =>

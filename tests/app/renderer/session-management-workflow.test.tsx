@@ -78,8 +78,8 @@ async function renderManagement(
             path={projectPath}
             resolved={resolved}
             flattenSessions
-            onCreateSession={(path) => void root.createSession(path)}
-            onOpenSession={(id) => void root.openSession(id)}
+            onCreateSession={(path) => void root.navigationStore.createSession(path)}
+            onOpenSession={(id) => void root.navigationStore.openSession(id)}
             onRemoveProject={(path, deleteSessions) =>
               root.projectRemovalStore.remove(path, deleteSessions)
             }

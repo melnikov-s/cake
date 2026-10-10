@@ -167,7 +167,7 @@ describe("Project Session catalog to sidebar synchronization", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
       });
       root.sessionRegistry.pendingSessions.relocate(firstId, worktreePath);
-      await root.openSession(firstId);
+      await root.navigationStore.openSession(firstId);
     });
     expect(root.sessionCatalogStore.find(firstId)?.projectPath).toBe(projectPath);
     expect(row()).toHaveLength(1);

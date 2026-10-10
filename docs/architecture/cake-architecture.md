@@ -449,9 +449,10 @@ The window Store hierarchy mirrors the product surfaces:
   toast stack and Electron also sends it to the operating system notification center.
   `ApplicationControlStore` owns Project Session and Cake Chat application-control request
   acceptance, deduplication, invocation, response delivery, and lifetime cancellation. The typed
-  application-control host adapter composes narrow capabilities from their focused owners; Root
-  retains genuine cross-Store navigation and Session Family presentation coordination rather than
-  interpreting the protocol itself. Application controls are defined in focused area modules under
+  application-control host adapter composes narrow capabilities from their focused owners;
+  `NavigationStore` owns cross-Store navigation, while `ProjectSessionPlacementStore` owns
+  Session Family presentation coordination. Root wires those owners rather than interpreting
+  the protocol itself. Application controls are defined in focused area modules under
   `renderer/app-control`: each definition couples its argument schema, discovery metadata and
   typed handler. One immutable registry derives global and session-assistant catalogs and dispatches
   by command name; internal controls remain invocable without being advertised. Explicitly targeted
@@ -472,7 +473,11 @@ The window Store hierarchy mirrors the product surfaces:
   and catalog demand. `SessionMetadataStore` is a window-shared join for Project
   Session labels and activity, so the sidebar, composer, and application controls
   consume the same semantics without making those facts sidebar-owned. Neither
-  navigation Store opens sessions directly.
+  selection/list Store opens sessions directly. The window-owned `NavigationStore`
+  coordinates session opening, links, scoped history, pane focus/splits/closure, and
+  surface transitions without duplicating selection or layout state. The stateless typed
+  application command registry dispatches hotkeys to these focused owners and evaluates
+  availability against current state at invocation time.
 - `ArtifactLibraryStore` owns artifact catalog search, filters, paging, and the
   active-session scope of the library surface. Its `ArtifactDetailStore` child owns
   the selected lineage and revision, paginated history, comparisons, and restore
@@ -835,14 +840,16 @@ The window Store hierarchy mirrors the product surfaces:
   through its registry independently of the Project registry/workbench. Cross-process operations
   use explicit project or Cake Chat intents, never transcript-file existence to infer ownership.
 
-UI and application controls invoke semantic `RootStore` intents such as
-`openSession`, `createSession`, or `showCakeChat`. The root performs any
-required shell transition and delegates the workflow to its cohesive owner, so
-callers do not assemble cross-Store navigation recipes.
+UI and application controls invoke semantic `NavigationStore` intents such as
+`openSession`, `createSession`, or `openCakeChat` directly. Navigation coordinates
+required shell and pane transitions with the focused workflow owners; Root only
+composes dependencies, and callers do not assemble cross-Store navigation recipes.
 
 ```mermaid
 flowchart TD
-  Root["RootStore"] --> Shell["AppShellStore"]
+  Root["RootStore"] --> Navigation["NavigationStore"]
+  Root --> Shell["AppShellStore"]
+  Navigation -. coordinates .-> Shell
   Root --> Sidebar["SidebarStore"]
   Sidebar --> SidebarList["SidebarSessionListStore"]
   Root --> SessionMetadata["SessionMetadataStore"]
