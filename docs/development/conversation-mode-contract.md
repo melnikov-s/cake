@@ -79,9 +79,13 @@ The code diff contains the actual destination contracts:
 4. The Project Session voice target calls the existing DeliveryStore's `send` with independently
    recognized text, no attachments, no draft restoration, ordinary prompt delivery and voice style.
    A rejected/unaccepted input remains visible as the conversation workflow's recoverable transcript.
-5. `addResponseModeReminder` decorates ordinary model-bound user content with the **exact**
-   approved voice or text reminder. Text explicitly overrides earlier voice instructions. Capture
-   decorated content through queuing, compaction, edit/send-now and reordering; never consult the
+5. Ordinary model-bound user content receives the **exact** approved response reminder only
+   when the submitted mode differs from preceding Pi history and applicable queued inputs. Text
+   is the initial default, so initial/repeated text and repeated voice inputs need no reminder.
+   A voice transition introduces spoken-response guidance; returning to text explicitly overrides
+   it. Recover the previous mode from exact reminders on the active Pi branch, not a persisted
+   Cake flag. Tool Compact removes injected reminders from replay, restoring the text default.
+   Capture decorated content through queuing, compaction, edit/send-now and reordering; never consult the
    current renderer mode later. Built-ins and shell parsing keep their current routing before
    ordinary-content decoration; preserve attachments and cross-session metadata.
 6. `stripResponseModeReminder` is used alongside the existing presentation-mode stripping for

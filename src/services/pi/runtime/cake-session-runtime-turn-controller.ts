@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   addResponseModeReminder,
+  responseModeFromReminder,
   stripResponseModeReminder,
   type ConversationResponseMode,
 } from "../response-mode-reminders";
@@ -169,10 +170,16 @@ export function createCakeSessionRuntimeTurnController(input: {
     await input.emitSnapshot();
   };
 
-  const previousPresentationMode = (delivery: "prompt" | "steer" | "follow-up") => {
-    let mode: ProjectSessionPresentationMode = "normal";
+  // Pi's active branch is the authority, so reload, editing, branching and Tool
+  // Compact naturally recover (or reset) the modes without a second persisted flag.
+  const previousModes = (delivery: "prompt" | "steer" | "follow-up") => {
+    let presentation: ProjectSessionPresentationMode = "normal";
+    let response: ConversationResponseMode = "text";
     const consume = (messages: readonly string[]) => {
-      for (const message of messages) mode = presentationModeFromReminder(message) ?? mode;
+      for (const message of messages) {
+        presentation = presentationModeFromReminder(message) ?? presentation;
+        response = responseModeFromReminder(message) ?? response;
+      }
     };
     consume(
       session.sessionManager.getBranch().flatMap((entry) =>
@@ -200,7 +207,7 @@ export function createCakeSessionRuntimeTurnController(input: {
         compactionQueue.filter((item) => item.delivery === "follow-up").map((item) => item.content),
       );
     }
-    return mode;
+    return { presentation, response };
   };
 
   const contentForPresentation = (
@@ -212,16 +219,22 @@ export function createCakeSessionRuntimeTurnController(input: {
   ) => {
     const content = promptText(text, attachments);
     if (text.startsWith("/")) return content;
-    return addResponseModeReminder(
+    const previous = previousModes(
+      delivery === "prompt" &&
+        (session.isStreaming ||
+          session.isCompacting ||
+          commandRunning ||
+          compactionQueue.length > 0)
+        ? "follow-up"
+        : delivery,
+    );
+    const presented =
       presentationMode === undefined
         ? content
-        : addPresentationModeReminder(
-            content,
-            previousPresentationMode(delivery),
-            presentationMode,
-          ),
-      responseMode,
-    );
+        : addPresentationModeReminder(content, previous.presentation, presentationMode);
+    return responseMode === previous.response
+      ? presented
+      : addResponseModeReminder(presented, responseMode);
   };
 
   const deliverPrompt = (

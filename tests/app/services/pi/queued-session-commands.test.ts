@@ -1,4 +1,4 @@
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type AgentSession } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { createCakeSessionRuntimeTurnController } from "../../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
 
@@ -20,6 +20,7 @@ function fixture(
     isStreaming: true,
     isCompacting: false,
     isBashRunning: false,
+    sessionManager: SessionManager.inMemory("/project"),
     getFollowUpMessages: () => followUp,
     getSteeringMessages: () => steering,
     clearQueue: () => ({ steering: steering.splice(0), followUp: followUp.splice(0) }),

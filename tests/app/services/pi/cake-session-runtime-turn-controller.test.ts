@@ -1,8 +1,10 @@
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type AgentSession } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { createCakeSessionRuntimeTurnController } from "../../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
 import { encodeCrossSessionMessage } from "../../../../src/services/pi/cross-session-message";
 import { projectQueuedMessages } from "../../../../src/services/pi/runtime/session-projection";
+import { projectConversationDisplay } from "../../../../src/services/pi/runtime/conversation-display-projection";
+import { appendToolCompactedBranch } from "../../../../src/services/pi/runtime/session-tool-compaction";
 import {
   addResponseModeReminder,
   stripResponseModeReminder,
@@ -18,11 +20,14 @@ function deferred() {
 }
 
 function createFixture(overrides: Partial<AgentSession> = {}) {
+  const sessionManager = SessionManager.inMemory("/project");
   const session = {
     isStreaming: false,
     isCompacting: false,
     isBashRunning: false,
-    prompt: vi.fn(async () => undefined),
+    prompt: vi.fn(async (content: string) => {
+      sessionManager.appendMessage({ role: "user", content, timestamp: 0 });
+    }),
     steer: vi.fn(async () => "queued" as const),
     followUp: vi.fn(async () => "queued" as const),
     compact: vi.fn(async () => undefined),
@@ -32,9 +37,7 @@ function createFixture(overrides: Partial<AgentSession> = {}) {
     getSteeringMessages: vi.fn(() => []),
     getFollowUpMessages: vi.fn(() => []),
     clearQueue: vi.fn(() => ({ steering: [], followUp: [] })),
-    sessionManager: {
-      getBranch: vi.fn(() => []),
-    },
+    sessionManager,
     ...overrides,
   } as unknown as AgentSession;
   const syncQueuedParts = vi.fn();
@@ -74,6 +77,164 @@ describe("CakeSessionRuntime turn controller", () => {
     expect(vi.mocked(session.prompt).mock.calls[0]?.[0]).toContain(responseModeReminders.voice);
     controller.dispose();
   });
+  it("defaults to text and adds reminders only at voice/text transitions", async () => {
+    const { controller, session } = createFixture();
+    await controller.prompt("Initial text", "prompt", []);
+    await controller.prompt("More text", "prompt", [], false, undefined, undefined, "text");
+    await controller.prompt("Start voice", "prompt", [], false, undefined, undefined, "voice");
+    await controller.prompt("Stay voice", "prompt", [], false, undefined, undefined, "voice");
+    await controller.prompt("Back to text", "prompt", []);
+    await controller.prompt("Stay text", "prompt", []);
+    await controller.prompt("Voice again", "prompt", [], false, undefined, undefined, "voice");
+    expect(vi.mocked(session.prompt).mock.calls.map(([text]) => text)).toEqual([
+      "Initial text",
+      "More text",
+      addResponseModeReminder("Start voice", "voice"),
+      "Stay voice",
+      addResponseModeReminder("Back to text", "text"),
+      "Stay text",
+      addResponseModeReminder("Voice again", "voice"),
+    ]);
+    controller.dispose();
+  });
+
+  it("discloses only mode transitions and Tool Compact removes them from replay, resetting the default", async () => {
+    const { controller, session } = createFixture();
+    await controller.prompt("Initial text", "prompt", []);
+    await controller.prompt("Start voice", "prompt", [], false, undefined, undefined, "voice");
+    await controller.prompt("Stay voice", "prompt", [], false, undefined, undefined, "voice");
+    await controller.prompt("Back to text", "prompt", []);
+    await controller.prompt("Stay text", "prompt", []);
+    // Finish in voice mode to prove compacted context does not inherit the removed guidance.
+    await controller.prompt("Voice again", "prompt", [], false, undefined, undefined, "voice");
+    const reminders = projectConversationDisplay(session.sessionManager).filter(
+      (part) => part.kind === "context",
+    );
+    expect(reminders.map((part) => part.text)).toEqual([
+      responseModeReminders.voice,
+      responseModeReminders.text,
+      responseModeReminders.voice,
+    ]);
+    const leaf = session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "Answer" }],
+      api: "openai-responses",
+      provider: "openai",
+      model: "fixture",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: 0,
+    });
+    appendToolCompactedBranch(session.sessionManager, leaf);
+    expect(
+      session.sessionManager
+        .buildSessionContext()
+        .messages.map((message) =>
+          message.role === "user" || message.role === "assistant" ? message.content : message.role,
+        ),
+    ).toEqual([
+      "Initial text",
+      "Start voice",
+      "Stay voice",
+      "Back to text",
+      "Stay text",
+      "Voice again",
+      [{ type: "text", text: "Answer" }],
+    ]);
+    expect(
+      projectConversationDisplay(session.sessionManager).filter((part) => part.kind === "context"),
+    ).toEqual(
+      reminders.map((part) => expect.objectContaining({ text: part.text, origin: "compacted" })),
+    );
+    await controller.prompt("Default text after compact", "prompt", []);
+    await controller.prompt(
+      "Voice after compact",
+      "prompt",
+      [],
+      false,
+      undefined,
+      undefined,
+      "voice",
+    );
+    expect(
+      vi
+        .mocked(session.prompt)
+        .mock.calls.slice(-2)
+        .map(([text]) => text),
+    ).toEqual([
+      "Default text after compact",
+      addResponseModeReminder("Voice after compact", "voice"),
+    ]);
+    controller.dispose();
+  });
+
+  it("deduplicates response guidance against preceding queued and compaction-held inputs", async () => {
+    for (const delivery of ["prompt", "steer", "follow-up"] as const) {
+      for (const isCompacting of [false, true]) {
+        const steering: string[] = [];
+        const followUp: string[] = [];
+        const { controller, session } = createFixture({
+          isStreaming: true,
+          isCompacting,
+          prompt: vi.fn(async (text: string, options) => {
+            (options?.streamingBehavior === "steer" ? steering : followUp).push(text);
+          }),
+          getSteeringMessages: () => steering,
+          getFollowUpMessages: () => followUp,
+        });
+        await controller.prompt("Start voice", delivery, [], false, undefined, undefined, "voice");
+        await controller.prompt("Stay voice", delivery, [], false, undefined, undefined, "voice");
+        await controller.prompt("Back to text", delivery, []);
+        await controller.prompt("Stay text", delivery, []);
+        expect((await controller.pendingMessages()).items.map((item) => item.text)).toEqual([
+          "Start voice",
+          "Stay voice",
+          "Back to text",
+          "Stay text",
+        ]);
+        if (isCompacting) {
+          Object.assign(session, { isCompacting: false });
+          controller.compactionEnded(false);
+          await vi.waitFor(() => expect(session.prompt).toHaveBeenCalledTimes(4));
+        }
+        expect(vi.mocked(session.prompt).mock.calls.map(([text]) => text)).toEqual([
+          addResponseModeReminder("Start voice", "voice"),
+          "Stay voice",
+          addResponseModeReminder("Back to text", "text"),
+          "Stay text",
+        ]);
+        controller.dispose();
+      }
+    }
+  });
+
+  it("recovers the response mode from existing multimodal Pi history rather than controller lifetime", async () => {
+    const sessionManager = SessionManager.inMemory("/project");
+    sessionManager.appendMessage({
+      role: "user",
+      content: [
+        { type: "text", text: addResponseModeReminder("Earlier", "voice") },
+        { type: "image", mimeType: "image/png", data: "AAA=" },
+      ],
+      timestamp: 0,
+    });
+    const { controller, session } = createFixture({ sessionManager });
+    await controller.prompt("Still voice", "prompt", [], false, undefined, undefined, "voice");
+    await controller.prompt("Now text", "prompt", []);
+    expect(vi.mocked(session.prompt).mock.calls.map(([text]) => text)).toEqual([
+      "Still voice",
+      addResponseModeReminder("Now text", "text"),
+    ]);
+    controller.dispose();
+  });
+
   it("omitted responseMode explicitly restores text guidance after a voice submission", async () => {
     const { controller, session } = createFixture();
     await controller.prompt("Spoken first", "prompt", [], false, undefined, undefined, "voice");
@@ -217,7 +378,7 @@ describe("CakeSessionRuntime turn controller", () => {
 
     expect(prompt.mock.calls[0]?.[0]).toContain("entered embedded VS Code");
     expect(prompt.mock.calls[0]?.[0]).toContain("Open this");
-    expect(prompt.mock.calls[1]?.[0]).toBe(addResponseModeReminder("Keep going", "text"));
+    expect(prompt.mock.calls[1]?.[0]).toBe("Keep going");
     expect(prompt.mock.calls[2]?.[0]).toContain("returned to the normal conversation view");
     expect(prompt.mock.calls[2]?.[0]).toContain("Summarize");
   });
@@ -288,13 +449,10 @@ describe("CakeSessionRuntime turn controller", () => {
     await controller.abort();
 
     expect(session.prompt).not.toHaveBeenCalled();
-    expect(session.followUp).toHaveBeenCalledWith(
-      addResponseModeReminder("Do work later", "text"),
-      [],
-    );
+    expect(session.followUp).toHaveBeenCalledWith("Do work later", []);
     expect(await controller.listQueuedMessages()).toEqual({
       steering: [],
-      followUp: [addResponseModeReminder("Do work later", "text")],
+      followUp: ["Do work later"],
     });
     expect(controller.compactionQueuedMessages()).toEqual([]);
     expect(syncQueuedParts).toHaveBeenCalledTimes(2);
@@ -385,7 +543,7 @@ describe("CakeSessionRuntime turn controller", () => {
         abortedTurnIds: [],
       });
       expect(vi.mocked(session.prompt).mock.calls.at(-1)).toEqual([
-        addResponseModeReminder("Rapid steering", "text"),
+        "Rapid steering",
         expect.objectContaining({ source: "interactive" }),
       ]);
     });
@@ -396,10 +554,7 @@ describe("CakeSessionRuntime turn controller", () => {
         followUp: ["Do this next"],
       });
       const tracked = controller.prompt("Then this", "follow-up", [], false, "turn-then");
-      const [, , thenThisId] = partIds(
-        ["Change direction"],
-        ["Do this next", addResponseModeReminder("Then this", "text")],
-      );
+      const [, , thenThisId] = partIds(["Change direction"], ["Do this next", "Then this"]);
 
       await expect(controller.removeQueuedMessage(thenThisId!)).resolves.toEqual({
         steering: ["Change direction"],
@@ -410,12 +565,7 @@ describe("CakeSessionRuntime turn controller", () => {
       expect(session.clearQueue).toHaveBeenCalledOnce();
       expect(
         vi.mocked(session.prompt).mock.calls.map(([text, options]) => [text, options]),
-      ).toEqual([
-        [
-          addResponseModeReminder("Then this", "text"),
-          expect.objectContaining({ streamingBehavior: "followUp" }),
-        ],
-      ]);
+      ).toEqual([["Then this", expect.objectContaining({ streamingBehavior: "followUp" })]]);
       expect(session.steer).toHaveBeenCalledWith("Change direction", []);
       expect(session.followUp).toHaveBeenCalledWith("Do this next", []);
       expect(syncQueuedParts).toHaveBeenCalled();
@@ -425,8 +575,8 @@ describe("CakeSessionRuntime turn controller", () => {
       const { controller, session } = createQueuedFixture({ steering: [], followUp: [] });
       const tracked = controller.prompt("Do this next", "follow-up", [], false, "turn-next");
       await controller.prompt("Then this", "follow-up", []);
-      const next = addResponseModeReminder("Do this next", "text"),
-        then = addResponseModeReminder("Then this", "text");
+      const next = "Do this next",
+        then = "Then this";
       const [doThisNextId] = partIds([], [next, then]);
 
       await expect(controller.steerQueuedMessage(doThisNextId!)).resolves.toEqual({
@@ -559,10 +709,7 @@ describe("CakeSessionRuntime turn controller", () => {
       const { controller, session } = createFixture({ isStreaming: true, isCompacting: true });
       const removed = controller.prompt("Drop me", "prompt", [], false, "turn-drop");
       await controller.prompt("Steer me", "prompt", []);
-      const [dropId, steerId] = partIds(
-        [],
-        [addResponseModeReminder("Drop me", "text"), addResponseModeReminder("Steer me", "text")],
-      );
+      const [dropId, steerId] = partIds([], ["Drop me", "Steer me"]);
       expect((await controller.pendingMessages()).items).toEqual([
         expect.objectContaining({
           partId: dropId,

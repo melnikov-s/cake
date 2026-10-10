@@ -3,6 +3,7 @@ import {
   addResponseModeReminder,
   stripResponseModeReminder,
   responseModeReminders,
+  responseModeFromReminder,
 } from "../../../src/services/pi/response-mode-reminders";
 import {
   addPresentationModeReminder,
@@ -15,10 +16,30 @@ describe("conversation response-mode contract", () => {
     expect(decorated).toBe(`Hello\n\n${responseModeReminders.voice}`);
     expect(stripResponseModeReminder(decorated)).toBe("Hello");
   });
-  it("text or omitted mode explicitly overrides voice guidance from earlier Pi history", () => {
-    expect(addResponseModeReminder("Next", "text")).toContain(responseModeReminders.text);
-    // Omitted mode is resolved at submission, not by this required-mode helper.
-    // The turn-controller regression exercises omission after a voice submission.
+  it("recognizes response transitions only at exact injection boundaries", () => {
+    expect(responseModeFromReminder("Plain text")).toBeUndefined();
+    for (const mode of ["text", "voice"] as const) {
+      expect(responseModeFromReminder(addResponseModeReminder("Next", mode))).toBe(mode);
+      expect(
+        responseModeFromReminder(
+          `${addResponseModeReminder("Image", mode)}\n\n[Image converted from image/heic to image/png.]`,
+        ),
+      ).toBe(mode);
+      expect(
+        responseModeFromReminder(`${responseModeReminders[mode]}\n\nQuoted prose`),
+      ).toBeUndefined();
+      expect(
+        responseModeFromReminder(
+          responseModeReminders[mode].replace("Cake response mode", "User response mode"),
+        ),
+      ).toBeUndefined();
+    }
+    // Quoted voice guidance before a genuine text transition must not report voice.
+    expect(
+      responseModeFromReminder(
+        addResponseModeReminder(`${responseModeReminders.voice}\n\nQuote`, "text"),
+      ),
+    ).toBe("text");
   });
   it("only exact Cake-owned response-mode reminders are stripped; user reminder tags survive", () => {
     const own = "<system-reminder>User supplied guidance.</system-reminder>";
