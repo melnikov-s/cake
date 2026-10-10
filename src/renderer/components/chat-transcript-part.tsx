@@ -9,9 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { IconButton } from "@/components/ui/icon-button";
 import { BrowserIcon, EditIcon, MarkdownIcon, TreeIcon } from "@/components/ui/icons";
 import { ArtifactHost } from "@/components/artifact-host";
-import { ArtifactReference } from "@/components/ui/artifact-reference";
 import { InlineArtifactPreview } from "./inline-artifact-preview";
-import { parseArtifactRef } from "../../contracts/artifacts/artifact-lineage";
 import { CompactionMessage } from "@/components/compaction-message";
 import { ImagePreview } from "@/components/image-preview";
 import type { UiPart } from "../../ipc/session-contract";
@@ -182,38 +180,22 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       : undefined;
     if (
       part.artifactId &&
-      part.artifactRevision &&
       record?.artifact.kind !== "request" &&
       behavior.inlineArtifactPreviews &&
       behavior.inlineWidgets
     )
       return (
         <InlineArtifactPreview
-          reference={`cake://artifact/${part.artifactId}@r${part.artifactRevision}`}
+          reference={
+            part.artifactRevision
+              ? `cake://artifact/${part.artifactId}@r${part.artifactRevision}`
+              : `cake://artifact/${part.artifactId}`
+          }
           store={behavior.inlineArtifactPreviews}
           inlineWidgets={behavior.inlineWidgets}
-          onOpen={(reference) => {
-            if (behavior.openArtifactReference) behavior.openArtifactReference(reference);
-            else {
-              const parsed = parseArtifactRef(reference);
-              behavior.artifacts?.openArtifact?.(parsed.lineageId, parsed.revision);
-            }
-          }}
         />
       );
     if (record && behavior.artifacts) {
-      if (record.artifact.kind !== "request")
-        return (
-          <ArtifactReference
-            href={`cake://artifact/${record.artifact.id}`}
-            onClick={(event) => {
-              event.preventDefault();
-              behavior.artifacts?.openArtifact?.(record.artifact.id);
-            }}
-          >
-            {record.artifact.title ?? record.artifact.id}
-          </ArtifactReference>
-        );
       const request =
         behavior.artifacts.interaction.request?.record.artifact.id === record.artifact.id
           ? behavior.artifacts.interaction.request

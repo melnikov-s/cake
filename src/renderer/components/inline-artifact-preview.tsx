@@ -8,7 +8,6 @@ import type { InlineArtifactPreviewStore } from "../stores/InlineArtifactPreview
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { ArtifactHost } from "./artifact-host";
 import { ArtifactDisclosure } from "./ui/artifact-disclosure";
-import { ArtifactReference } from "./ui/artifact-reference";
 import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
 import { LoadingState } from "./ui/loading-state";
@@ -18,13 +17,11 @@ export const InlineArtifactPreview = observer(function InlineArtifactPreview({
   label,
   store,
   inlineWidgets,
-  onOpen,
 }: {
   reference: ArtifactStableRef;
   label?: string;
   store: InlineArtifactPreviewStore;
   inlineWidgets: InlineWidgetStore;
-  onOpen(reference: ArtifactStableRef): void;
 }) {
   const key = useId();
   useEffect(() => {
@@ -43,28 +40,12 @@ export const InlineArtifactPreview = observer(function InlineArtifactPreview({
       </Button>
     </Callout>
   ) : null;
-  if (!store.isVisual(key))
-    return (
-      <div className="min-w-0">
-        <ArtifactReference
-          href={exactRef}
-          onClick={(event) => {
-            event.preventDefault();
-            onOpen(exactRef);
-          }}
-        >
-          {title}
-        </ArtifactReference>
-        {error}
-      </div>
-    );
   return (
     <ArtifactDisclosure
       title={title}
       reference={exactRef}
-      open={state?.expanded ?? false}
+      open={state?.expanded ?? true}
       onToggle={() => store.toggle(key)}
-      onOpen={() => onOpen(exactRef)}
     >
       {error ??
         (record ? (

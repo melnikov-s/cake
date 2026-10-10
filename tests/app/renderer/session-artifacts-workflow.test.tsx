@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EffectiveArtifactProjection } from "../../../src/contracts/artifacts/artifact-lineage";
 import type { Client } from "../../../src/renderer/client/Client";
 import type { UiPart } from "../../../src/ipc/session-contract";
-import { App } from "../../../src/renderer/components/app";
+import { RendererRoot } from "../../../src/renderer/components/renderer-root";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
@@ -129,7 +129,7 @@ function renderSessionArtifacts(
   const view = render(
     <VirtuosoMockContext.Provider value={{ viewportHeight: 900, itemHeight: 160 }}>
       <StoreProvider store={fixture.root}>
-        <App />
+        <RendererRoot rootStore={fixture.root} openExternalUrl={vi.fn()} openSession={vi.fn()} />
       </StoreProvider>
     </VirtuosoMockContext.Provider>,
   );
@@ -215,7 +215,7 @@ const visualMetadata = () => ({
 });
 
 describe("Session artifact workflows", () => {
-  it("lazily expands the published revision, retries failed reads, and opens that revision in the panel", async () => {
+  it("expands the published revision by default, retries failed reads, and lets the user collapse it", async () => {
     const readExact = vi
       .fn<Client["artifacts"]["readExact"]>()
       .mockRejectedValueOnce(new Error("Read temporarily unavailable"))
@@ -235,12 +235,7 @@ describe("Session artifact workflows", () => {
       [visualPart],
       { compile },
     );
-    const disclosure = await screen.findByRole("button", {
-      name: "Visual explanation Show inline",
-    });
-    expect(readExact).not.toHaveBeenCalled();
-    expect(compile).not.toHaveBeenCalled();
-    await fixture.user.click(disclosure);
+    await screen.findByRole("button", { name: "Visual explanation Collapse" });
     expect(await screen.findByText("Read temporarily unavailable")).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Retry preview" }));
     await waitFor(() =>
@@ -249,22 +244,16 @@ describe("Session artifact workflows", () => {
     expect(readExact).toHaveBeenLastCalledWith("visual", 1, expect.anything());
     expect(await screen.findByText("Explanation r1")).toBeDefined();
     expect(compile).toHaveBeenCalledWith("html", "<strong>Explanation r1</strong>", "display");
-    await fixture.user.click(
-      screen.getByRole("button", { name: "Visual explanation Hide inline" }),
-    );
+    await fixture.user.click(screen.getByRole("button", { name: "Visual explanation Collapse" }));
     expect(screen.queryByText("Explanation r1")).toBeNull();
-    await fixture.user.click(
-      screen.getByRole("button", { name: "Visual explanation Show inline" }),
-    );
+    await fixture.user.click(screen.getByRole("button", { name: "Visual explanation Expand" }));
     expect(await screen.findByText("Explanation r1")).toBeDefined();
     expect(readExact).toHaveBeenCalledTimes(2);
-    await fixture.user.click(screen.getByRole("link", { name: "Open artifact" }));
-    await waitFor(() => expect(readExact).toHaveBeenCalledTimes(3));
-    expect(readExact).toHaveBeenLastCalledWith("visual", 1, expect.anything());
-    expect(await screen.findByRole("button", { name: "Close Visual explanation" })).toBeDefined();
+    // Publication and collapse/expand never select or open the accessory panel.
+    expect(screen.queryByRole("button", { name: "Close Visual explanation" })).toBeNull();
   });
 
-  it("keeps ordinary document publications as references", async () => {
+  it("renders document publications inline using their existing artifact renderer", async () => {
     const readExact = vi.fn<Client["artifacts"]["readExact"]>(async () => effective().revision);
     using fixture = renderSessionArtifacts(
       { readExact },
@@ -278,14 +267,82 @@ describe("Session artifact workflows", () => {
       ],
     );
     await screen.findByRole("button", { name: "1 artifacts" });
-    expect(
-      await screen.findByRole("link", { name: "Artifact created · Family report" }),
-    ).toBeDefined();
-    expect(readExact).not.toHaveBeenCalled();
-    await fixture.user.click(
-      screen.getByRole("link", { name: "Artifact created · Family report" }),
-    );
     expect(await screen.findByText("Family report content r2")).toBeDefined();
+    expect(readExact).not.toHaveBeenCalled();
+    await fixture.user.click(screen.getByRole("button", { name: "Family report Collapse" }));
+    expect(screen.queryByText("Family report content r2")).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Family report Expand" }));
+    expect(await screen.findByText("Family report content r2")).toBeDefined();
+  });
+
+  it.each([1, 2])(
+    "deduplicates only a published exact revision, not a different revision (r%s)",
+    async (revision) => {
+      const readExact = vi.fn<Client["artifacts"]["readExact"]>(
+        async (_id, revision) => visual(revision).revision,
+      );
+      using fixture = renderSessionArtifacts(
+        {
+          effective: async () => [visual(2)],
+          referenceMetadata: async () => visualMetadata(),
+          readExact,
+        },
+        [visual(2)],
+        [
+          visualPart,
+          {
+            id: "assistant-embed",
+            kind: "text",
+            role: "assistant",
+            status: "complete",
+            text: `Follow-up explanation.\n\n![Visual explanation](cake://artifact/visual@r${revision})`,
+          },
+        ],
+        {
+          compile: async () => {
+            throw new Error("Compiler unavailable");
+          },
+        },
+      );
+      await screen.findByText("Explanation r1");
+      expect(screen.getAllByRole("button", { name: "Visual explanation Collapse" })).toHaveLength(
+        revision === 1 ? 1 : 2,
+      );
+      expect(screen.getByText("Follow-up explanation.")).toBeDefined();
+      if (revision === 2) expect(await screen.findByText("Explanation r2")).toBeDefined();
+      expect(readExact).toHaveBeenCalledOnce();
+      await fixture.user.click(
+        screen.getAllByRole("button", { name: "Visual explanation Collapse" })[0]!,
+      );
+      expect(screen.getByRole("button", { name: "Visual explanation Expand" })).toBeDefined();
+      expect(screen.queryByText("Explanation r1")).toBeNull();
+      if (revision === 2) expect(screen.getByText("Explanation r2")).toBeDefined();
+    },
+  );
+
+  it("expands a standalone Markdown embed without a publication tool", async () => {
+    using fixture = renderSessionArtifacts(
+      { effective: async () => [visual(2)] },
+      [visual(2)],
+      [
+        {
+          id: "standalone-embed",
+          kind: "text",
+          role: "assistant",
+          status: "complete",
+          text: "![Visual explanation](cake://artifact/visual@r2)",
+        },
+      ],
+      {
+        compile: async () => {
+          throw new Error("Compiler unavailable");
+        },
+      },
+    );
+    expect(await screen.findByText("Explanation r2")).toBeDefined();
+    expect(screen.getAllByRole("button", { name: "Visual explanation Collapse" })).toHaveLength(1);
+    await fixture.user.click(screen.getByRole("button", { name: "Visual explanation Collapse" }));
+    expect(screen.queryByText("Explanation r2")).toBeNull();
   });
 
   it("does not reopen a collapsed preview when its read finishes", async () => {
@@ -300,15 +357,11 @@ describe("Session artifact workflows", () => {
       [visual(2)],
       [visualPart],
     );
-    await fixture.user.click(
-      await screen.findByRole("button", { name: "Visual explanation Show inline" }),
-    );
+    await screen.findByRole("button", { name: "Visual explanation Collapse" });
     await waitFor(() => expect(readExact).toHaveBeenCalledOnce());
-    await fixture.user.click(
-      screen.getByRole("button", { name: "Visual explanation Hide inline" }),
-    );
+    await fixture.user.click(screen.getByRole("button", { name: "Visual explanation Collapse" }));
     await act(async () => pending.resolve(visual(1).revision));
-    expect(screen.getByRole("button", { name: "Visual explanation Show inline" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Visual explanation Expand" })).toBeDefined();
     expect(screen.queryByText("Explanation r1")).toBeNull();
   });
   it("opens a sole artifact directly, closes it, and reopens its content", async () => {

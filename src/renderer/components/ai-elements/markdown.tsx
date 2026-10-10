@@ -396,6 +396,8 @@ export type MarkdownProps = Omit<
   mutableCode?: boolean;
   /** Normalizes conventional LaTeX delimiters after streamed content settles. */
   normalizeLatexDelimiters?: boolean;
+  /** Exact references already rendered at their publication position in this conversation. */
+  omitArtifactEmbeds?: readonly string[];
   /** Invoked when the reader selects a workspace source reference. */
   onOpenSourceLocation?(location: SourceLocation): void;
 };
@@ -473,6 +475,7 @@ function MarkdownRenderer({
   streaming = false,
   mutableCode = false,
   normalizeLatexDelimiters = true,
+  omitArtifactEmbeds,
   onOpenSourceLocation,
   richPlugins,
   ...props
@@ -548,6 +551,7 @@ function MarkdownRenderer({
         ) {
           const src = image.properties.src;
           const reference = src ? artifactReferenceFromHref(String(src)) : undefined;
+          if (reference && omitArtifactEmbeds?.includes(reference)) return null;
           if (reference)
             return linkActions.renderArtifactEmbed(
               reference,
@@ -599,7 +603,7 @@ function MarkdownRenderer({
         );
       },
     };
-  }, [linkActions, onOpenSourceLocation]);
+  }, [linkActions, omitArtifactEmbeds, onOpenSourceLocation]);
   return (
     <>
       <div className="contents" onClickCapture={openMermaidFullscreen}>

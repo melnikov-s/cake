@@ -80,11 +80,14 @@ ephemeral DOM state; tooltips dismiss on pointer exit, blur, or activation.
 
 Artifact references in prose use the Markdown label (or the resolved artifact
 title for bare URIs), not a card. `ArtifactDisclosure` composes `DisclosureTrigger`
-and `Link` for block-level visual artifact references with separate expansion and
-open actions. Its content is mounted only while expanded, and `aria-controls` identifies
-that content. It owns no fetching or persistence; `InlineArtifactPreviewStore` owns the
-workflow, and `ArtifactHost` renders the shared exact-revision payload. Standalone
-Markdown artifact-image paragraphs opt in; mixed prose remains ordinary links.
+for a single block-level artifact surface, expanded by default with Collapse/Expand
+controls and no separate open link. Its content is mounted only while expanded, and
+`aria-controls` identifies that content. It owns no fetching or persistence;
+`InlineArtifactPreviewStore` owns the workflow, and `ArtifactHost` renders the shared
+exact-revision payload for every artifact kind. Publication owns the inline surface;
+a later standalone Markdown artifact-image paragraph for that same exact revision
+does not render another copy. Standalone embeds without a publication still expand
+inline; mixed prose remains ordinary links.
 Linking and materialization controls belong in
 the Artifact Library detail surface.
 

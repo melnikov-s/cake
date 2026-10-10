@@ -7,7 +7,7 @@ import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenario
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 for (const theme of ["light", "dark"] as const) {
-  test(`saved visuals expand inline without replacing the artifact (${theme})`, async () => {
+  test(`saved visuals appear once, expanded inline by default (${theme})`, async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-inline-artifact-"));
     const paths = {
       cakeHome: join(root, "cake-home"),
@@ -23,6 +23,8 @@ for (const theme of ["light", "dark"] as const) {
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: paths.userData,
         CAKE_HOME: paths.cakeHome,
+        PI_CODING_AGENT_DIR: join(paths.cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
     try {
@@ -32,13 +34,15 @@ for (const theme of ["light", "dark"] as const) {
         BrowserWindow.getAllWindows()[0]!.setContentSize(1280, 1000),
       );
       const disclosures = page.locator('[data-slot="artifact-disclosure"]');
-      await expect(disclosures).toHaveCount(2);
+      await expect(page.getByRole("button", { name: "1 artifacts" })).toBeVisible({
+        timeout: 20000,
+      });
+      await expect(disclosures).toHaveCount(1);
       await expect(page.getByRole("link", { name: "saved visualization" })).toBeVisible();
-      await expect(disclosures.locator("iframe")).toHaveCount(0);
       const inline = disclosures.first();
-      const toggle = inline.getByRole("button", { name: "Inline visualization Show inline" });
-      await toggle.focus();
-      await toggle.press("Enter");
+      await expect(
+        inline.getByRole("button", { name: "Inline visualization Collapse" }),
+      ).toHaveAttribute("aria-expanded", "true");
       const iframe = inline.locator("iframe");
       const frame = iframe.contentFrame();
       await expect(frame.getByRole("heading", { name: "One artifact, two views" })).toBeVisible();
@@ -114,13 +118,11 @@ for (const theme of ["light", "dark"] as const) {
         node: false,
         cake: false,
       });
-      await inline.getByRole("link", { name: "Open artifact" }).click();
-      const workspace = page.getByRole("complementary", { name: "Inline visualization" });
-      const panelFrame = workspace.locator("iframe").contentFrame();
-      await expect(panelFrame.getByRole("button", { name: "Explore detail" })).toBeVisible();
+      // Rendering and interacting with a publication do not open its accessory panel.
+      await expect(page.getByRole("complementary", { name: "Inline visualization" })).toHaveCount(
+        0,
+      );
       await expect(frame.getByRole("button", { name: "Hide detail" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "1 artifacts" })).toBeVisible();
-      await page.getByRole("button", { name: "Close Inline visualization" }).click();
       await inline.getByRole("button", { name: "View Inline visualization fullscreen" }).click();
       const fullscreen = page.getByRole("dialog", { name: "Inline visualization" });
       await expect(
@@ -132,19 +134,17 @@ for (const theme of ["light", "dark"] as const) {
       await fullscreen
         .getByRole("button", { name: "Exit fullscreen Inline visualization" })
         .click();
-      await inline.getByRole("button", { name: "Inline visualization Hide inline" }).click();
+      const collapse = inline.getByRole("button", { name: "Inline visualization Collapse" });
+      await collapse.focus();
+      await collapse.press("Enter");
       await expect(inline.locator("iframe")).toHaveCount(0);
-      await disclosures
-        .last()
-        .getByRole("button", { name: "Inline visualization Show inline" })
-        .click();
+      const expand = inline.getByRole("button", { name: "Inline visualization Expand" });
+      await expand.focus();
+      await expand.press("Enter");
       await expect(
-        disclosures
-          .last()
-          .locator("iframe")
-          .contentFrame()
-          .getByRole("button", { name: "Explore detail" }),
+        inline.locator("iframe").contentFrame().getByRole("button", { name: "Explore detail" }),
       ).toBeVisible();
+      await expect(disclosures).toHaveCount(1);
     } finally {
       await app.close();
       await rm(root, { recursive: true, force: true });

@@ -40,14 +40,9 @@ export class InlineArtifactPreviewStore extends Store<{ model: ArtifactCatalog }
     return this.revision(key)?.record?.artifact.title ?? lineage?.title;
   }
 
-  isVisual(key: string) {
-    const kind = this.revision(key)?.kind;
-    return kind === "widget" || kind === "html" || kind === "diagram";
-  }
-
   prepare(key: string, reference: ArtifactStableRef) {
     if (this.states[key]?.reference === reference) return;
-    this.states[key] = observable({ reference, expanded: false, loading: false });
+    this.states[key] = observable({ reference, expanded: true, loading: false });
     void this.load(key);
   }
 
@@ -83,7 +78,7 @@ export class InlineArtifactPreviewStore extends Store<{ model: ArtifactCatalog }
           state.exactRef = metadata.exactRef;
         }
       }
-      if (!state.expanded || !this.isVisual(key) || this.revision(key)?.record) return;
+      if (!state.expanded || this.revision(key)?.record) return;
       const parsed = parseArtifactRef(state.exactRef);
       const revision = await this.client.artifacts.readExact(parsed.lineageId, parsed.revision!, {
         signal: this.signal,

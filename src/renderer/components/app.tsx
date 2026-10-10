@@ -6,7 +6,6 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { parseArtifactRef } from "../../contracts/artifacts/artifact-lineage";
 import { observer, StoreProvider, useStore } from "r-state-tree/react";
 import {
   Confirmation,
@@ -330,8 +329,6 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       artifacts: {
         records: paneSession.sessionArtifactsStore.records,
         interaction: paneSession.artifactInteractionStore,
-        openArtifact: (artifactId: string, revision?: number) =>
-          paneSession.sessionArtifactsStore.openArtifact(artifactId, revision),
       },
     };
   };
@@ -386,14 +383,6 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     transcriptBehavior: {
       inlineWidgets: root.inlineWidgetStore,
       inlineArtifactPreviews: root.inlineArtifactPreviewStore,
-      openArtifactReference: (reference: string) => {
-        const parsed = parseArtifactRef(reference);
-        root.navigationStore.showArtifactLibrary(
-          paneSession.sessionId,
-          parsed.lineageId,
-          parsed.revision,
-        );
-      },
     },
     empty: (
       <div className="grid min-h-[calc(100vh-330px)] place-items-center content-center p-10 text-center">

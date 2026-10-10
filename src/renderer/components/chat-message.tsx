@@ -73,9 +73,18 @@ export const ChatTextMessage = forwardRef<
     onMouseEnter?: MouseEventHandler<HTMLElement>;
     onMouseLeave?: MouseEventHandler<HTMLElement>;
     onOpenSourceLocation?(location: SourceLocation): void;
+    omitArtifactEmbeds?: readonly string[];
   }
 >(function ChatTextMessage(
-  { part, contentRef, children, onMouseEnter, onMouseLeave, onOpenSourceLocation },
+  {
+    part,
+    contentRef,
+    children,
+    onMouseEnter,
+    onMouseLeave,
+    onOpenSourceLocation,
+    omitArtifactEmbeds,
+  },
   ref,
 ) {
   const assistant = part.role === "assistant";
@@ -127,6 +136,7 @@ export const ChatTextMessage = forwardRef<
               streaming={part.status === "streaming"}
               normalizeLatexDelimiters={part.status !== "streaming"}
               onOpenSourceLocation={onOpenSourceLocation}
+              omitArtifactEmbeds={omitArtifactEmbeds}
             >
               {part.text}
             </Markdown>
@@ -234,11 +244,9 @@ export interface ChatTranscriptBehavior {
   waitingForUser?: boolean;
   inlineWidgets?: InlineWidgetStore;
   inlineArtifactPreviews?: InlineArtifactPreviewStore;
-  openArtifactReference?(reference: string): void;
   artifacts?: {
     records: ArtifactRecord[];
     interaction: ArtifactInteractionStore;
-    openArtifact?(artifactId: string, revision?: number): void;
   };
   messageComments?: MessageCommentsStore;
   subagents?: SubagentActivityStore;
@@ -356,6 +364,15 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
     draftAnnotations.map((a) => `${a.id}:${a.startOffset}:${a.endOffset}`).join("|"),
   ]);
 
+  // Publication owns the inline surface. A follow-up Markdown embed must not
+  // mount a second iframe for the same exact revision; prose links are unaffected.
+  const publishedArtifactReferences = behavior.inlineArtifactPreviews
+    ? behavior.store.parts.flatMap((candidate) =>
+        candidate.kind === "tool" && candidate.artifactId && candidate.artifactRevision
+          ? [`cake://artifact/${candidate.artifactId}@r${candidate.artifactRevision}`]
+          : [],
+      )
+    : undefined;
   const activeAnnotation = openAnnotation
     ? draftAnnotations.find((annotation) => annotation.id === openAnnotation.id)
     : undefined;
@@ -366,6 +383,7 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
       part={part}
       contentRef={contentRef}
       onOpenSourceLocation={behavior.openSourceLocation}
+      omitArtifactEmbeds={publishedArtifactReferences}
     >
       {behavior.showAssistantFullscreen !== false && canOpenFullscreen && (
         <FullscreenButton

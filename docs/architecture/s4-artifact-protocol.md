@@ -20,17 +20,18 @@ small tables, code fences, and other rich blocks. The agent should create an
 artifact only when the deliverable, rather than its syntax, benefits from a durable
 independent surface.
 
-Full artifacts are global lineages projected into a Cake Session's accessory
-panel through an explicit session or Session Family link. The panel opens from
-that session's header, not from a permanent application-wide workspace and not
-by replacing the transcript. Creating a new artifact automatically opens the
-panel and selects that artifact; later updates may refresh the selected artifact
-without stealing focus. The originating assistant publication renders an exact-revision
-reference. Visual widget, HTML, and diagram artifacts can expand that reference inline;
-ordinary documents remain compact links. `Open artifact` opens the same exact revision
-in the panel, not a second artifact or a copied payload. Ordinary Markdown artifact
-links stay inline links. A standalone `![Title](cake://artifact/<id>@rN)` paragraph
-explicitly requests an expandable visual reference elsewhere in a reply. The selected-artifact surface uses one quiet navigation row
+Full artifacts are global lineages linked to a Cake Session or Session Family.
+The originating assistant publication renders one exact-revision artifact surface
+inline, expanded by default, with a Collapse/Expand control and no separate
+`Open artifact` action. All artifact kinds use their existing `ArtifactHost` renderer.
+Creating or updating an artifact refreshes the catalog without opening or selecting
+an accessory panel. The session header and Artifact Library remain explicit browsing
+and management entry points; they never open automatically on publication.
+Ordinary Markdown artifact links remain prose links. A standalone
+`![Title](cake://artifact/<id>@rN)` paragraph renders an expanded inline artifact
+when that exact revision has no publication surface in the conversation. If the
+publication already renders that exact revision, the redundant embed is omitted;
+other revisions remain distinct. The selected-artifact surface uses one quiet navigation row
 for the collection, previous/next traversal, fullscreen, and close actions; the
 artifact content is not wrapped in repeated titles, status headers, or source
 controls. The durable pointer records the originating assistant entry

@@ -100,8 +100,8 @@ describe("observeArtifactEvents", () => {
     const cancel = observeArtifactEvents(runtimeFor(client), root);
 
     await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
-    expect(refresh).toHaveBeenNthCalledWith(1, "artifact");
-    expect(refresh).toHaveBeenNthCalledWith(2, "shared");
+    expect(refresh).toHaveBeenNthCalledWith(1);
+    expect(refresh).toHaveBeenNthCalledWith(2);
     cancel();
     projection[Symbol.dispose]();
   });
@@ -123,7 +123,6 @@ describe("observeArtifactEvents", () => {
       createStore(SessionArtifactsStore, {
         sessionId: "parent",
         model: catalog,
-        isActive: () => true,
       }),
       client,
     );
@@ -131,7 +130,6 @@ describe("observeArtifactEvents", () => {
       createStore(SessionArtifactsStore, {
         sessionId: "child",
         model: catalog,
-        isActive: () => false,
       }),
       client,
     );
@@ -139,7 +137,6 @@ describe("observeArtifactEvents", () => {
       createStore(SessionArtifactsStore, {
         sessionId: "unrelated",
         model: catalog,
-        isActive: () => false,
       }),
       client,
     );
@@ -166,6 +163,11 @@ describe("observeArtifactEvents", () => {
       expect(child.subject.records.map((value) => value.artifact.id)).toEqual(["shared"]);
       expect(unrelated.subject.records).toEqual([]);
     });
+
+    // New family links refresh the catalog without opening session panels.
+    expect(parent.subject.open).toBe(false);
+    expect(child.subject.open).toBe(false);
+    expect(unrelated.subject.open).toBe(false);
 
     linked = false;
     Queue.offerUnsafe(events, { type: "artifact-catalog-invalidated", lineageId: "shared" });

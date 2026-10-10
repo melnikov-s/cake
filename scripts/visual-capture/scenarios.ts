@@ -957,8 +957,8 @@ async function seedArtifactScenario(
 
 const inlineArtifactScenario: VisualCaptureScenario = {
   name: "inline-artifact",
-  description: "One saved visualization with independent inline and artifact-panel views",
-  states: ["default", "expanded", "fullscreen"],
+  description: "One saved visualization, expanded inline by default with collapse and fullscreen",
+  states: ["default", "collapsed", "fullscreen"],
   async seed(paths, theme) {
     await seedArtifactScenario(
       paths,
@@ -1003,14 +1003,14 @@ export default function Visual() {
   async prepare(page, state) {
     const disclosure = page.locator('[data-slot="artifact-disclosure"]').first();
     await expect(disclosure).toBeVisible();
-    if (state === "default") return;
-    await disclosure.getByRole("button", { name: "Inline visualization Show inline" }).click();
     await expect(
       disclosure
         .locator("iframe")
         .contentFrame()
         .getByRole("heading", { name: "One artifact, two views" }),
     ).toBeVisible();
+    if (state === "collapsed")
+      await disclosure.getByRole("button", { name: "Inline visualization Collapse" }).click();
     if (state === "fullscreen")
       await disclosure
         .getByRole("button", { name: "View Inline visualization fullscreen" })

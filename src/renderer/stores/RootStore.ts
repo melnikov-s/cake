@@ -244,9 +244,9 @@ export class RootStore extends Store<{
   get artifactLibraryStore(): ArtifactLibraryStore {
     return createStore(ArtifactLibraryStore, {
       model: this.props.projection.artifacts,
-      artifactsChanged: (lineageId) => {
+      artifactsChanged: () => {
         for (const session of this.sessionRegistry.sessions)
-          session.sessionArtifactsStore.receive(lineageId);
+          session.sessionArtifactsStore.receive();
       },
       clearReferenceOperationError: (lineageId) =>
         this.artifactReferencePreviewStore.clearOperationError(lineageId),
@@ -257,9 +257,9 @@ export class RootStore extends Store<{
   get artifactReferencePreviewStore(): ArtifactReferencePreviewStore {
     return createStore(ArtifactReferencePreviewStore, {
       model: this.props.projection.artifacts,
-      artifactsChanged: (lineageId) => {
+      artifactsChanged: () => {
         for (const session of this.sessionRegistry.sessions)
-          session.sessionArtifactsStore.receive(lineageId);
+          session.sessionArtifactsStore.receive();
       },
     });
   }

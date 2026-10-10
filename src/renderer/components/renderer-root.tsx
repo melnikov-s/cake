@@ -56,14 +56,6 @@ export const RendererRoot = observer(function RendererRoot({
                       label={label}
                       store={rootStore.inlineArtifactPreviewStore}
                       inlineWidgets={rootStore.inlineWidgetStore}
-                      onOpen={(exactRef) => {
-                        const parsed = parseArtifactRef(exactRef);
-                        rootStore.navigationStore.showArtifactLibrary(
-                          activeSessionId,
-                          parsed.lineageId,
-                          parsed.revision,
-                        );
-                      }}
                     />
                   ),
                   renderArtifactReference: (reference, label) => (

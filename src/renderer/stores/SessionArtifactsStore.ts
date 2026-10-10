@@ -20,7 +20,6 @@ import { ClientContext } from "./context/ClientContext";
 export class SessionArtifactsStore extends Store<{
   sessionId: string;
   model: ArtifactCatalog;
-  isActive(): boolean;
   enabled?(): boolean;
 }> {
   open = false;
@@ -104,9 +103,8 @@ export class SessionArtifactsStore extends Store<{
     return this.selectedIndex >= 0 && this.selectedIndex < this.records.length - 1;
   }
 
-  async refresh(openNew = false) {
+  async refresh() {
     const request = ++this.request;
-    const previous = new Set(this.associations.map((association) => association.lineage?.id));
     this.loading = true;
     this.error = undefined;
     try {
@@ -115,13 +113,6 @@ export class SessionArtifactsStore extends Store<{
       });
       if (request !== this.request || this.signal.aborted) return;
       this.props.model.applyEffective(this.props.sessionId, values);
-      if (openNew && this.props.isActive()) {
-        const added = values.find((value) => !previous.has(value.revision.lineageId));
-        if (added) {
-          this.selectedArtifactId = added.revision.lineageId;
-          this.open = true;
-        }
-      }
     } catch (error) {
       if (request !== this.request || this.signal.aborted) return;
       this.error = error instanceof Error ? error.message : String(error);
@@ -273,9 +264,8 @@ export class SessionArtifactsStore extends Store<{
     this.width = Math.max(320, width);
   }
 
-  receive(lineageId: string) {
-    const known = this.associations.some((association) => association.lineage?.id === lineageId);
-    void this.refresh(!known);
+  receive() {
+    void this.refresh();
   }
 
   async setSelection(lineageId: ArtifactLineageId, selection: ArtifactLink["selection"]) {

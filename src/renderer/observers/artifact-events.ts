@@ -9,13 +9,11 @@ export const observeArtifactEvents = (runtime: Runtime, root: RootStore) =>
     (event) => {
       try {
         if (event.type === "artifact-updated" || event.type === "artifact-catalog-invalidated") {
-          const lineageId =
-            event.type === "artifact-updated" ? event.record.artifact.id : event.lineageId;
           // Native artifact events are ordered invalidations. Every loaded panel refetches its
           // effective projection because a family link may make a change visible there;
           // reconnect/remount starts with that same authoritative current query.
           for (const sessionStore of root.sessionRegistry.sessions)
-            sessionStore.sessionArtifactsStore.receive(lineageId);
+            sessionStore.sessionArtifactsStore.receive();
           void root.artifactLibraryStore.load();
           return;
         }

@@ -435,7 +435,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return createStore(SessionArtifactsStore, {
       sessionId: this.sessionId,
       model: this.props.artifactModel,
-      isActive: this.props.isActive,
       enabled: () => !this.props.pendingSessions.isTemporary(this.sessionId),
     });
   }

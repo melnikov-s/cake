@@ -601,7 +601,7 @@ export function createCakeArtifactOperations(
         "Prefer ordinary inline Markdown—including Mermaid and small tables—whenever it communicates the result clearly. Create a widget only for a substantial, reusable, or genuinely interactive/visual deliverable, especially when requested.",
         "Supply the explanation goal, audience, verified facts/source references, bounded data, and a readable Markdown fallback. Do not write the generated React source yourself.",
         "The specialist can combine ordinary React explanations, D3/SVG diagrams, filters and details inside one widget. Describe the intended relationships and useful interactions, not pixel coordinates or a mandatory graph DSL.",
-        "The published visualization has an expandable inline reference and remains in the artifact panel. To embed it elsewhere in a reply, put ![Title](cake://artifact/<id>@rN) alone in its own paragraph. Ordinary [Title](cake://artifact/<id>) links stay compact. Use the published exact revision for historical explanations.",
+        "The published visualization is shown once inline, expanded by default with a collapse control. Do not repeat its embed or add an Open artifact link after publication. A standalone ![Title](cake://artifact/<id>@rN) paragraph can show a saved revision without a publication surface in this conversation; duplicate embeds of published exact revisions are omitted. Ordinary [Title](cake://artifact/<id>) links stay compact. Use exact revisions for historical explanations.",
       ],
       inputSchema: Schema.Struct({ widget: widgetSchema }),
       examples: [
