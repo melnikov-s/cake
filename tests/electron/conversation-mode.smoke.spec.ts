@@ -24,6 +24,7 @@ async function launch({
   foreground = false,
   localInstalled = false,
   postProcessedText,
+  holdFirstRecognition = false,
 }: {
   reasoning?: boolean;
   recognizeSpeech?: boolean;
@@ -33,6 +34,7 @@ async function launch({
   foreground?: boolean;
   localInstalled?: boolean;
   postProcessedText?: string;
+  holdFirstRecognition?: boolean;
 } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "cake-conversation-"));
   const userData = join(directory, "user-data"),
@@ -101,6 +103,7 @@ async function launch({
   const helper = join(directory, "dictation");
   const modelStarts = join(directory, "model-starts.jsonl");
   await writeFile(modelStarts, "");
+  const recognitionGate = join(directory, "release-recognition");
   const recognitionRequests = join(directory, "recognition-requests.jsonl");
   const detectionRequests = join(directory, "detection-requests.jsonl");
   await writeFile(recognitionRequests, "");
@@ -114,6 +117,7 @@ const texts = ${JSON.stringify(recognitionTexts)};
 const utterances = new Map();
 const recognition = new Map();
 const speaking = new Map();
+let heldRecognition = false;
 fs.appendFileSync(${JSON.stringify(modelStarts)}, JSON.stringify({ pid: process.pid }) + '\\n');
 process.stdout.write(JSON.stringify({ready:true})+'\\n');
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
@@ -144,7 +148,16 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   } else if (!state.accepted) state.samples = 0;
   const index = utterances.get(request.utteranceId);
   const text = state.accepted ? texts[index] ?? (${recognizeSpeech} && request.final ? 'Spoken request ' + (index + 1) : '') : '';
-  process.stdout.write(JSON.stringify({text})+'\\n');
+  const reply = () => process.stdout.write(JSON.stringify({text})+'\\n');
+  if (${holdFirstRecognition} && !heldRecognition) {
+    heldRecognition = true;
+    const watcher = fs.watch(${JSON.stringify(directory)}, () => {
+      if (fs.existsSync(${JSON.stringify(recognitionGate)})) {
+        watcher.close();
+        reply();
+      }
+    });
+  } else reply();
 });
 `,
   );
@@ -370,6 +383,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     modelStarts,
     recognitionRequests,
     detectionRequests,
+    async releaseRecognition() {
+      await writeFile(recognitionGate, "release");
+    },
     async frames(chunks: [number, number][]) {
       await page.evaluate((chunks) => {
         const fixture = Reflect.get(globalThis, "conversationAudioFixture") as {
@@ -839,6 +855,62 @@ test("conversation controls enter, mute and exit with real capture and streaming
       "aria-pressed",
       "true",
     );
+  } finally {
+    await f.close();
+  }
+});
+
+test("unmute captures new speech while stale native recognition drains", async () => {
+  const f = await launch({
+    holdFirstRecognition: true,
+    recognitionTexts: ["Discarded old speech", "Speech after unmute"],
+  });
+  const diagnostics: string[] = [];
+  f.page.on("console", (message) => {
+    if (message.text().startsWith("[cake.voice]")) diagnostics.push(message.text());
+  });
+  try {
+    await f.configure();
+    await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+    await expect(f.page.getByRole("button", { name: "Mute input" })).toBeVisible();
+    await f.frames([[0.1, 8]]);
+    await expect
+      .poll(async () => (await readFile(f.recognitionRequests, "utf8")).trim().length)
+      .toBeGreaterThan(0);
+    await f.page.getByRole("button", { name: "Mute input", exact: true }).click();
+    await f.page.getByRole("button", { name: "Unmute input", exact: true }).click();
+    // The recognizer is deliberately still busy. Reopening the microphone must
+    // not wait behind it, otherwise the first words after unmute are lost.
+    await expect
+      .poll(() =>
+        f.page.evaluate(() => {
+          const fixture = Reflect.get(globalThis, "conversationAudioFixture") as {
+            processors: AudioWorkletNode[];
+            tracks: MediaStreamTrack[];
+          };
+          return {
+            processors: fixture.processors.length,
+            live: fixture.tracks.filter((track) => track.readyState === "live").length,
+          };
+        }),
+      )
+      .toEqual({ processors: 2, live: 1 });
+    await f.frames([[0.1, 8]]);
+    await f.releaseRecognition();
+    const composer = f.page.getByRole("combobox", { name: "Message", exact: true });
+    await expect(composer).toHaveValue("Speech after unmute");
+    await f.frames([[0, 33]]);
+    await expect.poll(() => f.responses.length).toBe(1);
+    await expect(composer).toHaveValue("");
+    expect((await readFile(f.modelStarts, "utf8")).trim().split("\n")).toHaveLength(1);
+    expect(diagnostics.filter((entry) => entry.includes('"event":"capture-ready"'))).toHaveLength(
+      2,
+    );
+    expect(diagnostics.some((entry) => entry.includes('"event":"input-audio"'))).toBe(true);
+    expect(diagnostics.some((entry) => entry.includes('"event":"input-speech"'))).toBe(true);
+    expect(diagnostics.some((entry) => entry.includes('"state":"discarded"'))).toBe(true);
+    expect(diagnostics.join("\n")).not.toContain("Discarded old speech");
+    expect(diagnostics.join("\n")).not.toContain("Speech after unmute");
   } finally {
     await f.close();
   }

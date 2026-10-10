@@ -231,6 +231,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   }
   private stopInput() {
     this.provisionalText = undefined;
+    if (this.captureController) recordVoiceDiagnostic("capture-stop");
     this.captureController?.abort();
     this.captureController = undefined;
     this.capture?.stop();
@@ -314,10 +315,13 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
   async setMuted(muted: boolean): Promise<void> {
     if (this.phase !== "active" || this.muted === muted) return;
     this.muted = muted;
+    recordVoiceDiagnostic("input-mute", { state: muted ? "muted" : "unmuted" });
     this.stopInput();
     if (!muted) {
       try {
-        await this.startCapture(this.revision, true);
+        // Mute retains the warm recognizer. Preparing again would queue behind
+        // stale inference and leave the microphone closed, losing new speech.
+        await this.startCapture(this.revision);
       } catch (error) {
         if (this.phase === "active" && !this.muted) this.fail(error);
       }
@@ -361,7 +365,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     this.phase = "error";
     this.props.onError(message, details);
   }
-  private async startCapture(revision: number, prepare = false) {
+  private async startCapture(revision: number) {
     const controller = new AbortController();
     this.captureController = controller;
     const signal = AbortSignal.any([
@@ -370,9 +374,10 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       this.signal,
     ]);
     try {
-      // Preparation is idempotent if the shared recognizer is already warm.
-      if (prepare) await this.props.recognition.prepare({ signal: this.signal });
       if (signal.aborted || revision !== this.revision) return;
+      recordVoiceDiagnostic("capture-start");
+      let receivedAudio = false;
+      let detectedSpeech = false;
       const capture = await openSpeechCapture(
         this.props.microphone,
         (audio) =>
@@ -387,8 +392,13 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
             { signal: this.signal },
           ),
         (samples, speech) => {
-          if (!signal.aborted && revision === this.revision && !this.muted)
+          if (!signal.aborted && revision === this.revision && !this.muted) {
+            if (speech !== detectedSpeech) {
+              detectedSpeech = speech;
+              recordVoiceDiagnostic("input-speech", { state: speech ? "speech" : "quiet" });
+            }
             this.audio(samples, speech);
+          }
         },
         (error) => {
           if (!signal.aborted && revision === this.revision) this.fail(error);
@@ -399,6 +409,12 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
           if (!signal.aborted && revision === this.revision)
             this.fail(new Error("Microphone disconnected. Re-enter conversation mode to retry."));
         },
+        (samples) => {
+          if (!receivedAudio && !signal.aborted && revision === this.revision) {
+            receivedAudio = true;
+            recordVoiceDiagnostic("input-audio", { samples: samples.length });
+          }
+        },
       );
       if (signal.aborted || revision !== this.revision) {
         capture.stop();
@@ -406,6 +422,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       }
       this.capture = capture;
       this.listening = true;
+      recordVoiceDiagnostic("capture-ready");
     } catch (error) {
       if (!signal.aborted && revision === this.revision) throw error;
     }
@@ -501,6 +518,8 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     run.samples = 0;
     const final = run.finishing;
     this.recognitionRunning = true;
+    const started = performance.now();
+    recordVoiceDiagnostic("recognition-start", { state: final ? "final" : "progressive" });
     try {
       let text = await this.props.recognition.transcribe(
         {
@@ -513,6 +532,11 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
         // The capture signal/revision below still discards stale words immediately.
         { signal: this.signal },
       );
+      recordVoiceDiagnostic("recognition-complete", {
+        state: signal.aborted || revision !== this.revision ? "discarded" : "current",
+        characters: text.length,
+        elapsedMillis: Math.round(performance.now() - started),
+      });
       if (signal.aborted || revision !== this.revision) return;
       if (run.interruption?.state === "pending") {
         if (performance.now() >= run.interruption.deadline) this.rejectInterruption(run);

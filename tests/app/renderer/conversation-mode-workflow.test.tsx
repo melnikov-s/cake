@@ -68,6 +68,7 @@ function fixture(
     enqueue?: SpeechPlayback["enqueue"];
     drain?: SpeechPlayback["drain"];
     microphoneError?: Error;
+    openMicrophone?: Microphone["open"];
     streaming?: boolean;
     snapshot?: StoreSnapshot;
   } = {},
@@ -75,9 +76,11 @@ function fixture(
   let onAudio: ((samples: Float32Array) => void) | undefined;
   const stopCapture = vi.fn();
   const microphone: Microphone = {
-    open: vi.fn(async (callback) => {
+    open: vi.fn(async (callback, signal, deviceId, onEnded) => {
       if (options.microphoneError) throw options.microphoneError;
       onAudio = callback;
+      if (options.openMicrophone)
+        return options.openMicrophone(callback, signal, deviceId, onEnded);
       return { stop: stopCapture, finish: async () => {} };
     }),
     devices: async () => [],
@@ -1387,13 +1390,21 @@ describe("Project Session conversation mode", () => {
     const signal = transcribe.mock.calls[0]![1]?.signal;
     await f.user.click(screen.getByRole("button", { name: "Mute input" }));
     expect(signal?.aborted).toBe(false);
-    await act(async () => result.resolve("Stale words must not be inserted"));
-    expect(screen.getByRole("combobox", { name: "Message" })).toHaveProperty("value", "");
-    expect(f.prompt).not.toHaveBeenCalled();
-    expect(f.release).not.toHaveBeenCalled();
     await f.user.click(screen.getByRole("button", { name: "Unmute input" }));
     await waitFor(() => expect(f.microphone.open).toHaveBeenCalledTimes(2));
-    await f.say();
+    // New PCM accumulates while the old inference drains, rather than being lost
+    // behind a redundant prepare call on the shared native worker's queue.
+    await f.frames(0.1, 8);
+    expect(transcribe).toHaveBeenCalledOnce();
+    await act(async () => result.resolve("Stale words must not be inserted"));
+    expect(screen.getByRole("combobox", { name: "Message" })).not.toHaveProperty(
+      "value",
+      expect.stringContaining("Stale words"),
+    );
+    expect(f.prompt).not.toHaveBeenCalled();
+    expect(f.release).not.toHaveBeenCalled();
+    await f.frames(0, 33);
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
     expect(f.prompt.mock.calls[0]?.[0]).toMatchObject({
       text: "Recognized after mute",
       responseMode: "voice",
@@ -1401,16 +1412,22 @@ describe("Project Session conversation mode", () => {
     expect(f.root.conversationModeStore.phase).toBe("active");
     expect(f.abort).not.toHaveBeenCalled();
   });
-  it("re-mute or exit during unmute preparation invalidates it and never opens late capture", async () => {
+  it("re-mute or exit during microphone startup stops late capture without replacing the latest one", async () => {
     for (const action of ["remute", "exit"] as const) {
       const gate = deferred<void>();
+      const stop = vi.fn();
       let calls = 0;
       let signal: AbortSignal | undefined;
+      const prepare = vi.fn(async () => {});
       using f = fixture({
-        prepare: async (options) => {
-          if (++calls === 1) return;
-          signal = options?.signal;
-          await gate.promise;
+        prepare,
+        openMicrophone: async (_audio, captureSignal) => {
+          if (++calls === 2) {
+            signal = captureSignal;
+            await gate.promise;
+            return { stop, finish: async () => {} };
+          }
+          return { stop: vi.fn(), finish: async () => {} };
         },
       });
       await f.enter();
@@ -1424,20 +1441,20 @@ describe("Project Session conversation mode", () => {
           name: action === "remute" ? "Mute input" : "Exit conversation mode",
         }),
       );
-      // Capture cancellation drops the late startup, but does not abort shared model preparation.
-      expect(signal?.aborted).toBe(false);
+      expect(signal?.aborted).toBe(true);
+      // Start the latest capture before the obsolete device acquisition resolves.
+      if (action === "remute") {
+        await f.user.click(screen.getByRole("button", { name: "Unmute input" }));
+        await waitFor(() => expect(f.microphone.open).toHaveBeenCalledTimes(3));
+      }
       gate.resolve();
       await act(async () => {
         await gate.promise;
       });
-      expect(f.microphone.open).toHaveBeenCalledTimes(1);
-      expect(f.root.conversationModeStore.listening).toBe(false);
+      expect(stop).toHaveBeenCalledOnce();
+      expect(f.root.conversationModeStore.listening).toBe(action === "remute");
       expect(f.root.conversationModeStore.phase).toBe(action === "remute" ? "active" : "off");
-      if (action === "remute") {
-        await f.user.click(screen.getByRole("button", { name: "Unmute input" }));
-        await waitFor(() => expect(f.microphone.open).toHaveBeenCalledTimes(2));
-        expect(f.root.conversationModeStore.listening).toBe(true);
-      }
+      expect(prepare).toHaveBeenCalledOnce();
       expect(f.abort).not.toHaveBeenCalled();
     }
   });
