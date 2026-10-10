@@ -25,9 +25,12 @@ const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
 const runArchive = <A, E>(
   metadataRoot: string,
   use: (storage: SessionArchiveStorage["Service"]) => Effect.Effect<A, E>,
+  roots = { activeRoot: `${metadataRoot}/active`, resolvedRoot: `${metadataRoot}/resolved` },
 ) =>
   Effect.flatMap(SessionArchiveStorage, use).pipe(
-    Effect.provide(makeSessionArchiveStorageLive(metadataRoot).pipe(Layer.provide(PlatformLive))),
+    Effect.provide(
+      makeSessionArchiveStorageLive(metadataRoot, roots).pipe(Layer.provide(PlatformLive)),
+    ),
   );
 
 const makeFixture = Effect.fn("SessionArchiveStorage.test.makeFixture")(function* () {
@@ -71,6 +74,196 @@ const withPlatform = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(Effect.provide(PlatformLive));
 
 describe("SessionArchiveStorage", () => {
+  it.effect("migrates stale v1 Pi roots without modifying either transcript copy", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+        const entryPath = path.join(
+          metadataRoot,
+          "projects",
+          hash("/projects/cake"),
+          `${hash("session-1")}.json`,
+        );
+        const filename = "2026-01-01T00-00-00-000Z_session-1.jsonl";
+        const activeFile = path.join(
+          cakeWorkspaceSessionDirectory(location.cwd, location.activeRoot),
+          filename,
+        );
+        const archivedFile = path.join(
+          cakeWorkspaceSessionDirectory(location.cwd, location.resolvedRoot),
+          filename,
+        );
+        const original = yield* fileSystem.readFileString(activeFile);
+        yield* runArchive(
+          metadataRoot,
+          (storage) =>
+            storage.resolveProject("session-1", location, {
+              projectPath: "/projects/cake",
+              projectName: "Cake",
+              worktreeName: "archive-index",
+            }),
+          location,
+        );
+        const oldRoots = {
+          activeRoot: path.join(location.cwd, "old-pi", "sessions"),
+          resolvedRoot: path.join(location.cwd, "old-pi", "resolved"),
+        };
+        const oldDirectory = cakeWorkspaceSessionDirectory(location.cwd, oldRoots.activeRoot);
+        yield* fileSystem.makeDirectory(oldDirectory, { recursive: true });
+        yield* fileSystem.writeFileString(path.join(oldDirectory, filename), original);
+        const stored = JSON.parse(yield* fileSystem.readFileString(entryPath));
+        yield* fileSystem.writeFileString(
+          entryPath,
+          JSON.stringify({ ...stored, ...oldRoots, version: 1 }),
+        );
+        const migrated = yield* runArchive(
+          metadataRoot,
+          (storage) => storage.resolvedProjects("/projects/cake").pipe(Stream.runCollect),
+          location,
+        );
+        expect(migrated).toEqual([
+          expect.objectContaining({
+            version: 2,
+            activeRoot: location.activeRoot,
+            resolvedRoot: location.resolvedRoot,
+            worktreeName: "archive-index",
+          }),
+        ]);
+        expect(JSON.parse(yield* fileSystem.readFileString(entryPath))).toEqual(migrated[0]);
+        expect(
+          yield* runArchive(
+            metadataRoot,
+            (storage) => storage.resolvedProjectEntry("session-1"),
+            location,
+          ),
+        ).toEqual(migrated[0]);
+        expect(
+          yield* runArchive(
+            metadataRoot,
+            (storage) => storage.locate("session-1", { ...location, ...migrated[0] }),
+            location,
+          ),
+        ).toBe("resolved");
+        expect(yield* fileSystem.readFileString(archivedFile)).toBe(original);
+        expect(yield* fileSystem.readFileString(path.join(oldDirectory, filename))).toBe(original);
+        yield* runArchive(metadataRoot, (storage) => storage.restoreProject("session-1"), location);
+        expect(yield* fileSystem.readFileString(activeFile)).toBe(original);
+        expect(yield* fileSystem.exists(archivedFile)).toBe(false);
+        expect(yield* fileSystem.readFileString(path.join(oldDirectory, filename))).toBe(original);
+      }),
+    ),
+  );
+
+  it.effect("relocates a legacy-only archived transcript when migrating its index", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+        const entryPath = path.join(
+          metadataRoot,
+          "projects",
+          hash("/projects/cake"),
+          `${hash("session-1")}.json`,
+        );
+        yield* runArchive(
+          metadataRoot,
+          (storage) =>
+            storage.resolveProject("session-1", location, {
+              projectPath: "/projects/cake",
+              projectName: "Cake",
+            }),
+          location,
+        );
+        const stored = JSON.parse(yield* fileSystem.readFileString(entryPath));
+        yield* fileSystem.writeFileString(entryPath, JSON.stringify({ ...stored, version: 1 }));
+        const roots = {
+          activeRoot: path.join(location.cwd, "cake", "active"),
+          resolvedRoot: path.join(location.cwd, "cake", "resolved"),
+        };
+        const migrated = yield* runArchive(
+          metadataRoot,
+          (storage) => storage.resolvedProjectEntry("session-1"),
+          roots,
+        );
+        expect(migrated).toMatchObject({ ...roots, version: 2 });
+        expect(
+          yield* runArchive(
+            metadataRoot,
+            (storage) => storage.locate("session-1", { ...location, ...roots }),
+            roots,
+          ),
+        ).toBe("resolved");
+        expect(
+          yield* runArchive(
+            metadataRoot,
+            (storage) => storage.locate("session-1", location),
+            roots,
+          ),
+        ).toBeUndefined();
+        expect(JSON.parse(yield* fileSystem.readFileString(entryPath))).toEqual(migrated);
+      }),
+    ),
+  );
+
+  it.effect("does not rewrite a legacy index when the archived transcript is missing", () =>
+    withPlatform(
+      Effect.gen(function* () {
+        const metadataRoot = yield* makeMetadataRoot();
+        const location = yield* makeFixture();
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+        const entryPath = path.join(
+          metadataRoot,
+          "projects",
+          hash("/projects/cake"),
+          `${hash("session-1")}.json`,
+        );
+        yield* runArchive(
+          metadataRoot,
+          (storage) =>
+            storage.resolveProject("session-1", location, {
+              projectPath: "/projects/cake",
+              projectName: "Cake",
+            }),
+          location,
+        );
+        yield* runArchive(
+          metadataRoot,
+          (storage) => storage.restore("session-1", location),
+          location,
+        );
+        const stored = { ...JSON.parse(yield* fileSystem.readFileString(entryPath)), version: 1 };
+        yield* fileSystem.writeFileString(entryPath, JSON.stringify(stored));
+        const roots = {
+          activeRoot: path.join(location.cwd, "cake", "active"),
+          resolvedRoot: path.join(location.cwd, "cake", "resolved"),
+        };
+        const error = yield* runArchive(
+          metadataRoot,
+          (storage) => storage.resolvedProjectEntry("session-1"),
+          roots,
+        ).pipe(Effect.flip);
+        expect(error.message).toContain("the archived transcript is missing");
+        expect(JSON.parse(yield* fileSystem.readFileString(entryPath))).toEqual(stored);
+        expect(
+          yield* runArchive(
+            metadataRoot,
+            (storage) => storage.locate("session-1", location),
+            roots,
+          ),
+        ).toBe("active");
+      }),
+    ),
+  );
+
   it.effect("lazily indexes legacy project archives from Pi transcripts", () =>
     withPlatform(
       Effect.gen(function* () {
@@ -210,7 +403,9 @@ describe("SessionArchiveStorage", () => {
           expect(yield* storage.resolvedProjectEntry("session-1")).toBeUndefined();
         }).pipe(
           Effect.provide(
-            makeSessionArchiveStorageLive(metadataRoot).pipe(Layer.provide(controlledPlatform)),
+            makeSessionArchiveStorageLive(metadataRoot, location).pipe(
+              Layer.provide(controlledPlatform),
+            ),
           ),
         );
       }),
@@ -265,7 +460,9 @@ describe("SessionArchiveStorage", () => {
           expect(yield* storage.resolvedProjectEntry("session-1")).toBeUndefined();
         }).pipe(
           Effect.provide(
-            makeSessionArchiveStorageLive(metadataRoot).pipe(Layer.provide(controlledPlatform)),
+            makeSessionArchiveStorageLive(metadataRoot, location).pipe(
+              Layer.provide(controlledPlatform),
+            ),
           ),
         );
       }),
@@ -322,7 +519,9 @@ describe("SessionArchiveStorage", () => {
           );
         }).pipe(
           Effect.provide(
-            makeSessionArchiveStorageLive(metadataRoot).pipe(Layer.provide(controlledPlatform)),
+            makeSessionArchiveStorageLive(metadataRoot, location).pipe(
+              Layer.provide(controlledPlatform),
+            ),
           ),
         );
       }),
@@ -368,7 +567,9 @@ describe("SessionArchiveStorage", () => {
           );
         }).pipe(
           Effect.provide(
-            makeSessionArchiveStorageLive(metadataRoot).pipe(Layer.provide(controlledPlatform)),
+            makeSessionArchiveStorageLive(metadataRoot, location).pipe(
+              Layer.provide(controlledPlatform),
+            ),
           ),
         );
       }),

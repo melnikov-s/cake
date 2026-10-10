@@ -647,7 +647,7 @@ const makeLayer = (
             ? Stream.empty
             : Stream.fromIterable(
                 entries.map((entry) => ({
-                  version: 1 as const,
+                  version: 2 as const,
                   sessionId: entry.sessionId,
                   projectPath,
                   projectName: "Project",
@@ -665,7 +665,7 @@ const makeLayer = (
           return hooks.sessionExists === false || resolvedSessionIds.size === 0
             ? Stream.empty
             : Stream.make({
-                version: 1 as const,
+                version: 2 as const,
                 sessionId: "session-1",
                 projectPath,
                 projectName: "Project",
@@ -680,7 +680,7 @@ const makeLayer = (
           hooks.sessionExists === false || !resolvedSessionIds.has(sessionId)
             ? Effect.succeed(undefined)
             : Effect.succeed({
-                version: 1 as const,
+                version: 2 as const,
                 sessionId,
                 projectPath: hooks.locations?.[0]?.projectPath ?? "/project",
                 projectName: hooks.locations?.[0]?.projectName ?? "Project",

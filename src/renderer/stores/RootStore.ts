@@ -323,8 +323,9 @@ export class RootStore extends Store<{
     this.requireProjectSessionWorkingDirectory(sessionId);
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.sessionLayoutStore.focusSession(sessionId);
-    await this.projectWorkbenchStore.openSession(sessionId);
-    if (this.projectWorkbenchStore.activeSession?.sessionId !== sessionId) return false;
+    const opened = await this.projectWorkbenchStore.openSession(sessionId);
+    if (opened === false || this.projectWorkbenchStore.activeSession?.sessionId !== sessionId)
+      return false;
     if (!messageId) return true;
     const session = this.sessionRegistry.findSession(sessionId);
     if (!session) return false;

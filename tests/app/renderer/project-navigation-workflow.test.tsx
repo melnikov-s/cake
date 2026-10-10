@@ -88,6 +88,12 @@ function renderNavigation(
     async hydrate(id: string) {
       await act(async () => publish(id));
     },
+    async failHydration(id: string, message: string) {
+      await act(async () => {
+        const summary = navigationSessions.find((session) => session.sessionId === id)!;
+        fixture.models.projectConversation(id, summary.workingDirectory).observationError = message;
+      });
+    },
     async publishActivity(activeIds: readonly string[]) {
       await act(async () => {
         for (const session of navigationSessions) {
@@ -453,6 +459,37 @@ describe("Project navigation workflow", () => {
     await waitFor(() => expect(operations).toEqual(["open", "fade-out", "fade-in"]));
     expect(live.classList.contains("opacity-0")).toBe(false);
     expect(screen.getByPlaceholderText("Ask Cake to work in beta…")).toBeDefined();
+  });
+
+  it("restores the outgoing chat after a hydration failure, reports it, and lets the user retry", async () => {
+    const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
+    using fixture = renderNavigation(open);
+    const matchMedia = window.matchMedia;
+    vi.stubGlobal("matchMedia", (query: string) => ({ ...matchMedia(query), matches: false }));
+    let exit: Animation | undefined;
+    Object.defineProperty(HTMLElement.prototype, "animate", {
+      configurable: true,
+      value: function (this: HTMLElement) {
+        const animation = { cancel: vi.fn(), onfinish: null } as unknown as Animation;
+        if (this.dataset.slot === "content-transition-outgoing") exit = animation;
+        return animation;
+      },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
+    await act(async () => exit!.onfinish?.call(exit!, {} as AnimationPlaybackEvent));
+    const live = document.querySelector<HTMLElement>('[data-slot="content-transition-live"]')!;
+    expect(live.classList.contains("opacity-0")).toBe(true);
+    await fixture.failHydration("beta", "That session is no longer available");
+    await screen.findByText("That session is no longer available");
+    expect(live.classList.contains("opacity-0")).toBe(false);
+    expect(live.inert).toBe(false);
+    expect(screen.getByPlaceholderText("Ask Cake to work in alpha…")).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
+    await act(async () => exit!.onfinish?.call(exit!, {} as AnimationPlaybackEvent));
+    await fixture.hydrate("beta");
+    expect(await screen.findByPlaceholderText("Ask Cake to work in beta…")).toBeDefined();
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(live.classList.contains("opacity-0")).toBe(false);
   });
 
   it("retains the current project after an open failure and lets the user retry", async () => {

@@ -58,6 +58,7 @@ type PendingRequest =
     }
   | {
       readonly _tag: "ProjectControl";
+      readonly origin: "project-session" | "discussion-session";
       readonly sessionId: string;
       readonly connectionId: number;
       readonly completion: Deferred.Deferred<JsonValue | undefined>;
@@ -123,6 +124,7 @@ export interface RendererRequestCoordinatorService {
     sessionId: string,
     invocation: ProjectSessionControlInvocation,
     signal: AbortSignal,
+    origin?: "project-session" | "discussion-session",
   ) => Effect.Effect<JsonValue, RendererRequestCoordinatorError>;
   readonly requestCakeChatControl: (
     sessionId: string,
@@ -756,6 +758,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
         sessionId: string,
         invocation: ProjectSessionControlInvocation,
         signal: AbortSignal,
+        origin: "project-session" | "discussion-session" = "project-session",
       ) {
         if (signal.aborted) return { ok: false, error: "The request was cancelled." };
         const connectionId = yield* Effect.try({
@@ -769,6 +772,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
         const completion = yield* Deferred.make<JsonValue | undefined>();
         const entry: PendingRequest = {
           _tag: "ProjectControl",
+          origin,
           sessionId,
           connectionId,
           completion,
@@ -1049,6 +1053,9 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
             yield* cancelMatchingUnlocked(
               (request) =>
                 request.sessionId === target.sessionId &&
+                // A sidecar can resolve its parent. Its own signal/connection,
+                // not the parent's runtime release, owns that tool response.
+                !(request._tag === "ProjectControl" && request.origin === "discussion-session") &&
                 ((target._tag === "ProjectSession" && request._tag !== "CakeChatControl") ||
                   (target._tag === "CakeChatSession" && request._tag === "CakeChatControl")),
               true,
@@ -1071,7 +1078,10 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
         if (previewBridge)
           for (const sessionId of sessionIds) yield* previewBridge.releaseSession(sessionId);
         yield* cancelMatching(
-          (request) => request._tag !== "CakeChatControl" && sessionIds.has(request.sessionId),
+          (request) =>
+            request._tag !== "CakeChatControl" &&
+            !(request._tag === "ProjectControl" && request.origin === "discussion-session") &&
+            sessionIds.has(request.sessionId),
           true,
         );
       },

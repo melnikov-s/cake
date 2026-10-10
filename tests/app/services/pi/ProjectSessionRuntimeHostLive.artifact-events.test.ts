@@ -76,9 +76,10 @@ const makeHarness = async () => {
     ),
     makeArtifactStorageLive(join(root, "artifacts")).pipe(Layer.provide(platform)),
     makeDrawBoardStorageLive(join(root, "draw-boards")).pipe(Layer.provide(platform)),
-    makeSessionArchiveStorageLive(join(root, "resolved-project-metadata")).pipe(
-      Layer.provide(platform),
-    ),
+    makeSessionArchiveStorageLive(join(root, "resolved-project-metadata"), {
+      activeRoot: join(root, "sessions"),
+      resolvedRoot: join(root, "resolved-sessions"),
+    }).pipe(Layer.provide(platform)),
     makeSessionFamilyStorageLive(join(root, "session-families.json")).pipe(Layer.provide(platform)),
     makeArtifactProjectionLive(join(root, "projection-cache")).pipe(Layer.provide(platform)),
     Layer.mock(ClientEvents, {

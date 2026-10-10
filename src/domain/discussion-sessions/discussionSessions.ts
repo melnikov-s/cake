@@ -276,6 +276,7 @@ const sessionAssistantConfiguration = Effect.fn("DiscussionSessions.sessionAssis
                   input: Schema.decodeUnknownSync(jsonObjectSchema)(invocation.arguments),
                 },
                 signal,
+                "discussion-session",
               )
               .pipe(Effect.orDie),
             { signal },

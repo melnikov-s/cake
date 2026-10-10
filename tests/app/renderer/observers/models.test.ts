@@ -206,6 +206,12 @@ describe("Project Session composition observer", () => {
       await vi.advanceTimersByTimeAsync(2_000);
       expect(observes).toHaveBeenCalledOnce();
       expect(stopped).not.toHaveBeenCalled();
+      expect(projection.projectConversation("project-1", "/project").observationError).toBe(
+        "That session is no longer available",
+      );
+      observer.sync(baseInput(projection));
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(observes).toHaveBeenCalledTimes(2);
     } finally {
       observer.stop();
       projection[Symbol.dispose]();

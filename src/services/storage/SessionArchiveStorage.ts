@@ -10,7 +10,7 @@ export const SessionArchiveLocation = Schema.Struct({
 export interface SessionArchiveLocation extends Schema.Schema.Type<typeof SessionArchiveLocation> {}
 
 export const ProjectSessionArchiveMetadata = Schema.Struct({
-  version: Schema.Literal(1),
+  version: Schema.Literal(2),
   sessionId: Schema.String,
   projectPath: Schema.String,
   projectName: Schema.String,

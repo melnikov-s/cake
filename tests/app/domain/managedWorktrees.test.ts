@@ -117,7 +117,7 @@ const makeLayer = (options: {
       resolvedProjects: (projectPath) =>
         Stream.fromIterable(
           options.resolvedWorkingDirectories.map((workingDirectory, index) => ({
-            version: 1 as const,
+            version: 2 as const,
             sessionId: `resolved-${index}`,
             title: `Resolved ${index}`,
             projectPath,

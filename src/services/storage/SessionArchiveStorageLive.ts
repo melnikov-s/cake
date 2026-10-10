@@ -47,7 +47,20 @@ const ProjectSessionArchiveMigration = Schema.Struct({
 
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 
-export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
+// Version 1 could retain pre-Cake Pi roots even after transcripts moved into Cake home.
+const ProjectSessionArchiveMetadataV1 = Schema.Struct({
+  ...ProjectSessionArchiveMetadata.fields,
+  version: Schema.Literal(1),
+});
+const StoredProjectSessionArchiveMetadata = Schema.Union([
+  ProjectSessionArchiveMetadata,
+  ProjectSessionArchiveMetadataV1,
+]);
+
+export const makeSessionArchiveStorageLive = (
+  archiveMetadataRoot: string,
+  projectSessionRoots: Pick<SessionArchiveLocation, "activeRoot" | "resolvedRoot">,
+) =>
   Layer.effect(
     SessionArchiveStorage,
     Effect.gen(function* () {
@@ -110,18 +123,85 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
           ProjectSessionArchiveLocator,
         );
         if (!locator) return undefined;
-        const entry = yield* readDocument(
+        const entryPath = projectEntryPath(locator.projectPath, sessionId);
+        const stored = yield* readDocument(
           operation,
           sessionId,
-          projectEntryPath(locator.projectPath, sessionId),
-          ProjectSessionArchiveMetadata,
+          entryPath,
+          StoredProjectSessionArchiveMetadata,
         );
+        const entry =
+          stored?.version === 1
+            ? ProjectSessionArchiveMetadata.make({ ...stored, ...projectSessionRoots, version: 2 })
+            : stored;
         if (entry?.sessionId !== sessionId)
           return yield* archiveError(
             operation,
             sessionId,
             new Error("Project archive identity mismatch"),
           );
+        if (stored?.version === 1) {
+          if (
+            stored.activeRoot !== entry.activeRoot ||
+            stored.resolvedRoot !== entry.resolvedRoot
+          ) {
+            const currentLocation = {
+              cwd: entry.workingDirectory,
+              activeRoot: entry.activeRoot,
+              resolvedRoot: entry.resolvedRoot,
+            };
+            if (
+              !(yield* findAt(sessionId, currentLocation, true).pipe(
+                Effect.mapError((cause) => archiveError(operation, sessionId, cause)),
+              ))
+            ) {
+              // Archives that were not already relocated must move with their index.
+              // Never repurpose a legacy active copy as the archived authority.
+              const legacy = yield* findAt(
+                sessionId,
+                {
+                  cwd: stored.workingDirectory,
+                  activeRoot: stored.activeRoot,
+                  resolvedRoot: stored.resolvedRoot,
+                },
+                true,
+              ).pipe(Effect.mapError((cause) => archiveError(operation, sessionId, cause)));
+              if (!legacy)
+                return yield* archiveError(
+                  operation,
+                  sessionId,
+                  new Error(
+                    `Cannot migrate archive ${sessionId}: the archived transcript is missing`,
+                  ),
+                );
+              const destinationDirectory = sessionDirectoryPath({
+                workingDirectory: entry.workingDirectory,
+                root: entry.resolvedRoot,
+              });
+              yield* fileSystem
+                .makeDirectory(destinationDirectory, { recursive: true, mode: 0o700 })
+                .pipe(Effect.mapError((cause) => archiveError(operation, sessionId, cause)));
+              yield* fileSystem
+                .rename(legacy, path.join(destinationDirectory, path.basename(legacy)))
+                .pipe(
+                  Effect.uninterruptible,
+                  Effect.mapError((cause) => archiveError(operation, sessionId, cause)),
+                );
+            }
+          }
+          const encoded = yield* Schema.encodeEffect(ProjectSessionArchiveMetadata)(entry).pipe(
+            Effect.mapError((cause) => archiveError(operation, sessionId, cause)),
+          );
+          // The caller holds the session's update lock. Already-relocated transcripts
+          // and legacy active copies remain untouched.
+          yield* atomicWriteFile(
+            fileSystem,
+            path,
+            entryPath,
+            `${JSON.stringify(encoded)}\n`,
+            (_stage, cause) => archiveError(operation, sessionId, cause),
+          );
+        }
         return entry;
       });
 
@@ -330,7 +410,10 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
 
       const resolvedProjectEntry = Effect.fn("SessionArchiveStorage.resolvedProjectEntry")(
         function* (sessionId: string) {
-          return yield* readProjectEntry("resolvedProjectEntry", sessionId);
+          return yield* withUpdateLock(
+            locatorPath(sessionId),
+            readProjectEntry("resolvedProjectEntry", sessionId),
+          );
         },
       );
 
@@ -361,7 +444,7 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
                 const commitMove = yield* restore(prepareMoveUnlocked(sessionId, location, true));
                 const moved = yield* commitMove;
                 const entryBase = {
-                  version: 1 as const,
+                  version: 2 as const,
                   sessionId,
                   projectPath: context.projectPath,
                   projectName: context.projectName,
@@ -471,7 +554,11 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
                     "resolvedProjects",
                     "",
                     path.join(projectDirectory(projectPath), item),
-                    ProjectSessionArchiveMetadata,
+                    StoredProjectSessionArchiveMetadata,
+                  ).pipe(
+                    Effect.flatMap((entry) =>
+                      entry ? resolvedProjectEntry(entry.sessionId) : Effect.succeed(undefined),
+                    ),
                   ),
                 ),
                 Stream.filter(
@@ -511,7 +598,7 @@ export const makeSessionArchiveStorageLive = (archiveMetadataRoot: string) =>
                       );
                     seenSessionIds.add(item.id);
                     const entryBase = {
-                      version: 1 as const,
+                      version: 2 as const,
                       sessionId: item.id,
                       projectPath,
                       projectName,

@@ -1285,6 +1285,38 @@ describe("AppControlBridge", () => {
     expect(inspect).toHaveBeenCalledWith("session-a");
   });
 
+  it("does not report an unsuccessful session open as success and accepts a later retry", async () => {
+    const open = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const bridge = new AppControlBridge(
+      createHost({
+        open,
+        sessions: () => [
+          {
+            workingDirectory: "/project",
+            projectName: "Project",
+            sessionId: "target",
+            title: "Target",
+            modifiedAt: "2026-01-01T00:00:00.000Z",
+            messageCount: 1,
+            resolved: true,
+            draft: false,
+          },
+        ],
+      }),
+    );
+    const invocation = { name: "sessions.open", arguments: { sessionId: "target" } };
+    await expect(bridge.invoke(invocation)).resolves.toEqual({
+      ok: false,
+      command: "sessions.open",
+      error: "Cake could not open that session.",
+    });
+    await expect(bridge.invoke(invocation)).resolves.toMatchObject({
+      ok: true,
+      command: "sessions.open",
+      opened: { sessionId: "target" },
+    });
+  });
+
   it("keeps duplicate-title targets disambiguated by project and working directory", async () => {
     const sessions = [
       {

@@ -1988,11 +1988,13 @@ export class AppControlBridge {
       const messageFound = messageId
         ? await this.host.sessions.open(sessionId, messageId)
         : await this.host.sessions.open(sessionId);
-      if (messageId && messageFound === false)
+      if (messageFound === false)
         return {
           ok: false,
           command,
-          error: `Cake could not find message ${messageId} in that session.`,
+          error: messageId
+            ? `Cake could not find message ${messageId} in that session.`
+            : "Cake could not open that session.",
         };
       return {
         ok: true,

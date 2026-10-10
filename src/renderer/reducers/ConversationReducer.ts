@@ -25,6 +25,7 @@ export function applyConversationUpdate(model: Conversation, update: Conversatio
     batch(() => {
       applyConversationSnapshot(model, update.snapshot, false);
       model.observedSnapshotRevision += 1;
+      model.observationError = undefined;
     });
     return;
   }
@@ -63,6 +64,7 @@ export function unloadConversationProjection(model: Conversation) {
       extensionUi: { statuses: [], compatibilityDiagnostics: [] },
     });
     model.observedSnapshotRevision = 0;
+    model.observationError = undefined;
     model.settledTurnRevision = 0;
     model.settledTurns.splice(0);
   });

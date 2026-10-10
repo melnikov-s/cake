@@ -14,6 +14,8 @@ export class Conversation extends Model {
   sessionFile = "";
   /** Window-local marker for an active, complete Conversation snapshot. */
   @transient observedSnapshotRevision = 0;
+  /** Window-local observation failure; never persisted or owned by Pi. */
+  @transient observationError: string | undefined;
   @child(Message) parts: Message[] = observable([]);
   @modelRef(LlmModel) model: LlmModel | undefined;
   fastMode = false;

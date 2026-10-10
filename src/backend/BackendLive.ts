@@ -84,7 +84,10 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
     makeSavedDraftStorageLive(paths.state),
     ScheduledMessages.layer.pipe(Layer.provide(scheduledMessageStorage)),
     makeSessionFamilyStorageLive(paths.sessionFamilies),
-    makeSessionArchiveStorageLive(paths.resolvedProjectMetadata),
+    makeSessionArchiveStorageLive(paths.resolvedProjectMetadata, {
+      activeRoot: paths.piSessions,
+      resolvedRoot: paths.piResolvedSessions,
+    }),
     makeArtifactStorageLive(paths.artifacts),
     makeDrawBoardStorageLive(paths.drawBoards),
     makeReviewStorageLive(paths.reviews, paths.piReviewSessions, (record) =>

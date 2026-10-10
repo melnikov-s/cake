@@ -680,6 +680,64 @@ describe("RendererRequestCoordinator", () => {
     }),
   );
 
+  it.effect(
+    "a discussion control response survives parent retirement but still cancels with its caller or connection",
+    () =>
+      Effect.gen(function* () {
+        const { coordinator, events } = yield* makeFixture;
+        for (const retirement of ["session", "working-directory"] as const) {
+          yield* coordinator.registerProjectSession("project-1", "/projects/cake");
+          yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-1" }, 41);
+          const responding = yield* coordinator
+            .requestProjectControl(
+              "project-1",
+              createDraft,
+              new AbortController().signal,
+              "discussion-session",
+            )
+            .pipe(Effect.forkChild);
+          const event = yield* Queue.take(events);
+          if (event.type !== "project-session-control-requested")
+            throw new Error(`Unexpected event ${event.type}`);
+          if (retirement === "session")
+            yield* coordinator.releaseSession({ _tag: "ProjectSession", sessionId: "project-1" });
+          else yield* coordinator.releaseWorkingDirectory("/projects/cake");
+          yield* coordinator.respondProjectControl(41, "project-1", event.controlRequestId, {
+            ok: true,
+          });
+          expect(yield* Fiber.join(responding)).toEqual({ ok: true });
+        }
+        yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-1" }, 41);
+        const controller = new AbortController();
+        const cancelled = yield* coordinator
+          .requestProjectControl("project-1", createDraft, controller.signal, "discussion-session")
+          .pipe(Effect.forkChild);
+        yield* Queue.take(events);
+        yield* coordinator.releaseSession({ _tag: "ProjectSession", sessionId: "project-1" });
+        controller.abort();
+        expect(yield* Fiber.join(cancelled)).toEqual({
+          ok: false,
+          error: "The request was cancelled.",
+        });
+        yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "project-1" }, 41);
+        const disconnected = yield* coordinator
+          .requestProjectControl(
+            "project-1",
+            createDraft,
+            new AbortController().signal,
+            "discussion-session",
+          )
+          .pipe(Effect.forkChild);
+        yield* Queue.take(events);
+        yield* coordinator.releaseSession({ _tag: "ProjectSession", sessionId: "project-1" });
+        yield* coordinator.releaseConnection(41);
+        expect(yield* Fiber.join(disconnected)).toEqual({
+          ok: false,
+          error: "The Project Session request was cancelled.",
+        });
+      }),
+  );
+
   it.effect("cleans pending requests and bindings on connection and session release", () =>
     Effect.gen(function* () {
       const { coordinator, events } = yield* makeFixture;

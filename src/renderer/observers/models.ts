@@ -93,6 +93,7 @@ interface ModelObservation {
   readonly stop: () => void;
   readonly replacementGroup?: string;
   readonly clear?: () => void;
+  readonly failed?: (error: unknown) => void;
 }
 
 type ModelObservationOptions = Omit<ModelObservation, "model" | "stop">;
@@ -164,7 +165,11 @@ export const createModelObserver = (
     if (current) stop(key);
     const cancel = runtime.observe(stream, apply, {
       onStopped: (error) => {
-        if (unavailable(key, error)) return;
+        if (unavailable(key, error)) {
+          // A later explicit open can retry a terminally unavailable observation.
+          if (observations.get(key)?.stop === cancel) observations.delete(key);
+          return;
+        }
         onStopped?.(key, error, () => {
           if (disposed || observations.get(key)?.stop !== cancel) return;
           stop(key, false);
@@ -173,6 +178,7 @@ export const createModelObserver = (
       },
       classifyFailure: (error): StreamFailureAction => (unavailable(key, error) ? "stop" : "retry"),
       reportFailure: (error) => {
+        options.failed?.(error);
         if (!unavailable(key, error))
           console.error(`[cake.renderer] ${key} observation failed`, error);
       },
@@ -291,7 +297,12 @@ export const createModelObserver = (
         conversation,
         (client) => client.conversations.observe({ _tag: "ProjectSession", ...target }),
         (update) => applyConversationUpdate(conversation, update),
-        { clear: () => unloadConversationProjection(conversation) },
+        {
+          clear: () => unloadConversationProjection(conversation),
+          failed: (error) => {
+            conversation.observationError = error instanceof Error ? error.message : String(error);
+          },
+        },
       );
       observe(
         `scheduled-messages:${target.sessionId}`,

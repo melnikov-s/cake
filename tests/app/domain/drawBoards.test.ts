@@ -21,7 +21,7 @@ const boardId = DrawBoardId.make("00000000-0000-4000-8000-000000000001");
 const title = DrawBoardTitle.make("Read-only board");
 
 const resolvedMetadata = (resolvedSessionId: string) => ({
-  version: 1 as const,
+  version: 2 as const,
   sessionId: resolvedSessionId,
   projectPath: "/project",
   projectName: "Project",

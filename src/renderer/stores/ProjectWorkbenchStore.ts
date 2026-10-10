@@ -436,6 +436,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     if (!acceptedProjectOpen) this.projectOpenStore.cancelPending();
     const summary = this.props.catalog.find(sessionId);
     const existingSession = this.sessionRegistry.findSession(sessionId);
+    if (existingSession) existingSession.model.observationError = undefined;
     const workspacePath = summary?.workingDirectory ?? existingSession?.workspacePath;
     if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
     const alreadyActive = this.activeSessionId === sessionId;
@@ -469,7 +470,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         !hydrated &&
         this.sessionRegistry.pendingSessions.canCreateRuntime(sessionId)
       ) {
-        const ready = await this.waitForSessionHydration(sessionId);
+        const ready = await this.waitForSessionHydration(sessionId, revision);
         if (!ready || this.signal.aborted || revision !== this.sessionOpenRevision) return;
       }
       await this.client.projectSessions.open(
@@ -479,7 +480,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       if (this.signal.aborted || revision !== this.sessionOpenRevision) return;
       if (!existingSession) this.sessionRegistry.load(sessionId, workspacePath);
       if (!hydrated) {
-        const ready = await this.waitForSessionHydration(sessionId);
+        const ready = await this.waitForSessionHydration(sessionId, revision);
         if (!ready || this.signal.aborted || revision !== this.sessionOpenRevision) return;
         this.activateLoadedSession(sessionId);
       }
@@ -488,7 +489,8 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       );
     } catch (error) {
       if (!this.signal.aborted && revision === this.sessionOpenRevision)
-        this.setError(error, "Opening Project Session", sessionId);
+        this.setError(error, "Opening Project Session", this.activeSessionId ?? sessionId);
+      return false;
     } finally {
       if (revision === this.sessionOpenRevision) this.openingSession = undefined;
     }
@@ -503,24 +505,29 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   /** Keeps the current transcript mounted until the destination's first snapshot is applied. */
-  private waitForSessionHydration(sessionId: string): Promise<boolean> {
-    if (this.sessionRegistry.findSession(sessionId)?.model.sessionFile)
-      return Promise.resolve(true);
+  private waitForSessionHydration(sessionId: string, revision: number): Promise<boolean> {
+    const model = this.sessionRegistry.findSession(sessionId)?.model;
+    if (model?.sessionFile) return Promise.resolve(true);
+    if (model?.observationError) return Promise.reject(new Error(model.observationError));
     if (this.signal.aborted) return Promise.resolve(false);
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       let settled = false;
-      const finish = (ready: boolean) => {
+      const finish = (ready: boolean, error?: string) => {
         if (settled) return;
         settled = true;
         this.signal.removeEventListener("abort", abort);
         dispose();
-        resolve(ready);
+        if (error) reject(new Error(error));
+        else resolve(ready);
       };
       const abort = () => finish(false);
       this.signal.addEventListener("abort", abort, { once: true });
       const dispose = reactiveEffect(() => {
-        if (this.sessionRegistry.findSession(sessionId)?.model.sessionFile)
-          queueMicrotask(() => finish(true));
+        const current = this.sessionRegistry.findSession(sessionId)?.model;
+        if (revision !== this.sessionOpenRevision) queueMicrotask(() => finish(false));
+        else if (current?.sessionFile) queueMicrotask(() => finish(true));
+        else if (current?.observationError)
+          queueMicrotask(() => finish(false, current.observationError));
       });
     });
   }
