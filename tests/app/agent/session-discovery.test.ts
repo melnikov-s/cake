@@ -161,6 +161,12 @@ describe("loadWorkspacePiSessionPreview", () => {
       cakeWorkspaceSessionDirectory(cwd, activeSessionRoot),
     );
 
+    manager.appendMessage({
+      role: "system",
+      content: "",
+      sections: { rules: "Canonical instructions" },
+      timestamp: 0,
+    });
     manager.appendMessage({ role: "user", content: "Inspect the old file", timestamp: 1 });
     manager.appendMessage(
       assistant([
@@ -226,6 +232,15 @@ describe("loadWorkspacePiSessionPreview", () => {
     expect(JSON.stringify(replayedAnswerSession.buildSessionContext().messages)).not.toContain(
       "historical output",
     );
+    // Forking inside replayed dialogue keeps the canonical checkpoint but not a new pill.
+    expect(JSON.stringify(replayedAnswerSession.buildSessionContext().messages)).toContain(
+      "Canonical instructions",
+    );
+    expect(
+      projectConversationDisplay(replayedAnswerSession).filter(
+        (part) => part.kind === "context" && part.title === "System message",
+      ),
+    ).toHaveLength(0);
 
     const fork = forkWorkspaceSession(
       manager.getSessionFile()!,

@@ -1,4 +1,9 @@
-import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+  buildSessionContext,
+  type SessionEntry,
+  type SessionManager,
+} from "@earendil-works/pi-coding-agent";
+import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import type {
   AssistantMessage,
   UserMessage,
@@ -10,6 +15,7 @@ import {
   toolCompactEntryType,
   toolCompactProvenanceEntryType,
   type ToolCompactProvenance,
+  type ToolCompactMarker,
 } from "./tool-compaction-provenance";
 
 import { splitContextReminders } from "./session-context-reminders";
@@ -106,8 +112,9 @@ function sourceBranch(session: SessionManager, assistantEntryId: string) {
 }
 
 /**
- * Appends a root branch containing only user input and assistant text. Context
- * reminders, coordination, custom messages, reasoning and tool activity are removed. The
+ * Appends a root branch with Pi's canonical system checkpoint and only user input
+ * and assistant text as dialogue. Reminders, coordination, custom messages,
+ * reasoning and tool activity are removed. The
  * original branch remains in the same Pi JSONL tree and the Session ID is stable.
  */
 export function appendToolCompactedBranch(
@@ -121,11 +128,19 @@ export function appendToolCompactedBranch(
 ) {
   const branch = sourceBranch(session, assistantEntryId);
   const strippedToolActivity = countStrippedToolActivity(branch);
+  // Pi 1.0 diffs the next request's instructions/tools against its canonical transcript.
+  // Preserve the selected branch's complete baseline (including normal compaction
+  // checkpoints), not reminder/custom messages. Otherwise Pi re-declares the entire
+  // unchanged prompt on the next turn and Cake presents it as a new injection.
+  const systemMessage = getCurrentSystemMessage(
+    buildSessionContext(branch, assistantEntryId).messages,
+  );
   session.resetLeaf();
+  const systemCheckpointEntryId = systemMessage ? session.appendMessage(systemMessage) : undefined;
   // Orientation is display metadata, not another message in the clean model context.
-  const markerEntryId = session.appendCustomEntry(toolCompactEntryType, {
-    summary: toolCompactPreamble(strippedToolActivity),
-  });
+  let marker: ToolCompactMarker = { summary: toolCompactPreamble(strippedToolActivity) };
+  if (systemCheckpointEntryId) marker = { ...marker, systemCheckpointEntryId };
+  const markerEntryId = session.appendCustomEntry(toolCompactEntryType, marker);
   const mappings: ToolCompactProvenance["mappings"][number][] = [];
 
   for (const entry of branch) {

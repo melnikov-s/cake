@@ -62,10 +62,13 @@ projections needed by a surface. References do not transfer ownership.
 - Model-facing reminders and custom messages remain inspectable, regardless of
   Pi's `display` flag; expose the live system prompt too. Presentation does not
   create another transcript authority.
-- Tool Compact replays only user-authored input and assistant text. Strip injected
-  reminders (including embedded ones), reasoning, tools, custom messages, and
-  cross-session coordination. Keep orientation/provenance in non-context Pi
-  metadata and the original transcript tree inspectable.
+- Tool Compact replays only user-authored input and assistant text as dialogue.
+  Preserve Pi's canonical system prompt/tool baseline as a folded checkpoint, not
+  a new instruction injection. Strip injected reminders (including embedded ones),
+  reasoning, tools, custom messages, and cross-session coordination. Keep
+  orientation/provenance in non-context Pi metadata and the original transcript
+  tree inspectable. The checkpoint does not add a new context pill; genuine later
+  instruction changes do.
 - Waiting user and cross-session inputs share Pi's runtime queue. Cake projects
   transient queue metadata; it does not persist a competing message queue.
 - Sidecar discussions and private subagents have independent Pi transcripts.

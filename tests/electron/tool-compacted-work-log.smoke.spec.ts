@@ -2,12 +2,20 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { projectConversationDisplay } from "../../src/services/pi/runtime/conversation-display-projection";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { addResponseModeReminder } from "../../src/contracts/conversations/response-mode-reminders";
 import { addPresentationModeReminder } from "../../src/contracts/conversations/presentation-mode-reminders";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const timestamp = new Date(0).toISOString();
+const canonicalSystem = {
+  role: "system",
+  content: "",
+  sections: { rules: "Required canonical instructions" },
+  timestamp: 0,
+};
 const usage = {
   input: 0,
   output: 0,
@@ -66,10 +74,11 @@ test("shows compacted historical work in place, muted and expandable", async () 
   );
   const entries = [
     { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+    { type: "message", id: "source-system", parentId: null, timestamp, message: canonicalSystem },
     {
       type: "message",
       id: "source-user",
-      parentId: null,
+      parentId: "source-system",
       timestamp,
       message: {
         role: "user",
@@ -131,12 +140,22 @@ test("shows compacted historical work in place, muted and expandable", async () 
       message: assistant([{ type: "text", text: "Original answer." }]),
     },
     {
-      type: "custom",
-      id: "compact-marker",
+      type: "message",
+      id: "canonical-checkpoint",
       parentId: null,
       timestamp,
+      message: canonicalSystem,
+    },
+    {
+      type: "custom",
+      id: "compact-marker",
+      parentId: "canonical-checkpoint",
+      timestamp,
       customType: "cake.tool-compact/v1",
-      data: { summary: "Earlier work was tool compacted." },
+      data: {
+        summary: "Earlier work was tool compacted.",
+        systemCheckpointEntryId: "canonical-checkpoint",
+      },
     },
     {
       type: "message",
@@ -180,8 +199,19 @@ test("shows compacted historical work in place, muted and expandable", async () 
     },
     {
       type: "message",
-      id: "current-user",
+      id: "changed-system",
       parentId: "compact-provenance",
+      timestamp,
+      message: {
+        ...canonicalSystem,
+        sections: { rules: "Genuinely changed instructions" },
+        timestamp: 3,
+      },
+    },
+    {
+      type: "message",
+      id: "current-user",
+      parentId: "changed-system",
       timestamp,
       message: {
         role: "user",
@@ -225,6 +255,16 @@ test("shows compacted historical work in place, muted and expandable", async () 
     join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
     `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
   );
+
+  const fixtureParts = projectConversationDisplay(
+    SessionManager.open(join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`)),
+  );
+  expect(
+    fixtureParts.filter((part) => part.kind === "context" && part.title === "System message"),
+  ).toEqual([
+    expect.objectContaining({ origin: "compacted" }),
+    expect.objectContaining({ text: expect.stringContaining("Genuinely changed instructions") }),
+  ]);
 
   const application = await electron.launch({
     args: [repositoryRoot],
@@ -282,6 +322,15 @@ test("shows compacted historical work in place, muted and expandable", async () 
     await expect(
       page.getByText("Extension context sent to the model.", { exact: true }),
     ).toBeVisible();
+    // This passive preview must expose only the genuine current instruction change,
+    // not the carried baseline as another current injection.
+    const systemChange = page.getByRole("button", { name: "System message", exact: true });
+    await expect(systemChange).toHaveCount(1);
+    await systemChange.click();
+    await expect(page.getByText(/Genuinely changed instructions/)).toBeVisible();
+    await systemChange.click();
+    // This unopened-runtime preview shows the original event and genuine change,
+    // but does not mistake the carried checkpoint for another injection.
     const currentReminder = page.getByRole("button", { name: "Cake · response mode", exact: true });
     await expect(currentReminder).toBeVisible();
     await currentReminder.click();

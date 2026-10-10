@@ -62,11 +62,19 @@ async function createTemporaryDirectory() {
 async function registerFixtureProvider(
   directory: string,
   respond: (requestIndex: number, response: ServerResponse) => void,
+  observeRequest?: (body: Record<string, unknown>) => void,
 ) {
   let requestCount = 0;
-  const server = createServer((_request, response) => {
-    requestCount += 1;
-    respond(requestCount, response);
+  const server = createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += String(chunk);
+    });
+    request.on("end", () => {
+      observeRequest?.(JSON.parse(body) as Record<string, unknown>);
+      requestCount += 1;
+      respond(requestCount, response);
+    });
   });
   servers.push(server);
   await new Promise<void>((resolve, reject) => {
@@ -133,6 +141,111 @@ afterEach(async () => {
 });
 
 describe("CakeSessionRuntime characterization", () => {
+  it("retains required system instructions across Tool Compact without re-emitting an unchanged system message", async () => {
+    const directory = await createTemporaryDirectory();
+    const bodies: Array<Record<string, unknown>> = [];
+    await registerFixtureProvider(
+      directory,
+      (index, response) => finishTextResponse(response, `Reply ${index}`),
+      (body) => bodies.push(body),
+    );
+    await mkdir(join(directory, "agent"), { recursive: true });
+    await writeFile(
+      join(directory, "agent", "settings.json"),
+      JSON.stringify({
+        compaction: { enabled: false, keepRecentTokens: 1, reserveTokens: 128 },
+      }),
+    );
+    await writeFile(join(directory, ".pi", "APPEND_SYSTEM.md"), "REQUIRED_CANONICAL_INSTRUCTION");
+    await writeFile(
+      join(directory, ".pi", "extensions", "compaction.ts"),
+      `export default function (pi) {
+      pi.on("session_before_compact", (event) => ({ compaction: {
+        summary: "Fixed summary", firstKeptEntryId: event.preparation.firstKeptEntryId,
+        tokensBefore: event.preparation.tokensBefore,
+      } }));
+    }`,
+    );
+    const events: CakeSessionRuntimeEvent[] = [];
+    const runtime = await createFixtureRuntime(directory, events);
+    const systemEntries = () =>
+      SessionManager.open(runtime.sessionFile)
+        .getBranch()
+        .filter((entry) => entry.type === "message" && entry.message.role === "system");
+    const injections = () =>
+      events.filter(
+        (event) =>
+          event.type === "part-updated" &&
+          event.part.kind === "context" &&
+          event.part.title === "System message",
+      );
+    const requestSystems = (body: Record<string, unknown>) =>
+      (body.messages as Array<{ role: string; content: string }>).filter(
+        (message) => message.role === "system",
+      );
+
+    await runtime.prompt("First", "prompt", []);
+    const before = await runtime.snapshot();
+    const selectedId = SessionManager.open(runtime.sessionFile)
+      .getBranch()
+      .findLast((entry) => entry.type === "message" && entry.message.role === "assistant")!.id;
+    expect(systemEntries()).toHaveLength(1);
+    events.length = 0;
+    await runtime.toolCompact(selectedId);
+    const compacted = await runtime.snapshot();
+    expect(compacted.parts.filter((part) => part.kind === "context")).toHaveLength(
+      before.parts.filter((part) => part.kind === "context").length,
+    );
+    expect(injections()).toHaveLength(0);
+    expect(systemEntries()).toHaveLength(1);
+    await runtime.prompt("Continue", "prompt", []);
+    await runtime.prompt("Continue again", "prompt", []);
+    expect(injections()).toHaveLength(0);
+    expect(systemEntries()).toHaveLength(1);
+    expect(requestSystems(bodies[0]!)[0]!.content).toContain("REQUIRED_CANONICAL_INSTRUCTION");
+    expect(requestSystems(bodies[1]!)).toEqual(requestSystems(bodies[0]!));
+    expect(requestSystems(bodies[2]!)).toEqual(requestSystems(bodies[0]!));
+
+    events.length = 0;
+    await runtime.compact();
+    await runtime.prompt("After manual compaction", "prompt", []);
+    expect(injections()).toHaveLength(0);
+    expect(requestSystems(bodies[3]!)).toEqual(requestSystems(bodies[0]!));
+
+    await runtime.setPiSetting({ key: "autoCompact", value: true });
+    events.length = 0;
+    await runtime.prompt("After enabling automatic compaction", "prompt", []);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "part-updated",
+        part: expect.objectContaining({
+          id: "active-compaction",
+          title: "Compacting context",
+          detail: "threshold",
+        }),
+      }),
+    );
+    expect(injections()).toHaveLength(0);
+    expect(requestSystems(bodies[4]!)).toEqual(requestSystems(bodies[0]!));
+    await runtime.setPiSetting({ key: "autoCompact", value: false });
+
+    await writeFile(join(directory, ".pi", "APPEND_SYSTEM.md"), "CHANGED_CANONICAL_INSTRUCTION");
+    await runtime.reload!();
+    events.length = 0;
+    await runtime.prompt("After an instruction change", "prompt", []);
+    expect(injections()).toHaveLength(1);
+    expect(requestSystems(bodies[5]!)[0]!.content).toContain("CHANGED_CANONICAL_INSTRUCTION");
+    expect(requestSystems(bodies[5]!)[0]!.content).not.toContain("REQUIRED_CANONICAL_INSTRUCTION");
+    const settled = await runtime.snapshot();
+    expect(settled.parts).toContainEqual(
+      expect.objectContaining({
+        kind: "context",
+        title: "System message",
+        text: expect.stringContaining("CHANGED_CANONICAL_INSTRUCTION"),
+      }),
+    );
+  });
+
   it("continues Pi → Cake → Pi with the same shared file and session ID", async () => {
     const directory = await createTemporaryDirectory();
     const agent = join(directory, "shared-agent");

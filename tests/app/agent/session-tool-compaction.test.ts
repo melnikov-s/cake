@@ -125,12 +125,12 @@ describe("tool compaction", () => {
     ).toContain("full original transcript remains available in the session tree");
   });
 
-  it("replays only dialogue, stripping injected reminders even inside multimodal user messages", () => {
+  it("preserves the canonical system baseline while stripping reminders from multimodal dialogue", () => {
     const session = SessionManager.inMemory("/project");
     session.appendMessage({
       role: "system",
       content: "",
-      sections: { injected: "Structured system reminder" },
+      sections: { rules: "Required canonical instructions" },
       timestamp: 0,
     });
     const literal = "<system-reminder>User-authored guidance.</system-reminder>";
@@ -160,19 +160,25 @@ describe("tool compaction", () => {
     );
     appendToolCompactedBranch(session, leaf);
     const messages = session.buildSessionContext().messages;
-    expect(messages.map((message) => message.role)).toEqual(["user", "user", "assistant"]);
-    expect(messages[0]).toMatchObject({ content: `Question\n\n${literal}` });
-    expect(messages[1]).toMatchObject({
+    expect(messages.map((message) => message.role)).toEqual([
+      "system",
+      "user",
+      "user",
+      "assistant",
+    ]);
+    expect(messages[0]).toMatchObject({ sections: { rules: "Required canonical instructions" } });
+    expect(messages[1]).toMatchObject({ content: `Question\n\n${literal}` });
+    expect(messages[2]).toMatchObject({
       content: [
         { type: "text", text: "Describe this" },
         { type: "image", data: "image" },
       ],
     });
-    expect(messages[2]).toMatchObject({ content: [{ type: "text", text: "Answer" }] });
+    expect(messages[3]).toMatchObject({ content: [{ type: "text", text: "Answer" }] });
     expect(JSON.stringify(messages)).not.toContain("Cake response mode");
     expect(JSON.stringify(messages)).not.toContain("entered Draw");
     expect(JSON.stringify(messages)).not.toContain("injected context");
-    expect(JSON.stringify(messages)).not.toContain("Structured system reminder");
+    expect(JSON.stringify(messages)).toContain("Required canonical instructions");
     expect(JSON.stringify(messages)).not.toContain("tool-compacted continuation");
     expect(projectConversationDisplay(session)).toEqual(
       expect.arrayContaining([
@@ -194,6 +200,7 @@ describe("tool compaction", () => {
     const nextLeaf = session.appendMessage(assistant([{ type: "text", text: "Next answer" }]));
     appendToolCompactedBranch(session, nextLeaf);
     expect(session.buildSessionContext().messages.map((message) => message.role)).toEqual([
+      "system",
       "user",
       "user",
       "assistant",
@@ -203,6 +210,81 @@ describe("tool compaction", () => {
     expect(
       projectConversationDisplay(session).filter((part) => part.kind === "context"),
     ).toHaveLength(9);
+  });
+
+  it("carries the selected branch's folded Pi checkpoint without projecting another injection", () => {
+    const session = SessionManager.inMemory("/project");
+    const tool = (name: string) => ({ name, description: name, parameters: { type: "object" } });
+    session.appendMessage({
+      role: "system",
+      content: "Canonical preamble",
+      sections: { rules: "Original rules", obsolete: "Remove this section" },
+      toolsAdded: [tool("read"), tool("write")],
+      timestamp: 0,
+    });
+    const userId = session.appendMessage({ role: "user", content: "Question", timestamp: 1 });
+    session.appendMessage({
+      role: "system",
+      content: "",
+      sections: { rules: "Current rules", obsolete: null },
+      toolsRemoved: [{ name: "write" }],
+      timestamp: 2,
+    });
+    session.appendCompaction("Normal summary", userId, 100);
+    session.appendCustomMessageEntry("extension.reminder", "Remove this reminder", false);
+    const selectedId = session.appendMessage(assistant([{ type: "text", text: "Answer" }]));
+    // Compaction at a selected earlier response must not capture later instructions.
+    session.appendMessage({
+      role: "system",
+      content: "",
+      sections: { rules: "Later rules" },
+      timestamp: 3,
+    });
+
+    appendToolCompactedBranch(session, selectedId);
+    const checkpoint = session.buildSessionContext().messages[0];
+    expect(checkpoint).toMatchObject({
+      role: "system",
+      content: "Canonical preamble",
+      sections: { rules: "Current rules" },
+      toolsAdded: [tool("read")],
+    });
+    expect(JSON.stringify(checkpoint)).not.toContain("obsolete");
+    expect(JSON.stringify(session.buildSessionContext().messages)).not.toContain(
+      "Remove this reminder",
+    );
+    const parts = projectConversationDisplay(session);
+    expect(
+      parts.filter((part) => part.kind === "context" && part.title === "System message"),
+    ).toHaveLength(2);
+    expect(
+      parts.filter((part) => part.kind === "context").every((part) => part.origin === "compacted"),
+    ).toBe(true);
+
+    const nextId = session.appendMessage(assistant([{ type: "text", text: "Next answer" }]));
+    appendToolCompactedBranch(session, nextId);
+    expect(
+      session.buildSessionContext().messages.filter((message) => message.role === "system"),
+    ).toEqual([checkpoint]);
+    expect(
+      projectConversationDisplay(session).filter(
+        (part) => part.kind === "context" && part.title === "System message",
+      ),
+    ).toHaveLength(2);
+    // A genuine post-compaction change is still visible, not mistaken for the checkpoint.
+    session.appendMessage({
+      role: "system",
+      content: "",
+      sections: { rules: "Changed rules" },
+      timestamp: 4,
+    });
+    expect(projectConversationDisplay(session)).toContainEqual(
+      expect.objectContaining({
+        kind: "context",
+        title: "System message",
+        text: expect.stringContaining("Changed rules"),
+      }),
+    );
   });
 
   it("rejects non-assistant targets", async () => {

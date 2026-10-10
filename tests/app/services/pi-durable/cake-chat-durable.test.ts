@@ -15,7 +15,7 @@ const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
-async function fixture(answer?: Parameters<typeof durableModels>[0]) {
+async function fixture(answer?: Parameters<typeof durableModels>[0], keepRecentTokens = 20_000) {
   const f = durableModels(answer);
   const summarize = vi.fn(async () => "talk: exact details remain available through zoom");
   let budget = 4_000;
@@ -45,7 +45,7 @@ async function fixture(answer?: Parameters<typeof durableModels>[0]) {
       tools: [zoom],
     },
     memory: { budget: () => budget, summarize },
-    settings: { contextRetentionMs: 0, compaction: { enabled: false } },
+    settings: { contextRetentionMs: 0, compaction: { enabled: false, keepRecentTokens } },
     onChanged: vi.fn(),
     onReport: vi.fn(),
   });
@@ -99,6 +99,44 @@ it("refreshes independent runs, retains zoom originals through tool rounds, and 
   expect(JSON.stringify(page.parts)).toContain(original);
   expect(JSON.stringify(page.parts)).not.toContain("<chat>");
   expect((await f.view()).text).not.toContain("Never use worktrees");
+});
+
+it("keeps Cake Chat's canonical instructions across compaction and ordinary run checkpoints", async () => {
+  const f = await fixture(undefined, 1);
+  await f.send("First question", "first");
+  const systemCount = async () =>
+    (await f.engine.root.entries({}, 200, undefined, BACKGROUND_CONTEXT)).items.filter(
+      (entry) => entry.kind === "pi.system",
+    ).length;
+  const initialCount = await systemCount();
+  await f.send("Ordinary continuation, no compaction", "ordinary");
+  const count = await systemCount();
+  expect(count).toBe(initialCount + 1);
+  const before = await readDurableOriginalPage(f.engine.root);
+  const job = await f.engine.root.compact(undefined, BACKGROUND_CONTEXT);
+  await f.engine.harness.waitForTask(job, BACKGROUND_CONTEXT);
+  const compacted = await f.engine.root.context(BACKGROUND_CONTEXT);
+  expect(JSON.stringify(compacted.messages)).toContain("Always use worktrees");
+  expect(await systemCount()).toBe(count);
+  expect((await readDurableOriginalPage(f.engine.root)).parts).toEqual(before.parts);
+  await f.send("After compaction", "second");
+  expect(JSON.stringify(f.requests.at(-1))).toContain("Always use worktrees");
+  // Durable deliberately writes one baseline after any head marker, including
+  // Cake's ordinary per-run resets. It is not an added reminder or UI injection.
+  expect(await systemCount()).toBe(count + 1);
+  expect(f.requests.at(-1)!.messages.filter((message) => message.role === "system")).toHaveLength(
+    1,
+  );
+  expect(
+    (await readDurableOriginalPage(f.engine.root)).parts.filter((part) => part.kind === "context"),
+  ).toHaveLength(0);
+  await f.engine.root.configure(
+    { instructions: "Genuinely changed Cake Chat instructions" },
+    BACKGROUND_CONTEXT,
+  );
+  await f.send("After changing instructions", "third");
+  expect(JSON.stringify(f.requests.at(-1))).toContain("Genuinely changed Cake Chat instructions");
+  expect(await systemCount()).toBe(count + 2);
 });
 
 it("deduplicates committed input without starting another model run", async () => {

@@ -7,6 +7,14 @@ export const toolCompactProvenanceEntryType = "cake.tool-compact-provenance/v1";
 
 const entryIdSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 
+export const toolCompactMarkerSchema = Schema.Struct({
+  summary: Schema.String,
+  // Absent when the source branch has no canonical system declaration.
+  systemCheckpointEntryId: Schema.optionalKey(entryIdSchema),
+});
+
+export interface ToolCompactMarker extends Schema.Schema.Type<typeof toolCompactMarkerSchema> {}
+
 const toolCompactReplayMappingSchema = Schema.Struct({
   sourceEntryId: entryIdSchema,
   replayedEntryId: entryIdSchema,

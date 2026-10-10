@@ -27,7 +27,7 @@ import {
 } from "../../../ipc/session-contract";
 
 export { toolCompactEntryType } from "./tool-compaction-provenance";
-import { toolCompactEntryType } from "./tool-compaction-provenance";
+import { toolCompactEntryType, toolCompactMarkerSchema } from "./tool-compaction-provenance";
 
 export const reviewRunEntryType = "cake.review-run/v1";
 export const userMessagePresentationEntryType = "cake.user-message-presentation/v1";
@@ -872,6 +872,17 @@ export function projectSessionEntries(
       userMessagePresentations.set(presentation.value.targetId, presentation.value.renderAs);
   }
 
+  // Tool Compact carries Pi's canonical baseline without injecting new instructions.
+  // Identify that exact checkpoint from display metadata, including in ordinary
+  // forks whose replay prefix ends before the full compaction provenance entry.
+  const systemCheckpoints = new Set<string>();
+  for (const entry of entries) {
+    if (entry.type !== "custom" || entry.customType !== toolCompactEntryType) continue;
+    const marker = Schema.decodeUnknownOption(toolCompactMarkerSchema)(entry.data);
+    if (Option.isSome(marker) && marker.value.systemCheckpointEntryId)
+      systemCheckpoints.add(marker.value.systemCheckpointEntryId);
+  }
+
   const handoffTimestamps = new Set<number>();
   for (const entry of entries) {
     if (entry.type !== "custom" || entry.customType !== turnHandoffEntryType) continue;
@@ -898,6 +909,7 @@ export function projectSessionEntries(
   for (const entry of entries) {
     if (entry.type === "message") {
       if (intermediateRetryErrors.has(entry.id)) continue;
+      if (entry.message.role === "system" && systemCheckpoints.has(entry.id)) continue;
       for (const part of partsFromMessage(
         entry.message,
         `entry-${entry.id}`,
@@ -967,9 +979,7 @@ export function projectSessionEntries(
     }
     if (entry.type !== "custom") continue;
     if (entry.customType === toolCompactEntryType) {
-      const marker = Schema.decodeUnknownOption(Schema.Struct({ summary: Schema.String }))(
-        entry.data,
-      );
+      const marker = Schema.decodeUnknownOption(toolCompactMarkerSchema)(entry.data);
       if (Option.isSome(marker))
         append({
           id: `entry-${entry.id}-custom`,
