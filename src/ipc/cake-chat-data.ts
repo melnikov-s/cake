@@ -34,6 +34,7 @@ export const CakeChatSummary = Schema.Struct({
   messageCount: Schema.Int,
   parentSessionId: Schema.optionalKey(boundedId),
   resolved: Schema.Boolean,
+  unread: Schema.Boolean,
 });
 export interface CakeChatSummary extends Schema.Schema.Type<typeof CakeChatSummary> {}
 

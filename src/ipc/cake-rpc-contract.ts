@@ -416,6 +416,7 @@ export const cakeRpcPayloadSchemas = {
     draft: Schema.Boolean,
     unread: Schema.optional(Schema.Boolean),
     familyChild: Schema.optional(Schema.Boolean),
+    permanent: Schema.optional(Schema.Boolean),
   }),
   "show-project-context-menu": Schema.Struct({
     path: bounded(1, 4_096),
@@ -728,7 +729,7 @@ const cakeRpcResultSchemas = {
   }),
   "session-context-menu-closed": Schema.Struct({
     action: Schema.optional(
-      Schema.Literals(["rename", "mark-unread", "resolve", "unresolve", "delete"]),
+      Schema.Literals(["rename", "mark-read", "mark-unread", "resolve", "unresolve", "delete"]),
     ),
   }),
   "project-context-menu-closed": Schema.Struct({

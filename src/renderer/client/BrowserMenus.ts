@@ -99,20 +99,29 @@ export function browserMenus(
     },
     showSessionContextMenu: async (input) => {
       const copyId = copy("Copy Session ID", input.sessionId);
-      const items: BrowserMenuItem[] = input.resolved
+      const items: BrowserMenuItem[] = input.permanent
         ? [
-            { label: "Unresolve", action: "unresolve" },
+            { label: "Mark as Read", action: "mark-read", disabled: input.unread !== true },
+            { label: "Mark as Unread", action: "mark-unread", disabled: input.unread !== false },
             copyId,
-            ...(!input.familyChild ? [{ label: "Delete", action: "delete" }] : []),
           ]
-        : [
-            ...(input.unread === false ? [{ label: "Mark as Unread", action: "mark-unread" }] : []),
-            { label: "Rename", action: "rename" },
-            copyId,
-            ...(!input.draft ? [{ label: "Resolve", action: "resolve" }] : []),
-          ];
+        : input.resolved
+          ? [
+              { label: "Unresolve", action: "unresolve" },
+              copyId,
+              ...(!input.familyChild ? [{ label: "Delete", action: "delete" }] : []),
+            ]
+          : [
+              ...(input.unread === false
+                ? [{ label: "Mark as Unread", action: "mark-unread" }]
+                : []),
+              { label: "Rename", action: "rename" },
+              copyId,
+              ...(!input.draft ? [{ label: "Resolve", action: "resolve" }] : []),
+            ];
       const action = await store.show("Session actions", items);
       return action === "rename" ||
+        action === "mark-read" ||
         action === "mark-unread" ||
         action === "resolve" ||
         action === "unresolve" ||

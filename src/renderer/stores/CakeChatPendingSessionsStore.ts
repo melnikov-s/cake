@@ -50,6 +50,7 @@ export class CakeChatPendingSessionsStore extends Store<CakeChatPendingSessionsS
       modifiedAt: conversation.modifiedAt,
       messageCount: conversation.messageCount,
       resolved: conversation.resolved,
+      unread: false,
       draft: conversation.isDraft,
     }));
   }

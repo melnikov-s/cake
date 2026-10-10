@@ -393,6 +393,7 @@ it("upserts and removes Cake Chat summaries while retaining existing Models", ()
     title: sessionId,
     messageCount: 1,
     resolved: false,
+    unread: false,
   });
   const query = { resolved: false } as const;
   applyCakeChatCatalogGroupUpdate(catalog, query, {

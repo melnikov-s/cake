@@ -1,4 +1,5 @@
 import { drawMermaidArchitecture } from "../../tests/fixtures/draw-mermaid-architecture.ts";
+import { CAKE_CHAT_SESSION_ID } from "../../src/ipc/cake-chat-data.ts";
 import { addResponseModeReminder } from "../../src/contracts/conversations/response-mode-reminders";
 import { addPresentationModeReminder } from "../../src/contracts/conversations/presentation-mode-reminders";
 import { nestedAssistant, nestedEntries } from "../../tests/fixtures/nested-tool-activity.ts";
@@ -1356,6 +1357,28 @@ const appearanceSettingsScenario: VisualCaptureScenario = {
   region: cakePromptsSettingsScenario.region,
 };
 
+const cakeChatSidebarUnread: VisualCaptureScenario = {
+  name: "cake-chat-sidebar-unread",
+  description:
+    "Permanent coordinator's persisted unread status alongside ordinary Project Sessions",
+  states: ["default"],
+  async seed(paths, theme) {
+    await cakeChatScenario.seed(paths, theme);
+    const file = join(paths.cakeHome, "state", "application.json");
+    const state = JSON.parse(await readFile(file, "utf8"));
+    await writeFile(file, JSON.stringify({ ...state, unreadSessionIds: [CAKE_CHAT_SESSION_ID] }));
+  },
+  async prepare(page) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await expect(
+      page.locator('[data-slot="cake-chat-group"]').getByRole("img", { name: "Ready, unread" }),
+    ).toBeVisible();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator('[data-slot="sidebar"]'),
+};
+
 const cakeChatScenario: VisualCaptureScenario = {
   name: "cake-chat",
   description: "Permanent coordinator with original conversation history and memory settings",
@@ -2094,6 +2117,7 @@ export const visualCaptureScenarios = [
   projectCustomInstructionsScenario,
   newSessionScenario,
   cakeChatScenario,
+  cakeChatSidebarUnread,
   dictationInputScenario,
   dictationSettingsScenario,
   serverClientSettingsScenario,

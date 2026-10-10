@@ -13,7 +13,7 @@ import type { SidebarStore } from "../stores/SidebarStore";
 import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
 import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
-import { StatusDot } from "./ui/status-dot";
+import { SessionActivityIndicator } from "./session-activity-indicator";
 import { LabelSwatch } from "./ui/label-swatch";
 import { Avatar } from "./ui/avatar";
 import { AvatarLabelPicker } from "./ui/avatar-label-picker";
@@ -104,14 +104,6 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
   const labelIds = sessionMetadata?.sessionLabelIds(session.sessionId) ?? [];
   const availableLabels = sessionMetadata?.availableSessionLabels(session.sessionId) ?? [];
   const canSetLabels = !session.draft && !resolved && Boolean(onSetLabels);
-  const activityLabel =
-    activity === "waiting"
-      ? "Waiting for your answer"
-      : activity === "running"
-        ? "Running"
-        : activity === "error"
-          ? "Error"
-          : "Ready, unread";
   const branch = session.draft
     ? undefined
     : (session.worktreeName ?? managedWorktree?.branch.replace(/^agent\//, ""));
@@ -354,27 +346,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
           trailing={
             <div className="session-meta relative flex h-full w-8 shrink-0 items-center justify-center">
               {activity ? (
-                <StatusDot
-                  status={
-                    activity === "waiting"
-                      ? "attention"
-                      : activity === "unread"
-                        ? "success"
-                        : activity
-                  }
-                  className={cn(
-                    "session-status size-2",
-                    activity === "waiting" && "session-status-waiting ring-2 ring-attention/20",
-                    activity === "running" &&
-                      cn("session-status-running", selected && "bg-primary"),
-                    activity === "unread" && "session-status-unread ring-2 ring-success/20",
-                    activity === "error" && "session-status-error ring-2 ring-destructive/20",
-                  )}
-                  role="img"
-                  aria-hidden={undefined}
-                  aria-label={activityLabel}
-                  title={activityLabel}
-                />
+                <SessionActivityIndicator activity={activity} selected={selected} />
               ) : (
                 canResolve && (
                   <IconButton

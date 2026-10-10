@@ -6,10 +6,43 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { ROOT_CONVERSATION_ID } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
+import { CAKE_CHAT_SESSION_ID } from "../../src/ipc/cake-chat-data";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
+
+// Exercise the real native menu builder/handler without presenting an OS popup.
+async function interceptMenu(app: ElectronApplication, choose?: string) {
+  await app.evaluate(({ Menu }, selected) => {
+    const state = globalThis as typeof globalThis & {
+      cakeSidebarMenu?: { label: string; enabled: boolean }[];
+    };
+    state.cakeSidebarMenu = undefined;
+    const original = Menu.buildFromTemplate;
+    Menu.buildFromTemplate = (template) => {
+      Menu.buildFromTemplate = original;
+      const menu = original(template);
+      state.cakeSidebarMenu = menu.items.map(({ label, enabled }) => ({ label, enabled }));
+      menu.popup = (options) => {
+        const item = menu.items.find((item) => item.label === selected);
+        if (item?.enabled) Reflect.apply(item.click, item, [item, undefined, {}]);
+        options?.callback?.();
+      };
+      return menu;
+    };
+  }, choose);
+}
+async function menuItems(app: ElectronApplication) {
+  return app.evaluate(
+    () =>
+      (
+        globalThis as typeof globalThis & {
+          cakeSidebarMenu?: { label: string; enabled: boolean }[];
+        }
+      ).cakeSidebarMenu,
+  );
+}
 
 function seedHistory(directory: string, text: string) {
   const manager = SessionManager.create(homedir(), directory);
@@ -52,12 +85,19 @@ test("permanent Cake Chat retains its input, history and settings across restart
   const projectFile = seedHistory(join(root, "project-sessions"), "Independent project work");
   const projectHistory = await readFile(projectFile, "utf8");
   const requests: unknown[] = [];
+  let releaseFirstReply: (() => void) | undefined;
+  const firstReplyGate = new Promise<void>((resolve) => {
+    releaseFirstReply = resolve;
+  });
   const server = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
     const parsed: unknown = JSON.parse(body);
     const summary = JSON.stringify(parsed).includes("You write the memory of Cake Chat");
-    if (!summary) requests.push(parsed);
+    if (!summary) {
+      requests.push(parsed);
+      if (requests.length === 1) await firstReplyGate;
+    }
     const text = summary
       ? "talk: coordinated project work; user asked about priorities"
       : `Coordinator reply. ${"Detailed task context. ".repeat(50)}`;
@@ -125,6 +165,8 @@ test("permanent Cake Chat retains its input, history and settings across restart
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: userData,
         CAKE_HOME: cakeHome,
+        PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
   const preferences = async () =>
@@ -142,6 +184,32 @@ test("permanent Cake Chat retains its input, history and settings across restart
     await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
     await expect(input).toHaveValue("Discuss my priorities");
     await page.getByRole("button", { name: "Send", exact: true }).click();
+    const coordinator = page.locator('[data-slot="cake-chat-group"]');
+    await expect(coordinator.getByRole("img", { name: "Running" })).toBeVisible();
+    await interceptMenu(app);
+    await coordinator.click({ button: "right" });
+    await expect
+      .poll(() => menuItems(app))
+      .toEqual([
+        { label: "Mark as Read", enabled: false },
+        { label: "Mark as Unread", enabled: false },
+        { label: "Copy Session ID", enabled: true },
+      ]);
+    await page.getByRole("button", { name: "Open Artifact Library", exact: true }).click();
+    await expect(coordinator.getByRole("img", { name: "Running" })).toBeVisible();
+    releaseFirstReply?.();
+    await expect(coordinator.getByRole("img", { name: "Ready, unread" })).toBeVisible();
+    await interceptMenu(app, "Mark as Read");
+    await coordinator.click({ button: "right" });
+    await expect
+      .poll(() => menuItems(app))
+      .toEqual([
+        { label: "Mark as Read", enabled: true },
+        { label: "Mark as Unread", enabled: false },
+        { label: "Copy Session ID", enabled: true },
+      ]);
+    await expect(coordinator.getByRole("img")).toHaveCount(0);
+    await coordinator.click();
     await expect(page.getByText(/^Coordinator reply\./).first()).toBeVisible();
     await expect(page.locator("[data-context-state]")).toHaveCount(0);
     const database = join(cakeHome, "pi", "global-chat", "coordinator.sqlite");
@@ -188,6 +256,20 @@ test("permanent Cake Chat retains its input, history and settings across restart
       .toBe(false);
     expect(await readFile(projectFile, "utf8")).toBe(projectHistory);
 
+    // A manual unread reminder uses the same application storage as Project Sessions.
+    await interceptMenu(app, "Mark as Unread");
+    await coordinator.click({ button: "right" });
+    await expect
+      .poll(() => menuItems(app))
+      .toEqual([
+        { label: "Mark as Read", enabled: false },
+        { label: "Mark as Unread", enabled: true },
+        { label: "Copy Session ID", enabled: true },
+      ]);
+    await expect(coordinator.getByRole("img", { name: "Ready, unread" })).toBeVisible();
+    await expect
+      .poll(async () => JSON.parse(await readFile(document, "utf8")).data.unreadSessionIds)
+      .toContain(CAKE_CHAT_SESSION_ID);
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await page.getByRole("button", { name: /^Cake Chat\b/ }).click();
     await expect(page.getByRole("combobox", { name: "Cake Chat history-view budget" })).toHaveValue(
@@ -218,7 +300,14 @@ test("permanent Cake Chat retains its input, history and settings across restart
     await expect(page.getByRole("combobox", { name: "Cake Chat history-view budget" })).toHaveValue(
       "10000",
     );
+    expect(JSON.parse(await readFile(document, "utf8")).data.unreadSessionIds).toContain(
+      CAKE_CHAT_SESSION_ID,
+    );
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+    await expect(page.locator('[data-slot="cake-chat-group"]').getByRole("img")).toHaveCount(0);
+    await expect
+      .poll(async () => JSON.parse(await readFile(document, "utf8")).data.unreadSessionIds)
+      .not.toContain(CAKE_CHAT_SESSION_ID);
     await expect(page.getByText(/^Coordinator reply\./).first()).toBeVisible();
     await expect(page.locator("[data-context-state]")).toHaveCount(0);
     input = page.getByRole("combobox", { name: "Message Cake Chat" });
@@ -235,6 +324,7 @@ test("permanent Cake Chat retains its input, history and settings across restart
     );
     expect(await readFile(projectFile, "utf8")).toBe(projectHistory);
   } finally {
+    releaseFirstReply?.();
     await app.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(root, { recursive: true, force: true });

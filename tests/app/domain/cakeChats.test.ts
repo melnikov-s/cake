@@ -10,7 +10,10 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
-import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
+import {
+  SessionCatalogChanges,
+  type SessionCatalogChange,
+} from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
@@ -26,6 +29,7 @@ function fixture() {
   let state = defaultApplicationState();
   const completions: string[] = [];
   const removed: string[] = [];
+  const changes: SessionCatalogChange[] = [];
   const summary = (id: string) => ({
     id,
     path: `/cake/global/${id}.jsonl`,
@@ -38,7 +42,17 @@ function fixture() {
     firstMessage: "Hello",
   });
   const layer = Layer.mergeAll(
-    Layer.mock(ApplicationState, { snapshot: () => state }),
+    Layer.mock(ApplicationState, {
+      snapshot: () => state,
+      transact: (transition) =>
+        transition(state).pipe(
+          Effect.tap((next) =>
+            Effect.sync(() => {
+              state = next;
+            }),
+          ),
+        ),
+    }),
     Layer.mock(PiModels, {
       complete: (input) =>
         Effect.sync(() => {
@@ -48,10 +62,14 @@ function fixture() {
     }),
     Layer.mock(RendererRequestCoordinator, { releaseSession: () => Effect.void }),
     Layer.mock(SessionCatalogChanges, {
-      publish: () => Effect.void,
-      initialThenChanges: (initial) => initial,
+      publish: (change) =>
+        Effect.sync(() => {
+          changes.push(change);
+        }),
+      initialThenChanges: (initial) => initial.pipe(Stream.concat(Stream.fromIterable(changes))),
     }),
     Layer.mock(CakeSessionRuntimes, {
+      catalogEntry: (_, id) => Effect.succeed(summary(id)),
       catalog: () =>
         Stream.fromIterable(
           [summary("old-active"), summary(CAKE_CHAT_SESSION_ID)].filter(
@@ -67,6 +85,8 @@ function fixture() {
     layer,
     completions,
     removed,
+    state: () => state,
+    changes,
     setState: (next: typeof state) => {
       state = next;
     },
@@ -74,6 +94,37 @@ function fixture() {
 }
 
 describe("permanent Cake Chat", () => {
+  it.effect(
+    "persists manual reminders under the coordinator identity and projects them in fresh catalogs and live updates",
+    () => {
+      const f = fixture();
+      return Effect.gen(function* () {
+        yield* metadata.setUnread(true);
+        expect(f.state().unreadSessionIds).toEqual([CAKE_CHAT_SESSION_ID]);
+        expect(f.changes).toEqual([
+          { _tag: "CakeChatSessionChanged", sessionId: CAKE_CHAT_SESSION_ID, resolved: false },
+        ]);
+        const catalog = yield* metadata.observeCatalog({ resolved: false }, location);
+        const updates = yield* catalog.pipe(Stream.take(2), Stream.runCollect);
+        expect(updates[0]).toMatchObject({
+          _tag: "Snapshot",
+          sessions: [{ sessionId: CAKE_CHAT_SESSION_ID, unread: true }],
+        });
+        expect(updates[1]).toMatchObject({
+          _tag: "Event",
+          event: { _tag: "Upserted", session: { sessionId: CAKE_CHAT_SESSION_ID, unread: true } },
+        });
+        yield* metadata.setUnread(false);
+        expect(f.state().unreadSessionIds).toEqual([]);
+        const reopened = yield* metadata.observeCatalog({ resolved: false }, location);
+        expect((yield* reopened.pipe(Stream.take(1), Stream.runCollect))[0]).toMatchObject({
+          _tag: "Snapshot",
+          sessions: [{ unread: false }],
+        });
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
+
   it.effect(
     "grants coordination and memory tools, with live dedicated preferences and utility fallback",
     () => {

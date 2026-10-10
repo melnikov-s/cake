@@ -3,6 +3,7 @@ import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore"
 import type { AppShellStore } from "../stores/AppShellStore";
 import { NavItem } from "./ui/nav-item";
 import { CakeIcon } from "./ui/icons";
+import { SessionActivityIndicator } from "./session-activity-indicator";
 
 export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
   cakeChat,
@@ -20,7 +21,22 @@ export const SidebarCakeChatGroup = observer(function SidebarCakeChatGroup({
       icon={<CakeIcon aria-hidden />}
       active={shell.selection.kind === "cake-chat"}
       className="mb-3"
+      trailing={
+        cakeChat.activity && (
+          <span className="flex w-8 shrink-0 items-center justify-center">
+            <SessionActivityIndicator
+              activity={cakeChat.activity}
+              selected={shell.selection.kind === "cake-chat"}
+            />
+          </span>
+        )
+      }
       onClick={() => onOpenCakeChat(cakeChat.sessionId)}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        const { clientX, clientY } = event;
+        requestAnimationFrame(() => void cakeChat.showContextMenu(clientX, clientY));
+      }}
     />
   );
 });

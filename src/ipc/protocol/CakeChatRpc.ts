@@ -39,6 +39,10 @@ export const CakeChatRpc = RpcGroup.make(
     success: TurnId,
     error: CakeChatError,
   }),
+  Rpc.make("cakeChats.setUnread", {
+    payload: { unread: Schema.Boolean },
+    error: CakeChatError,
+  }),
   Rpc.make("cakeChats.respondControl", {
     payload: {
       controlRequestId: Schema.String.check(Schema.isUUID(4)),

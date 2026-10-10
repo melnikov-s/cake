@@ -93,7 +93,7 @@ export interface BrowserStateSnapshot {
 type TerminalTarget = { readonly workingDirectory: string };
 
 type SessionContextMenuAction = {
-  action: "rename" | "mark-unread" | "resolve" | "unresolve" | "delete";
+  action: "rename" | "mark-read" | "mark-unread" | "resolve" | "unresolve" | "delete";
 };
 
 interface ElectronCommands {
@@ -147,6 +147,7 @@ interface ElectronCommands {
       draft: boolean;
       unread?: boolean;
       familyChild?: boolean;
+      permanent?: boolean;
     },
     options?: ClientCommandOptions,
   ): Promise<SessionContextMenuAction | undefined>;

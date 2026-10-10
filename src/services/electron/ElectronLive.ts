@@ -613,20 +613,34 @@ const makeElectronService = (
                 copyId,
               ];
               const menu = Menu.buildFromTemplate(
-                request.resolved
+                request.permanent
                   ? [
-                      { label: "Unresolve", click: () => finish("unresolve") },
+                      {
+                        label: "Mark as Read",
+                        enabled: request.unread === true,
+                        click: () => finish("mark-read"),
+                      },
+                      {
+                        label: "Mark as Unread",
+                        enabled: request.unread === false,
+                        click: () => finish("mark-unread"),
+                      },
                       copyId,
-                      ...(request.familyChild
-                        ? []
-                        : [
-                            { type: "separator" as const },
-                            { label: "Delete", click: () => finish("delete") },
-                          ]),
                     ]
-                  : request.draft
-                    ? activeItems
-                    : [...activeItems, { label: "Resolve", click: () => finish("resolve") }],
+                  : request.resolved
+                    ? [
+                        { label: "Unresolve", click: () => finish("unresolve") },
+                        copyId,
+                        ...(request.familyChild
+                          ? []
+                          : [
+                              { type: "separator" as const },
+                              { label: "Delete", click: () => finish("delete") },
+                            ]),
+                      ]
+                    : request.draft
+                      ? activeItems
+                      : [...activeItems, { label: "Resolve", click: () => finish("resolve") }],
               );
               openSessionContextMenus.add(menu);
               menu.popup({
@@ -804,7 +818,7 @@ type SuccessTranscriptMenu = {
 };
 type SuccessComposerMenu = { readonly action?: "reword" | "reword-with-prompt" };
 type SuccessSessionMenu = {
-  readonly action?: "rename" | "mark-unread" | "resolve" | "unresolve" | "delete";
+  readonly action?: "rename" | "mark-read" | "mark-unread" | "resolve" | "unresolve" | "delete";
 };
 type SuccessProjectMenu = {
   readonly action?:

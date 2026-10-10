@@ -9,4 +9,5 @@ export class CakeChatSummary extends Model {
   messageCount = 0;
   parentSessionId: string | undefined;
   resolved = false;
+  unread = false;
 }

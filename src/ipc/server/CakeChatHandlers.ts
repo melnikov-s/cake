@@ -50,6 +50,7 @@ export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration
           ),
         ),
       ),
+    "cakeChats.setUnread": ({ unread }) => cakeChatMetadata.setUnread(unread),
     "cakeChats.respondControl": ({ controlRequestId, result }) =>
       withConnection((connectionId) =>
         cakeChatOperations.respondControl(connectionId, controlRequestId, result),

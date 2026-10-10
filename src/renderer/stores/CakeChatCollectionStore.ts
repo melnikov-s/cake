@@ -1,4 +1,5 @@
 import { Store, child, createStore } from "r-state-tree";
+import type { SessionActivity } from "../lib/session-activity";
 import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
@@ -26,6 +27,7 @@ export interface CakeChatCollectionStoreProps {
   defaultConfiguration?(): ChatConfiguration | undefined;
   openModelPresetSettings?(): void;
   settings?(): AppearanceSettingsStore | undefined;
+  isSelected(): boolean;
 }
 
 /** Coordinates Cake Chat catalog initialization, focused children, and split-layout integration. */
@@ -37,6 +39,10 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   private resolveInitialization: (() => void) | undefined;
   private initializing = false;
   private selectionRevision = 0;
+  /** Same window-local completion acknowledgement as Project Sessions, not transcript storage. */
+  private readSettledTurnRevision = 0;
+  /** Read/reminder writes are serialized; authoritative catalog updates supply their projection. */
+  private unreadUpdates: Promise<void> = Promise.resolve();
 
   @child
   get operations(): SessionOperationCoordinatorStore {
@@ -101,6 +107,66 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     return this.sessionId ? this.registry.find(this.sessionId) : undefined;
   }
 
+  get activity(): SessionActivity | undefined {
+    const model = this.props.sessionModel(CAKE_CHAT_SESSION_ID);
+    if (model.streaming || model.activeTurnIds.length > 0) return "running";
+    if (!this.props.isSelected() && model.settledTurnRevision > this.readSettledTurnRevision)
+      return model.settledTurns.at(-1)?.outcome === "failed" ? "error" : "unread";
+    return this.summaries.some((session) => session.unread) ? "unread" : undefined;
+  }
+
+  private markRead() {
+    this.readSettledTurnRevision =
+      this.props.sessionModel(CAKE_CHAT_SESSION_ID).settledTurnRevision;
+    if (this.summaries.some((session) => session.unread)) void this.setUnread(false);
+  }
+
+  setUnread(unread: boolean) {
+    if (
+      unread &&
+      (this.activity === "running" || this.pendingSessions.isPending(CAKE_CHAT_SESSION_ID))
+    )
+      return Promise.resolve();
+    if (!unread)
+      this.readSettledTurnRevision =
+        this.props.sessionModel(CAKE_CHAT_SESSION_ID).settledTurnRevision;
+    this.unreadUpdates = this.unreadUpdates.then(async () => {
+      if (this.signal.aborted) return;
+      try {
+        await this.client.cakeChats.setUnread(unread, { signal: this.signal });
+      } catch (error) {
+        if (!this.signal.aborted) this.reportError(error, "Cake Chat could not update read status");
+      }
+    });
+    return this.unreadUpdates;
+  }
+
+  async showContextMenu(x: number, y: number) {
+    const activity = this.activity;
+    try {
+      const action = await this.client.electron.showSessionContextMenu(
+        {
+          sessionId: CAKE_CHAT_SESSION_ID,
+          x,
+          y,
+          resolved: false,
+          draft: false,
+          permanent: true,
+          unread:
+            activity === "running" || this.pendingSessions.isPending(CAKE_CHAT_SESSION_ID)
+              ? undefined
+              : activity === "unread" || activity === "error",
+        },
+        { signal: this.signal },
+      );
+      if (this.signal.aborted) return;
+      if (action?.action === "mark-unread") await this.setUnread(true);
+      else if (action?.action === "mark-read") await this.setUnread(false);
+    } catch (error) {
+      if (!this.signal.aborted) this.reportError(error, "Cake Chat could not open its actions");
+    }
+  }
+
   /** Explicit application startup. Repeated callers share one catalog-synchronized promise. */
   initialize() {
     if (!this.initialization)
@@ -150,6 +216,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     if (!sessionId) return;
     this.registry.load(sessionId);
     this.selectSession(sessionId);
+    if (this.props.isSelected()) this.markRead();
     const revision = this.selectionRevision;
     try {
       await this.client.cakeChats.open(this.registry.target(sessionId), { signal: this.signal });
@@ -161,6 +228,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   async openSession(sessionId: string) {
     if (!this.hydrated) await this.initialize();
     sessionId = CAKE_CHAT_SESSION_ID;
+    this.markRead();
     if (this.pendingSessions.isPending(sessionId) || sessionId === this.sessionId) {
       this.selectSession(sessionId);
       return;
@@ -171,6 +239,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   async activate(prompt?: string) {
     await this.initialize();
     if (this.signal.aborted) return;
+    this.markRead();
     const pendingSessionId = this.pendingSessions.firstUnstartedSessionId();
     const pending = pendingSessionId ? this.registry.find(pendingSessionId) : undefined;
     const session = this.activeSession ?? pending ?? this.prepareNewSession();
@@ -234,6 +303,15 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
 
   constructor(props: CakeChatCollectionStore["props"]) {
     super(props);
+    this.reaction(
+      () => this.props.isSelected(),
+      (selected) => {
+        if (selected) this.markRead();
+        else
+          this.readSettledTurnRevision =
+            this.props.sessionModel(CAKE_CHAT_SESSION_ID).settledTurnRevision;
+      },
+    );
     this.effect(() => {
       if (this.props.catalog.loaded) {
         this.reconcileAuthoritativeSessions();

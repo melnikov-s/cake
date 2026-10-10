@@ -6,6 +6,8 @@ import type { CakeChatLocation } from "./cakeChatLocations";
 import type { CakeChatCatalogUpdate } from "../../contracts/application/catalog-data";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { toJsonValue } from "../../utils/to-json-value";
+import { ApplicationState } from "../../services/storage/ApplicationState";
+import { setSessionUnread } from "../application/application";
 import {
   CakeChatError,
   type CakeChatCatalogQuery,
@@ -17,13 +19,14 @@ const errorValue = (operation: string, error: unknown) =>
   new CakeChatError({ operation, message: error instanceof Error ? error.message : String(error) });
 export const asError = (operation: string) =>
   Effect.mapError((error: PiSessionError | unknown) => errorValue(operation, error));
-const summary = (item: PiSessionSummary): CakeChatSummary => ({
+const summary = (item: PiSessionSummary, unread: boolean): CakeChatSummary => ({
   sessionId: item.id,
   title: "Cake Chat",
   createdAt: item.created,
   modifiedAt: item.modified,
   messageCount: item.messageCount,
   resolved: false,
+  unread,
 });
 const queryFor = (location: CakeChatLocation) => ({
   workingDirectory: location.workingDirectory,
@@ -47,6 +50,12 @@ export const publishCatalogChange = Effect.fn("CakeChats.publishCatalogChange")(
   yield* catalogs.publish({ _tag: "CakeChatSessionChanged", sessionId, resolved });
 });
 
+export const setUnread = Effect.fn("CakeChats.setUnread")(function* (unread: boolean) {
+  // The permanent coordinator is not registered in any Project catalog.
+  yield* setSessionUnread(CAKE_CHAT_SESSION_ID, unread).pipe(asError("setUnread"));
+  yield* publishCatalogChange(CAKE_CHAT_SESSION_ID, false);
+});
+
 /** One permanent coordinator. There is no global resolved-session lane or JSONL archive. */
 export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
   query: CakeChatCatalogQuery,
@@ -54,12 +63,15 @@ export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
 ) {
   const catalogs = yield* SessionCatalogChanges;
   const sessions = yield* CakeSessionRuntimes;
+  const application = yield* ApplicationState;
+  const toSummary = (item: PiSessionSummary) =>
+    summary(item, application.snapshot().unreadSessionIds.includes(item.id));
   const initial = Stream.fromEffect(
     (query.resolved
       ? Effect.succeed([])
       : sessions.catalog(queryFor(location)).pipe(
           Stream.filter((item) => item.id === CAKE_CHAT_SESSION_ID),
-          Stream.map(summary),
+          Stream.map(toSummary),
           Stream.runCollect,
         )
     ).pipe(
@@ -91,7 +103,7 @@ export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
           .catalogEntry(queryFor(location), CAKE_CHAT_SESSION_ID)
           .pipe(
             Effect.map((entry) =>
-              entry ? { _tag: "Upserted" as const, session: summary(entry) } : undefined,
+              entry ? { _tag: "Upserted" as const, session: toSummary(entry) } : undefined,
             ),
           );
       },

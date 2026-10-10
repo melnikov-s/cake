@@ -47,6 +47,8 @@ export const cakeIpcAdapters = {
       rpc.resolve({ id }),
   },
   cakeChats: {
+    setUnread: (rpc: Generated["cakeChats"], unread: Payload<"cakeChats.setUnread">["unread"]) =>
+      rpc.setUnread({ unread }),
     inspect: (rpc: Generated["cakeChats"], sessionId: Payload<"cakeChats.inspect">["sessionId"]) =>
       rpc.inspect({ sessionId }),
     respondControl: (
