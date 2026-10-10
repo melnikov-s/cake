@@ -311,9 +311,25 @@ describe("WorktreePill", () => {
 
     act(() => warning!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
     act(() => vi.advanceTimersByTime(120));
+    expect(document.querySelectorAll('[role="tooltip"]')).toHaveLength(1);
     expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
       "The merge target has uncommitted changes.",
     );
+
+    const branch = container.querySelector<HTMLElement>('[data-testid="worktree-branch"]')!;
+    act(() => branch.focus());
+    act(() => vi.advanceTimersByTime(120));
+    expect(document.querySelectorAll('[role="tooltip"]')).toHaveLength(1);
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("session");
+
+    act(() => warning!.focus());
+    act(() => vi.advanceTimersByTime(120));
+    expect(document.querySelectorAll('[role="tooltip"]')).toHaveLength(1);
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+      "The merge target has uncommitted changes.",
+    );
+    act(() => warning!.blur());
+    expect(document.querySelectorAll('[role="tooltip"]')).toHaveLength(0);
   });
 
   it("centers target-change confirmation within its agent pane", () => {

@@ -67,8 +67,8 @@ export const WorktreePill = observer(function WorktreePill({
   const [confirmation, setConfirmation] = useState<ConfirmationKind>();
   const pillRef = useRef<HTMLDivElement>(null);
   const transcriptControls = useContext(ChatTranscriptControlsContext);
-  const { anchor: warningAnchor, hide: hideWarning, show: showWarning } = useTooltip();
-  const { anchor: branchAnchor, hide: hideBranch, show: showBranch } = useTooltip();
+  const branchRef = useRef<HTMLSpanElement>(null);
+  const { anchor: tooltipAnchor, hide: hideTooltip, show: showTooltip } = useTooltip();
   const choice = creation.choice(sessionId);
   // Session-start choices are the only surface that needs the full worktree candidate list.
   const candidates = configurationMode ? creation.candidates(projectPath) : [];
@@ -284,6 +284,7 @@ export const WorktreePill = observer(function WorktreePill({
     : status && !status.targetOnBranch
       ? `Switch the merge target to ${status.targetBranch} first.`
       : undefined;
+  const tooltipLabel = tooltipAnchor === branchRef.current ? branch : targetWarning;
 
   return (
     <>
@@ -297,17 +298,20 @@ export const WorktreePill = observer(function WorktreePill({
           className="flex min-w-0 flex-nowrap items-center gap-2 text-xs"
           data-testid="worktree-pill-toolbar"
         >
-          <span
-            className="flex h-7.5 min-w-0 flex-1 items-center gap-1.5 px-2 text-xs font-normal text-foreground"
-            data-testid="worktree-branch"
-            tabIndex={0}
-            onMouseEnter={(event) => showBranch(event.currentTarget)}
-            onMouseLeave={hideBranch}
-            onFocus={(event) => showBranch(event.currentTarget)}
-            onBlur={hideBranch}
-          >
-            <WorktreeStatusIcon state={record.state} className="shrink-0" />
-            <span className="min-w-0 truncate">{branch}</span>
+          <span className="flex h-7.5 min-w-0 flex-1 items-center gap-1.5 px-2 text-xs font-normal text-foreground">
+            <span
+              ref={branchRef}
+              className="flex h-full min-w-0 items-center gap-1.5"
+              data-testid="worktree-branch"
+              tabIndex={0}
+              onMouseEnter={(event) => showTooltip(event.currentTarget)}
+              onMouseLeave={hideTooltip}
+              onFocus={(event) => showTooltip(event.currentTarget)}
+              onBlur={hideTooltip}
+            >
+              <WorktreeStatusIcon state={record.state} className="shrink-0" />
+              <span className="min-w-0 truncate">{branch}</span>
+            </span>
             {targetWarning && (
               <span
                 className="shrink-0 cursor-default text-amber-600 dark:text-amber-400"
@@ -315,21 +319,22 @@ export const WorktreePill = observer(function WorktreePill({
                 role="img"
                 aria-label={targetWarning}
                 tabIndex={0}
-                onMouseEnter={(event) => showWarning(event.currentTarget)}
-                onMouseLeave={hideWarning}
-                onFocus={(event) => showWarning(event.currentTarget)}
-                onBlur={hideWarning}
+                onMouseEnter={(event) => showTooltip(event.currentTarget)}
+                onMouseLeave={hideTooltip}
+                onFocus={(event) => showTooltip(event.currentTarget)}
+                onBlur={hideTooltip}
               >
                 <CautionIcon />
               </span>
             )}
-            {targetWarning && warningAnchor && (
-              <TooltipBubble label={targetWarning} anchor={warningAnchor} />
-            )}
-            {branchAnchor && (
-              <TooltipBubble label={branch} anchor={branchAnchor} placement="above" />
-            )}
           </span>
+          {tooltipAnchor && tooltipLabel && (
+            <TooltipBubble
+              label={tooltipLabel}
+              anchor={tooltipAnchor}
+              placement={tooltipAnchor === branchRef.current ? "above" : "below"}
+            />
+          )}
           <div className="ml-auto flex min-w-0 flex-nowrap items-center justify-end gap-1">
             {status && (!landed || hasNewCommitsSinceLanding) && status.behindCount > 0 && (
               <WorktreePillAction

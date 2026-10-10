@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -188,6 +188,157 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
     await expect
       .poll(() => merge.evaluate((element) => element.clientWidth))
       .toBeLessThanOrEqual(32);
+  } finally {
+    await application.close();
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("shows only the active branch or target-warning tooltip across hover and focus transitions", async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-worktree-tooltip-"));
+  const userData = join(temporaryRoot, "user-data");
+  const project = join(temporaryRoot, "project");
+  const worktreePath = join(temporaryRoot, "worktree");
+  const cakeHome = join(temporaryRoot, "cake-home");
+  const sessionId = "tooltip-session";
+  const branchName = "verify-service-dependencies-4a5534";
+  const warningText = "The merge target has uncommitted changes.";
+  await Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]);
+  const git = (args: string[], cwd = project) => execFileAsync("git", args, { cwd });
+  await git(["init", "-b", "main"]);
+  await git(["config", "user.email", "cake@example.test"]);
+  await git(["config", "user.name", "Cake Test"]);
+  await writeFile(join(project, "README.md"), "fixture\n");
+  await git(["add", "-A"]);
+  await git(["commit", "-m", "fixture"]);
+  await git(["worktree", "add", "-b", `agent/${branchName}`, worktreePath]);
+  await writeFile(join(project, "target.ts"), "export const target = true;\n");
+  await git(["add", "-A"]);
+  await git(["commit", "-m", "advance target"]);
+  // Both checkouts are dirty, just as in the report: warning and disabled Rebase are legitimate.
+  await writeFile(join(project, "README.md"), "uncommitted target edits\n");
+  await writeFile(join(worktreePath, "change.ts"), "export const change = true;\n");
+  const initialTargetStatus = (await git(["status", "--porcelain"])).stdout;
+  const sessionDirectory = cakeWorkspaceSessionDirectory(
+    worktreePath,
+    join(cakeHome, "pi", "sessions"),
+  );
+  await mkdir(sessionDirectory, { recursive: true });
+  await writeFile(
+    join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+    `${sessionEntries(sessionId, worktreePath)
+      .map((entry) => JSON.stringify(entry))
+      .join("\n")}\n`,
+  );
+  await mkdir(join(cakeHome, "state"), { recursive: true });
+  await writeFile(
+    join(cakeHome, "state", "worktrees.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      records: [
+        {
+          projectPath: project,
+          worktreePath,
+          branch: `agent/${branchName}`,
+          baseBranch: "main",
+          state: "active",
+          createdAt: new Date(0).toISOString(),
+        },
+      ],
+    }),
+  );
+  await writeFile(
+    join(userData, "window-state.json"),
+    JSON.stringify({
+      projectPath: worktreePath,
+      selectedSessionId: sessionId,
+      activeConversation: { kind: "project-session", workspacePath: worktreePath, sessionId },
+      recentProjectPaths: [project],
+      draftsBySession: {},
+      draft: "",
+      theme: "system",
+    }),
+  );
+  await writeFile(
+    join(cakeHome, "state", "application.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      projects: [
+        {
+          path: project,
+          name: "project",
+          addedAt: new Date(0).toISOString(),
+          lastOpenedAt: new Date(0).toISOString(),
+        },
+      ],
+      trustedProjectPaths: [],
+    }),
+  );
+
+  const application = await electron.launch({
+    args: [repositoryRoot],
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      CAKE_ELECTRON_SMOKE: "1",
+      CAKE_ELECTRON_USER_DATA: userData,
+      CAKE_HOME: cakeHome,
+    },
+  });
+
+  try {
+    const page = await application.firstWindow();
+    const branch = page.getByTestId("worktree-branch");
+    const branchLabel = branch.getByText(branchName, { exact: true });
+    const warning = page.getByTestId("worktree-target-warning");
+    const tooltips = page.getByRole("tooltip");
+    await expect(warning).toBeVisible({ timeout: 20_000 });
+    await expect(warning).toHaveAccessibleName(warningText);
+    await expect(page.getByRole("button", { name: "Rebase", exact: true })).toBeDisabled();
+
+    // Enter the warning directly: entering a nested trigger must not also show the branch tooltip.
+    await warning.hover();
+    await expect(page.getByRole("tooltip", { name: warningText })).toBeVisible();
+    await expect(tooltips).toHaveCount(1);
+
+    await branchLabel.hover();
+    await expect(tooltips).toHaveText(branchName);
+    await warning.hover();
+    await expect(tooltips).toHaveText(warningText);
+    await branchLabel.hover();
+    await expect(tooltips).toHaveText(branchName);
+    await page.getByLabel("Message", { exact: true }).hover();
+    await expect(tooltips).toHaveCount(0);
+
+    // Keyboard focus must move between the two triggers without bubbling to the branch.
+    await branch.focus();
+    await expect(tooltips).toHaveText(branchName);
+    await branch.press("Tab");
+    await expect(warning).toBeFocused();
+    await expect(tooltips).toHaveText(warningText);
+    await warning.press("Shift+Tab");
+    await expect(branch).toBeFocused();
+    await expect(tooltips).toHaveText(branchName);
+
+    // Mixed input and a quick transition before the hover delay must still yield one tooltip.
+    await warning.hover();
+    await expect(tooltips).toHaveText(warningText);
+    await page.getByLabel("Message", { exact: true }).focus();
+    await page.getByLabel("Message", { exact: true }).hover();
+    await expect(tooltips).toHaveCount(0);
+    await branchLabel.hover();
+    await warning.hover();
+    await expect(tooltips).toHaveText(warningText);
+    await page.getByLabel("Message", { exact: true }).hover();
+    await expect(tooltips).toHaveCount(0);
+
+    // Tooltip changes do not alter the dirty-target safeguard or the target's files.
+    await page.getByRole("button", { name: "Commit & merge", exact: true }).click();
+    const confirmation = page.getByRole("alertdialog");
+    await expect(confirmation).toContainText("Merge with uncommitted target changes?");
+    await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+    expect((await git(["status", "--porcelain"])).stdout).toBe(initialTargetStatus);
+    expect(await readFile(join(project, "README.md"), "utf8")).toBe("uncommitted target edits\n");
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });
