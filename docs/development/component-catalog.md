@@ -107,9 +107,9 @@ roughly 20Hz and resets it on finishing, blur, mute or capture replacement.
 ## Voice conversation controls
 
 `VoiceConversationControls` is a shared stateless toolbar pattern composed from
-`IconButton` and `LoadingSpinner`. Supply preparing/active, input-only mute, disabled and
-enter/mute/exit intents. The entry action uses the shared `AudioLinesIcon` waveform
-to distinguish voice conversation from dictation. Once active, an accent-tinted
+`Button`, `IconButton` and `LoadingSpinner`. Supply preparing/active, input-only mute, disabled and
+enter/mute/exit intents. The entry action is an outlined, rounded “Voice” button with
+the shared `AudioLinesIcon` waveform, distinguishing voice conversation from dictation. Once active, an accent-tinted
 `EarIcon` on a transparent circular target combines listening status and input mute; clicking it switches to an
 unhighlighted `EarOffIcon` with a diagonal slash. Tooltips and accessible names
 explain the mute/unmute action, and `aria-pressed` reflects input being enabled.

@@ -68,6 +68,7 @@ test("dictation leads the toolbar and conversation mode sits beside Send at ever
       await input.fill("");
       await expect(mute).toBeVisible();
       await expect(enter).toBeVisible();
+      await expect(enter).toHaveText("Voice");
       await expect.poll(async () => (await layout()).toolbarAligned).toBe(true);
       const empty = await layout();
       expect(empty).toMatchObject({

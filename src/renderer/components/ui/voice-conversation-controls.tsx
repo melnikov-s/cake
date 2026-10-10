@@ -1,5 +1,7 @@
 import { LoadingSpinner } from "./loading-state";
 import { IconButton } from "./icon-button";
+import { Button } from "./button";
+import { TooltipBubble, useTooltip } from "./tooltip";
 import { AudioLinesIcon, CountdownRingIcon, EarIcon, EarOffIcon, StopIcon } from "./icons";
 
 export interface VoiceConversationControlsProps {
@@ -15,16 +17,31 @@ export interface VoiceConversationControlsProps {
 }
 
 export function VoiceConversationControls(props: VoiceConversationControlsProps) {
+  const { anchor, show, hide } = useTooltip();
   return (
     <div className="flex shrink-0 items-center gap-1.5" aria-label="Conversation mode">
       {!props.active && !props.preparing ? (
-        <IconButton
-          tooltip="Enter conversation mode"
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 rounded-full bg-muted/50 px-3 text-foreground [&_svg]:size-4"
+          aria-label="Enter conversation mode"
           disabled={props.disabled}
-          onClick={props.onEnter}
+          onMouseEnter={(event) => show(event.currentTarget)}
+          onMouseLeave={hide}
+          onFocus={(event) => {
+            if (event.currentTarget.matches(":focus-visible")) show(event.currentTarget);
+          }}
+          onBlur={hide}
+          onClick={() => {
+            hide();
+            props.onEnter();
+          }}
         >
           <AudioLinesIcon />
-        </IconButton>
+          Voice
+          {anchor && <TooltipBubble label="Enter conversation mode" anchor={anchor} />}
+        </Button>
       ) : (
         <>
           {props.preparing ? (
