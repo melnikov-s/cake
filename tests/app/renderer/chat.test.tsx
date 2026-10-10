@@ -533,6 +533,13 @@ describe("Chat", () => {
     expect(document.body.querySelector<HTMLElement>('[role="tooltip"]')?.textContent).toBe(
       "20k / 270k tokens · Cache unknown",
     );
+
+    act(() => root.render(<Chat store={store!} showContextUsage={false} />));
+    expect(container.querySelector("[data-context-state]")).toBeNull();
+    expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
+
+    act(() => root.render(<Chat store={store!} />));
+    expect(container.querySelector("[data-context-state]")).not.toBeNull();
   });
 
   it.each([

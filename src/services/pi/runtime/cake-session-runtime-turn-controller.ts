@@ -82,7 +82,8 @@ export interface CakeSessionRuntimeTurnController {
 export function createCakeSessionRuntimeTurnController(input: {
   readonly session: AgentSession;
   readonly isDisposed: () => boolean;
-  readonly beforeIdleTurn: () => Promise<void>;
+  readonly allowUserBash: boolean;
+  readonly beforeIdleTurn: (signal: AbortSignal) => Promise<void>;
   readonly withResponseRetries: <T>(operation: () => Promise<T>) => Promise<T>;
   readonly cancelResponseRetries: () => void;
   readonly recovery: TurnRecoveryHooks;
@@ -134,6 +135,7 @@ export function createCakeSessionRuntimeTurnController(input: {
   let rebuildingQueue = false;
   let handingOff = false;
   let abortGeneration = 0;
+  let preparation = new AbortController();
   let queueGeneration = 0;
   let steeringWaiters: Array<() => void> = [];
 
@@ -160,7 +162,7 @@ export function createCakeSessionRuntimeTurnController(input: {
   const runCompact = async (instructions?: string, generation?: number) => {
     assertActive();
     if (!session.isStreaming) {
-      await input.beforeIdleTurn();
+      await input.beforeIdleTurn(preparation.signal);
       if (generation !== undefined) assertNotAborted(generation);
     }
     await session.compact(instructions || undefined);
@@ -337,7 +339,7 @@ export function createCakeSessionRuntimeTurnController(input: {
     }
     const shellPrefix = text.startsWith("!!") ? "!!" : text.startsWith("!") ? "!" : undefined;
     const shellCommand = shellPrefix ? text.slice(shellPrefix.length).trim() : "";
-    if (shellPrefix && attachments.length === 0) {
+    if (input.allowUserBash && shellPrefix && attachments.length === 0) {
       if (!shellCommand) return;
       const partId = `bash-${randomUUID()}`;
       const excludeFromContext = shellPrefix === "!!";
@@ -366,7 +368,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       return;
     }
     if (!session.isStreaming) {
-      await input.beforeIdleTurn();
+      await input.beforeIdleTurn(preparation.signal);
       assertNotAborted(generation);
     }
     const content = contentForPresentation(
@@ -652,6 +654,8 @@ export function createCakeSessionRuntimeTurnController(input: {
 
   const stopActiveTurn = async () => {
     abortGeneration += 1;
+    preparation.abort();
+    preparation = new AbortController();
     queueGeneration += 1;
     const abortedTurnIds = turnCompletions.cancelExecuting();
     input.recovery.onAbort();
@@ -883,7 +887,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       await replacePendingQueues(queues);
       input.syncQueuedParts();
       await input.emitSnapshot();
-      await input.beforeIdleTurn();
+      await input.beforeIdleTurn(preparation.signal);
       await input.deliverTrackedUserMessage(
         selected.content,
         selected.renderUserMessageAsMarkdown,
@@ -977,6 +981,7 @@ export function createCakeSessionRuntimeTurnController(input: {
     },
     dispose() {
       abortGeneration += 1;
+      preparation.abort();
       queueGeneration += 1;
       turnCompletions.cancel();
       commandCompletions.cancel();

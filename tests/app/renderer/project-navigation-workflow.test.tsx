@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/ipc/cake-chat-data";
 import { defaultApplicationState } from "../../../src/services/storage/application-data";
 import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -107,14 +108,18 @@ function renderNavigation(
         applySnapshot(fixture.models.cakeChatCatalog, {
           loaded: true,
           sessions: [
-            sessionSummary({ sessionId: "cake", projectPath: "/", title: "Working Cake Chat" }),
+            sessionSummary({
+              sessionId: CAKE_CHAT_SESSION_ID,
+              projectPath: "/",
+              title: "Cake Chat",
+            }),
           ],
         });
-        fixture.root.cakeChatCollectionStore.registry.load("cake");
-        applyConversationUpdate(fixture.models.cakeChatConversation("cake"), {
+        fixture.root.cakeChatCollectionStore.registry.load(CAKE_CHAT_SESSION_ID);
+        applyConversationUpdate(fixture.models.cakeChatConversation(CAKE_CHAT_SESSION_ID), {
           _tag: "Snapshot",
           revision: ++revision,
-          snapshot: { ...snapshot("cake"), streaming },
+          snapshot: { ...snapshot(CAKE_CHAT_SESSION_ID), streaming },
         });
       });
     },
@@ -311,7 +316,7 @@ describe("Project navigation workflow", () => {
     await fixture.publishActivity([]);
     await fixture.publishCakeChatActivity(false);
     await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
-    await fixture.user.click(screen.getByRole("button", { name: /^Working Cake Chat / }));
+    await fixture.user.click(screen.getByRole("button", { name: /^Cake Chat$/ }));
     await fixture.user.click(screen.getByRole("button", { name: /^Second alpha session / }));
     await fixture.user.click(screen.getByRole("button", { name: "Focus on alpha" }));
     const pane = () =>
@@ -364,7 +369,7 @@ describe("Project navigation workflow", () => {
     ).toBe("child");
   });
 
-  it("includes working Cake Chats, but not idle Cake Chats", async () => {
+  it("includes Cake Chat in active-session cycling while it is working", async () => {
     using fixture = renderNavigation();
     await fixture.publishActivity(["alpha", "beta"]);
     await fixture.publishCakeChatActivity(true);

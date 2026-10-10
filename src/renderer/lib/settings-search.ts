@@ -166,6 +166,28 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     label: "Application",
     items: [
       {
+        page: "cake-chat",
+        label: "Cake Chat",
+        description: "Persistent assistant and memory",
+        settings: [
+          {
+            label: "History-view budget",
+            targetId: "cake-chat-settings-title",
+            keywords: "memory context tokens cost",
+          },
+          {
+            label: "Summarization model",
+            targetId: "cake-chat-settings-title",
+            keywords: "utility background",
+          },
+          {
+            label: "Cake Chat instructions",
+            targetId: "setting-cake-chat-instructions",
+            keywords: "agent worktree delegation",
+          },
+        ],
+      },
+      {
         page: "voice",
         label: "Voice & Dictation",
         description: "Speech input, cleanup, and output",

@@ -6,6 +6,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
+import type { CakeChatMemoryOptions } from "../cake-chat-memory-options";
 import { Option, Schema } from "effect";
 import {
   registerAgentDirectoryExtensionProviders,
@@ -159,6 +160,8 @@ export interface CakeSessionRuntimeOptions {
   sessionId?: string;
   sessionFile?: string;
   additionalSystemPrompt?: string;
+  cakeChatMemory?: CakeChatMemoryOptions;
+  allowedCakeOperations?: readonly string[];
   /** Replaces Pi's normal prompt and disables context-file loading for an isolated runtime. */
   isolatedSystemPrompt?: string;
   /** Explicit SDK tools available only to this runtime. */
@@ -340,6 +343,7 @@ export interface CakeSessionRuntime {
   getReviewParentContext?(): ReviewParentContext;
   recordReviewRun(run: ReviewRunEntry): void;
   snapshot(): Promise<ConversationSnapshot>;
+  history?(cursor: string): Promise<{ parts: UiPart[]; cursor?: string }>;
   notifySubagentCompletion?(result: JsonValue): Promise<void>;
   prompt(
     text: string,
@@ -406,6 +410,8 @@ export interface CakeSessionRuntime {
 export async function createCakeSessionRuntime(
   options: CakeSessionRuntimeOptions,
 ): Promise<CakeSessionRuntime> {
+  if (options.globalControl)
+    throw new Error("Cake Chat is owned by the Durable coordinator service");
   const agentDir = options.agentDir;
   // Check the backend root before acquiring any Pi resources.
   const mcpExtensions = createCakeMcpExtensions({ runtime: options });
@@ -430,9 +436,7 @@ export async function createCakeSessionRuntime(
       ...mcpExtensions,
     ],
   });
-  const sessionDir = options.globalControl
-    ? resolve(options.sessionDir)
-    : cakeWorkspaceSessionDirectory(options.cwd, options.sessionDir);
+  const sessionDir = cakeWorkspaceSessionDirectory(options.cwd, options.sessionDir);
   const allowedSessionRoot = sessionDir;
   let directSession: SessionManager | undefined;
   if (options.sessionFile) {
@@ -441,12 +445,7 @@ export async function createCakeSessionRuntime(
   }
   const requestedSessionFile =
     options.sessionId && !options.newSession
-      ? await findSessionFile(
-          options.cwd,
-          options.sessionId,
-          options.sessionDir,
-          Boolean(options.globalControl),
-        )
+      ? await findSessionFile(options.cwd, options.sessionId, options.sessionDir, false)
       : undefined;
   if (options.sessionId && !options.newSession && !requestedSessionFile && !directSession)
     throw new Error("That session is no longer available");
@@ -462,14 +461,11 @@ export async function createCakeSessionRuntime(
         : SessionManager.continueRecent(options.cwd, sessionDir)));
   // Extension providers must exist before createAgentSession resolves the
   // initial model, or a default or resumed model on one of them falls back.
-  // Auxiliary sessions and Cake Chat load no extensions of their own (their
-  // resource loaders run with `noExtensions`), so they take the agent
-  // directory's providers directly: a model that works in a Project Session
-  // must work in its side chats and in Cake Chat.
-  const providerErrors =
-    options.auxiliary || options.globalControl
-      ? await registerAgentDirectoryExtensionProviders(agentDir, modelRuntime)
-      : await registerPendingExtensionProviders(capabilities.resourceLoader, modelRuntime);
+  // Auxiliary sessions take the agent directory's providers directly because
+  // their isolated resource loaders run with `noExtensions`.
+  const providerErrors = options.auxiliary
+    ? await registerAgentDirectoryExtensionProviders(agentDir, modelRuntime)
+    : await registerPendingExtensionProviders(capabilities.resourceLoader, modelRuntime);
   const agentSessionOptions = {
     cwd: options.cwd,
     agentDir,
@@ -508,7 +504,7 @@ export async function createCakeSessionRuntime(
     resourceLoader: capabilities.resourceLoader,
     settingsManager,
     eventBus: capabilities.eventBus,
-    loadCompanions: !options.globalControl && !options.auxiliary,
+    loadCompanions: !options.auxiliary,
     workingDirectory: options.cwd,
     agentDirectory: agentDir,
     session,
@@ -549,12 +545,7 @@ export async function createCakeSessionRuntime(
     const [sessionFile, models] = await Promise.all([
       options.auxiliary
         ? Promise.resolve(undefined)
-        : findSessionFile(
-            options.cwd,
-            cakeSessionId,
-            options.sessionDir,
-            Boolean(options.globalControl),
-          ),
+        : findSessionFile(options.cwd, cakeSessionId, options.sessionDir, false),
       options.auxiliary ? Promise.resolve([]) : configuration.modelOptions(),
     ]);
 
@@ -602,6 +593,7 @@ export async function createCakeSessionRuntime(
   const turnController = createCakeSessionRuntimeTurnController({
     session,
     isDisposed: () => disposed,
+    allowUserBash: true,
     beforeIdleTurn: async () => {
       await resources.drainReloads();
     },
@@ -888,17 +880,13 @@ export async function createCakeSessionRuntime(
     snapshot: () => makeSnapshot(),
     async notifySubagentCompletion(result) {
       if (disposed) throw new Error("The Cake runtime has been disposed");
-      await session.sendCustomMessage(
-        {
-          customType: "cake.subagent-completion",
-          content: subagentCompletionMessage(result),
-          display: false,
-          // Keep the complete result for durable work-log reconstruction. The model receives only
-          // the compact final report above, so verbose tool activity cannot truncate the answer.
-          details: result,
-        },
-        { triggerTurn: true, deliverAs: "followUp" },
-      );
+      const message = {
+        customType: "cake.subagent-completion",
+        content: subagentCompletionMessage(result),
+        display: false,
+        details: result,
+      };
+      await session.sendCustomMessage(message, { triggerTurn: true, deliverAs: "followUp" });
     },
     compact: turnController.compact,
     async queueCommand(command, onSettled) {

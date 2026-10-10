@@ -1,0 +1,168 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import {
+  createRegistry,
+  defineExtension,
+  defineTool,
+  MemoryStorage,
+} from "@earendil-works/pi-durable";
+import { Type } from "@earendil-works/pi-durable-ai";
+import { afterEach, expect, it, vi } from "vitest";
+import { openDurableChatEngine } from "../../../../src/services/pi-durable/durable-chat-engine";
+import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
+import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
+
+const cleanup: Array<() => Promise<void>> = [];
+afterEach(async () => {
+  for (const close of cleanup.splice(0).reverse()) await close();
+});
+async function fixture(answer?: Parameters<typeof durableModels>[0]) {
+  const f = durableModels(answer);
+  const summarize = vi.fn(async () => "talk: exact details remain available through zoom");
+  let budget = 4_000;
+  const registry = createRegistry();
+  const zoom = defineTool({
+    name: "zoom",
+    description: "Retrieve original detail",
+    parameters: Type.Object({ id: Type.Integer(), n: Type.Integer() }),
+    replay: "safe",
+    async execute(input, _api, context) {
+      const found = await engine.memory.zoom(
+        input.id,
+        input.n,
+        context.abortSignal ?? new AbortController().signal,
+      );
+      return { content: [{ type: "text", text: found.text }] };
+    },
+  });
+  registry.install(defineExtension({ name: "memory", tools: [zoom] }));
+  const engine = await openDurableChatEngine({
+    storage: new MemoryStorage(),
+    models: f.models,
+    registry,
+    agent: {
+      model: { provider: "fixture", modelId: "fixture" },
+      instructions: "<cake-chat-instructions>Always use worktrees</cake-chat-instructions>",
+      tools: [zoom],
+    },
+    memory: { budget: () => budget, summarize },
+    settings: { contextRetentionMs: 0, compaction: { enabled: false } },
+    onChanged: vi.fn(),
+    onReport: vi.fn(),
+  });
+  cleanup.push(() => engine.close());
+  const submit = (text: string, requestId: string) =>
+    engine.root.submit({ type: "input", content: text, requestId }, BACKGROUND_CONTEXT);
+  const send = async (text: string, requestId: string) => {
+    const input = await submit(text, requestId);
+    return input.wait(BACKGROUND_CONTEXT);
+  };
+  return {
+    ...f,
+    engine,
+    summarize,
+    submit,
+    send,
+    view: () => engine.index(new AbortController().signal),
+    zoom: (id: number, n: number) => engine.memory.zoom(id, n, new AbortController().signal),
+    budget: (value: number) => {
+      budget = value;
+    },
+  };
+}
+
+it("refreshes independent runs, retains zoom originals through tool rounds, and keeps instructions outside memory", async () => {
+  const original = `ORIGINAL_DETAIL ${"verbatim words ".repeat(100)}`;
+  const f = await fixture((_request, index) =>
+    index === 1
+      ? durableAnswer(original)
+      : index === 2
+        ? durableAnswer("", [
+            { type: "toolCall", id: "zoom-1", name: "zoom", arguments: { id: 1, n: 1 } },
+          ])
+        : durableAnswer("Finished"),
+  );
+  const result = await f.send("Remember this", "first");
+  expect(result.status, JSON.stringify(result)).toBe("done");
+  await f.engine.root.configure(
+    { instructions: "<cake-chat-instructions>Never use worktrees</cake-chat-instructions>" },
+    BACKGROUND_CONTEXT,
+  );
+  await f.send("What were the exact words?", "second");
+  expect(JSON.stringify(f.requests[1])).toContain("<chat>");
+  expect(JSON.stringify(f.requests[1])).not.toContain(original);
+  expect(JSON.stringify(f.requests[1])).toContain("Never use worktrees");
+  expect(JSON.stringify(f.requests[2])).toContain(original);
+  await f.send("New topic", "third");
+  expect(JSON.stringify(f.requests.at(-1))).not.toContain(original);
+  expect((await f.zoom(1, 1)).text).toContain(original);
+  const page = await readDurableOriginalPage(f.engine.root);
+  expect(JSON.stringify(page.parts)).toContain(original);
+  expect(JSON.stringify(page.parts)).not.toContain("<chat>");
+  expect((await f.view()).text).not.toContain("Never use worktrees");
+});
+
+it("deduplicates committed input without starting another model run", async () => {
+  const f = await fixture();
+  const first = await f.submit("Hello", "unique");
+  await first.wait(BACKGROUND_CONTEXT);
+  const again = await f.submit("Hello", "unique");
+  expect(again.id).toBe(first.id);
+  expect(f.requests).toHaveLength(1);
+  expect((await f.view()).sourceCount).toBe(2);
+});
+
+it("bounds the persisted active head and lower memory views while lazily retaining ancient originals", async () => {
+  const f = await fixture();
+  f.budget(3_072);
+  for (let i = 0; i < 36; i += 1) await f.send(`request-${i}: ${"details ".repeat(12)}`, String(i));
+  const view = await f.view();
+  expect(view.bytes).toBeLessThanOrEqual(3_072);
+  expect(view.sourceCount).toBe(72);
+  expect(view.partCount).toBeLessThan(72);
+  expect((await f.zoom(0, 1)).text).toContain("request-0");
+  f.budget(2_048);
+  expect((await f.view()).bytes).toBeLessThanOrEqual(2_048);
+  expect((await f.zoom(0, 64)).text).toContain("0+32|");
+  expect((await f.zoom(0, 64)).text).toContain("32+32|");
+  const active = await f.engine.root.context(BACKGROUND_CONTEXT);
+  expect(JSON.stringify(active.messages)).not.toContain('"content":"request-0:');
+  expect(Buffer.byteLength(JSON.stringify(active.messages))).toBeLessThan(8_000);
+});
+
+it("pages originals once without resets, clocks or summary nodes", async () => {
+  const f = await fixture();
+  for (let i = 0; i < 45; i += 1) await f.send(`message-${i}`, String(i));
+  await f.view();
+  let cursor: string | undefined;
+  const ids: string[] = [];
+  do {
+    const page = await readDurableOriginalPage(f.engine.root, cursor);
+    ids.push(...page.parts.filter((part) => part.kind === "text").map((part) => part.id));
+    expect(JSON.stringify(page.parts)).not.toContain("<chat>");
+    cursor = page.cursor;
+  } while (cursor !== undefined);
+  expect(ids).toHaveLength(90);
+  expect(new Set(ids).size).toBe(90);
+});
+
+it("admits before failing summarization, parks a bounded head and recovers without losing originals", async () => {
+  const f = await fixture();
+  await f.send("Hello", "first");
+  const original = "USER_DETAIL ".repeat(100);
+  f.summarize.mockRejectedValue(new Error("Summarizer unavailable"));
+  await f.send(original, "long");
+  const accepted = await f.submit("Continue", "accepted-before-summary");
+  const failed = await accepted.wait(BACKGROUND_CONTEXT);
+  expect(failed).toMatchObject({ status: "unanswered", reason: "model_error" });
+  expect(f.requests).toHaveLength(2);
+  expect(JSON.stringify((await f.engine.root.context(BACKGROUND_CONTEXT)).messages)).not.toContain(
+    original,
+  );
+  expect(JSON.stringify((await readDurableOriginalPage(f.engine.root)).parts)).toContain(
+    "Continue",
+  );
+  f.summarize.mockResolvedValue("user: precise original details remain on disk");
+  await f.send("Try again", "retry");
+  expect((await f.view()).sourceCount).toBe(8);
+  expect((await f.zoom(2, 1)).text).toContain(original);
+});

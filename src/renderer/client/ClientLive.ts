@@ -967,6 +967,12 @@ export function makeClient(
           withClient((client) => client.sessionChats.abort(target)),
           options,
         ),
+      history: (input, options) =>
+        run(
+          "sessionChats.history",
+          withClient((client) => client.sessionChats.history(input)),
+          options,
+        ),
       listQueuedMessages: (target, options) =>
         run(
           "sessionChats.listQueuedMessages",
@@ -1101,36 +1107,6 @@ export function makeClient(
               client.cakeChats.start({ ...input, attachments }),
             ),
           ),
-          options,
-        ),
-      rename: (input, options) =>
-        run(
-          "cakeChats.rename",
-          withClient((client) => client.cakeChats.rename(input)),
-          options,
-        ),
-      toolCompact: (input, options) =>
-        run(
-          "cakeChats.toolCompact",
-          withClient((client) => client.cakeChats.toolCompact(input)),
-          options,
-        ),
-      resolve: (target, options) =>
-        run(
-          "cakeChats.resolve",
-          withClient((client) => client.cakeChats.resolve(target)),
-          options,
-        ),
-      restore: (target, options) =>
-        run(
-          "cakeChats.restore",
-          withClient((client) => client.cakeChats.restore(target)),
-          options,
-        ),
-      deleteResolved: (target, options) =>
-        run(
-          "cakeChats.deleteResolved",
-          withClient((client) => client.cakeChats.deleteResolved(target)),
           options,
         ),
       respondControl: (controlRequestId, result, options) =>

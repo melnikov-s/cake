@@ -21,7 +21,7 @@ import type {
   EffectiveArtifactProjection,
 } from "../../services/storage/artifact-lineage";
 import type { ArtifactProjectionMetadata } from "../../services/artifacts/ArtifactProjection";
-import type { ProjectSettings } from "../../services/storage/application-data";
+import type { CakeChatPreferences, ProjectSettings } from "../../services/storage/application-data";
 import type { CakePromptOverrides } from "../../services/storage/cake-prompt-data";
 import type {
   ResolvedManagedWorktreeCleanupPlan,
@@ -253,6 +253,10 @@ interface WorkspaceCommands {
   ): Promise<string | undefined>;
   setUtilityModel(
     model: UtilityModel | undefined,
+    options?: ClientCommandOptions,
+  ): Promise<ApplicationState>;
+  setCakeChatPreferences(
+    preferences: CakeChatPreferences,
     options?: ClientCommandOptions,
   ): Promise<ApplicationState>;
   setCakePrompts(

@@ -28,6 +28,7 @@ import type {
 } from "../../ipc/session-query-data";
 import type {
   Attachment,
+  UiPart,
   ChatConfiguration,
   PiSettingUpdate,
   PiSessionPreview,
@@ -41,6 +42,7 @@ import {
   type CakeSessionRuntimeEvent,
   type CakeSessionRuntimeOptions,
 } from "./runtime/cake-session-runtime";
+import { CakeChatDurable } from "../pi-durable/CakeChatDurable";
 import { TurnCanceledError } from "./runtime/RuntimeTurnCompletion";
 import {
   loadDurableArtifactReferences,
@@ -155,6 +157,9 @@ export interface CakeSessionHandle {
     presentationMode?: ProjectSessionPresentationMode,
     responseMode?: ConversationResponseMode,
   ) => Effect.Effect<string, PiSessionError>;
+  readonly history?: (
+    cursor: string,
+  ) => Effect.Effect<{ parts: UiPart[]; cursor?: string }, PiSessionError>;
   readonly listQueuedMessages: () => Effect.Effect<PiQueuedMessages, PiSessionError>;
   readonly pendingMessages: () => Effect.Effect<PiPendingMessages, PiSessionError>;
   readonly reorderPendingMessage: (
@@ -803,6 +808,11 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           }),
           inspectSession: (query) =>
             call("inspectSession", (runtime) => runtime.inspectSession(query)),
+          history: (cursor) =>
+            call("history", (runtime) => {
+              if (!runtime.history) throw new Error("This conversation does not paginate history");
+              return runtime.history(cursor);
+            }),
           listQueuedMessages: () =>
             call("listQueuedMessages", (runtime) => runtime.listQueuedMessages()),
           pendingMessages: () => call("pendingMessages", (runtime) => runtime.pendingMessages()),
@@ -1133,42 +1143,80 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
     }),
   );
 
-export const makeCakeSessionRuntimesLive = (): Layer.Layer<CakeSessionRuntimes> =>
-  makeCakeSessionRuntimesLayer({
-    sessionIds: (query) =>
-      streamWorkspaceSessionIds(query.workingDirectory, query.sessionDirectory, {
-        direct: query.direct,
-      }),
-    catalog: (query) =>
-      streamWorkspaceSessions(query.workingDirectory, query.sessionDirectory, {
-        direct: query.direct,
-      }),
-    catalogEntry: (query, sessionId) =>
-      Effect.tryPromise({
-        try: () =>
-          loadWorkspacePiSessionSummary(query.workingDirectory, sessionId, query.sessionDirectory, {
-            direct: query.direct,
+const coordinatorDirectory = (directory: string) =>
+  /(?:^|[/\\])global-chat[/\\]sessions$/.test(directory);
+
+export const makeCakeSessionRuntimesLive = (): Layer.Layer<
+  CakeSessionRuntimes,
+  never,
+  CakeChatDurable
+> =>
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const durable = yield* CakeChatDurable;
+      const coordinatorCatalog = durable.catalogEntry;
+      return makeCakeSessionRuntimesLayer({
+        sessionIds: (query) =>
+          coordinatorDirectory(query.sessionDirectory)
+            ? Stream.fromEffect(coordinatorCatalog(query.sessionDirectory)).pipe(
+                Stream.filter((item) => item !== undefined),
+                Stream.map((item) => item.id),
+              )
+            : streamWorkspaceSessionIds(query.workingDirectory, query.sessionDirectory, {
+                direct: query.direct,
+              }),
+        catalog: (query) =>
+          coordinatorDirectory(query.sessionDirectory)
+            ? Stream.fromEffect(coordinatorCatalog(query.sessionDirectory)).pipe(
+                Stream.filter((item) => item !== undefined),
+              )
+            : streamWorkspaceSessions(query.workingDirectory, query.sessionDirectory, {
+                direct: query.direct,
+              }),
+        catalogEntry: (query, sessionId) =>
+          coordinatorDirectory(query.sessionDirectory)
+            ? coordinatorCatalog(query.sessionDirectory).pipe(
+                Effect.map((item) => (item?.id === sessionId ? item : undefined)),
+              )
+            : Effect.tryPromise({
+                try: () =>
+                  loadWorkspacePiSessionSummary(
+                    query.workingDirectory,
+                    sessionId,
+                    query.sessionDirectory,
+                    {
+                      direct: query.direct,
+                    },
+                  ),
+                catch: (cause) => cause,
+              }),
+        inspect: (target) =>
+          coordinatorDirectory(target.sessionDirectory)
+            ? durable.inspect(target.sessionDirectory, target.sessionId)
+            : Effect.tryPromise({
+                try: () =>
+                  loadWorkspacePiSessionPreview(
+                    target.workingDirectory,
+                    target.sessionId,
+                    target.sessionDirectory,
+                    target.resolvedSessionDirectory,
+                    target.direct,
+                  ),
+                catch: (cause) => cause,
+              }),
+        createRuntime: (options) =>
+          options.globalControl
+            ? durable.createRuntime(options)
+            : Effect.tryPromise({
+                try: () => createCakeSessionRuntime(options),
+                catch: (cause) => cause,
+              }),
+        changelog: () => Effect.sync(loadPiChangelog),
+        durableArtifactReferences: (sessionRoots) =>
+          Effect.tryPromise({
+            try: () => loadDurableArtifactReferences(sessionRoots),
+            catch: (cause) => cause,
           }),
-        catch: (cause) => cause,
-      }),
-    inspect: (target) =>
-      Effect.tryPromise({
-        try: () =>
-          loadWorkspacePiSessionPreview(
-            target.workingDirectory,
-            target.sessionId,
-            target.sessionDirectory,
-            target.resolvedSessionDirectory,
-            target.direct,
-          ),
-        catch: (cause) => cause,
-      }),
-    createRuntime: (options) =>
-      Effect.tryPromise({ try: () => createCakeSessionRuntime(options), catch: (cause) => cause }),
-    changelog: () => Effect.sync(loadPiChangelog),
-    durableArtifactReferences: (sessionRoots) =>
-      Effect.tryPromise({
-        try: () => loadDurableArtifactReferences(sessionRoots),
-        catch: (cause) => cause,
-      }),
-  });
+      });
+    }),
+  );

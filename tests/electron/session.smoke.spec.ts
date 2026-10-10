@@ -2,6 +2,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { resolveCakePaths } from "../../src/config/CakePaths";
+import { workingDirectorySessionPath } from "../../src/services/storage/session-files";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -39,6 +42,33 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     }),
   );
 
+  // The reset path needs a real Project Session. Do not rely on a global-chat
+  // collection row (the permanent coordinator is a separate navigation entry).
+  const paths = resolveCakePaths({ env: { CAKE_HOME: cakeHome } });
+  const existing = SessionManager.create(
+    project,
+    workingDirectorySessionPath(project, paths.piSessions),
+  );
+  existing.appendSessionInfo("Existing investigation");
+  existing.appendMessage({ role: "user", content: "Earlier investigation", timestamp: Date.now() });
+  existing.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "Earlier investigation recorded." }],
+    api: "openai-completions",
+    provider: "fixture",
+    model: "fixture",
+    stopReason: "stop",
+    timestamp: Date.now(),
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+  });
+
   const application = await electron.launch({
     args: [repositoryRoot],
     cwd: repositoryRoot,
@@ -52,7 +82,9 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
 
   try {
     const page = await application.firstWindow();
-    await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(
       page.getByRole("button", { name: "New chat in project", exact: true }),
     ).toBeVisible();
@@ -125,9 +157,12 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await page.getByRole("button", { name: "Appearance" }).click();
     await expect(page.getByLabel("Color theme")).toHaveValue("system");
     await page.getByRole("button", { name: "Back to chat" }).click();
+    await expect(
+      page.locator(".session-item").filter({ hasText: "Existing investigation" }),
+    ).toBeVisible();
     const sessionCountBeforeNewChat = await page.locator(".session-item").count();
     await page.getByRole("button", { name: "New chat in project", exact: true }).click();
-    const newChatComposer = page.getByLabel("Message");
+    const newChatComposer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(newChatComposer).toBeVisible();
     await expect(newChatComposer).toBeFocused();
     await newChatComposer.pressSequentially("Immediate draft");
@@ -152,7 +187,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     await draftSendButton.click();
     await expect(page.getByText("Immediate draft", { exact: true })).toBeVisible();
     await expect(page.getByText("Draft", { exact: true })).toBeVisible();
-    await expect(page.getByLabel("Message")).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toHaveCount(0);
     // The saved draft's input-free composer puts the assistant beside the model picker.
     // At compact widths they must retain separate hit targets.
     await application.evaluate(({ BrowserWindow }) => {
@@ -219,8 +254,8 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       conversationCentered: true,
     });
 
-    await page.locator(".session-item").filter({ hasNotText: "Draft" }).first().click();
-    await expect(page.getByLabel("Message")).toBeVisible();
+    await page.locator(".session-item").filter({ hasText: "Existing investigation" }).click();
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible();
 
     const rendererCapabilities = await page.evaluate(() => ({
       require: typeof Reflect.get(window, "require"),
@@ -235,10 +270,11 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       bridgeKeys: ["rpc"],
     });
 
-    await page.getByLabel("Message").click();
-    await page.getByLabel("Message").pressSequentially("Persist this draft");
-    await expect(page.getByLabel("Message")).toBeFocused();
-    await expect(page.getByLabel("Message")).toHaveValue("Persist this draft");
+    const retainedComposer = page.getByRole("combobox", { name: "Message", exact: true });
+    await retainedComposer.click();
+    await retainedComposer.pressSequentially("Persist this draft");
+    await expect(retainedComposer).toBeFocused();
+    await expect(retainedComposer).toHaveValue("Persist this draft");
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 
     await application.evaluate(() => {
@@ -248,11 +284,16 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
     });
 
     await expect(page.getByText(/Pi runtime stopped/)).toBeVisible();
-    await expect(page.getByLabel("Message")).toHaveValue("Persist this draft");
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toHaveValue(
+      "Persist this draft",
+    );
     expect(page.isClosed()).toBe(false);
     await page.getByRole("button", { name: "Restart and reopen" }).click();
     await expect(page.getByText(/Pi runtime stopped/)).not.toBeVisible({ timeout: 20_000 });
-    await expect(page.getByLabel("Message")).toHaveValue("Persist this draft", { timeout: 20_000 });
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toHaveValue(
+      "Persist this draft",
+      { timeout: 20_000 },
+    );
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
   } finally {
     await application.close();

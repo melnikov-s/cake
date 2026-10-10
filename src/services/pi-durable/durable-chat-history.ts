@@ -1,0 +1,73 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { Conversation } from "@earendil-works/pi-durable";
+import { Schema } from "effect";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import {
+  projectSessionEntries,
+  userMessagePresentationEntryType,
+} from "../pi/runtime/session-projection";
+import {
+  durableInputPresentation,
+  withoutDurableInputPresentation,
+} from "./durable-input-presentation";
+
+/** Original-only GUI projection. Keep each disk scan bounded, including pages containing
+ * only derived nodes. No lifetime SessionManager or original-message cache is constructed. */
+export async function readDurableOriginalPage(
+  root: Pick<Conversation, "entries">,
+  cursor?: string,
+) {
+  let next = cursor;
+  do {
+    const decoded =
+      next === undefined
+        ? undefined
+        : Schema.decodeUnknownSync(
+            Schema.fromJsonString(Schema.Record(Schema.String, Schema.MutableJson)),
+          )(next);
+    const page = await root.entries({}, 200, decoded, BACKGROUND_CONTEXT);
+    const entries: SessionEntry[] = page.items
+      .slice()
+      .reverse()
+      .flatMap((entry) =>
+        ["pi.user", "pi.assistant", "pi.tool-result"].includes(entry.kind)
+          ? (entry.model ?? []).flatMap((message) =>
+              message.role === "system"
+                ? []
+                : [
+                    {
+                      type: "message" as const,
+                      id: String(entry.id),
+                      parentId: null,
+                      timestamp: new Date(message.timestamp).toISOString(),
+                      message: withoutDurableInputPresentation(message),
+                    },
+                    ...(message.role === "user" &&
+                    durableInputPresentation(
+                      typeof message.content === "string"
+                        ? message.content
+                        : message.content
+                            .flatMap((block) => (block.type === "text" ? [block.text] : []))
+                            .join("\n"),
+                    ).markdown
+                      ? [
+                          {
+                            type: "custom" as const,
+                            id: `presentation-${entry.id}`,
+                            parentId: null,
+                            timestamp: new Date(message.timestamp).toISOString(),
+                            customType: userMessagePresentationEntryType,
+                            data: { targetId: String(entry.id), renderAs: "markdown" },
+                          },
+                        ]
+                      : []),
+                  ],
+            )
+          : [],
+      );
+    const parts = projectSessionEntries(entries);
+    next = page.next === undefined ? undefined : JSON.stringify(page.next);
+    if (parts.length || next === undefined) return { parts, cursor: next };
+  } while (next !== undefined);
+  return { parts: [], cursor: undefined };
+}

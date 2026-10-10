@@ -13,6 +13,7 @@ import {
   type ProjectWorkflowSessionDetails,
   SessionPlugin,
   type UtilityModel,
+  type CakeChatPreferences,
 } from "../../services/storage/application-data";
 import { validateSessionLabelName } from "../../utils/session-label-name";
 import { ApplicationState as ApplicationStateOwner } from "../../services/storage/ApplicationState";
@@ -100,6 +101,12 @@ export const renameProject = Effect.fn("Application.renameProject")(function* (
       project.path === path && nextName ? { ...project, name: nextName } : project,
     ),
   }));
+});
+
+export const setCakeChatPreferences = Effect.fn("Application.setCakeChatPreferences")(function* (
+  preferences: CakeChatPreferences,
+) {
+  return yield* update((current) => ({ ...current, cakeChatPreferences: preferences }));
 });
 
 export const setGlobalCustomInstructions = Effect.fn("Application.setGlobalCustomInstructions")(

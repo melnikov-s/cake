@@ -26,8 +26,8 @@ export interface ConversationComposerStoreProps {
   openCommandPane?(pane: "changelog" | "tree" | "resources"): Promise<void>;
   createSideChat?(prompt: string): Promise<boolean>;
   selectModel(value: string): Promise<boolean | void>;
-  renameSession(name: string): Promise<boolean | void>;
-  toolCompactSession(entryId: string, prompt?: string): Promise<boolean>;
+  renameSession?(name: string): Promise<boolean | void>;
+  toolCompactSession?(entryId: string, prompt?: string): Promise<boolean>;
   deliver(input: ConversationDeliveryInput): Promise<boolean | void>;
   editMessage(
     input: Omit<ConversationDeliveryInput, "delivery"> & { entryId: string },
@@ -255,7 +255,7 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
         this.reportError(new Error("Tool compaction requires a completed assistant response"));
         return { handled: true, result: false };
       }
-      const compacted = await this.props.toolCompactSession(entryId, builtin.args || undefined);
+      const compacted = await this.props.toolCompactSession?.(entryId, builtin.args || undefined);
       if (compacted && this.draftStore.text.trim() === text) this.draftStore.setText("");
       return { handled: true, result: compacted };
     }
@@ -291,7 +291,9 @@ export class ConversationComposerStore extends Store<ConversationComposerStorePr
         return { handled: true, result: false };
       }
       try {
-        const renamed = (await this.props.renameSession(builtin.args.trim())) !== false;
+        const renamed = this.props.renameSession
+          ? (await this.props.renameSession(builtin.args.trim())) !== false
+          : false;
         if (renamed && this.draftStore.text.trim() === text) this.draftStore.setText("");
         return { handled: true, result: renamed };
       } catch (error) {

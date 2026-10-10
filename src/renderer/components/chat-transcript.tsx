@@ -20,6 +20,8 @@ import {
 } from "@/components/ai-elements/conversation";
 import { AnnotationDraftPopover } from "@/components/annotation-draft-popover";
 import { ChatTranscriptFooter } from "./chat-transcript-footer";
+import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import { LoadingState } from "@/components/ui/loading-state";
 import { SideChatContext } from "@/components/side-chat-context";
 import { workLogChanges } from "../../utils/turn-diff";
@@ -423,6 +425,19 @@ export const ChatTranscript = observer(function ChatTranscript({
         className="transcript h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges] [overflow-anchor:none]"
       >
         <div ref={virtualized ? undefined : contentRef} className="min-w-0">
+          {store.history?.hasMore && (
+            <div className="grid justify-items-center gap-2 px-6 py-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={store.history.loading}
+                onClick={() => void store.history?.load()}
+              >
+                {store.history.loading ? "Loading earlier messages…" : "Load earlier messages"}
+              </Button>
+              {store.history.error && <Callout variant="error">{store.history.error}</Callout>}
+            </div>
+          )}
           {visibleParts.length === 0 ? (
             <Conversation className="px-6 pt-[42px] pb-[210px] max-[620px]:px-4">
               {empty}

@@ -27,7 +27,7 @@ interface SessionSplitLayoutProps {
   renderHeader(pane: SessionPaneNode): ReactNode;
   renderPane(pane: SessionPaneNode): ReactNode;
   onFocus(paneId: string): void;
-  onSplit(axis: SessionSplitAxis): void;
+  onSplit?(axis: SessionSplitAxis): void;
   onClose(paneId: string): void;
   /** Shared by recursive nodes to distinguish keyboard traversal from programmatic focus. */
   keyboardFocusIntent?: { current: boolean };
@@ -132,24 +132,28 @@ export const SessionSplitLayout = observer(function SessionSplitLayout({
           </strong>
           <div className="flex min-w-0 shrink-0 items-center gap-1 [app-region:no-drag]">
             {renderHeader(node)}
-            <IconButton
-              data-cake-hint-key="h"
-              tooltip="Split right"
-              hotkey="split-right"
-              disabled={!store.canSplit}
-              onClick={() => onSplit("x")}
-            >
-              <SplitRightIcon />
-            </IconButton>
-            <IconButton
-              data-cake-hint-key="j"
-              tooltip="Split down"
-              hotkey="split-down"
-              disabled={!store.canSplit}
-              onClick={() => onSplit("y")}
-            >
-              <SplitDownIcon />
-            </IconButton>
+            {onSplit && (
+              <>
+                <IconButton
+                  data-cake-hint-key="h"
+                  tooltip="Split right"
+                  hotkey="split-right"
+                  disabled={!store.canSplit}
+                  onClick={() => onSplit("x")}
+                >
+                  <SplitRightIcon />
+                </IconButton>
+                <IconButton
+                  data-cake-hint-key="j"
+                  tooltip="Split down"
+                  hotkey="split-down"
+                  disabled={!store.canSplit}
+                  onClick={() => onSplit("y")}
+                >
+                  <SplitDownIcon />
+                </IconButton>
+              </>
+            )}
             {multiplePanes && (
               <IconButton
                 className="absolute right-1 top-1/2 z-20 shrink-0 -translate-y-1/2 bg-background/95"

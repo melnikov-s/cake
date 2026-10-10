@@ -39,6 +39,7 @@ import {
   setProjectSettings as setApplicationProjectSettings,
   setSessionUnread as setApplicationSessionUnread,
   setCakePrompts as setApplicationCakePrompts,
+  setCakeChatPreferences as setApplicationCakeChatPreferences,
   setGlobalCustomInstructions as setApplicationGlobalCustomInstructions,
   setUtilityModel as setApplicationUtilityModel,
   trustProject,
@@ -190,6 +191,18 @@ export const setGlobalCustomInstructions = Effect.fn("Projects.setGlobalCustomIn
     };
   },
 );
+
+export const setCakeChatPreferences = Effect.fn("Projects.setCakeChatPreferences")(function* (
+  _connectionId: number,
+  request: Payload<"set-cake-chat-preferences">,
+) {
+  return {
+    state: yield* mapProjectError(
+      "setCakeChatPreferences",
+      setApplicationCakeChatPreferences(request.preferences),
+    ),
+  };
+});
 
 export const setCakePrompts = Effect.fn("Projects.setCakePrompts")(function* (
   _connectionId: number,

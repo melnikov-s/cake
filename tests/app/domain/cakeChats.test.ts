@@ -1,453 +1,150 @@
-import { ClientConnectionsLive } from "../../../src/services/clients/ClientConnections";
-import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
-import { describe } from "vitest";
-import * as cakeChatMetadata from "../../../src/domain/cake-chats/cakeChatMetadata";
-import * as cakeChatOperations from "../../../src/domain/cake-chats/cakeChatOperations";
-import * as cakeChatContinuations from "../../../src/domain/cake-chats/cakeChatContinuations";
-import * as cakeChatLifecycle from "../../../src/domain/cake-chats/cakeChatLifecycle";
-import * as sessionChats from "../../../src/domain/conversations/sessionChats";
-import {
-  defaultApplicationState,
-  type ApplicationState as ApplicationStateValue,
-} from "../../../src/services/storage/application-data";
-import type { CakeChatRuntimeConfiguration } from "../../../src/domain/cake-chats/cakeChatRuntime";
-import {
-  makeCakeSessionRuntimesLayer,
-  type CakeSessionRuntimesAdapter,
-} from "../../../src/services/pi/CakeSessionRuntimes";
-import type {
-  CakeSessionRuntime,
-  CakeSessionRuntimeOptions,
-} from "../../../src/services/pi/runtime/cake-session-runtime";
+import { describe, expect } from "vitest";
+import * as metadata from "../../../src/domain/cake-chats/cakeChatMetadata";
+import { acquireOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/ipc/cake-chat-data";
+import { defaultCakeChatPreferences } from "../../../src/domain/cake-chats/cake-chat-preferences";
+import { defaultApplicationState } from "../../../src/services/storage/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { ClientEventsLive } from "../../../src/services/clients/ClientEventsLive";
-import { RendererRequestCoordinatorLive } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
+import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
+import { PiModels } from "../../../src/services/pi/PiModels";
+import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
+import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
-import { Terminal } from "../../../src/services/terminal/Terminal";
-import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
-import type { ConversationSnapshot } from "../../../src/ipc/session-contract";
 
-const configuration: CakeChatRuntimeConfiguration = {
-  location: {
-    workingDirectory: "/home/user",
-    sessionDirectory: "/cake/global",
-    resolvedSessionDirectory: "/cake/global-resolved",
-  },
-  agentDirectory: "/cake",
+const location = {
+  workingDirectory: "/home/user",
+  sessionDirectory: "/cake/global",
+  resolvedSessionDirectory: "/cake/global-resolved",
 };
+const configuration = { location, agentDirectory: "/cake/pi" };
 
-const snapshot: ConversationSnapshot = {
-  workspacePath: "/home/user",
-  sessionId: "cake-chat-1",
-  sessionFile: "/cake/global/cake-chat-1.jsonl",
-  parts: [
-    {
-      id: "user-message",
-      kind: "text",
-      role: "user",
-      text: "Hello",
-      status: "complete",
-      renderAs: undefined,
-    },
-  ],
-  models: [],
-  thinkingLevel: "off",
-  availableThinkingLevels: ["off"],
-  streaming: false,
-  diagnostics: [],
-  commands: [],
-  compatibility: { resources: [], diagnostics: [] },
-  extensionUi: { statuses: [] },
-  tree: [],
-};
-
-const makeLayer = (
-  initial: ApplicationStateValue = defaultApplicationState(),
-  options: { resolvedOnDisk?: boolean } = {},
-) => {
-  let state = initial;
-  let resolvedOnDisk = options.resolvedOnDisk ?? false;
-  let created = 0;
-  let archived = 0;
-  let restored = 0;
-  const toolCounts: number[] = [];
-  const acquiredRuntimeOptions: CakeSessionRuntimeOptions[] = [];
-  const operations: string[] = [];
-  const terminal = Terminal.of({
-    open: () => Effect.die("Unexpected terminal open"),
-    write: () => Effect.die("Unexpected terminal write"),
-    resize: () => Effect.die("Unexpected terminal resize"),
-    runningProgramCount: () => Effect.die("Unexpected terminal status"),
-    close: () => Effect.die("Unexpected terminal close"),
-    closeWorkingDirectory: () => Effect.void,
-    closeOwner: () => Effect.void,
-    events: () => Stream.empty,
+function fixture() {
+  let state = defaultApplicationState();
+  const completions: string[] = [];
+  const removed: string[] = [];
+  const summary = (id: string) => ({
+    id,
+    path: `/cake/global/${id}.jsonl`,
+    cwd: "/home/user",
+    created: "2026-01-01T00:00:00Z",
+    modified: "2026-01-01T00:00:00Z",
+    messageCount: 1,
+    title: "Chat",
+    resolved: false,
+    firstMessage: "Hello",
   });
-  const application = ApplicationState.of({
-    initialize: () => Effect.succeed(state),
-    current: () => Effect.succeed(state),
-    snapshot: () => state,
-    changes: () => Stream.make({ revision: 0, state }),
-    transact: (transition) =>
-      transition(state).pipe(
-        Effect.tap((next) =>
-          Effect.sync(() => {
-            state = next;
-          }),
+  const layer = Layer.mergeAll(
+    Layer.mock(ApplicationState, { snapshot: () => state }),
+    Layer.mock(PiModels, {
+      complete: (input) =>
+        Effect.sync(() => {
+          completions.push(input.selection.modelId);
+          return "summary";
+        }),
+    }),
+    Layer.mock(RendererRequestCoordinator, { releaseSession: () => Effect.void }),
+    Layer.mock(SessionCatalogChanges, {
+      publish: () => Effect.void,
+      initialThenChanges: (initial) => initial,
+    }),
+    Layer.mock(CakeSessionRuntimes, {
+      catalog: () =>
+        Stream.fromIterable(
+          [summary("old-active"), summary(CAKE_CHAT_SESSION_ID)].filter(
+            (item) => !removed.includes(item.id),
+          ),
         ),
-      ),
-  });
-  const runtime = (options: CakeSessionRuntimeOptions): CakeSessionRuntime => ({
-    sessionId: snapshot.sessionId,
-    sessionFile: snapshot.sessionFile,
-    streaming: false,
-    snapshot: async () => snapshot,
-    listQueuedMessages: async () => {
-      operations.push("list-queue");
-      return { steering: [], followUp: [] };
-    },
-    pendingMessages: async () => ({ items: [] }),
-    reorderPendingMessage: async () => ({ items: [] }),
-    clearQueue: async () => {
-      operations.push("clear-queue");
-      return { steering: [], followUp: [] };
-    },
-    cancelSteering: async () => {
-      operations.push("cancel-steering");
-      return { steering: [], followUp: [] };
-    },
-    removeQueuedMessage: async () => {
-      operations.push("remove-queued");
-      return { steering: [], followUp: [] };
-    },
-    steerQueuedMessage: async () => {
-      operations.push("steer-queued");
-      return { steering: [], followUp: [] };
-    },
-    sendQueuedMessageNow: async () => ({
-      queued: { steering: [], followUp: [] },
-      abortedTurnIds: [],
     }),
-    prompt: async () => {
-      options.onEvent({ type: "streaming", sessionId: snapshot.sessionId, streaming: false });
-    },
-    editMessage: async () => {
-      operations.push("edit");
-    },
-    setUserMessageMarkdown: async () => undefined,
-    queueCommand: async () => {
-      throw new Error("Unexpected queueCommand");
-    },
-    inspectSession: async () => {
-      throw new Error("Unexpected inspectSession");
-    },
-    compact: async () => {
-      operations.push("compact");
-    },
-    abort: async () => {
-      operations.push("abort");
-    },
-    setModel: async () => {
-      operations.push("model");
-    },
-    setThinkingLevel: async () => {
-      operations.push("thinking");
-    },
-    setFastMode: async () => {
-      operations.push("fast");
-    },
-    applyConfiguration: async () => {
-      operations.push("configuration");
-    },
-    setPiSetting: async () => {
-      operations.push("setting");
-    },
-    recordReviewRun: () => undefined,
-    rename: async () => undefined,
-    fork: async () => ({ sessionId: "fork", sessionFile: "/fork.jsonl", artifactPointers: [] }),
-    toolCompact: async () => ({
-      sessionId: snapshot.sessionId,
-      sessionFile: snapshot.sessionFile,
-    }),
-    navigate: async () => undefined,
-    dispose: () => undefined,
-  });
-  const adapter: CakeSessionRuntimesAdapter = {
-    sessionIds: () => Stream.empty,
-    catalog: () => Stream.empty,
-    catalogEntry: () => Effect.succeed(undefined),
-    inspect: () => Effect.succeed(snapshot),
-    createRuntime: (options) =>
-      Effect.sync(() => {
-        created += 1;
-        acquiredRuntimeOptions.push(options);
-        toolCounts.push(options.globalControl?.tools.length ?? 0);
-        return runtime(options);
-      }),
-    changelog: () => Effect.succeed("# Changelog"),
-  };
-  const rendererRequests = RendererRequestCoordinatorLive.pipe(
-    Layer.provide(Layer.merge(ClientConnectionsLive, ClientEventsLive)),
+    Layer.mock(SessionArchiveStorage, {}),
+    SubagentCoordinatorLive,
+    Layer.mock(SubagentEnvironment, {}),
   );
   return {
-    layer: Layer.mergeAll(
-      Layer.succeed(ApplicationState, application),
-      SessionCatalogChanges.layer,
-      makeCakeSessionRuntimesLayer(adapter),
-      Layer.succeed(
-        SessionArchiveStorage,
-        SessionArchiveStorage.of({
-          resolve: () =>
-            Effect.sync(() => {
-              archived += 1;
-              resolvedOnDisk = true;
-              return true;
-            }),
-          restore: () =>
-            Effect.sync(() => {
-              restored += 1;
-              resolvedOnDisk = false;
-              return true;
-            }),
-          deleteResolved: () =>
-            Effect.sync(() => {
-              resolvedOnDisk = false;
-            }),
-          delete: () => Effect.void,
-          locate: () => Effect.succeed(resolvedOnDisk ? "resolved" : "active"),
-          resolved: () => Stream.empty,
-          resolvedEntry: () => Effect.succeed(undefined),
-          resolveProject: () => Effect.succeed(false),
-          restoreProject: () => Effect.succeed(undefined),
-          deleteResolvedProject: () => Effect.void,
-          resolvedProjects: () => Stream.empty,
-          projectMigrationComplete: () => Effect.succeed(true),
-          migrateProject: () => Stream.empty,
-          resolvedProjectEntry: () => Effect.succeed(undefined),
-        }),
-      ),
-      rendererRequests,
-      SubagentCoordinatorLive,
-      Layer.mock(SubagentEnvironment, {
-        location: () => Effect.die("Unexpected Subagent Environment location"),
-      }),
-      Layer.succeed(Terminal, terminal),
-    ),
-    created: () => created,
-    archived: () => archived,
-    restored: () => restored,
-    state: () => state,
-    toolCounts: () => toolCounts,
-    runtimeOptions: () => acquiredRuntimeOptions,
-    operations: () => operations,
+    layer,
+    completions,
+    removed,
+    setState: (next: typeof state) => {
+      state = next;
+    },
   };
-};
+}
 
-describe("Cake Chats domain", () => {
-  it.effect("keeps a pending Cake Chat unmaterialized until its first prompt", () => {
-    const fixture = makeLayer();
-    return Effect.gen(function* () {
-      const updates = yield* cakeChatMetadata.observeCatalog(
-        { resolved: false },
-        configuration.location,
-      );
-      yield* updates.pipe(Stream.take(1), Stream.runDrain);
-      assert.equal(fixture.created(), 0);
-      const turnId = yield* cakeChatOperations.start(
-        {
-          sessionId: "cake-chat-1",
-          tools: [],
-          text: "Find my task",
-          attachments: [],
-          renderUserMessageAsMarkdown: false,
-          newSession: {},
-        },
-        configuration,
-      );
-      assert.match(turnId, /^[0-9a-f-]{36}$/);
-      assert.equal(fixture.created(), 1);
-      assert.deepEqual(fixture.runtimeOptions()[0]?.tools, [
-        "read",
-        "bash",
-        "edit",
-        "write",
-        "cake",
-      ]);
-    }).pipe(Effect.provide(fixture.layer));
-  });
+describe("permanent Cake Chat", () => {
+  it.effect(
+    "grants coordination and memory tools, with live dedicated preferences and utility fallback",
+    () => {
+      const f = fixture();
+      return Effect.gen(function* () {
+        const options = yield* acquireOptions({
+          configuration,
+          target: { sessionId: CAKE_CHAT_SESSION_ID, tools: [] },
+          newSession: true,
+        });
+        expect(options.runtime.tools).toEqual(["cake", "zoom", "date"]);
+        expect(options.runtime.allowedCakeOperations).toContain("sessions.create");
+        expect(options.runtime.allowedCakeOperations).not.toContain("sessions.create-child");
+        expect(options.runtime.cakeChatMemory?.preferences()).toEqual(defaultCakeChatPreferences());
+        f.setState({
+          ...defaultApplicationState(),
+          utilityModel: { provider: "p", modelId: "cheap", thinkingLevel: "off" },
+        });
+        const summarize = options.runtime.cakeChatMemory!.summarize;
+        expect(
+          yield* Effect.promise(() =>
+            summarize({
+              instructions: "compress",
+              context: "history",
+              signal: new AbortController().signal,
+            }),
+          ),
+        ).toBe("summary");
+        f.setState({
+          ...defaultApplicationState(),
+          cakeChatPreferences: {
+            memoryViewBytes: 5_000,
+            instructions: "Always create worktrees",
+            summarizationModel: { provider: "p", modelId: "chosen", thinkingLevel: "off" },
+          },
+        });
+        yield* Effect.promise(() =>
+          summarize({
+            instructions: "compress",
+            context: "history",
+            signal: new AbortController().signal,
+          }),
+        );
+        expect(f.completions).toEqual(["cheap", "chosen"]);
+        expect(options.runtime.cakeChatMemory?.preferences().instructions).toBe(
+          "Always create worktrees",
+        );
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
 
-  it.effect("tool-compacts in the session tree without changing identity or Fast mode", () => {
-    const fixture = makeLayer({
-      ...defaultApplicationState(),
-      fastModeSessionIds: ["cake-chat-1"],
-    });
-    return Effect.gen(function* () {
-      const result = yield* cakeChatContinuations.toolCompact({
-        target: { sessionId: "cake-chat-1", tools: [] },
-        entryId: "assistant-entry",
-        configuration,
-      });
-      assert.equal(result.sessionId, "cake-chat-1");
-      assert.equal(fixture.created(), 1);
-      assert.deepEqual(fixture.state().fastModeSessionIds, ["cake-chat-1"]);
-    }).pipe(Effect.provide(fixture.layer));
-  });
-
-  it.effect("opens a resolved Cake Chat without restoring or constructing its runtime", () => {
-    const fixture = makeLayer(defaultApplicationState(), { resolvedOnDisk: true });
-    return Effect.gen(function* () {
-      yield* cakeChatOperations.open({ sessionId: "cake-chat-1", tools: [] }, configuration);
-      assert.equal(fixture.created(), 0);
-      assert.equal(fixture.restored(), 0);
-
-      const updates = yield* cakeChatOperations.observeConversation(
-        { sessionId: "cake-chat-1", tools: [] },
-        configuration,
-      );
-      const preview = Array.from(yield* updates.pipe(Stream.take(1), Stream.runCollect));
-      assert.equal(preview[0]?._tag, "Snapshot");
-      assert.equal(fixture.created(), 0);
-      assert.equal(fixture.restored(), 0);
-    }).pipe(Effect.provide(fixture.layer));
-  });
-
-  it.effect("restores a resolved Cake Chat when a message is submitted", () => {
-    const fixture = makeLayer(defaultApplicationState(), { resolvedOnDisk: true });
-    return Effect.gen(function* () {
-      yield* cakeChatOperations.acquireForUse(
-        { sessionId: "cake-chat-1", tools: [] },
-        configuration,
-      );
-      yield* sessionChats.deliver(
-        {
-          sessionId: "cake-chat-1",
-          text: "Continue",
-          attachments: [],
-          renderUserMessageAsMarkdown: false,
-        },
-        "prompt",
-      );
-      assert.equal(fixture.restored(), 1);
-      assert.equal(fixture.created(), 1);
-    }).pipe(Effect.provide(fixture.layer));
-  });
-
-  it.effect("routes matching conversation controls through one acquired Cake Chat runtime", () => {
-    const fixture = makeLayer();
-    const target = { sessionId: "cake-chat-1", tools: [] };
-    return Effect.gen(function* () {
-      yield* cakeChatOperations.open(target, configuration);
-      yield* sessionChats.compact(target, "Keep the architecture notes");
-      yield* sessionChats.editMessage({
-        sessionId: target.sessionId,
-        entryId: "user-message",
-        text: "Updated",
-        attachments: [],
-        renderUserMessageAsMarkdown: false,
-      });
-      yield* sessionChats.applyConfiguration(target, {
-        provider: "fixture-provider",
-        modelId: "fixture-model",
-        thinkingLevel: "medium",
-        fastMode: false,
-      });
-      yield* sessionChats.setModel(target, "fixture-provider", "fixture-model");
-      yield* sessionChats.setThinkingLevel(target, "high");
-      yield* sessionChats.setFastMode(target, true);
-      yield* sessionChats.setPiSetting(target, { key: "retryEnabled", value: false });
-      yield* sessionChats.listQueuedMessages(target);
-      yield* sessionChats.clearQueue(target);
-      yield* sessionChats.cancelSteering(target);
-      yield* sessionChats.removeQueuedMessage(target, "queued-part");
-      yield* sessionChats.steerQueuedMessage(target, "queued-part");
-      yield* sessionChats.abort(target);
-
-      assert.equal(fixture.created(), 1);
-      assert.deepEqual(fixture.operations(), [
-        "compact",
-        "edit",
-        "configuration",
-        "model",
-        "thinking",
-        "fast",
-        "setting",
-        "list-queue",
-        "clear-queue",
-        "cancel-steering",
-        "remove-queued",
-        "steer-queued",
-        "abort",
-      ]);
-    }).pipe(Effect.provide(fixture.layer));
-  });
-
-  it.effect("does not reuse curated tools across Cake Chat sessions", () => {
-    const fixture = makeLayer();
-    return Effect.gen(function* () {
-      const tools = [
-        {
-          command: "open-project",
-          topic: "projects",
-          summary: "Open one project",
-          parameters: {},
-        },
-      ];
-      yield* cakeChatOperations.open({ sessionId: "cake-chat-1", tools }, configuration);
-      yield* cakeChatOperations.open({ sessionId: "cake-chat-2", tools: [] }, configuration);
-      assert.deepEqual(fixture.toolCounts(), [1, 0]);
-    }).pipe(Effect.provide(fixture.layer));
-  });
-
-  it.effect("composes Cake Chat runtime capability policy in the domain", () => {
-    const fixture = makeLayer();
-    return Effect.gen(function* () {
-      yield* cakeChatOperations.open(
-        {
-          sessionId: "cake-chat-1",
-          tools: [
-            {
-              command: "open-project",
-              topic: "projects",
-              summary: "Open one project",
-              parameters: { type: "object", properties: { path: { type: "string" } } },
-              examples: [{ input: { path: "/repo" }, description: "Open a repository" }],
-            },
-          ],
-        },
-        configuration,
-      );
-      const [options] = fixture.runtimeOptions();
-      assert.ok(options);
-      assert.equal(options.cwd, "/home/user");
-      assert.equal(options.trusted, true);
-      assert.equal(options.agentDir, "/cake");
-      assert.equal(options.sessionDir, "/cake/global");
-      assert.equal(options.resolvedSessionDir, "/cake/global-resolved");
-      assert.deepEqual(options.slashCommands, ["compact", "model", "toolcompact"]);
-      assert.equal(options.currentSessionControl?.resolved(), false);
-      assert.ok(options.agentControl);
-      assert.deepEqual(options.globalControl?.tools[0]?.parameters, {
-        type: "object",
-        properties: { path: { type: "string" } },
-      });
-      assert.deepEqual(options.modelPresets?.(), { presets: [], defaultPresetId: undefined });
-      const fastMode = options.fastMode;
-      assert.equal(fastMode?.get(), false);
-      if (!fastMode) return assert.fail("Expected Fast mode controls");
-      yield* Effect.promise(() => fastMode.set(true));
-      assert.deepEqual(fixture.state().fastModeSessionIds, ["cake-chat-1"]);
-    }).pipe(Effect.provide(fixture.layer));
-  });
-
-  it.effect("archives only a settled materialized Cake Chat", () => {
-    const fixture = makeLayer();
-    return Effect.gen(function* () {
-      yield* cakeChatLifecycle.resolve({ sessionId: "cake-chat-1", tools: [] }, configuration);
-      assert.equal(fixture.archived(), 1);
-    }).pipe(Effect.provide(fixture.layer));
-  });
+  it.effect(
+    "exposes only the permanent coordinator in the active catalog and has no resolved lane",
+    () => {
+      const f = fixture();
+      return Effect.gen(function* () {
+        const active = yield* metadata.observeCatalog({ resolved: false }, location);
+        // Mock the authority's snapshot+subscription join, retaining the real catalog policy.
+        const updates = yield* active.pipe(Stream.take(1), Stream.runCollect);
+        expect(updates[0]).toMatchObject({
+          _tag: "Snapshot",
+          sessions: [{ sessionId: CAKE_CHAT_SESSION_ID }],
+        });
+        const resolved = yield* metadata.observeCatalog({ resolved: true, limit: 10 }, location);
+        const resolvedUpdates = yield* resolved.pipe(Stream.take(1), Stream.runCollect);
+        expect(resolvedUpdates[0]).toMatchObject({
+          _tag: "Snapshot",
+          sessions: [],
+          hasMore: false,
+        });
+      }).pipe(Effect.provide(f.layer));
+    },
+  );
 });

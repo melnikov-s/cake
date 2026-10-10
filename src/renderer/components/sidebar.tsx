@@ -42,7 +42,6 @@ export const Sidebar = observer(function Sidebar({
   onOpenSettings,
   onOpenArtifactLibrary,
   onOpenCakeChat,
-  onCreateCakeChat,
   onNewSession,
   onOpenSession,
   onCreateSession,
@@ -64,7 +63,6 @@ export const Sidebar = observer(function Sidebar({
   onOpenSettings: () => void;
   onOpenArtifactLibrary?(): void;
   onOpenCakeChat(sessionId?: string): void;
-  onCreateCakeChat(): void;
   onNewSession(): void;
   onOpenSession(sessionId: string): void;
   onCreateSession(workspacePath: string): void;
@@ -142,6 +140,13 @@ export const Sidebar = observer(function Sidebar({
       <div className="flex min-w-0 flex-wrap gap-1.5 px-3 pb-2 empty:hidden"></div>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 pb-4 pt-2">
         <NavigationHighlight>
+          {activityMode && (
+            <SidebarCakeChatGroup
+              cakeChat={cakeChat}
+              shell={shell}
+              onOpenCakeChat={onOpenCakeChat}
+            />
+          )}
           {activityMode ? (
             <SidebarActivityFeed
               store={store}
@@ -160,13 +165,9 @@ export const Sidebar = observer(function Sidebar({
               {!focusMode && (
                 <>
                   <SidebarCakeChatGroup
-                    store={store}
-                    sessionList={sessionList}
                     cakeChat={cakeChat}
                     shell={shell}
-                    resolved={false}
                     onOpenCakeChat={onOpenCakeChat}
-                    onCreateCakeChat={onCreateCakeChat}
                   />
                   <div
                     data-slot="projects-heading"
@@ -253,17 +254,6 @@ export const Sidebar = observer(function Sidebar({
                 </div>
                 {sessionList.resolvedLaneExpanded && (
                   <div id="resolved-lane-content" className="mt-1">
-                    {!focusMode && (
-                      <SidebarCakeChatGroup
-                        store={store}
-                        sessionList={sessionList}
-                        cakeChat={cakeChat}
-                        shell={shell}
-                        resolved
-                        onOpenCakeChat={onOpenCakeChat}
-                        onCreateCakeChat={onCreateCakeChat}
-                      />
-                    )}
                     {projectPaths.map((path) => (
                       <SidebarProjectGroup
                         key={`resolved:${path}`}

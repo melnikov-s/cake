@@ -183,9 +183,6 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     },
     [root],
   );
-  const createCakeChat = useCallback(() => {
-    void root.startCakeChat();
-  }, [root]);
   const openSession = useCallback(
     (sessionId: string) => {
       void root.openSession(sessionId);
@@ -380,6 +377,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     );
   };
   const cakeChatProps = (paneSession: NonNullable<typeof cakeChatSession>) => ({
+    showContextUsage: false,
     transcriptTransition: {
       ready:
         Boolean(paneSession.model.sessionFile) ||
@@ -424,7 +422,6 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       onOpenSettings={openSettings}
       onOpenArtifactLibrary={openArtifactLibrary}
       onOpenCakeChat={openCakeChat}
-      onCreateCakeChat={createCakeChat}
       onNewSession={() => root.newSessionStore.show()}
       onOpenSession={openSession}
       onCreateSession={createSession}
@@ -1133,7 +1130,6 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
               }
               renderHeader={renderCakeChatPaneHeader}
               onFocus={(paneId) => root.focusCakeChatPane(paneId)}
-              onSplit={(axis) => root.splitFocusedCakeChat(axis)}
               onClose={(paneId) => root.closeCakeChatPane(paneId)}
             />
           ) : (

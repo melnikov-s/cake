@@ -20,7 +20,7 @@ import {
   inlineWidgetSourceSchema,
 } from "./inline-widget-contract";
 import { jsonValueSchema } from "./json-contract";
-import { ProjectSettings } from "../services/storage/application-data";
+import { CakeChatPreferences, ProjectSettings } from "../services/storage/application-data";
 import { CakePromptOverrides } from "../services/storage/cake-prompt-data";
 import { ProjectSessionControlRequest } from "./project-session-data";
 import {
@@ -599,6 +599,7 @@ export const cakeRpcPayloadSchemas = {
   "set-utility-model": Schema.Struct({
     model: Schema.optional(utilityModelSchema),
   }),
+  "set-cake-chat-preferences": Schema.Struct({ preferences: CakeChatPreferences }),
   "set-cake-prompts": Schema.Struct({
     prompts: CakePromptOverrides,
   }),
@@ -853,6 +854,7 @@ export const cakeRpcSuccessSchemas = {
   "reword-composer-selection": cakeRpcResultSchemas["composer-selection-reworded"],
   "generate-session-title": cakeRpcResultSchemas["session-title-generated"],
   "set-utility-model": cakeRpcResultSchemas["application-state-updated"],
+  "set-cake-chat-preferences": cakeRpcResultSchemas["application-state-updated"],
   "set-cake-prompts": cakeRpcResultSchemas["application-state-updated"],
   "set-global-custom-instructions": cakeRpcResultSchemas["application-state-updated"],
   "load-staged-slash-commands": cakeRpcResultSchemas["slash-commands-loaded"],

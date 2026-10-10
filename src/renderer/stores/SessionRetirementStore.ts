@@ -1,6 +1,5 @@
 import { Store } from "r-state-tree";
 import type { AppShellStore, SessionHistoryEntry } from "./AppShellStore";
-import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionLayoutStore } from "./SessionLayoutStore";
 import type { SessionManagementStore } from "./SessionManagementStore";
@@ -12,10 +11,8 @@ export interface SessionRetirementStoreProps {
   registry: SessionRegistryStore;
   layout: SessionLayoutStore;
   projectSessions: SessionManagementStore;
-  cakeChats: CakeChatCollectionStore;
   navigate(target: SessionHistoryEntry): Promise<void>;
   createProjectSession(projectPath: string): Promise<void>;
-  showCakeChat(): void;
 }
 
 /**
@@ -43,35 +40,6 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
     await this.props.projectSessions.deleteSession(sessionId);
     if (!this.props.catalog.find(sessionId))
       await this.forgetSessions([sessionId], wasSelected ? session?.workingDirectory : undefined);
-  }
-
-  async setCakeChatResolved(sessionId: string, resolved: boolean) {
-    await this.props.cakeChats.management.resolveSession(sessionId, resolved);
-    if (!resolved) return;
-    if (this.props.cakeChats.isSessionResolved(sessionId)) {
-      await this.forgetSessions([sessionId]);
-      return;
-    }
-    if (
-      this.props.shell.activeConversation?.kind === "cake-chat" &&
-      this.props.shell.activeConversation.sessionId === sessionId
-    )
-      this.props.shell.selectCakeChat(this.props.cakeChats.sessionId);
-  }
-
-  async setCakeChatsResolved(sessionIds: readonly string[], resolved: boolean) {
-    const count = await this.props.cakeChats.management.resolveSessions(sessionIds, resolved);
-    if (resolved) await this.forgetSessions(sessionIds);
-    return count;
-  }
-
-  async deleteCakeChat(sessionId: string) {
-    const wasSelected = this.props.shell.activeConversation?.sessionId === sessionId;
-    await this.props.cakeChats.management.deleteSession(sessionId);
-    if (this.props.cakeChats.summaries.some((session) => session.sessionId === sessionId)) return;
-    await this.forgetSessions([sessionId]);
-    if (wasSelected && this.props.shell.activeConversation?.sessionId === sessionId)
-      this.props.showCakeChat();
   }
 
   /** Drops sessions from navigation history and returns to the previous conversation. */

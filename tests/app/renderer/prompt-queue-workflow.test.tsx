@@ -64,6 +64,7 @@ function renderQueue(
   const controller = createCakeSessionRuntimeTurnController({
     session: pi,
     isDisposed: () => false,
+    allowUserBash: true,
     beforeIdleTurn: async () => {},
     withResponseRetries: (operation) => operation(),
     cancelResponseRetries: () => {},

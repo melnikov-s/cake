@@ -71,6 +71,8 @@ export class RootStore extends Store<{
   microphone?: Microphone;
   speechPlayback?: SpeechPlayback;
 }> {
+  // Typed Context.consume(), not dynamic symbol lookup, owns each provider's value contract.
+  [key: symbol]: () => void;
   private readonly defaultSpeechPlayback = createSpeechPlayback();
   @child
   get screenCaptureStore(): ScreenCaptureAttachmentStore {
@@ -531,8 +533,7 @@ export class RootStore extends Store<{
       case "split-right":
       case "split-down": {
         const axis = action === "split-right" ? "x" : "y";
-        if (selection.kind === "cake-chat") this.splitFocusedCakeChat(axis);
-        else if (projectSelected) this.splitFocusedSession(axis);
+        if (projectSelected) this.splitFocusedSession(axis);
         break;
       }
       case "focus-left":
@@ -607,12 +608,6 @@ export class RootStore extends Store<{
     if (sessionId) this.appShellStore.selectCakeChat(sessionId);
   }
 
-  splitFocusedCakeChat(axis: SessionSplitAxis) {
-    const result = this.cakeChatCollectionStore.splitFocused(axis);
-    if (result) this.appShellStore.selectCakeChat(result.sessionId);
-    return result;
-  }
-
   closeCakeChatPane(paneId: string) {
     const result = this.cakeChatCollectionStore.closePane(paneId);
     if (result?.focusedSessionId) this.appShellStore.selectCakeChat(result.focusedSessionId);
@@ -676,16 +671,15 @@ export class RootStore extends Store<{
     this.appShellStore.selectCakeChat(sessionId);
   }
   async openCakeChat(sessionId?: string) {
+    if (!sessionId) return this.startCakeChat();
     this.projectWorkbenchStore.dismissSecondarySurfaces();
-    if (sessionId && this.cakeChatCollectionStore.isSessionResolved(sessionId))
-      this.appShellStore.previewResolvedCakeChat(sessionId);
-    else this.appShellStore.selectCakeChat(sessionId);
-    if (sessionId) await this.cakeChatCollectionStore.openSession(sessionId);
+    this.appShellStore.selectCakeChat(sessionId);
+    await this.cakeChatCollectionStore.openSession(sessionId);
   }
   async startCakeChat(prompt?: string) {
     this.projectWorkbenchStore.dismissSecondarySurfaces();
     this.appShellStore.selectCakeChat();
-    await this.cakeChatCollectionStore.startNewSession(prompt);
+    await this.cakeChatCollectionStore.activate(prompt);
     this.appShellStore.selectCakeChat(this.cakeChatCollectionStore.sessionId);
   }
   showTranscriptSelectionContextMenu(input: { canChat: boolean; canAnnotate: boolean }) {
@@ -735,10 +729,8 @@ export class RootStore extends Store<{
       registry: this.sessionRegistry,
       layout: this.sessionLayoutStore,
       projectSessions: this.projectWorkbenchStore.sessionManagementStore,
-      cakeChats: this.cakeChatCollectionStore,
       navigate: (target) => this.navigateToHistoryEntry(target),
       createProjectSession: (projectPath) => this.createSession(projectPath),
-      showCakeChat: () => this.showCakeChat(),
     });
   }
 
@@ -957,10 +949,7 @@ export class RootStore extends Store<{
           labelIds,
         );
       },
-      setCakeChatSessionResolved: (sessionId, resolved) =>
-        this.sessionRetirementStore.setCakeChatResolved(sessionId, resolved),
       deleteSession: (sessionId) => this.sessionRetirementStore.deleteProjectSession(sessionId),
-      deleteCakeChatSession: (sessionId) => this.sessionRetirementStore.deleteCakeChat(sessionId),
       setSessionUnread: (sessionId, unread) =>
         this.projectWorkbenchStore.sessionManagementStore.setSessionUnread(sessionId, unread),
       embeddedEditorSettings: this.settingsStore.embeddedEditor,
@@ -1003,7 +992,7 @@ export class RootStore extends Store<{
       preferences: this.speechInputSettingsStore,
       speech: this.client.speechOutput,
       recognition: this.client.dictation,
-      postProcess: this.client.workspaces.postProcessDictation,
+      postProcess: (input, options) => this.client.workspaces.postProcessDictation(input, options),
       textProcessingMode: () => this.dictationStore.textProcessingMode,
       punctuate: (input, options) => this.client.dictation.punctuate(input, options),
       microphone: this.props.microphone ?? microphone,
@@ -1040,7 +1029,7 @@ export class RootStore extends Store<{
     return createStore(DictationStore, {
       preferences: this.speechInputSettingsStore,
       client: this.client.dictation,
-      postProcess: this.client.workspaces.postProcessDictation,
+      postProcess: (input, options) => this.client.workspaces.postProcessDictation(input, options),
       microphone: this.props.microphone ?? microphone,
       beforeCapture: () => this.conversationModeStore.exit(),
       canReleaseRecognition: () =>
@@ -1164,7 +1153,6 @@ export class RootStore extends Store<{
   @child
   get appShellStore(): AppShellStore {
     return createStore(AppShellStore, {
-      cakeChatSessionResolved: (sessionId) => this.cakeChatCatalogModel.find(sessionId)?.resolved,
       sessionInNavigationScope: (entry) => this.sessionInNavigationScope(entry),
       onProjectSessionDeparted: (sessionId) =>
         this.sessionRegistry.findSession(sessionId)?.depart(),
@@ -1201,7 +1189,6 @@ export class RootStore extends Store<{
         sessionRetirementStore: this.sessionRetirementStore,
         focusCakeChatPane: (paneId) => this.focusCakeChatPane(paneId),
         focusSessionPane: (paneId) => this.focusSessionPane(paneId),
-        splitFocusedCakeChat: (axis) => this.splitFocusedCakeChat(axis),
         splitFocusedSession: (axis) => this.splitFocusedSession(axis),
       }),
       operations: this.sessionOperationCoordinator,

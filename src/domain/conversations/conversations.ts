@@ -69,6 +69,8 @@ const projectSnapshot = (snapshot: RuntimeConversationSnapshot): ConversationSna
     extensionUi: toJsonValue(snapshot.extensionUi),
     tree: snapshot.tree.map(toJsonValue),
   };
+  if (snapshot.historyCursor !== undefined)
+    Object.assign(projected, { historyCursor: snapshot.historyCursor });
   if (snapshot.sessionListed !== undefined)
     Object.assign(projected, { sessionListed: snapshot.sessionListed });
   if (snapshot.model !== undefined)

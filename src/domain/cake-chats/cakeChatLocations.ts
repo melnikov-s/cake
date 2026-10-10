@@ -15,10 +15,3 @@ export const make = (options: CakeChatLocationOptions): CakeChatLocation => ({
   sessionDirectory: options.sessionDirectory,
   resolvedSessionDirectory: options.resolvedSessionDirectory,
 });
-
-export const archiveLocation = (location: CakeChatLocation) => ({
-  cwd: location.workingDirectory,
-  activeRoot: location.sessionDirectory,
-  resolvedRoot: location.resolvedSessionDirectory,
-  direct: true as const,
-});

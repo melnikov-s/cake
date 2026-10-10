@@ -49,7 +49,6 @@ function sidebar(root: RootStore) {
       appearance={root.settingsStore.appearance}
       onOpenSettings={() => undefined}
       onOpenCakeChat={() => undefined}
-      onCreateCakeChat={() => undefined}
       onNewSession={() => root.newSessionStore.show()}
       onOpenSession={() => undefined}
       onCreateSession={() => undefined}
@@ -110,6 +109,7 @@ describe("Project Session catalog to sidebar synchronization", () => {
         showSessionContextMenu: async () => undefined,
       },
       savedDrafts: savedDrafts.client,
+      workspaces: { postProcessDictation: async (text: string) => text },
       projectSessions: { start },
     });
     root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);

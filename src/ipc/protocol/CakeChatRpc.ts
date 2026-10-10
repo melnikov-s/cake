@@ -10,7 +10,6 @@ import {
 } from "../cake-chat-data";
 import { CakeChatCatalogUpdate } from "../../domain/application/catalog-data";
 import { TurnId } from "../conversation-data";
-import { SESSION_TITLE_MAX_LENGTH } from "../session-contract";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 
 export const CakeChatRpc = RpcGroup.make(
@@ -40,28 +39,6 @@ export const CakeChatRpc = RpcGroup.make(
     success: TurnId,
     error: CakeChatError,
   }),
-  Rpc.make("cakeChats.rename", {
-    payload: {
-      ...CakeChatTarget.fields,
-      name: Schema.String.check(
-        Schema.isMinLength(1),
-        Schema.isMaxLength(SESSION_TITLE_MAX_LENGTH),
-      ),
-    },
-    error: CakeChatError,
-  }),
-  Rpc.make("cakeChats.toolCompact", {
-    payload: {
-      ...CakeChatTarget.fields,
-      entryId: Schema.String,
-      prompt: Schema.optional(Schema.String),
-    },
-    success: Schema.Struct({ sessionId: Schema.String, turnId: Schema.optional(TurnId) }),
-    error: CakeChatError,
-  }),
-  Rpc.make("cakeChats.resolve", { payload: CakeChatTarget, error: CakeChatError }),
-  Rpc.make("cakeChats.restore", { payload: CakeChatTarget, error: CakeChatError }),
-  Rpc.make("cakeChats.deleteResolved", { payload: CakeChatTarget, error: CakeChatError }),
   Rpc.make("cakeChats.respondControl", {
     payload: {
       controlRequestId: Schema.String.check(Schema.isUUID(4)),

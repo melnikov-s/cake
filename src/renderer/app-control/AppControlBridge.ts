@@ -88,7 +88,7 @@ const emptyArgumentsSchema = Schema.Struct({});
 const sessionResolutionSchema = Schema.Struct({
   targets: Schema.Array(
     Schema.Struct({
-      kind: Schema.Literals(["project", "cake-chat"]),
+      kind: Schema.Literal("project"),
       sessionId: bounded(1, 256),
     }),
   ).check(Schema.isMinLength(1), Schema.isMaxLength(10_000)),
@@ -627,7 +627,6 @@ export interface AppControlHost {
     abort(sessionId: string): Promise<void>;
     rename(sessionId: string, title: string): Promise<void>;
     setProjectSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
-    setCakeChatSessionsResolved(sessionIds: readonly string[], resolved: boolean): Promise<number>;
   };
   presentation: {
     splitView(
@@ -1406,7 +1405,7 @@ const modelControlOperations = [
   operation(
     "sessions.resolve",
     "sessions",
-    "Idempotently resolve or restore explicit project or Cake Chat targets.",
+    "Idempotently resolve or restore explicit Project Session targets.",
     appControlArgumentSchemas["sessions.resolve"],
   ),
 ] as const;
@@ -2118,36 +2117,21 @@ export class AppControlBridge {
     const projectIds = input.targets
       .filter((target) => target.kind === "project")
       .map((target) => target.sessionId);
-    const cakeChatIds = input.targets
-      .filter((target) => target.kind === "cake-chat")
-      .map((target) => target.sessionId);
     const unknownProject = projectIds.find((sessionId) => !this.knownSession(sessionId));
     if (unknownProject)
       return { ok: false, command, error: `Cake could not find session ${unknownProject}.` };
-    const knownCakeChatIds = new Set(
-      this.host.state.cakeChatSessions().map((session) => session.sessionId),
-    );
-    const unknownCakeChat = cakeChatIds.find((sessionId) => !knownCakeChatIds.has(sessionId));
-    if (unknownCakeChat)
-      return {
-        ok: false,
-        command,
-        error: `Cake could not find Cake Chat session ${unknownCakeChat}.`,
-      };
-    const [projectCount, cakeChatCount] = await Promise.all([
-      projectIds.length
-        ? this.host.sessions.setProjectSessionsResolved([...new Set(projectIds)], input.resolved)
-        : 0,
-      cakeChatIds.length
-        ? this.host.sessions.setCakeChatSessionsResolved([...new Set(cakeChatIds)], input.resolved)
-        : 0,
-    ]);
+    const projectCount = projectIds.length
+      ? await this.host.sessions.setProjectSessionsResolved(
+          [...new Set(projectIds)],
+          input.resolved,
+        )
+      : 0;
     return toStrictJson({
       ok: true,
       command,
       targets: input.targets,
       resolved: input.resolved,
-      sessionCount: projectCount + cakeChatCount,
+      sessionCount: projectCount,
     });
   }
 

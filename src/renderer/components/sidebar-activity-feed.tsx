@@ -34,11 +34,9 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
   sessionMetadata,
   projects,
   chat,
-  cakeChat,
   shell,
   appearance,
   onOpenSession,
-  onOpenCakeChat,
 }: {
   store: SidebarStore;
   sessionList: SidebarSessionListStore;
@@ -51,20 +49,13 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
   onOpenSession(sessionId: string): void;
   onOpenCakeChat(sessionId?: string): void;
 }) {
-  const entries = [
-    ...sessionList.activeProjectSessionFamilies.map((family) => ({
-      kind: "project" as const,
+  const entries = sessionList.activeProjectSessionFamilies
+    .map((family) => ({
       modifiedAt: family.latestModifiedAt,
       draft: family.sessions.some((session) => session.draft),
       family,
-    })),
-    ...sessionList.activeCakeChatSessions.map((session) => ({
-      kind: "cake-chat" as const,
-      modifiedAt: session.modifiedAt,
-      draft: false,
-      session,
-    })),
-  ].sort(compareSessionSummariesForSidebar);
+    }))
+    .sort(compareSessionSummariesForSidebar);
   const groups = new Map<string, typeof entries>();
   for (const entry of entries) {
     // Keep draft and non-draft date groups separate so an older draft can never
@@ -87,35 +78,6 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
           </h2>
           <AnimatedList className="flex flex-col space-y-0.5 pl-2">
             {group.map((entry) => {
-              if (entry.kind === "cake-chat") {
-                const { session } = entry;
-                const selected =
-                  shell.selection.kind === "cake-chat" &&
-                  shell.selection.sessionId === session.sessionId;
-                const running = cakeChat.registry.find(session.sessionId)?.streaming === true;
-                return (
-                  <SidebarSessionItem
-                    key={`cake-chat:${session.sessionId}`}
-                    store={store}
-                    session={session}
-                    selected={selected}
-                    resolved={false}
-                    activity={running ? "running" : undefined}
-                    labels={[]}
-                    avatarSeed={session.sessionId}
-                    avatarsEnabled={false}
-                    source={{ kind: "cake-chat", name: "Cake Chat" }}
-                    onOpen={onOpenCakeChat}
-                    onRename={(sessionId, name) =>
-                      void cakeChat.management.renameSession(sessionId, name)
-                    }
-                    onResolve={(sessionId, resolved) =>
-                      void store.setCakeChatSessionResolved(sessionId, resolved)
-                    }
-                    onDelete={(sessionId) => void store.deleteCakeChatSession(sessionId)}
-                  />
-                );
-              }
               return (
                 <div
                   key={`project-family:${entry.family.rootSessionId}`}

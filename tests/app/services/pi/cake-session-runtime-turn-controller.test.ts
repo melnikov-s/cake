@@ -41,6 +41,7 @@ function createFixture(overrides: Partial<AgentSession> = {}) {
   const controller = createCakeSessionRuntimeTurnController({
     session,
     isDisposed: () => false,
+    allowUserBash: true,
     beforeIdleTurn: async () => undefined,
     withResponseRetries: (operation) => operation(),
     cancelResponseRetries: vi.fn(),
@@ -174,6 +175,7 @@ describe("CakeSessionRuntime turn controller", () => {
     const preparedController = createCakeSessionRuntimeTurnController({
       session,
       isDisposed: () => false,
+      allowUserBash: true,
       beforeIdleTurn: () => preparation.promise,
       withResponseRetries: (operation) => operation(),
       cancelResponseRetries: vi.fn(),

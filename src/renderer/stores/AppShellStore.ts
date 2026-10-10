@@ -1,5 +1,6 @@
 import { Store, observable, snapshot } from "r-state-tree";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
+import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
 
 export type AppSurface = "workbench" | "cake-chat" | "artifact-library" | "settings";
 
@@ -21,7 +22,6 @@ export type SessionHistoryEntry =
 
 /** Owns the one active application selection and its session navigation history in this window. */
 export interface AppShellStoreProps {
-  cakeChatSessionResolved(sessionId: string): boolean | undefined;
   sessionInNavigationScope(entry: SessionHistoryEntry): boolean;
   onProjectSessionDeparted(sessionId: string): void;
 }
@@ -45,12 +45,8 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     this.reaction(
       () => {
         const active = this.activeConversation;
-        if (!active) return undefined;
-        const resolved =
-          active.kind === "project-session"
-            ? this.metadata.isResolved(active.sessionId)
-            : this.props.cakeChatSessionResolved(active.sessionId);
-        return { ...active, resolved };
+        if (active?.kind !== "project-session") return undefined;
+        return { ...active, resolved: this.metadata.isResolved(active.sessionId) };
       },
       (current, previous) => {
         if (
@@ -62,8 +58,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
           current.resolved !== false
         )
           return;
-        if (current.kind === "project-session") this.selectProjectSession(current.sessionId);
-        else this.selectCakeChat(current.sessionId);
+        this.selectProjectSession(current.sessionId);
       },
     );
   }
@@ -112,7 +107,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
       const resolved =
         entry.kind === "project-session"
           ? this.metadata.isResolved(entry.sessionId)
-          : this.props.cakeChatSessionResolved(entry.sessionId);
+          : entry.sessionId !== CAKE_CHAT_SESSION_ID;
       if (resolved !== true) return cursor;
     }
     return undefined;
@@ -177,10 +172,6 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   selectCakeChat(sessionId?: string) {
     this.setCakeChatSelection(sessionId);
     if (sessionId) this.recordSessionVisit({ kind: "cake-chat", sessionId });
-  }
-  /** Selects an archived Cake Chat transcript without adding it to history. */
-  previewResolvedCakeChat(sessionId: string) {
-    this.setCakeChatSelection(sessionId);
   }
   private setCakeChatSelection(sessionId?: string) {
     if (

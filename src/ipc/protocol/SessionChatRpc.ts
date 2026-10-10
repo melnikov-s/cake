@@ -7,6 +7,7 @@ import {
 } from "../session-query-data";
 import { jsonValueSchema } from "../json-contract";
 import {
+  ConversationHistoryPage,
   QueuedConversationMessages,
   SessionChatConfiguration,
   SessionChatError,
@@ -33,6 +34,14 @@ export const SessionChatRpc = RpcGroup.make(
     error: SessionChatError,
   }),
   Rpc.make("sessionChats.abort", { payload: SessionChatTarget, error: SessionChatError }),
+  Rpc.make("sessionChats.history", {
+    payload: {
+      ...SessionChatTarget.fields,
+      cursor: Schema.String.check(Schema.isMaxLength(8_192)),
+    },
+    success: ConversationHistoryPage,
+    error: SessionChatError,
+  }),
   Rpc.make("sessionChats.listQueuedMessages", {
     payload: SessionChatTarget,
     success: QueuedConversationMessages,

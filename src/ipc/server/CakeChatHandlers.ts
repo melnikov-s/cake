@@ -1,8 +1,6 @@
 import { Effect, Stream } from "effect";
 import * as cakeChatMetadata from "../../domain/cake-chats/cakeChatMetadata";
 import * as cakeChatOperations from "../../domain/cake-chats/cakeChatOperations";
-import * as cakeChatContinuations from "../../domain/cake-chats/cakeChatContinuations";
-import * as cakeChatLifecycle from "../../domain/cake-chats/cakeChatLifecycle";
 import { CakeChatError } from "../cake-chat-data";
 import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeChatRuntime";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
@@ -52,21 +50,6 @@ export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration
           ),
         ),
       ),
-    "cakeChats.rename": ({ name, ...target }) =>
-      cakeChatOperations.rename(target, name, configuration),
-    "cakeChats.toolCompact": ({ entryId, prompt, ...target }) => {
-      const input: Parameters<typeof cakeChatContinuations.toolCompact>[0] = {
-        target,
-        entryId,
-        configuration,
-      };
-      if (prompt !== undefined) Object.assign(input, { prompt });
-      return cakeChatContinuations.toolCompact(input);
-    },
-    "cakeChats.resolve": (target) => cakeChatLifecycle.resolve(target, configuration),
-    "cakeChats.restore": (target) => cakeChatLifecycle.restore(target, configuration.location),
-    "cakeChats.deleteResolved": (target) =>
-      cakeChatLifecycle.deleteResolved(target, configuration.location),
     "cakeChats.respondControl": ({ controlRequestId, result }) =>
       withConnection((connectionId) =>
         cakeChatOperations.respondControl(connectionId, controlRequestId, result),

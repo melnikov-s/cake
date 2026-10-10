@@ -605,6 +605,8 @@ export const conversationSnapshotSchema = Schema.Struct({
   sessionFile: stringMax(4_096),
   sessionListed: Schema.optional(Schema.Boolean),
   parts: ipcProjectionArray(uiPartSchema, 50_000),
+  /** Opaque cursor for older originals. Only disk-backed coordinators paginate. */
+  historyCursor: Schema.optionalKey(stringMax(8_192)),
   model: Schema.optional(
     Schema.Struct({ provider: Schema.String, id: Schema.String, name: Schema.String }),
   ),

@@ -44,7 +44,6 @@ export interface RootApplicationControlCapabilities {
   sessionRetirementStore: SessionRetirementStore;
   focusCakeChatPane(paneId: string): void;
   focusSessionPane(paneId: string): void;
-  splitFocusedCakeChat(axis: "x" | "y"): { paneId: string; sessionId: string } | undefined;
   splitFocusedSession(axis: "x" | "y"): { paneId: string; sessionId: string } | undefined;
 }
 
@@ -357,33 +356,14 @@ export function createRootApplicationControlHost(
           );
         }),
       rename: (sessionId, title) =>
-        capabilities.cakeChatCollectionStore.summaries.some(
-          (session) => session.sessionId === sessionId,
-        )
-          ? capabilities.cakeChatCollectionStore.management
-              .renameSession(sessionId, title)
-              .then(() => undefined)
-          : capabilities.projectWorkbenchStore.sessionManagementStore.renameSession(
-              sessionId,
-              title,
-            ),
+        capabilities.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, title),
       setProjectSessionsResolved: (sessionIds, resolved) =>
         capabilities.sessionRetirementStore.setProjectSessionsResolved(sessionIds, resolved),
-      setCakeChatSessionsResolved: (sessionIds, resolved) =>
-        capabilities.sessionRetirementStore.setCakeChatsResolved(sessionIds, resolved),
     },
     presentation: {
       splitView: (source, direction) => {
         const axis = direction === "right" ? "x" : "y";
-        if (source.kind === "cake-chat") {
-          const pane = capabilities.cakeChatCollectionStore.sessionLayoutStore.paneForSession(
-            source.sessionId,
-          );
-          if (!pane) return undefined;
-          capabilities.focusCakeChatPane(pane.paneId);
-          const split = capabilities.splitFocusedCakeChat(axis);
-          return split ? { kind: source.kind, ...split } : undefined;
-        }
+        if (source.kind === "cake-chat") return undefined;
         const pane = capabilities.sessionLayoutStore.paneForSession(source.sessionId);
         if (!pane) return undefined;
         capabilities.focusSessionPane(pane.paneId);

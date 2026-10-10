@@ -17,6 +17,9 @@ export class Conversation extends Model {
   /** Window-local observation failure; never persisted or owned by Pi. */
   @transient observationError: string | undefined;
   @child(Message) parts: Message[] = observable([]);
+  historyCursor: string | undefined;
+  /** Originals explicitly paged by the user, never persisted in window snapshots. */
+  @transient earlierParts: UiPart[] = observable([]);
   @modelRef(LlmModel) model: LlmModel | undefined;
   fastMode = false;
   fastModeAvailable = false;
@@ -49,7 +52,10 @@ export class Conversation extends Model {
 
   @computed
   get uiParts(): UiPart[] {
-    return this.parts.map((part) => part.value);
+    const current = this.parts.map((part) => part.value);
+    if (!this.earlierParts.length) return current;
+    const currentIds = new Set(current.map((part) => part.id));
+    return [...this.earlierParts.filter((part) => !currentIds.has(part.id)), ...current];
   }
 
   get compatibility(): ConversationSnapshot["compatibility"] {

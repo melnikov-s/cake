@@ -182,7 +182,7 @@ export function SearchableChoiceDialog({
           </p>
         )}
         <p className="px-2 pt-3 text-xs text-muted-foreground">
-          Arrow keys to choose · Enter to create · Esc to cancel
+          Arrow keys to choose · Enter to choose · Esc to cancel
         </p>
       </DialogContent>
     </DialogBackdrop>

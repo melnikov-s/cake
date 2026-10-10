@@ -267,7 +267,7 @@ const browserAttachmentPattern =
   /(?:^|\n)<cake-browser-attachment>(.*?)<\/cake-browser-attachment>(?:\n|$)/gs;
 const annotationAttachmentPattern = /(?:^|\n)<cake-annotations>(.*?)<\/cake-annotations>(?:\n|$)/gs;
 
-function parseContextAttachmentBlocks(text: string) {
+export function parseContextAttachmentBlocks(text: string) {
   const attachments: Extract<Attachment, { kind: "source" | "browser" | "annotation" }>[] = [];
   const parseBlocks = <Kind extends "source" | "browser" | "annotation">(
     value: string,

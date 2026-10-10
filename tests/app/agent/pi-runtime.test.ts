@@ -46,7 +46,6 @@ import {
   type ExtensionUiIntent,
   type ConversationSnapshot,
 } from "../../../src/ipc/session-contract";
-import { listAppControlTools } from "../../../src/renderer/app-control/AppControlBridge";
 
 const temporaryDirectories: string[] = [];
 const runtimes: Array<FoundationRuntime | CakeSessionRuntime> = [];
@@ -2440,39 +2439,6 @@ describe("S1 Pi runtime", () => {
     expect(context?.systemPrompt).not.toContain("PROJECT INSTRUCTIONS MUST NOT LOAD");
     expect(context?.systemPrompt).not.toContain("Cake’s agent");
     expect(context?.activeTools).toEqual(["read", "bash", "edit", "write"]);
-  });
-
-  it("isolates global Cake Chat context while retaining its Cake and machine tools", async () => {
-    const directory = await createTemporaryDirectory();
-    const agentDirectory = join(directory, "agent");
-    await mkdir(join(agentDirectory, "skills", "private-skill"), { recursive: true });
-    await writeFile(join(directory, "AGENTS.md"), "PROJECT CONTEXT MUST NOT LOAD");
-    await writeFile(join(agentDirectory, "SYSTEM.md"), "GLOBAL SYSTEM OVERRIDE MUST NOT LOAD");
-    await writeFile(
-      join(agentDirectory, "skills", "private-skill", "SKILL.md"),
-      "---\nname: private-skill\ndescription: MUST NOT LOAD\n---\n",
-    );
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir: agentDirectory,
-      sessionDir: join(directory, "global-chat-sessions"),
-      trusted: false,
-      tools: ["read", "bash", "edit", "write", "cake"],
-      requestUi: async () => undefined,
-      globalControl: {
-        tools: listAppControlTools(),
-        invoke: async () => ({ ok: true }),
-      },
-      onEvent: () => undefined,
-    });
-    runtimes.push(runtime);
-
-    const context = runtime.getReviewParentContext?.();
-    expect((await runtime.snapshot()).diagnostics).toEqual([]);
-    expect(context?.activeTools).toEqual(["read", "bash", "edit", "write", "cake"]);
-    expect(context?.systemPrompt).not.toContain("PROJECT CONTEXT MUST NOT LOAD");
-    expect(context?.systemPrompt).not.toContain("GLOBAL SYSTEM OVERRIDE MUST NOT LOAD");
-    expect(context?.systemPrompt).not.toContain("private-skill");
   });
 
   it("reports environment OpenAI credentials as externally managed", async () => {

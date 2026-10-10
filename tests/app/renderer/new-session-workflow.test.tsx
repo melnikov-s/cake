@@ -65,9 +65,6 @@ function renderPicker(options: Pick<RendererStoreFixtureOptions, "projects" | "s
           onOpenCakeChat={(id) => {
             void root.openCakeChat(id);
           }}
-          onCreateCakeChat={() => {
-            void root.startCakeChat();
-          }}
           onNewSession={() => root.newSessionStore.show()}
           onOpenSession={(id) => {
             void root.openSession(id);

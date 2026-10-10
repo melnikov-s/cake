@@ -170,7 +170,6 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
       abort: overrides.abort ?? (async () => undefined),
       rename: overrides.rename ?? (async () => undefined),
       setProjectSessionsResolved: overrides.setProjectSessionsResolved ?? (async () => 0),
-      setCakeChatSessionsResolved: overrides.setCakeChatSessionsResolved ?? (async () => 0),
     },
     presentation: {
       splitView: overrides.splitView ?? (() => undefined),

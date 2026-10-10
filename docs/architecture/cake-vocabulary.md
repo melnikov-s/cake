@@ -131,8 +131,11 @@ define Project Session ownership.
 
 ### Cake Chat Session
 
-An application-level Cake Session with one independently observed Conversation
-and a focused curated Cake-control request projection. Its renderer Store does
+The one permanent application-level coordinator, with one independently observed Conversation,
+a bounded OptChat summary view and a curated coordination-control projection. It creates and
+manages independent Project task sessions, but cannot execute shell/file/browser work itself.
+It is not a collection of global chats and has no resolve/delete/rename/split lifecycle.
+Its renderer Store does
 not use a Project Session-shaped snapshot and carries no Project, Working
 Directory, review, subagent, artifact, Session Family, or schedule state. It
 remains separate from Project Session catalogs.

@@ -45,6 +45,7 @@ type ConfigurationCapabilities = Omit<
 >;
 
 interface ConversationChatCapabilities {
+  history?: ChatStoreProps["history"];
   commands(): ConversationSnapshot["commands"];
   placeholder(): string;
   inputLabel(): string;
@@ -245,6 +246,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       removeAnnotation: (id) => this.composerStore.draftStore.annotationDraft.remove(id),
       suggestFiles: capabilities.suggestFiles,
       focusRequestRevision: () => this.composerStore.draftStore.focusRequestRevision,
+      history: capabilities.history,
       usage: () => this.model.usage,
       promptCacheModel: () =>
         this.model.model

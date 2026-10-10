@@ -182,7 +182,6 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       management: { renameSession: fixture.renameCakeChatSession ?? vi.fn() },
     } as any,
     onOpenCakeChat: vi.fn(),
-    onCreateCakeChat: vi.fn(),
     onNewSession: vi.fn(),
     onOpenSession: fixture.openSession ?? vi.fn(),
     onCreateSession: fixture.startNewSession ?? vi.fn(),
@@ -849,144 +848,6 @@ describe("Sidebar projects", () => {
     expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
   });
 
-  it("lists Cake Chat sessions and creates another without clearing history", () => {
-    const store = {
-      recentProjectPaths: [],
-      projects: [],
-      projectSessions: vi.fn(() => []),
-      sessionLimit: vi.fn(() => 8),
-      sessionActivity: vi.fn(),
-      sessionDisplayTitle,
-      chatReviewCommentCountForSession: vi.fn(() => 0),
-      nameFromPath: vi.fn(() => "cake"),
-      startOneOffChat: vi.fn(),
-      chooseProject: vi.fn(),
-      showMoreSessions: vi.fn(),
-      cakeChatSummaries: [
-        {
-          sessionId: "cake-chat-1",
-          title: "Repair the sidebar",
-          modifiedAt: new Date(0).toISOString(),
-          resolved: false,
-        },
-      ],
-    } as unknown as ProjectWorkbenchStore;
-    const props = sidebarProps(store);
-    props.cakeChat = {
-      summaries: [{ sessionId: "cake-chat-1", title: "Repair the sidebar" }],
-      sessionId: "cake-chat-1",
-      registry: { find: vi.fn() },
-      management: { renameSession: vi.fn() },
-    } as any;
-
-    act(() =>
-      root.render(
-        <Sidebar
-          {...props}
-          shell={{ selection: { kind: "cake-chat", sessionId: "cake-chat-1" } } as any}
-          onOpenSettings={vi.fn()}
-          onToggle={vi.fn()}
-        />,
-      ),
-    );
-    expect(container.querySelector(".sidebar input")).toBeNull();
-    expect(container.textContent).toContain("Repair the sidebar");
-    expect(container.querySelector('[aria-label="Collapse Cake Chat"]')).not.toBeNull();
-    expect(container.querySelector('[aria-label="Expand Cake Chat"]')).toBeNull();
-    act(() => container.querySelector<HTMLButtonElement>('[aria-label="New Cake Chat"]')!.click());
-    expect(props.onCreateCakeChat).toHaveBeenCalledOnce();
-  });
-
-  it("places Cake Chat above Projects and repeats it in Resolved", () => {
-    const expandedResolvedGroups = new Set<string>();
-    const store = {
-      recentProjectPaths: ["/work/empty"],
-      projects: [{ path: "/work/empty", name: "Empty" }],
-      projectSessions: (_path: string, resolved = false) =>
-        resolved
-          ? [
-              {
-                sessionId: "resolved-project",
-                title: "Finished work",
-                worktreeName: "resolved-feature",
-              },
-            ]
-          : [],
-      sessionLimit: vi.fn(() => 8),
-      sessionActivity: vi.fn(),
-      sessionActivityTime: vi.fn(() => "Today"),
-      nameFromPath: () => "empty",
-      showMoreSessions: vi.fn(),
-      hasResolvedSessions: true,
-      resolvedLaneExpanded: true,
-      isResolvedGroupExpanded: (groupKey: string) => expandedResolvedGroups.has(groupKey),
-      toggleResolvedGroupExpanded: (groupKey: string) => {
-        if (expandedResolvedGroups.has(groupKey)) expandedResolvedGroups.delete(groupKey);
-        else expandedResolvedGroups.add(groupKey);
-      },
-      cakeChatSummaries: [
-        {
-          sessionId: "active-cake",
-          title: "Current Cake Chat",
-          modifiedAt: new Date(0).toISOString(),
-          resolved: false,
-        },
-        {
-          sessionId: "resolved-cake",
-          title: "Finished Cake Chat",
-          modifiedAt: new Date(0).toISOString(),
-          resolved: true,
-        },
-      ],
-    } as unknown as ProjectWorkbenchStore;
-    const props = () => sidebarProps(store);
-
-    act(() => root.render(<Sidebar {...props()} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
-
-    const activeCakeGroup = container.querySelector<HTMLElement>('[data-slot="cake-chat-group"]');
-    const projectsHeading = container.querySelector<HTMLElement>('[data-slot="projects-heading"]');
-    expect(activeCakeGroup?.nextElementSibling).toBe(projectsHeading);
-    expect(activeCakeGroup?.querySelector('[data-slot="project-label"]')?.textContent).toBe(
-      "Cake Chat",
-    );
-    expect(activeCakeGroup?.querySelector('[data-slot="project-label"] svg')).not.toBeNull();
-
-    const resolvedCakeGroup = container.querySelector<HTMLElement>(
-      '[data-slot="resolved-lane"] [data-slot="cake-chat-group"]',
-    );
-    expect(resolvedCakeGroup?.querySelector('[data-slot="project-label"]')?.textContent).toBe(
-      "Cake Chat",
-    );
-    expect(resolvedCakeGroup?.textContent).not.toContain("Finished Cake Chat");
-    expect(container.querySelector('[data-session-id="resolved-project"]')).toBeNull();
-
-    act(() =>
-      resolvedCakeGroup
-        ?.querySelector<HTMLButtonElement>('[aria-label="Expand Cake Chat resolved"]')
-        ?.click(),
-    );
-    const resolvedProjectGroup = container.querySelector<HTMLElement>(
-      '[data-slot="resolved-lane"] [data-slot="project-group"]',
-    );
-    act(() =>
-      resolvedProjectGroup
-        ?.querySelector<HTMLButtonElement>('[aria-label="Expand Empty resolved"]')
-        ?.click(),
-    );
-    act(() => root.render(<Sidebar {...props()} onOpenSettings={vi.fn()} onToggle={vi.fn()} />));
-
-    expect(resolvedCakeGroup?.textContent).toContain("Finished Cake Chat");
-    expect(container.querySelector('[data-session-id="resolved-project"]')?.textContent).toContain(
-      "resolved-feature",
-    );
-    expect(
-      container.querySelector('[data-session-id="resolved-project"] [data-worktree-state]'),
-    ).toBeNull();
-
-    const emptyProject = container.querySelector<HTMLElement>('[data-slot="project-group"]');
-    expect(emptyProject).not.toBeNull();
-  });
-
   it("offers project focus from Projects but not Activity", () => {
     const focusProject = vi.fn();
     const fixture = {
@@ -1184,19 +1045,16 @@ describe("Sidebar projects", () => {
       ),
     );
 
-    expect(container.querySelectorAll(".session-item.active")).toHaveLength(1);
-    expect(container.querySelector('[data-session-id="cake-session"]')?.classList).toContain(
-      "active",
-    );
+    expect(container.querySelectorAll(".session-item.active")).toHaveLength(0);
+    expect(
+      container.querySelector('[data-slot="cake-chat-group"] button')?.getAttribute("aria-current"),
+    ).toBe("page");
     expect(container.querySelector('[data-session-id="project-session"]')?.classList).not.toContain(
       "active",
     );
     expect(
       container.querySelector('[data-session-id="project-session"]')?.textContent,
     ).not.toContain("main");
-    expect(container.querySelector('[data-session-id="cake-session"]')?.textContent).not.toContain(
-      "main",
-    );
 
     act(() =>
       root.render(
@@ -1217,9 +1075,9 @@ describe("Sidebar projects", () => {
     );
 
     expect(container.querySelectorAll(".session-item.active")).toHaveLength(1);
-    expect(container.querySelector('[data-session-id="cake-session"]')?.classList).not.toContain(
-      "active",
-    );
+    expect(
+      container.querySelector('[data-slot="cake-chat-group"] button')?.getAttribute("aria-current"),
+    ).toBeNull();
     expect(container.querySelector('[data-session-id="project-session"]')?.classList).toContain(
       "active",
     );
@@ -1707,61 +1565,6 @@ describe("Sidebar projects", () => {
     expect(deleteSession).toHaveBeenCalledWith("session-1");
   });
 
-  it("opens the native session menu and renames a Cake Chat", async () => {
-    const showSessionContextMenu = vi.fn(async () => ({ action: "rename" as const }));
-    const renameCakeChatSession = vi.fn(async () => true);
-    const store = {
-      recentProjectPaths: [],
-      projects: [],
-      projectSessions: vi.fn(() => []),
-      sessionLimit: () => 8,
-      sessionActivity: vi.fn(),
-      sessionActivityTime: vi.fn(() => "Today"),
-      nameFromPath: () => "cake",
-      showMoreSessions: vi.fn(),
-      cakeChatSummaries: [
-        {
-          sessionId: "cake-chat-1",
-          title: "Original Cake Chat",
-          modifiedAt: new Date(0).toISOString(),
-          resolved: false,
-        },
-      ],
-      showSessionContextMenu,
-      renameCakeChatSession,
-    } as unknown as ProjectWorkbenchStore;
-
-    act(() =>
-      root.render(<Sidebar {...sidebarProps(store)} onOpenSettings={vi.fn()} onToggle={vi.fn()} />),
-    );
-    await act(async () => {
-      container
-        .querySelector<HTMLButtonElement>('[data-session-id="cake-chat-1"] .session-row')!
-        .dispatchEvent(
-          new MouseEvent("contextmenu", {
-            bubbles: true,
-            cancelable: true,
-            clientX: 21,
-            clientY: 43,
-          }),
-        );
-      await Promise.resolve();
-    });
-
-    expect(showSessionContextMenu).toHaveBeenCalledWith("cake-chat-1", 21, 43, false, undefined);
-    const input = container.querySelector<HTMLInputElement>('[aria-label="Session name"]')!;
-    expect(input.value).toBe("Original Cake Chat");
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
-        input,
-        "Renamed Cake Chat",
-      );
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
-    });
-    expect(renameCakeChatSession).toHaveBeenCalledWith("cake-chat-1", "Renamed Cake Chat");
-  });
-
   it("shows time but does not offer resolve for unread completed sessions", () => {
     const setSessionResolved = vi.fn();
     const store = {
@@ -1796,63 +1599,7 @@ describe("Sidebar projects", () => {
     ).toBeNull();
   });
 
-  it("resolves selected Cake Chat into the shared resolved lane", () => {
-    const setCakeChatSessionResolved = vi.fn();
-    const modified = new Date(0).toISOString();
-    const store = {
-      recentProjectPaths: [],
-      projects: [],
-      projectSessions: vi.fn(() => []),
-      sessionLimit: () => 8,
-      sessionActivity: vi.fn(),
-      sessionActivityTime: vi.fn(() => "Today"),
-      nameFromPath: () => "cake",
-      startOneOffChat: vi.fn(),
-      chooseProject: vi.fn(),
-      showMoreSessions: vi.fn(),
-      hasResolvedSessions: true,
-      resolvedLaneExpanded: true,
-      cakeChatSummaries: [
-        {
-          sessionId: "active-cake",
-          title: "Active Cake Chat",
-          modifiedAt: modified,
-          resolved: false,
-        },
-        {
-          sessionId: "resolved-cake",
-          title: "Resolved Cake Chat",
-          modifiedAt: modified,
-          resolved: true,
-        },
-      ],
-      isResolvedGroupExpanded: () => true,
-      setCakeChatSessionResolved,
-    } as unknown as ProjectWorkbenchStore;
-    const props = sidebarProps(store);
-
-    act(() =>
-      root.render(
-        <Sidebar
-          {...props}
-          shell={{ selection: { kind: "cake-chat", sessionId: "active-cake" } } as any}
-          onOpenSettings={vi.fn()}
-          onToggle={vi.fn()}
-        />,
-      ),
-    );
-    act(() =>
-      container
-        .querySelector<HTMLButtonElement>('[aria-label="Resolve Active Cake Chat"]')!
-        .click(),
-    );
-    expect(setCakeChatSessionResolved).toHaveBeenCalledWith("active-cake", true);
-    expect(container.querySelector('[data-slot="resolved-lane"]')?.textContent).toContain(
-      "Resolved Cake Chat",
-    );
-  });
-
-  it("shows active Project and Cake Chat sessions together in date groups", () => {
+  it("shows date-grouped Project work beneath the permanent Cake Chat entry", () => {
     const now = new Date(2026, 2, 10, 12).getTime();
     const store = {
       recentProjectPaths: ["/work/cake"],
@@ -1895,11 +1642,9 @@ describe("Sidebar projects", () => {
     );
 
     expect(container.querySelector('[data-slot="activity-feed"]')?.textContent).toContain("Today");
-    expect(container.querySelector('[data-slot="activity-feed"]')?.textContent).toContain(
-      "Yesterday",
-    );
+
     expect(container.querySelector('[data-slot="activity-feed"]')?.textContent).toContain("Cake");
-    expect(container.querySelector('[data-slot="activity-feed"]')?.textContent).toContain(
+    expect(container.querySelector('[data-slot="cake-chat-group"]')?.textContent).toContain(
       "Cake Chat",
     );
     expect(container.textContent).not.toContain("Archived work");
@@ -1964,7 +1709,7 @@ describe("Sidebar projects", () => {
       [...container.querySelectorAll<HTMLElement>("[data-session-id]")].map(
         (session) => session.dataset.sessionId,
       ),
-    ).toEqual(["newest-draft", "older-draft", "cake-chat", "regular"]);
+    ).toEqual(["newest-draft", "older-draft", "regular"]);
   });
 
   it("keeps activity families together and positions them by their latest descendant", () => {

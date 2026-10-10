@@ -37,7 +37,7 @@ export interface SessionPanePlacement extends SessionPane {
 }
 
 /** Owns one persisted conversation split tree, pane focus, and per-pane navigation. */
-export class SessionLayoutStore extends Store {
+export class SessionLayoutStore extends Store<{ allowSplit?: boolean }> {
   @snapshot layout: SessionLayoutNode | undefined;
   @snapshot focusedPaneId: string | undefined;
   @snapshot private readonly childPaneIdsByParentSessionId: Record<string, string> = observable({});
@@ -96,7 +96,11 @@ export class SessionLayoutStore extends Store {
   }
 
   get canSplit() {
-    return this.panes.length > 0 && this.panes.length < MAX_SESSION_PANES;
+    return (
+      this.props.allowSplit !== false &&
+      this.panes.length > 0 &&
+      this.panes.length < MAX_SESSION_PANES
+    );
   }
 
   hasSession(sessionId: string) {

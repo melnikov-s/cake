@@ -51,6 +51,13 @@ interface ComposerRewordCapabilities {
 }
 
 export interface ChatStoreProps {
+  /** Optional disk-history workflow, shared by every chat surface. */
+  history?: {
+    readonly hasMore: boolean;
+    readonly loading: boolean;
+    readonly error?: string;
+    load(): Promise<void>;
+  };
   id(): string;
   parts(): UiPart[];
   streaming(): boolean;
@@ -116,6 +123,9 @@ export type { TranscriptScrollPosition };
 
 /** Common state and behavior contract for every Cake conversation surface. */
 export class ChatStore extends Store<ChatStoreProps> {
+  get history() {
+    return this.props.history;
+  }
   get conversationMode() {
     return this.props.conversationMode;
   }

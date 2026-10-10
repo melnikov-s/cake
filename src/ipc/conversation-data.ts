@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { attachmentSchema } from "./session-contract";
+import { attachmentSchema, uiPartSchema } from "./session-contract";
 import { ThinkingLevel } from "../services/pi/model-data";
 import { CrossSessionMessageMetadata } from "../services/pi/cross-session-message";
 import { ProjectSessionPresentationMode } from "./project-session-presentation";
@@ -10,6 +10,14 @@ const boundedText = Schema.String.check(Schema.isMaxLength(262_144));
 
 export const SessionChatTarget = Schema.Struct({ sessionId: boundedId });
 export interface SessionChatTarget extends Schema.Schema.Type<typeof SessionChatTarget> {}
+
+export const ConversationHistoryPage = Schema.Struct({
+  parts: Schema.Array(uiPartSchema).check(Schema.isMaxLength(50_000)),
+  cursor: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(8_192))),
+});
+export interface ConversationHistoryPage extends Schema.Schema.Type<
+  typeof ConversationHistoryPage
+> {}
 
 export const SessionChatConfiguration = Schema.Struct({
   provider: Schema.String,
@@ -68,6 +76,7 @@ export const ConversationSnapshot = Schema.Struct({
   sessionFile: Schema.String,
   sessionListed: Schema.optionalKey(Schema.Boolean),
   parts: Schema.Array(Schema.Json),
+  historyCursor: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(8_192))),
   model: Schema.optionalKey(Schema.Json),
   fastMode: Schema.optionalKey(Schema.Boolean),
   fastModeAvailable: Schema.optionalKey(Schema.Boolean),

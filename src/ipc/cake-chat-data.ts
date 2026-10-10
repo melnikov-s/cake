@@ -2,6 +2,9 @@ import { Schema } from "effect";
 import { SESSION_TITLE_MAX_LENGTH } from "./session-contract";
 import { SessionChatConfiguration, SessionChatPromptInput } from "./conversation-data";
 
+/** Stable identity of the one application-level conversation, never a Project Session. */
+export const CAKE_CHAT_SESSION_ID = "ca4ec4a7-0000-4000-8000-000000000001";
+
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 
 export const CakeControlTool = Schema.Struct({
@@ -77,7 +80,6 @@ export const CakeChatStartInput = Schema.Struct({
   tools: Schema.Array(CakeControlTool),
   newSession: Schema.Struct({
     configuration: Schema.optionalKey(SessionChatConfiguration),
-    name: Schema.optionalKey(Schema.String),
   }),
 });
 export interface CakeChatStartInput extends Schema.Schema.Type<typeof CakeChatStartInput> {}

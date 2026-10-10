@@ -127,6 +127,7 @@ import type {
 } from "../project-session-data";
 import type {
   ConversationUpdate,
+  ConversationHistoryPage,
   QueuedConversationMessages,
   SessionChatConfiguration,
   SessionChatError,
@@ -449,6 +450,9 @@ export interface CakeIpcClientService {
     readonly abort: (
       target: SessionChatTarget,
     ) => Effect.Effect<void, SessionChatError | TransportError>;
+    readonly history: (
+      input: SessionChatTarget & { readonly cursor: string },
+    ) => Effect.Effect<ConversationHistoryPage, SessionChatError | TransportError>;
     readonly listQueuedMessages: (
       target: SessionChatTarget,
     ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
@@ -521,27 +525,6 @@ export interface CakeIpcClientService {
     readonly start: (
       input: CakeChatStartInput,
     ) => Effect.Effect<TurnId, CakeChatError | TransportError>;
-    readonly rename: (
-      input: CakeChatTarget & { readonly name: string },
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly toolCompact: (
-      input: CakeChatTarget & {
-        readonly entryId: string;
-        readonly prompt?: string;
-      },
-    ) => Effect.Effect<
-      { readonly sessionId: string; readonly turnId?: TurnId },
-      CakeChatError | TransportError
-    >;
-    readonly resolve: (
-      target: CakeChatTarget,
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly restore: (
-      target: CakeChatTarget,
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly deleteResolved: (
-      target: CakeChatTarget,
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
     readonly respondControl: (
       controlRequestId: string,
       result: Schema.Schema.Type<typeof Schema.Json>,
@@ -758,6 +741,7 @@ export interface CakeIpcClientService {
     | "generate-session-title"
     | "set-utility-model"
     | "set-cake-prompts"
+    | "set-cake-chat-preferences"
     | "set-global-custom-instructions"
     | "load-staged-slash-commands"
     | "register-project"
@@ -1193,6 +1177,9 @@ export const CakeIpcClientLive = Layer.effect(
         abort: Effect.fn("CakeIpcClient.sessionChats.abort")((target) =>
           client("sessionChats.abort", target),
         ),
+        history: Effect.fn("CakeIpcClient.sessionChats.history")((input) =>
+          client("sessionChats.history", input),
+        ),
         listQueuedMessages: Effect.fn("CakeIpcClient.sessionChats.listQueuedMessages")((target) =>
           client("sessionChats.listQueuedMessages", target),
         ),
@@ -1259,21 +1246,6 @@ export const CakeIpcClientLive = Layer.effect(
         observeControls: (target) => client("cakeChats.observeControls", target),
         start: Effect.fn("CakeIpcClient.cakeChats.start")((input) =>
           client("cakeChats.start", input),
-        ),
-        rename: Effect.fn("CakeIpcClient.cakeChats.rename")((input) =>
-          client("cakeChats.rename", input),
-        ),
-        toolCompact: Effect.fn("CakeIpcClient.cakeChats.toolCompact")((input) =>
-          client("cakeChats.toolCompact", input),
-        ),
-        resolve: Effect.fn("CakeIpcClient.cakeChats.resolve")((target) =>
-          client("cakeChats.resolve", target),
-        ),
-        restore: Effect.fn("CakeIpcClient.cakeChats.restore")((target) =>
-          client("cakeChats.restore", target),
-        ),
-        deleteResolved: Effect.fn("CakeIpcClient.cakeChats.deleteResolved")((target) =>
-          client("cakeChats.deleteResolved", target),
         ),
         respondControl: Effect.fn("CakeIpcClient.cakeChats.respondControl")(
           (controlRequestId, result) =>
@@ -1496,6 +1468,9 @@ export const CakeIpcClientLive = Layer.effect(
         "set-utility-model": Effect.fn("CakeIpcClient.workspaces.set-utility-model")((payload) =>
           client("workspaces.set-utility-model", payload),
         ),
+        "set-cake-chat-preferences": Effect.fn(
+          "CakeIpcClient.workspaces.set-cake-chat-preferences",
+        )((payload) => client("workspaces.set-cake-chat-preferences", payload)),
         "set-cake-prompts": Effect.fn("CakeIpcClient.workspaces.set-cake-prompts")((payload) =>
           client("workspaces.set-cake-prompts", payload),
         ),

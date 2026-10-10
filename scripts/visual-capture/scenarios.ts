@@ -5,6 +5,10 @@ import { nestedAssistant, nestedEntries } from "../../tests/fixtures/nested-tool
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { Harness, createRegistry, UserEntry, AssistantEntry } from "@earendil-works/pi-durable";
+import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { createModels } from "@earendil-works/pi-durable-ai";
 import { expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type { VisualCaptureTheme } from "./arguments.ts";
 import type { CakeArtifactV1 } from "../../src/ipc/artifact-contract.ts";
@@ -1352,6 +1356,87 @@ const appearanceSettingsScenario: VisualCaptureScenario = {
   region: cakePromptsSettingsScenario.region,
 };
 
+const cakeChatScenario: VisualCaptureScenario = {
+  name: "cake-chat",
+  description: "Permanent coordinator with original conversation history and memory settings",
+  states: ["default", "settings"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const directory = join(paths.cakeHome, "pi", "global-chat");
+    await mkdir(directory, { recursive: true });
+    const texts = [
+      "I prefer coding tasks to run in their own worktrees.",
+      "I'll coordinate the work here and use independent Project Sessions for implementation.",
+      "Will I still see my original conversation history?",
+      "Yes. Your original messages and replies remain visible here. The summary tree is used behind the scenes to give the model a smaller history view.",
+    ];
+    const storage = await openNodeSqliteStorage(join(directory, "coordinator.sqlite"));
+    const harness = await Harness.open(
+      storage,
+      { models: createModels(), registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    );
+    try {
+      const root = await harness.root(BACKGROUND_CONTEXT);
+      await root.commit(async (tx) => {
+        for (const [index, text] of texts.entries()) {
+          if (index % 2 === 0) {
+            await tx.appendEntry(UserEntry, root.id, {
+              model: [{ role: "user", content: [{ type: "text", text }], timestamp: index }],
+            });
+          } else {
+            await tx.appendEntry(AssistantEntry, root.id, {
+              model: [
+                {
+                  role: "assistant",
+                  content: [{ type: "text", text }],
+                  timestamp: index,
+                  api: "anthropic-messages",
+                  provider: "anthropic",
+                  model: "visual-fixture",
+                  stopReason: "stop",
+                  usage: {
+                    input: 0,
+                    output: 0,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                    totalTokens: 0,
+                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                  },
+                },
+              ],
+            });
+          }
+        }
+      }, BACKGROUND_CONTEXT);
+    } finally {
+      await harness.close(BACKGROUND_CONTEXT);
+      await storage.close(BACKGROUND_CONTEXT);
+    }
+  },
+  async prepare(page, state) {
+    await assistantMarkdownCode.prepare(page, "default");
+    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
+    await expect(
+      page.getByText("Will I still see my original conversation history?", { exact: true }),
+    ).toBeVisible();
+    if (state === "settings") {
+      await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await page
+        .getByLabel("Settings sections")
+        .getByRole("button", { name: /^Cake Chat\b/ })
+        .click();
+      await expect(
+        page.getByRole("textbox", { name: "Cake Chat instructions", exact: true }),
+      ).toBeVisible();
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator("body"),
+};
+
 const newSessionScenario: VisualCaptureScenario = {
   name: "new-session",
   description: "Searchable Cake Chat and Project destination dialog",
@@ -2008,6 +2093,7 @@ export const visualCaptureScenarios = [
   appearanceSettingsScenario,
   projectCustomInstructionsScenario,
   newSessionScenario,
+  cakeChatScenario,
   dictationInputScenario,
   dictationSettingsScenario,
   serverClientSettingsScenario,

@@ -19,6 +19,13 @@ export const UtilityModel = Schema.Struct({
   thinkingLevel: ThinkingLevel,
 });
 
+export const CakeChatPreferences = Schema.Struct({
+  memoryViewBytes: Schema.Int.check(Schema.isBetween({ minimum: 2_048, maximum: 128_000 })),
+  summarizationModel: Schema.optionalKey(UtilityModel),
+  instructions: boundedString(16_384),
+});
+export interface CakeChatPreferences extends Schema.Schema.Type<typeof CakeChatPreferences> {}
+
 export const ModelPreset = Schema.Struct({
   id: Schema.String.check(Schema.isUUID(4)),
   name: Schema.String.check(Schema.isTrimmed(), Schema.isMinLength(1), Schema.isMaxLength(80)),
@@ -218,6 +225,7 @@ const RendererApplicationFields = {
   modelPresets: boundedArray(ModelPreset, 100),
   defaultModelPresetId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   cakePrompts: CakePromptOverrides,
+  cakeChatPreferences: Schema.optionalKey(CakeChatPreferences),
   globalCustomInstructions: boundedString(16_384).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed("")),
   ),

@@ -33,7 +33,7 @@ interface ConversationSplitLayoutProps<T extends PrimarySessionStore> {
   renderHeader(pane: SessionPaneNode, session: T): ReactNode;
   wrapPane?(session: T, pane: SessionPaneNode, children: ReactNode): ReactNode;
   onFocus(paneId: string): void;
-  onSplit(axis: SessionSplitAxis): void;
+  onSplit?(axis: SessionSplitAxis): void;
   onClose(paneId: string): void;
 }
 

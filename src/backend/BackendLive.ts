@@ -22,6 +22,7 @@ import { makePiAgentResourcesLive } from "../services/pi/live/PiAgentResourcesLi
 import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
 import { makeMcpSettingsLayer } from "../services/pi/McpSettings";
 import { makePiSettingsLive } from "../services/pi/live/PiSettingsLive";
+import { makeCakeChatDurableLive } from "../services/pi-durable/CakeChatDurable";
 import { makeCakeSessionRuntimesLive } from "../services/pi/CakeSessionRuntimes";
 import { makeProjectSessionRuntimeHostLive } from "../layers/ProjectSessionRuntimeHostLive";
 import { ProjectSessionConfiguration } from "../services/project-sessions/ProjectSessionConfiguration";
@@ -102,7 +103,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
     makePiSettingsLive(paths.piAgent).pipe(Layer.provide(BootstrapLive)),
     makeMcpSettingsLayer(paths.piAgent),
     makePiAgentResourcesLive(paths.piAgent),
-    makeCakeSessionRuntimesLive(),
+    makeCakeSessionRuntimesLive().pipe(Layer.provide(makeCakeChatDurableLive())),
     AgentAvailability.layer,
   );
 

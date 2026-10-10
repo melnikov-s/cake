@@ -143,6 +143,7 @@ export const Chat = observer(function Chat({
   embedded = false,
   compact = false,
   composerFocusEnabled = true,
+  showContextUsage = true,
   transcriptTransition,
 }: {
   store: ChatStore;
@@ -159,6 +160,7 @@ export const Chat = observer(function Chat({
   embedded?: boolean;
   compact?: boolean;
   composerFocusEnabled?: boolean;
+  showContextUsage?: boolean;
   transcriptTransition?: { requestedKey?: string; ready: boolean };
 }) {
   const layoutRef = useRef<HTMLDivElement>(null);
@@ -306,7 +308,7 @@ export const Chat = observer(function Chat({
         }
         toolbarActions={
           <>
-            {!activatingDraft && <Usage store={store} />}
+            {showContextUsage && !activatingDraft && <Usage store={store} />}
             {!activatingDraft && pluginActions}
             {!activatingDraft && store.conversationMode && (
               <ChatConversationControls

@@ -23,11 +23,13 @@ import { UtilityModelSettingsStore } from "./UtilityModelSettingsStore";
 import { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
 import { HotkeySettingsStore } from "./HotkeySettingsStore";
 import { GlobalLabelSettingsStore } from "./GlobalLabelSettingsStore";
+import { CakeChatSettingsStore } from "./CakeChatSettingsStore";
 import { CakePromptSettingsStore } from "./CakePromptSettingsStore";
 import { GlobalInstructionsStore } from "./GlobalInstructionsStore";
 import { NonChatModelSettingsStore } from "./NonChatModelSettingsStore";
 
 export type SettingsPageId =
+  | "cake-chat"
   | "mcp"
   | "models"
   | "providers"
@@ -91,6 +93,9 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   @child get modelPresets(): ModelPresetSettingsStore {
     return createStore(ModelPresetSettingsStore);
   }
+  @child get cakeChat(): CakeChatSettingsStore {
+    return createStore(CakeChatSettingsStore);
+  }
   @child get cakePrompts(): CakePromptSettingsStore {
     return createStore(CakePromptSettingsStore);
   }
@@ -139,6 +144,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
 
   get error() {
     return (
+      this.cakeChat.error ??
       this.providers.error ??
       this.nonChatModels.error ??
       this.utilityModel.error ??
@@ -151,6 +157,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
   get errorDetails() {
     return (
+      this.cakeChat.errorDetails ??
       this.providers.errorDetails ??
       this.utilityModel.errorDetails ??
       this.modelPresets.errorDetails ??
@@ -233,6 +240,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
     this.nonChatModels.applyApplicationState(revision, state);
     this.modelPresets.applyApplicationState(revision, state);
     this.cakePrompts.applyApplicationState(revision, state);
+    this.cakeChat.applyApplicationState(revision, state);
     this.globalInstructions.applyApplicationState(revision, state);
     this.globalLabels.applyApplicationState(revision, state);
   }

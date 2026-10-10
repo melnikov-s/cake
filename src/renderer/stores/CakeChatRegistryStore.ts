@@ -1,10 +1,9 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
-import type { CakeChatTarget } from "../../ipc/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID, type CakeChatTarget } from "../../ipc/cake-chat-data";
 import type { ModelPreset } from "../../ipc/session-contract";
 import type { Conversation } from "../models/Conversation";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { CakeChatControls } from "../models/CakeChatControls";
-import type { CakeChatManagementStore } from "./CakeChatManagementStore";
 import type { CakeChatPendingSessionsStore, CakeControlTool } from "./CakeChatPendingSessionsStore";
 import { CakeChatSessionStore } from "./CakeChatSessionStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -14,7 +13,6 @@ export interface CakeChatRegistryStoreProps {
   controlsModel(sessionId: string): CakeChatControls;
   tools(): ReadonlyArray<CakeControlTool>;
   pendingSessions(): CakeChatPendingSessionsStore;
-  management(): CakeChatManagementStore;
   operations: SessionOperationCoordinatorStore;
   isVisible(sessionId: string): boolean;
   modelPresets?(): readonly ModelPreset[];
@@ -37,7 +35,6 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
         controls: this.props.controlsModel(sessionId),
         target: () => this.target(sessionId),
         pendingSessions: this.props.pendingSessions(),
-        management: this.props.management(),
         operations: this.props.operations,
         modelPresets: () => this.props.modelPresets?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
@@ -66,6 +63,7 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
   }
 
   load(sessionId: string) {
+    sessionId = CAKE_CHAT_SESSION_ID;
     const existing = this.find(sessionId);
     if (existing) return existing;
     this.targets.push(sessionId);
@@ -80,6 +78,10 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
 
   /** Reconciles pending identities against the authoritative catalog without replacing loaded Stores. */
   reconcile(authoritativeSessionIds: ReadonlySet<string>) {
+    for (let i = this.targets.length - 1; i >= 0; i -= 1) {
+      const id = this.targets[i]!;
+      if (id !== CAKE_CHAT_SESSION_ID) this.remove(id);
+    }
     this.props.pendingSessions().reconcileMaterialized(authoritativeSessionIds);
   }
 

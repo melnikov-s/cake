@@ -93,6 +93,18 @@ export const abort = Effect.fn("SessionChats.abort")(function* (target: SessionC
   yield* abortConversation(acquire(target.sessionId)).pipe(asError("abort"));
 });
 
+export const history = Effect.fn("SessionChats.history")(function* (
+  input: SessionChatTarget & { readonly cursor: string },
+) {
+  const handle = yield* acquire(input.sessionId);
+  if (!handle.history)
+    return yield* new SessionChatError({
+      operation: "history",
+      message: "This conversation does not paginate history",
+    });
+  return yield* handle.history(input.cursor).pipe(asError("history"));
+});
+
 export const listQueuedMessages = Effect.fn("SessionChats.listQueuedMessages")(function* (
   target: SessionChatTarget,
 ) {

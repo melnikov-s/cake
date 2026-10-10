@@ -70,7 +70,7 @@ export default tseslint.config(
   },
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/services/pi/**/*.ts"],
+    ignores: ["src/services/pi/**/*.ts", "src/services/pi-durable/**/*.ts"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -84,8 +84,15 @@ export default tseslint.config(
                 "@earendil-works/pi-ai/*",
                 "@earendil-works/pi-tui",
                 "@earendil-works/pi-tui/*",
+                "@earendil-works/pi-durable",
+                "@earendil-works/pi-durable/*",
+                "@earendil-works/pi-durable-ai",
+                "@earendil-works/pi-durable-ai/*",
+                "@earendil-works/chord",
+                "@earendil-works/chord/*",
               ],
-              message: "Ordinary Pi package imports belong beneath src/services/pi.",
+              message:
+                "Pi package imports belong beneath src/services/pi or src/services/pi-durable.",
             },
           ],
         },
@@ -106,7 +113,8 @@ export default tseslint.config(
             },
             {
               group: ["@earendil-works/pi-*", "@earendil-works/pi-*/*"],
-              message: "Ordinary Pi package imports belong beneath src/services/pi.",
+              message:
+                "Ordinary Pi package imports belong beneath src/services/pi or src/services/pi-durable.",
             },
           ],
         },
@@ -114,7 +122,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/services/pi/**/*.ts"],
+    files: ["src/services/pi/**/*.ts", "src/services/pi-durable/**/*.ts"],
     rules: {
       "no-restricted-imports": [
         "error",

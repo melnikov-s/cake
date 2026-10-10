@@ -1,4 +1,5 @@
 import { Store, child, createStore } from "r-state-tree";
+import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import { describeError } from "../lib/error-details";
@@ -6,7 +7,6 @@ import type { CakeChatCatalog } from "../models/CakeChatCatalog";
 import type { Conversation } from "../models/Conversation";
 import type { CakeChatControls } from "../models/CakeChatControls";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
-import { CakeChatManagementStore } from "./CakeChatManagementStore";
 import {
   CakeChatPendingSessionsStore,
   type CakeChatSummaryProjection,
@@ -14,7 +14,7 @@ import {
 } from "./CakeChatPendingSessionsStore";
 import { CakeChatRegistryStore } from "./CakeChatRegistryStore";
 import { ClientContext } from "./context/ClientContext";
-import { SessionLayoutStore, type SessionSplitAxis } from "./SessionLayoutStore";
+import { SessionLayoutStore } from "./SessionLayoutStore";
 import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 export interface CakeChatCollectionStoreProps {
@@ -45,7 +45,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
 
   @child
   get sessionLayoutStore(): SessionLayoutStore {
-    return createStore(SessionLayoutStore);
+    return createStore(SessionLayoutStore, { allowSplit: false });
   }
 
   @child
@@ -56,25 +56,12 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   }
 
   @child
-  get management(): CakeChatManagementStore {
-    return createStore(CakeChatManagementStore, {
-      pendingSessions: this.pendingSessions,
-      target: (sessionId) => this.registry.target(sessionId),
-      removeSession: (sessionId) => this.removeSession(sessionId),
-      discardPendingSession: (sessionId) => this.discardPendingSession(sessionId),
-      isSessionResolved: (sessionId) => this.isSessionResolved(sessionId),
-      reportError: (error, context) => this.reportError(error, context),
-    });
-  }
-
-  @child
   get registry(): CakeChatRegistryStore {
     return createStore(CakeChatRegistryStore, {
       sessionModel: this.props.sessionModel,
       controlsModel: this.props.controlsModel,
       tools: this.props.tools,
       pendingSessions: () => this.pendingSessions,
-      management: () => this.management,
       operations: this.operations,
       isVisible: (sessionId) => this.sessionLayoutStore.hasSession(sessionId),
       modelPresets: this.props.modelPresets,
@@ -97,13 +84,14 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   }
 
   get summaries(): readonly CakeChatSummaryProjection[] {
-    const authoritative: CakeChatSummaryProjection[] = this.props.catalog.sessions.map(
-      (session) => session,
+    const authoritative: CakeChatSummaryProjection[] = this.props.catalog.sessions.filter(
+      (session) => session.sessionId === CAKE_CHAT_SESSION_ID,
     );
     const authoritativeIds = new Set(authoritative.map((session) => session.sessionId));
     authoritative.push(
       ...this.pendingSessions.summaries.filter(
-        (session) => !authoritativeIds.has(session.sessionId),
+        (session) =>
+          session.sessionId === CAKE_CHAT_SESSION_ID && !authoritativeIds.has(session.sessionId),
       ),
     );
     return authoritative.sort(compareSessionSummariesForSidebar);
@@ -129,6 +117,8 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     try {
       this.reconcileAuthoritativeSessions();
       this.hydrated = true;
+      this.sessionLayoutStore.layout = undefined;
+      this.sessionLayoutStore.focusedPaneId = undefined;
       const restored = this.sessionId
         ? this.summaries.find(
             (summary) => summary.sessionId === this.sessionId && !summary.resolved,
@@ -170,6 +160,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
 
   async openSession(sessionId: string) {
     if (!this.hydrated) await this.initialize();
+    sessionId = CAKE_CHAT_SESSION_ID;
     if (this.pendingSessions.isPending(sessionId) || sessionId === this.sessionId) {
       this.selectSession(sessionId);
       return;
@@ -177,12 +168,12 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     return this.open(sessionId);
   }
 
-  async startNewSession(prompt?: string) {
+  async activate(prompt?: string) {
     await this.initialize();
     if (this.signal.aborted) return;
     const pendingSessionId = this.pendingSessions.firstUnstartedSessionId();
     const pending = pendingSessionId ? this.registry.find(pendingSessionId) : undefined;
-    const session = pending ?? this.prepareNewSession();
+    const session = this.activeSession ?? pending ?? this.prepareNewSession();
     this.selectSession(session.sessionId);
     if (prompt?.trim()) await session.conversationSessionStore.chatStore.submit(prompt);
   }
@@ -191,19 +182,6 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     const sessionId = this.sessionLayoutStore.focusPane(paneId);
     if (sessionId) this.selectionRevision += 1;
     return sessionId;
-  }
-
-  splitFocused(axis: SessionSplitAxis) {
-    if (!this.sessionLayoutStore.canSplit) return undefined;
-    const session = this.createPendingSession();
-    const paneId = this.sessionLayoutStore.splitFocused(session.sessionId, axis);
-    if (!paneId) {
-      this.removeSession(session.sessionId);
-      return undefined;
-    }
-    this.selectionRevision += 1;
-    session.conversationSessionStore.composerStore.draftStore.requestFocus();
-    return { paneId, sessionId: session.sessionId };
   }
 
   closePane(paneId: string) {
@@ -218,10 +196,6 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     return result;
   }
 
-  isSessionResolved(sessionId: string) {
-    return this.summaries.find((session) => session.sessionId === sessionId)?.resolved ?? false;
-  }
-
   reportError(error: unknown, context?: string) {
     if (this.activeSession)
       this.activeSession.conversationSessionStore.composerStore.reportError(error, context);
@@ -232,7 +206,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     }
   }
 
-  private prepareNewSession(sessionId: string = crypto.randomUUID(), name?: string) {
+  private prepareNewSession(sessionId: string = CAKE_CHAT_SESSION_ID, name = "Cake Chat") {
     const pendingSessionId = this.pendingSessions.firstUnstartedSessionId();
     if (pendingSessionId) return this.registry.find(pendingSessionId)!;
     const session = this.createPendingSession(sessionId, name);
@@ -240,34 +214,16 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     return session;
   }
 
-  private createPendingSession(sessionId: string = crypto.randomUUID(), name?: string) {
+  private createPendingSession(sessionId: string = CAKE_CHAT_SESSION_ID, name = "Cake Chat") {
     const session = this.registry.load(sessionId);
     this.pendingSessions.create(sessionId, name);
     return session;
-  }
-
-  private discardPendingSession(sessionId: string) {
-    this.removeSession(sessionId);
-    const focusedSessionId = this.sessionLayoutStore.focusedSessionId;
-    if (focusedSessionId) this.selectSession(focusedSessionId);
-    else {
-      const next = this.registry.sessions[0];
-      if (next) this.selectSession(next.sessionId);
-      else this.prepareNewSession();
-    }
   }
 
   private selectSession(sessionId: string) {
     this.selectionRevision += 1;
     if (this.sessionLayoutStore.layout) this.sessionLayoutStore.showSession(sessionId);
     else this.sessionLayoutStore.ensureSession(sessionId);
-  }
-
-  private removeSession(sessionId: string) {
-    this.sessionLayoutStore.removeSessions([sessionId]);
-    this.registry.remove(sessionId);
-    this.pendingSessions.remove(sessionId);
-    this.selectionRevision += 1;
   }
 
   private reconcileAuthoritativeSessions() {

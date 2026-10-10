@@ -123,7 +123,6 @@ function createHost(
       abort: async () => undefined,
       rename: async () => undefined,
       setProjectSessionsResolved: async () => 0,
-      setCakeChatSessionsResolved: async () => 0,
     },
     presentation: {
       splitView: () => undefined,

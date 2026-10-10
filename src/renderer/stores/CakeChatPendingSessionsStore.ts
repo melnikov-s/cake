@@ -1,4 +1,5 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
+import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import type { CakeChatSummary } from "../../ipc/cake-chat-data";
 import type { JsonObject } from "../../ipc/json-contract";
@@ -19,7 +20,6 @@ export interface CakeControlTool {
 
 interface NewCakeChatSessionRequest {
   configuration?: ChatConfiguration;
-  name?: string;
 }
 
 export interface CakeChatPendingSessionsStoreProps {
@@ -76,7 +76,8 @@ export class CakeChatPendingSessionsStore extends Store<CakeChatPendingSessionsS
   reconcileMaterialized(authoritativeSessionIds: ReadonlySet<string>) {
     for (let index = this.conversationIds.length - 1; index >= 0; index -= 1) {
       const sessionId = this.conversationIds[index]!;
-      if (authoritativeSessionIds.has(sessionId)) this.remove(sessionId);
+      if (sessionId !== CAKE_CHAT_SESSION_ID || authoritativeSessionIds.has(sessionId))
+        this.remove(sessionId);
     }
   }
 
@@ -90,19 +91,11 @@ export class CakeChatPendingSessionsStore extends Store<CakeChatPendingSessionsS
       : undefined;
   }
 
-  rename(sessionId: string, name: string) {
-    if (!this.isPending(sessionId) || !name.trim()) return false;
-    this.conversation(sessionId)!.setName(name);
-    return true;
-  }
-
   newSessionRequest(sessionId: string) {
     if (!this.isPending(sessionId)) return undefined;
     const request: NewCakeChatSessionRequest = {};
     const configuration = this.configuration(sessionId);
     if (configuration !== undefined) request.configuration = configuration;
-    const name = this.conversation(sessionId)?.name;
-    if (name !== undefined) request.name = name;
     return request;
   }
 

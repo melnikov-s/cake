@@ -2,10 +2,10 @@ import { Store, child, createStore } from "r-state-tree";
 import type { Conversation } from "../models/Conversation";
 import type { ModelPreset } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
+import { ConversationHistoryStore } from "./ConversationHistoryStore";
 import { ConversationSessionStore } from "./ConversationSessionStore";
 import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
-import type { CakeChatManagementStore } from "./CakeChatManagementStore";
 import type { CakeChatPendingSessionsStore } from "./CakeChatPendingSessionsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { CakeChatTarget } from "../../ipc/cake-chat-data";
@@ -17,7 +17,6 @@ export interface CakeChatSessionStoreProps {
   controls: CakeChatControls;
   target(): CakeChatTarget;
   pendingSessions: CakeChatPendingSessionsStore;
-  management: CakeChatManagementStore;
   operations: SessionOperationCoordinatorStore;
   modelPresets(): readonly ModelPreset[];
   openModelPresetSettings(): void;
@@ -39,6 +38,11 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
     return this.model.streaming;
   }
   @child
+  get history(): ConversationHistoryStore {
+    return createStore(ConversationHistoryStore, { model: this.model });
+  }
+
+  @child
   get conversationSessionStore(): ConversationSessionStore {
     return createStore(ConversationSessionStore, {
       sessionId: this.sessionId,
@@ -46,11 +50,8 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       operations: this.props.operations,
       canSubmit: () => true,
       startSession: (input) => this.startSession(input),
-      ensureSessionActive: () => this.props.management.ensureSessionActive(this.sessionId),
+      ensureSessionActive: () => true,
       composer: {
-        renameSession: (name) => this.props.management.renameSession(this.sessionId, name),
-        toolCompactSession: (entryId, prompt) =>
-          this.props.management.toolCompact(this.sessionId, entryId, prompt),
         draftSessionPrompt: (sessionId) =>
           this.props.pendingSessions.conversation(sessionId)?.draftPrompt,
         isDeferredSession: (sessionId) => this.props.pendingSessions.isPending(sessionId),
@@ -77,6 +78,7 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
           this.props.pendingSessions.conversation(this.sessionId)?.setConfiguration(configuration),
       },
       chat: {
+        history: this.history,
         commands: () => this.model.commands.filter((command) => command.name !== "sidechat"),
         placeholder: () => "Ask Cake to find or control a task…",
         inputLabel: () => "Message Cake Chat",

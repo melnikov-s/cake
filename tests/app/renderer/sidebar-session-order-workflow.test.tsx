@@ -4,7 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
-import { SidebarCakeChatGroup } from "../../../src/renderer/components/sidebar-cake-chat-group";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
 import {
@@ -38,7 +37,7 @@ function conversation(sessionId: string): ConversationSnapshot {
     tree: [],
   };
 }
-function renderOrdering(kind: "project-session" | "cake-chat") {
+function renderOrdering() {
   let completeResolve!: () => void;
   const resolving = new Promise<void>((complete) => {
     completeResolve = complete;
@@ -46,21 +45,16 @@ function renderOrdering(kind: "project-session" | "cake-chat") {
   const resolve = vi.fn(async () => resolving);
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: projectPath, name: "Project" })],
-    sessions: kind === "project-session" ? initialSessions : [],
+    sessions: initialSessions,
     client: {
       projectSessions: { open: async () => undefined, resolve },
-      cakeChats: { open: async () => undefined, resolve },
     },
   });
   const { root, models } = fixture;
-  if (kind === "cake-chat")
-    applySnapshot(models.cakeChatCatalog, { loaded: true, sessions: initialSessions });
   for (const session of initialSessions) {
-    if (kind === "project-session") root.sessionRegistry.load(session.sessionId, projectPath);
+    root.sessionRegistry.load(session.sessionId, projectPath);
     applyConversationSnapshot(
-      kind === "project-session"
-        ? models.projectConversation(session.sessionId, projectPath)
-        : models.cakeChatConversation(session.sessionId),
+      models.projectConversation(session.sessionId, projectPath),
       conversation(session.sessionId),
     );
   }
@@ -71,30 +65,21 @@ function renderOrdering(kind: "project-session" | "cake-chat") {
     resolved: false,
   };
   const view = render(
-    kind === "project-session" ? (
-      <SidebarProjectGroup
-        {...common}
-        sessionMetadata={root.sessionMetadataStore}
-        projects={root.projectCatalogStore}
-        chat={root.projectWorkbenchStore}
-        appearance={root.settingsStore.appearance}
-        path={projectPath}
-        flattenSessions
-        onCreateSession={(path) => void root.createSession(path)}
-        onOpenSession={(id) => void root.openSession(id)}
-        onRemoveProject={(path, deleteSessions) =>
-          root.projectRemovalStore.remove(path, deleteSessions)
-        }
-        onOpenSettings={(path) => root.projectSettingsStore.open(path)}
-      />
-    ) : (
-      <SidebarCakeChatGroup
-        {...common}
-        cakeChat={root.cakeChatCollectionStore}
-        onOpenCakeChat={(id) => void root.openCakeChat(id)}
-        onCreateCakeChat={() => void root.startCakeChat()}
-      />
-    ),
+    <SidebarProjectGroup
+      {...common}
+      sessionMetadata={root.sessionMetadataStore}
+      projects={root.projectCatalogStore}
+      chat={root.projectWorkbenchStore}
+      appearance={root.settingsStore.appearance}
+      path={projectPath}
+      flattenSessions
+      onCreateSession={(path) => void root.createSession(path)}
+      onOpenSession={(id) => void root.openSession(id)}
+      onRemoveProject={(path, deleteSessions) =>
+        root.projectRemovalStore.remove(path, deleteSessions)
+      }
+      onOpenSettings={(path) => root.projectSettingsStore.open(path)}
+    />,
   );
   return {
     user: userEvent.setup(),
@@ -104,9 +89,7 @@ function renderOrdering(kind: "project-session" | "cake-chat") {
     },
     publish(sessions: SessionSummaryFixture[]) {
       act(() => {
-        if (kind === "project-session")
-          applySnapshot(models.sessionCatalog, { sessions, resolvedHasMoreByProject: {} });
-        else applySnapshot(models.cakeChatCatalog, { loaded: true, sessions });
+        applySnapshot(models.sessionCatalog, { sessions, resolvedHasMoreByProject: {} });
       });
     },
     order: () =>
@@ -126,15 +109,13 @@ function renderOrdering(kind: "project-session" | "cake-chat") {
 
 afterEach(cleanup);
 
-for (const kind of ["project-session", "cake-chat"] as const) {
+for (const kind of ["project-session"] as const) {
   describe(`${kind} sidebar order`, () => {
-    // Cake Chat retirement requires its resolved projection before it navigates away.
-    const timings =
-      kind === "project-session" ? (["before", "after"] as const) : (["before"] as const);
+    const timings = ["before", "after"] as const;
     it.each(timings)(
       "keeps the previous session in date order when resolution projects %s fallback navigation",
       async (timing) => {
-        using fixture = renderOrdering(kind);
+        using fixture = renderOrdering();
         await fixture.user.click(screen.getByRole("button", { name: /^previous / }));
         await fixture.user.click(screen.getByRole("button", { name: /^newer / }));
         expect(fixture.selected()).toBe("newer");
@@ -156,7 +137,7 @@ for (const kind of ["project-session", "cake-chat"] as const) {
     );
 
     it("pins transcript updates but only reserves slots for preceding rows still in the lane", async () => {
-      using fixture = renderOrdering(kind);
+      using fixture = renderOrdering();
       await fixture.user.click(screen.getByRole("button", { name: /^previous / }));
       const updated = initialSessions.map((session) =>
         session.sessionId === "previous"
@@ -180,7 +161,7 @@ for (const kind of ["project-session", "cake-chat"] as const) {
     });
 
     it("releases the transcript-update pin on deselection", async () => {
-      using fixture = renderOrdering(kind);
+      using fixture = renderOrdering();
       await fixture.user.click(screen.getByRole("button", { name: /^previous / }));
       fixture.publish(
         initialSessions.map((session) =>

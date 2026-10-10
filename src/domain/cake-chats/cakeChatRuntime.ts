@@ -1,8 +1,10 @@
 import { Effect, Schema } from "effect";
 import { resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import { setSessionFastMode } from "../application/application";
+import { PiModels } from "../../services/pi/PiModels";
+import { defaultCakeChatPreferences } from "./cake-chat-preferences";
+import { utilityModelSelection } from "../utility-work/utilityWork";
 import type { CakeChatTarget } from "../../ipc/cake-chat-data";
-import * as cakeChatLifecycle from "./cakeChatLifecycle";
 import type { CakeChatLocation } from "./cakeChatLocations";
 import { makeSubagentControl } from "../subagents/subagentControl";
 import { jsonObjectSchema } from "../../ipc/json-contract";
@@ -16,6 +18,44 @@ import { ApplicationState } from "../../services/storage/ApplicationState";
 import type { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import type { CakeSessionRuntimeAcquireOptions } from "../../services/pi/CakeSessionRuntimes";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
+
+const CAKE_CHAT_OPERATIONS = [
+  "app.state",
+  "app.user-selection",
+  "models.list",
+  "session.info",
+  "session.usage",
+  "session.set-model",
+  "context.status",
+  "context.compact",
+  "sessions.list",
+  "sessions.info",
+  "sessions.open",
+  "sessions.create",
+  "sessions.send",
+  "sessions.reply",
+  "sessions.thread",
+  "sessions.close-thread",
+  "sessions.abort",
+  "sessions.rename",
+  "sessions.resolve",
+  "sessions.pending",
+  "sessions.reorder",
+  "sessions.cancel-queued",
+  "sessions.steer-queued",
+  "sessions.send-now",
+  "sessions.clear-queue",
+  "sessions.schedule",
+  "sessions.scheduled",
+  "sessions.cancel-scheduled",
+  "session-labels.list",
+  "sessions.set-labels",
+  "subagents.start",
+  "subagents.follow-up",
+  "subagents.abort",
+  "subagents.close",
+  "notifications.send",
+] as const;
 
 export interface CakeChatRuntimeConfiguration {
   readonly location: CakeChatLocation;
@@ -33,10 +73,12 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
   readonly newSession: boolean;
 }) {
   const application = yield* ApplicationState;
+  const models = yield* PiModels;
   const catalogs = yield* SessionCatalogChanges;
   const rendererRequests = yield* RendererRequests;
   const context = yield* Effect.context<
     | ApplicationState
+    | PiModels
     | CakeSessionRuntimes
     | RendererRequestCoordinator
     | SessionArchiveStorage
@@ -77,8 +119,33 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       sessionId: target.sessionId,
       // Pin the complete Cake Chat toolset instead of relying on Pi's default-tool
       // selection, which does not necessarily activate extension tools.
-      tools: ["read", "bash", "edit", "write", "cake"],
-      slashCommands: ["compact", "model", "toolcompact"],
+      tools: ["cake", "zoom", "date"],
+      allowedCakeOperations: CAKE_CHAT_OPERATIONS,
+      cakeChatMemory: {
+        preferences: () =>
+          application.snapshot().cakeChatPreferences ?? defaultCakeChatPreferences(),
+        summarize: (input) => {
+          const state = application.snapshot();
+          const model = state.cakeChatPreferences?.summarizationModel ?? state.utilityModel;
+          if (!model)
+            return Promise.reject(
+              new Error(
+                "Configure a utility model or Cake Chat summarization model in Settings to continue.",
+              ),
+            );
+          return run(
+            models.complete({
+              selection: utilityModelSelection(model),
+              instructions: input.instructions,
+              context: input.context,
+              maximumOutputCharacters: 4_096,
+              timeoutMs: 120_000,
+            }),
+            { signal: input.signal },
+          );
+        },
+      },
+      slashCommands: ["compact", "model"],
       requestUi: async () => undefined,
       modelPresets,
       resolveModelSelection: (selection, inherited) =>
@@ -86,14 +153,6 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       fastMode: {
         get: () => application.snapshot().fastModeSessionIds.includes(target.sessionId),
         set: (enabled) => run(setSessionFastMode(target.sessionId, enabled)).then(() => undefined),
-      },
-      currentSessionControl: {
-        // A Cake Chat runtime is acquired only from the active namespace.
-        resolved: () => false,
-        setResolved: (resolved) =>
-          run(
-            cakeChatLifecycle.setResolved(target.sessionId, resolved, configuration.location),
-          ).then(() => undefined),
       },
       sessionTitleChanged: (sessionId) =>
         run(

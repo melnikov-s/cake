@@ -63,6 +63,8 @@ export function unloadConversationProjection(model: Conversation) {
       tree: [],
       extensionUi: { statuses: [], compatibilityDiagnostics: [] },
     });
+    model.historyCursor = undefined;
+    model.earlierParts.splice(0);
     model.observedSnapshotRevision = 0;
     model.observationError = undefined;
     model.settledTurnRevision = 0;
@@ -108,6 +110,27 @@ export function applyConversationSnapshot(
   });
   const authoritative = conversationSnapshot(parsed);
   batch(() => {
+    // A live snapshot is a bounded recent window. Retain evicted originals only
+    // after the user explicitly loaded history; ordinary observation stays bounded.
+    if (model.earlierParts.length) {
+      const sourceIds = parsed.parts.flatMap((part) =>
+        "entryId" in part && part.entryId !== undefined ? [Number(part.entryId)] : [],
+      );
+      const oldest = sourceIds.length ? Math.min(...sourceIds) : undefined;
+      const known = new Set(model.earlierParts.map((part) => part.id));
+      if (oldest !== undefined)
+        model.earlierParts.push(
+          ...model.parts
+            .map((part) => part.value)
+            .filter(
+              (part) =>
+                "entryId" in part &&
+                part.entryId !== undefined &&
+                Number(part.entryId) < oldest &&
+                !known.has(part.id),
+            ),
+        );
+    }
     applyConversationCatalog(model, parsed);
     applySnapshot(model, {
       ...authoritative,
@@ -183,6 +206,7 @@ function conversationSnapshot(parsed: RuntimeConversationSnapshot): Snapshot<Con
   return {
     sessionId: parsed.sessionId,
     sessionFile: parsed.sessionFile,
+    historyCursor: parsed.historyCursor,
     parts: messageSnapshots(parsed.parts, parsed.sessionId),
     model: parsed.model ? { id: modelOptionKey(parsed.model) } : undefined,
     fastMode: parsed.fastMode ?? false,

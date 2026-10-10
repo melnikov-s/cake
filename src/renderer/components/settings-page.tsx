@@ -1,3 +1,4 @@
+import { SettingsCakeChatSection } from "./settings-cake-chat-section";
 import { SettingsMcpSection } from "./settings-mcp-section";
 import { SettingsDictationSection } from "./settings-dictation-section";
 import { SettingsSpeechSection } from "./settings-speech-section";
@@ -798,6 +799,8 @@ export const SettingsPage = observer(function SettingsPage({
               </section>
             </>
           )}
+
+          {activePage === "cake-chat" && <SettingsCakeChatSection settings={settings} />}
 
           {activePage === "prompts" && (
             <section

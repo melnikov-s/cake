@@ -16,9 +16,7 @@ export interface SidebarStoreProps {
   selectedConversation?(): { kind: "project-session" | "cake-chat"; sessionId: string } | undefined;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
   setSessionLabels(sessionId: string, labelIds: readonly string[]): Promise<void>;
-  setCakeChatSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
   deleteSession(sessionId: string): Promise<void>;
-  deleteCakeChatSession(sessionId: string): Promise<void>;
   setSessionUnread(sessionId: string, unread: boolean): Promise<void>;
   embeddedEditorSettings: EmbeddedEditorSettingsStore;
 }
@@ -206,16 +204,8 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     return this.props.setSessionLabels(sessionId, labelIds);
   }
 
-  setCakeChatSessionResolved(sessionId: string, resolved: boolean) {
-    return this.props.setCakeChatSessionResolved(sessionId, resolved);
-  }
-
   deleteSession(sessionId: string) {
     return this.props.deleteSession(sessionId);
-  }
-
-  deleteCakeChatSession(sessionId: string) {
-    return this.props.deleteCakeChatSession(sessionId);
   }
 
   setSessionUnread(sessionId: string, unread: boolean) {
