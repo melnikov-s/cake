@@ -13,6 +13,7 @@ import type { SubagentCoordinator } from "../services/subagents/SubagentCoordina
 import type { SubagentEnvironment } from "../services/subagents/SubagentEnvironment";
 import type { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import type { Terminal } from "../services/terminal/Terminal";
+import type { TaskInputStorage } from "../services/storage/TaskInputStorage";
 import {
   WorktreeLandingAgent,
   WorktreeLandingAgentError,
@@ -45,6 +46,7 @@ export const WorktreeLandingAgentLive = Layer.effect(
       | SubagentCoordinator
       | SubagentEnvironment
       | Terminal
+      | TaskInputStorage
     >();
     const dependencies = Context.omit(Scope.Scope)(context);
     return WorktreeLandingAgent.of({

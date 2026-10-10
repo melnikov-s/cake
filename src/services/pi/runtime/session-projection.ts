@@ -266,15 +266,21 @@ export function textFromContent(content: unknown): string {
     .join("\n");
 }
 
+const inputAttachmentPattern = /(?:^|\n)<cake-task-input>(.*?)<\/cake-task-input>(?=\n|$)/gs;
+const fileAttachmentPattern =
+  /(?:^|\n)<cake-file-attachment>(.*?)<\/cake-file-attachment>(?=\n|$)/gs;
 const sourceAttachmentPattern =
-  /(?:^|\n)<cake-source-attachment>(.*?)<\/cake-source-attachment>(?:\n|$)/gs;
+  /(?:^|\n)<cake-source-attachment>(.*?)<\/cake-source-attachment>(?=\n|$)/gs;
 const browserAttachmentPattern =
-  /(?:^|\n)<cake-browser-attachment>(.*?)<\/cake-browser-attachment>(?:\n|$)/gs;
-const annotationAttachmentPattern = /(?:^|\n)<cake-annotations>(.*?)<\/cake-annotations>(?:\n|$)/gs;
+  /(?:^|\n)<cake-browser-attachment>(.*?)<\/cake-browser-attachment>(?=\n|$)/gs;
+const annotationAttachmentPattern = /(?:^|\n)<cake-annotations>(.*?)<\/cake-annotations>(?=\n|$)/gs;
 
 export function parseContextAttachmentBlocks(text: string) {
-  const attachments: Extract<Attachment, { kind: "source" | "browser" | "annotation" }>[] = [];
-  const parseBlocks = <Kind extends "source" | "browser" | "annotation">(
+  const attachments: Extract<
+    Attachment,
+    { kind: "source" | "browser" | "annotation" | "input" | "file" }
+  >[] = [];
+  const parseBlocks = <Kind extends "source" | "browser" | "annotation" | "input" | "file">(
     value: string,
     pattern: RegExp,
     kind: Kind,
@@ -287,7 +293,9 @@ export function parseContextAttachmentBlocks(text: string) {
         if (
           attachment.kind !== "source" &&
           attachment.kind !== "browser" &&
-          attachment.kind !== "annotation"
+          attachment.kind !== "annotation" &&
+          attachment.kind !== "input" &&
+          attachment.kind !== "file"
         )
           return match;
         attachments.push(attachment);
@@ -296,7 +304,9 @@ export function parseContextAttachmentBlocks(text: string) {
         return match;
       }
     });
-  const withoutSources = parseBlocks(text, sourceAttachmentPattern, "source");
+  const withoutInputs = parseBlocks(text, inputAttachmentPattern, "input");
+  const withoutFiles = parseBlocks(withoutInputs, fileAttachmentPattern, "file");
+  const withoutSources = parseBlocks(withoutFiles, sourceAttachmentPattern, "source");
   const withoutBrowserAttachments = parseBlocks(
     withoutSources,
     browserAttachmentPattern,
@@ -394,6 +404,16 @@ function partsFromMessage(
         scheduled: envelope.scheduled,
       });
     parsedContext.attachments.forEach((attachment, index) => {
+      if (attachment.kind === "input" || attachment.kind === "file") {
+        parts.push({
+          id: `${baseId}-input-${index}`,
+          kind: "attachment",
+          name: attachment.name,
+          mediaType: attachment.kind === "input" ? attachment.mimeType : "application/octet-stream",
+          attachmentKind: "file",
+        });
+        return;
+      }
       if (attachment.kind === "annotation") {
         parts.push({
           id: `${baseId}-annotation-${index}`,
@@ -1085,13 +1105,19 @@ export function imageContent(attachments: Attachment[]) {
 
 export function promptText(text: string, attachments: Attachment[]) {
   const additions = attachments.flatMap((item) => {
-    if (item.kind === "file")
-      return [
-        /\s|"/.test(item.path)
-          ? `@"${item.path.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`
-          : `@${item.path}`,
-      ];
     const encoded = JSON.stringify(item).replaceAll("<", "\\u003c");
+    if (item.kind === "input") return [`<cake-task-input>${encoded}</cake-task-input>`];
+    if (item.kind === "file") return [`<cake-file-attachment>${encoded}</cake-file-attachment>`];
+    if (item.kind === "image" && item.originalPath !== undefined) {
+      const original = JSON.stringify({
+        kind: "file",
+        name: item.name,
+        path: item.originalPath,
+      }).replaceAll("<", "\\u003c");
+      return [`<cake-file-attachment>${original}</cake-file-attachment>`];
+    }
+    if (item.kind === "text" || item.kind === "forwarded-input")
+      throw new Error("Task inputs must be admitted before prompt construction");
     if (item.kind === "source")
       return [`<cake-source-attachment>${encoded}</cake-source-attachment>`];
     if (item.kind === "browser")

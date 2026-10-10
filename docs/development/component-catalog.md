@@ -44,6 +44,14 @@ without sending, creating a fresh Project Session only when New session was sele
 annotations put the head at pointer-down and the tail/label at pointer-up. These controls stay
 outside the exported image; only the flattened screenshot and annotations enter a chat draft.
 
+## Text attachments
+
+`TextAttachment` composes Popover and IconButton for a compact pasted-input chip,
+explicit user-only preview (bounded to 16,000 characters), and removal. It never
+summarizes or changes model access. Shared Chat intercepts pastes of at least
+4,000 characters or 40 lines before inserting them into the message. Short pastes
+remain ordinary composer text; files including Markdown use the regular file picker.
+
 ## Context pills
 
 `ContextPill` composes `Chip` to disclose exact system/reminder/extension context

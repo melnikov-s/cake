@@ -1,4 +1,5 @@
 import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
+import { inheritTaskInputProtection, prepareCoordinatorNotice } from "../conversations/taskInputs";
 import type { SessionCompletionReport } from "../../contracts/project-sessions/session-reporting";
 import { toJsonValue } from "../../utils/to-json-value";
 import { crossSessionContextSnapshot } from "../../contracts/conversations/cross-session-message";
@@ -524,6 +525,14 @@ const deliverOutcome = Effect.fn("SessionFamilies.deliverOutcome")(function* (
   );
   if (!current) return;
   turn = current;
+  if (turn.senderSessionId === CAKE_CHAT_SESSION_ID)
+    text = yield* prepareCoordinatorNotice(turn.senderSessionId, text).pipe(
+      Effect.mapError((error) => failure(error.message)),
+    );
+  else
+    yield* inheritTaskInputProtection(turn.sessionId, turn.senderSessionId).pipe(
+      Effect.mapError((error) => failure(error.message)),
+    );
   const snapshot = yield* sender.snapshot();
   const receipt = snapshot.parts.find(
     (part) =>
@@ -647,7 +656,10 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
         workingDirectory: location.workingDirectory,
       },
     };
-    const encoded = encodeCrossSessionMessage(input.text, metadata);
+    const encoded = yield* prepareCoordinatorNotice(
+      targetId,
+      encodeCrossSessionMessage(input.text, metadata),
+    ).pipe(Effect.mapError((error) => failure(error.message)));
     if (replyToMessageId && pending)
       yield* storage.prepareResponse(
         sessionId,

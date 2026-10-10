@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import type {
   CoordinationMessage,
@@ -61,6 +62,7 @@ async function sendCrossSessionMessage(
   replyToMessageId: string | undefined,
   source: AgentControlSource,
   thread: CoordinationThread,
+  inputRefs?: readonly string[],
 ): Promise<AppControlResult> {
   const target = knownSession(host, targetSessionId);
   if (!target)
@@ -110,6 +112,7 @@ async function sendCrossSessionMessage(
       text,
       delivery === "queue" ? "follow-up" : delivery,
       metadata,
+      inputRefs,
     );
   } catch (error) {
     message.status = "failed";
@@ -162,6 +165,7 @@ export const sessionMessageControls = [
   defineSessionControl({
     command: "sessions.send",
     args: Schema.Struct({
+      inputRefs: Schema.optionalKey(inputRefsSchema),
       ...sessionIdTargetSchema.fields,
       text: trimmed(1, 100000),
       delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
@@ -191,6 +195,8 @@ export const sessionMessageControls = [
           sessionId,
           input.text,
           delivery === "queue" ? "follow-up" : delivery,
+          undefined,
+          input.inputRefs,
         );
         return {
           ok: true,
@@ -232,6 +238,7 @@ export const sessionMessageControls = [
         input.replyToMessageId,
         source,
         thread,
+        input.inputRefs,
       );
     },
   }),

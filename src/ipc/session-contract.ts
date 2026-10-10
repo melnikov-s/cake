@@ -9,6 +9,7 @@ import { CrossSessionMessageMetadata } from "../contracts/conversations/cross-se
 import { ScheduledMessageOrigin } from "../contracts/conversations/scheduled-message-envelope";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sourceLocationSchema } from "./source-location";
+import { TaskInputReference } from "../contracts/conversations/task-input";
 
 export const SESSION_TITLE_MAX_LENGTH = 144;
 
@@ -186,12 +187,25 @@ const sourceAttachmentLocationSchema = Schema.Struct({
 });
 
 export const attachmentSchema = Schema.Union([
+  TaskInputReference,
+  Schema.Struct({
+    kind: Schema.Literal("text"),
+    name: stringMax(512),
+    text: stringMax(8 * 1024 * 1024),
+  }),
+  // Forwarding capabilities are issued by main, never by the coordinator model.
+  Schema.Struct({
+    kind: Schema.Literal("forwarded-input"),
+    name: stringMax(512),
+    reference: stringRange(1, 100),
+  }),
   Schema.Struct({ kind: Schema.Literal("file"), name: stringMax(512), path: stringMax(4_096) }),
   Schema.Struct({
     kind: Schema.Literal("image"),
     name: stringMax(512),
     mimeType: stringMax(128),
     data: stringMax(20_000_000),
+    originalPath: Schema.optionalKey(stringMax(4_096)),
   }),
   Schema.Struct({
     kind: Schema.Literal("source"),

@@ -1,4 +1,9 @@
-import { SessionManager, type AgentSession } from "@earendil-works/pi-coding-agent";
+import {
+  SessionManager,
+  SettingsManager,
+  type AgentSession,
+} from "@earendil-works/pi-coding-agent";
+import { durableModel } from "../../../fixtures/durable-chat";
 import { describe, expect, it, vi } from "vitest";
 import { createCakeSessionRuntimeTurnController } from "../../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
 import { encodeCrossSessionMessage } from "../../../../src/contracts/conversations/cross-session-message";
@@ -22,6 +27,8 @@ function deferred() {
 function createFixture(overrides: Partial<AgentSession> = {}) {
   const sessionManager = SessionManager.inMemory("/project");
   const session = {
+    model: durableModel,
+    settingsManager: SettingsManager.inMemory(),
     isStreaming: false,
     isCompacting: false,
     isBashRunning: false,
@@ -59,6 +66,28 @@ function createFixture(overrides: Partial<AgentSession> = {}) {
 }
 
 describe("CakeSessionRuntime turn controller", () => {
+  it("rejects images for unsupported models or disabled images before starting or queueing a turn", async () => {
+    const attachment = {
+      kind: "image" as const,
+      name: "screenshot.png",
+      mimeType: "image/png",
+      data: "AAA=",
+    };
+    for (const blocked of [false, true]) {
+      const settingsManager = SettingsManager.inMemory();
+      settingsManager.setBlockImages(blocked);
+      const { controller, session } = createFixture({
+        model: { ...durableModel, input: blocked ? ["text", "image"] : ["text"] },
+        settingsManager,
+      });
+      await expect(controller.prompt("Inspect", "prompt", [attachment])).rejects.toThrow(
+        "cannot accept images",
+      );
+      expect(session.prompt).not.toHaveBeenCalled();
+      expect(session.followUp).not.toHaveBeenCalled();
+      controller.dispose();
+    }
+  });
   it("captures voice response style through prompt, steering, follow-up and compaction-held delivery", async () => {
     for (const delivery of ["prompt", "steer", "follow-up"] as const) {
       const { controller, session } = createFixture();

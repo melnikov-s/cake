@@ -3,7 +3,12 @@ import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
 import type { SessionRequester } from "../../contracts/project-sessions/session-reporting";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
-import { SESSION_TITLE_MAX_LENGTH, type ChatConfiguration } from "../../ipc/session-contract";
+import { inheritTaskInputProtection } from "../conversations/taskInputs";
+import {
+  SESSION_TITLE_MAX_LENGTH,
+  type Attachment,
+  type ChatConfiguration,
+} from "../../ipc/session-contract";
 import { ProjectSessionError } from "../../ipc/project-session-data";
 import * as projectSessionOperations from "./projectSessionOperations";
 import * as projectSessionLocations from "./projectSessionLocations";
@@ -12,6 +17,8 @@ import * as managedWorktrees from "../worktrees/managedWorktrees";
 /** One backend admission for independent sessions; presentation is never part of creation. */
 export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(function* (input: {
   readonly projectPath: string;
+  readonly sourceSessionId?: string;
+  readonly attachments?: readonly Attachment[];
   readonly name: string;
   readonly initialPrompt: string;
   readonly model: ChatConfiguration;
@@ -39,6 +46,12 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
     : undefined;
   const workingDirectory = record?.worktreePath ?? input.projectPath;
   const sessionId = crypto.randomUUID();
+  if (input.sourceSessionId)
+    yield* inheritTaskInputProtection(input.sourceSessionId, sessionId).pipe(
+      Effect.mapError(
+        (error) => new ProjectSessionError({ operation: "createPrompted", message: error.message }),
+      ),
+    );
   const requester =
     input.requester?.kind === "cake-chat" && input.requester.sessionId === CAKE_CHAT_SESSION_ID
       ? input.requester
@@ -69,7 +82,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
       workingDirectory,
       projectPath: input.projectPath,
       text,
-      attachments: [],
+      attachments: [...(input.attachments ?? [])],
       renderUserMessageAsMarkdown: input.markdown !== false,
       name: input.name.slice(0, SESSION_TITLE_MAX_LENGTH),
       configuration: input.model,

@@ -37,6 +37,7 @@ import { ScheduledMessages } from "../../../src/services/scheduled-messages/Sche
 import { WorkspaceFiles } from "../../../src/services/filesystem/WorkspaceFiles";
 import { NativeAttachments } from "../../../src/services/filesystem/NativeAttachments";
 import { AttachmentUploads } from "../../../src/services/filesystem/AttachmentUploads";
+import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { ProjectConfiguration } from "../../../src/services/projects/ProjectConfiguration";
 import { RewordingRequests } from "../../../src/services/projects/RewordingRequests";
 import { PiAgentResources } from "../../../src/services/pi/PiAgentResources";
@@ -102,6 +103,7 @@ export const unusedEndpointServices = Layer.mergeAll(
   Layer.mock(WorkspaceFiles, {}),
   Layer.mock(NativeAttachments, {}),
   Layer.mock(AttachmentUploads, {}),
+  Layer.mock(TaskInputStorage, {}),
   Layer.succeed(ProjectConfiguration, { agentDirectory: "/agent" }),
   Layer.mock(RewordingRequests, {}),
   Layer.mock(PiAgentResources, {}),

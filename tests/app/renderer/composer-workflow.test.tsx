@@ -127,6 +127,29 @@ const input = () => screen.getByRole<HTMLTextAreaElement>("combobox", { name: "M
 afterEach(cleanup);
 
 describe("Chat composer workflow", () => {
+  it("turns a large paste into a compact attachment without putting it in the message and retains the original text", async () => {
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => TurnId.make("pasted-input"));
+    using composer = await renderComposer({ sessionChats: { prompt } });
+    const log = "PRIVATE_PASTED_LOG\r\n" + "error details\n".repeat(50) + "  ";
+    await composer.user.click(input());
+    await composer.user.paste(log);
+    expect(input().value).toBe("");
+    expect(screen.getByRole("button", { name: /^Pasted text/ })).toBeTruthy();
+    expect(screen.queryByText("PRIVATE_PASTED_LOG")).toBeNull();
+    await typeAndSend(composer.user, "Research the attached log");
+    await waitFor(() => expect(prompt).toHaveBeenCalled());
+    expect(prompt.mock.calls[0]?.[0]).toMatchObject({
+      text: "Research the attached log",
+      attachments: [{ kind: "text", text: log }],
+    });
+  });
+  it("leaves a short paste as ordinary message text", async () => {
+    using composer = await renderComposer();
+    await composer.user.click(input());
+    await composer.user.paste("Please research this");
+    expect(input().value).toBe("Please research this");
+    expect(screen.queryByRole("button", { name: /^Pasted text/ })).toBeNull();
+  });
   it("keeps same-named local files distinct and sends only the attachment the user kept", async () => {
     const first = { kind: "file" as const, name: "notes.txt", path: "/one/notes.txt" };
     const second = { ...first, path: "/two/notes.txt" };

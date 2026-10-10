@@ -28,6 +28,7 @@ import { ProjectSessionConfiguration } from "../../../src/services/project-sessi
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { makeWorkspaceFilesLive } from "../../../src/services/filesystem/WorkspaceFilesLive";
 import { makeAttachmentUploadsLive } from "../../../src/services/filesystem/AttachmentUploadsLive";
+import { makeTaskInputStorageLive } from "../../../src/services/storage/TaskInputStorageLive";
 import { tmpdir } from "node:os";
 import { rm } from "node:fs/promises";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
@@ -286,6 +287,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     ),
     access,
     makeWorkspaceFilesLive("/agent").pipe(Layer.provide(access)),
+    makeTaskInputStorageLive(join(tmpdir(), `cake-test-inputs-${randomUUID()}`)),
     makeAttachmentUploadsLive(
       join(tmpdir(), `cake-test-uploads-${randomUUID()}`),
       join(tmpdir(), `cake-test-accepted-${randomUUID()}`),

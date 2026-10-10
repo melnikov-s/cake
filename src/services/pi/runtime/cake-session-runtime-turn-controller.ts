@@ -101,6 +101,17 @@ export function createCakeSessionRuntimeTurnController(input: {
   readonly reportQueuedCommandError?: (command: string, error: unknown) => void;
 }): CakeSessionRuntimeTurnController {
   const { session } = input;
+  const assertImageSupport = (attachments: readonly Attachment[]) => {
+    const count = attachments.filter((item) => item.kind === "image").length;
+    if (!count) return;
+    if (session.settingsManager.getBlockImages() || !session.model?.input.includes("image"))
+      throw new Error(
+        "This session cannot accept images. Select an image-capable model and enable images before sending.",
+      );
+    const maximum = session.model.inputLimits?.images?.maxPerMessage;
+    if (maximum !== undefined && count > maximum)
+      throw new Error(`This model accepts at most ${maximum} images per message`);
+  };
   const turnCompletions = new RuntimeTurnCompletion();
   const commandCompletions = new RuntimeTurnCompletion();
   type QueueLane = "steering" | "follow-up";
@@ -282,6 +293,7 @@ export function createCakeSessionRuntimeTurnController(input: {
           }
           const delivery = item.delivery === "steer" ? "steer" : "follow-up";
           const content = item.content;
+          assertImageSupport(item.attachments);
           const images = imageContent(item.attachments);
           const lane = item.delivery === "steer" ? "steering" : "follow-up";
           trackedQueue[lane].push({
@@ -343,6 +355,7 @@ export function createCakeSessionRuntimeTurnController(input: {
     responseMode?: ConversationResponseMode,
   ) => {
     assertActive();
+    assertImageSupport(attachments);
     const generation = abortGeneration;
     input.recovery.onUserInput();
     const builtin = parsePiBuiltinCommand(text);
@@ -464,6 +477,7 @@ export function createCakeSessionRuntimeTurnController(input: {
     responseMode?: ConversationResponseMode,
   ) => {
     assertActive();
+    assertImageSupport(attachments);
     if (session.isStreaming || session.isCompacting)
       throw new Error("Wait for the current response to finish before editing a message");
     const lastUserEntry = session.sessionManager
@@ -870,6 +884,7 @@ export function createCakeSessionRuntimeTurnController(input: {
           : location.index;
       const [selected] = queues[lane].splice(laneIndex, 1);
       if (!selected) throw new Error("That queued message is no longer available");
+      assertImageSupport(selected.attachments);
 
       session.clearQueue();
       compactionQueue = [];

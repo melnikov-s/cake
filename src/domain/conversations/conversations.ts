@@ -292,19 +292,17 @@ export const setPiSetting = Effect.fn("Conversations.setPiSetting")(function* <E
 export const projectAttachments = (values: ReadonlyArray<Attachment>): ReadonlyArray<Attachment> =>
   values.map((value): Attachment => {
     switch (value.kind) {
+      case "input":
+      case "text":
+      case "forwarded-input":
+        return { ...value };
       case "file":
         return { kind: "file", name: value.name, path: value.path };
       case "image":
-        return {
-          kind: "image",
-          name: value.name,
-          mimeType: value.mimeType,
-          data: value.data,
-        };
+        return { ...value };
       case "source":
         return {
-          kind: "source",
-          name: value.name,
+          ...value,
           location: {
             path: value.location.path,
             range: {

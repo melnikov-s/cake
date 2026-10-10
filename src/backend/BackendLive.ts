@@ -17,6 +17,7 @@ import { ClientWorkspacesLive } from "../services/clients/ClientWorkspacesLive";
 import { WorkspaceFileExportLive } from "../services/filesystem/WorkspaceFileExport";
 import { makeWorkspaceFilesLive } from "../services/filesystem/WorkspaceFilesLive";
 import { makeAttachmentUploadsLive } from "../services/filesystem/AttachmentUploadsLive";
+import { makeTaskInputStorageLive } from "../services/storage/TaskInputStorageLive";
 import { makeGitLive } from "../services/git/GitLive";
 import { makePiAgentResourcesLive } from "../services/pi/live/PiAgentResourcesLive";
 import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
@@ -142,6 +143,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
         WorkspaceFileExportLive,
         makeWorkspaceFilesLive(paths.piAgent).pipe(Layer.provide(FoundationLive)),
         makeAttachmentUploadsLive(paths.cache, paths.state).pipe(Layer.provide(FoundationLive)),
+        makeTaskInputStorageLive(paths.state),
         makeArtifactProjectionLive(paths.cache),
       ).pipe(Layer.provide(FoundationLive)),
     ),

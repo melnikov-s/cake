@@ -8,6 +8,8 @@ import { acquireOptions as chatOptions } from "../../../src/domain/cake-chats/ca
 import { createPrompted } from "../../../src/domain/project-sessions/projectSessionCreation";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/ipc/cake-chat-data";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
+import type { Attachment } from "../../../src/ipc/session-contract";
 import type { PiTurnResult } from "../../../src/contracts/pi/turn-result-data";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
@@ -61,6 +63,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   const consumeQueued = yield* Deferred.make<void>();
   const transcript: string[] = [];
   const deliveries: string[] = [];
+  const submittedAttachments = new Map<string, readonly Attachment[]>();
   const queue: string[] = [];
   const harness = familyStorageHarness();
   const environment = Layer.mergeAll(
@@ -145,6 +148,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
                         yield* Deferred.succeed(persisted, undefined);
                         yield* Deferred.succeed(received, undefined);
                       } else {
+                        submittedAttachments.set(options.sessionId ?? "", _attachments);
                         executing.set(options.sessionId ?? "", [turnId]);
                         yield* Deferred.succeed(entered, {
                           sessionId: options.sessionId ?? "unexpected",
@@ -180,6 +184,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
     consumeQueued,
     transcript,
     deliveries,
+    submittedAttachments,
     run: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(
         Effect.provideService(SessionFamilyStorage, observedStorage),
@@ -206,14 +211,16 @@ const assembleCoordinator = Effect.fn("SpawnedReportingTest.assembleCoordinator"
   return options;
 });
 
-const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function* () {
+const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function* (
+  inputRefs: readonly string[] = [],
+) {
   const options = yield* assembleCoordinator();
   assert.ok(options.runtime.globalControl);
   const result = yield* Effect.promise(() =>
     options.runtime.globalControl!.invoke(
       {
         name: "sessions.create",
-        arguments: { workspacePath: "/project", ...createArgs },
+        arguments: { workspacePath: "/project", ...createArgs, inputRefs: [...inputRefs] },
       },
       new AbortController().signal,
     ),
@@ -231,6 +238,91 @@ const onlyTurn = Effect.fn("SpawnedReportingTest.onlyTurn")(function* () {
 });
 
 describe("automatic spawned-session reporting", () => {
+  it.effect.each(["completion", "explicit"] as const)(
+    "forwards selected inputs through backend creation and isolates %s reports without losing correlation",
+    (mode) =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        const ref = "00000000-0000-4000-8000-000000000004";
+        const grant = `${ref}/00000000-0000-4000-8000-000000000005`;
+        const recipients = new Set<string>();
+        const original: Attachment = {
+          kind: "file",
+          name: "build.log",
+          path: "/vault/PRIVATE_ORIGINAL.log",
+        };
+        const inputs = TaskInputStorage.of({
+          isolate: () => Effect.die("Creation must not copy the input into Cake Chat"),
+          authorizeForward: (owner, ids) =>
+            Effect.sync(() => {
+              assert.equal(owner, CAKE_CHAT_SESSION_ID);
+              assert.deepEqual(ids, [ref]);
+              return [grant];
+            }),
+          resolve: (recipient, attachments) =>
+            Effect.sync(() => {
+              assert.deepEqual(attachments, [
+                { kind: "forwarded-input", name: "Attachment", reference: grant },
+              ]);
+              recipients.add(recipient);
+              return [original];
+            }),
+          isRecipient: (id) => Effect.succeed(recipients.has(id)),
+          protectRecipient: (id) =>
+            Effect.sync(() => {
+              recipients.add(id);
+            }),
+        });
+        yield* f.run(
+          Effect.gen(function* () {
+            const created = yield* createFromChat([ref]);
+            const entered = yield* Deferred.await(f.entered);
+            assert.equal(entered.sessionId, created.sessionId);
+            assert.deepEqual(f.submittedAttachments.get(created.sessionId), [original]);
+            assert.equal(parseCrossSessionMessage(entered.text)?.metadata.sender.kind, "cake-chat");
+            const request = yield* onlyTurn();
+            if (mode === "completion") {
+              yield* Deferred.succeed(f.finish, {
+                stopReason: "stop",
+                text: "PRIVATE_DERIVED_RESULT",
+              });
+              yield* Deferred.await(f.settled);
+              yield* families.deliver(yield* onlyTurn());
+            } else {
+              yield* families.routeCoordinatorMessage(
+                created.sessionId,
+                "sessions.send",
+                {
+                  sessionId: CAKE_CHAT_SESSION_ID,
+                  text: "PRIVATE_DERIVED_QUESTION",
+                  expectsResponse: true,
+                },
+                location,
+              );
+            }
+            yield* Deferred.await(f.received);
+            const response = parseCrossSessionMessage(f.transcript[0] ?? "");
+            assert.ok(response);
+            assert.doesNotMatch(JSON.stringify(response), /PRIVATE_/);
+            assert.match(response.text, /Open the Project Session/);
+            assert.equal(response.metadata.sender.sessionId, created.sessionId);
+            assert.equal(response.metadata.sender.title, "Task session");
+            if (mode === "completion") {
+              assert.equal(response.metadata.replyToMessageId, request.requestMessageId);
+              yield* families.deliver(yield* onlyTurn());
+              assert.equal((yield* f.storage.state()).spawnedSessions[0]?.reportDelivered, true);
+            } else {
+              assert.equal(response.metadata.expectsResponse, true);
+              yield* Deferred.succeed(f.finish, {
+                stopReason: "stop",
+                text: "PRIVATE_DERIVED_RESULT",
+              });
+              yield* Deferred.await(f.settled);
+            }
+          }).pipe(Effect.provideService(TaskInputStorage, inputs)),
+        );
+      }),
+  );
   it.effect.each([false, true])(
     "global creation records origin and delivers/wakes idle or busy Cake Chat (%s)",
     (busy) =>

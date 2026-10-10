@@ -18,6 +18,7 @@ import {
   type CakeChatTarget,
 } from "../../ipc/cake-chat-data";
 import { asError, publishCatalogChange, sessionNamespace } from "./cakeChatMetadata";
+import { prepareTaskInputs } from "../conversations/taskInputs";
 
 const acquireTarget = Effect.fn("CakeChats.acquireTarget")(function* (
   target: CakeChatTarget,
@@ -91,7 +92,9 @@ export const start = Effect.fn("CakeChats.start")(function* (
     yield* deliverWhenAvailable(
       Effect.succeed(handle),
       input.text,
-      projectAttachments(input.attachments),
+      projectAttachments(
+        yield* prepareTaskInputs(input.sessionId, true, input.attachments).pipe(asError("start")),
+      ),
       input.renderUserMessageAsMarkdown,
     ).pipe(asError("start")),
   );

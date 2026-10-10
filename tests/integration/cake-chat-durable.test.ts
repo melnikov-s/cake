@@ -2,6 +2,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile, access } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Deferred, Effect, ManagedRuntime } from "effect";
+import { makeTaskInputStorageLive } from "../../src/services/storage/TaskInputStorageLive";
+import { TaskInputStorage } from "../../src/services/storage/TaskInputStorage";
+import { prepareTaskInputs } from "../../src/domain/conversations/taskInputs";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
   createAssistantMessageEventStream,
@@ -190,6 +193,76 @@ async function fixture() {
   };
 }
 
+it("keeps attachment bytes out of provider input, originals, zoom and future memory across compaction and reopen", async () => {
+  const f = await fixture();
+  const vault = ManagedRuntime.make(makeTaskInputStorageLive(f.directory));
+  cleanup.push(() => vault.dispose());
+  const secret = "PRIVATE_LOG_SENTINEL " + "exact log text\r\n".repeat(500);
+  const data = Buffer.from("PRIVATE_IMAGE_SENTINEL").toString("base64");
+  const attachments = [
+    { kind: "text" as const, name: "Pasted text", text: secret },
+    { kind: "image" as const, name: "screenshot.png", mimeType: "image/png", data },
+  ];
+  const refs = await vault.runPromise(prepareTaskInputs(CAKE_CHAT_SESSION_ID, true, attachments));
+  const first = await f.open();
+  await expect(first.runtime.prompt("Research", "prompt", attachments)).rejects.toThrow(
+    "references only",
+  );
+  expect(f.requests).toHaveLength(0);
+  await first.runtime.prompt(
+    `Research these inputs. ${"Coordinator instruction. ".repeat(300)}`,
+    "prompt",
+    [...refs],
+    false,
+    ids.first,
+  );
+  await first.runtime.compact("Retain task references");
+  expect(f.summarize).toHaveBeenCalled();
+  await first.close();
+  const before = f.requests.length;
+  f.answer((index) =>
+    index === before + 1
+      ? durableAnswer("", [
+          { type: "toolCall", id: "zoom-input", name: "zoom", arguments: { id: 1, n: 1 } },
+        ])
+      : durableAnswer("Done"),
+  );
+  const reopened = await f.open();
+  await reopened.runtime.prompt("Continue coordination", "prompt", [], false, ids.second);
+  // zoom reads the exact original, not merely the currently compacted provider view.
+  const history = await reopened.runtime.snapshot();
+  expect(f.requests.length).toBeGreaterThanOrEqual(before + 2);
+  expect(JSON.stringify(f.requests)).toContain("zoom-input");
+  const combined = JSON.stringify([f.requests, f.summarize.mock.calls, history]);
+  for (const payload of ["PRIVATE_LOG_SENTINEL", "PRIVATE_IMAGE_SENTINEL", secret, data])
+    expect(combined).not.toContain(payload);
+  expect(JSON.stringify(history.parts)).toContain("Pasted text");
+  const storage = await vault.runPromise(TaskInputStorage);
+  const selected = refs.flatMap((ref) => (ref.kind === "input" ? [ref.id] : []));
+  const grants = await vault.runPromise(
+    storage.authorizeForward(CAKE_CHAT_SESSION_ID, selected, ids.third),
+  );
+  const delivered = await vault.runPromise(
+    prepareTaskInputs(
+      ids.third,
+      false,
+      grants.map((reference) => ({ kind: "forwarded-input", name: "Attachment", reference })),
+    ),
+  );
+  const [file, image] = delivered;
+  if (file?.kind !== "file") throw new Error("Expected log file");
+  expect(await readFile(file.path, "utf8")).toBe(secret);
+  expect(image).toMatchObject({
+    kind: "image",
+    name: "screenshot.png",
+    mimeType: "image/png",
+    data,
+  });
+  if (image?.kind !== "image" || !image.originalPath)
+    throw new Error("Expected original image file");
+  expect((await readFile(image.originalPath)).toString("base64")).toBe(data);
+});
+
 it("uses production SQLite, existing credentials and exact originals across reopen; purges only global JSONL roots", async () => {
   const f = await fixture();
   const old = join(f.sessionDir, "old.jsonl");
@@ -245,7 +318,7 @@ it("uses production SQLite, existing credentials and exact originals across reop
   ).toHaveLength(2);
 });
 
-it("Stop preserves the inbox; send-now places the chosen original identity and retains its image/Markdown payload", async () => {
+it("Stop preserves the inbox; send-now retains reference-only attachments and Markdown without image payloads", async () => {
   const f = await fixture();
   f.hold(true);
   const { runtime } = await f.open();
@@ -260,7 +333,7 @@ it("Stop preserves the inbox; send-now places the chosen original identity and r
     .prompt(
       "Two",
       "follow-up",
-      [{ kind: "image", name: "sample.png", mimeType: "image/png", data: "c2FtcGxl" }],
+      [{ kind: "input", id: ids.first, name: "sample.png", mimeType: "image/png", byteLength: 6 }],
       true,
       ids.third,
     )
@@ -285,7 +358,7 @@ it("Stop preserves the inbox; send-now places the chosen original identity and r
     queuedInput: {
       text: "Two",
       renderUserMessageAsMarkdown: true,
-      attachments: [{ name: "sample.png", data: "c2FtcGxl" }],
+      attachments: [{ kind: "input", name: "sample.png", id: ids.first }],
     },
   });
   f.hold(false);
@@ -298,7 +371,8 @@ it("Stop preserves the inbox; send-now places the chosen original identity and r
       .filter((part) => part.kind === "text" && part.role === "user")
       .map((part) => (part.kind === "text" ? part.text : "")),
   ).toEqual(["Hold", "Two", "One"]);
-  expect(JSON.stringify(f.requests[1])).toContain("c2FtcGxl");
+  expect(JSON.stringify(f.requests[1])).not.toContain("c2FtcGxl");
+  expect(JSON.stringify(f.requests[1])).toContain(ids.first);
 });
 
 it("restart resumes a placed run and a queued worker report without resubmission or duplicate originals", async () => {

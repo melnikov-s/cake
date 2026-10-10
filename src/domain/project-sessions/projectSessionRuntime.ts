@@ -11,9 +11,11 @@ import { WorktreeLandingCompletion } from "../../services/worktrees/WorktreeLand
 import * as projectSessionCreation from "./projectSessionCreation";
 import * as savedDrafts from "./savedDrafts";
 import { SavedDraftStorage } from "../../services/storage/SavedDraftStorage";
+import type { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import * as projectSessionContinuations from "./projectSessionContinuations";
 import * as projectSessionOperations from "./projectSessionOperations";
 import * as sessionChats from "../conversations/sessionChats";
+import { inheritTaskInputProtection } from "../conversations/taskInputs";
 import { Effect, Option, Schema, Schedule } from "effect";
 import {
   deleteSessionPlugin,
@@ -139,6 +141,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     | SubagentEnvironment
     | ManagedWorktrees
     | Terminal
+    | TaskInputStorage
   >();
   const run = makePiCallbackExecutor(context);
   const agentControl = makeSubagentControl({
@@ -413,6 +416,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             Effect.scoped(
               projectSessionCreation.createPrompted({
                 ...input,
+                sourceSessionId: sessionId,
                 projectPath: location.projectPath,
               }),
             ),
@@ -435,6 +439,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
               .pipe(Effect.provideService(SavedDraftStorage, savedDraftStorage.value)),
             { signal },
           );
+          await run(inheritTaskInputProtection(sessionId, record.sessionId), { signal });
           return toJsonValue({
             ok: true,
             command: "sessions.create-draft",
@@ -452,11 +457,16 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                 location,
                 input,
                 (childId, childLocation) =>
-                  acquireOptions({
-                    location: childLocation,
-                    sessionId: childId,
-                    newSession: true,
-                  }),
+                  inheritTaskInputProtection(sessionId, childId).pipe(
+                    Effect.mapError((error) => compositionError("createChild", error)),
+                    Effect.andThen(
+                      acquireOptions({
+                        location: childLocation,
+                        sessionId: childId,
+                        newSession: true,
+                      }),
+                    ),
+                  ),
                 (worktreeName) =>
                   managedWorktrees
                     .create({
@@ -786,6 +796,9 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     sessionId: targetSessionId,
                     newSession: false,
                   }),
+                );
+                yield* inheritTaskInputProtection(sessionId, targetSessionId).pipe(
+                  Effect.mapError((error) => compositionError("familyMessage", error)),
                 );
                 const destinationSnapshot = yield* destination.snapshot();
                 const senderSummary = yield* sessions

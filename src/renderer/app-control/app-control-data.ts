@@ -188,6 +188,7 @@ export interface AppControlHost {
     inspect(sessionId: string): Promise<ProjectSessionPreview>;
     open(sessionId: string, messageId?: string): Promise<boolean | void>;
     create(input: {
+      inputRefs?: readonly string[];
       workspacePath: string;
       name: string;
       initialPrompt: string;
@@ -206,6 +207,7 @@ export interface AppControlHost {
       text: string,
       delivery: "prompt" | "follow-up" | "steer",
       crossSession?: CrossSessionMessageMetadata,
+      inputRefs?: readonly string[],
     ): Promise<string>;
     compact(sessionId: string, instructions?: string): Promise<void>;
     query(sessionId: string, query: SessionInspectionQuery): Promise<JsonValue>;

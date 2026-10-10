@@ -1,3 +1,4 @@
+import { inheritTaskInputProtection } from "../conversations/taskInputs";
 import { Effect, Schema, Stream } from "effect";
 import type { ArtifactPointer } from "../../ipc/artifact-contract";
 import {
@@ -148,6 +149,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
         sessionId = result.sessionId;
         artifactPointers = result.artifactPointers;
       }
+      yield* inheritTaskInputProtection(input.target.sessionId, sessionId).pipe(asError("fork"));
       const artifactStorage = yield* ArtifactStorage;
       yield* Effect.forEach(
         artifactPointers,

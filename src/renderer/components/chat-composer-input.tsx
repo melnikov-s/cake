@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 import { observer } from "r-state-tree/react";
 import { SlashCommandCombobox } from "@/components/slash-command-combobox";
 import type { ChatStore } from "../stores/ChatStore";
+import { isLargePaste } from "../../contracts/conversations/task-input";
 
 interface ComposerSelection {
   draft: string;
@@ -70,6 +71,13 @@ export const ChatComposerInput = observer(function ChatComposerInput({
           });
       }}
       onPaste={(event) => {
+        const text = store.canPasteText ? event.clipboardData.getData("text/plain") : "";
+        if (store.canPasteText && isLargePaste(text)) {
+          // Intercept before native insertion/onValueChange; never ask a model to classify it.
+          event.preventDefault();
+          store.addPastedText(text);
+          return;
+        }
         if (!store.canPasteImages) return;
         const images = [...event.clipboardData.files].filter((file) =>
           file.type.startsWith("image/"),

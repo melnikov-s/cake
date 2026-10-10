@@ -15,6 +15,7 @@ import { RewordPromptDialog } from "@/components/reword-prompt-dialog";
 import { SourceAttachment } from "@/components/source-attachment";
 import { SubagentStatus } from "@/components/subagent-status";
 import { Chip } from "@/components/ui/chip";
+import { TextAttachment } from "./ui/text-attachment";
 import { ContentTransition } from "@/components/ui/content-transition";
 import { IconButton } from "@/components/ui/icon-button";
 import { PaperclipIcon } from "@/components/ui/icons";
@@ -334,6 +335,9 @@ export const Chat = observer(function Chat({
             onRemove={(id) => store.removeAnnotation(id)}
           />
         )}
+        {!activatingDraft && store.attachmentNotice && (
+          <p className="px-2 pb-1 text-xs text-muted-foreground">{store.attachmentNotice}</p>
+        )}
         {!activatingDraft && store.attachments.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-1.5 pb-1.5 pt-0.5">
             {store.attachments.map((attachment, index) =>
@@ -342,6 +346,13 @@ export const Chat = observer(function Chat({
                   key={`${attachment.kind}-${attachment.name}-${index}`}
                   attachment={attachment}
                   onOpen={transcriptBehavior?.openSourceLocation}
+                  onRemove={() => store.removeAttachment(index)}
+                />
+              ) : attachment.kind === "text" ? (
+                <TextAttachment
+                  key={`text-${index}`}
+                  name={attachment.name}
+                  text={attachment.text}
                   onRemove={() => store.removeAttachment(index)}
                 />
               ) : attachment.kind === "image" ? (

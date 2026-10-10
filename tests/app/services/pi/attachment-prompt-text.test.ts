@@ -1,17 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { promptText } from "../../../../src/services/pi/runtime/session-projection";
+import {
+  promptText,
+  parseContextAttachmentBlocks,
+} from "../../../../src/services/pi/runtime/session-projection";
 
 describe("promptText file attachments", () => {
-  it("quotes selected file paths with whitespace while leaving backend-owned references unchanged", () => {
-    expect(
-      promptText("Inspect", [
-        { kind: "file", name: "sample.txt", path: "/device/My Files/sample.txt" },
-      ]),
-    ).toBe('Inspect\n\n@"/device/My Files/sample.txt"');
-    expect(
-      promptText("Inspect", [
-        { kind: "file", name: "sample.txt", path: "/server/cache/accepted/id" },
-      ]),
-    ).toBe("Inspect\n\n@/server/cache/accepted/id");
+  it("preserves whitespace in file paths and projects compact attachments rather than backend paths as user text", () => {
+    for (const path of ["/device/My Files/sample.txt", "/server/cache/accepted/id"]) {
+      const attachment = { kind: "file" as const, name: "sample.txt", path };
+      const content = promptText("Inspect", [attachment]);
+      expect(content).toContain(JSON.stringify(attachment));
+      expect(parseContextAttachmentBlocks(content)).toEqual({
+        text: "Inspect",
+        attachments: [attachment],
+      });
+    }
   });
 });

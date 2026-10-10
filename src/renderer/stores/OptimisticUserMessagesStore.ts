@@ -101,6 +101,16 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
     replacingEntryId?: string,
   ) {
     const attachmentParts = attachments.flatMap((attachment, index): UiPart[] => {
+      if (attachment.kind === "text" || attachment.kind === "input" || attachment.kind === "file")
+        return [
+          {
+            id: `optimistic-user-${id}-attachment-${index}`,
+            kind: "attachment",
+            name: attachment.name,
+            mediaType: attachment.kind === "input" ? attachment.mimeType : "text/plain",
+            attachmentKind: "file",
+          },
+        ];
       if (attachment.kind === "image")
         return [
           {

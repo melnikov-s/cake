@@ -241,7 +241,7 @@ export function createRootApplicationControlHost(
         capabilities.navigationStore.openSession(sessionId, messageId),
       create: (input) => capabilities.sessionCreationStore.createPromptedSession(input),
       createDraft: (input) => capabilities.sessionCreationStore.createDraftSession(input),
-      sendMessage: (sessionId, text, delivery, crossSession) =>
+      sendMessage: (sessionId, text, delivery, crossSession, inputRefs) =>
         capabilities.applicationControlStore().runOperation(async () => {
           await capabilities.prepareProjectSessionChat(sessionId);
           const command =
@@ -255,7 +255,11 @@ export function createRootApplicationControlHost(
               sessionId,
               text,
               renderUserMessageAsMarkdown: false,
-              attachments: [],
+              attachments: (inputRefs ?? []).map((reference) => ({
+                kind: "forwarded-input",
+                name: "Attachment",
+                reference,
+              })),
               ...(crossSession ? { crossSession } : null),
             },
             { signal: capabilities.signal },

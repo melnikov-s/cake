@@ -110,6 +110,16 @@ export class PendingSessionDraftStore extends Store<PendingSessionDraftStoreProp
         draft: true,
       },
       ...prompt.attachments.flatMap((attachment, index): UiPart[] => {
+        if (attachment.kind === "text" || attachment.kind === "input" || attachment.kind === "file")
+          return [
+            {
+              id: `draft-${sessionId}-attachment-${index}`,
+              kind: "attachment",
+              name: attachment.name,
+              mediaType: attachment.kind === "input" ? attachment.mimeType : "text/plain",
+              attachmentKind: "file",
+            },
+          ];
         if (attachment.kind === "annotation")
           return [
             {

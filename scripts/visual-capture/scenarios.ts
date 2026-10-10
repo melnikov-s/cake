@@ -1,7 +1,6 @@
 import { drawMermaidArchitecture } from "../../tests/fixtures/draw-mermaid-architecture.ts";
-import { CAKE_CHAT_SESSION_ID } from "../../src/ipc/cake-chat-data.ts";
-import { addResponseModeReminder } from "../../src/contracts/conversations/response-mode-reminders";
-import { addPresentationModeReminder } from "../../src/contracts/conversations/presentation-mode-reminders";
+import { addResponseModeReminder } from "../../src/contracts/conversations/response-mode-reminders.ts";
+import { addPresentationModeReminder } from "../../src/contracts/conversations/presentation-mode-reminders.ts";
 import { nestedAssistant, nestedEntries } from "../../tests/fixtures/nested-tool-activity.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
@@ -1366,7 +1365,10 @@ const cakeChatSidebarUnread: VisualCaptureScenario = {
     await cakeChatScenario.seed(paths, theme);
     const file = join(paths.cakeHome, "state", "application.json");
     const state = JSON.parse(await readFile(file, "utf8"));
-    await writeFile(file, JSON.stringify({ ...state, unreadSessionIds: [CAKE_CHAT_SESSION_ID] }));
+    await writeFile(
+      file,
+      JSON.stringify({ ...state, unreadSessionIds: ["ca4ec4a7-0000-4000-8000-000000000001"] }),
+    );
   },
   async prepare(page) {
     await assistantMarkdownCode.prepare(page, "default");
@@ -1458,6 +1460,91 @@ const cakeChatScenario: VisualCaptureScenario = {
     await page.mouse.move(1, 1);
   },
   region: (page) => page.locator("body"),
+};
+
+let taskAttachmentDocumentPath = "";
+
+const taskInputAttachmentsScenario: VisualCaptureScenario = {
+  name: "task-input-attachments",
+  description:
+    "Shared screenshot, Markdown and large-paste attachments with a private text preview",
+  states: ["default", "preview", "project"],
+  async seed(paths, theme) {
+    await cakeChatScenario.seed(paths, theme);
+    taskAttachmentDocumentPath = join(paths.project, "requirements.md");
+    await writeFile(
+      taskAttachmentDocumentPath,
+      "# Build investigation\n\nFind the failing step, explain the cause, and recommend a focused fix.\n",
+    );
+  },
+  async prepare(page, state, application) {
+    await assistantMarkdownCode.prepare(page, "default");
+    // A screenshot of this isolated fixture, never the user's actual desktop.
+    const screenshot = (await page.screenshot({ animations: "disabled", type: "png" })).toString(
+      "base64",
+    );
+    if (state !== "project") {
+      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
+    }
+    if (!application) throw new Error("Attachment captures require Electron");
+    // Replace only the native file-picker boundary; retain the real upload/composer workflow.
+    await application.evaluate(({ dialog }, path) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
+    }, taskAttachmentDocumentPath);
+    await page.getByRole("button", { name: "Attach files", exact: true }).click();
+    await expect(page.locator(".workbench-composer")).toContainText("requirements.md");
+    const input = page.getByRole("combobox", {
+      name: state === "project" ? "Message" : "Message Cake Chat",
+      exact: true,
+    });
+    await input.evaluate((element, data) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.items.add(
+        new File(
+          [Uint8Array.from(atob(data), (character) => character.charCodeAt(0))],
+          "build-screenshot.png",
+          { type: "image/png" },
+        ),
+      );
+      element.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+      );
+    }, screenshot);
+    await expect(
+      page.getByRole("img", { name: "build-screenshot.png", exact: true }),
+    ).toBeVisible();
+    const log = Array.from({ length: 72 }, (_, index) => {
+      const time = `10:42:${String(index % 60).padStart(2, "0")}`;
+      return index === 14
+        ? `[${time}] ERROR build: Cannot resolve './config/runtime.json'`
+        : `[${time}] ${index < 14 ? "INFO" : "DEBUG"} build step ${index + 1}: ${index < 14 ? "checking module dependencies" : "collecting diagnostic context"}`;
+    }).join("\n");
+    await input.evaluate((element, text) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", text);
+      element.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+      );
+    }, log);
+    await expect(input).toHaveValue("");
+    await input.fill(
+      state === "project"
+        ? "Find the cause of this build failure and recommend a fix."
+        : "Investigate this build failure in a Project Session.",
+    );
+    const pastedChip = page.getByRole("button", { name: /^Pasted text/ });
+    await expect(pastedChip).toBeVisible();
+    if (state === "preview") {
+      await pastedChip.click();
+      await expect(page.locator('[data-cake-private-preview="true"]')).toContainText(
+        "Attachment preview",
+      );
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator(".workbench-composer"),
 };
 
 const newSessionScenario: VisualCaptureScenario = {
@@ -2117,6 +2204,7 @@ export const visualCaptureScenarios = [
   projectCustomInstructionsScenario,
   newSessionScenario,
   cakeChatScenario,
+  taskInputAttachmentsScenario,
   cakeChatSidebarUnread,
   dictationInputScenario,
   dictationSettingsScenario,

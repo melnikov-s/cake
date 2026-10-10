@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import { SESSION_TITLE_MAX_LENGTH, thinkingLevelSchema } from "../../ipc/session-contract";
 import { isActiveSessionActivity } from "../lib/session-activity";
 import { CakeModelSelection } from "../../ipc/cake-model-selection";
@@ -8,6 +9,7 @@ import { bounded, trimmed, sessionIdTargetSchema } from "./control-arguments";
 import { defineControl, defineSessionControl } from "./control-definition";
 import { toStrictJson } from "./control-json";
 const createSessionArgs = Schema.Struct({
+  inputRefs: Schema.optionalKey(inputRefsSchema),
   workspacePath: bounded(1, 4096),
   name: trimmed(1, 500),
   initialPrompt: trimmed(1, 100000),
@@ -52,6 +54,7 @@ export const sessionLifecycleControls = [
         "Create, configure, name, and start a project session in the background, optionally from a model preset or in a new managed worktree.",
       guidance: [
         "When model is omitted, the new session inherits the calling Cake Chat's current model, thinking level, and Fast mode setting.",
+        "Pass selected attachment IDs in inputRefs. Cake forwards their contents only to the Project Session; do not open or summarize attachments in Cake Chat.",
       ],
       examples: [
         {

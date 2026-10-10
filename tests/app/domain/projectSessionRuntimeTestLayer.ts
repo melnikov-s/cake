@@ -1,4 +1,5 @@
 import { Effect, Layer } from "effect";
+import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import type { ProjectSessionRuntimeIntegrations } from "../../../src/services/pi/ProjectSessionRuntimeHost";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
@@ -30,6 +31,11 @@ export const makeHeadlessProjectSessionRuntimeMechanismTestLayer = (
   integrations: ProjectSessionRuntimeIntegrations = defaultIntegrations,
 ) =>
   Layer.mergeAll(
+    Layer.mock(TaskInputStorage, {
+      resolve: (_sessionId, attachments) => Effect.succeed(attachments),
+      authorizeForward: () => Effect.succeed([]),
+      isRecipient: () => Effect.succeed(false),
+    }),
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: "/cake",
       sessionDirectory: "/cake/sessions",

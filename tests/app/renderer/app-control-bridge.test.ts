@@ -1093,7 +1093,13 @@ describe("AppControlBridge", () => {
       status: "scheduled",
       scheduledMessage: { targetSessionId: "session-2", text: "Review this" },
     });
-    expect(sendSessionMessage).toHaveBeenCalledWith("session-2", "Queue this", "follow-up");
+    expect(sendSessionMessage).toHaveBeenCalledWith(
+      "session-2",
+      "Queue this",
+      "follow-up",
+      undefined,
+      undefined,
+    );
     expect(compactSession).toHaveBeenCalledWith("session-2", "Keep decisions");
     expect(scheduleSessionMessage).toHaveBeenCalledWith({
       targetSessionId: "session-2",
@@ -1128,13 +1134,24 @@ describe("AppControlBridge", () => {
     await expect(
       bridge.invoke({
         name: "sessions.send",
-        arguments: { sessionId: "session-2", text: "Change direction", delivery: "steer" },
+        arguments: {
+          sessionId: "session-2",
+          text: "Change direction",
+          delivery: "steer",
+          inputRefs: ["selected-input/grant"],
+        },
       }),
     ).resolves.toMatchObject({ ok: true, delivery: "steer", status: "accepted" });
     await expect(
       bridge.invoke({ name: "sessions.abort", arguments: { sessionId: "session-2" } }),
     ).resolves.toMatchObject({ ok: true, command: "sessions.abort", status: "stopping" });
-    expect(sendSessionMessage).toHaveBeenCalledWith("session-2", "Change direction", "steer");
+    expect(sendSessionMessage).toHaveBeenCalledWith(
+      "session-2",
+      "Change direction",
+      "steer",
+      undefined,
+      ["selected-input/grant"],
+    );
     expect(abortSession).toHaveBeenCalledWith("session-2");
   });
 
@@ -1700,6 +1717,7 @@ describe("AppControlBridge", () => {
           workingDirectory: "/projects/alpha",
         },
       }),
+      undefined,
     );
 
     await expect(
@@ -1732,6 +1750,7 @@ describe("AppControlBridge", () => {
         expectsResponse: false,
         replyToMessageId: (first as { messageId: string }).messageId,
       }),
+      undefined,
     );
     expect(showAgentAction).toHaveBeenCalledWith(
       expect.objectContaining({ message: expect.stringContaining("Accepted message 2/3") }),
@@ -1800,6 +1819,7 @@ describe("AppControlBridge", () => {
       "Only message",
       "follow-up",
       expect.any(Object),
+      undefined,
     );
     const sentMessageId = (sent as { messageId: string }).messageId;
     const sentThreadId = (sent as { threadId: string }).threadId;

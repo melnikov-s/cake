@@ -178,12 +178,51 @@ test("permanent Cake Chat retains its input, history and settings across restart
     let input = page.getByRole("combobox", { name: "Message Cake Chat" });
     await input.click();
     await expect(input).toBeFocused();
+    const privateLog = "PRIVATE_SIDECAR_LOG\r\n" + "large log line\n".repeat(50);
+    await input.evaluate((element, text) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", text);
+      element.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+      );
+    }, privateLog);
+    await expect(input).toHaveValue("");
+    const pastedChip = page.getByRole("button", { name: /^Pasted text/ });
+    await expect(pastedChip).toBeVisible();
+    await pastedChip.click();
+    await expect(page.locator('[data-cake-private-preview="true"]')).toContainText(
+      "PRIVATE_SIDECAR_LOG",
+    );
+    await page.keyboard.press("Escape");
+    const privateImage =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9XkAAAAASUVORK5CYII=";
+    await input.evaluate((element, data) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.items.add(
+        new File(
+          [Uint8Array.from(atob(data), (character) => character.charCodeAt(0))],
+          "pixel.png",
+          { type: "image/png" },
+        ),
+      );
+      element.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+      );
+    }, privateImage);
+    await expect(page.getByRole("img", { name: "pixel.png", exact: true })).toBeVisible();
+    await input.click();
+    await expect(input).toBeFocused();
     await input.pressSequentially("Discuss my priorities");
     await expect(input).toHaveValue("Discuss my priorities");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
     await expect(input).toHaveValue("Discuss my priorities");
     await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => requests.length).toBeGreaterThan(0);
+    expect(JSON.stringify(requests)).not.toContain("PRIVATE_SIDECAR_LOG");
+    expect(JSON.stringify(requests)).not.toContain(privateImage);
+    expect(JSON.stringify(requests)).not.toContain("image_url");
+    expect(JSON.stringify(requests)).toContain("cake-task-input");
     const coordinator = page.locator('[data-slot="cake-chat-group"]');
     await expect(coordinator.getByRole("img", { name: "Running" })).toBeVisible();
     await interceptMenu(app);

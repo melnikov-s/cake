@@ -12,6 +12,7 @@ import {
   use as useConversation,
 } from "../conversations/conversations";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
+import { prepareTaskInputs } from "../conversations/taskInputs";
 import type { ProjectSessionLocation } from "../../ipc/project-session-data";
 import * as projectSessionLocations from "./projectSessionLocations";
 import { resolutionNamespace } from "./projectSessionResolution";
@@ -70,6 +71,10 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
       operation: "start",
       message: "The Working Directory is not associated with that Project",
     });
+  // Validate every selected input before creating/naming a Pi session.
+  const attachments = yield* prepareTaskInputs(input.sessionId, false, input.attachments).pipe(
+    asError("start"),
+  );
   const handle = yield* acquireTarget(location, input.sessionId, true);
   if (input.labelIds?.length)
     yield* setProjectSessionLabels(location.projectPath, input.sessionId, input.labelIds).pipe(
@@ -82,7 +87,7 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
     yield* handle
       .prompt(
         input.text,
-        projectAttachments(input.attachments),
+        projectAttachments(attachments),
         input.renderUserMessageAsMarkdown,
         input.presentationMode,
         input.automaticTitle,
@@ -264,7 +269,11 @@ export const sendAutomatically = Effect.fn("ProjectSessions.sendAutomatically")(
     yield* deliverWhenAvailable(
       acquireExistingTarget(promptTarget(input)),
       input.text,
-      projectAttachments(input.attachments),
+      projectAttachments(
+        yield* prepareTaskInputs(input.sessionId, false, input.attachments).pipe(
+          asError("sendAutomatically"),
+        ),
+      ),
       input.renderUserMessageAsMarkdown,
     ).pipe(asError("sendAutomatically")),
   );

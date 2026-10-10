@@ -1,4 +1,9 @@
 import { Effect } from "effect";
+import {
+  inheritTaskInputProtection,
+  prepareCoordinatorMessage,
+  prepareTaskInputs,
+} from "./taskInputs";
 import type { SessionInspectionQuery } from "../../ipc/session-query-data";
 import type { ChatConfiguration, PiSettingUpdate } from "../../ipc/session-contract";
 import { CakeSessionRuntimes, type CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
@@ -70,16 +75,30 @@ export const deliver = Effect.fn("SessionChats.deliver")(function* (
   input: SessionChatPromptInput,
   delivery: "prompt" | "steer" | "follow-up",
 ) {
-  const text = input.crossSession
-    ? encodeCrossSessionMessage(input.text, input.crossSession)
-    : input.text;
   const handle = yield* acquire(input.sessionId);
+  if (handle.profile !== "CakeChatSession" && input.crossSession)
+    yield* inheritTaskInputProtection(input.crossSession.sender.sessionId, input.sessionId).pipe(
+      asError("deliver"),
+    );
+  const message =
+    handle.profile === "CakeChatSession"
+      ? yield* prepareCoordinatorMessage(input).pipe(asError("deliver"))
+      : input;
+  const text = message.crossSession
+    ? encodeCrossSessionMessage(message.text, message.crossSession)
+    : message.text;
   const turnId = TurnId.make(
     yield* deliverConversation(
       Effect.succeed(handle),
       delivery,
       text,
-      projectAttachments(input.attachments),
+      projectAttachments(
+        yield* prepareTaskInputs(
+          input.sessionId,
+          handle.profile === "CakeChatSession",
+          message.attachments,
+        ).pipe(asError("deliver")),
+      ),
       input.renderUserMessageAsMarkdown,
       input.presentationMode,
       input.responseMode,
@@ -198,7 +217,13 @@ export const editMessage = Effect.fn("SessionChats.editMessage")(function* (
     Effect.succeed(handle),
     input.entryId,
     input.text,
-    projectAttachments(input.attachments),
+    projectAttachments(
+      yield* prepareTaskInputs(
+        input.sessionId,
+        handle.profile === "CakeChatSession",
+        input.attachments,
+      ).pipe(asError("editMessage")),
+    ),
     input.renderUserMessageAsMarkdown,
     input.presentationMode,
     input.responseMode,

@@ -11,6 +11,7 @@ import type { SessionRegistryStore } from "./SessionRegistryStore";
 import { WorktreeCreationStore, type WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 export interface CreatePromptedProjectSessionInput {
+  inputRefs?: readonly string[];
   workspacePath: string;
   name: string;
   initialPrompt: string;
@@ -98,6 +99,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
       input.initialPrompt,
       input.model,
       input.markdown !== false,
+      input.inputRefs,
     );
     return managedWorktree
       ? { workspacePath, sessionId, managedWorktree }
@@ -130,6 +132,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     initialPrompt: string,
     configuration?: ChatConfiguration,
     renderUserMessageAsMarkdown = true,
+    inputRefs: readonly string[] = [],
   ) {
     const sessionId = crypto.randomUUID();
     this.pending.prepare(path, sessionId);
@@ -141,7 +144,11 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
       workingDirectory: path,
       text: initialPrompt,
       renderUserMessageAsMarkdown,
-      attachments: [],
+      attachments: inputRefs.map((reference) => ({
+        kind: "forwarded-input",
+        name: "Attachment",
+        reference,
+      })),
       name,
       ...(configuration ? { configuration } : null),
     };

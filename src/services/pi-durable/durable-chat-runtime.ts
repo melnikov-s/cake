@@ -48,7 +48,6 @@ import { applyPiSetting, projectPiSettings } from "../pi/runtime/settings-transl
 import {
   projectSessionEntries,
   parseContextAttachmentBlocks,
-  imageContent,
 } from "../pi/runtime/session-projection";
 import { projectModelCatalog } from "../pi/live/PiModelsLive";
 import { supportsFastMode } from "../pi/fast-mode";
@@ -426,6 +425,9 @@ export async function createDurableCakeChatRuntime(
     id?: string,
     markdown = false,
   ) => {
+    // Defense in depth: no caller may submit payload-bearing attachments to the coordinator.
+    if (attachments.some((attachment) => attachment.kind !== "input"))
+      throw new Error("Cake Chat accepts attachment references only");
     // No `!` shell escape is parsed: all text is a literal model input, and no shell exists in the registry.
     await configureAgent();
     const busy =
@@ -434,7 +436,7 @@ export async function createDurableCakeChatRuntime(
         undefined;
     const content = [
       { type: "text" as const, text: durableInputText(text, attachments, markdown, busy) },
-      ...imageContent(attachments),
+      // Reference attachments have no image parts.
     ];
     return engine.root.submit(
       {

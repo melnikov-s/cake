@@ -1,7 +1,10 @@
 import { Effect, Schema } from "effect";
 import * as projectSessionCreation from "../project-sessions/projectSessionCreation";
 import { AgentProjectSessionCreate } from "../../contracts/project-sessions/session-reporting";
+import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import { toJsonValue } from "../../utils/to-json-value";
+import { forwardTaskInputControl, safeCoordinatorProjection } from "./taskInputControls";
+import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import { setSessionFastMode } from "../application/application";
 import { PiModels } from "../../services/pi/PiModels";
@@ -89,6 +92,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     | SubagentCoordinator
     | SubagentEnvironment
     | Effect.Services<ReturnType<typeof projectSessionCreation.createPrompted>>
+    | TaskInputStorage
   >();
   const run = makePiCallbackExecutor(context);
   const agentControl = makeSubagentControl({
@@ -183,28 +187,73 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
         // Cake-owned control Effect to the Pi runtime callback contract.
         invoke: (invocation, signal) =>
           run(
-            invocation.name === "sessions.create"
-              ? Effect.scoped(
-                  Effect.gen(function* () {
-                    const input = yield* Schema.decodeUnknownEffect(AgentProjectSessionCreate)(
-                      invocation.arguments,
-                    );
-                    return toJsonValue(
-                      yield* projectSessionCreation.createPrompted({
-                        ...input,
-                        projectPath: input.workspacePath,
-                        requester: {
-                          sessionId: target.sessionId,
-                          kind: "cake-chat",
-                          title: "Cake Chat",
-                        },
+            Effect.gen(function* () {
+              const inputs = yield* TaskInputStorage;
+              const args = yield* Schema.decodeUnknownEffect(
+                Schema.Struct({ sessionId: Schema.optionalKey(Schema.String) }),
+              )(invocation.arguments);
+              const forwarded = yield* forwardTaskInputControl(target.sessionId, invocation);
+              // No backdoor via target inspection or selected preview text.
+              if (invocation.name === "app.user-selection")
+                return {
+                  ok: false,
+                  error:
+                    "Cake Chat cannot read attachment previews or selected session content. Share text explicitly in your message.",
+                };
+              if (
+                invocation.name.startsWith("sessions.") &&
+                ![
+                  "sessions.send",
+                  "sessions.open",
+                  "sessions.abort",
+                  "sessions.rename",
+                  "sessions.resolve",
+                  "sessions.set-labels",
+                ].includes(invocation.name) &&
+                args.sessionId !== undefined &&
+                (yield* inputs.isRecipient(args.sessionId))
+              )
+                return {
+                  ok: false,
+                  error:
+                    "This session contains task inputs. Open the Project Session to inspect its content.",
+                };
+              const result =
+                invocation.name === "sessions.create"
+                  ? yield* Effect.scoped(
+                      Effect.gen(function* () {
+                        const input = yield* Schema.decodeUnknownEffect(AgentProjectSessionCreate)(
+                          forwarded.arguments,
+                        );
+                        const selected = yield* Schema.decodeUnknownEffect(
+                          Schema.Struct({ inputRefs: inputRefsSchema }),
+                        )(forwarded.arguments);
+                        return toJsonValue(
+                          yield* projectSessionCreation.createPrompted({
+                            ...input,
+                            projectPath: input.workspacePath,
+                            sourceSessionId: target.sessionId,
+                            attachments: selected.inputRefs.map((reference) => ({
+                              kind: "forwarded-input" as const,
+                              name: "Attachment",
+                              reference,
+                            })),
+                            requester: {
+                              sessionId: target.sessionId,
+                              kind: "cake-chat",
+                              title: "Cake Chat",
+                            },
+                          }),
+                        );
                       }),
+                    )
+                  : yield* rendererRequests.requestCakeChatControl(
+                      target.sessionId,
+                      forwarded,
+                      signal,
                     );
-                  }),
-                ).pipe(Effect.orDie)
-              : rendererRequests
-                  .requestCakeChatControl(target.sessionId, invocation, signal)
-                  .pipe(Effect.orDie),
+              return yield* safeCoordinatorProjection(result);
+            }).pipe(Effect.orDie),
             { signal },
           ),
       },

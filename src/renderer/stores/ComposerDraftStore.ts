@@ -1,6 +1,7 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
 import type { Annotation, Attachment, FileSuggestion } from "../../ipc/session-contract";
 import { describeError } from "../lib/error-details";
+import { MAX_PASTED_TEXT_BYTES } from "../../contracts/conversations/task-input";
 import { pastedImageAttachments } from "../lib/pasted-image-attachments";
 import { AnnotationDraftStore } from "./AnnotationDraftStore";
 import { ClientContext } from "./context/ClientContext";
@@ -103,6 +104,23 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
     }
+  }
+
+  addPastedText(text: string) {
+    this.clearError();
+    if (
+      this.attachments.length >= 20 ||
+      new TextEncoder().encode(text).byteLength > MAX_PASTED_TEXT_BYTES
+    ) {
+      this.reportError(new Error("Pasted text exceeds the 8 MiB or 20 attachment limit"));
+      return;
+    }
+    this.attachments.push({
+      kind: "text",
+      name: `Pasted text · ${text.split("\n").length} lines`,
+      text,
+    });
+    this.requestFocus();
   }
 
   async addPastedImages(files: readonly File[]) {

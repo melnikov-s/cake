@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { FileSystem, Path } from "effect";
 import { makeSessionArchiveStorageLive } from "../../../src/services/storage/SessionArchiveStorageLive";
@@ -406,6 +407,10 @@ const makeLayer = (
       )
     : SessionCatalogChanges.layer;
   return Layer.mergeAll(
+    Layer.mock(TaskInputStorage, {
+      resolve: (_sessionId, attachments) => Effect.succeed(attachments),
+      isRecipient: () => Effect.succeed(false),
+    }),
     application,
     catalogChanges,
     Layer.succeed(SessionFamilyStorage, {

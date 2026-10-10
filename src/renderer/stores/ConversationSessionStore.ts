@@ -52,6 +52,7 @@ interface ConversationChatCapabilities {
   /** Kind-specific context shown ahead of the transcript, such as a Discussion anchor. */
   leadingParts?(): UiPart[];
   addAttachments?(): Promise<void>;
+  attachmentNotice?(): string;
   suggestFiles?(prefix: string): ReturnType<NonNullable<ChatStoreProps["suggestFiles"]>>;
   sessionCreationChoice?(): WorktreeDraftChoice;
   draftActivationCandidates?(): ExistingWorktreeCandidate[];
@@ -238,6 +239,8 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       attachments: () => this.composerStore.draftStore.visibleAttachments,
       addAttachments: capabilities.addAttachments,
       addPastedImages: (files) => this.composerStore.draftStore.addPastedImages(files),
+      addPastedText: (text) => this.composerStore.draftStore.addPastedText(text),
+      attachmentNotice: capabilities.attachmentNotice,
       removeAttachment: (index) => this.composerStore.draftStore.removeAttachment(index),
       annotations: () => this.composerStore.draftStore.annotationDraft.annotations,
       addAnnotation: (annotation) => this.composerStore.draftStore.annotationDraft.add(annotation),
