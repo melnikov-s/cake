@@ -82,6 +82,7 @@ export const makeProjectSessionRuntimeTestLayer = (
     }),
     Layer.mock(SessionFamilyStorage, {
       familyForMember: () => Effect.succeed(undefined),
+      state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
       settleTurn: () => Effect.void,
     }),
     Layer.mock(ManagedWorktrees, {

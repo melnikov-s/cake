@@ -1,4 +1,6 @@
 import * as sessionFamilies from "../session-families/sessionFamilies";
+import { substantiveTurnResult } from "../../contracts/pi/turn-result-data";
+import { SessionTaskOutcome } from "../../contracts/project-sessions/session-reporting";
 import { resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import * as projectSessionLocations from "./projectSessionLocations";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
@@ -83,6 +85,7 @@ const FamilyMessageInput = Schema.Struct({
   ),
   expectsResponse: Schema.optionalKey(Schema.Boolean),
   replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+  outcome: Schema.optionalKey(SessionTaskOutcome),
 });
 
 class ProjectSessionRuntimeCompositionError extends Schema.TaggedError<ProjectSessionRuntimeCompositionError>()(
@@ -296,11 +299,22 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           Effect.provideService(SessionFamilyStorage, families),
           Effect.provideService(SessionArchiveStorage, archive),
         ),
-    onTurnSettled: (event) =>
-      families.settleTurn(event.turnId, event.outcome).pipe(
-        Effect.tapError((error) => Effect.logError("Retrying durable family settlement", error)),
+    onTurnSettled: (event) => {
+      const text = substantiveTurnResult(event.result);
+      const failed = event.outcome === "failed" || event.result?.stopReason === "error";
+      const outcome = event.outcome === "aborted" ? "aborted" : failed ? "failed" : "complete";
+      const diagnostic = (event.message ?? event.result?.errorMessage)?.trim().slice(0, 100_000);
+      const report =
+        failed && diagnostic
+          ? { outcome: "failed" as const, text: diagnostic }
+          : text
+            ? { outcome: "result" as const, text }
+            : undefined;
+      return families.settleTurn(event.turnId, outcome, report).pipe(
+        Effect.tapError((error) => Effect.logError("Retrying durable session settlement", error)),
         Effect.retry(Schedule.spaced("1 second")),
-      ),
+      );
+    },
     runtime: {
       ...runtimeIntegrations,
       agentControl: agentControl(getRuntimeOptions, location.workingDirectory),
@@ -690,6 +704,14 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                 const family = yield* families
                   .familyForMember(sessionId)
                   .pipe(Effect.mapError((cause) => compositionError("familyMessage", cause)));
+                const spawnedResult = yield* sessionFamilies.routeCoordinatorMessage(
+                  sessionId,
+                  command,
+                  input,
+                  location,
+                  senderContext,
+                );
+                if (spawnedResult !== undefined) return spawnedResult;
                 if (!family) return undefined;
                 const executingTurnIds =
                   command === "sessions.reply"
@@ -709,6 +731,23 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                       )
                     : undefined;
                 if (command === "sessions.reply" && !pending) return undefined;
+                if (pending?.completionContract && pending.outcome === undefined && input.outcome) {
+                  if (!substantiveTurnResult({ stopReason: "stop", text: input.text }))
+                    return yield* compositionError(
+                      "familyMessage",
+                      "A terminal report must contain substantive findings, changes, or a blocker",
+                    );
+                  yield* families.recordReport(pending.turnId, {
+                    outcome: input.outcome,
+                    text: input.text,
+                  });
+                  return toJsonValue({
+                    ok: true,
+                    command,
+                    status: "report-recorded",
+                    expectsResponse: false,
+                  });
+                }
                 const targetSessionId = pending?.senderSessionId ?? input.sessionId;
                 if (!targetSessionId)
                   return yield* compositionError("familyMessage", "A target session is required");
@@ -798,6 +837,18 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     "familyMessage",
                     `Request ${replyToMessageId} is not awaiting a response from this session`,
                   );
+                const preparedRequests = replyToMessageId
+                  ? (yield* families.state()).turns.filter((turn) =>
+                      turn.replyMessageIds?.includes(messageId),
+                    )
+                  : [];
+                if (substantiveTurnResult({ stopReason: "stop", text: input.text }))
+                  for (const request of preparedRequests)
+                    if (request.completionContract)
+                      yield* families.recordReport(request.turnId, {
+                        outcome: input.outcome ?? "result",
+                        text: input.text,
+                      });
                 // Ordinary family delivery starts an idle recipient or queues behind active
                 // work. An explicit steer deliberately interrupts and redirects the target.
                 const delivery =
@@ -808,7 +859,10 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
                     : delivery === "queue"
                       ? yield* destination.followUp(encoded, [], false)
                       : yield* destination.prompt(encoded, [], false);
-                if (replyToMessageId) yield* families.confirmResponse(messageId);
+                // Acceptance/queueing is not a durable response receipt. The worker confirms it
+                // against the parent's transcript and retains the report if a restart loses the queue.
+                for (const request of preparedRequests)
+                  yield* families.markNoticeAttempt(request.turnId, turnId);
                 const pendingAfterSend =
                   delivery === "queue"
                     ? yield* destination

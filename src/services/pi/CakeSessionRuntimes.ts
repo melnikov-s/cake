@@ -55,6 +55,7 @@ import {
 import type { ReviewParentContext } from "./runtime/sidecar-runtime";
 import type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
+import type { PiTurnResult } from "../../contracts/pi/turn-result-data";
 
 const PiSessionCapabilityProfile = Schema.TaggedUnion({
   ProjectSession: {},
@@ -112,7 +113,7 @@ export type PiSessionUpdate =
  */
 export interface CakeSessionRuntimeAcquireOptions {
   readonly profile: Schema.Schema.Type<typeof PiSessionCapabilityProfile>;
-  readonly runtime: Omit<CakeSessionRuntimeOptions, "onEvent">;
+  readonly runtime: Omit<CakeSessionRuntimeOptions, "onEvent" | "onTurnResult">;
   /** Finalizes Cake-owned integrations when the final shared runtime lease is released. */
   readonly onRelease?: Effect.Effect<void, unknown>;
   readonly admitTurn?: (
@@ -127,12 +128,15 @@ export interface CakeSessionRuntimeAcquireOptions {
     readonly sessionId: string;
     readonly turnId: string;
     readonly outcome: "complete" | "failed" | "aborted";
+    readonly result?: PiTurnResult;
+    readonly message?: string;
   }) => Effect.Effect<void, unknown>;
   /** Publishes kind-specific catalog metadata after shared conversation mutations. */
   readonly onSessionChanged?: Effect.Effect<void, unknown>;
 }
 
 export interface CakeSessionHandle {
+  readonly currentTurnIds: () => Effect.Effect<ReadonlyArray<string>>;
   readonly profile: CakeSessionRuntimeAcquireOptions["profile"]["_tag"];
   readonly updates: Stream.Stream<PiSessionUpdate, PiSessionError>;
   readonly snapshot: () => Effect.Effect<ConversationSnapshot, PiSessionError>;
@@ -315,6 +319,7 @@ export class CakeSessionRuntimes extends Context.Service<
 >()("cake/services/pi/CakeSessionRuntimes") {}
 
 interface SharedRuntime {
+  applicationLease: boolean;
   readonly fingerprint: string;
   readonly workingDirectory: string;
   readonly sessionDirectory: string;
@@ -323,6 +328,7 @@ interface SharedRuntime {
   readonly events: PubSub.PubSub<PiSessionEvent>;
   readonly activeTurns: Ref.Ref<ReadonlyMap<string, "prompt" | "steer" | "follow-up">>;
   readonly settledInputIds: Set<string>;
+  readonly turnResults: Map<string, PiTurnResult>;
   readonly queueEdits: Semaphore.Semaphore;
 }
 
@@ -446,9 +452,13 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 ReadonlyMap<string, "prompt" | "steer" | "follow-up">
               >(new Map());
               const settledInputIds = new Set<string>();
+              const turnResults = new Map<string, PiTurnResult>();
               let currentRuntime: CakeSessionRuntime | undefined = undefined;
               const runtime = yield* adapter.createRuntime({
                 ...key.options.runtime,
+                onTurnResult(turnId, result) {
+                  turnResults.set(turnId, result);
+                },
                 onEvent(event) {
                   if (event.type === "streaming" && !event.streaming)
                     for (const id of currentRuntime?.executingTurnIds?.() ?? [])
@@ -461,8 +471,10 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 },
               });
               currentRuntime = runtime;
-              const shared = {
+              const shared: SharedRuntime = {
+                applicationLease: false,
                 settledInputIds,
+                turnResults,
                 fingerprint: key.fingerprint,
                 workingDirectory: key.options.runtime.cwd,
                 sessionDirectory: key.options.runtime.sessionDir,
@@ -471,7 +483,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 events,
                 activeTurns,
                 queueEdits: Semaphore.makeUnsafe(1),
-              } satisfies SharedRuntime;
+              };
               activeRuntimes.add(shared);
               acquiredOptions.set(runtimeTarget(key.options), key.options);
               acquiredOptions.set(
@@ -574,6 +586,15 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               });
             }
             yield* Scope.addFinalizer(ownerScope, Scope.close(leaseScope, Exit.void));
+            // The permanent coordinator belongs to the application, not its visible pane.
+            // Keep one ordinary RcMap lease so worker reports can wake it after observers leave.
+            if (retained.profile === "CakeChatSession" && !retained.applicationLease) {
+              retained.applicationLease = true;
+              yield* RcMap.get(runtimes, key).pipe(
+                Effect.provideService(Scope.Scope, layerScope),
+                sessionError("acquire"),
+              );
+            }
             return retained;
           }),
         );
@@ -632,12 +653,22 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               return [true, next] as const;
             });
             retained.settledInputIds.delete(turnId);
+            const result = retained.turnResults.get(turnId);
+            retained.turnResults.delete(turnId);
+            const settledOutcome =
+              outcome !== "complete"
+                ? outcome
+                : result?.stopReason === "error"
+                  ? "failed"
+                  : result?.stopReason === "aborted"
+                    ? "aborted"
+                    : outcome;
             if (active) {
               const event: PiSessionEvent = {
                 type: "turn-settled",
                 sessionId: retained.runtime.sessionId,
                 turnId,
-                outcome,
+                outcome: settledOutcome,
               };
               if (message !== undefined) Object.assign(event, { message });
               yield* PubSub.publish(retained.events, event);
@@ -645,7 +676,9 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 yield* key.options.onTurnSettled({
                   sessionId: retained.runtime.sessionId,
                   turnId,
-                  outcome,
+                  outcome: settledOutcome,
+                  ...(result ? { result } : null),
+                  ...(message ? { message } : null),
                 });
             }
           });
@@ -718,6 +751,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             (turnId) =>
               Effect.gen(function* () {
                 shared.settledInputIds.delete(turnId);
+                shared.turnResults.delete(turnId);
                 yield* PubSub.publish(shared.events, {
                   type: "turn-settled",
                   sessionId: shared.runtime.sessionId,
@@ -743,6 +777,8 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         });
 
         return {
+          currentTurnIds: () =>
+            Ref.get(shared.activeTurns).pipe(Effect.map((turns) => [...turns.keys()])),
           profile: shared.profile,
           updates,
           snapshot: () => call("snapshot", (runtime) => runtime.snapshot()),

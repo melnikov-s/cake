@@ -68,12 +68,16 @@ describe("SessionFamilyStorage", () => {
       ]);
       return Effect.gen(function* () {
         const storage = yield* SessionFamilyStorage;
-        assert.deepEqual(yield* storage.state(), { families: [family], turns: [turn()] });
+        assert.deepEqual(yield* storage.state(), {
+          families: [family],
+          turns: [turn()],
+          spawnedSessions: [],
+        });
         yield* storage.settleTurn("turn", "complete");
         const persisted = JSON.parse(files.get("state/session-families.json") ?? "{}");
         assert.deepEqual(persisted, {
-          version: 5,
-          data: { families: [family], turns: [turn({ outcome: "complete" })] },
+          version: 6,
+          data: { families: [family], turns: [turn({ outcome: "complete" })], spawnedSessions: [] },
         });
       }).pipe(Effect.provide(familyStorageHarness(files).layer));
     },
@@ -84,7 +88,7 @@ describe("SessionFamilyStorage", () => {
     ]);
     return Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;
-      assert.deepEqual(yield* storage.state(), { families: [], turns: [] });
+      assert.deepEqual(yield* storage.state(), { families: [], turns: [], spawnedSessions: [] });
       yield* storage.addChild(child("request", "child"));
       yield* storage.recordTurn(turn());
       yield* storage.prepareResponse("child", "parent", "request-message", "response", []);
@@ -92,7 +96,7 @@ describe("SessionFamilyStorage", () => {
       yield* storage.settleTurn("turn", "complete");
       assert.deepEqual((yield* storage.state()).turns, []);
       assert.equal((yield* storage.list()).length, 1);
-      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 5);
+      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 6);
     }).pipe(Effect.provide(familyStorageHarness(files).layer));
   });
 
@@ -338,7 +342,7 @@ describe("SessionFamilyStorage", () => {
         }),
       );
       yield* storage.removeProject("/project");
-      assert.deepEqual(yield* storage.state(), { families: [], turns: [] });
+      assert.deepEqual(yield* storage.state(), { families: [], turns: [], spawnedSessions: [] });
     }).pipe(Effect.provide(testLayer())),
   );
 

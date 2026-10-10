@@ -13,7 +13,12 @@ import {
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 import { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
 
-const DOCUMENT_VERSION = 5;
+import {
+  SessionCompletionReport,
+  SessionRequester,
+} from "../../contracts/project-sessions/session-reporting";
+
+const DOCUMENT_VERSION = 6;
 const BoundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const BoundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 
@@ -111,7 +116,20 @@ const LegacyFamilyTurn = Schema.Struct({
   replyMessageIds: Schema.optionalKey(Schema.Array(BoundedId)),
   outcome: Schema.optionalKey(Schema.Literals(["complete", "failed", "aborted"])),
 });
+const SpawnedSession = Schema.Struct({
+  sessionId: BoundedId,
+  projectPath: BoundedPath,
+  workingDirectory: BoundedPath,
+  requester: SessionRequester,
+  reportDelivered: Schema.Boolean,
+  /** A factual stop notice is a settled handoff, but not a successful result report. */
+  handoffSettled: Schema.Boolean,
+});
+export interface SpawnedSession extends Schema.Schema.Type<typeof SpawnedSession> {}
+
 const FamilyTurn = Schema.Struct({
+  completionContract: Schema.optionalKey(Schema.Boolean),
+  report: Schema.optionalKey(SessionCompletionReport),
   /** The session executing the request. */
   sessionId: BoundedId,
   /** The session that should receive a response or factual failure notice. */
@@ -129,6 +147,7 @@ export interface FamilyTurn extends Schema.Schema.Type<typeof FamilyTurn> {}
 export const SessionFamilyDocument = Schema.Struct({
   families: Schema.Array(SessionFamily),
   turns: Schema.Array(FamilyTurn),
+  spawnedSessions: Schema.Array(SpawnedSession),
 });
 export interface SessionFamilyDocument extends Schema.Schema.Type<typeof SessionFamilyDocument> {}
 
@@ -141,9 +160,17 @@ export class SessionFamilyStorage extends Context.Service<
       effect: Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E | SessionFamilyStorageError, R>;
     readonly recordTurn: (turn: FamilyTurn) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly registerSpawn: (
+      session: SpawnedSession,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
+    readonly recordReport: (
+      turnId: string,
+      report: SessionCompletionReport,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly settleTurn: (
       turnId: string,
       outcome: "complete" | "failed" | "aborted",
+      report?: SessionCompletionReport,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly pendingResponseRequest: (
       sessionId: string,
@@ -236,7 +263,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             .exists(documentPath)
             .pipe(Effect.mapError((e) => storageError("load", e))))
         )
-          return { families: [], turns: [] } satisfies SessionFamilyDocument;
+          return { families: [], turns: [], spawnedSessions: [] } satisfies SessionFamilyDocument;
         const text = yield* fileSystem
           .readFileString(documentPath)
           .pipe(Effect.mapError((e) => storageError("load", e)));
@@ -247,7 +274,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         const envelope = yield* Schema.decodeUnknownEffect(StoredEnvelope)(parsed).pipe(
           Effect.mapError((cause) => storageError("load", cause)),
         );
-        if (![1, 2, 3, 4, DOCUMENT_VERSION].includes(envelope.version))
+        if (![1, 2, 3, 4, 5, DOCUMENT_VERSION].includes(envelope.version))
           return yield* storageError(
             "load",
             `Unsupported session family document version ${envelope.version}`,
@@ -301,6 +328,15 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             }),
           )(envelope.data).pipe(Effect.mapError((cause) => storageError("migrate", cause)));
           data = { ...legacy, turns: legacy.turns.map(migrateTurn) };
+        }
+        if (envelope.version < 6) {
+          const previous = yield* Schema.decodeUnknownEffect(
+            Schema.Struct({
+              families: Schema.Array(SessionFamily),
+              turns: Schema.Array(FamilyTurn),
+            }),
+          )(data).pipe(Effect.mapError((cause) => storageError("migrate", cause)));
+          data = { ...previous, spawnedSessions: [] };
         }
         // v5 drops member-synchronization journals. The root's actual namespace
         // is authoritative even when an older transition stopped halfway through.
@@ -464,18 +500,54 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             : [...document.turns, turn],
         })),
       );
+      const registerSpawn = Effect.fn("SessionFamilyStorage.registerSpawn")(
+        (session: SpawnedSession) =>
+          update((document) => ({
+            ...document,
+            spawnedSessions: document.spawnedSessions.some(
+              (item) => item.sessionId === session.sessionId,
+            )
+              ? document.spawnedSessions
+              : [...document.spawnedSessions, session],
+          })),
+      );
+      const recordReport = Effect.fn("SessionFamilyStorage.recordReport")(
+        (turnId: string, report: SessionCompletionReport) =>
+          update((document) => ({
+            ...document,
+            turns: document.turns.map((turn) =>
+              turn.turnId === turnId && !turn.reported && !turn.report && turn.outcome === undefined
+                ? { ...turn, report }
+                : turn,
+            ),
+          })),
+      );
       const settleTurn = Effect.fn("SessionFamilyStorage.settleTurn")(
-        (turnId: string, outcome: "complete" | "failed" | "aborted") =>
+        (
+          turnId: string,
+          outcome: "complete" | "failed" | "aborted",
+          report?: SessionCompletionReport,
+        ) =>
           update((document) => ({
             ...document,
             turns: document.turns.flatMap((turn) =>
-              turn.turnId !== turnId
+              turn.turnId !== turnId || turn.outcome !== undefined
                 ? [turn]
                 : turn.reported ||
-                    outcome === "aborted" ||
+                    (outcome === "aborted" && !turn.completionContract) ||
                     (outcome === "complete" && !turn.expectsResponse)
                   ? []
-                  : [{ ...turn, outcome }],
+                  : [
+                      {
+                        ...turn,
+                        outcome,
+                        ...(turn.completionContract &&
+                        report &&
+                        (!turn.report || outcome === "failed")
+                          ? { report }
+                          : null),
+                      },
+                    ],
             ),
           })),
       );
@@ -574,6 +646,24 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         update((document) => ({
           ...document,
           turns: document.turns.filter((turn) => turn.turnId !== turnId),
+          spawnedSessions: document.spawnedSessions.map((spawn) => {
+            const turn = document.turns.find(
+              (item) => item.turnId === turnId && item.sessionId === spawn.sessionId,
+            );
+            if (
+              !turn ||
+              turn.outcome === undefined ||
+              !turn.completionContract ||
+              turn.requestMessageId !== spawn.sessionId
+            )
+              return spawn;
+            const reportDelivered = Boolean(
+              turn.report &&
+              (turn.outcome === "complete" ||
+                (turn.outcome === "failed" && turn.report.outcome === "failed")),
+            );
+            return { ...spawn, handoffSettled: true, reportDelivered };
+          }),
         })),
       );
       const removeUnmaterializedChild = Effect.fn("SessionFamilyStorage.removeUnmaterializedChild")(
@@ -592,7 +682,12 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             (family) => family.projectPath === projectPath,
           );
           const removedMembers = new Set(removedFamilies.flatMap(familyMemberIds));
+          for (const spawn of document.spawnedSessions)
+            if (spawn.projectPath === projectPath) removedMembers.add(spawn.sessionId);
           return {
+            spawnedSessions: document.spawnedSessions.filter(
+              (spawn) => spawn.projectPath !== projectPath,
+            ),
             families: document.families.filter((family) => family.projectPath !== projectPath),
             turns: document.turns.filter(
               (turn) =>
@@ -608,6 +703,8 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         state,
         withMemberLock,
         recordTurn,
+        registerSpawn,
+        recordReport,
         settleTurn,
         pendingResponseRequest,
         prepareResponse,

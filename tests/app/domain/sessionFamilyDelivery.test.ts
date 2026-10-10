@@ -276,6 +276,58 @@ describe("Session Family outcome delivery", () => {
     },
   );
 
+  it.effect(
+    "replays a substantive family result when a restart lost its explicitly queued reply",
+    () =>
+      Effect.gen(function* () {
+        const received = yield* Deferred.make<string>();
+        const restored = {
+          ...outcome,
+          completionContract: true,
+          replyMessageIds: ["803c90fa-d718-4ecd-97f4-31071609156b"],
+          deliveryTurnId: "lost-queue-turn",
+          report: {
+            outcome: "result" as const,
+            text: "The review is complete; the original queued response was not yet delivered.",
+          },
+        };
+        yield* Effect.gen(function* () {
+          const storage = yield* SessionFamilyStorage;
+          yield* storage.addChild(reservation);
+          yield* storage.recordTurn(restored);
+          yield* Effect.scoped(deliver(restored));
+          const message = parseCrossSessionMessage(yield* Deferred.await(received));
+          assert.ok(message?.text.includes(restored.report.text));
+          assert.equal(message?.metadata.expectsResponse, false);
+          assert.equal(message?.metadata.generatedNotice, false);
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              familyStorageHarness().layer,
+              environment,
+              Layer.mock(SessionArchiveStorage, {
+                locate: () => Effect.succeed("active" as const),
+              }),
+              makeCakeSessionRuntimesLayer({
+                sessionIds: () => Stream.empty,
+                catalog: () => Stream.empty,
+                catalogEntry: () => Effect.succeed(undefined),
+                inspect: () => Effect.succeed(undefined),
+                changelog: () => Effect.succeed(""),
+                createRuntime: (options) =>
+                  Effect.succeed({
+                    ...fakeRuntime(options, () => undefined),
+                    prompt: async (text) => {
+                      Deferred.doneUnsafe(received, Effect.succeed(text));
+                    },
+                  }),
+              }),
+            ),
+          ),
+        );
+      }),
+  );
+
   it.effect("queues a notice behind active parent work without steering it", () =>
     Effect.gen(function* () {
       const received = yield* Deferred.make<void>();

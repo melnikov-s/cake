@@ -85,6 +85,10 @@ projections needed by a surface. References do not transfer ownership.
   must not retire a checkout still used by another active Session.
 - Private Subagent Sessions are not selectable Project Sessions or Session Family
   children. Project agents use private delegation only on explicit user request.
+- Automatic Project Session result handoff belongs to actual family parent-child assignments
+  and independent sessions spawned by permanent Cake Chat, not arbitrary independent creators.
+  Requester provenance and the pending delivery journal are Cake metadata; Pi remains transcript
+  and run authority. See [spawned-session reporting](../development/spawned-session-reporting.md).
 
 ## Process boundaries
 

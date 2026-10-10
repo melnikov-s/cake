@@ -1205,6 +1205,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
         guidance: [
           "Replies default to expectsResponse=false because substantive results and informational responses do not request acknowledgment.",
           "Provide replyToMessageId when more than one request may be pending. Cake otherwise selects the latest matching request in the thread.",
+          "A Cake Chat-spawned Project Session replies to its originating global coordinator without needing a synthetic session ID. Optional outcome declares completed, blocked, or failed; a terminal report is delivered after the executing turn settles.",
           "Do not reply merely to acknowledge a result, notice, confirmation, lifecycle event, or delivery receipt.",
         ],
         inputSchema: Schema.Struct({
@@ -1215,6 +1216,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
             Schema.withDecodingDefaultKey(Effect.succeed(false)),
           ),
           replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
+          outcome: Schema.optionalKey(Schema.Literals(["completed", "blocked", "failed"])),
         }),
         examples: [{ input: { text: "Completed the review; focused tests pass." } }],
         result:

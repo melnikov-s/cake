@@ -8,6 +8,7 @@ import {
   type CakeSessionRuntimesAdapter,
   type CakeSessionRuntimeAcquireOptions,
 } from "../../../../src/services/pi/CakeSessionRuntimes";
+import { CAKE_CHAT_SESSION_ID } from "../../../../src/ipc/cake-chat-data";
 import { TurnCanceledError } from "../../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import { options, fakeRuntime } from "../../helpers/piRuntimeFixture";
 
@@ -402,6 +403,55 @@ describe("CakeSessionRuntimes", () => {
       yield* Scope.close(observer, Exit.void);
       assert.equal(yield* Ref.get(finalizations), 1);
     }),
+  );
+
+  it.effect(
+    "retains the permanent coordinator after its pane releases it so a report can wake it",
+    () =>
+      Effect.gen(function* () {
+        const acquisitions = yield* Ref.make(0);
+        const finalizations = yield* Ref.make(0);
+        const received = yield* Deferred.make<string>();
+        const applicationScope = yield* Scope.make();
+        const base = adapter(acquisitions, finalizations);
+        const context = yield* Layer.build(
+          makeCakeSessionRuntimesLayer({
+            ...base,
+            createRuntime: (runtimeOptions) =>
+              base.createRuntime(runtimeOptions).pipe(
+                Effect.map((runtime) => ({
+                  ...runtime,
+                  sessionId: CAKE_CHAT_SESSION_ID,
+                  prompt: async (text) => {
+                    Deferred.doneUnsafe(received, Effect.succeed(text));
+                  },
+                })),
+              ),
+          }),
+        ).pipe(Effect.provideService(Scope.Scope, applicationScope));
+        const sessions = Context.get(context, CakeSessionRuntimes);
+        const pane = yield* Scope.make();
+        const globalOptions: CakeSessionRuntimeAcquireOptions = {
+          profile: { _tag: "CakeChatSession" },
+          runtime: {
+            ...options({ sessionId: CAKE_CHAT_SESSION_ID }).runtime,
+            globalControl: { tools: [], invoke: async () => ({ ok: true }) },
+          },
+        };
+        yield* sessions.acquire(globalOptions).pipe(Effect.provideService(Scope.Scope, pane));
+        yield* Scope.close(pane, Exit.void);
+        assert.equal(yield* Ref.get(finalizations), 0);
+        const reportScope = yield* Scope.make();
+        const coordinator = yield* sessions
+          .acquireSession(CAKE_CHAT_SESSION_ID)
+          .pipe(Effect.provideService(Scope.Scope, reportScope));
+        yield* coordinator.prompt("A substantive worker result wakes the idle coordinator.");
+        assert.match(yield* Deferred.await(received), /substantive worker result/);
+        assert.equal(yield* Ref.get(acquisitions), 1);
+        yield* Scope.close(reportScope, Exit.void);
+        yield* Scope.close(applicationScope, Exit.void);
+        assert.equal(yield* Ref.get(finalizations), 1);
+      }),
   );
 
   it.effect("does not replay session creation after the assembled runtime is released", () =>

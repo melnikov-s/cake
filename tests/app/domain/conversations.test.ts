@@ -32,6 +32,7 @@ const snapshot = (streaming: boolean): ConversationSnapshot => ({
 });
 
 const makeHandle = (deliveries: string[], isStreaming: () => boolean): CakeSessionHandle => ({
+  currentTurnIds: () => Effect.succeed([]),
   profile: "ProjectSession",
   updates: Stream.empty,
   snapshot: () => Effect.succeed(snapshot(isStreaming())),

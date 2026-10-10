@@ -15,7 +15,9 @@ it never traverses Project Session storage. There is no JSONL coordinator fallba
 - Durable owns admission, its persisted inbox, generation/tool tasks, checkpoints and recovery.
   SQLite is the sole coordinator transcript authority; Cake does not implement a SQL store.
 - `CakeChatDurable` is a construction/read adapter. `CakeSessionRuntimes` retains ownership of
-  shared scoped runtime leases and closes the Harness when the runtime is released.
+  shared scoped runtime leases. Once assembled, the permanent coordinator has one application-scoped
+  lease so worker reports can wake it after its pane closes; application shutdown closes the Harness.
+  See [spawned-session reporting](./spawned-session-reporting.md) for requester and delivery policy.
 - Catalog/preview readers use the SDK's document kernel without a Harness. They cannot create
   a conversation, load providers, resume tasks or invoke scheduler recovery cleanup.
 - Model requests use Cake's existing ModelRuntime credentials and custom/extension providers.

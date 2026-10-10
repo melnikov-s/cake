@@ -18,6 +18,10 @@ import { SessionArchiveStorage } from "../../../src/services/storage/SessionArch
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
 
+import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
+import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+
 const location = {
   workingDirectory: "/home/user",
   sessionDirectory: "/cake/global",
@@ -42,6 +46,9 @@ function fixture() {
     firstMessage: "Hello",
   });
   const layer = Layer.mergeAll(
+    makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
+    Layer.mock(ManagedWorktrees, {}),
+    Layer.mock(SessionFamilyStorage, {}),
     Layer.mock(ApplicationState, {
       snapshot: () => state,
       transact: (transition) =>

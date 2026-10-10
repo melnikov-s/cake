@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Queue, Stream } from "effect";
+import { deliver } from "../../../src/domain/session-families/sessionFamilies";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import {
   encodeCrossSessionMessage,
@@ -108,7 +109,27 @@ const piLayer = (
       Effect.succeed({
         ...fakeRuntime(options, () => undefined),
         sessionId: options.sessionId ?? "unknown",
-        snapshot: async () => ({ ...snapshot, sessionId: options.sessionId ?? "unknown" }),
+        snapshot: async () => ({
+          ...snapshot,
+          sessionId: options.sessionId ?? "unknown",
+          parts: received
+            .filter((message) => message.target === options.sessionId)
+            .flatMap((message) => {
+              const parsed = parseCrossSessionMessage(message.text);
+              return parsed
+                ? [
+                    {
+                      id: parsed.metadata.messageId,
+                      kind: "text" as const,
+                      role: "user" as const,
+                      status: "complete" as const,
+                      text: parsed.text,
+                      crossSession: parsed.metadata,
+                    },
+                  ]
+                : [];
+            }),
+        }),
         executingTurnIds: () => (options.sessionId === "child" ? executingIds() : []),
         prompt: (text, delivery) => {
           if (options.sessionId !== "child") {
@@ -162,9 +183,27 @@ it.effect("routes an automatic reply to the consumed request instead of later qu
         usedTokens: 80_000,
         windowTokens: 128_000,
       });
-      const pending = (yield* (yield* SessionFamilyStorage).state()).turns;
-      assert.equal(pending.find((turn) => turn.requestMessageId === requestA)?.reported, true);
+      const storage = yield* SessionFamilyStorage;
+      const pending = (yield* storage.state()).turns;
+      assert.equal(pending.find((turn) => turn.requestMessageId === requestA)?.reported, false);
+      assert.ok(
+        pending
+          .find((turn) => turn.requestMessageId === requestA)
+          ?.replyMessageIds?.includes(replyMetadata?.messageId ?? ""),
+      );
       assert.equal(pending.find((turn) => turn.requestMessageId === requestB)?.reported, false);
+      yield* storage.settleTurn(activeTurnId, "complete");
+      const settled = (yield* storage.state()).turns.find((turn) => turn.turnId === activeTurnId);
+      assert.ok(settled);
+      yield* deliver(settled);
+      assert.equal(
+        (yield* storage.state()).turns.some((turn) => turn.requestMessageId === requestA),
+        false,
+      );
+      assert.equal(
+        (yield* storage.state()).turns.find((turn) => turn.requestMessageId === requestB)?.reported,
+        false,
+      );
     }).pipe(
       Effect.ensuring(Deferred.succeed(release, undefined)),
       Effect.provide(
@@ -211,10 +250,13 @@ it.effect("one reply satisfies all consumed requests from the same sender", () =
       );
       const storage = yield* SessionFamilyStorage;
       const pending = (yield* storage.state()).turns;
-      assert.equal(pending.find((turn) => turn.requestMessageId === requestA)?.reported, true);
-      assert.equal(pending.find((turn) => turn.requestMessageId === requestB)?.reported, true);
+      assert.equal(pending.find((turn) => turn.requestMessageId === requestA)?.reported, false);
+      assert.equal(pending.find((turn) => turn.requestMessageId === requestB)?.reported, false);
       yield* storage.settleTurn(initialTurnId, "complete");
       yield* storage.settleTurn(refinementTurnId, "complete");
+      const settled = (yield* storage.state()).turns.find((turn) => turn.turnId === initialTurnId);
+      assert.ok(settled);
+      yield* deliver(settled);
       assert.equal(
         (yield* storage.state()).turns.filter((turn) => turn.sessionId === "child").length,
         0,

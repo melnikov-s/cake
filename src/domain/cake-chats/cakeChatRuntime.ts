@@ -1,4 +1,7 @@
 import { Effect, Schema } from "effect";
+import * as projectSessionCreation from "../project-sessions/projectSessionCreation";
+import { AgentProjectSessionCreate } from "../../contracts/project-sessions/session-reporting";
+import { toJsonValue } from "../../utils/to-json-value";
 import { resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import { setSessionFastMode } from "../application/application";
 import { PiModels } from "../../services/pi/PiModels";
@@ -85,6 +88,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     | SessionCatalogChanges
     | SubagentCoordinator
     | SubagentEnvironment
+    | Effect.Services<ReturnType<typeof projectSessionCreation.createPrompted>>
   >();
   const run = makePiCallbackExecutor(context);
   const agentControl = makeSubagentControl({
@@ -179,9 +183,28 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
         // Cake-owned control Effect to the Pi runtime callback contract.
         invoke: (invocation, signal) =>
           run(
-            rendererRequests
-              .requestCakeChatControl(target.sessionId, invocation, signal)
-              .pipe(Effect.orDie),
+            invocation.name === "sessions.create"
+              ? Effect.scoped(
+                  Effect.gen(function* () {
+                    const input = yield* Schema.decodeUnknownEffect(AgentProjectSessionCreate)(
+                      invocation.arguments,
+                    );
+                    return toJsonValue(
+                      yield* projectSessionCreation.createPrompted({
+                        ...input,
+                        projectPath: input.workspacePath,
+                        requester: {
+                          sessionId: target.sessionId,
+                          kind: "cake-chat",
+                          title: "Cake Chat",
+                        },
+                      }),
+                    );
+                  }),
+                ).pipe(Effect.orDie)
+              : rendererRequests
+                  .requestCakeChatControl(target.sessionId, invocation, signal)
+                  .pipe(Effect.orDie),
             { signal },
           ),
       },

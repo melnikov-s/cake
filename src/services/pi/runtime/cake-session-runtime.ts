@@ -6,6 +6,8 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
+import { createTurnResultCapture } from "./turn-result-capture";
+import type { PiTurnResult } from "../../../contracts/pi/turn-result-data";
 import type { CakeChatMemoryOptions } from "../cake-chat-memory-options";
 import { Option, Schema } from "effect";
 import {
@@ -333,6 +335,7 @@ export interface CakeSessionRuntimeOptions {
     close(handleId: string, parentSessionId: string): Promise<JsonValue>;
   };
   onEvent(event: CakeSessionRuntimeEvent): void;
+  onTurnResult?(turnId: string, result: PiTurnResult): void;
 }
 
 export interface CakeSessionRuntime {
@@ -656,8 +659,13 @@ export async function createCakeSessionRuntime(
   });
 
   let automaticTitleForNextMessage = true;
+  const captureTurnResult = createTurnResultCapture(
+    () => turnController.executingTurnIds(),
+    (turnId, result) => options.onTurnResult?.(turnId, result),
+  );
   const unsubscribe = session.subscribe((event) => {
     if (disposed) return;
+    captureTurnResult(event);
     if (
       event.type === "message_end" &&
       event.message.role === "assistant" &&

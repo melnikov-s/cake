@@ -65,6 +65,7 @@ it.effect("creates independent Pi-backed Project Session without any renderer", 
     Layer.mock(SessionFamilyStorage, {
       familyForMember: () => Effect.succeed(undefined),
       withMemberLock: (_sessionId, effect) => effect,
+      state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
       settleTurn: () => Effect.void,
     }),
     Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),

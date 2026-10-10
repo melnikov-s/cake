@@ -423,9 +423,12 @@ const makeLayer = (
         Effect.succeed({
           families: [],
           turns: [],
+          spawnedSessions: [],
         }),
       withMemberLock: (_id, effect) => effect,
       recordTurn: () => Effect.void,
+      registerSpawn: () => Effect.void,
+      recordReport: () => Effect.void,
       settleTurn: () => Effect.void,
       pendingResponseRequest: () => Effect.succeed(undefined),
       prepareResponse: () => Effect.succeed(false),
