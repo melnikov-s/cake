@@ -10,6 +10,25 @@ function tool(id: string, origin?: "compacted"): UiPart {
 }
 
 describe("groupTranscriptParts", () => {
+  it("groups only consecutive context pills, preserving dialogue and work-log order", () => {
+    const context = (id: string): UiPart => ({ id, kind: "context", title: id, text: id });
+    expect(
+      groupTranscriptParts([
+        context("a"),
+        context("b"),
+        tool("work"),
+        context("c"),
+        { id: "answer", kind: "text", role: "assistant", text: "Answer", status: "complete" },
+        context("d"),
+      ]),
+    ).toMatchObject([
+      { kind: "context-group", parts: [{ id: "a" }, { id: "b" }] },
+      { kind: "activity-group", parts: [{ id: "work" }] },
+      { kind: "context-group", parts: [{ id: "c" }] },
+      { kind: "text", id: "answer" },
+      { kind: "context-group", parts: [{ id: "d" }] },
+    ]);
+  });
   it("never groups recovered and current work-log activity together", () => {
     const items = groupTranscriptParts([
       tool("old-1", "compacted"),

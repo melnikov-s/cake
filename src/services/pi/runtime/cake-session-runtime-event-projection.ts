@@ -212,7 +212,20 @@ export function createCakeSessionRuntimeEventProjection(input: {
   };
 
   const projectEvent = (event: AgentSessionEvent) => {
-    if (event.type === "agent_start") emit({ type: "streaming", sessionId, streaming: true });
+    if (event.type === "agent_start") {
+      emit({ type: "streaming", sessionId, streaming: true });
+      // before_agent_start extensions may have changed the effective prompt for this run.
+      emit({
+        type: "part-updated",
+        sessionId,
+        part: {
+          id: "runtime-system-prompt",
+          kind: "context",
+          title: "System prompt",
+          text: session.systemPrompt,
+        },
+      });
+    }
     if (event.type === "message_update" && event.message.role === "assistant") {
       scheduleAssistantUpdate(event);
       scheduleUsageUpdate();

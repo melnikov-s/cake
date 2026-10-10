@@ -40,6 +40,14 @@ crop/annotation policy to its owner. `CaptureToolbar` composes shared controls f
 undo, full-display attachment, and cancellation. Both are used by the native capture overlay;
 only the flattened screenshot and annotations enter a chat draft.
 
+## Context pills
+
+`ContextPill` composes `Chip` to disclose exact system/reminder/extension context
+as plain text. Expansion is ephemeral DOM state, not persisted workflow state.
+Consecutive context parts share a wrapping horizontal group in the authoritative
+Chat transcript. Removed historical context stays inspectable with a
+“removed from context” label after Tool Compact.
+
 ## Inline links
 
 `Link` is the shared anchor for Markdown, source citations, session links, and

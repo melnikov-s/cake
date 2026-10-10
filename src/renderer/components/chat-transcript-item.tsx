@@ -29,6 +29,8 @@ function sameItem(left: TranscriptItem, right: TranscriptItem) {
   if (left.kind !== right.kind || left.id !== right.id) return false;
   if (left.kind === "activity-group" && right.kind === "activity-group")
     return sameParts(left.parts, right.parts);
+  if (left.kind === "context-group" && right.kind === "context-group")
+    return sameParts(left.parts, right.parts);
   if (left.kind === "source-group" && right.kind === "source-group")
     return sameParts(left.parts, right.parts);
   return left.kind === "changed-files" || left.kind === "loading-state";
@@ -51,7 +53,9 @@ export const ChatTranscriptItem = memo(
         data-slot="transcript-item"
         data-transcript-item-index={index}
         data-transcript-anchor-id={
-          item.kind === "activity-group" || item.kind === "source-group"
+          item.kind === "activity-group" ||
+          item.kind === "source-group" ||
+          item.kind === "context-group"
             ? item.parts[0]?.id
             : item.id
         }
@@ -61,6 +65,12 @@ export const ChatTranscriptItem = memo(
           <ActivityGroup groupId={item.id} parts={item.parts} behavior={behavior} />
         ) : item.kind === "source-group" ? (
           <div className="flex flex-wrap items-center gap-2" data-slot="source-group">
+            {item.parts.map((part) => (
+              <TranscriptPart key={part.id} part={part} behavior={behavior} />
+            ))}
+          </div>
+        ) : item.kind === "context-group" ? (
+          <div className="flex flex-wrap items-start gap-2" data-slot="context-group">
             {item.parts.map((part) => (
               <TranscriptPart key={part.id} part={part} behavior={behavior} />
             ))}

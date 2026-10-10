@@ -7,6 +7,7 @@ import {
   forkDisplayProvenanceEntryType,
 } from "./fork-display-provenance";
 import { projectSessionEntries } from "./session-projection";
+import { toolCompactDialogueMessage } from "./session-tool-compaction";
 import {
   toolCompactEntryType,
   toolCompactProvenanceEntryType,
@@ -21,10 +22,13 @@ type ProjectionResult =
   | { readonly valid: false };
 
 function projectedDialogueParts(entry: SessionEntry): UiPart[] {
-  return projectSessionEntries([entry]).filter((part) => !isWorkLogPart(part));
+  return projectSessionEntries([entry]).filter(
+    (part) => !isWorkLogPart(part) && part.kind !== "context",
+  );
 }
 
 function compactedPart(part: UiPart): UiPart {
+  if (part.kind === "context") return { ...part, origin: "compacted" };
   if (!isWorkLogPart(part)) return part;
   if (part.kind === "reasoning" || part.kind === "tool" || part.kind === "command")
     return { ...part, origin: "compacted" };
@@ -74,7 +78,7 @@ function projectBranch(branch: readonly SessionEntry[], live: boolean): Projecti
 
 function locateProvenance(branch: readonly SessionEntry[]) {
   const markerIndexes = branch.flatMap((entry, index) =>
-    entry.type === "custom_message" && entry.customType === toolCompactEntryType ? [index] : [],
+    entry.type === "custom" && entry.customType === toolCompactEntryType ? [index] : [],
   );
   const candidates = branch.flatMap((entry, index) => {
     if (entry.type !== "custom" || entry.customType !== toolCompactProvenanceEntryType) return [];
@@ -105,14 +109,7 @@ function validateReplay(
   const replayRange = branch.slice(replayStartIndex, replayEndIndex + 1);
   const sourceBranch = session.getBranch(provenance.sourceLeafId);
   const replayableSourceIds = sourceBranch.flatMap((entry) => {
-    if (entry.type !== "message") return [];
-    if (entry.message.role === "user") return [entry.id];
-    if (
-      entry.message.role === "assistant" &&
-      entry.message.content.some((block) => block.type === "text" && Boolean(block.text.trim()))
-    )
-      return [entry.id];
-    return [];
+    return toolCompactDialogueMessage(entry) ? [entry.id] : [];
   });
   if (
     replayRange.length !== provenance.mappings.length ||

@@ -235,7 +235,10 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
       bridgeKeys: ["rpc"],
     });
 
-    await page.getByLabel("Message").fill("Persist this draft");
+    await page.getByLabel("Message").click();
+    await page.getByLabel("Message").pressSequentially("Persist this draft");
+    await expect(page.getByLabel("Message")).toBeFocused();
+    await expect(page.getByLabel("Message")).toHaveValue("Persist this draft");
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 
     await application.evaluate(() => {

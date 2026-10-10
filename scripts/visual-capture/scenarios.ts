@@ -1,4 +1,6 @@
 import { drawMermaidArchitecture } from "../../tests/fixtures/draw-mermaid-architecture.ts";
+import { addResponseModeReminder } from "../../src/domain/conversations/conversation-response-mode.ts";
+import { addPresentationModeReminder } from "../../src/domain/project-sessions/presentation-mode-reminders.ts";
 import { nestedAssistant, nestedEntries } from "../../tests/fixtures/nested-tool-activity.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
@@ -207,6 +209,82 @@ const assistantMarkdownCode: VisualCaptureScenario = {
 };
 
 const conversationEntryOrigin = "http://127.0.0.1:9";
+
+const contextPillsScenario: VisualCaptureScenario = {
+  ...assistantMarkdownCode,
+  name: "context-pills",
+  description:
+    "Inspectable injected reminders and hidden Cake/extension context in horizontal pills",
+  states: ["default", "expanded"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const timestamp = new Date(0).toISOString();
+    const file = join(
+      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl",
+    );
+    const entries = [
+      {
+        type: "message",
+        id: "context-user",
+        parentId: "assistant-1",
+        timestamp,
+        message: {
+          role: "user",
+          timestamp: 2,
+          content: addResponseModeReminder(
+            addPresentationModeReminder(
+              "Show me everything being added to my context.",
+              "normal",
+              "draw",
+            ),
+            "text",
+          ),
+        },
+      },
+      {
+        type: "custom_message",
+        id: "cake-context",
+        parentId: "context-user",
+        timestamp,
+        customType: "Cake reminder",
+        display: false,
+        content: "Cake injected this context. Pi's display flag must not hide it from the user.",
+      },
+      {
+        type: "custom_message",
+        id: "extension-context",
+        parentId: "cake-context",
+        timestamp,
+        customType: "Extension reminder",
+        display: false,
+        content: "Extension-injected context is inspectable too.",
+      },
+    ];
+    await writeFile(
+      file,
+      `${await readFile(file, "utf8")}${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+    );
+  },
+  async prepare(page, state) {
+    await expect(
+      page.locator('[data-slot="context-group"]').last().locator('[data-slot="context-pill"]'),
+    ).toHaveCount(4, { timeout: 20_000 });
+    const systemPrompt = page.getByRole("button", { name: "System prompt", exact: true });
+    await expect(systemPrompt).toBeVisible();
+    await systemPrompt.click();
+    await expect(page.locator('[data-part-id="runtime-system-prompt"] pre')).toContainText(
+      "coding assistant",
+    );
+    await systemPrompt.click();
+    if (state === "expanded")
+      await page.getByRole("button", { name: "Cake · response mode", exact: true }).click();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+  },
+  region(page) {
+    return page.locator('[data-slot="context-group"]').last();
+  },
+};
 
 const conversationEntryScenario: VisualCaptureScenario = {
   name: "conversation-entry",
@@ -1804,6 +1882,7 @@ export const visualCaptureScenarios = [
   sourceSelectionScenario,
   sessionPluginsScenario,
   assistantMarkdownCode,
+  contextPillsScenario,
   conversationEntryScenario,
   conversationCountdownScenario,
   speechOutputSettingsScenario,

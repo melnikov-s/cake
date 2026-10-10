@@ -9,6 +9,7 @@ export type TranscriptItem =
   | UiPart
   | { kind: "activity-group"; id: string; parts: UiPart[] }
   | { kind: "source-group"; id: string; parts: Extract<UiPart, { kind: "source" }>[] }
+  | { kind: "context-group"; id: string; parts: Extract<UiPart, { kind: "context" }>[] }
   | { kind: "changed-files"; id: string }
   | { kind: "loading-state"; id: string };
 
@@ -43,6 +44,12 @@ export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
   let activityCompacted: boolean | undefined;
   let activityGroupIndex = 0;
   let sources: Extract<UiPart, { kind: "source" }>[] = [];
+  let context: Extract<UiPart, { kind: "context" }>[] = [];
+  const flushContext = () => {
+    if (context.length === 0) return;
+    items.push({ kind: "context-group", id: `context-${context[0]!.id}`, parts: context });
+    context = [];
+  };
   const flushActivity = () => {
     if (activity.length === 0) return;
     items.push({
@@ -59,6 +66,13 @@ export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
     sources = [];
   };
   for (const part of parts) {
+    if (part.kind === "context") {
+      flushActivity();
+      flushSources();
+      context.push(part);
+      continue;
+    }
+    flushContext();
     if (isWorkLogPart(part)) {
       flushSources();
       const compacted = isCompactedWorkLogPart(part);
@@ -76,5 +90,6 @@ export function groupTranscriptParts(parts: UiPart[]): TranscriptItem[] {
   }
   flushActivity();
   flushSources();
+  flushContext();
   return items;
 }

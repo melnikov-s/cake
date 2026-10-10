@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { addResponseModeReminder } from "../../src/domain/conversations/conversation-response-mode";
+import { addPresentationModeReminder } from "../../src/domain/project-sessions/presentation-mode-reminders";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const timestamp = new Date(0).toISOString();
@@ -69,12 +71,37 @@ test("shows compacted historical work in place, muted and expandable", async () 
       id: "source-user",
       parentId: null,
       timestamp,
-      message: { role: "user", content: "Inspect it", timestamp: 0 },
+      message: {
+        role: "user",
+        content: addResponseModeReminder(
+          addPresentationModeReminder("Inspect it", "normal", "draw"),
+          "text",
+        ),
+        timestamp: 0,
+      },
+    },
+    {
+      type: "custom_message",
+      id: "source-cake-context",
+      parentId: "source-user",
+      timestamp,
+      customType: "Cake reminder",
+      content: "Hidden Cake context sent to the model.",
+      display: false,
+    },
+    {
+      type: "custom_message",
+      id: "source-extension-context",
+      parentId: "source-cake-context",
+      timestamp,
+      customType: "Extension reminder",
+      content: "Extension context sent to the model.",
+      display: true,
     },
     {
       type: "message",
       id: "source-assistant-work",
-      parentId: "source-user",
+      parentId: "source-extension-context",
       timestamp,
       message: assistant([
         { type: "text", text: "I inspected it." },
@@ -104,13 +131,12 @@ test("shows compacted historical work in place, muted and expandable", async () 
       message: assistant([{ type: "text", text: "Original answer." }]),
     },
     {
-      type: "custom_message",
+      type: "custom",
       id: "compact-marker",
       parentId: null,
       timestamp,
       customType: "cake.tool-compact/v1",
-      content: "Earlier work was tool compacted.",
-      display: true,
+      data: { summary: "Earlier work was tool compacted." },
     },
     {
       type: "message",
@@ -157,7 +183,11 @@ test("shows compacted historical work in place, muted and expandable", async () 
       id: "current-user",
       parentId: "compact-provenance",
       timestamp,
-      message: { role: "user", content: "Check again", timestamp: 3 },
+      message: {
+        role: "user",
+        content: addResponseModeReminder("Check again", "text"),
+        timestamp: 3,
+      },
     },
     {
       type: "message",
@@ -226,6 +256,36 @@ test("shows compacted historical work in place, muted and expandable", async () 
     await expect(compacted).toContainText("Historical reasoning remains readable.");
     await compacted.getByRole("button", { name: /read/i }).first().click();
     await expect(compacted).toContainText("Historical tool output");
+    const cakePill = page.getByRole("button", {
+      name: "Cake reminder · removed from context",
+      exact: true,
+    });
+    const extensionPill = page.getByRole("button", {
+      name: "Extension reminder · removed from context",
+      exact: true,
+    });
+    await expect(cakePill).toBeVisible();
+    await expect(extensionPill).toBeVisible();
+    await cakePill.click();
+    await expect(
+      page.getByText("Hidden Cake context sent to the model.", { exact: true }),
+    ).toBeVisible();
+    await cakePill.click();
+    const boxes = await Promise.all([cakePill.boundingBox(), extensionPill.boundingBox()]);
+    expect(boxes[0]).not.toBeNull();
+    expect(boxes[1]).not.toBeNull();
+    expect(Math.abs(boxes[0]!.y - boxes[1]!.y)).toBeLessThan(2);
+    expect(boxes[1]!.x).toBeGreaterThan(boxes[0]!.x);
+    await extensionPill.click();
+    await expect(
+      page.getByText("Extension context sent to the model.", { exact: true }),
+    ).toBeVisible();
+    const currentReminder = page.getByRole("button", { name: "Cake · response mode", exact: true });
+    await expect(currentReminder).toBeVisible();
+    await currentReminder.click();
+    await expect(
+      page.locator('[data-slot="context-pill"][data-origin="current"] pre'),
+    ).toContainText("Cake response mode: text");
     await expect(page.getByText("Original answer.", { exact: true })).toBeVisible();
     await expect(page.getByText("Current answer.", { exact: true })).toBeVisible();
   } finally {

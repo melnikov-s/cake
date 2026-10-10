@@ -18,7 +18,8 @@ Cake response mode: text. Use normal text-oriented replies; previous voice-mode 
 
 /** Decorate model input only. Voice: brief plain spoken prose; code/details remain in chat.
  * Text explicitly restores normal response style, even after queued/reordered voice inputs.
- * The exact Cake-owned reminder is removed from display/title/editor projections, not Pi history.
+ * Chat discloses the exact Cake-owned reminder as a context pill, separate from user text.
+ * Title/editor projections omit it; Tool Compact removes it from replay, not original Pi history.
  */
 export function addResponseModeReminder(text: string, mode: ConversationResponseMode): string {
   return `${text}${text ? "\n\n" : ""}${responseModeReminders[mode]}`;

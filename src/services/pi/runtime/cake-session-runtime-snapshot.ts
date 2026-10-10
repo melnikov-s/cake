@@ -50,7 +50,21 @@ export function projectCakeSessionRuntimeSnapshot(
     sessionId: input.sessionId,
     sessionFile: session.sessionFile ?? "",
     sessionListed: input.sessionListed,
-    parts: [...branchParts, ...input.queuedParts, ...input.transientParts],
+    parts: [
+      ...(session.systemPrompt
+        ? [
+            {
+              id: "runtime-system-prompt",
+              kind: "context" as const,
+              title: "System prompt",
+              text: session.systemPrompt,
+            },
+          ]
+        : []),
+      ...branchParts,
+      ...input.queuedParts,
+      ...input.transientParts,
+    ],
     model: session.model
       ? { provider: session.model.provider, id: session.model.id, name: session.model.name }
       : undefined,

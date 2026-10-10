@@ -11,7 +11,7 @@ type TextRole = Extract<UiPart, { kind: "text" }>["role"];
 type TextStatus = Extract<UiPart, { kind: "text" }>["status"];
 type PartStatus = Extract<UiPart, { kind: "text" | "reasoning" | "review-run" }>["status"];
 type PartState = Extract<UiPart, { kind: "tool" | "command" }>["state"];
-type WorkLogOrigin = Extract<UiPart, { kind: "tool" }>["origin"];
+type WorkLogOrigin = Extract<UiPart, { kind: "tool" | "context" }>["origin"];
 type AttachmentKind = Extract<UiPart, { kind: "attachment" }>["attachmentKind"];
 type NoticeTone = Extract<UiPart, { kind: "notice" }>["tone"];
 type DeliveryState = Extract<UiPart, { kind: "text" }>["deliveryState"];
@@ -79,6 +79,12 @@ export class Message extends Model {
   update(part: UiPart) {
     if (part.id !== this.partKey || part.kind !== this.kind) return false;
     switch (part.kind) {
+      case "context":
+        this.title = part.title;
+        this.text = part.text;
+        this.origin = part.origin;
+        this.crossSession = part.crossSession;
+        return true;
       case "text":
         this.role = part.role;
         this.piId = part.entryId;
@@ -171,6 +177,15 @@ export class Message extends Model {
   @computed
   get value(): UiPart {
     switch (this.kind) {
+      case "context":
+        return {
+          id: this.partKey,
+          kind: this.kind,
+          title: this.title!,
+          text: this.text!,
+          origin: this.origin,
+          crossSession: this.crossSession,
+        };
       case "text":
         // SAFETY: snapshots and update() keep status aligned with the part discriminant.
         return {

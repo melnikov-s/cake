@@ -1608,18 +1608,72 @@ describe("Pi 1.0.0 foundation contract", () => {
     ]);
   });
 
+  it("discloses structured system section and tool changes in live and settled context", () => {
+    const message = {
+      role: "system" as const,
+      content: "",
+      sections: { workflow: "Exact system section" },
+      toolsRemoved: [{ name: "read" }],
+      timestamp: 1,
+    };
+    const expected = expect.objectContaining({
+      kind: "context",
+      title: "System message",
+      text: JSON.stringify(message, null, 2),
+    });
+    expect(createLiveMessageProjector()({ type: "message_start", message })).toEqual([expected]);
+    const session = SessionManager.inMemory("/project");
+    session.appendMessage(message);
+    expect(projectSessionEntries(session.getBranch())).toEqual([expected]);
+  });
+
+  it("discloses hidden custom context in both live events and settled branches", () => {
+    const message = {
+      role: "custom" as const,
+      customType: "cake.reminder",
+      content: "Exact injected context",
+      display: false,
+      timestamp: 1,
+    };
+    expect(createLiveMessageProjector()({ type: "message_start", message })).toEqual([
+      expect.objectContaining({
+        kind: "context",
+        title: "cake.reminder",
+        text: "Exact injected context",
+      }),
+    ]);
+    expect(
+      projectSessionEntries([
+        {
+          type: "custom_message",
+          id: "hidden",
+          parentId: null,
+          timestamp: new Date(0).toISOString(),
+          customType: message.customType,
+          content: message.content,
+          display: false,
+        },
+      ]),
+    ).toEqual([
+      expect.objectContaining({
+        kind: "context",
+        title: "cake.reminder",
+        text: "Exact injected context",
+      }),
+    ]);
+  });
+
   it("projects a tool-compaction preamble as an info notice before the dialogue", () => {
     const detail =
       "This conversation branch was tool compacted. 2 tool calls and results were omitted.";
     const parts = projectSessionEntries([
       {
-        type: "custom_message",
+        type: "custom",
         id: "tool-compact-entry",
         parentId: null,
         timestamp: new Date(0).toISOString(),
         customType: toolCompactEntryType,
-        content: detail,
-        display: true,
+        data: { summary: detail },
       },
       {
         type: "message",
@@ -1857,6 +1911,11 @@ describe("Pi 1.0.0 foundation contract", () => {
         command: "subagents.start",
         output: expect.stringContaining('"status": "complete"'),
         state: "success",
+      }),
+      expect.objectContaining({
+        kind: "context",
+        title: "cake.subagent-completion",
+        text: "Background subagent completed",
       }),
     ]);
   });
@@ -2876,7 +2935,13 @@ describe("S1 Pi runtime", () => {
 
     expect(first.sessionFile).toMatch(/\.jsonl$/);
     expect(firstSnapshot.sessionId).toBe(first.sessionId);
-    expect(firstSnapshot.parts).toEqual([]);
+    expect(firstSnapshot.parts).toEqual([
+      expect.objectContaining({
+        kind: "context",
+        title: "System prompt",
+        text: expect.stringContaining("coding assistant"),
+      }),
+    ]);
     expect(firstSnapshot.piSettings).toMatchObject({
       autoCompact: true,
       steeringMode: "one-at-a-time",
@@ -3222,7 +3287,9 @@ describe("S1 Pi runtime", () => {
     runtimes.push(isolated);
     expect(isolated.sessionId).toBe(requestedSessionId);
     expect(isolated.sessionId).not.toBe(second.sessionId);
-    expect((await isolated.snapshot()).parts).toEqual([]);
+    expect((await isolated.snapshot()).parts).toEqual([
+      expect.objectContaining({ kind: "context", title: "System prompt" }),
+    ]);
   });
 
   it("keeps long linear Pi sessions shallow enough for Electron's context bridge", async () => {

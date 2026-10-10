@@ -10,8 +10,7 @@ import { decodeArtifactPointer, type ArtifactPointer } from "../../../ipc/artifa
 import { parseCrossSessionMessage } from "../../../domain/conversations/cross-session-coordination";
 import { parseScheduledMessage } from "../../../domain/scheduled-messages/scheduled-message-envelope";
 import { shouldRenderMarkdown } from "../../../utils/markdown";
-import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
-import { stripResponseModeReminder } from "../../../domain/conversations/conversation-response-mode";
+import { splitContextReminders } from "./session-context-reminders";
 import {
   attachmentSchema,
   toolOutputContentArraySchema,
@@ -330,7 +329,25 @@ function partsFromMessage(
     const timestamp = Reflect.get(message, "timestamp");
     const renderKey =
       typeof timestamp === "number" && Number.isFinite(timestamp) ? `user-${timestamp}` : undefined;
-    const envelope = parseUserMessageEnvelope(textFromContent(content));
+    const context = splitContextReminders(textFromContent(content));
+    const envelope = parseUserMessageEnvelope(context.text);
+    const reminderParts = context.reminders.map((reminder, index): UiPart => ({
+      id: `${baseId}-context-${index}`,
+      kind: "context",
+      title: reminder.title,
+      text: reminder.text,
+    }));
+    if (envelope.crossSession)
+      return [
+        {
+          id: `${baseId}-context`,
+          kind: "context",
+          title: `Session · ${envelope.crossSession.sender.title}`.slice(0, 512),
+          text: context.text,
+          crossSession: envelope.crossSession,
+        },
+        ...reminderParts,
+      ];
     const parsedContext = parseContextAttachmentBlocks(envelope.text);
     const text = parsedContext.text;
     const renderAsMarkdown =
@@ -437,6 +454,7 @@ function partsFromMessage(
         text: "",
         status: "complete",
       });
+    parts.push(...reminderParts);
     return parts;
   }
 
@@ -588,11 +606,6 @@ function partsFromMessage(
     ];
   }
 
-  // Live subagent activity already updates the handle-keyed surface. The full
-  // snapshot folds this hidden completion into its original background start.
-  if (role === "custom" && Reflect.get(message, "customType") === "cake.subagent-completion")
-    return [];
-
   if (role === "bashExecution") {
     const exitCode = Reflect.get(message, "exitCode");
     const cancelled = Reflect.get(message, "cancelled") === true;
@@ -607,14 +620,14 @@ function partsFromMessage(
     ];
   }
 
-  if (role === "custom" && Reflect.get(message, "display") === true) {
+  if (role === "custom" || role === "system") {
     return [
       {
         id: `${baseId}-custom`,
-        kind: "notice",
-        tone: "info",
-        title: String(Reflect.get(message, "customType") ?? "Extension"),
-        detail: textFromContent(content),
+        kind: "context",
+        title: String(Reflect.get(message, "customType") ?? "System message"),
+        // Pi system messages also carry section changes and tool declarations.
+        text: role === "system" ? formatUnknown(message, 262_144) : textFromContent(content),
       },
     ];
   }
@@ -644,6 +657,12 @@ export function createLiveMessageProjector(
         undefined,
         options.renderUserMessageAsMarkdown?.(event.message) ?? false,
       );
+    }
+    if (
+      event.type === "message_start" &&
+      (event.message.role === "custom" || event.message.role === "system")
+    ) {
+      return partsFromMessage(event.message, `live-context-${++userIndex}`);
     }
     if (event.type === "message_start" && event.message.role === "assistant") {
       activeStreamId = nextStreamId();
@@ -713,7 +732,7 @@ type UserMessageEnvelope = {
 
 /** Strips Cake's provenance envelope from a Pi user message and surfaces its metadata. */
 function parseUserMessageEnvelope(content: string): UserMessageEnvelope {
-  content = stripResponseModeReminder(stripPresentationModeReminder(content));
+  content = splitContextReminders(content).text;
   const scheduled = parseScheduledMessage(content);
   if (scheduled) return { text: scheduled.text, scheduled: scheduled.origin };
   const crossSession = parseCrossSessionMessage(content);
@@ -886,6 +905,15 @@ export function projectSessionEntries(
         append(part);
       continue;
     }
+    if (entry.type === "branch_summary") {
+      append({
+        id: `entry-${entry.id}-context`,
+        kind: "context",
+        title: "Branch summary",
+        text: entry.summary,
+      });
+      continue;
+    }
     if (entry.type === "compaction") {
       append({
         id: `entry-${entry.id}-compaction`,
@@ -923,17 +951,30 @@ export function projectSessionEntries(
             output: formatUnknown(entry.details),
             state: "success",
           });
-      } else if (entry.display)
+      }
+      append({
+        id: `entry-${entry.id}-custom`,
+        kind: "context",
+        title: entry.customType,
+        text: textFromContent(entry.content),
+      });
+      continue;
+    }
+    if (entry.type !== "custom") continue;
+    if (entry.customType === toolCompactEntryType) {
+      const marker = Schema.decodeUnknownOption(Schema.Struct({ summary: Schema.String }))(
+        entry.data,
+      );
+      if (Option.isSome(marker))
         append({
           id: `entry-${entry.id}-custom`,
           kind: "notice",
           tone: "info",
-          title: entry.customType === toolCompactEntryType ? "Tool compact" : entry.customType,
-          detail: textFromContent(entry.content),
+          title: "Tool compact",
+          detail: marker.value.summary,
         });
       continue;
     }
-    if (entry.type !== "custom") continue;
     if (entry.customType === "cake.artifact/v1") {
       const pointer = decodeArtifactPointer(entry.data);
       if (pointer?.origin) {
@@ -1049,9 +1090,9 @@ function entryPreview(entry: SessionEntry) {
   if (entry.type === "message") {
     const message = entry.message;
     const role = message.role;
-    const rawText = stripResponseModeReminder(
-      stripPresentationModeReminder("content" in message ? textFromContent(message.content) : ""),
-    );
+    const rawText = splitContextReminders(
+      "content" in message ? textFromContent(message.content) : "",
+    ).text;
     const displayText = role === "user" ? visibleUserMessageText(rawText) : rawText;
     const text = displayText.replace(/[\n\t]+/g, " ").trim();
     if (role === "user") return text.slice(0, 2_048);
@@ -1094,11 +1135,7 @@ export function projectTree(sessionManager: SessionManager): SessionTreeEntry[] 
       messageRole: node.entry.type === "message" ? node.entry.message.role : undefined,
       editorText:
         node.entry.type === "message" && node.entry.message.role === "user"
-          ? visibleUserMessageText(
-              stripResponseModeReminder(
-                stripPresentationModeReminder(textFromContent(node.entry.message.content)),
-              ),
-            )
+          ? visibleUserMessageText(textFromContent(node.entry.message.content))
           : undefined,
       label: node.label,
       preview: entryPreview(node.entry),

@@ -84,7 +84,18 @@ its own resolution during that turn, the runtime records the intent and applies
 it at the settled-turn boundary, after the final transcript snapshot is emitted.
 
 Cake's visible transcript projects the complete active branch returned by Pi's
-`SessionManager.getBranch()`. The compacted entries returned by
+`SessionManager.getBranch()`. Model-facing system reminders and custom messages
+must remain inspectable as compact context pills, regardless of Pi's `display`
+flag. Consecutive context pills share a horizontal wrapping group; the live
+runtime also exposes its current system prompt. This is derived presentation,
+not a second transcript authority.
+
+Tool Compact is a strict dialogue-only replay: retain user-authored input and
+assistant text, remove tool activity, reasoning, injected reminders, cross-session
+coordination, and custom messages. Its orientation marker and provenance are
+Pi custom metadata, never model-facing messages. The original tree and removed
+context remain inspectable; removed context is labeled as historical. The
+runtime's active system prompt is configuration, not replayed dialogue. The compacted entries returned by
 `buildContextEntries()` are model input, not display history, and must never
 replace the complete transcript projection. Compaction entries remain visible
 as durable timeline events. When Pi's ordinary fork extraction can no longer

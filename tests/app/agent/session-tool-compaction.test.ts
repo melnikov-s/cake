@@ -10,6 +10,9 @@ import {
   toolCompactProvenanceSchema,
 } from "../../../src/services/pi/runtime/tool-compaction-provenance";
 import { Schema } from "effect";
+import { addResponseModeReminder } from "../../../src/domain/conversations/conversation-response-mode";
+import { addPresentationModeReminder } from "../../../src/domain/project-sessions/presentation-mode-reminders";
+import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 
 const usage: Usage = {
   input: 100,
@@ -83,7 +86,7 @@ describe("tool compaction", () => {
     expect(session.getTree()[0]?.entry.id).toBe(originalUserId);
     const activeBranch = session.getBranch();
     expect(activeBranch[0]).toMatchObject({
-      type: "custom_message",
+      type: "custom",
       customType: "cake.tool-compact/v1",
       parentId: null,
     });
@@ -116,8 +119,90 @@ describe("tool compaction", () => {
     expect(context.model).toEqual({ provider: "openai", modelId: "gpt-test" });
     expect(context.thinkingLevel).toBe("high");
     expect(
-      activeBranch[0]?.type === "custom_message" ? activeBranch[0].content : undefined,
+      activeBranch[0]?.type === "custom"
+        ? (activeBranch[0].data as { summary: string }).summary
+        : undefined,
     ).toContain("full original transcript remains available in the session tree");
+  });
+
+  it("replays only dialogue, stripping injected reminders even inside multimodal user messages", () => {
+    const session = SessionManager.inMemory("/project");
+    session.appendMessage({
+      role: "system",
+      content: "",
+      sections: { injected: "Structured system reminder" },
+      timestamp: 0,
+    });
+    const literal = "<system-reminder>User-authored guidance.</system-reminder>";
+    const decorate = (text: string) =>
+      addResponseModeReminder(addPresentationModeReminder(text, "normal", "draw"), "voice");
+    session.appendMessage({
+      role: "user",
+      content: decorate(`Question\n\n${literal}`),
+      timestamp: 1,
+    });
+    session.appendMessage({ role: "user", content: decorate(""), timestamp: 2 });
+    session.appendMessage({
+      role: "user",
+      content: [
+        { type: "text", text: decorate("Describe this") },
+        { type: "image", mimeType: "image/png", data: "image" },
+      ],
+      timestamp: 3,
+    });
+    session.appendCustomMessageEntry("cake.context", "Hidden injected context", false);
+    session.appendCustomMessageEntry("extension.context", "Visible injected context", true);
+    const leaf = session.appendMessage(
+      assistant([
+        { type: "thinking", thinking: "analysis" },
+        { type: "text", text: "Answer" },
+      ]),
+    );
+    appendToolCompactedBranch(session, leaf);
+    const messages = session.buildSessionContext().messages;
+    expect(messages.map((message) => message.role)).toEqual(["user", "user", "assistant"]);
+    expect(messages[0]).toMatchObject({ content: `Question\n\n${literal}` });
+    expect(messages[1]).toMatchObject({
+      content: [
+        { type: "text", text: "Describe this" },
+        { type: "image", data: "image" },
+      ],
+    });
+    expect(messages[2]).toMatchObject({ content: [{ type: "text", text: "Answer" }] });
+    expect(JSON.stringify(messages)).not.toContain("Cake response mode");
+    expect(JSON.stringify(messages)).not.toContain("entered Draw");
+    expect(JSON.stringify(messages)).not.toContain("injected context");
+    expect(JSON.stringify(messages)).not.toContain("Structured system reminder");
+    expect(JSON.stringify(messages)).not.toContain("tool-compacted continuation");
+    expect(projectConversationDisplay(session)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "context",
+          title: "Cake · response mode",
+          origin: "compacted",
+        }),
+        expect.objectContaining({
+          kind: "context",
+          title: "cake.context",
+          text: "Hidden injected context",
+          origin: "compacted",
+        }),
+        expect.objectContaining({ kind: "text", role: "assistant", text: "Answer" }),
+      ]),
+    );
+    session.appendMessage({ role: "user", content: "Continue", timestamp: 4 });
+    const nextLeaf = session.appendMessage(assistant([{ type: "text", text: "Next answer" }]));
+    appendToolCompactedBranch(session, nextLeaf);
+    expect(session.buildSessionContext().messages.map((message) => message.role)).toEqual([
+      "user",
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+    ]);
+    expect(
+      projectConversationDisplay(session).filter((part) => part.kind === "context"),
+    ).toHaveLength(9);
   });
 
   it("rejects non-assistant targets", async () => {

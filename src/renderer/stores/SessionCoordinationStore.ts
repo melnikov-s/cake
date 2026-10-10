@@ -70,7 +70,9 @@ export class SessionCoordinationStore extends Store<{
 
     const parts = session.uiParts;
     const messageIndex = parts.findIndex(
-      (part) => part.kind === "text" && part.crossSession?.messageId === message.messageId,
+      (part) =>
+        (part.kind === "text" || part.kind === "context") &&
+        part.crossSession?.messageId === message.messageId,
     );
     const projectedMessage = messageIndex >= 0 ? parts[messageIndex] : undefined;
     const settledTurn = session.settledTurns.find((turn) => turn.turnId === message.turnId);

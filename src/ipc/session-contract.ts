@@ -272,6 +272,15 @@ export interface NestedToolCalls extends Schema.Schema.Type<typeof nestedToolCal
 export const uiPartSchema = Schema.Union([
   Schema.Struct({
     ...partBase,
+    kind: Schema.Literal("context"),
+    title: ipcProjectionString(512),
+    text: boundedText,
+    crossSession: Schema.optionalKey(CrossSessionMessageMetadata),
+    /** Historical context retained for inspection, no longer sent to the model. */
+    ...workLogOrigin,
+  }),
+  Schema.Struct({
+    ...partBase,
     kind: Schema.Literal("text"),
     role: Schema.Literals(["user", "assistant"]),
     entryId: Schema.optional(stringRange(1, 256)),

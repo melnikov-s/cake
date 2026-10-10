@@ -170,7 +170,9 @@ export const ChatTranscript = observer(function ChatTranscript({
   const messageNavigationRequest = store.transcriptInteraction.messageNavigationRequest;
   const messageNavigationItemIndex = messageNavigationRequest
     ? items.findIndex((item) =>
-        item.kind === "activity-group" || item.kind === "source-group"
+        item.kind === "activity-group" ||
+        item.kind === "source-group" ||
+        item.kind === "context-group"
           ? item.parts.some((part) => part.id === messageNavigationRequest.messageId)
           : item.id === messageNavigationRequest.messageId,
       )
@@ -178,7 +180,9 @@ export const ChatTranscript = observer(function ChatTranscript({
   const restoredMessageItemIndex =
     restoredScrollPosition?.kind === "message"
       ? items.findIndex((item) =>
-          item.kind === "activity-group" || item.kind === "source-group"
+          item.kind === "activity-group" ||
+          item.kind === "source-group" ||
+          item.kind === "context-group"
             ? item.parts.some((part) => part.id === restoredScrollPosition.messageId)
             : item.id === restoredScrollPosition.messageId,
         )

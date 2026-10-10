@@ -68,6 +68,15 @@ code change.
   it separate from Project Session lists and use curated Cake control intents
   for application navigation and coordination.
 - Model-presented artifacts are data and remain validated or sandboxed.
+- Tool Compact must replay only user-authored input and assistant text. Strip injected
+  reminders (including reminders embedded in user input), custom/context messages,
+  cross-session coordination, reasoning, and tool activity. Orientation/provenance
+  must be non-context Pi metadata; keep the original transcript tree inspectable.
+- Never silently hide model-facing system reminders or Cake/extension messages in
+  Chat. Disclose them as inspectable context pills, regardless of Pi's `display`
+  flag. Group consecutive pills horizontally with wrapping, not separate rows.
+  Expose the live runtime's system prompt too. Mark removed historical context
+  after Tool Compact; preserve literal user-authored reminder tags as user content.
 
 ## Greenfield compatibility policy
 

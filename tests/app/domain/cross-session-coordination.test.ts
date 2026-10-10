@@ -93,7 +93,7 @@ describe("cross-session coordination metadata", () => {
     });
   });
 
-  it("detects Markdown when projecting delivered cross-session messages", () => {
+  it("discloses delivered cross-session messages as exact context with routing metadata", () => {
     const [part] = projectSessionEntries([
       {
         type: "message",
@@ -109,10 +109,9 @@ describe("cross-session coordination metadata", () => {
     ] as never);
 
     expect(part).toMatchObject({
-      kind: "text",
-      role: "user",
-      text: "**Completed** the review",
-      renderAs: "markdown",
+      kind: "context",
+      title: "Session · Review",
+      text: encodeCrossSessionMessage("**Completed** the review", metadata),
       crossSession: metadata,
     });
   });

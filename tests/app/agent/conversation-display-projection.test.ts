@@ -70,7 +70,7 @@ function summarized(parts: ReturnType<typeof projectConversationDisplay>) {
 }
 
 describe("Conversation display projection after tool compaction", () => {
-  it("hides exact response-mode guidance from normalized image input through the real display projection", () => {
+  it("discloses exact response-mode guidance separately from normalized user image input", () => {
     const hint =
       "[Image: original 4096x3072, displayed at 2048x1536. Multiply coordinates by 2.00 to map to original image.]\n[Image converted from image/heic to image/png.]\n[Image omitted: could not be resized below the inline image size limit.]";
     const own = "<system-reminder>Keep this user-authored tag.</system-reminder>";
@@ -92,7 +92,15 @@ describe("Conversation display projection after tool compaction", () => {
         entryId,
         text: `${body}\n\n${hint}`,
       });
-      expect(JSON.stringify(parts)).not.toContain(responseModeReminders[mode]);
+      expect(parts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "context",
+            title: "Cake · response mode",
+            text: responseModeReminders[mode],
+          }),
+        ]),
+      );
       expect(parts.some((part) => part.kind === "attachment")).toBe(true);
       const stored = session.getBranch().find((entry) => entry.id === entryId);
       expect(stored).toMatchObject({
@@ -194,14 +202,17 @@ describe("Conversation display projection after tool compaction", () => {
     ).toMatchObject({ origin: "compacted", state: "success" });
   });
 
-  it("keeps legacy markers and malformed provenance on the active-branch behavior", () => {
-    const legacy = SessionManager.inMemory("/project");
-    legacy.appendCustomMessageEntry(toolCompactEntryType, "Legacy compact", true);
-    legacy.appendMessage({ role: "user", content: "visible", timestamp: 1 });
-    expect(projectConversationDisplay(legacy).map((part) => part.kind)).toEqual(["notice", "text"]);
+  it("keeps markers without provenance and malformed provenance on the active-branch behavior", () => {
+    const missing = SessionManager.inMemory("/project");
+    missing.appendCustomEntry(toolCompactEntryType, { summary: "Compact" });
+    missing.appendMessage({ role: "user", content: "visible", timestamp: 1 });
+    expect(projectConversationDisplay(missing).map((part) => part.kind)).toEqual([
+      "notice",
+      "text",
+    ]);
 
     const malformed = SessionManager.inMemory("/project");
-    malformed.appendCustomMessageEntry(toolCompactEntryType, "Malformed compact", true);
+    malformed.appendCustomEntry(toolCompactEntryType, { summary: "Malformed compact" });
     malformed.appendMessage({ role: "user", content: "active only", timestamp: 1 });
     malformed.appendCustomEntry(toolCompactProvenanceEntryType, { version: 1, sourceLeafId: 42 });
     expect(projectConversationDisplay(malformed).map((part) => part.kind)).toEqual([
@@ -254,13 +265,12 @@ describe("Conversation display projection after tool compaction", () => {
       cwd: "/project",
     };
     const marker = {
-      type: "custom_message" as const,
+      type: "custom" as const,
       id: "marker",
       parentId: null,
       timestamp: header.timestamp,
       customType: toolCompactEntryType,
-      content: "compact",
-      display: true,
+      data: { summary: "compact" },
     };
     const replay = {
       type: "message" as const,

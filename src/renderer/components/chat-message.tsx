@@ -52,14 +52,16 @@ export function chatWorkIsActive(
   // Direct !/!! commands stream their own result surface and never start a
   // model turn, so do not add the generic assistant loading indicator.
   if (parts.at(-1)?.kind === "command") return false;
-  const latestUserIndex = parts.findLastIndex(
+  // Injected context pills follow the input but are not evidence of assistant work.
+  const dialogueAndActivity = parts.filter((part) => part.kind !== "context");
+  const latestUserIndex = dialogueAndActivity.findLastIndex(
     (part) =>
       (part.kind === "text" && part.role === "user") ||
       part.kind === "skill" ||
       part.kind === "annotation" ||
       (part.kind === "attachment" && part.attachmentKind === "image"),
   );
-  return latestUserIndex < 0 || latestUserIndex === parts.length - 1;
+  return latestUserIndex < 0 || latestUserIndex === dialogueAndActivity.length - 1;
 }
 
 export const ChatTextMessage = forwardRef<

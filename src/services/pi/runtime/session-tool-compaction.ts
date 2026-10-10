@@ -1,10 +1,65 @@
 import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
-import type { Message, Usage } from "@earendil-works/pi-ai";
+import type {
+  AssistantMessage,
+  UserMessage,
+  Usage,
+  TextContent,
+  ImageContent,
+} from "@earendil-works/pi-ai";
 import {
   toolCompactEntryType,
   toolCompactProvenanceEntryType,
   type ToolCompactProvenance,
 } from "./tool-compaction-provenance";
+
+import { splitContextReminders } from "./session-context-reminders";
+import { parseCrossSessionMessage } from "../../../domain/conversations/cross-session-coordination";
+
+/** The sole replay policy: user-authored input and assistant text, no injected context. */
+export function toolCompactDialogueMessage(
+  entry: SessionEntry,
+): UserMessage | AssistantMessage | undefined {
+  if (entry.type !== "message") return undefined;
+  const message = entry.message;
+  if (message.role === "user") {
+    const clean = (text: string) => splitContextReminders(text).text;
+    const rawText =
+      typeof message.content === "string"
+        ? message.content
+        : message.content
+            .filter((block) => block.type === "text")
+            .map((block) => block.text)
+            .join("\n");
+    if (parseCrossSessionMessage(clean(rawText))) return undefined;
+    const content =
+      typeof message.content === "string"
+        ? clean(message.content)
+        : message.content.flatMap<TextContent | ImageContent>((block) => {
+            if (block.type !== "text") return [block];
+            const text = clean(block.text);
+            return text.trim() ? [{ ...block, text }] : [];
+          });
+    if (typeof content === "string" ? !content.trim() : content.length === 0) return undefined;
+    return { ...message, content };
+  }
+  if (message.role !== "assistant") return undefined;
+  const content = message.content.filter(
+    (block): block is Extract<(typeof message.content)[number], { type: "text" }> =>
+      block.type === "text" && Boolean(block.text.trim()),
+  );
+  if (content.length === 0) return undefined;
+  return {
+    role: "assistant",
+    content,
+    api: message.api,
+    provider: message.provider,
+    model: message.model,
+    responseModel: message.responseModel,
+    usage: transferredUsage,
+    stopReason: "stop",
+    timestamp: message.timestamp,
+  };
+}
 
 const transferredUsage: Usage = {
   input: 0,
@@ -33,7 +88,7 @@ function countStrippedToolActivity(sourceBranch: readonly SessionEntry[]) {
 function toolCompactPreamble(strippedToolActivity: number) {
   return [
     "This conversation branch is a tool-compacted continuation of an earlier branch in this Cake session.",
-    `The conversation below contains the user's messages and the final text of each assistant reply; ${strippedToolActivity} tool calls and results were omitted to save context.`,
+    `The conversation below contains only user-authored input and assistant text; injected reminders, coordination and custom messages were removed, along with ${strippedToolActivity} tool calls and results to save context.`,
     "References to files edited, commands run, or output observed describe tool work whose results are not shown, so verify the current state on disk rather than assuming it from this transcript.",
     "The full original transcript remains available in the session tree if you need it.",
   ].join(" ");
@@ -51,7 +106,8 @@ function sourceBranch(session: SessionManager, assistantEntryId: string) {
 }
 
 /**
- * Appends a root branch containing visible dialogue without tool activity. The
+ * Appends a root branch containing only user input and assistant text. Context
+ * reminders, coordination, custom messages, reasoning and tool activity are removed. The
  * original branch remains in the same Pi JSONL tree and the Session ID is stable.
  */
 export function appendToolCompactedBranch(
@@ -66,41 +122,16 @@ export function appendToolCompactedBranch(
   const branch = sourceBranch(session, assistantEntryId);
   const strippedToolActivity = countStrippedToolActivity(branch);
   session.resetLeaf();
-  const markerEntryId = session.appendCustomMessageEntry(
-    toolCompactEntryType,
-    toolCompactPreamble(strippedToolActivity),
-    true,
-  );
+  // Orientation is display metadata, not another message in the clean model context.
+  const markerEntryId = session.appendCustomEntry(toolCompactEntryType, {
+    summary: toolCompactPreamble(strippedToolActivity),
+  });
   const mappings: ToolCompactProvenance["mappings"][number][] = [];
 
   for (const entry of branch) {
-    if (entry.type !== "message") continue;
-    const message = entry.message;
-    if (message.role === "user") {
-      mappings.push({ sourceEntryId: entry.id, replayedEntryId: session.appendMessage(message) });
-      continue;
-    }
-    if (message.role !== "assistant") continue;
-    const content = message.content.filter(
-      (block): block is Extract<(typeof message.content)[number], { type: "text" }> =>
-        block.type === "text" && Boolean(block.text.trim()),
-    );
-    if (content.length === 0) continue;
-    const transferred: Message = {
-      role: "assistant",
-      content,
-      api: message.api,
-      provider: message.provider,
-      model: message.model,
-      responseModel: message.responseModel,
-      usage: transferredUsage,
-      stopReason: "stop",
-      timestamp: message.timestamp,
-    };
-    mappings.push({
-      sourceEntryId: entry.id,
-      replayedEntryId: session.appendMessage(transferred),
-    });
+    const message = toolCompactDialogueMessage(entry);
+    if (!message) continue;
+    mappings.push({ sourceEntryId: entry.id, replayedEntryId: session.appendMessage(message) });
   }
 
   const firstMapping = mappings[0];

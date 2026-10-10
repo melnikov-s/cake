@@ -22,6 +22,7 @@ import {
 } from "./chat-message";
 import { ReviewRunMessage } from "./chat-transcript-elements";
 import { RetryNotice } from "./retry-notice";
+import { ContextPill } from "./ui/context-pill";
 import { SkillMessage } from "./skill-message";
 import { SourceAttachment } from "./source-attachment";
 
@@ -273,6 +274,10 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       />
     );
   }
+  if (part.kind === "context")
+    return (
+      <ContextPill title={part.title} text={part.text} compacted={part.origin === "compacted"} />
+    );
   if (part.kind === "source") return <Source title={part.title} url={part.url} />;
   if (part.kind === "attachment")
     return part.attachmentKind === "source" && part.location ? (
