@@ -12,7 +12,7 @@ import { CakeIcon, ChevronIcon, ResolveIcon, RestoreIcon } from "./ui/icons";
 import type { SidebarStore } from "../stores/SidebarStore";
 import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
 import { WorktreeStatusIcon } from "./worktree-status-icon";
-import type { SessionActivity } from "../lib/session-activity";
+import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
 import { StatusDot } from "./ui/status-dot";
 import { LabelSwatch } from "./ui/label-swatch";
 import { Avatar } from "./ui/avatar";
@@ -96,6 +96,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
     ? { target: rowRef, activationTarget: navigationRef }
     : undefined;
   const unread = activity === "unread";
+  const contextMenuUnread = onMarkUnread && !isActiveSessionActivity(activity) ? unread : undefined;
   const isFamilyParent = Boolean(session.familyChildSessionIds?.length);
   const isFamilyChild =
     Boolean(session.familyParentSessionId) && session.familyParentSessionId !== session.sessionId;
@@ -258,7 +259,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                     clientX,
                     clientY,
                     resolved,
-                    onMarkUnread ? unread : undefined,
+                    contextMenuUnread,
                     true,
                   )
                 : store.showSessionContextMenu(
@@ -266,7 +267,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                     clientX,
                     clientY,
                     resolved,
-                    onMarkUnread ? unread : undefined,
+                    contextMenuUnread,
                   );
               void menu.then((action) => {
                 if (action?.action === "rename") setRenamingValue(session.title);

@@ -17,7 +17,7 @@ function chunk(delta: object, finishReason: string | null = null) {
   })}\n\n`;
 }
 
-test("background family children show running activity before being selected", async () => {
+test("background family children show running activity and only offer Mark as Unread when idle and read", async () => {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-child-activity-"));
   const userData = join(temporaryRoot, "user-data");
@@ -163,8 +163,46 @@ test("background family children show running activity before being selected", a
       parentId!,
     );
 
+    // Inspect the real native menu without opening an OS popup in the hidden test window.
+    await application.evaluate(({ Menu }) => {
+      const build = Menu.buildFromTemplate.bind(Menu);
+      const captured = Menu as typeof Menu & { sessionMenuLabels: string[] };
+      captured.sessionMenuLabels = [];
+      Menu.buildFromTemplate = (template) => {
+        const menu = build(template);
+        menu.popup = (options) => {
+          captured.sessionMenuLabels = menu.items.map((item) => item.label);
+          options.callback?.();
+        };
+        return menu;
+      };
+    });
+    const sessionMenu = async () => {
+      await application.evaluate(({ Menu }) => {
+        (Menu as typeof Menu & { sessionMenuLabels: string[] }).sessionMenuLabels = [];
+      });
+      await childRow.locator(".session-row").click({ button: "right" });
+      await expect
+        .poll(() =>
+          application.evaluate(
+            ({ Menu }) => (Menu as typeof Menu & { sessionMenuLabels: string[] }).sessionMenuLabels,
+          ),
+        )
+        .toContain("Rename");
+      return application.evaluate(
+        ({ Menu }) => (Menu as typeof Menu & { sessionMenuLabels: string[] }).sessionMenuLabels,
+      );
+    };
+    expect(await sessionMenu()).not.toContain("Mark as Unread");
+
     childResponse!.end(chunk({}, "stop") + "data: [DONE]\n\n");
     await expect(childRow.locator('[aria-label="Running"]')).toHaveCount(0);
+    await expect(childRow.locator('[aria-label="Ready, unread"]')).toBeVisible();
+    expect(await sessionMenu()).not.toContain("Mark as Unread");
+
+    await childRow.locator(".session-row").click();
+    await expect(childRow.locator('[aria-label="Ready, unread"]')).toHaveCount(0);
+    expect(await sessionMenu()).toContain("Mark as Unread");
   } finally {
     await application.close();
     server.closeAllConnections();
