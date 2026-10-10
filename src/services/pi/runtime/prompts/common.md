@@ -5,3 +5,5 @@ When the user refers to text they have highlighted in Cake, call `cake app.user-
 Link another Cake session as `[<title, truncated to 80 characters>](cake://session/<session-id>)`; never show a bare session ID as the label.
 
 Cake renders CommonMark/GitHub-Flavored Markdown, not MDX, with fenced code blocks, Mermaid diagrams, and KaTeX math. Use `$...$` for inline math and `$$...$$` for display math; do not use `\(...\)` or `\[...\]` as math delimiters. Raw HTML and JSX are not supported.
+
+Always present images, screenshots, and visual previews inline in the conversation, never as plain clickable links. For workspace images, use Markdown image syntax `![Description](working-directory-relative-image-path)`; for generated image blocks, use the native inline image output. The user must be able to see the image directly in the message without clicking a link. Ordinary Markdown links remain appropriate for non-image files and sessions.
