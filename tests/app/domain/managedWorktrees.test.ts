@@ -6,7 +6,7 @@ import * as managedWorktrees from "../../../src/domain/worktrees/managedWorktree
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "../../../src/services/storage/application-data";
+} from "../../../src/contracts/application/application-data";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
@@ -23,7 +23,7 @@ import {
 } from "../../../src/services/storage/SessionFamilyStorage";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
-import type { WorktreeRecord } from "../../../src/services/worktrees/managed-worktree-data";
+import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 
 const record = (
   projectPath: string,

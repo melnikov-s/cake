@@ -17,7 +17,7 @@ import { observeArtifactEvents } from "./observers/artifact-events";
 import { observeSavedDrafts } from "./observers/saved-drafts";
 import { observeTerminalEvents } from "./observers/terminal-events";
 import { storeSnapshotSchema } from "./persistence/StoreSnapshot";
-import { extractSavedDrafts } from "../services/storage/WindowStateStorage";
+import { extractSavedDrafts } from "../contracts/project-sessions/saved-draft-extraction";
 import "streamdown/styles.css";
 import "./styles.css";
 

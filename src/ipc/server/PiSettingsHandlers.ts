@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
-import { PiSettings, PiSettingsError } from "../../services/pi/PiSettings";
+import { PiSettings } from "../../services/pi/PiSettings";
+import { PiSettingsError } from "../../contracts/pi/pi-settings-errors";
 import { PiSettingsRpc } from "../protocol/PiSettingsRpc";
 
 const reloadSessions = (operation: string) =>

@@ -8,7 +8,7 @@ import {
   SavedDraftStorage,
   makeSavedDraftStorageLive,
 } from "../../../../src/services/storage/SavedDraftStorage";
-import type { SavedDraft } from "../../../../src/services/storage/saved-draft-data";
+import type { SavedDraft } from "../../../../src/contracts/project-sessions/saved-draft-data";
 
 const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
 const record: SavedDraft = {

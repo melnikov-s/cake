@@ -1,8 +1,8 @@
 import { Store, createContext, untracked } from "r-state-tree";
 import type { UiPart } from "../../ipc/session-contract";
-import type { TextProcessingMode } from "../../services/dictation/dictation-data";
+import type { TextProcessingMode } from "../../contracts/dictation/dictation-data";
 import { punctuationPreview } from "../../utils/punctuation-text";
-import type { SpeechOutputSettings } from "../../services/speech/speech-output-data";
+import type { SpeechOutputSettings } from "../../contracts/speech/speech-output-data";
 import type { SpeechOutputCommands, Client } from "../client/Client";
 import { encodePcm, type Microphone, type MicrophoneCapture } from "../dictation/microphone";
 import { openSpeechCapture } from "../dictation/speech-capture";

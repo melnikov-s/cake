@@ -5,7 +5,7 @@ import type {
   SpeechOutputRequest,
   ElevenLabsSpeechSettings,
   SpeechOutputVoice,
-} from "./speech-output-data";
+} from "../../contracts/speech/speech-output-data";
 
 /** Native desktop main owns encrypted credentials, settings and outbound ElevenLabs requests.
  * Each synthesis stream owns its request; cancellation closes it. No automatic retry/rebilling.

@@ -1,5 +1,5 @@
 import { Option, Schema } from "effect";
-import type { SpeechRecognitionSettings } from "../services/dictation/dictation-data";
+import type { SpeechRecognitionSettings } from "../contracts/dictation/dictation-data";
 
 // Preference snapshot decoding stays outside ordinary renderer Stores.
 const readNumber = Schema.decodeUnknownOption(Schema.Finite);

@@ -25,7 +25,8 @@ import { ClientConnections } from "../clients/ClientConnections";
 import type { CompanionManifest, ServerInstance } from "./VsCodeServerRuntime";
 import { VSCODE_SERVER_IDLE_TTL, VsCodeServerRuntime } from "./VsCodeServerRuntime";
 import { resolveEditorTarget, resolveSourceTarget } from "./source-path-policy";
-import { VsCodeServer, VsCodeServerError } from "./VsCodeServer";
+import { VsCodeServer } from "./VsCodeServer";
+import { VsCodeServerError } from "../../contracts/vscode/vs-code-server-errors";
 
 export interface VsCodeServerLiveOptions {
   readonly root: string;

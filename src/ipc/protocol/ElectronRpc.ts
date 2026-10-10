@@ -1,5 +1,5 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { ElectronError } from "../../services/electron/Electron";
+import { ElectronError } from "../../contracts/desktop/electron-errors";
 import {
   cakeRpcPayloadSchemas,
   cakeRpcSuccessSchemas,

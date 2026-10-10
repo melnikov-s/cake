@@ -9,7 +9,7 @@ import {
   RendererConnection,
   type RendererConnectionInfo,
 } from "../../../src/ipc/protocol/RendererConnectionMiddleware";
-import { defaultApplicationState } from "../../../src/services/storage/application-data";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { AgentAvailability } from "../../../src/services/pi/AgentAvailability";
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { ClientEventsLive } from "../../../src/services/clients/ClientEventsLive";
@@ -18,7 +18,7 @@ import {
   makeCakeSessionRuntimesLayer,
   type CakeSessionRuntimesAdapter,
 } from "../../../src/services/pi/CakeSessionRuntimes";
-import type { PiModel } from "../../../src/services/pi/model-data";
+import type { PiModel } from "../../../src/contracts/pi/model-data";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { McpSettings } from "../../../src/services/pi/McpSettings";
 import { PiSettings } from "../../../src/services/pi/PiSettings";

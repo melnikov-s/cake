@@ -1,7 +1,7 @@
 import { toStoreEvent } from "../events/StoreEvent";
 import { Effect } from "effect";
 import { CakeIpcClient } from "../../ipc/client/CakeIpcClient";
-import { RenderedWidgetCaptureError } from "../../services/widgets/RenderedWidgetCapture";
+import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 import { cakeNativeHotkeyInputEventName } from "../lib/hotkeys";
 import type { Runtime } from "../runtime";
 import type { RootStore } from "../stores/RootStore";

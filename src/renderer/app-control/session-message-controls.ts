@@ -1,14 +1,14 @@
 import { Effect, Schema } from "effect";
-import { parseCrossSessionMessage } from "../../services/pi/cross-session-message";
+import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import type {
   CoordinationMessage,
   CoordinationThread,
-} from "../../domain/conversations/cross-session-coordination";
+} from "../../contracts/conversations/cross-session-coordination";
 import type {
   CrossSessionMessageMetadata,
   CrossSessionContextSnapshot,
   CrossSessionQueueSnapshot,
-} from "../../services/pi/cross-session-message";
+} from "../../contracts/conversations/cross-session-message";
 import { isActiveSessionActivity } from "../lib/session-activity";
 import type {
   AppControlHost,

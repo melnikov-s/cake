@@ -7,7 +7,7 @@ import { createTestClient } from "../test-client";
 import { mountRootStore } from "../../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { WindowStatePersistence } from "../../../../src/renderer/persistence/WindowStatePersistence";
-import { extractSavedDrafts } from "../../../../src/services/storage/WindowStateStorage";
+import { extractSavedDrafts } from "../../../../src/contracts/project-sessions/saved-draft-extraction";
 
 const workspace = "/projects/example";
 const sessionId = "00000000-0000-4000-8000-000000000001";

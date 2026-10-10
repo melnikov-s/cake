@@ -8,7 +8,7 @@ import { ChatTranscriptControlsContext } from "../../../src/renderer/components/
 import { WorktreePill } from "../../../src/renderer/components/worktree-pill";
 import type { WorktreeCreationStore } from "../../../src/renderer/stores/WorktreeCreationStore";
 import type { WorktreeStore } from "../../../src/renderer/stores/WorktreeStore";
-import type { WorktreeRecord } from "../../../src/services/worktrees/managed-worktree-data";
+import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 
 function actionStore({
   aheadCount,

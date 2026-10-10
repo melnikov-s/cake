@@ -30,12 +30,10 @@ import {
 import {
   defaultApplicationState,
   SESSION_LABEL_COLORS,
-} from "../../../src/services/storage/application-data";
+} from "../../../src/contracts/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import {
-  ApplicationStorage,
-  ApplicationWriteError,
-} from "../../../src/services/storage/ApplicationStorage";
+import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
+import { ApplicationWriteError } from "../../../src/contracts/storage/application-storage-errors";
 
 const makeLayer = (options?: { failSave?: boolean }) => {
   let persisted = defaultApplicationState();

@@ -5,7 +5,7 @@ import {
   ArtifactStableRef,
   artifactRevisionToRecord,
   parseArtifactRef,
-} from "../services/storage/artifact-lineage";
+} from "../contracts/artifacts/artifact-lineage";
 import * as artifactWorkflows from "../domain/artifacts/artifactWorkflows";
 import { ClientEvents } from "../services/clients/ClientEvents";
 import { ArtifactStorage } from "../services/storage/ArtifactStorage";
@@ -18,10 +18,8 @@ import type { SessionArchiveStorage } from "../services/storage/SessionArchiveSt
 import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import { ProjectSessionIntegrationHost } from "./ProjectSessionIntegrationHost";
 import { PiModels } from "../services/pi/PiModels";
-import {
-  RenderedWidgetCapture,
-  RenderedWidgetCaptureError,
-} from "../services/widgets/RenderedWidgetCapture";
+import { RenderedWidgetCapture } from "../services/widgets/RenderedWidgetCapture";
+import { RenderedWidgetCaptureError } from "../contracts/widgets/rendered-widget-capture-errors";
 import { generateReviewedWidget } from "../domain/widgets/widgetGenerationReview";
 import { importWorkspaceFile } from "../services/artifacts/importWorkspaceFile";
 import { ArtifactProjection } from "../services/artifacts/ArtifactProjection";

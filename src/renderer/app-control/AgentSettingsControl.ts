@@ -1,8 +1,11 @@
 import { Schema } from "effect";
 import { jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
 import type { AgentSettingsInvocation } from "../../ipc/agent-settings-schema";
-import { defaultCakePrompts, resolveCakePrompts } from "../../domain/application/cake-prompts";
-import { normalizeServerUrl } from "../../services/electron/desktop-host-data";
+import {
+  defaultCakePrompts,
+  resolveCakePrompts,
+} from "../../contracts/application/cake-prompt-defaults";
+import { normalizeServerUrl } from "../../contracts/desktop/desktop-host-data";
 import type { AgentControlSource } from "./app-control-data";
 import type { Client } from "../client/Client";
 import type { SettingsStore } from "../stores/SettingsStore";

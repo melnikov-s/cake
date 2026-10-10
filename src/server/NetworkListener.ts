@@ -9,7 +9,7 @@ import { extensionCompanionModuleSource } from "../services/pi/runtime/extension
 import { inlineWidgetContentSecurityPolicy } from "../services/electron/inline-widget-policy";
 import { VsCodeServer } from "../services/vscode/VsCodeServer";
 import { editorProxyTarget, proxyEditorHttp, proxyEditorSocket } from "./editorProxy";
-import { EditorBrowserPort } from "./EditorBrowserPort";
+import { EditorBrowserPort } from "../services/vscode/EditorBrowserPort";
 import type { VsCodeServer as VsCodeServerType } from "../services/vscode/VsCodeServer";
 import { previewProxyTarget, proxyPreviewHttp, proxyPreviewSocket } from "./previewProxy";
 import type { CakeChatRuntimeConfiguration } from "../domain/cake-chats/cakeChatRuntime";

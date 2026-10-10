@@ -22,8 +22,8 @@ import {
   type ElevenLabsSpeechSettings,
   SpeechOutputVoice,
   type SpeechOutputAudio,
-} from "./speech-output-data";
-import { ElevenLabsSpeechSpeed } from "./speech-output-speed";
+} from "../../contracts/speech/speech-output-data";
+import { ElevenLabsSpeechSpeed } from "../../contracts/speech/speech-output-speed";
 import { ElevenLabsSpeech } from "./ElevenLabsSpeech";
 import { SpeechOutputDiagnostic, SpeechOutputDiagnostics } from "./SpeechOutputDiagnostics";
 import { SpeechOutputStorage, StoredSpeechOutputSettings } from "./SpeechOutputStorage";

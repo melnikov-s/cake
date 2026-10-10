@@ -1,6 +1,9 @@
 import { Effect, Schema, Stream } from "effect";
 import type { ArtifactPointer } from "../../ipc/artifact-contract";
-import { ArtifactLineageId, ArtifactRevisionNumber } from "../../services/storage/artifact-lineage";
+import {
+  ArtifactLineageId,
+  ArtifactRevisionNumber,
+} from "../../contracts/artifacts/artifact-lineage";
 import * as artifactWorkflows from "../artifacts/artifactWorkflows";
 import * as projectSessionLocations from "./projectSessionLocations";
 import { resolutionNamespace } from "./projectSessionResolution";

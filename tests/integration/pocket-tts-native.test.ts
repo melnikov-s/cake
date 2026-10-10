@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { expect, test } from "vitest";
 import { PocketTtsWorker } from "../../src/services/speech/pocket-tts-worker";
-import type { SpeechOutputAudio } from "../../src/services/speech/speech-output-data";
+import type { SpeechOutputAudio } from "../../src/contracts/speech/speech-output-data";
 
 const model = process.env.CAKE_SPEECH_TEST_MODEL;
 

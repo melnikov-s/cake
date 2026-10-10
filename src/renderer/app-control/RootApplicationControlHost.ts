@@ -17,8 +17,8 @@ import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
 import type { ProjectSessionCreationStore } from "../stores/ProjectSessionCreationStore";
 import type { SessionRetirementStore } from "../stores/SessionRetirementStore";
 import type { NavigationStore } from "../stores/NavigationStore";
-import { defaultProjectSettings } from "../../services/storage/application-data";
-import { crossSessionContextSnapshot } from "../../services/pi/cross-session-message";
+import { defaultProjectSettings } from "../../contracts/application/application-data";
+import { crossSessionContextSnapshot } from "../../contracts/conversations/cross-session-message";
 
 export interface RootApplicationControlCapabilities {
   client: Client;

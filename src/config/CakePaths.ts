@@ -1,6 +1,5 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { piAgentDirectory } from "../services/pi/PiPaths";
 
 export interface CakePaths {
   home: string;
@@ -25,16 +24,16 @@ export interface CakePaths {
 export interface ResolveCakePathsOptions {
   env?: NodeJS.ProcessEnv;
   homeDirectory?: string;
-  /** Explicit backend/test boundary; production delegates resolution to Pi. */
-  piAgentDirectory?: string;
+  /** Resolved by the Pi adapter at the host composition boundary. */
+  piAgentDirectory: string;
 }
 
 /** The single authority for Cake-owned durable and disposable filesystem locations. */
-export function resolveCakePaths(options: ResolveCakePathsOptions = {}): CakePaths {
+export function resolveCakePaths(options: ResolveCakePathsOptions): CakePaths {
   const env = options.env ?? process.env;
   const homeDirectory = options.homeDirectory ?? homedir();
   const home = resolve(env.CAKE_HOME || join(homeDirectory, ".cake"));
-  const piAgent = resolve(options.piAgentDirectory ?? piAgentDirectory());
+  const piAgent = resolve(options.piAgentDirectory);
   const state = join(home, "state");
   return {
     home,

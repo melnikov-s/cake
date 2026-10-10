@@ -1,6 +1,7 @@
 import { Effect, Layer } from "effect";
 import type { cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
-import { InlineWidgetError, InlineWidgets } from "./InlineWidgets";
+import { InlineWidgetError } from "../../contracts/widgets/inline-widgets-errors";
+import { InlineWidgets } from "./InlineWidgets";
 import { compileInlineWidget } from "./inline-widget-service";
 
 type CompilePayload = (typeof cakeRpcPayloadSchemas)["compile-inline-widget"]["Type"];

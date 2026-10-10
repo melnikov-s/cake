@@ -3,8 +3,8 @@ import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import {
   RendererApplicationProjection,
   RendererApplicationState,
-} from "../../services/storage/application-data";
-import { AgentAvailabilitySnapshot } from "../../services/pi/agent-availability-data";
+} from "../../contracts/application/application-data";
+import { AgentAvailabilitySnapshot } from "../../contracts/pi/agent-availability-data";
 
 export class SessionPluginMutationError extends Schema.TaggedError<SessionPluginMutationError>()(
   "SessionPluginMutationError",

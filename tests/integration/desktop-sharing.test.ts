@@ -18,7 +18,7 @@ import { makeBackendRpcServerLive } from "../../src/ipc/server/BackendRpcServer"
 import { ElectronRpcServerProtocolLive } from "../../src/ipc/transport/ElectronRpcServerProtocol";
 import { makeElectronRpcClientProtocol } from "../../src/ipc/transport/ElectronRpcClientProtocol";
 import { rpcRequestChannel, rpcResponseChannel } from "../../src/ipc/transport/ElectronRpcChannels";
-import { makeDesktopSharingLive } from "../../src/services/electron/DesktopSharingLive";
+import { makeDesktopSharingLive } from "../../src/layers/DesktopSharingLive";
 import { DesktopSharing } from "../../src/services/electron/DesktopSharing";
 import { ClientConnections } from "../../src/services/clients/ClientConnections";
 import { ClientWorkspaces } from "../../src/services/clients/ClientWorkspaces";

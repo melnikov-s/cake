@@ -13,7 +13,7 @@ import { PendingSessionDraftStore, type PendingSessionPrompt } from "./PendingSe
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
-import type { ConversationResponseMode } from "../../services/pi/response-mode-reminders";
+import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
 
 export type ComposerDeliveryInput = ConversationDeliveryInput;
 

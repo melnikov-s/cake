@@ -3,7 +3,7 @@ import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
 import type { PiSessionSummary } from "../../ipc/session-contract";
 import { CakeSessionRuntimes, type PiSessionError } from "../../services/pi/CakeSessionRuntimes";
 import type { CakeChatLocation } from "./cakeChatLocations";
-import type { CakeChatCatalogUpdate } from "../application/catalog-data";
+import type { CakeChatCatalogUpdate } from "../../contracts/application/catalog-data";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { toJsonValue } from "../../utils/to-json-value";
 import {

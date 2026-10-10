@@ -6,7 +6,7 @@ import {
   CaptureResult,
   ScreenCaptureSettings,
   ScreenCaptureSnapshot,
-} from "../services/electron/screen-capture-data";
+} from "../contracts/desktop/screen-capture-data";
 import { artifactRecordSchema } from "./artifact-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { editorLocationSchema } from "./editor-location";
@@ -20,8 +20,8 @@ import {
   inlineWidgetSourceSchema,
 } from "./inline-widget-contract";
 import { jsonValueSchema } from "./json-contract";
-import { CakeChatPreferences, ProjectSettings } from "../services/storage/application-data";
-import { CakePromptOverrides } from "../services/storage/cake-prompt-data";
+import { CakeChatPreferences, ProjectSettings } from "../contracts/application/application-data";
+import { CakePromptOverrides } from "../contracts/application/cake-prompt-data";
 import { ProjectSessionControlRequest } from "./project-session-data";
 import {
   applicationStateSchema,
@@ -34,8 +34,8 @@ import {
 import {
   WorktreeLandingOperation,
   WorktreeLandingSnapshot,
-} from "../services/worktrees/worktree-landing-data";
-import { WorktreeRecord } from "../services/worktrees/managed-worktree-data";
+} from "../contracts/worktrees/worktree-landing-data";
+import { WorktreeRecord } from "../contracts/worktrees/managed-worktree-data";
 import { DrawControlRequest } from "./draw-control";
 
 const bounded = (minimum: number, maximum: number) =>

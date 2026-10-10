@@ -11,7 +11,7 @@ import { BrowserIcon, EditIcon, MarkdownIcon, TreeIcon } from "@/components/ui/i
 import { ArtifactHost } from "@/components/artifact-host";
 import { ArtifactReference } from "@/components/ui/artifact-reference";
 import { InlineArtifactPreview } from "./inline-artifact-preview";
-import { parseArtifactRef } from "../../services/storage/artifact-lineage";
+import { parseArtifactRef } from "../../contracts/artifacts/artifact-lineage";
 import { CompactionMessage } from "@/components/compaction-message";
 import { ImagePreview } from "@/components/image-preview";
 import type { UiPart } from "../../ipc/session-contract";

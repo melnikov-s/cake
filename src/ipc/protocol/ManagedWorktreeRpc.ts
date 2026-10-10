@@ -2,11 +2,11 @@ import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import {
   ResolvedManagedWorktreeCleanupPlan,
   ResolvedManagedWorktreeCleanupResult,
-} from "../../domain/worktrees/managed-worktree-cleanup-data";
-import { WorktreeLandingError } from "../../services/worktrees/worktree-landing-data";
-import { ManagedWorktreeCatalogUpdate } from "../../services/worktrees/managed-worktree-data";
-import { WorktreeOperationCatalogUpdate } from "../../domain/worktrees/worktree-operation-data";
-import { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
+} from "../../contracts/worktrees/managed-worktree-cleanup-data";
+import { WorktreeLandingError } from "../../contracts/worktrees/worktree-landing-data";
+import { ManagedWorktreeCatalogUpdate } from "../../contracts/worktrees/managed-worktree-data";
+import { WorktreeOperationCatalogUpdate } from "../../contracts/worktrees/worktree-operation-data";
+import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
 import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
 
 type ManagedWorktreeOperation = "create-worktree" | "discard-worktree";

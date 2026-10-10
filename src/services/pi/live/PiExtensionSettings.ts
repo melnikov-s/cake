@@ -5,7 +5,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { basename, dirname, relative } from "node:path";
 import { Schema } from "effect";
-import type { PiExtensionSetting, PiExtensionToggle } from "../extension-settings-data";
+import type {
+  PiExtensionSetting,
+  PiExtensionToggle,
+} from "../../../contracts/pi/extension-settings-data";
 import { createCakeMcpExtensions } from "../runtime/mcp-integration";
 
 async function discover(agentDirectory: string, manager: SettingsManager) {

@@ -6,7 +6,7 @@ import type {
   CakeChatCatalogUpdate,
   ProjectCatalogUpdate,
   SessionCatalogUpdate,
-} from "../../domain/application/catalog-data";
+} from "../../contracts/application/catalog-data";
 import type { ProjectSessionCatalogQuery } from "../../ipc/project-session-data";
 import type { CakeChatCatalogQuery } from "../../ipc/cake-chat-data";
 import type { CakeChatCatalog } from "../models/CakeChatCatalog";

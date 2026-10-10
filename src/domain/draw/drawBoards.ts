@@ -14,7 +14,7 @@ import {
   type DrawBoardSaveInput,
   type DrawBoardTarget,
   type DrawSessionId,
-} from "../../services/storage/draw-board-data";
+} from "../../contracts/draw/draw-board-data";
 
 const asDrawBoardError = (error: DrawBoardStorageError) =>
   new DrawBoardError({

@@ -19,16 +19,16 @@ import { ApplicationState } from "../../services/storage/ApplicationState";
 import { resolutionNamespace } from "../project-sessions/projectSessionResolution";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { resolveRewordingWorkspace } from "../../services/projects/rewording-workspace";
-import type { ProjectCatalogUpdate } from "../application/catalog-data";
+import type { ProjectCatalogUpdate } from "../../contracts/application/catalog-data";
 import type {
   ProjectRecord,
   SessionLabelMutation,
   ProjectWorkflowSessionDetails,
-} from "../../services/storage/application-data";
-import { defaultProjectWorkflow } from "../../services/storage/application-data";
+} from "../../contracts/application/application-data";
+import { defaultProjectWorkflow } from "../../contracts/application/application-data";
 import { inspect as inspectProjectSession } from "../project-sessions/projectSessionMetadata";
 import * as projectSessionLifecycle from "../project-sessions/projectSessionLifecycle";
-import { ProjectError } from "./project-error";
+import { ProjectError } from "../../contracts/projects/project-error";
 import {
   observeState,
   removeProject,

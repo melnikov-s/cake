@@ -1,4 +1,4 @@
-import type { CaptureRouting } from "../../src/services/electron/screen-capture-data";
+import type { CaptureRouting } from "../../src/contracts/desktop/screen-capture-data";
 
 export const captureRouting: CaptureRouting = {
   projects: [

@@ -3,7 +3,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { WorktreeLandingOperation } from "../../../src/services/worktrees/worktree-landing-data";
+import type { WorktreeLandingOperation } from "../../../src/contracts/worktrees/worktree-landing-data";
 import type { WorktreeStatus } from "../../../src/ipc/worktree-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { QuakeTerminal } from "../../../src/renderer/components/quake-terminal";

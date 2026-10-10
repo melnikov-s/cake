@@ -1,5 +1,8 @@
 import { Context, Effect, Layer, SubscriptionRef, type Stream } from "effect";
-import type { ScheduledMessage, ScheduledMessageSnapshot } from "./scheduled-message-data";
+import type {
+  ScheduledMessage,
+  ScheduledMessageSnapshot,
+} from "../../contracts/scheduled-messages/scheduled-message-data";
 import {
   ScheduledMessageStorage,
   type ScheduledMessageStorageError,

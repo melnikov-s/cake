@@ -4,8 +4,8 @@ import {
   encodeCrossSessionMessage,
   parseCrossSessionMessage,
   type CrossSessionMessageMetadata,
-} from "../../../src/services/pi/cross-session-message";
-import { deriveCrossSessionDeliveryStatus } from "../../../src/domain/conversations/cross-session-coordination";
+} from "../../../src/contracts/conversations/cross-session-message";
+import { deriveCrossSessionDeliveryStatus } from "../../../src/contracts/conversations/cross-session-coordination";
 import {
   projectQueuedMessages,
   projectSessionEntries,

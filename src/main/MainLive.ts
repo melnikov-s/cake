@@ -15,7 +15,7 @@ import { BrowserLive } from "../services/browser/BrowserLive";
 import { makeDictationLive } from "../services/dictation/DictationLive";
 import { makeElectronLive } from "../services/electron/ElectronLive";
 import { makeDesktopHostLive } from "../services/electron/DesktopHostLive";
-import { makeDesktopSharingLive } from "../services/electron/DesktopSharingLive";
+import { makeDesktopSharingLive } from "../layers/DesktopSharingLive";
 import { NativeAttachmentsLive } from "../services/filesystem/NativeAttachmentsLive";
 import { makeWindowStateStorageLive } from "../services/storage/WindowStateStorage";
 import { makeVsCodeViewsLive } from "../services/vscode/VsCodeViewsLive";

@@ -12,7 +12,7 @@ import {
   type Storage,
 } from "@earendil-works/pi-durable";
 import { Schema } from "effect";
-import { parseCrossSessionMessage } from "../pi/cross-session-message";
+import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import { MEMORY_COMPACTOR_PROMPT, MEMORY_NODE_BYTES, memoryBytes } from "./durable-memory-policy";
 import type { DurableChatMemoryView } from "./durable-chat-data";
 import { durableInputPresentation } from "./durable-input-presentation";

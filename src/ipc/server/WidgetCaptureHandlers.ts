@@ -1,9 +1,7 @@
 import { Effect, Option } from "effect";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
-import {
-  RenderedWidgetCapture,
-  RenderedWidgetCaptureError,
-} from "../../services/widgets/RenderedWidgetCapture";
+import { RenderedWidgetCapture } from "../../services/widgets/RenderedWidgetCapture";
+import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import { NativeWidgetCaptureRpc, WidgetCaptureResponseRpc } from "../protocol/WidgetCaptureRpc";
 

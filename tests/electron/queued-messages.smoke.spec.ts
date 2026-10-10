@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
-import { encodeCrossSessionMessage } from "../../src/services/pi/cross-session-message";
+import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 

@@ -10,7 +10,7 @@ import {
   type ArtifactLineage,
   type ArtifactLinkTarget,
   type ArtifactRevisionMetadata,
-} from "./artifact-lineage";
+} from "../../contracts/artifacts/artifact-lineage";
 import {
   cakeArtifactV1Schema,
   parseArtifactInput,
@@ -18,10 +18,9 @@ import {
 } from "../../ipc/artifact-contract";
 import {
   ArtifactPublicationConflict,
-  ArtifactStorage,
   ArtifactStorageError,
-  type ArtifactCollectionInput,
-} from "./ArtifactStorage";
+} from "../../contracts/storage/artifact-storage-errors";
+import { ArtifactStorage, type ArtifactCollectionInput } from "./ArtifactStorage";
 import { atomicWriteFile } from "./internal/atomicFile";
 
 const CATALOG_VERSION = 2;

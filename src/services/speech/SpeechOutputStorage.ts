@@ -1,7 +1,10 @@
 import { Context, Schema, type Effect } from "effect";
-import { SpeechOutputSettings, type SpeechOutputError } from "./speech-output-data";
+import {
+  SpeechOutputSettings,
+  type SpeechOutputError,
+} from "../../contracts/speech/speech-output-data";
 
-import { ElevenLabsSpeechSpeed } from "./speech-output-speed";
+import { ElevenLabsSpeechSpeed } from "../../contracts/speech/speech-output-speed";
 
 /** Main-only decrypted values. Never an RPC or renderer contract; key is memory-only here. */
 export const StoredSpeechOutputSettings = Schema.Struct({

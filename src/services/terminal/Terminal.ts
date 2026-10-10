@@ -1,9 +1,5 @@
-import { Context, Schema, type Effect, type Stream } from "effect";
-
-export class TerminalError extends Schema.TaggedError<TerminalError>()("TerminalError", {
-  operation: Schema.String,
-  message: Schema.String,
-}) {}
+import { Context, type Effect, type Stream } from "effect";
+import type { TerminalError } from "../../contracts/terminal/terminal-errors";
 
 export interface TerminalWorkingDirectoryTarget {
   readonly workingDirectory: string;

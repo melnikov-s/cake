@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveCakePaths } from "../../../../src/config/CakePaths";
-import { defaultApplicationState } from "../../../../src/services/storage/application-data";
+import { defaultApplicationState } from "../../../../src/contracts/application/application-data";
 import {
   planPiSessionMigration,
   applyPiSessionMigration,

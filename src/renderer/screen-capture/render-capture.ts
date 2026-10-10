@@ -2,7 +2,7 @@ import {
   captureOutputSize,
   type CaptureArrow,
   type CaptureRect,
-} from "../../services/electron/screen-capture-data";
+} from "../../contracts/desktop/screen-capture-data";
 
 export interface CapturePalette {
   readonly ink: string;

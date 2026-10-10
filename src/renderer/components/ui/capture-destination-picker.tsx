@@ -1,7 +1,7 @@
 import type {
   CaptureDestination,
   CaptureRouting,
-} from "../../../services/electron/screen-capture-data";
+} from "../../../contracts/desktop/screen-capture-data";
 import { Select } from "./select";
 
 /** Grouped attachment routing. New session stays first; its Project is chosen explicitly. */

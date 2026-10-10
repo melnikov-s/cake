@@ -1,5 +1,6 @@
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
+import architecture from "./tools/eslint/module-boundaries.js";
 
 // These are imperative framework/SDK adapters, not domain execution sites.
 // Keep this list explicit so a new boundary requires an architecture decision.
@@ -69,100 +70,9 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/services/pi/**/*.ts", "src/services/pi-durable/**/*.ts"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              group: [
-                "@earendil-works/pi-coding-agent",
-                "@earendil-works/pi-coding-agent/*",
-                "@earendil-works/pi-ai",
-                "@earendil-works/pi-ai/*",
-                "@earendil-works/pi-tui",
-                "@earendil-works/pi-tui/*",
-                "@earendil-works/pi-durable",
-                "@earendil-works/pi-durable/*",
-                "@earendil-works/pi-durable-ai",
-                "@earendil-works/pi-durable-ai/*",
-                "@earendil-works/chord",
-                "@earendil-works/chord/*",
-              ],
-              message:
-                "Pi package imports belong beneath src/services/pi or src/services/pi-durable.",
-            },
-          ],
-        },
-      ],
-    },
-  },
-  {
-    files: ["src/services/**/*.{ts,tsx}"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              group: ["**/domain/**", "**/layers/**"],
-              message:
-                "Services expose capabilities and never import domain policy or composition. Wire domain callbacks in src/layers instead.",
-            },
-            {
-              group: ["@earendil-works/pi-*", "@earendil-works/pi-*/*"],
-              message:
-                "Ordinary Pi package imports belong beneath src/services/pi or src/services/pi-durable.",
-            },
-          ],
-        },
-      ],
-    },
-  },
-  {
-    files: ["src/services/pi/**/*.ts", "src/services/pi-durable/**/*.ts"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              group: ["**/domain/**", "**/layers/**"],
-              message:
-                "Services expose capabilities and never import domain policy or composition. Wire domain callbacks in src/layers instead.",
-            },
-          ],
-        },
-      ],
-    },
-  },
-  {
-    files: ["src/renderer/**/*.{ts,tsx}"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          paths: [
-            {
-              name: "@earendil-works/pi-coding-agent",
-              message: "Renderer code must use Cake-owned client contracts.",
-            },
-            {
-              name: "electron",
-              message: "Renderer code must use the typed preload bridge.",
-            },
-          ],
-          patterns: [
-            {
-              group: ["node:*", "electron/*", "../agent/*", "../main/*", "../preload/*"],
-              message: "Renderer code cannot import privileged process modules.",
-            },
-          ],
-        },
-      ],
-    },
+    files: ["src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
+    plugins: { architecture },
+    rules: { "architecture/module-boundaries": "error" },
   },
   {
     files: ["src/renderer/stores/**/*.{ts,tsx}", "src/renderer/models/**/*.{ts,tsx}"],
@@ -178,7 +88,14 @@ export default tseslint.config(
           ],
           patterns: [
             {
-              group: ["../../ipc/client/*", "../../ipc/protocol/*", "../runtime", "../observers/*"],
+              group: [
+                "effect/*",
+                "**/ipc/client/**",
+                "**/ipc/protocol/**",
+                "**/renderer/runtime",
+                "../runtime",
+                "**/observers/**",
+              ],
               message:
                 "Effect RPC and synchronization mechanics belong to renderer infrastructure.",
             },

@@ -1,5 +1,5 @@
 import { applySnapshot, batch } from "r-state-tree";
-import type { ScheduledMessageUpdate } from "../../services/scheduled-messages/scheduled-message-data";
+import type { ScheduledMessageUpdate } from "../../contracts/scheduled-messages/scheduled-message-data";
 import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
 import { ScheduledMessage } from "../models/ScheduledMessage";
 

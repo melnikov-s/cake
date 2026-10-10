@@ -33,7 +33,7 @@ import type {
 import type { CakeSessionRuntimeOptions } from "../services/pi/runtime/cake-session-runtime";
 import type { RuntimeUiRequest } from "../services/pi/runtime/runtime-ui-request";
 import type { ImportWorkspaceFileInput } from "../services/artifacts/importWorkspaceFile";
-import type { ArtifactProjectionMetadata } from "../services/artifacts/ArtifactProjection";
+import type { ArtifactProjectionMetadata } from "../contracts/artifacts/artifact-projection-data";
 import type { ResolvedAgentArtifact } from "../services/pi/runtime/cake-artifact-operations";
 
 interface ArtifactRepositoryPort {

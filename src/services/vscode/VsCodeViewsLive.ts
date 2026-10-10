@@ -3,7 +3,7 @@ import { Effect, Layer, PubSub, Semaphore, Stream } from "effect";
 import { ClientConnections } from "../clients/ClientConnections";
 import { ClientEvents } from "../clients/ClientEvents";
 import { CAKE_TITLE_BAR_HEIGHT, Electron, VSCODE_TITLE_BAR_HEIGHT } from "../electron/Electron";
-import { VsCodeServerError } from "./VsCodeServer";
+import { VsCodeServerError } from "../../contracts/vscode/vs-code-server-errors";
 import { VsCodeViews } from "./VsCodeViews";
 import { VsCodeViewsRuntime } from "./VsCodeViewsRuntime";
 

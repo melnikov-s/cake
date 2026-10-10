@@ -3,7 +3,11 @@ import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import type { SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { Cache, Clock, Duration, Effect, Exit, Layer } from "effect";
 import { makePiModels, PiModels, type PiProviderAuthInteraction } from "../PiModels";
-import type { BoundedCompletionInput, PiModel, PiNonChatModel } from "../model-data";
+import type {
+  BoundedCompletionInput,
+  PiModel,
+  PiNonChatModel,
+} from "../../../contracts/pi/model-data";
 import { CODEX_FAST_MODE_SERVICE_TIER, supportsFastMode } from "../fast-mode";
 import { registerAgentDirectoryExtensionProviders } from "../runtime/extension-providers";
 

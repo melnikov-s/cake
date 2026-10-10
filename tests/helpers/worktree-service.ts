@@ -1,5 +1,5 @@
 import { ManagedRuntime } from "effect";
-import type { ProjectSettings } from "../../src/services/storage/application-data";
+import type { ProjectSettings } from "../../src/contracts/application/application-data";
 import type { WorktreeLandRequest } from "../../src/ipc/worktree-contract";
 import { BootstrapLive } from "../../src/main/BootstrapLive";
 import { makeGitLive } from "../../src/services/git/GitLive";

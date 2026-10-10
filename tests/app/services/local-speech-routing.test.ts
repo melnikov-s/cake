@@ -7,7 +7,7 @@ import {
   type ElevenLabsSpeechSettings,
   type SpeechOutputSettings,
   type SpeechOutputAudio,
-} from "../../../src/services/speech/speech-output-data";
+} from "../../../src/contracts/speech/speech-output-data";
 import { ElevenLabsSpeech } from "../../../src/services/speech/ElevenLabsSpeech";
 import { PocketTts } from "../../../src/services/speech/PocketTts";
 import { pocketTtsState } from "../../helpers/speech-output";

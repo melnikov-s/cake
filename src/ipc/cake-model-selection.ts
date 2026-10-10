@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
-import type { ModelPreset } from "../services/storage/application-data";
-import { ThinkingLevel } from "../services/pi/model-data";
+import type { ModelPreset } from "../contracts/application/application-data";
+import { ThinkingLevel } from "../contracts/pi/model-data";
 
 const trimmed = (maximum: number) =>
   Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(maximum)));

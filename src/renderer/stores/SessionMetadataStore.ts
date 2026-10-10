@@ -1,5 +1,5 @@
 import { Store } from "r-state-tree";
-import type { SessionLabel } from "../../services/storage/application-data";
+import type { SessionLabel } from "../../contracts/application/application-data";
 import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
 import type { SessionActivity } from "../lib/session-activity";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";

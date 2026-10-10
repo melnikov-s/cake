@@ -1,5 +1,8 @@
 import { Context, Effect, Layer, SubscriptionRef, type Stream } from "effect";
-import type { AgentAvailabilityEntry, AgentAvailabilitySnapshot } from "./agent-availability-data";
+import type {
+  AgentAvailabilityEntry,
+  AgentAvailabilitySnapshot,
+} from "../../contracts/pi/agent-availability-data";
 
 export class AgentAvailability extends Context.Service<
   AgentAvailability,

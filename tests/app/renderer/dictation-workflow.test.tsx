@@ -9,7 +9,7 @@ import type {
   DictationAudio,
   DictationState,
   PunctuationResult,
-} from "../../../src/services/dictation/dictation-data";
+} from "../../../src/contracts/dictation/dictation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SettingsDictationSection } from "../../../src/renderer/components/settings-dictation-section";

@@ -1,4 +1,4 @@
-import type { SpeechOutputAudio } from "../../services/speech/speech-output-data";
+import type { SpeechOutputAudio } from "../../contracts/speech/speech-output-data";
 import { recordVoiceDiagnostic } from "./diagnostics";
 
 const RESUME_TIMEOUT_MS = 5000;

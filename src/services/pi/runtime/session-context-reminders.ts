@@ -1,5 +1,8 @@
-import { responseModeReminders, stripResponseModeReminder } from "../response-mode-reminders";
-import { stripPresentationModeReminder } from "../presentation-mode-reminders";
+import {
+  responseModeReminders,
+  stripResponseModeReminder,
+} from "../../../contracts/conversations/response-mode-reminders";
+import { stripPresentationModeReminder } from "../../../contracts/conversations/presentation-mode-reminders";
 
 /** Only remove Cake-owned blocks at their injection boundaries, never user-authored tags. */
 export function splitContextReminders(text: string) {

@@ -1,13 +1,10 @@
-import { Context, Schema, type Effect, type Stream } from "effect";
+import { Context, type Effect, type Stream } from "effect";
 import type { BrowserWindow, WebContents } from "electron";
 import type { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../../ipc/cake-rpc-contract";
+import type { ElectronError } from "../../contracts/desktop/electron-errors";
 
 export const CAKE_TITLE_BAR_HEIGHT = 46;
 export const VSCODE_TITLE_BAR_HEIGHT = 35;
-
-export class ElectronError extends Schema.TaggedError<ElectronError>()("ElectronError", {
-  message: Schema.String,
-}) {}
 
 type Payload<Type extends keyof typeof cakeRpcPayloadSchemas> =
   (typeof cakeRpcPayloadSchemas)[Type]["Type"];

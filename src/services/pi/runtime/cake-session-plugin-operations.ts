@@ -1,6 +1,6 @@
 import { Schema } from "effect";
-import { SessionPluginControls } from "../../storage/session-plugin-controls";
-import type { SessionPlugin } from "../../storage/application-data";
+import { SessionPluginControls } from "../../../contracts/application/session-plugin-controls";
+import type { SessionPlugin } from "../../../contracts/application/application-data";
 import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
 import type { InlineWidgetGenerationRequest } from "./sidecar-runtime";
 import type { CakeOperationDefinition } from "./cake-operation-registry";

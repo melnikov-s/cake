@@ -15,14 +15,17 @@ import {
   CakeModelSelection,
   type ExplicitCakeModelSelection,
 } from "../../../ipc/cake-model-selection";
-import type { SubagentTaskInput as DomainSubagentTaskInput } from "../../subagents/subagent-data";
-import { CrossSessionContextSnapshot, CrossSessionQueueSnapshot } from "../cross-session-message";
+import type { SubagentTaskInput as DomainSubagentTaskInput } from "../../../contracts/subagents/subagent-data";
+import {
+  CrossSessionContextSnapshot,
+  CrossSessionQueueSnapshot,
+} from "../../../contracts/conversations/cross-session-message";
 import { CakeSettingsGetInput, CakeSettingsUpdateInput } from "../../../ipc/cake-settings-schema";
 import {
   CurrentProjectSettingsGetInput,
   CurrentProjectSettingsUpdateInput,
 } from "../../../ipc/project-settings-schema";
-import { SessionLabelColor } from "../../storage/application-data";
+import { SessionLabelColor } from "../../../contracts/application/application-data";
 import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
 import { SESSION_TITLE_MAX_LENGTH } from "../../../ipc/session-contract";
 import { SessionHistoryQuery, QueuedSessionCommand } from "../../../ipc/session-query-data";

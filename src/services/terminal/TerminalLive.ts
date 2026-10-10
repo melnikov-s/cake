@@ -2,7 +2,8 @@ import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Effect, Layer, PubSub, Stream } from "effect";
 import { ProjectAccess } from "../projects/ProjectAccess";
-import { Terminal, TerminalError } from "./Terminal";
+import { Terminal } from "./Terminal";
+import { TerminalError } from "../../contracts/terminal/terminal-errors";
 import { TerminalManager } from "./TerminalManager";
 
 type OwnedTerminalEvent =

@@ -7,7 +7,7 @@ import { ROOT_CONVERSATION_ID } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { _electron as electron, expect, test } from "@playwright/test";
-import { defaultApplicationState } from "../../src/services/storage/application-data";
+import { defaultApplicationState } from "../../src/contracts/application/application-data";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 

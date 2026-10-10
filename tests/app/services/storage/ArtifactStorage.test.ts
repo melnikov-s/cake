@@ -11,12 +11,10 @@ import {
   ArtifactRevisionNumber,
   formatArtifactRef,
   parseArtifactRef,
-} from "../../../../src/services/storage/artifact-lineage";
+} from "../../../../src/contracts/artifacts/artifact-lineage";
 import type { CakeArtifactV1 } from "../../../../src/ipc/artifact-contract";
-import {
-  ArtifactPublicationConflict,
-  ArtifactStorage,
-} from "../../../../src/services/storage/ArtifactStorage";
+import { ArtifactPublicationConflict } from "../../../../src/contracts/storage/artifact-storage-errors";
+import { ArtifactStorage } from "../../../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../../../src/services/storage/ArtifactStorageLive";
 
 const directories: string[] = [];

@@ -6,7 +6,7 @@ import {
   type CapturePoint,
   type CaptureRect,
   type ScreenCaptureSnapshot,
-} from "../../services/electron/screen-capture-data";
+} from "../../contracts/desktop/screen-capture-data";
 import type { Client } from "../client/Client";
 import type { CapturePalette } from "../screen-capture/render-capture";
 

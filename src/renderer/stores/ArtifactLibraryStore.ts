@@ -1,5 +1,5 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
-import type { ArtifactLineageId } from "../../services/storage/artifact-lineage";
+import type { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { ArtifactDetailStore } from "./ArtifactDetailStore";
 import { ClientContext } from "./context/ClientContext";

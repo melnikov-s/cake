@@ -4,19 +4,19 @@ import {
   responseModeFromReminder,
   stripResponseModeReminder,
   type ConversationResponseMode,
-} from "../response-mode-reminders";
+} from "../../../contracts/conversations/response-mode-reminders";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Attachment, UiPart } from "../../../ipc/session-contract";
 import type { ProjectSessionPresentationMode } from "../../../ipc/project-session-presentation";
 import { parsePiBuiltinCommand } from "../../../ipc/session-contract";
-import { parseCrossSessionMessage } from "../cross-session-message";
+import { parseCrossSessionMessage } from "../../../contracts/conversations/cross-session-message";
 import type { PiPendingMessageReorder, PiPendingMessages } from "../conversation-data";
 import { RuntimeTurnCompletion, TurnCanceledError } from "./RuntimeTurnCompletion";
 import {
   addPresentationModeReminder,
   presentationModeFromReminder,
   stripPresentationModeReminder,
-} from "../presentation-mode-reminders";
+} from "../../../contracts/conversations/presentation-mode-reminders";
 import {
   imageContent,
   locateQueuedMessage,

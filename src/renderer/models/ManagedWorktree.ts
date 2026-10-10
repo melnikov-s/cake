@@ -1,5 +1,5 @@
 import { Model, id } from "r-state-tree";
-import type { WorktreeRecord } from "../../services/worktrees/managed-worktree-data";
+import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
 
 /** Passive renderer projection of one main-owned Managed Worktree record. */
 export class ManagedWorktree extends Model {

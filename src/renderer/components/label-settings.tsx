@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
-import type { SessionLabel, SessionLabelColor } from "../../services/storage/application-data";
+import type { SessionLabel, SessionLabelColor } from "../../contracts/application/application-data";
 import { Button } from "./ui/button";
 import { ColorPicker } from "./ui/color-picker";
 import { IconButton } from "./ui/icon-button";

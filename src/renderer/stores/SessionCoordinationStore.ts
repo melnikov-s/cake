@@ -4,7 +4,7 @@ import {
   type CoordinationMessage,
   type CoordinationThread,
   type CrossSessionDeliveryProjection,
-} from "../../domain/conversations/cross-session-coordination";
+} from "../../contracts/conversations/cross-session-coordination";
 import { SessionRegistryContext } from "./context/SessionRegistryContext";
 
 /**

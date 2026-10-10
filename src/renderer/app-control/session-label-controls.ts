@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { SessionLabelColor, type SessionLabel } from "../../services/storage/application-data";
+import { SessionLabelColor, type SessionLabel } from "../../contracts/application/application-data";
 import type { AppControlResult } from "./app-control-data";
 import { sessionLabels } from "./control-projections";
 import { bounded, trimmed, emptyArgumentsSchema } from "./control-arguments";

@@ -4,7 +4,7 @@ import {
   DEFAULT_CAPTURE_SHORTCUT,
   type CaptureDestination,
   type CaptureRouting,
-} from "../../services/electron/screen-capture-data";
+} from "../../contracts/desktop/screen-capture-data";
 import type { Client } from "../client/Client";
 import type { WindowConversationSelection } from "./AppShellStore";
 import type { ComposerDraftStore } from "./ComposerDraftStore";

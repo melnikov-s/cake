@@ -1,4 +1,4 @@
-import type { SessionLabelColor } from "../services/storage/application-data";
+import type { SessionLabelColor } from "../contracts/application/application-data";
 import { sessionLabelPalette } from "./session-label-palette";
 
 interface Oklab {

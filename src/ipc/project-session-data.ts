@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { SESSION_TITLE_MAX_LENGTH } from "./session-contract";
-import { ThinkingLevel } from "../services/pi/model-data";
-import { ManagedWorktreeContext } from "../services/worktrees/managed-worktree-data";
+import { ThinkingLevel } from "../contracts/pi/model-data";
+import { ManagedWorktreeContext } from "../contracts/worktrees/managed-worktree-data";
 import { SessionChatConfiguration, SessionChatPromptInput } from "./conversation-data";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));

@@ -30,11 +30,11 @@ import type {
   CakeModelSelection,
   ExplicitCakeModelSelection,
 } from "../../../ipc/cake-model-selection";
-import type { NonChatModelPreferences } from "../../storage/non-chat-model-data";
+import type { NonChatModelPreferences } from "../../../contracts/models/non-chat-model-data";
 import {
   crossSessionContextSnapshot,
   type CrossSessionContextSnapshot,
-} from "../cross-session-message";
+} from "../../../contracts/conversations/cross-session-message";
 import type { PiPendingMessageReorder, PiPendingMessages } from "../conversation-data";
 import type {
   SessionInspectionQuery,
@@ -46,14 +46,14 @@ import {
   SubagentResult as subagentResultSchema,
   type ParallelSubagentInput as DomainParallelSubagentInput,
   type SubagentTaskInput as DomainSubagentTaskInput,
-} from "../../subagents/subagent-data";
+} from "../../../contracts/subagents/subagent-data";
 import { jsonValueSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
 import type {
   ArtifactRecord,
   ArtifactPointer,
   CakeArtifactV1,
 } from "../../../ipc/artifact-contract";
-import type { ArtifactProjectionMetadata } from "../../artifacts/ArtifactProjection";
+import type { ArtifactProjectionMetadata } from "../../../contracts/artifacts/artifact-projection-data";
 import type { ResolvedAgentArtifact } from "./cake-artifact-operations";
 import type { VscodeControl } from "./cake-vscode-operations";
 import type { BrowserControl } from "./cake-browser-operations";
@@ -85,11 +85,11 @@ import {
   shutdownCakeSessionExtensions,
 } from "./cake-session-runtime-resources";
 import { createCakeMcpExtensions } from "./mcp-integration";
-import { stripPresentationModeReminder } from "../presentation-mode-reminders";
+import { stripPresentationModeReminder } from "../../../contracts/conversations/presentation-mode-reminders";
 import {
   stripResponseModeReminder,
   type ConversationResponseMode,
-} from "../response-mode-reminders";
+} from "../../../contracts/conversations/response-mode-reminders";
 import {
   createCakeSessionRuntimeCapabilities,
   type GlobalControlTool,

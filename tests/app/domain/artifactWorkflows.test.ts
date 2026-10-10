@@ -8,21 +8,19 @@ import {
   ArtifactLineageId,
   ArtifactRevisionNumber,
   formatArtifactRef,
-} from "../../../src/services/storage/artifact-lineage";
+} from "../../../src/contracts/artifacts/artifact-lineage";
 import * as artifacts from "../../../src/domain/artifacts/artifacts";
 import * as workflows from "../../../src/domain/artifacts/artifactWorkflows";
 import type { CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
-import {
-  ArtifactPublicationConflict,
-  ArtifactStorage,
-} from "../../../src/services/storage/ArtifactStorage";
+import { ArtifactPublicationConflict } from "../../../src/contracts/storage/artifact-storage-errors";
+import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactStorageLive";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import {
   SessionFamilyStorage,
-  SessionFamilyStorageError,
   type SessionFamily,
 } from "../../../src/services/storage/SessionFamilyStorage";
+import { SessionFamilyStorageError } from "../../../src/contracts/storage/session-family-storage-errors";
 
 const directories: string[] = [];
 afterEach(async () => {

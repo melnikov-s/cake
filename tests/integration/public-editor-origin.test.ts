@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { openNetworkListener } from "../../src/server/NetworkListener";
-import { EditorBrowserPort } from "../../src/server/EditorBrowserPort";
+import { EditorBrowserPort } from "../../src/services/vscode/EditorBrowserPort";
 import { acquire } from "../../src/domain/application/embeddedEditor";
 import { editorLeasePath } from "../../src/server/editorProxy";
 import { VsCodeServer } from "../../src/services/vscode/VsCodeServer";

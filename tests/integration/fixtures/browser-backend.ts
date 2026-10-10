@@ -7,7 +7,7 @@ import type {
   PiSessionSummary,
   UiPart,
 } from "../../../src/ipc/session-contract";
-import type { PiModel } from "../../../src/services/pi/model-data";
+import type { PiModel } from "../../../src/contracts/pi/model-data";
 import { fakeRuntime, snapshot } from "../../app/helpers/piRuntimeFixture";
 
 export const browserTestModel: typeof PiModel.Type = {

@@ -2,7 +2,7 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ScheduledMessage } from "../../../src/services/scheduled-messages/scheduled-message-data";
+import type { ScheduledMessage } from "../../../src/contracts/scheduled-messages/scheduled-message-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";

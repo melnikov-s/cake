@@ -11,6 +11,7 @@ import {
   Exit,
 } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
+import { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
 
 const DOCUMENT_VERSION = 5;
 const BoundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
@@ -130,11 +131,6 @@ export const SessionFamilyDocument = Schema.Struct({
   turns: Schema.Array(FamilyTurn),
 });
 export interface SessionFamilyDocument extends Schema.Schema.Type<typeof SessionFamilyDocument> {}
-
-export class SessionFamilyStorageError extends Schema.TaggedError<SessionFamilyStorageError>()(
-  "SessionFamilyStorageError",
-  { operation: Schema.String, message: Schema.String },
-) {}
 
 export class SessionFamilyStorage extends Context.Service<
   SessionFamilyStorage,

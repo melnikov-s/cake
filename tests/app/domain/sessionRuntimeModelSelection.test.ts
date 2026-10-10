@@ -5,7 +5,7 @@ import { describe } from "vitest";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { acquireOptions as acquireCakeChatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
-import { defaultApplicationState } from "../../../src/services/storage/application-data";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { makeProjectSessionRuntimeTestLayer } from "./projectSessionRuntimeTestLayer";

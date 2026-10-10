@@ -1,7 +1,7 @@
 import { applySnapshot, updateStore, type StoreSnapshot } from "r-state-tree";
 import type { Microphone } from "../../../src/renderer/dictation/microphone";
 import type { SpeechPlayback } from "../../../src/renderer/speech/playback";
-import type { ProjectRecord } from "../../../src/services/storage/application-data";
+import type { ProjectRecord } from "../../../src/contracts/application/application-data";
 import { mountRootStore } from "../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../src/renderer/models/RootProjection";
 import type { SessionSummaryFixture } from "./fixtures/catalog-fixtures";

@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { ThinkingLevel } from "../services/pi/model-data";
+import { ThinkingLevel } from "../contracts/pi/model-data";
 import { CakeControlTool } from "./cake-chat-data";
 import {
   CakeSessionIdentity,

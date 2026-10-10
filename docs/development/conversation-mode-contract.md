@@ -181,7 +181,7 @@ shared/public testability interface is necessary, propose it before implementing
 
 Own complete destination files:
 
-- `src/services/pi/response-mode-reminders.ts`
+- `src/contracts/conversations/response-mode-reminders.ts`
 - `src/renderer/stores/ConversationModeStore.ts`
 - `src/renderer/stores/SpeechSettingsStore.ts`
 - `src/renderer/speech/playback.ts`

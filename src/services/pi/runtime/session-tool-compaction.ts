@@ -13,7 +13,7 @@ import {
 } from "./tool-compaction-provenance";
 
 import { splitContextReminders } from "./session-context-reminders";
-import { parseCrossSessionMessage } from "../cross-session-message";
+import { parseCrossSessionMessage } from "../../../contracts/conversations/cross-session-message";
 
 /** The sole replay policy: user-authored input and assistant text, no injected context. */
 export function toolCompactDialogueMessage(

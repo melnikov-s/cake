@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { DictationStore } from "../stores/DictationStore";
 import type { CakePromptSettingsStore } from "../stores/CakePromptSettingsStore";
-import { defaultCakePrompts } from "../../domain/application/cake-prompts";
+import { defaultCakePrompts } from "../../contracts/application/cake-prompt-defaults";
 import { SettingsPromptField } from "./settings/settings-prompt-field";
 import { SettingsToggle } from "./settings/settings-toggle";
 import { Button } from "./ui/button";

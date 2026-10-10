@@ -15,7 +15,7 @@ import {
   type BoundedCompletionInput as BoundedCompletionInputValue,
   type ModelSelection as ModelSelectionValue,
   type PiModelResolutionError,
-} from "./model-data";
+} from "../../contracts/pi/model-data";
 
 export interface PiProviderAuthInteraction {
   readonly request: (input: {

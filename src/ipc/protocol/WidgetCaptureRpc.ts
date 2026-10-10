@@ -1,6 +1,6 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
-import { RenderedWidgetCaptureError } from "../../services/widgets/RenderedWidgetCapture";
+import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 
 /** Device-local capture and separately authorized backend response. */
 export const NativeWidgetCaptureRpc = RpcGroup.make(

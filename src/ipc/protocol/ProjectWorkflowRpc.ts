@@ -5,8 +5,8 @@ import {
   SessionLabel,
   SessionLabelMutation,
   ProjectWorkflowSessionDetails,
-} from "../../services/storage/application-data";
-import { ProjectError } from "../../domain/projects/project-error";
+} from "../../contracts/application/application-data";
+import { ProjectError } from "../../contracts/projects/project-error";
 
 export const ProjectWorkflowRpc = RpcGroup.make(
   Rpc.make("projectWorkflow.mutateGlobal", {

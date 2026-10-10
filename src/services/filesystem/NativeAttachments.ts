@@ -1,6 +1,6 @@
 import { Context, type Effect } from "effect";
 import type { cakeRpcSuccessSchemas } from "../../ipc/cake-rpc-contract";
-import type { WorkspaceFileError } from "./WorkspaceFiles";
+import type { WorkspaceFileError } from "../../contracts/filesystem/workspace-files-errors";
 
 /** Device-local dialog. Its file paths must never be interpreted by a remote backend. */
 export class NativeAttachments extends Context.Service<

@@ -1,9 +1,5 @@
-import { Context, Schema, type Effect } from "effect";
-
-export class NativePreviewError extends Schema.TaggedError<NativePreviewError>()(
-  "NativePreviewError",
-  { message: Schema.String },
-) {}
+import { Context, type Effect } from "effect";
+import type { NativePreviewError } from "../../contracts/browser/native-preview-tunnels-errors";
 
 /** Portable native-bridge contract. The implementation is Electron/Node-only and
  * must never be imported by shared RPC protocol or renderer code. */

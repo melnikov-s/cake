@@ -6,7 +6,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { parseArtifactRef } from "../../services/storage/artifact-lineage";
+import { parseArtifactRef } from "../../contracts/artifacts/artifact-lineage";
 import { observer, StoreProvider, useStore } from "r-state-tree/react";
 import {
   Confirmation,

@@ -11,7 +11,7 @@ import { MarkdownLinkProvider } from "./ai-elements/markdown";
 import { RendererErrorBoundary } from "./renderer-error-boundary";
 import { ArtifactReferencePreview } from "./artifact-reference-preview";
 import { InlineArtifactPreview } from "./inline-artifact-preview";
-import { formatArtifactRef, parseArtifactRef } from "../../services/storage/artifact-lineage";
+import { formatArtifactRef, parseArtifactRef } from "../../contracts/artifacts/artifact-lineage";
 
 interface RendererRootProps {
   rootStore: RootStore;

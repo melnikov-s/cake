@@ -7,7 +7,7 @@ import {
   SpeechDetectionAudio,
   PunctuationInput,
   PunctuationResult,
-} from "../../services/dictation/dictation-data";
+} from "../../contracts/dictation/dictation-data";
 
 export const DictationRpc = RpcGroup.make(
   Rpc.make("dictation.observeState", { success: DictationState, stream: true }),

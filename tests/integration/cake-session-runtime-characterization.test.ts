@@ -10,6 +10,7 @@ import {
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import { resolveCakePaths } from "../../src/config/CakePaths";
+import { piAgentDirectory } from "../../src/services/pi/PiPaths";
 import {
   createCakeSessionRuntime,
   type CakeSessionRuntime,
@@ -139,7 +140,10 @@ describe("CakeSessionRuntime characterization", () => {
     vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", "");
     vi.stubEnv("PI_PROVIDER", "");
     vi.stubEnv("PI_MODEL", "");
-    const paths = resolveCakePaths({ env: { CAKE_HOME: join(directory, "cake") } });
+    const paths = resolveCakePaths({
+      env: { CAKE_HOME: join(directory, "cake") },
+      piAgentDirectory: piAgentDirectory(),
+    });
     await mkdir(agent);
     await writeFile(
       join(agent, "settings.json"),

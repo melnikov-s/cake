@@ -1,7 +1,7 @@
 import { onSnapshot, toSnapshot, type Store } from "r-state-tree";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { Client } from "../client/Client";
-import { extractSavedDrafts } from "../../services/storage/WindowStateStorage";
+import { extractSavedDrafts } from "../../contracts/project-sessions/saved-draft-extraction";
 
 /** One-way mounted Store snapshot persistence owned by the renderer window. */
 export class WindowStatePersistence implements Disposable {

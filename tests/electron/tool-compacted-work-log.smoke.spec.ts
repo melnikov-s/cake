@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
-import { addResponseModeReminder } from "../../src/services/pi/response-mode-reminders";
-import { addPresentationModeReminder } from "../../src/services/pi/presentation-mode-reminders";
+import { addResponseModeReminder } from "../../src/contracts/conversations/response-mode-reminders";
+import { addPresentationModeReminder } from "../../src/contracts/conversations/presentation-mode-reminders";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const timestamp = new Date(0).toISOString();

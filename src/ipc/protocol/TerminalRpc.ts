@@ -1,5 +1,5 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { TerminalError } from "../../services/terminal/Terminal";
+import { TerminalError } from "../../contracts/terminal/terminal-errors";
 import {
   cakeRpcPayloadSchemas,
   cakeRpcSuccessSchemas,

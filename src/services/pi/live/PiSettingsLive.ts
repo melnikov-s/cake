@@ -1,6 +1,7 @@
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { Effect, FileSystem, Layer, Path, Schema } from "effect";
-import { makePiSettingsLayer, PiSettingsError, type PiExecutionSettingUpdate } from "../PiSettings";
+import { makePiSettingsLayer, type PiExecutionSettingUpdate } from "../PiSettings";
+import { PiSettingsError } from "../../../contracts/pi/pi-settings-errors";
 import { atomicWriteFile } from "../../storage/internal/atomicFile";
 import { listPiExtensionSettings, togglePiExtensionSetting } from "./PiExtensionSettings";
 

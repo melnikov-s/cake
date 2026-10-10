@@ -4,7 +4,7 @@ import type {
   NonChatModelPreferences,
   NonChatModelReference,
   NonChatModelType,
-} from "../../services/storage/non-chat-model-data";
+} from "../../contracts/models/non-chat-model-data";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 

@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { ArtifactError } from "../../domain/artifacts/artifact-data";
+import { ArtifactError } from "../../contracts/artifacts/artifact-data";
 import {
   ArtifactLineageDetail,
   ArtifactLineageId,
@@ -15,17 +15,20 @@ import {
   ArtifactStableRef,
   ArtifactTextComparison,
   EffectiveArtifactProjection,
-} from "../../services/storage/artifact-lineage";
-import { ArtifactNotFound, ArtifactNotLinked } from "../../domain/artifacts/artifactWorkflows";
+} from "../../contracts/artifacts/artifact-lineage";
+import {
+  ArtifactNotFound,
+  ArtifactNotLinked,
+} from "../../contracts/artifacts/artifact-workflow-errors";
 import {
   ArtifactProjectionError,
   ArtifactProjectionMetadata,
-} from "../../services/artifacts/ArtifactProjection";
+} from "../../contracts/artifacts/artifact-projection-data";
 import {
   ArtifactPublicationConflict,
   ArtifactStorageError,
-} from "../../services/storage/ArtifactStorage";
-import { SessionFamilyStorageError } from "../../services/storage/SessionFamilyStorage";
+} from "../../contracts/storage/artifact-storage-errors";
+import { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
 import {
   artifactEventSchema,
   cakeRpcPayloadSchemas,

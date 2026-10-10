@@ -5,7 +5,7 @@ import {
   RendererConnectionMiddleware,
 } from "../protocol/RendererConnectionMiddleware";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
-import { BrowserError } from "../../services/browser/Browser";
+import { BrowserError } from "../../contracts/browser/browser-errors";
 
 export const browserResponseHandlers = BrowserResponseRpc.middleware(
   RendererConnectionMiddleware,

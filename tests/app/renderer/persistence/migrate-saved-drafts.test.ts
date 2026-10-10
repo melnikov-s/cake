@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Schema } from "effect";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { migrateSavedDrafts } from "../../../../src/renderer/persistence/migrate-saved-drafts";
-import { extractSavedDrafts } from "../../../../src/services/storage/WindowStateStorage";
+import { extractSavedDrafts } from "../../../../src/contracts/project-sessions/saved-draft-extraction";
 
 const savedId = "00000000-0000-4000-8000-000000000001";
 const unsentId = "00000000-0000-4000-8000-000000000002";

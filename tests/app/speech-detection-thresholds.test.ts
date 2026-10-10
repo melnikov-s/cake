@@ -5,7 +5,7 @@ import {
   SpeechDetectionThresholds,
   SpeechRecognitionSettings,
   DictationAudio,
-} from "../../src/services/dictation/dictation-data";
+} from "../../src/contracts/dictation/dictation-data";
 
 describe("speech detection threshold contract", () => {
   it("accepts intrinsic detector defaults and explicit shared thresholds", () => {

@@ -1,4 +1,4 @@
-import { Context, Schema, type Effect } from "effect";
+import { Context, type Effect } from "effect";
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
 import type {
   ArtifactCatalog,
@@ -8,21 +8,11 @@ import type {
   ArtifactLinkTarget,
   ArtifactRevision,
   ArtifactRevisionNumber,
-} from "./artifact-lineage";
-
-export class ArtifactStorageError extends Schema.TaggedError<ArtifactStorageError>()(
-  "ArtifactStorageError",
-  { operation: Schema.String, message: Schema.String },
-) {}
-
-export class ArtifactPublicationConflict extends Schema.TaggedError<ArtifactPublicationConflict>()(
-  "ArtifactPublicationConflict",
-  {
-    lineageId: Schema.String,
-    expectedLatestRevision: Schema.Int,
-    actualLatestRevision: Schema.Int,
-  },
-) {}
+} from "../../contracts/artifacts/artifact-lineage";
+import type {
+  ArtifactStorageError,
+  ArtifactPublicationConflict,
+} from "../../contracts/storage/artifact-storage-errors";
 
 interface PublishArtifactRevision {
   readonly lineageId: ArtifactLineageId;

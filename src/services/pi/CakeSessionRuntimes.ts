@@ -54,7 +54,7 @@ import {
 } from "./runtime/session-discovery";
 import type { ReviewParentContext } from "./runtime/sidecar-runtime";
 import type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
-import type { ConversationResponseMode } from "./response-mode-reminders";
+import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
 
 const PiSessionCapabilityProfile = Schema.TaggedUnion({
   ProjectSession: {},

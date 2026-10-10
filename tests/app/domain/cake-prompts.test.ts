@@ -3,9 +3,9 @@ import { describe, it } from "vitest";
 import {
   defaultCakePrompts,
   normalizeCakePromptOverrides,
-  renderCakePrompt,
   resolveCakePrompts,
-} from "../../../src/domain/application/cake-prompts";
+} from "../../../src/contracts/application/cake-prompt-defaults";
+import { renderCakePrompt } from "../../../src/domain/application/cake-prompts";
 
 describe("Cake prompt policy", () => {
   it("normalizes resets and source defaults while preserving custom text exactly", () => {

@@ -1,6 +1,7 @@
 import { Effect, Layer } from "effect";
 import { RendererRequestCoordinator } from "../renderer-requests/RendererRequestCoordinator";
-import { RenderedWidgetCapture, RenderedWidgetCaptureError } from "./RenderedWidgetCapture";
+import { RenderedWidgetCapture } from "./RenderedWidgetCapture";
+import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 
 /** Backend-side request bridge. Pixels are always produced by the bound desktop. */
 export const RemoteRenderedWidgetCaptureLive = Layer.effect(

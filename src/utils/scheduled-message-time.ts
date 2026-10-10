@@ -1,4 +1,4 @@
-import type { ScheduledMessageOrigin } from "../services/pi/scheduled-message-envelope";
+import type { ScheduledMessageOrigin } from "../contracts/conversations/scheduled-message-envelope";
 
 export interface ScheduledOriginDescription {
   /** Compact clock-time summary for inline labels. */

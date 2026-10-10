@@ -2,7 +2,8 @@ import { BrowserWindow } from "electron";
 import { Effect, Layer, Schema, Semaphore } from "effect";
 import type { CompiledInlineWidget } from "../../ipc/inline-widget-contract";
 import type { JsonValue } from "../../ipc/json-contract";
-import { RenderedWidgetCapture, RenderedWidgetCaptureError } from "./RenderedWidgetCapture";
+import { RenderedWidgetCapture } from "./RenderedWidgetCapture";
+import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 
 const CAPTURE_WIDTH = 560;
 const CAPTURE_HEIGHT = 480;

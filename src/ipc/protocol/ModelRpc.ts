@@ -10,7 +10,7 @@ import {
   ModelPresetProjection,
   ModelPresetUpdateInput,
   ModelPresetValidationError,
-} from "../../domain/model-presets/modelPresets";
+} from "../../contracts/model-presets/model-preset-data";
 import {
   ModelSelection,
   PiModel,
@@ -21,16 +21,16 @@ import {
   UnknownPiModelError,
   UnsupportedFastModeError,
   UnsupportedThinkingLevelError,
-} from "../../services/pi/model-data";
+} from "../../contracts/pi/model-data";
 import {
   ApplicationEncodeError,
   ApplicationWriteError,
-} from "../../services/storage/ApplicationStorage";
+} from "../../contracts/storage/application-storage-errors";
 
 import {
   NonChatModelPreferences,
   NonChatModelPreferenceUpdate,
-} from "../../services/storage/non-chat-model-data";
+} from "../../contracts/models/non-chat-model-data";
 
 const ModelPresetMutationError = Schema.Union([
   ModelPresetValidationError,

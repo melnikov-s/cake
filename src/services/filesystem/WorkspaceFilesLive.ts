@@ -3,7 +3,8 @@ import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { Effect, Layer } from "effect";
 import { ProjectAccess } from "../projects/ProjectAccess";
 import { suggestProjectFiles } from "../pi/runtime/session-discovery";
-import { WorkspaceFileError, WorkspaceFiles } from "./WorkspaceFiles";
+import { WorkspaceFileError } from "../../contracts/filesystem/workspace-files-errors";
+import { WorkspaceFiles } from "./WorkspaceFiles";
 
 const imageMimeTypes = new Map([
   [".avif", "image/avif"],

@@ -1,12 +1,12 @@
 import { Effect, Stream } from "effect";
 import { ElevenLabsSpeech } from "../../services/speech/ElevenLabsSpeech";
 import { PocketTts } from "../../services/speech/PocketTts";
-import type { SpeechOutputProvider } from "../../services/speech/pocket-tts-data";
+import type { SpeechOutputProvider } from "../../contracts/speech/pocket-tts-data";
 import {
   SpeechOutputError,
   type SpeechOutputRequest,
   type SpeechOutputSettings,
-} from "../../services/speech/speech-output-data";
+} from "../../contracts/speech/speech-output-data";
 
 const localVoices = [{ id: "alba", name: "Alba" }];
 

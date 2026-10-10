@@ -7,7 +7,7 @@ import {
   familyMemberIds,
   familyMember,
 } from "../../services/storage/SessionFamilyStorage";
-import { defaultProjectSettings } from "../../services/storage/application-data";
+import { defaultProjectSettings } from "../../contracts/application/application-data";
 import { getState, revokeProjectTrust, trustProject } from "../application/application";
 import { generateWorktreeName, utilityModelSelection } from "../utility-work/utilityWork";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
@@ -18,8 +18,9 @@ import {
   type ProjectSessionArchiveMigrationSource,
 } from "../../services/storage/SessionArchiveStorage";
 import { Terminal } from "../../services/terminal/Terminal";
-import { ManagedWorktreeError, ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
-import type { ResolvedManagedWorktreeCleanupFailure } from "./managed-worktree-cleanup-data";
+import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
+import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
+import type { ResolvedManagedWorktreeCleanupFailure } from "../../contracts/worktrees/managed-worktree-cleanup-data";
 
 const policyError = (operation: string, cause: unknown) =>
   new ManagedWorktreeError({

@@ -1,5 +1,5 @@
 import { Context, type Effect, type Stream } from "effect";
-import type { VsCodeServerError } from "./VsCodeServer";
+import type { VsCodeServerError } from "../../contracts/vscode/vs-code-server-errors";
 import type { VsCodeViewBounds, VsCodeViewEndpoint } from "./VsCodeViewsRuntime";
 
 /** Device-local native presentation; no workspace, binary or companion authority. */

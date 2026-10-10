@@ -3,9 +3,9 @@ import {
   RendererApplicationState,
   UtilityModel as UtilityModelSchema,
   type ProjectRecord as ProjectRecordType,
-} from "../services/storage/application-data";
-import { CrossSessionMessageMetadata } from "../services/pi/cross-session-message";
-import { ScheduledMessageOrigin } from "../services/pi/scheduled-message-envelope";
+} from "../contracts/application/application-data";
+import { CrossSessionMessageMetadata } from "../contracts/conversations/cross-session-message";
+import { ScheduledMessageOrigin } from "../contracts/conversations/scheduled-message-envelope";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { sourceLocationSchema } from "./source-location";
 

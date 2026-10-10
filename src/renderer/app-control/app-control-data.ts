@@ -10,9 +10,9 @@ import { type JsonValue, type JsonObject } from "../../ipc/json-contract";
 import { type ChatConfiguration, type ProjectRecord } from "../../ipc/session-contract";
 import { type CakeChatSummary } from "../../ipc/cake-chat-data";
 import type { SessionSummary } from "../models/SessionSummary";
-import type { WorktreeRecord } from "../../services/worktrees/managed-worktree-data";
+import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
 import type { ProjectSessionPreview } from "../../ipc/project-session-data";
-import type { ScheduledMessage } from "../../services/scheduled-messages/scheduled-message-data";
+import type { ScheduledMessage } from "../../contracts/scheduled-messages/scheduled-message-data";
 import { type EditorLocation } from "../../ipc/editor-location";
 import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
 import type {
@@ -25,12 +25,12 @@ import type {
   CoordinationMessage,
   CoordinationThread,
   CrossSessionDeliveryStatus,
-} from "../../domain/conversations/cross-session-coordination";
+} from "../../contracts/conversations/cross-session-coordination";
 import type {
   CrossSessionMessageMetadata,
   CrossSessionContextSnapshot,
   CrossSessionQueueSnapshot,
-} from "../../services/pi/cross-session-message";
+} from "../../contracts/conversations/cross-session-message";
 import type { QueuedConversationMessages } from "../../ipc/conversation-data";
 import { type SessionActivity } from "../lib/session-activity";
 import {
@@ -42,7 +42,7 @@ import {
   type ProjectSettings,
   type SessionLabel,
   type SessionLabelMutation,
-} from "../../services/storage/application-data";
+} from "../../contracts/application/application-data";
 import { type ProjectSettingsChanges } from "../../ipc/project-settings-schema";
 
 export type SessionSummaryView = Pick<

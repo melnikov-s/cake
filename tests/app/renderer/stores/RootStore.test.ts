@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { TurnId } from "../../../../src/ipc/conversation-data";
 import { createTestClient as createClient, type TestClientOverrides } from "../test-client";
-import { defaultApplicationState } from "../../../../src/services/storage/application-data";
+import { defaultApplicationState } from "../../../../src/contracts/application/application-data";
 import { mountRootStore } from "../../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 

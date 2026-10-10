@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { Effect, Layer } from "effect";
 import { afterEach, describe, it } from "vitest";
-import { defaultApplicationState } from "../../src/services/storage/application-data";
+import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import {
   APPLICATION_DOCUMENT_NAME,
   ApplicationStorage,

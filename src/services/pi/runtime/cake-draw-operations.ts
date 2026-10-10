@@ -2,7 +2,7 @@
 import { Buffer } from "node:buffer";
 import { extname } from "node:path";
 import { Schema } from "effect";
-import type { DrawBoardMetadata } from "../../storage/draw-board-data";
+import type { DrawBoardMetadata } from "../../../contracts/draw/draw-board-data";
 import type { JsonObject } from "../../../ipc/json-contract";
 import {
   DRAW_APPLY_MAX_OPERATIONS,

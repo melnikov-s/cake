@@ -1,20 +1,16 @@
-import { Context, Schema, type Effect, type Stream } from "effect";
-import type { ManagedWorktreeCatalogUpdate, WorktreeRecord } from "./managed-worktree-data";
-import type { ProjectSettings } from "../storage/application-data";
+import { Context, type Effect, type Stream } from "effect";
+import type {
+  ManagedWorktreeCatalogUpdate,
+  WorktreeRecord,
+} from "../../contracts/worktrees/managed-worktree-data";
+import type { ProjectSettings } from "../../contracts/application/application-data";
 import type {
   WorktreeLandOutcome,
   WorktreeLandRequest,
   WorktreeRebaseOutcome,
   WorktreeStatus,
 } from "../../ipc/worktree-contract";
-
-export class ManagedWorktreeError extends Schema.TaggedError<ManagedWorktreeError>()(
-  "ManagedWorktreeError",
-  {
-    operation: Schema.String,
-    message: Schema.String,
-  },
-) {}
+import type { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
 
 export interface ManagedWorktreesService {
   readonly records: () => Effect.Effect<ReadonlyArray<WorktreeRecord>, ManagedWorktreeError>;

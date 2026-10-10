@@ -8,7 +8,7 @@ import {
   CakeChatTarget,
   CakeChatControlUpdate,
 } from "../cake-chat-data";
-import { CakeChatCatalogUpdate } from "../../domain/application/catalog-data";
+import { CakeChatCatalogUpdate } from "../../contracts/application/catalog-data";
 import { TurnId } from "../conversation-data";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 

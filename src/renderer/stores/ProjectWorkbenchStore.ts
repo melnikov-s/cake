@@ -4,7 +4,7 @@ import type { StoreEvent } from "../events/StoreEvent";
 import type {
   AgentAvailabilitySnapshot,
   AgentAvailabilityState,
-} from "../../services/pi/agent-availability-data";
+} from "../../contracts/pi/agent-availability-data";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { ExtensionUiStore } from "./ExtensionUiStore";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
@@ -18,7 +18,7 @@ import { SessionManagementStore } from "./SessionManagementStore";
 import { SessionContinuationStore } from "./SessionContinuationStore";
 import { ProjectOpenStore, type ProjectOpenResult } from "./ProjectOpenStore";
 import type { WorkingDirectoryRetirementWorkflow } from "./WorkingDirectoryRetirementStore";
-import type { SessionLabel } from "../../services/storage/application-data";
+import type { SessionLabel } from "../../contracts/application/application-data";
 import { SessionPresentationStore } from "./SessionPresentationStore";
 import { ProjectSessionCreationStore } from "./ProjectSessionCreationStore";
 

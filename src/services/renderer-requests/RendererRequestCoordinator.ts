@@ -16,10 +16,8 @@ import type { JsonValue } from "../../ipc/json-contract";
 import { DrawControlResponse, type DrawControlInvocation } from "../../ipc/draw-control";
 import { ClientConnections } from "../clients/ClientConnections";
 import { ClientEvents } from "../clients/ClientEvents";
-import {
-  RenderedWidgetCaptureError,
-  type RenderedWidgetCaptureResult,
-} from "../widgets/RenderedWidgetCapture";
+import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
+import { type RenderedWidgetCaptureResult } from "../widgets/RenderedWidgetCapture";
 import type { CompiledInlineWidget } from "../../ipc/inline-widget-contract";
 
 interface RendererUiRequest {

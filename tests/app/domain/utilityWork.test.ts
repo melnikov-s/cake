@@ -17,7 +17,7 @@ import {
   type PiModels,
   type PiModelsAdapter,
 } from "../../../src/services/pi/PiModels";
-import type { BoundedCompletionInput, PiModel } from "../../../src/services/pi/model-data";
+import type { BoundedCompletionInput, PiModel } from "../../../src/contracts/pi/model-data";
 
 const selection = {
   provider: "openai",

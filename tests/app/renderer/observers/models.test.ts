@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   DiscussionCatalogUpdate,
   SessionCatalogUpdate,
-} from "../../../../src/domain/application/catalog-data";
+} from "../../../../src/contracts/application/catalog-data";
 import type { DiscussionSessionUpdate } from "../../../../src/ipc/discussion-session-data";
 import { SessionChatError, type ConversationUpdate } from "../../../../src/ipc/conversation-data";
 import type { CakeChatControlUpdate } from "../../../../src/ipc/cake-chat-data";

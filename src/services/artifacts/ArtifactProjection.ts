@@ -1,43 +1,14 @@
-import { Context, Schema, type Effect } from "effect";
+import { Context, type Effect } from "effect";
 import type {
   ArtifactLineageId,
   ArtifactRevision,
   ArtifactRevisionNumber,
-} from "../storage/artifact-lineage";
-
-const ArtifactProjectionLinkMode = Schema.Literals(["follow-latest", "pinned"]);
-type ArtifactProjectionLinkMode = typeof ArtifactProjectionLinkMode.Type;
-
-export const ArtifactProjectionFile = Schema.Struct({
-  name: Schema.String,
-  path: Schema.String,
-  byteSize: Schema.Int,
-  sha256: Schema.String,
-});
-export interface ArtifactProjectionFile extends Schema.Schema.Type<typeof ArtifactProjectionFile> {}
-
-export const ArtifactProjectionMetadata = Schema.Struct({
-  lineageId: Schema.String,
-  title: Schema.optionalKey(Schema.String),
-  kind: Schema.String,
-  selectedRevision: Schema.Int,
-  latestRevision: Schema.Int,
-  digest: Schema.String,
-  linkMode: ArtifactProjectionLinkMode,
-  stableRef: Schema.String,
-  exactRef: Schema.String,
-  exactPath: Schema.String,
-  latestPath: Schema.optionalKey(Schema.String),
-  files: Schema.Array(ArtifactProjectionFile),
-});
-export interface ArtifactProjectionMetadata extends Schema.Schema.Type<
-  typeof ArtifactProjectionMetadata
-> {}
-
-export class ArtifactProjectionError extends Schema.TaggedError<ArtifactProjectionError>()(
-  "ArtifactProjectionError",
-  { operation: Schema.String, message: Schema.String },
-) {}
+} from "../../contracts/artifacts/artifact-lineage";
+import type {
+  ArtifactProjectionError,
+  ArtifactProjectionMetadata,
+  ArtifactProjectionLinkMode,
+} from "../../contracts/artifacts/artifact-projection-data";
 
 export interface MaterializeArtifactProjectionInput {
   readonly sessionId: string;

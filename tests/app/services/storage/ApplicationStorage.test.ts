@@ -9,16 +9,16 @@ import {
   ApplicationMigrationError,
   ApplicationStorage,
   ApplicationUnsupportedVersionError,
-  ApplicationWriteError,
   makeApplicationStorageLive,
 } from "../../../../src/services/storage/ApplicationStorage";
-import { defaultApplicationState } from "../../../../src/services/storage/application-data";
+import { ApplicationWriteError } from "../../../../src/contracts/storage/application-storage-errors";
+import { defaultApplicationState } from "../../../../src/contracts/application/application-data";
 import { ApplicationState } from "../../../../src/services/storage/ApplicationState";
 import { updateNonChatModelPreference } from "../../../../src/domain/model-preferences/non-chat-model-preferences";
 import {
   defaultCakePrompts,
   resolveCakePrompts,
-} from "../../../../src/domain/application/cake-prompts";
+} from "../../../../src/contracts/application/cake-prompt-defaults";
 import { setCakePrompts } from "../../../../src/domain/application/application";
 import versionFivePromptDefaults from "../../../../src/services/storage/internal/application-v5-prompt-defaults.json";
 

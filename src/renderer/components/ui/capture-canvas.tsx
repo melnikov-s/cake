@@ -3,7 +3,7 @@ import type {
   CaptureArrow,
   CapturePoint,
   CaptureRect,
-} from "../../../services/electron/screen-capture-data";
+} from "../../../contracts/desktop/screen-capture-data";
 import {
   loadCaptureImage,
   paintCapture,

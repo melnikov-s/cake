@@ -6,24 +6,24 @@ import {
   UtilityModel,
   SessionLabelMutation,
   SessionLabel,
-} from "../services/storage/application-data";
-import { CakePrompts } from "../services/storage/cake-prompt-data";
+} from "../contracts/application/application-data";
+import { CakePrompts } from "../contracts/application/cake-prompt-data";
 import {
   NonChatModelPreferenceUpdate,
   NonChatModelPreferences,
-} from "../services/storage/non-chat-model-data";
-import { McpSettingsSnapshot, McpSettingsMutation } from "../services/pi/mcp-settings-data";
-import { PiNonChatModel } from "../services/pi/model-data";
-import { DictationState, TextProcessingMode } from "../services/dictation/dictation-data";
+} from "../contracts/models/non-chat-model-data";
+import { McpSettingsSnapshot, McpSettingsMutation } from "../contracts/pi/mcp-settings-data";
+import { PiNonChatModel } from "../contracts/pi/model-data";
+import { DictationState, TextProcessingMode } from "../contracts/dictation/dictation-data";
 import {
   DesktopSharingInput,
   DesktopSharingState,
-} from "../services/electron/desktop-sharing-data";
-import { DesktopHostSelection } from "../services/electron/desktop-host-data";
-import { NativeMcpConfigEdit } from "../services/pi/mcp-config-validation";
+} from "../contracts/desktop/desktop-sharing-data";
+import { DesktopHostSelection } from "../contracts/desktop/desktop-host-data";
+import { NativeMcpConfigEdit } from "../contracts/pi/mcp-config-validation";
 import { cakeSettingsSections } from "./cake-settings-data";
 import { TurnId } from "./conversation-data";
-import { SpeechOutputSettings, SpeechOutputVoice } from "../services/speech/speech-output-data";
+import { SpeechOutputSettings, SpeechOutputVoice } from "../contracts/speech/speech-output-data";
 
 const empty = Schema.Struct({});
 const scope = Schema.Literals(["backend", "project"]);

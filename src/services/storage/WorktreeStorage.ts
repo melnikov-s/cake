@@ -1,5 +1,5 @@
 import { Context, Schema, type Effect } from "effect";
-import type { WorktreeRecord } from "../worktrees/managed-worktree-data";
+import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
 
 export class WorktreeStorageError extends Schema.TaggedError<WorktreeStorageError>()(
   "WorktreeStorageError",

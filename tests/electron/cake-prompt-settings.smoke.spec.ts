@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
-import { defaultApplicationState } from "../../src/services/storage/application-data";
-import { defaultCakePrompts } from "../../src/domain/application/cake-prompts";
+import { defaultApplicationState } from "../../src/contracts/application/application-data";
+import { defaultCakePrompts } from "../../src/contracts/application/cake-prompt-defaults";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 

@@ -2,8 +2,8 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { defaultApplicationState } from "../../../src/services/storage/application-data";
-import { defaultCakeChatPreferences } from "../../../src/domain/cake-chats/cake-chat-preferences";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { defaultCakeChatPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
 import type { Client } from "../../../src/renderer/client/Client";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";
 import { createRendererStoreFixture } from "./renderer-store-fixture";

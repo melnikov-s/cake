@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { CrossSessionMessageMetadata } from "./cross-session-message";
+import { CrossSessionMessageMetadata } from "../../contracts/conversations/cross-session-message";
 
 const queuedText = Schema.String.check(Schema.isMaxLength(262_144));
 

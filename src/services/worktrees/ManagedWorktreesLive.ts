@@ -14,8 +14,11 @@ import {
   Stream,
 } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import type { ProjectSettings } from "../storage/application-data";
-import type { ManagedWorktreeCatalogUpdate, WorktreeRecord } from "./managed-worktree-data";
+import type { ProjectSettings } from "../../contracts/application/application-data";
+import type {
+  ManagedWorktreeCatalogUpdate,
+  WorktreeRecord,
+} from "../../contracts/worktrees/managed-worktree-data";
 import {
   worktreeStatusSchema,
   type WorktreeLandOutcome,
@@ -25,7 +28,8 @@ import {
 } from "../../ipc/worktree-contract";
 import { Git } from "../git/Git";
 import { WorktreeStorage } from "../storage/WorktreeStorage";
-import { ManagedWorktreeError, ManagedWorktrees } from "./ManagedWorktrees";
+import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
+import { ManagedWorktrees } from "./ManagedWorktrees";
 import { renderWorktreeCommand, type WorktreeCommandVariables } from "./worktree-command-template";
 
 interface LandingEntry {

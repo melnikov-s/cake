@@ -5,7 +5,7 @@ import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { Effect, Layer, ManagedRuntime, Schema } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 import * as artifactWorkflows from "../../../../src/domain/artifacts/artifactWorkflows";
-import { ArtifactLineageId } from "../../../../src/services/storage/artifact-lineage";
+import { ArtifactLineageId } from "../../../../src/contracts/artifacts/artifact-lineage";
 import type { CakeArtifactV1 } from "../../../../src/ipc/artifact-contract";
 import type { CakeEvent } from "../../../../src/ipc/cake-rpc-contract";
 import { makeArtifactProjectionLive } from "../../../../src/services/artifacts/ArtifactProjectionLive";

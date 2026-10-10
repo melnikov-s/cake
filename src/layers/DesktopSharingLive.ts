@@ -3,9 +3,9 @@ import {
   DesktopSharingError,
   DesktopSharingInput,
   type DesktopSharingState,
-} from "./desktop-sharing-data";
-import { openNetworkListener } from "../../server/NetworkListener";
-import { DesktopSharing } from "./DesktopSharing";
+} from "../contracts/desktop/desktop-sharing-data";
+import { openNetworkListener } from "../server/NetworkListener";
+import { DesktopSharing } from "../services/electron/DesktopSharing";
 
 type Backend = Exclude<Effect.Services<ReturnType<typeof openNetworkListener>>, Scope.Scope>;
 /** Captures the acquired backend Context once; toggles own only listener resources.

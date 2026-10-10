@@ -3,7 +3,7 @@ import {
   defaultProjectWorkflow,
   type ProjectRecord,
   type ProjectWorkflow,
-} from "../../../../src/services/storage/application-data";
+} from "../../../../src/contracts/application/application-data";
 
 export const fixtureTimestamp = "2026-01-01T00:00:00.000Z";
 

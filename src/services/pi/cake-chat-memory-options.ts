@@ -1,4 +1,4 @@
-import type { CakeChatPreferences } from "../storage/application-data";
+import type { CakeChatPreferences } from "../../contracts/application/application-data";
 
 /** Cake-owned preferences and utility-completion port; no Pi SDK values cross it. */
 export interface CakeChatMemoryOptions {

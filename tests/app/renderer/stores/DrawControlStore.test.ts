@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { DrawBoardMetadata } from "../../../../src/services/storage/draw-board-data";
-import type { DrawDocumentSnapshot } from "../../../../src/domain/draw/draw-editor";
+import type { DrawBoardMetadata } from "../../../../src/contracts/draw/draw-board-data";
+import type { DrawDocumentSnapshot } from "../../../../src/contracts/draw/draw-editor";
 import type { DrawEditorAdapter } from "../../../../src/renderer/draw/DrawEditorAdapter";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
 import { sessionSummary } from "../fixtures/catalog-fixtures";

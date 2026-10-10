@@ -2,8 +2,8 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { dirname } from "node:path";
 import { SESSION_TITLE_MAX_LENGTH } from "../../../ipc/session-contract";
 import { textFromContent, visibleUserMessageText } from "./session-projection";
-import { stripPresentationModeReminder } from "../presentation-mode-reminders";
-import { stripResponseModeReminder } from "../response-mode-reminders";
+import { stripPresentationModeReminder } from "../../../contracts/conversations/presentation-mode-reminders";
+import { stripResponseModeReminder } from "../../../contracts/conversations/response-mode-reminders";
 
 function sessionTitle(sessionManager: SessionManager) {
   const firstUserMessage = sessionManager

@@ -9,7 +9,7 @@ import type {
 } from "../../services/pi/CakeSessionRuntimes";
 import type { PiQueuedMessages } from "../../services/pi/conversation-data";
 import type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
-import type { ConversationResponseMode } from "../../services/pi/response-mode-reminders";
+import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
 import type {
   Annotation,
   Attachment,

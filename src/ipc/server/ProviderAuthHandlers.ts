@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { SessionChatError } from "../conversation-data";
 import { ClientEvents } from "../../services/clients/ClientEvents";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
-import { PiProviderAuthError } from "../../services/pi/model-data";
+import { PiProviderAuthError } from "../../contracts/pi/model-data";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 import { PiModels, type PiProviderAuthInteraction } from "../../services/pi/PiModels";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";

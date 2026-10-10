@@ -2,13 +2,13 @@ import { Effect } from "effect";
 import type { cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
-import { ArtifactError } from "./artifact-data";
+import { ArtifactError } from "../../contracts/artifacts/artifact-data";
 import type {
   ArtifactLineageId,
   ArtifactLink,
   ArtifactLinkTarget,
   ArtifactRevisionNumber,
-} from "../../services/storage/artifact-lineage";
+} from "../../contracts/artifacts/artifact-lineage";
 import { ArtifactProjection } from "../../services/artifacts/ArtifactProjection";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import * as artifactWorkflows from "./artifactWorkflows";

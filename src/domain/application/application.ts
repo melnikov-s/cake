@@ -1,6 +1,6 @@
 import { DateTime, Effect, Schema } from "effect";
-import { normalizeCakePromptOverrides } from "./cake-prompts";
-import { type CakePromptOverrides } from "../../services/storage/cake-prompt-data";
+import { normalizeCakePromptOverrides } from "../../contracts/application/cake-prompt-defaults";
+import { type CakePromptOverrides } from "../../contracts/application/cake-prompt-data";
 import { jsonObjectSchema, type JsonObject } from "../../ipc/json-contract";
 import {
   ApplicationState as ApplicationStateSchema,
@@ -14,7 +14,7 @@ import {
   SessionPlugin,
   type UtilityModel,
   type CakeChatPreferences,
-} from "../../services/storage/application-data";
+} from "../../contracts/application/application-data";
 import { validateSessionLabelName } from "../../utils/session-label-name";
 import { ApplicationState as ApplicationStateOwner } from "../../services/storage/ApplicationState";
 

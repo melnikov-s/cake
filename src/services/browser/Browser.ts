@@ -1,5 +1,6 @@
-import { Context, Schema, type Effect } from "effect";
+import { Context, type Effect } from "effect";
 import type { JsonObject, JsonValue } from "../../ipc/json-contract";
+import type { BrowserError } from "../../contracts/browser/browser-errors";
 
 export interface BrowserState {
   readonly sessionId: string;
@@ -25,11 +26,6 @@ export type BrowserAction = "back" | "forward" | "reload" | "stop";
 export type BrowserActionResult<Value> =
   | { readonly status: "completed"; readonly value: Value }
   | { readonly status: "mode-required" };
-
-export class BrowserError extends Schema.TaggedError<BrowserError>()("BrowserError", {
-  operation: Schema.String,
-  message: Schema.String,
-}) {}
 
 export interface BrowserService {
   readonly open: (

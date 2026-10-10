@@ -1,7 +1,7 @@
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
 import { Effect, Schema, Stream } from "effect";
-import type { DiscussionCatalogUpdate } from "../application/catalog-data";
+import type { DiscussionCatalogUpdate } from "../../contracts/application/catalog-data";
 import type { CakeControlTool } from "../../ipc/cake-chat-data";
 import { jsonObjectSchema } from "../../ipc/json-contract";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";

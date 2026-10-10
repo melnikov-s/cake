@@ -25,7 +25,7 @@ import {
   crossSessionContextSnapshot,
   encodeCrossSessionMessage,
   type CrossSessionContextSnapshot,
-} from "../../services/pi/cross-session-message";
+} from "../../contracts/conversations/cross-session-message";
 import type { ProjectSessionLocation } from "../../ipc/project-session-data";
 import { makeSubagentControl } from "../subagents/subagentControl";
 import {

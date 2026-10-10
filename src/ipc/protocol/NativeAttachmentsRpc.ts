@@ -1,5 +1,5 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { WorkspaceFileError } from "../../services/filesystem/WorkspaceFiles";
+import { WorkspaceFileError } from "../../contracts/filesystem/workspace-files-errors";
 import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
 
 export const NativeAttachmentsRpc = RpcGroup.make(

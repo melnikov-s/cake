@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
-import type { PiExtensionSetting } from "../../../src/services/pi/extension-settings-data";
+import type { PiExtensionSetting } from "../../../src/contracts/pi/extension-settings-data";
 import { projectPiSettings } from "../../../src/services/pi/runtime/settings-translation";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";
 import { createRendererStoreFixture } from "./renderer-store-fixture";

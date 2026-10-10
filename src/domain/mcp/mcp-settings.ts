@@ -4,7 +4,7 @@ import {
   type McpScope,
   type McpSettingsRead,
   type McpSettingsMutation,
-} from "../../services/pi/mcp-settings-data";
+} from "../../contracts/pi/mcp-settings-data";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { McpSettings } from "../../services/pi/McpSettings";

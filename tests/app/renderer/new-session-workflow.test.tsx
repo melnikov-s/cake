@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { observer } from "r-state-tree/react";
 import { applySnapshot, toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defaultApplicationState } from "../../../src/services/storage/application-data";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { Sidebar } from "../../../src/renderer/components/sidebar";

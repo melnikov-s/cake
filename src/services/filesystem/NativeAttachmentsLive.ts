@@ -5,7 +5,7 @@ import { Effect, Layer } from "effect";
 import type { Attachment } from "../../ipc/session-contract";
 import { Electron } from "../electron/Electron";
 import { NativeAttachments } from "./NativeAttachments";
-import { WorkspaceFileError } from "./WorkspaceFiles";
+import { WorkspaceFileError } from "../../contracts/filesystem/workspace-files-errors";
 
 const imageMimeTypes = new Map([
   [".avif", "image/avif"],

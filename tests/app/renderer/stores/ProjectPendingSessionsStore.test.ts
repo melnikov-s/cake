@@ -1,5 +1,5 @@
 import { createStore, mount } from "r-state-tree";
-import type { SavedDraft } from "../../../../src/services/storage/saved-draft-data";
+import type { SavedDraft } from "../../../../src/contracts/project-sessions/saved-draft-data";
 import { describe, expect, it, vi } from "vitest";
 import { ProjectPendingSessionsStore } from "../../../../src/renderer/stores/ProjectPendingSessionsStore";
 import type { ProjectSessionStore } from "../../../../src/renderer/stores/ProjectSessionStore";

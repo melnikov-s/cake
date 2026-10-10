@@ -22,7 +22,7 @@ import { SettingsTextField } from "./settings/settings-text-field";
 import { Input } from "./ui/input";
 import { SearchIcon } from "./ui/icons";
 import { SETTINGS_NAV_GROUPS, searchSettings } from "../lib/settings-search";
-import { defaultCakePrompts } from "../../domain/application/cake-prompts";
+import { defaultCakePrompts } from "../../contracts/application/cake-prompt-defaults";
 import { SettingsPromptField } from "./settings/settings-prompt-field";
 
 const cakePromptDefaults = defaultCakePrompts();

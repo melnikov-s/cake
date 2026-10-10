@@ -5,7 +5,7 @@ import {
   type DrawBoardId,
   type DrawBoardTitle,
   type DrawSessionId,
-} from "./draw-board-data";
+} from "../../contracts/draw/draw-board-data";
 import {
   DRAW_BOARD_SNAPSHOT_MAX_BYTES,
   DrawBoardStorage,

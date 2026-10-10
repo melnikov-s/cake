@@ -1,5 +1,5 @@
 import { Schema, Result } from "effect";
-import type { McpEntry } from "../../services/pi/mcp-settings-data";
+import type { McpEntry } from "../../contracts/pi/mcp-settings-data";
 const record = Schema.Record(Schema.String, Schema.Json);
 /** Stored documents can contain invalid native entries; extract display fields without widening them. */
 export function mcpText(value: McpEntry["config"][string] | undefined, fallback = "") {

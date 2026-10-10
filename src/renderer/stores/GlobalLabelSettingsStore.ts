@@ -4,7 +4,7 @@ import type {
   SessionLabelColor,
   SessionLabel,
   SessionLabelMutation,
-} from "../../services/storage/application-data";
+} from "../../contracts/application/application-data";
 import { validateSessionLabelName } from "../../utils/session-label-name";
 import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";

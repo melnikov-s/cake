@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { PiModels } from "../../services/pi/PiModels";
 import { utilityModelSelection } from "../utility-work/utilityWork";
-import { resolveCakePrompts } from "../application/cake-prompts";
+import { resolveCakePrompts } from "../../contracts/application/cake-prompt-defaults";
 
 const CleanupOutput = Schema.Struct({
   text: Schema.String.check(Schema.isMaxLength(32_000)),

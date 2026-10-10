@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { resolveCakePaths } from "../../src/config/CakePaths";
+import { piAgentDirectory } from "../../src/services/pi/PiPaths";
 import { workingDirectorySessionPath } from "../../src/services/storage/session-files";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -44,7 +45,10 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
 
   // The reset path needs a real Project Session. Do not rely on a global-chat
   // collection row (the permanent coordinator is a separate navigation entry).
-  const paths = resolveCakePaths({ env: { CAKE_HOME: cakeHome } });
+  const paths = resolveCakePaths({
+    env: { CAKE_HOME: cakeHome },
+    piAgentDirectory: piAgentDirectory(),
+  });
   const existing = SessionManager.create(
     project,
     workingDirectorySessionPath(project, paths.piSessions),

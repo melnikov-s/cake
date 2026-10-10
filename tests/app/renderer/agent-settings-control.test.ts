@@ -5,19 +5,22 @@ import { Effect, Layer, ManagedRuntime, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { applySnapshot, toSnapshot, createStore, mount } from "r-state-tree";
 import { DesktopConnectionStore } from "../../../src/renderer/stores/DesktopConnectionStore";
-import type { DesktopSharingState } from "../../../src/services/electron/desktop-sharing-data";
+import type { DesktopSharingState } from "../../../src/contracts/desktop/desktop-sharing-data";
 import { createTestClient } from "./test-client";
 import { speechOutputSettings } from "../../helpers/speech-output";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationValue,
-} from "../../../src/services/storage/application-data";
+} from "../../../src/contracts/application/application-data";
 import * as application from "../../../src/domain/application/application";
-import { defaultCakePrompts } from "../../../src/domain/application/cake-prompts";
+import { defaultCakePrompts } from "../../../src/contracts/application/cake-prompt-defaults";
 import * as presets from "../../../src/domain/model-presets/modelPresets";
 import { updateNonChatModelPreference } from "../../../src/domain/model-preferences/non-chat-model-preferences";
 import { loadMcpSettings, mutateMcpSettings } from "../../../src/domain/mcp/mcp-settings";
-import { MCP_STORED_SECRET, McpSettingsSnapshot } from "../../../src/services/pi/mcp-settings-data";
+import {
+  MCP_STORED_SECRET,
+  McpSettingsSnapshot,
+} from "../../../src/contracts/pi/mcp-settings-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { makeMcpSettingsLayer } from "../../../src/services/pi/McpSettings";

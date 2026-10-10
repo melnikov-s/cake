@@ -3,7 +3,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { observer } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { WorktreeRecord } from "../../../src/services/worktrees/managed-worktree-data";
+import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { WorktreePill } from "../../../src/renderer/components/worktree-pill";

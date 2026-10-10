@@ -10,11 +10,14 @@ import {
   UtilityModel,
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "./application-data";
-import { CakePrompts } from "./cake-prompt-data";
-// Frozen wording recognized by the v5 migration, not the current domain defaults.
+} from "../../contracts/application/application-data";
+import { CakePrompts } from "../../contracts/application/cake-prompt-data";
 import versionFivePromptDefaults from "./internal/application-v5-prompt-defaults.json";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
+import {
+  ApplicationEncodeError,
+  ApplicationWriteError,
+} from "../../contracts/storage/application-storage-errors";
 
 const APPLICATION_DOCUMENT_VERSION = 6;
 export const APPLICATION_DOCUMENT_NAME = "application.json";
@@ -42,16 +45,6 @@ export class ApplicationMigrationError extends Schema.TaggedError<ApplicationMig
 export class ApplicationDecodeError extends Schema.TaggedError<ApplicationDecodeError>()(
   "ApplicationDecodeError",
   { message: Schema.String },
-) {}
-
-export class ApplicationEncodeError extends Schema.TaggedError<ApplicationEncodeError>()(
-  "ApplicationEncodeError",
-  { message: Schema.String },
-) {}
-
-export class ApplicationWriteError extends Schema.TaggedError<ApplicationWriteError>()(
-  "ApplicationWriteError",
-  { stage: Schema.Literals(["write", "rename"]), message: Schema.String },
 ) {}
 
 export type ApplicationStorageError =

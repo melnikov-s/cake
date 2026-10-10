@@ -1,7 +1,7 @@
 import { it } from "@effect/vitest";
 import { Effect, Exit, Layer } from "effect";
 import { describe, expect } from "vitest";
-import { defaultApplicationState } from "../../../src/services/storage/application-data";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { loadMcpSettings, mutateMcpSettings } from "../../../src/domain/mcp/mcp-settings";
 import { McpSettings, makeMcpSettingsLayer } from "../../../src/services/pi/McpSettings";
 import { CakeSessionRuntimes, PiSessionError } from "../../../src/services/pi/CakeSessionRuntimes";

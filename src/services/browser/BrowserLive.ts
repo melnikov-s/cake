@@ -4,7 +4,8 @@ import { jsonValueSchema } from "../../ipc/json-contract";
 import { Electron } from "../electron/Electron";
 import { ClientEvents } from "../clients/ClientEvents";
 import { ProjectAccess } from "../projects/ProjectAccess";
-import { Browser, BrowserError } from "./Browser";
+import { Browser } from "./Browser";
+import { BrowserError } from "../../contracts/browser/browser-errors";
 import { BrowserRuntime } from "./BrowserRuntime";
 
 const browserError = (operation: string, cause: unknown) =>

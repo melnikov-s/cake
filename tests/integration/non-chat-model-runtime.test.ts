@@ -18,7 +18,7 @@ import {
   projectNonChatModelCatalog,
 } from "../../src/services/pi/live/PiModelsLive";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
-import type { NonChatModelPreferences } from "../../src/services/storage/non-chat-model-data";
+import type { NonChatModelPreferences } from "../../src/contracts/models/non-chat-model-data";
 import { nativeNonChatScript, nonChatProviderSource } from "../fixtures/non-chat-provider";
 
 const directories: string[] = [];

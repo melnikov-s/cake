@@ -43,7 +43,7 @@ import type {
   DrawShapeStyle,
   DrawShapeSummary,
   DrawStyleUpdate,
-} from "../../domain/draw/draw-editor";
+} from "../../contracts/draw/draw-editor";
 
 export interface DrawEditorAdapter extends DrawEditorController {
   loadDocument(snapshot: DrawDocumentSnapshot): void;

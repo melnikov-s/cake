@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CakeChatTarget } from "../../../src/ipc/cake-chat-data";
 import type { VscodeEditorAction } from "../../../src/ipc/vscode-editor-action";
-import { encodeCrossSessionMessage } from "../../../src/services/pi/cross-session-message";
+import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import {
   AppControlBridge,
   listAppControlTools,

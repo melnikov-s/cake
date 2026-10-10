@@ -21,7 +21,7 @@ import type { ConversationSnapshot } from "../../../src/ipc/session-contract";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { sessionAssistantThreadPath } from "../../../src/ipc/discussion-session-data";
-import { defaultApplicationState } from "../../../src/services/storage/application-data";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 
 const makeSnapshot = (sessionId: string, sessionFile: string): ConversationSnapshot => ({
   workspacePath: "/project",

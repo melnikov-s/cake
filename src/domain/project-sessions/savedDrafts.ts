@@ -1,11 +1,12 @@
 import { Effect, Stream } from "effect";
-import { SavedDraftStorage, SavedDraftError } from "../../services/storage/SavedDraftStorage";
+import { SavedDraftStorage } from "../../services/storage/SavedDraftStorage";
+import { SavedDraftError } from "../../contracts/storage/saved-draft-storage-errors";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
 import * as projectSessionLocations from "./projectSessionLocations";
 import * as projectSessionOperations from "./projectSessionOperations";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
-import type { SavedDraft } from "../../services/storage/saved-draft-data";
+import type { SavedDraft } from "../../contracts/project-sessions/saved-draft-data";
 
 const requireProject = Effect.fn("SavedDrafts.requireProject")(function* (projectPath: string) {
   const locations = yield* projectSessionLocations.locations();

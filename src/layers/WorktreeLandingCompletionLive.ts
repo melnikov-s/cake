@@ -9,7 +9,7 @@ import type { ProjectSessionConfiguration } from "../services/project-sessions/P
 import type { SessionFamilyStorage } from "../services/storage/SessionFamilyStorage";
 import type { ManagedWorktrees } from "../services/worktrees/ManagedWorktrees";
 import * as projectSessionLifecycle from "../domain/project-sessions/projectSessionLifecycle";
-import { WorktreeLandingError } from "../services/worktrees/worktree-landing-data";
+import { WorktreeLandingError } from "../contracts/worktrees/worktree-landing-data";
 import { WorktreeLandingCompletion } from "../services/worktrees/WorktreeLandingCompletion";
 
 type Dependencies =

@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { WorktreeRecord } from "../services/worktrees/managed-worktree-data";
+import { WorktreeRecord } from "../contracts/worktrees/managed-worktree-data";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));

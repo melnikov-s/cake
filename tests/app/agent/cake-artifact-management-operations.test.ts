@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ArtifactProjectionMetadata } from "../../../src/services/artifacts/ArtifactProjection";
+import type { ArtifactProjectionMetadata } from "../../../src/contracts/artifacts/artifact-projection-data";
 import type { ArtifactRecord, CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
 import {
   createCakeArtifactOperations,

@@ -1,6 +1,6 @@
 import { Store } from "r-state-tree";
-import type { DesktopHostSelection } from "../../services/electron/desktop-host-data";
-import { normalizeServerUrl } from "../../services/electron/desktop-host-data";
+import type { DesktopHostSelection } from "../../contracts/desktop/desktop-host-data";
+import { normalizeServerUrl } from "../../contracts/desktop/desktop-host-data";
 import type { Client } from "../client/Client";
 
 /** Window-lifetime host workflow; saved selection is native-owned, connection facts are projected.

@@ -14,7 +14,7 @@ import type {
   InlineWidgetGenerationResult,
   InlineWidgetRevisionRequest,
 } from "./sidecar-runtime";
-import { ArtifactProjectionMetadata } from "../../artifacts/ArtifactProjection";
+import { ArtifactProjectionMetadata } from "../../../contracts/artifacts/artifact-projection-data";
 import type {
   CakeOperationDefinition,
   CakeOperationExecutionContext,

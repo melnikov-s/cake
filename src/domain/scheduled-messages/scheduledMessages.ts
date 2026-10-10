@@ -6,11 +6,11 @@ import {
   type ScheduleMessageInput,
   type ScheduledMessage,
   type ScheduledMessageUpdate,
-} from "../../services/scheduled-messages/scheduled-message-data";
+} from "../../contracts/scheduled-messages/scheduled-message-data";
 import {
   encodeScheduledMessage,
   scheduledMessageOrigin,
-} from "../../services/pi/scheduled-message-envelope";
+} from "../../contracts/conversations/scheduled-message-envelope";
 import { ScheduledMessages } from "../../services/scheduled-messages/ScheduledMessages";
 
 const asError = (operation: string) =>

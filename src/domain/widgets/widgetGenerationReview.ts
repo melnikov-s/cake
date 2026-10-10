@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 import type { JsonValue } from "../../ipc/json-contract";
 import { extractRepairedWidget } from "../../services/widgets/inline-widget-service";
-import { RenderedWidgetCaptureError } from "../../services/widgets/RenderedWidgetCapture";
+import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 
 export interface InlineWidgetGenerationRequest {
   readonly sessionId: string;

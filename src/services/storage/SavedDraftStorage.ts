@@ -9,15 +9,11 @@ import {
   Semaphore,
   Stream,
 } from "effect";
-import { SavedDraft } from "./saved-draft-data";
+import { SavedDraft } from "../../contracts/project-sessions/saved-draft-data";
 import { atomicWriteFile } from "./internal/atomicFile";
+import { SavedDraftError } from "../../contracts/storage/saved-draft-storage-errors";
 
 const Document = Schema.Struct({ version: Schema.Literal(1), records: Schema.Array(SavedDraft) });
-
-export class SavedDraftError extends Schema.TaggedError<SavedDraftError>()("SavedDraftError", {
-  operation: Schema.String,
-  message: Schema.String,
-}) {}
 const failure = (operation: string, cause: unknown) =>
   new SavedDraftError({
     operation,

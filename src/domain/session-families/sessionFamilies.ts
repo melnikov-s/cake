@@ -15,18 +15,18 @@ import {
 } from "../../services/storage/SessionArchiveStorage";
 import {
   SessionFamilyStorage,
-  SessionFamilyStorageError,
   familyChildren,
   familyDepth,
   familyMember,
   type FamilyTurn,
 } from "../../services/storage/SessionFamilyStorage";
+import { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import {
   encodeCrossSessionMessage,
   parseCrossSessionMessage,
   type CrossSessionContextSnapshot,
-} from "../../services/pi/cross-session-message";
+} from "../../contracts/conversations/cross-session-message";
 
 const failure = (message: string) =>
   new SessionFamilyStorageError({ operation: "familyLifecycle", message });

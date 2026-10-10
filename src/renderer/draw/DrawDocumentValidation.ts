@@ -1,4 +1,4 @@
-import type { DrawDocumentSnapshot } from "../../domain/draw/draw-editor";
+import type { DrawDocumentSnapshot } from "../../contracts/draw/draw-editor";
 import type { JsonObject, JsonValue } from "../../ipc/json-contract";
 
 export interface ValidatedDrawDocument extends JsonObject {

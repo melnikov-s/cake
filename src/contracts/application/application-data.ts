@@ -3,7 +3,7 @@ import { SessionPluginControls } from "./session-plugin-controls";
 import { ThinkingLevel } from "../pi/model-data";
 import { SESSION_LABEL_COLORS } from "../../utils/session-label-palette";
 import { CakePromptOverrides } from "./cake-prompt-data";
-import { NonChatModelPreferences } from "./non-chat-model-data";
+import { NonChatModelPreferences } from "../models/non-chat-model-data";
 
 export { SESSION_LABEL_COLORS } from "../../utils/session-label-palette";
 

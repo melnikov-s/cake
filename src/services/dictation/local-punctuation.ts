@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { Tokenizer } from "@huggingface/tokenizers";
 import { Schema } from "effect";
 import { punctuationWords, type PunctuationWord } from "../../utils/punctuation-text";
-import type { PunctuationResult } from "./dictation-data";
+import type { PunctuationResult } from "../../contracts/dictation/dictation-data";
 import manifest from "./punctuation-manifest.json";
 import tokenizerData from "./punctuation-tokenizer.json";
 import type { InstallProgress } from "./local-parakeet";

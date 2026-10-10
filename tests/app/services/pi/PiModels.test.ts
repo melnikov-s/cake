@@ -11,7 +11,7 @@ import {
   PiModels,
   type PiModelsAdapter,
 } from "../../../../src/services/pi/PiModels";
-import type { PiModel } from "../../../../src/services/pi/model-data";
+import type { PiModel } from "../../../../src/contracts/pi/model-data";
 import {
   makePiModelsLive,
   makeSessionlessRuntimeCache,

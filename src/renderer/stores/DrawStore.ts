@@ -1,5 +1,5 @@
 import { Store, observable, snapshot } from "r-state-tree";
-import type { DrawBoardMetadata } from "../../services/storage/draw-board-data";
+import type { DrawBoardMetadata } from "../../contracts/draw/draw-board-data";
 import type {
   DrawApplyReceipt,
   DrawDocumentSnapshot,
@@ -9,7 +9,7 @@ import type {
   DrawRender,
   DrawRenderInput,
   DrawScene,
-} from "../../domain/draw/draw-editor";
+} from "../../contracts/draw/draw-editor";
 import type { DrawEditorAdapter } from "../draw/DrawEditorAdapter";
 import { assertPersistableDrawDocument } from "../draw/DrawDocumentValidation";
 import { describeError } from "../lib/error-details";

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { generateReviewedWidget } from "../../../../src/domain/widgets/widgetGenerationReview";
 import { ProjectSessionIntegrationHost } from "../../../../src/layers/ProjectSessionIntegrationHost";
 import type { InlineWidgetGenerationRequest } from "../../../../src/domain/widgets/widgetGenerationReview";
-import { RenderedWidgetCaptureError } from "../../../../src/services/widgets/RenderedWidgetCapture";
+import { RenderedWidgetCaptureError } from "../../../../src/contracts/widgets/rendered-widget-capture-errors";
 import { inlineWidgetDocument } from "../../../../src/services/widgets/inline-widget-document-registry";
 
 const source = (name: string) =>

@@ -1,5 +1,5 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { BrowserError } from "../../services/browser/Browser";
+import { BrowserError } from "../../contracts/browser/browser-errors";
 import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
 
 type BrowserOperation = keyof Pick<

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { takeSpokenPhrases } from "../../../src/renderer/speech/spoken-text";
-import { addPresentationModeReminder } from "../../../src/services/pi/presentation-mode-reminders";
+import { addPresentationModeReminder } from "../../../src/contracts/conversations/presentation-mode-reminders";
 
 describe("spoken assistant prose", () => {
   it("emits complete sentence or bounded phrase units while holding unfinished prose until final", () => {

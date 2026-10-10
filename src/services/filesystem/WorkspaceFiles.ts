@@ -1,10 +1,6 @@
-import { Context, Schema, type Effect } from "effect";
+import { Context, type Effect } from "effect";
 import type { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../../ipc/cake-rpc-contract";
-
-export class WorkspaceFileError extends Schema.TaggedError<WorkspaceFileError>()(
-  "WorkspaceFileError",
-  { operation: Schema.String, message: Schema.String },
-) {}
+import type { WorkspaceFileError } from "../../contracts/filesystem/workspace-files-errors";
 
 type FilesystemOperation = "suggest-files" | "read-workspace-file" | "read-workspace-image";
 type Payload<Type extends FilesystemOperation> = (typeof cakeRpcPayloadSchemas)[Type]["Type"];

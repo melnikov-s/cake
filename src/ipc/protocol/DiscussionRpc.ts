@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { DiscussionCatalogUpdate } from "../../domain/application/catalog-data";
+import { DiscussionCatalogUpdate } from "../../contracts/application/catalog-data";
 import {
   DiscussionSessionAcceptedTurn,
   DiscussionSessionError,

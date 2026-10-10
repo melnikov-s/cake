@@ -3,7 +3,7 @@ import { it } from "@effect/vitest";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { expect, vi } from "vitest";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
-import { defaultApplicationState } from "../../../src/services/storage/application-data";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { makeCakeSessionRuntimesLayer } from "../../../src/services/pi/CakeSessionRuntimes";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";

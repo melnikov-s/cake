@@ -7,7 +7,7 @@ import {
   type CakeIpcClientService,
 } from "../ipc/client/CakeIpcClient";
 import { cakeBuildId } from "../ipc/protocol/BackendConnectionRpc";
-import { BrowserError } from "../services/browser/Browser";
+import { BrowserError } from "../contracts/browser/browser-errors";
 import { makeElectronRpcClientProtocol } from "../ipc/transport/ElectronRpcClientProtocol";
 import type { ElectronRpcTransport } from "../ipc/transport/ElectronRpcTransport";
 import {

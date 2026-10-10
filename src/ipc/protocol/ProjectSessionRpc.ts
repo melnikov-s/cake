@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { SessionCatalogUpdate } from "../../domain/application/catalog-data";
+import { SessionCatalogUpdate } from "../../contracts/application/catalog-data";
 import { TurnId } from "../conversation-data";
 import {
   ProjectSessionError,

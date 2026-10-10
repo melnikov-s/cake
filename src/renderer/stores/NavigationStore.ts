@@ -2,7 +2,7 @@ import { Store } from "r-state-tree";
 import {
   decodeArtifactLineageId,
   decodeArtifactRevisionNumber,
-} from "../../services/storage/artifact-lineage";
+} from "../../contracts/artifacts/artifact-lineage";
 import type { AppShellStore, SessionHistoryEntry } from "./AppShellStore";
 import type { ArtifactLibraryStore } from "./ArtifactLibraryStore";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";

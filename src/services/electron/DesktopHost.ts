@@ -1,5 +1,8 @@
 import { Context, type Effect } from "effect";
-import type { DesktopHostError, DesktopHostSelection } from "./desktop-host-data";
+import type {
+  DesktopHostError,
+  DesktopHostSelection,
+} from "../../contracts/desktop/desktop-host-data";
 
 export class DesktopHost extends Context.Service<
   DesktopHost,

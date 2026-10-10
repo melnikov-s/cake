@@ -1,8 +1,8 @@
 import { Effect, Stream } from "effect";
 import { SESSION_TITLE_MAX_LENGTH, type PiSessionSummary } from "../../ipc/session-contract";
 import { getState } from "../application/application";
-import type { ApplicationState } from "../../services/storage/application-data";
-import type { SessionCatalogUpdate } from "../application/catalog-data";
+import type { ApplicationState } from "../../contracts/application/application-data";
+import type { SessionCatalogUpdate } from "../../contracts/application/catalog-data";
 import { toJsonValue } from "../../utils/to-json-value";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import { PiSessionError, CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";

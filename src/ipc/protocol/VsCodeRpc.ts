@@ -1,6 +1,14 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { VsCodeServerError } from "../../services/vscode/VsCodeServer";
+import { VsCodeServerError } from "../../contracts/vscode/vs-code-server-errors";
+import {
+  AcquireEditor,
+  EditorBounds,
+  EditorEndpoint,
+  EditorLease,
+  EditorLeaseId,
+  EditorTheme,
+} from "../../contracts/vscode/editor-endpoint";
 import {
   embeddedEditorEventSchema,
   cakeRpcPayloadSchemas,
@@ -26,53 +34,6 @@ const vscodeRpc = <Type extends VsCodeOperation>(type: Type) =>
     error: VsCodeServerError,
   });
 
-const EditorTheme = Schema.Literals(["light", "dark"]);
-const leaseId = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/));
-const workspacePath = Schema.NonEmptyString.check(Schema.isMaxLength(4_096));
-const endpoint = Schema.NonEmptyString.check(Schema.isMaxLength(8_192));
-const requestId = Schema.String.check(Schema.isUUID());
-export const EditorLease = Schema.Struct({
-  id: leaseId,
-  endpoint,
-  editorPort: Schema.optionalKey(
-    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
-  ),
-  editorOrigin: Schema.optionalKey(
-    Schema.NonEmptyString.check(
-      Schema.isMaxLength(2048),
-      Schema.makeFilter((value) => {
-        try {
-          return new URL(value).origin === value && value.startsWith("https://");
-        } catch {
-          return false;
-        }
-      }),
-    ),
-  ),
-});
-export interface EditorLease extends Schema.Schema.Type<typeof EditorLease> {}
-export const AcquireEditor = Schema.Struct({
-  requestId,
-  workspacePath,
-  theme: EditorTheme,
-});
-export const EditorEndpoint = Schema.Struct({
-  workspacePath,
-  url: endpoint,
-  theme: EditorTheme,
-});
-
-const dimension = Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 100_000 }));
-const EditorBounds = Schema.Struct({
-  requestId,
-  visible: Schema.Boolean,
-  x: Schema.Number,
-  y: Schema.Number,
-  width: dimension,
-  height: dimension,
-  projectSidebarWidth: dimension,
-});
-
 export const VsCodeViewRpc = RpcGroup.make(
   Rpc.make("vscodeViews.preferredTheme", { success: EditorTheme, error: VsCodeServerError }),
   Rpc.make("vscodeViews.open", { payload: EditorEndpoint, error: VsCodeServerError }),
@@ -92,7 +53,7 @@ export const VsCodeRpc = RpcGroup.make(
     success: EditorLease,
     error: VsCodeServerError,
   }),
-  Rpc.make("vscode.release", { payload: { leaseId } }),
+  Rpc.make("vscode.release", { payload: { leaseId: EditorLeaseId } }),
   Rpc.make("vscode.setVisible", { payload: { visible: Schema.Boolean } }),
   Rpc.make("vscode.setTheme", { payload: { theme: EditorTheme }, error: VsCodeServerError }),
   vscodeRpc("get-embedded-editor-state"),

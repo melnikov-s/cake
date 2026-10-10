@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Schema } from "effect";
-import { extractSavedDrafts } from "../../../../src/services/storage/WindowStateStorage";
+import { extractSavedDrafts } from "../../../../src/contracts/project-sessions/saved-draft-extraction";
 
 const id = "00000000-0000-4000-8000-000000000001";
 const stagedId = "00000000-0000-4000-8000-000000000002";

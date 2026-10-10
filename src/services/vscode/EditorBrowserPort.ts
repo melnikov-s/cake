@@ -4,4 +4,4 @@ import { Context } from "effect";
 export class EditorBrowserPort extends Context.Service<
   EditorBrowserPort,
   { readonly port: number | undefined; readonly publicOrigin?: string }
->()("cake/server/EditorBrowserPort") {}
+>()("cake/services/vscode/EditorBrowserPort") {}

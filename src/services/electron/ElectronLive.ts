@@ -17,12 +17,8 @@ import {
 import { decodeDrawExportData, drawExportExtension, drawExportFilters } from "./DrawExportFile";
 import { ScreenCaptureWindow } from "./ScreenCaptureWindow";
 import { shouldAllowNavigation } from "./navigation-policy";
-import {
-  CAKE_TITLE_BAR_HEIGHT,
-  Electron,
-  ElectronError,
-  type ElectronWindowLifecycle,
-} from "./Electron";
+import { CAKE_TITLE_BAR_HEIGHT, Electron, type ElectronWindowLifecycle } from "./Electron";
+import { ElectronError } from "../../contracts/desktop/electron-errors";
 import { ClientConnections } from "../clients/ClientConnections";
 import { ClientEvents } from "../clients/ClientEvents";
 import { ClientWorkspaces } from "../clients/ClientWorkspaces";

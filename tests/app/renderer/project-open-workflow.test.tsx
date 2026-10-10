@@ -5,7 +5,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defaultApplicationState } from "../../../src/services/storage/application-data";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { App } from "../../../src/renderer/components/app";
 import { createRendererStoreFixture } from "./renderer-store-fixture";

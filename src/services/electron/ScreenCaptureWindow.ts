@@ -17,7 +17,7 @@ import {
   type CaptureResult,
   type ScreenCaptureSettings,
   type ScreenCaptureSnapshot,
-} from "./screen-capture-data";
+} from "../../contracts/desktop/screen-capture-data";
 
 interface CaptureWindowOptions {
   readonly preloadPath: string;

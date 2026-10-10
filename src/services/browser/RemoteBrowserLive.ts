@@ -3,7 +3,8 @@ import { cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
 import type { jsonValueSchema } from "../../ipc/json-contract";
 import { ProjectAccess } from "../projects/ProjectAccess";
 import { RendererRequestCoordinator } from "../renderer-requests/RendererRequestCoordinator";
-import { Browser, BrowserError } from "./Browser";
+import { Browser } from "./Browser";
+import { BrowserError } from "../../contracts/browser/browser-errors";
 
 /** Headless backend control plane; Chromium and native windows never exist here. */
 export const RemoteBrowserLive = Layer.effect(

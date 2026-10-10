@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { dirname, join } from "node:path";
 import { Schema } from "effect";
-import { SpeechOutputAudio } from "./speech-output-data";
+import { SpeechOutputAudio } from "../../contracts/speech/speech-output-data";
 
 const Reply = Schema.Union([
   Schema.Struct({ ready: Schema.Literal(true) }),

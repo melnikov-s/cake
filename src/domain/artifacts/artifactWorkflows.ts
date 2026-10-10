@@ -1,6 +1,7 @@
-import { DateTime, Effect, Schema } from "effect";
+import { DateTime, Effect } from "effect";
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
-import { ArtifactStorage, ArtifactStorageError } from "../../services/storage/ArtifactStorage";
+import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
+import { ArtifactStorageError } from "../../contracts/storage/artifact-storage-errors";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import {
   type ArtifactCatalog,
@@ -13,20 +14,11 @@ import {
   type ArtifactStableRef,
   formatArtifactRef,
   parseArtifactRef,
-} from "../../services/storage/artifact-lineage";
-
-export class ArtifactNotFound extends Schema.TaggedError<ArtifactNotFound>()("ArtifactNotFound", {
-  lineageId: Schema.String,
-  revision: Schema.optionalKey(Schema.Int),
-}) {}
-
-export class ArtifactNotLinked extends Schema.TaggedError<ArtifactNotLinked>()(
-  "ArtifactNotLinked",
-  {
-    sessionId: Schema.String,
-    lineageId: Schema.String,
-  },
-) {}
+} from "../../contracts/artifacts/artifact-lineage";
+import {
+  ArtifactNotFound,
+  ArtifactNotLinked,
+} from "../../contracts/artifacts/artifact-workflow-errors";
 
 export interface CreateArtifactInput {
   readonly sessionId: string;

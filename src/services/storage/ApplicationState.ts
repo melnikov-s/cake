@@ -2,13 +2,12 @@ import { Context, Effect, Layer, SubscriptionRef, type Stream } from "effect";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "./application-data";
+} from "../../contracts/application/application-data";
+import { ApplicationStorage, type ApplicationStorageError } from "./ApplicationStorage";
 import {
-  ApplicationStorage,
   type ApplicationEncodeError,
-  type ApplicationStorageError,
   type ApplicationWriteError,
-} from "./ApplicationStorage";
+} from "../../contracts/storage/application-storage-errors";
 
 export interface ApplicationStateProjection {
   readonly revision: number;

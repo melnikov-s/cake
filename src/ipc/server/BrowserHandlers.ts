@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 import { jsonObjectSchema } from "../json-contract";
-import { Browser, BrowserError } from "../../services/browser/Browser";
+import { Browser } from "../../services/browser/Browser";
+import { BrowserError } from "../../contracts/browser/browser-errors";
 import { BrowserRpc } from "../protocol/BrowserRpc";
 import {
   RendererConnection,

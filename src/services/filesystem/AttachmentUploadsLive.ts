@@ -4,12 +4,8 @@ import { randomUUID } from "node:crypto";
 import { Clock, Effect, Layer, Schedule, Semaphore } from "effect";
 import type { Attachment } from "../../ipc/session-contract";
 import { ClientConnections } from "../clients/ClientConnections";
-import {
-  AttachmentUploadError,
-  AttachmentUploads,
-  uploadId,
-  uploadReference,
-} from "./AttachmentUploads";
+import { AttachmentUploadError } from "../../contracts/filesystem/attachment-uploads-errors";
+import { AttachmentUploads, uploadId, uploadReference } from "./AttachmentUploads";
 
 const MAX_FILE = 8 * 1024 * 1024;
 const MAX_IMAGE = 15_000_000;

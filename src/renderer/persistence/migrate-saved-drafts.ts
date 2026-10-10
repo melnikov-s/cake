@@ -1,6 +1,6 @@
 import type { Schema } from "effect";
 import type { Client } from "../client/Client";
-import { extractSavedDrafts } from "../../services/storage/WindowStateStorage";
+import { extractSavedDrafts } from "../../contracts/project-sessions/saved-draft-extraction";
 
 /** Import stable legacy IDs into the selected endpoint before stripping its local snapshot.
  * A failed import or window save must leave the loaded snapshot untouched for retry. */

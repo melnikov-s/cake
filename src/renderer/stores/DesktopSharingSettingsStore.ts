@@ -1,5 +1,5 @@
 import { Store } from "r-state-tree";
-import type { DesktopSharingState } from "../../services/electron/desktop-sharing-data";
+import type { DesktopSharingState } from "../../contracts/desktop/desktop-sharing-data";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 

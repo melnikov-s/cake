@@ -16,13 +16,14 @@ import {
 import { revokeInlineWidget } from "../services/widgets/inline-widget-document-registry";
 import { InlineWidgets } from "../services/widgets/InlineWidgets";
 import { RenderedWidgetCapture } from "../services/widgets/RenderedWidgetCapture";
-import { ArtifactLineageId } from "../services/storage/artifact-lineage";
+import { ArtifactLineageId } from "../contracts/artifacts/artifact-lineage";
 import { ArtifactStorage } from "../services/storage/ArtifactStorage";
 import {
   registerExtensionCompanionScheme,
   handleExtensionCompanionScheme,
 } from "../services/electron/extension-companion-protocol";
 import { resolveCakePaths } from "../config/CakePaths";
+import { piAgentDirectory } from "../services/pi/PiPaths";
 import { MainApplication } from "./MainApplication";
 import { makeMainLive } from "./MainLive";
 import cakeIconPath from "../assets/cake.png?asset";
@@ -35,7 +36,7 @@ registerExtensionCompanionScheme();
 if (process.env.CAKE_ELECTRON_USER_DATA)
   app.setPath("userData", process.env.CAKE_ELECTRON_USER_DATA);
 
-const paths = resolveCakePaths();
+const paths = resolveCakePaths({ piAgentDirectory: piAgentDirectory() });
 const selectedHost = loadDesktopHost(app.getPath("userData"));
 const mainOptions = {
   application: app,

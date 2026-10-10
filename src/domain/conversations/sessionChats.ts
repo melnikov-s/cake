@@ -3,7 +3,7 @@ import type { SessionInspectionQuery } from "../../ipc/session-query-data";
 import type { ChatConfiguration, PiSettingUpdate } from "../../ipc/session-contract";
 import { CakeSessionRuntimes, type CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
-import { encodeCrossSessionMessage } from "../../services/pi/cross-session-message";
+import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import {
   TurnId,
   type SessionChatPromptInput,

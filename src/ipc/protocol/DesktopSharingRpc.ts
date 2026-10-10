@@ -3,7 +3,7 @@ import {
   DesktopSharingError,
   DesktopSharingInput,
   DesktopSharingState,
-} from "../../services/electron/desktop-sharing-data";
+} from "../../contracts/desktop/desktop-sharing-data";
 
 export const DesktopSharingRpc = RpcGroup.make(
   Rpc.make("desktopSharing.configure", {

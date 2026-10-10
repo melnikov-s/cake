@@ -8,7 +8,7 @@ import {
   type ConversationSnapshot,
   type SessionChatPromptInput,
 } from "../../../src/ipc/conversation-data";
-import { encodeCrossSessionMessage } from "../../../src/services/pi/cross-session-message";
+import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import { createCakeSessionRuntimeTurnController } from "../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";

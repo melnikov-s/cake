@@ -15,13 +15,11 @@ import {
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "../../../src/services/storage/application-data";
+} from "../../../src/contracts/application/application-data";
 import { makePiModelsLayer, type PiModels } from "../../../src/services/pi/PiModels";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import {
-  ApplicationStorage,
-  ApplicationWriteError,
-} from "../../../src/services/storage/ApplicationStorage";
+import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
+import { ApplicationWriteError } from "../../../src/contracts/storage/application-storage-errors";
 
 const input = (name = "Deep review") => ({
   name,

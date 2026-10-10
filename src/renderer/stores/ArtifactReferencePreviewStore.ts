@@ -5,8 +5,8 @@ import type {
   ArtifactLinkTarget,
   ArtifactRevisionNumber,
   ArtifactStableRef,
-} from "../../services/storage/artifact-lineage";
-import type { ArtifactProjectionMetadata } from "../../services/artifacts/ArtifactProjection";
+} from "../../contracts/artifacts/artifact-lineage";
+import type { ArtifactProjectionMetadata } from "../../contracts/artifacts/artifact-projection-data";
 import type { ArtifactReferencePreviewState } from "../lib/artifact-reference-preview-state";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { ClientContext } from "./context/ClientContext";

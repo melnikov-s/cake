@@ -5,7 +5,7 @@ import {
   SubagentActivity,
   SubagentHandleId,
   SubagentUpdate,
-} from "../../../src/services/subagents/subagent-data";
+} from "../../../src/contracts/subagents/subagent-data";
 import { CakeIpcClient } from "../../../src/ipc/client/CakeIpcClient";
 import { makeRuntime } from "../../../src/renderer/runtime";
 

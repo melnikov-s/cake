@@ -6,12 +6,11 @@ import {
   type PiSettings as PiSettingsValue,
 } from "../../ipc/session-contract";
 import { applyPiSetting, projectPiSettings } from "./runtime/settings-translation";
-import { PiExtensionSetting, type PiExtensionToggle } from "./extension-settings-data";
-
-export class PiSettingsError extends Schema.TaggedError<PiSettingsError>()("PiSettingsError", {
-  operation: Schema.String,
-  message: Schema.String,
-}) {}
+import {
+  PiExtensionSetting,
+  type PiExtensionToggle,
+} from "../../contracts/pi/extension-settings-data";
+import { PiSettingsError } from "../../contracts/pi/pi-settings-errors";
 
 export class PiSettings extends Context.Service<
   PiSettings,

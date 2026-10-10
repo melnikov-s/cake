@@ -1,6 +1,6 @@
 import { observer } from "r-state-tree/react";
 import type { ScreenCaptureAttachmentStore } from "../stores/ScreenCaptureAttachmentStore";
-import { DEFAULT_CAPTURE_SHORTCUT } from "../../services/electron/screen-capture-data";
+import { DEFAULT_CAPTURE_SHORTCUT } from "../../contracts/desktop/screen-capture-data";
 import { HotkeyRecorder } from "./ui/hotkey-recorder";
 import { Select } from "./ui/select";
 import { Button } from "./ui/button";

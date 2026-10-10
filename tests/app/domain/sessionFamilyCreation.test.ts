@@ -3,7 +3,7 @@ import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
 import { createChild } from "../../../src/domain/session-families/sessionFamilies";
-import { parseCrossSessionMessage } from "../../../src/services/pi/cross-session-message";
+import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { makeCakeSessionRuntimesLayer } from "../../../src/services/pi/CakeSessionRuntimes";
 import {

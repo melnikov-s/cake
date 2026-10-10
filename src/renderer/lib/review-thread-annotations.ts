@@ -2,8 +2,8 @@ import type {
   EditorAnnotation,
   EditorAnnotationSnapshot,
   EditorAnnotationStatus,
-} from "../ipc/editor-annotation";
-import type { ReviewThread } from "../renderer/models/ReviewThread";
+} from "../../ipc/editor-annotation";
+import type { ReviewThread } from "../models/ReviewThread";
 
 export function reviewThreadAnnotations(
   sessionId: string,

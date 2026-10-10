@@ -9,7 +9,7 @@ import {
   DrawBoardRenameInput,
   DrawBoardSaveInput,
   DrawBoardTarget,
-} from "../../services/storage/draw-board-data";
+} from "../../contracts/draw/draw-board-data";
 
 export const DrawRpc = RpcGroup.make(
   Rpc.make("draw.list", {

@@ -4,7 +4,7 @@ import {
   discussionAnchorFromEditorSelection,
   sourceAttachmentFromEditorSelection,
 } from "../../utils/editor-selection";
-import { reviewThreadAnnotations } from "../../utils/review-thread-annotations";
+import { reviewThreadAnnotations } from "../lib/review-thread-annotations";
 import type { StoreEvent } from "../events/StoreEvent";
 import { BrowserStore } from "./BrowserStore";
 import { EmbeddedEditorStore } from "./EmbeddedEditorStore";

@@ -4,12 +4,12 @@ import * as TestClock from "effect/testing/TestClock";
 import { describe, expect, vi } from "vitest";
 import type { ProjectSessionPromptInput } from "../../../src/ipc/project-session-data";
 import * as projectSessionOperations from "../../../src/domain/project-sessions/projectSessionOperations";
-import { parseScheduledMessage } from "../../../src/services/pi/scheduled-message-envelope";
+import { parseScheduledMessage } from "../../../src/contracts/conversations/scheduled-message-envelope";
 import * as scheduledMessages from "../../../src/domain/scheduled-messages/scheduledMessages";
 import type {
   ScheduledMessage,
   ScheduledMessageUpdate,
-} from "../../../src/services/scheduled-messages/scheduled-message-data";
+} from "../../../src/contracts/scheduled-messages/scheduled-message-data";
 import { ScheduledMessages } from "../../../src/services/scheduled-messages/ScheduledMessages";
 import { ScheduledMessageStorage } from "../../../src/services/storage/ScheduledMessageStorage";
 

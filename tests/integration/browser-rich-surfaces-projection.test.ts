@@ -8,7 +8,7 @@ import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { chromium, expect as browserExpect } from "@playwright/test";
 import { Context, Effect, Layer } from "effect";
 import { beforeAll, expect, it } from "vitest";
-import { decodeArtifactLineageId } from "../../src/services/storage/artifact-lineage";
+import { decodeArtifactLineageId } from "../../src/contracts/artifacts/artifact-lineage";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { openNetworkListener } from "../../src/server/NetworkListener";
 import { ArtifactStorage } from "../../src/services/storage/ArtifactStorage";

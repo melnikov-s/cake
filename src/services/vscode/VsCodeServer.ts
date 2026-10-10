@@ -1,10 +1,11 @@
-import { Context, Schema, type Effect, type Stream } from "effect";
+import { Context, type Effect, type Stream } from "effect";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
 import type { EditorLocation } from "../../ipc/editor-location";
 import type { EditorSelectionHighlights, EditorSelectionReveal } from "../../ipc/editor-selection";
 import type { JsonValue } from "../../ipc/json-contract";
 import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
 import type { VsCodeLease } from "./VsCodeServerRuntime";
+import type { VsCodeServerError } from "../../contracts/vscode/vs-code-server-errors";
 
 interface EmbeddedEditorState {
   readonly status: "missing" | "downloading" | "starting" | "ready" | "failed";
@@ -17,11 +18,6 @@ interface RequestIdentity {
 interface WorkspaceRequest extends RequestIdentity {
   readonly workspacePath: string;
 }
-
-export class VsCodeServerError extends Schema.TaggedError<VsCodeServerError>()(
-  "VsCodeServerError",
-  { operation: Schema.String, message: Schema.String },
-) {}
 export type VscodeActionResult<Value> =
   | { readonly status: "completed"; readonly value: Value }
   | { readonly status: "mode-required" };

@@ -1,7 +1,7 @@
 import { SessionManager, type AgentSession } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { createCakeSessionRuntimeTurnController } from "../../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
-import { encodeCrossSessionMessage } from "../../../../src/services/pi/cross-session-message";
+import { encodeCrossSessionMessage } from "../../../../src/contracts/conversations/cross-session-message";
 import { projectQueuedMessages } from "../../../../src/services/pi/runtime/session-projection";
 import { projectConversationDisplay } from "../../../../src/services/pi/runtime/conversation-display-projection";
 import { appendToolCompactedBranch } from "../../../../src/services/pi/runtime/session-tool-compaction";
@@ -9,7 +9,7 @@ import {
   addResponseModeReminder,
   stripResponseModeReminder,
   responseModeReminders,
-} from "../../../../src/services/pi/response-mode-reminders";
+} from "../../../../src/contracts/conversations/response-mode-reminders";
 
 function deferred() {
   let resolve: () => void = () => undefined;

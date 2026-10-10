@@ -6,7 +6,7 @@ import {
   WindowStateReadError,
   WindowStateUnsupportedVersionError,
   WindowStateWriteError,
-} from "../../services/storage/WindowStateStorage";
+} from "../../contracts/storage/window-state-storage-errors";
 
 /** Desktop-local presentation persistence, never shared backend state. */
 export const WindowStateRpc = RpcGroup.make(

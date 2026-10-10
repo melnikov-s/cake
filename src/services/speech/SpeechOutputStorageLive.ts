@@ -1,5 +1,5 @@
 import { Effect, FileSystem, Layer, Schema, Semaphore, type Types } from "effect";
-import { SpeechOutputError } from "./speech-output-data";
+import { SpeechOutputError } from "../../contracts/speech/speech-output-data";
 import { SpeechOutputStorage, StoredSpeechOutputSettings } from "./SpeechOutputStorage";
 
 /** Outside-world encryption adapter supplied by desktop main using Electron safeStorage.

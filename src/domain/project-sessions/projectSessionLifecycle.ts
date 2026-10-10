@@ -13,8 +13,8 @@ import {
   setSessionUnread,
   trustProject,
 } from "../application/application";
-import { defaultProjectWorkflow } from "../../services/storage/application-data";
-import type { WorktreeRecord } from "../../services/worktrees/managed-worktree-data";
+import { defaultProjectWorkflow } from "../../contracts/application/application-data";
+import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
 import {
   ProjectSessionError,
   type ProjectSessionLocation,

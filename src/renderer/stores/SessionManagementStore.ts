@@ -5,7 +5,7 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { ProjectCatalogStore } from "./ProjectCatalogStore";
-import type { SessionLabel } from "../../services/storage/application-data";
+import type { SessionLabel } from "../../contracts/application/application-data";
 
 export interface SessionManagementStoreProps {
   operations: SessionOperationCoordinatorStore;

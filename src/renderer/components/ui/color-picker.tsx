@@ -1,7 +1,7 @@
 import {
   SESSION_LABEL_COLORS,
   type SessionLabelColor,
-} from "../../../services/storage/application-data";
+} from "../../../contracts/application/application-data";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
 import { LabelSwatch } from "./label-swatch";

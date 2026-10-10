@@ -1,5 +1,5 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { AttachmentUploadError } from "../../services/filesystem/AttachmentUploads";
+import { AttachmentUploadError } from "../../contracts/filesystem/attachment-uploads-errors";
 import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
 
 export const AttachmentUploadRpc = RpcGroup.make(

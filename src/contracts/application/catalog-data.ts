@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { ProjectRecord } from "../../services/storage/application-data";
+import { ProjectRecord } from "./application-data";
 import { ProjectSessionSummary } from "../../ipc/project-session-data";
 import { CakeChatSummary } from "../../ipc/cake-chat-data";
 import { DiscussionThread } from "../../ipc/discussion-session-data";

@@ -6,7 +6,7 @@ import {
   type ArtifactLineageId,
   type ArtifactLink,
   type ArtifactRevisionNumber,
-} from "../../services/storage/artifact-lineage";
+} from "../../contracts/artifacts/artifact-lineage";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { ClientContext } from "./context/ClientContext";
 

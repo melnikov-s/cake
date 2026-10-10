@@ -3,8 +3,8 @@ import type { ModelOption, PiSettingUpdate, PiSettings } from "../../ipc/session
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import type { PiNonChatModel } from "../../services/pi/model-data";
-import type { PiExtensionSetting } from "../../services/pi/extension-settings-data";
+import type { PiNonChatModel } from "../../contracts/pi/model-data";
+import type { PiExtensionSetting } from "../../contracts/pi/extension-settings-data";
 
 export interface ProviderAuthNotice {
   readonly type: "info" | "progress" | "auth_url" | "device_code";

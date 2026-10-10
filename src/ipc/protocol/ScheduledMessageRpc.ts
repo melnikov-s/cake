@@ -5,7 +5,7 @@ import {
   ScheduledMessage,
   ScheduledMessageError,
   ScheduledMessageUpdate,
-} from "../../services/scheduled-messages/scheduled-message-data";
+} from "../../contracts/scheduled-messages/scheduled-message-data";
 
 export const ScheduledMessageRpc = RpcGroup.make(
   Rpc.make("scheduledMessages.observe", {

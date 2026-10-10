@@ -10,7 +10,7 @@ import type {
   DiscussionCatalogUpdate,
   ProjectCatalogUpdate,
   SessionCatalogUpdate,
-} from "../../domain/application/catalog-data";
+} from "../../contracts/application/catalog-data";
 import { SessionChatError } from "../../ipc/conversation-data";
 import type {
   DiscussionSessionTarget,
@@ -26,10 +26,10 @@ import type {
   ProjectSessionCatalogQuery,
   ProjectSessionTarget,
 } from "../../ipc/project-session-data";
-import type { SubagentUpdate } from "../../services/subagents/subagent-data";
-import type { ScheduledMessageUpdate } from "../../services/scheduled-messages/scheduled-message-data";
-import type { ManagedWorktreeCatalogUpdate } from "../../services/worktrees/managed-worktree-data";
-import type { WorktreeOperationCatalogUpdate } from "../../domain/worktrees/worktree-operation-data";
+import type { SubagentUpdate } from "../../contracts/subagents/subagent-data";
+import type { ScheduledMessageUpdate } from "../../contracts/scheduled-messages/scheduled-message-data";
+import type { ManagedWorktreeCatalogUpdate } from "../../contracts/worktrees/managed-worktree-data";
+import type { WorktreeOperationCatalogUpdate } from "../../contracts/worktrees/worktree-operation-data";
 import type { CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import type { Runtime } from "../runtime";
 import type { RootStore } from "../stores/RootStore";

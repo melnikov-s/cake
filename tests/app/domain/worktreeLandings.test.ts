@@ -5,11 +5,11 @@ import {
   type WorktreeLandingError,
   type WorktreeLandingPhase,
   WorktreeLandingSnapshot,
-} from "../../../src/services/worktrees/worktree-landing-data";
-import { WorktreeOperationCatalogUpdate } from "../../../src/domain/worktrees/worktree-operation-data";
-import type { WorktreeRecord } from "../../../src/services/worktrees/managed-worktree-data";
-import { defaultApplicationState } from "../../../src/services/storage/application-data";
-import type { CakePrompts } from "../../../src/services/storage/cake-prompt-data";
+} from "../../../src/contracts/worktrees/worktree-landing-data";
+import { WorktreeOperationCatalogUpdate } from "../../../src/contracts/worktrees/worktree-operation-data";
+import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import type { CakePrompts } from "../../../src/contracts/application/cake-prompt-data";
 import * as worktreeLandings from "../../../src/domain/worktrees/worktreeLandings";
 import type { WorktreeLandOutcome, WorktreeStatus } from "../../../src/ipc/worktree-contract";
 import {
@@ -22,10 +22,8 @@ import {
 } from "../../../src/services/worktrees/WorktreeLandingCoordinator";
 import { WorktreeLandingCompletion } from "../../../src/services/worktrees/WorktreeLandingCompletion";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import {
-  ManagedWorktreeError,
-  ManagedWorktrees,
-} from "../../../src/services/worktrees/ManagedWorktrees";
+import { ManagedWorktreeError } from "../../../src/contracts/worktrees/managed-worktrees-errors";
+import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 
 const workspacePath = "/worktree";
 const record = {

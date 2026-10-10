@@ -1,5 +1,5 @@
 import { Context, type Effect, Schema } from "effect";
-import { SpeechOutputError } from "./speech-output-data";
+import { SpeechOutputError } from "../../contracts/speech/speech-output-data";
 
 /** Metadata only: no credentials, text, voice IDs, response bodies or audio. */
 export const SpeechOutputDiagnostic = Schema.Struct({

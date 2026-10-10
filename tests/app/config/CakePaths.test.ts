@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
 import { resolveCakePaths } from "../../../src/config/CakePaths";
+import { piAgentDirectory } from "../../../src/services/pi/PiPaths";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -39,6 +40,7 @@ describe("resolveCakePaths", () => {
     const paths = resolveCakePaths({
       env: { CAKE_HOME: "/opt/cake-data" },
       homeDirectory: "/Users/fixture",
+      piAgentDirectory: piAgentDirectory(),
     });
     expect(paths.home).toBe("/opt/cake-data");
     expect(paths.piAgent).toBe("/opt/pi-agent");
@@ -48,11 +50,15 @@ describe("resolveCakePaths", () => {
     expect(process.env.PI_CODING_AGENT_DIR).toBe("/opt/pi-agent");
   });
 
-  it("delegates the default and tilde overrides to Pi itself", () => {
+  it("uses the Pi adapter's resolved default and tilde overrides", () => {
     vi.stubEnv("PI_CODING_AGENT_DIR", undefined);
-    expect(resolveCakePaths().piAgent).toBe(resolve(getAgentDir()));
+    expect(resolveCakePaths({ piAgentDirectory: piAgentDirectory() }).piAgent).toBe(
+      resolve(getAgentDir()),
+    );
     vi.stubEnv("PI_CODING_AGENT_DIR", "~/alternate-pi");
-    expect(resolveCakePaths().piAgent).toBe(resolve(getAgentDir()));
+    expect(resolveCakePaths({ piAgentDirectory: piAgentDirectory() }).piAgent).toBe(
+      resolve(getAgentDir()),
+    );
     expect(process.env.PI_CODING_AGENT_DIR).toBe("~/alternate-pi");
   });
 });

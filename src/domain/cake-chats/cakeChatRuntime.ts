@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 import { resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import { setSessionFastMode } from "../application/application";
 import { PiModels } from "../../services/pi/PiModels";
-import { defaultCakeChatPreferences } from "./cake-chat-preferences";
+import { defaultCakeChatPreferences } from "../../contracts/cake-chats/cake-chat-preferences";
 import { utilityModelSelection } from "../utility-work/utilityWork";
 import type { CakeChatTarget } from "../../ipc/cake-chat-data";
 import type { CakeChatLocation } from "./cakeChatLocations";

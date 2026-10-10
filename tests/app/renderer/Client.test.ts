@@ -5,7 +5,7 @@ import { BrowserMenuStore } from "../../../src/renderer/stores/BrowserMenuStore"
 import { makeClient } from "../../../src/renderer/client/ClientLive";
 import { ClientError } from "../../../src/renderer/client/Client";
 import type { Runtime } from "../../../src/renderer/runtime";
-import type { EditorLease } from "../../../src/ipc/protocol/VsCodeRpc";
+import type { EditorLease } from "../../../src/contracts/vscode/editor-endpoint";
 
 function controlledRuntime(execute: Runtime["execute"]): Pick<Runtime, "execute"> {
   return { execute };

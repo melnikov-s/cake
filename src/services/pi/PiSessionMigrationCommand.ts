@@ -1,6 +1,7 @@
 import { NodeFileSystem, NodePath, NodeRuntime } from "@effect/platform-node-shared";
 import { Effect, Layer } from "effect";
 import { resolveCakePaths } from "../../config/CakePaths";
+import { piAgentDirectory } from "./PiPaths";
 import { makeWorktreeStorageLive } from "../storage/WorktreeStorageLive";
 import { makeSessionArchiveStorageLive } from "../storage/SessionArchiveStorageLive";
 import { planPiSessionMigration, applyPiSessionMigration } from "./PiSessionMigration";
@@ -11,7 +12,7 @@ if (arguments_.length !== 1 || !["--plan", "--apply"].includes(arguments_[0] ?? 
     "Use --plan for read-only inspection or --apply to explicitly migrate. Close Cake and Pi before --apply.",
   );
 }
-const paths = resolveCakePaths();
+const paths = resolveCakePaths({ piAgentDirectory: piAgentDirectory() });
 const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
 const storage = Layer.mergeAll(
   makeWorktreeStorageLive(paths.worktrees),

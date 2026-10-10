@@ -1,7 +1,7 @@
 import { Store, batch, child, createStore, observable, snapshot, untracked } from "r-state-tree";
 import { SESSION_TITLE_MAX_LENGTH, type Attachment } from "../../ipc/session-contract";
 import type { ProjectSessionStore } from "./ProjectSessionStore";
-import type { SavedDraft } from "../../services/storage/saved-draft-data";
+import type { SavedDraft } from "../../contracts/project-sessions/saved-draft-data";
 import type { Client } from "../client/Client";
 import type { SessionCatalogStore, PendingSessionSummary } from "./SessionCatalogStore";
 

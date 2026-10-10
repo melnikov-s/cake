@@ -6,7 +6,7 @@ import type {
   SpeechDetectionAudio,
   PunctuationInput,
   PunctuationResult,
-} from "./dictation-data";
+} from "../../contracts/dictation/dictation-data";
 
 /** Main-owned installation and one warm local inference process. Audio is ephemeral. */
 export class Dictation extends Context.Service<

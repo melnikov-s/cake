@@ -3,15 +3,14 @@ import { Buffer } from "node:buffer";
 import { constants } from "node:fs";
 import { lstat, open, realpath, rmdir, unlink } from "node:fs/promises";
 import { Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
-import { formatArtifactRef } from "../storage/artifact-lineage";
+import { formatArtifactRef } from "../../contracts/artifacts/artifact-lineage";
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
+import { ArtifactProjection, type MaterializeArtifactProjectionInput } from "./ArtifactProjection";
 import {
-  ArtifactProjection,
   ArtifactProjectionError,
   ArtifactProjectionMetadata,
   type ArtifactProjectionFile,
-  type MaterializeArtifactProjectionInput,
-} from "./ArtifactProjection";
+} from "../../contracts/artifacts/artifact-projection-data";
 
 const projectionVersion = 1;
 const segmentPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;

@@ -3,7 +3,7 @@ import type {
   DictationState,
   TextProcessingMode,
   SpeechRecognitionSettings,
-} from "../../services/dictation/dictation-data";
+} from "../../contracts/dictation/dictation-data";
 import type { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
 import { speechRecognitionSettings } from "../../utils/speech-input-settings";
 import { punctuationPreview } from "../../utils/punctuation-text";

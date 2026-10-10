@@ -1,6 +1,6 @@
 import { applySnapshot, createStore, effect, mount, toSnapshot } from "r-state-tree";
 import { describe, expect, it } from "vitest";
-import type { WorktreeRecord } from "../../../../src/services/worktrees/managed-worktree-data";
+import type { WorktreeRecord } from "../../../../src/contracts/worktrees/managed-worktree-data";
 import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
 import { WorktreeCatalog } from "../../../../src/renderer/models/WorktreeCatalog";
 import { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";

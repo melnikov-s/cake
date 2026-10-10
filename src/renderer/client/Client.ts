@@ -5,7 +5,7 @@ import type {
   CaptureResult,
   ScreenCaptureSettings,
   ScreenCaptureSnapshot,
-} from "../../services/electron/screen-capture-data";
+} from "../../contracts/desktop/screen-capture-data";
 import type {
   ArtifactLineageDetail,
   ArtifactLineageId,
@@ -19,18 +19,21 @@ import type {
   ArtifactStableRef,
   ArtifactTextComparison,
   EffectiveArtifactProjection,
-} from "../../services/storage/artifact-lineage";
-import type { ArtifactProjectionMetadata } from "../../services/artifacts/ArtifactProjection";
-import type { CakeChatPreferences, ProjectSettings } from "../../services/storage/application-data";
-import type { CakePromptOverrides } from "../../services/storage/cake-prompt-data";
+} from "../../contracts/artifacts/artifact-lineage";
+import type { ArtifactProjectionMetadata } from "../../contracts/artifacts/artifact-projection-data";
+import type {
+  CakeChatPreferences,
+  ProjectSettings,
+} from "../../contracts/application/application-data";
+import type { CakePromptOverrides } from "../../contracts/application/cake-prompt-data";
 import type {
   ResolvedManagedWorktreeCleanupPlan,
   ResolvedManagedWorktreeCleanupResult,
-} from "../../domain/worktrees/managed-worktree-cleanup-data";
+} from "../../contracts/worktrees/managed-worktree-cleanup-data";
 import type {
   WorktreeLandingOperation,
   WorktreeLandingSnapshot,
-} from "../../services/worktrees/worktree-landing-data";
+} from "../../contracts/worktrees/worktree-landing-data";
 import type { CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
 import type { EditorLocation } from "../../ipc/editor-location";
@@ -50,11 +53,11 @@ import type {
   ConversationSnapshot,
   UtilityModel,
 } from "../../ipc/session-contract";
-import type { WorktreeRecord } from "../../services/worktrees/managed-worktree-data";
+import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
 import type {
   SpeechOutputAudio,
   SpeechOutputRequest,
-} from "../../services/speech/speech-output-data";
+} from "../../contracts/speech/speech-output-data";
 
 export interface ClientCommandOptions {
   readonly signal?: AbortSignal;

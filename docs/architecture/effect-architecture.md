@@ -596,7 +596,7 @@ Effect Platform's `FileSystem` owns filesystem operations and observation.
 filesystem events trigger debounced Git refreshes.
 
 Managed Worktree records are main-owned persisted authority. Their record and
-Project Session context schemas live in the Managed Worktree domain data module;
+Project Session context schemas live in `contracts/worktrees/managed-worktree-data.ts`;
 storage, Services, Project Session projections, and RPC compose those owned
 values rather than defining or importing an RPC-owned record. `ManagedWorktrees`
 exposes one Schema-validated current-first Stream: a coherent record Snapshot followed
@@ -828,7 +828,8 @@ require a monorepo split.
 
 ```text
 src/
-├── services/                 # Outside-world contracts and Live implementations
+├── contracts/                # Feature-named shared schemas, errors, values, and pure codecs
+├── services/                 # Outside-world capabilities and Live implementations
 │   ├── pi/
 │   ├── git/
 │   ├── storage/
@@ -896,48 +897,97 @@ Client → CakeIpcClient ↔ shared RPC protocol ↔ CakeRpcServer
 CakeRpcServer → domain operations → Services
 ```
 
-Services do not import Cake domain modules or composition adapters, including
-for type-only imports. This direction is enforced by ESLint. `src/layers/`
-may import both Services and domain operations to implement external callback
-wiring; Services receive the resulting callbacks through their own contracts.
-Domain modules do not import renderer code. RPC payloads never expose raw Pi, Git, Electron, filesystem,
-Effect runtime, Store, or Model objects.
+`architecture/module-boundaries` in `tools/eslint/module-boundaries.js` enforces
+these dependencies through the repository's ESLint configuration (`pnpm lint`):
+
+| Source                                                       | Allowed application dependencies                                            |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| Shared contracts, IPC data, transport envelopes, and `utils` | Shared values only                                                          |
+| Process config                                               | Config and shared values                                                    |
+| Services                                                     | Services, process config, and shared values                                 |
+| Domain                                                       | Domain, Services, process config, and shared values                         |
+| Composition Layers                                           | Backend wiring, domain, Services, config, and shared protocols/values       |
+| Main, backend, server, and RPC handlers/server transports    | Backend, composition, domain, Services, config, and shared protocols/values |
+| Renderer                                                     | Renderer, RPC client infrastructure, shared protocols/values                |
+| RPC clients/client transport                                 | Client infrastructure and shared protocols/values                           |
+| RPC protocols                                                | Protocols and shared values                                                 |
+| Preload                                                      | Shared transport/contracts only                                             |
+
+Services never import Cake domain modules or composition adapters. `src/layers/`
+joins capabilities to domain callbacks or backend listener wiring; Services receive
+callbacks through their own interfaces. Backend code cannot import renderer/client/preload
+implementations, and renderer code cannot import backend/domain/Service/preload
+implementations. Shared modules cannot become a transitive route around this boundary.
+Node builtins (including bare imports), Electron, and Effect Node platform packages
+are forbidden in renderer, client, protocol, and shared modules. Pi packages terminate
+beneath `services/pi` or `services/pi-durable`.
+
+The rule checks value and type-only imports, re-exports, static dynamic imports,
+TypeScript import types/import-equals, and `require`. It normalizes relative paths,
+absolute paths, the `@/` renderer alias, `src/` imports, directory imports, and Vite
+query suffixes. Runtime-loaded extension URLs remain an explicit external-module
+boundary, not statically resolvable application imports. Named client/envelope
+transports are classified explicitly; new transport implementations default to backend.
+The separate rule ID prevents narrower renderer restrictions from replacing these checks.
+
+RPC payloads never expose raw Pi, Git, Electron, filesystem, Effect runtime, Store,
+or Model objects. Extract shared values rather than granting type-only exceptions
+or re-exporting backend declarations through a facade.
 
 ## Schema ownership
 
-Schemas live beside the authority or boundary they describe:
+Schemas live beside the authority or boundary they describe. When both processes
+or multiple architectural layers need the same value, its definition lives in a
+feature-named shared contract rather than an implementation module:
 
 ```text
-services/pi/       Pi adapter values and errors
-services/git/      Git values and errors
-services/storage/  stored documents, application configuration, and migrations
-services/*/        capability inputs, outputs, and errors owned by that Service
-domain/            Cake business values and policies
-ipc/               cross-process inputs, projections, and control schemas
-ipc/protocol/      Effect RPC groups using those contracts
-renderer/models/   reactive projection schemas
+contracts/application/      application documents, configuration defaults, and catalog projections
+contracts/conversations/    message envelope/reminder codecs and delivery projection vocabulary
+contracts/pi/               Cake-owned Pi model, settings, and availability values
+contracts/artifacts/        lineage values, projection metadata, and typed failures
+contracts/worktrees/        Managed Worktree records, operation projections, and cleanup results
+contracts/*/                other feature inputs, outputs, errors, and pure codecs shared across layers
+services/*/                 internal capability values, storage migrations, and implementations
+domain/                     internal Cake business values and workflow policies
+ipc/                        cross-process inputs, projections, and control schemas
+ipc/protocol/               Effect RPC groups using shared contracts
+renderer/models/            reactive projection schemas
 ```
 
-Cross-process and persistence boundaries use Effect Schema. A generic shared
-`types` directory is not an ownership boundary. Data purity or a `-data.ts`
-filename does not justify a reverse dependency into domain.
+Cross-process and persistence boundaries use Effect Schema. `contracts` does not
+create a second authority: the originating subsystem still owns the facts. It is
+not a generic `types` dumping ground or a place for Context Services, resource
+ownership, workflow orchestration, or mutable application state. Shared pure
+configuration defaults, projection derivations, and envelope codecs may accompany
+their values; backend execution remains in domain/Services. Service-local schemas
+need not move unless another layer consumes them. Data purity or a `-data.ts`
+filename never justifies a reverse dependency into domain.
 
 Pi message envelope codecs and exact presentation/response reminder formats
-live in `services/pi/`; coordination delivery policy remains in domain. Model
-selection tool schemas live in `ipc/cake-model-selection.ts`, while preset
+live in `contracts/conversations/`; coordination delivery workflows remain in
+domain. Model selection tool schemas live in `ipc/cake-model-selection.ts`, while
+preset input/projection/error schemas live in `contracts/model-presets/` and preset
 resolution remains domain policy supplied to Pi through a resolver callback.
 The callback reads current application configuration at execution time. Artifact,
 Draw, and widget workflow callbacks are composed in
 `layers/ProjectSessionRuntimeHostLive.ts`; the Pi Service contract does not import
 the composition implementation.
 
-Application prompt schemas and non-chat model preference references live beside
-application configuration in `services/storage/`. Current prompt wording,
-override normalization, and prompt rendering are Cake policy in
-`domain/application/cake-prompts.ts`. Storage migrations recognize a frozen
-snapshot of historical wording; they never import or follow current prompt
-policy. Pi consumes preference references without owning their persistence or
-application mutation policy.
+Application prompt schemas, current configuration wording, and override
+normalization live in `contracts/application/`; non-chat model preference
+references live in `contracts/models/`. Prompt rendering and the workflows that
+choose when to use prompts remain in `domain/application/cake-prompts.ts` and
+other domain modules. Storage migrations recognize a frozen snapshot of
+historical wording; they never follow current prompt defaults. Pi consumes
+preference references without owning their persistence or application mutation
+policy. Pure Saved Draft extraction from a legacy window snapshot is shared;
+filesystem persistence and versioned window migrations remain in storage Services.
+
+`resolveCakePaths` accepts the already-resolved Pi agent directory. Host composition
+calls the Pi adapter, keeping process configuration independent of Service code.
+The listener-scoped `EditorBrowserPort` is a VS Code capability, and desktop-sharing
+listener assembly lives in `layers/DesktopSharingLive.ts` rather than a Service
+that imports backend composition.
 
 ## Security and extensibility
 

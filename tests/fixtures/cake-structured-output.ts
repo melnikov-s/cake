@@ -1,4 +1,4 @@
-import type { ArtifactProjectionMetadata } from "../../src/services/artifacts/ArtifactProjection";
+import type { ArtifactProjectionMetadata } from "../../src/contracts/artifacts/artifact-projection-data";
 import type { CakeArtifactOperationOptions } from "../../src/services/pi/runtime/cake-artifact-operations";
 
 export function artifactMetadata(id = "design-plan"): ArtifactProjectionMetadata {

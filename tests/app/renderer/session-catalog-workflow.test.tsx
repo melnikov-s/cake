@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/ipc/conversation-data";
-import type { SavedDraft } from "../../../src/services/storage/saved-draft-data";
+import type { SavedDraft } from "../../../src/contracts/project-sessions/saved-draft-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";

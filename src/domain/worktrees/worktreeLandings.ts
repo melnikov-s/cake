@@ -1,7 +1,8 @@
 import { Cause, Effect, FiberMap, Stream, SubscriptionRef } from "effect";
 import type { WorktreeLandRequest, WorktreeStatus } from "../../ipc/worktree-contract";
 import { ApplicationState } from "../../services/storage/ApplicationState";
-import { renderCakePrompt, resolveCakePrompts } from "../application/cake-prompts";
+import { renderCakePrompt } from "../application/cake-prompts";
+import { resolveCakePrompts } from "../../contracts/application/cake-prompt-defaults";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import { WorktreeLandingAgent } from "../../services/worktrees/WorktreeLandingAgent";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
@@ -10,7 +11,7 @@ import {
   WorktreeLandingError,
   type WorktreeLandingOperation,
   type WorktreeLandingSnapshot,
-} from "../../services/worktrees/worktree-landing-data";
+} from "../../contracts/worktrees/worktree-landing-data";
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 

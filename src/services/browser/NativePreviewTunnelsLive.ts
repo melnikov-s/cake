@@ -2,7 +2,8 @@ import { Effect, Layer, Semaphore } from "effect";
 import { Browser } from "./Browser";
 import { Electron } from "../electron/Electron";
 import { openNativePreviewTunnel } from "./NativePreviewTunnel";
-import { NativePreviewError, NativePreviewTunnels } from "./NativePreviewTunnels";
+import { NativePreviewError } from "../../contracts/browser/native-preview-tunnels-errors";
+import { NativePreviewTunnels } from "./NativePreviewTunnels";
 
 /** Native-only registration: trusted renderer calls this after backend lease admission.
  * No auxiliary socket is ever used as a backend RPC client or session control identity. */

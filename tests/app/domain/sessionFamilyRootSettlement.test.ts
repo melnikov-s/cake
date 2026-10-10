@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Stream } from "effect";
-import { encodeCrossSessionMessage } from "../../../src/services/pi/cross-session-message";
-import { defaultApplicationState } from "../../../src/services/storage/application-data";
+import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { initialize } from "../../../src/domain/session-families/sessionFamilies";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";

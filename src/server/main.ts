@@ -8,6 +8,7 @@ import { networkConfiguration } from "./networkConfiguration";
 import { makeBackendLive } from "../backend/BackendLive";
 import { PreviewLeases } from "../services/browser/PreviewLeases";
 import { resolveCakePaths } from "../config/CakePaths";
+import { piAgentDirectory } from "../services/pi/PiPaths";
 
 // The network endpoint is explicitly opt-in. CAKE_HOME selects Cake metadata;
 // Pi independently resolves credentials/configuration through PI_CODING_AGENT_DIR.
@@ -19,7 +20,10 @@ const program = Effect.gen(function* () {
     "CAKE_HOME",
   );
   const network = yield* networkConfiguration();
-  const paths = resolveCakePaths({ env: { CAKE_HOME: home } });
+  const paths = resolveCakePaths({
+    env: { CAKE_HOME: home },
+    piAgentDirectory: piAgentDirectory(),
+  });
   const homeDirectory = homedir();
   const backend = makeBackendLive({ paths, homeDirectory, remoteCapture: true }, () => Layer.empty);
   yield* Effect.gen(function* () {

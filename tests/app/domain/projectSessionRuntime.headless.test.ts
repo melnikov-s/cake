@@ -3,7 +3,7 @@ import { it } from "@effect/vitest";
 import { Context, Deferred, Effect, Exit, Layer, Scope, Stream } from "effect";
 import { expect, vi } from "vitest";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
-import { defaultApplicationState } from "../../../src/services/storage/application-data";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import {
   CakeSessionRuntimes,
   makeCakeSessionRuntimesLayer,

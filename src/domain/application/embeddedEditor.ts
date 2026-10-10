@@ -2,9 +2,10 @@ import { Effect, Option } from "effect";
 import { DesktopHost } from "../../services/electron/DesktopHost";
 import { VsCodeViews } from "../../services/vscode/VsCodeViews";
 import { setVscodeServerPath } from "./application";
-import { VsCodeServer, VsCodeServerError } from "../../services/vscode/VsCodeServer";
-import type { AcquireEditor, EditorEndpoint } from "../../ipc/protocol/VsCodeRpc";
-import { EditorBrowserPort } from "../../server/EditorBrowserPort";
+import { VsCodeServer } from "../../services/vscode/VsCodeServer";
+import { VsCodeServerError } from "../../contracts/vscode/vs-code-server-errors";
+import type { AcquireEditor, EditorEndpoint } from "../../contracts/vscode/editor-endpoint";
+import { EditorBrowserPort } from "../../services/vscode/EditorBrowserPort";
 
 /** Backend issues a presentation capability. Internal addresses and server tokens
  * never cross RPC, even when the desktop and backend share an Electron host. */

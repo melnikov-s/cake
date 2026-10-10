@@ -1,5 +1,5 @@
 import type { HTMLAttributes } from "react";
-import type { SessionLabelColor } from "../../../services/storage/application-data";
+import type { SessionLabelColor } from "../../../contracts/application/application-data";
 import { cn } from "../../lib/utils";
 import { sessionLabelPalette } from "../../../utils/session-label-palette";
 

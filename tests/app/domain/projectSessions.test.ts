@@ -18,18 +18,18 @@ import * as projectSessionLocations from "../../../src/domain/project-sessions/p
 import { SessionCatalog } from "../../../src/renderer/models/SessionCatalog";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import * as sessionChats from "../../../src/domain/conversations/sessionChats";
-import type { SessionCatalogUpdate } from "../../../src/domain/application/catalog-data";
+import type { SessionCatalogUpdate } from "../../../src/contracts/application/catalog-data";
 import {
   ArtifactDigest,
   type ArtifactLink,
   type ArtifactLinkTarget,
-} from "../../../src/services/storage/artifact-lineage";
+} from "../../../src/contracts/artifacts/artifact-lineage";
 import type { ArtifactPointer } from "../../../src/ipc/artifact-contract";
 import { getState } from "../../../src/domain/application/application";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "../../../src/services/storage/application-data";
+} from "../../../src/contracts/application/application-data";
 import {
   makeCakeSessionRuntimesLayer,
   CakeSessionRuntimes,
@@ -49,33 +49,27 @@ import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnv
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ArtifactGarbageCollector } from "../../../src/services/artifacts/ArtifactGarbageCollector";
-import {
-  ArtifactStorage,
-  ArtifactStorageError,
-} from "../../../src/services/storage/ArtifactStorage";
+import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
+import { ArtifactStorageError } from "../../../src/contracts/storage/artifact-storage-errors";
 import { DrawBoardStorage } from "../../../src/services/storage/DrawBoardStorage";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import {
   SessionArchiveStorage,
   SessionArchiveStorageError,
 } from "../../../src/services/storage/SessionArchiveStorage";
-import {
-  SessionFamilyStorage,
-  SessionFamilyStorageError,
-} from "../../../src/services/storage/SessionFamilyStorage";
+import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
+import { SessionFamilyStorageError } from "../../../src/contracts/storage/session-family-storage-errors";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
-import {
-  ManagedWorktrees,
-  ManagedWorktreeError,
-} from "../../../src/services/worktrees/ManagedWorktrees";
+import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
+import { ManagedWorktreeError } from "../../../src/contracts/worktrees/managed-worktrees-errors";
 import {
   SessionCatalogChanges,
   type SessionCatalogChange,
 } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import type { ConversationSnapshot, PiSessionSummary } from "../../../src/ipc/session-contract";
 import type { ConversationUpdate } from "../../../src/ipc/conversation-data";
-import type { WorktreeRecord } from "../../../src/services/worktrees/managed-worktree-data";
+import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 
 const snapshot: ConversationSnapshot = {
   workspacePath: "/project",

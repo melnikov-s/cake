@@ -1,6 +1,6 @@
 import { Store, observable } from "r-state-tree";
 import type { RootProjection } from "../models/RootProjection";
-import type { SavedDraft } from "../../services/storage/saved-draft-data";
+import type { SavedDraft } from "../../contracts/project-sessions/saved-draft-data";
 
 /** Tab-local selection and loaded identities. No persistence or shared draft authority.
  * Selection is latest intent wins; loaded chats retain their own unsent text until tab close.

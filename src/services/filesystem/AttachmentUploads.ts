@@ -1,10 +1,6 @@
-import { Context, Schema, type Effect } from "effect";
+import { Context, type Effect } from "effect";
 import type { Attachment } from "../../ipc/session-contract";
-
-export class AttachmentUploadError extends Schema.TaggedError<AttachmentUploadError>()(
-  "AttachmentUploadError",
-  { operation: Schema.String, message: Schema.String },
-) {}
+import type { AttachmentUploadError } from "../../contracts/filesystem/attachment-uploads-errors";
 
 /** Backend-owned temporary uploads; only admit resolves a token into Pi-ready bytes/paths. */
 export class AttachmentUploads extends Context.Service<
