@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { ThinkingLevel } from "../../services/pi/model-data";
+import { ThinkingLevel } from "../pi/model-data";
 
 const nonEmptyBoundedString = (maximum: number) =>
   Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(maximum));

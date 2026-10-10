@@ -30,7 +30,7 @@ import {
 import {
   NonChatModelPreferences,
   NonChatModelPreferenceUpdate,
-} from "../../domain/model-preferences/non-chat-model-data";
+} from "../../services/storage/non-chat-model-data";
 
 const ModelPresetMutationError = Schema.Union([
   ModelPresetValidationError,

@@ -1,5 +1,5 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
-import type { CakeChatTarget } from "../../domain/cake-chats/cake-chat-data";
+import type { CakeChatTarget } from "../../ipc/cake-chat-data";
 import type { ModelPreset } from "../../ipc/session-contract";
 import type { Conversation } from "../models/Conversation";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";

@@ -1,5 +1,5 @@
 import { observer } from "r-state-tree/react";
-import type { NonChatModelType } from "../../domain/model-preferences/non-chat-model-data";
+import type { NonChatModelType } from "../../services/storage/non-chat-model-data";
 import type { NonChatModelSettingsStore } from "../stores/NonChatModelSettingsStore";
 import type { ProviderSettingsStore } from "../stores/ProviderSettingsStore";
 import { SettingsProvidersSection } from "./settings-providers-section";

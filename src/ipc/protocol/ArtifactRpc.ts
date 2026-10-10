@@ -15,7 +15,7 @@ import {
   ArtifactStableRef,
   ArtifactTextComparison,
   EffectiveArtifactProjection,
-} from "../../domain/artifacts/artifact-lineage";
+} from "../../services/storage/artifact-lineage";
 import { ArtifactNotFound, ArtifactNotLinked } from "../../domain/artifacts/artifactWorkflows";
 import {
   ArtifactProjectionError,

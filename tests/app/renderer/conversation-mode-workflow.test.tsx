@@ -10,7 +10,7 @@ import type { UiPart } from "../../../src/ipc/session-contract";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { createLiveMessageProjector } from "../../../src/services/pi/runtime/session-projection";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
-import { TurnId } from "../../../src/domain/conversations/conversation-data";
+import { TurnId } from "../../../src/ipc/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import type { Microphone } from "../../../src/renderer/dictation/microphone";
 import type { SpeechPlayback } from "../../../src/renderer/speech/playback";

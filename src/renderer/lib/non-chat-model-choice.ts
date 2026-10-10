@@ -1,4 +1,4 @@
-import type { NonChatModelReference } from "../../domain/model-preferences/non-chat-model-data";
+import type { NonChatModelReference } from "../../services/storage/non-chat-model-data";
 
 /** Opaque Select identity; neither provider nor model IDs are parsed as path segments. */
 export function nonChatModelChoiceValue(reference: NonChatModelReference): string {

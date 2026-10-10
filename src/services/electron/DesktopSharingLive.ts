@@ -3,7 +3,7 @@ import {
   DesktopSharingError,
   DesktopSharingInput,
   type DesktopSharingState,
-} from "../../domain/application/desktop-sharing-data";
+} from "./desktop-sharing-data";
 import { openNetworkListener } from "../../server/NetworkListener";
 import { DesktopSharing } from "./DesktopSharing";
 

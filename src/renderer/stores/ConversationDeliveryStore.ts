@@ -5,8 +5,8 @@ import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../lib/error-details";
 import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import type { ProjectSessionPresentationMode } from "../../domain/project-sessions/project-session-presentation";
-import type { ConversationResponseMode } from "../../domain/conversations/conversation-response-mode";
+import type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
+import type { ConversationResponseMode } from "../../services/pi/response-mode-reminders";
 
 export interface ConversationDeliveryInput {
   sessionId: string;

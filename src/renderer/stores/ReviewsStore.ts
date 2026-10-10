@@ -1,8 +1,5 @@
 import { Store, child, createStore } from "r-state-tree";
-import {
-  hasSidecarConversation,
-  type DiscussionAnchor,
-} from "../../domain/discussion-sessions/discussion-session-data";
+import { hasSidecarConversation, type DiscussionAnchor } from "../../ipc/discussion-session-data";
 import type { Annotation, ModelPreset } from "../../ipc/session-contract";
 import type { ReviewThread } from "../models/ReviewThread";
 import type { Conversation } from "../models/Conversation";

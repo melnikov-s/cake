@@ -1,4 +1,4 @@
-import type { DiscussionAnchor } from "../domain/discussion-sessions/discussion-session-data";
+import type { DiscussionAnchor } from "../ipc/discussion-session-data";
 import type { Attachment } from "../ipc/session-contract";
 
 /** An explicit VS Code selection handed to Cake; lines and columns are zero-based. */

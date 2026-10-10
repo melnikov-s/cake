@@ -16,7 +16,7 @@ import {
   interactWithSessionAvatar,
   materializeSessionAvatar,
 } from "../../lib/animate-session-avatar";
-import type { ProjectIcon, SessionLabelColor } from "../../../domain/application/application-data";
+import type { ProjectIcon, SessionLabelColor } from "../../../services/storage/application-data";
 import { cn } from "../../lib/utils";
 import { mergedSessionLabelColor } from "../../../utils/session-label-color";
 

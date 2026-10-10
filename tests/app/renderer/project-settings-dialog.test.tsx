@@ -4,7 +4,7 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defaultApplicationState } from "../../../src/domain/application/application-data";
+import { defaultApplicationState } from "../../../src/services/storage/application-data";
 import { ProjectSettingsDialog } from "../../../src/renderer/components/project-settings-dialog";
 import type { Client } from "../../../src/renderer/client/Client";
 import { projectRecord } from "./fixtures/catalog-fixtures";

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   addResponseModeReminder,
   responseModeReminders,
-} from "../../../src/domain/conversations/conversation-response-mode";
+} from "../../../src/services/pi/response-mode-reminders";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { forkDisplayProvenanceEntryType } from "../../../src/services/pi/runtime/fork-display-provenance";
 import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";

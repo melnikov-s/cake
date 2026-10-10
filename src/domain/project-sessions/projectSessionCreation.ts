@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { SESSION_TITLE_MAX_LENGTH, type ChatConfiguration } from "../../ipc/session-contract";
-import { ProjectSessionError } from "./project-session-data";
+import { ProjectSessionError } from "../../ipc/project-session-data";
 import * as projectSessionOperations from "./projectSessionOperations";
 import * as projectSessionLocations from "./projectSessionLocations";
 import * as managedWorktrees from "../worktrees/managedWorktrees";

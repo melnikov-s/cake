@@ -8,7 +8,7 @@ import type {
   ArtifactLink,
   ArtifactLinkTarget,
   ArtifactRevisionNumber,
-} from "./artifact-lineage";
+} from "../../services/storage/artifact-lineage";
 import { ArtifactProjection } from "../../services/artifacts/ArtifactProjection";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import * as artifactWorkflows from "./artifactWorkflows";

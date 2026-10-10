@@ -4,13 +4,13 @@ import {
   QueuedSessionCommand,
   type SessionInspectionQuery,
   type QueuedSessionCommandReceipt,
-} from "../../domain/conversations/session-query-data";
+} from "../../ipc/session-query-data";
 import {
   AgentSettingsInvocation,
   agentSettingsOperations,
   agentSettingsGuidance,
   agentSettingsSections,
-} from "../../domain/application/agent-settings-schema";
+} from "../../ipc/agent-settings-schema";
 import {
   jsonObjectSchema,
   jsonValueSchema,
@@ -23,11 +23,11 @@ import {
   type ChatConfiguration,
   type ProjectRecord,
 } from "../../ipc/session-contract";
-import { CakeControlTool, type CakeChatSummary } from "../../domain/cake-chats/cake-chat-data";
+import { CakeControlTool, type CakeChatSummary } from "../../ipc/cake-chat-data";
 import type { SessionSummary } from "../models/SessionSummary";
-import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
-import type { ProjectSessionPreview } from "../../domain/project-sessions/project-session-data";
-import type { ScheduledMessage } from "../../domain/scheduled-messages/scheduled-message-data";
+import type { WorktreeRecord } from "../../services/worktrees/managed-worktree-data";
+import type { ProjectSessionPreview } from "../../ipc/project-session-data";
+import type { ScheduledMessage } from "../../services/scheduled-messages/scheduled-message-data";
 import { editorLocationFromPath, type EditorLocation } from "../../ipc/editor-location";
 import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
 import {
@@ -41,40 +41,39 @@ import {
   type SourceLocation,
   type SourcePosition,
 } from "../../ipc/source-location";
-import { parseCrossSessionMessage } from "../../domain/conversations/cross-session-coordination";
+import { parseCrossSessionMessage } from "../../services/pi/cross-session-message";
 import type {
   CoordinationMessage,
   CoordinationThread,
   CrossSessionDeliveryStatus,
+} from "../../domain/conversations/cross-session-coordination";
+import type {
   CrossSessionMessageMetadata,
   CrossSessionContextSnapshot,
   CrossSessionQueueSnapshot,
-} from "../../domain/conversations/cross-session-coordination";
-import type { QueuedConversationMessages } from "../../domain/conversations/conversation-data";
+} from "../../services/pi/cross-session-message";
+import type { QueuedConversationMessages } from "../../ipc/conversation-data";
 import { isActiveSessionActivity, type SessionActivity } from "../lib/session-activity";
-import { CakeModelSelection } from "../../domain/model-presets/cake-model-selection";
+import { CakeModelSelection } from "../../ipc/cake-model-selection";
 import {
   type CakeSettingsSectionId,
   type CakeSettingsSectionView,
   type CakeSettingsUpdate,
-} from "../../domain/application/cake-settings-data";
-import {
-  CakeSettingsGetInput,
-  CakeSettingsUpdateInput,
-} from "../../domain/application/cake-settings-schema";
+} from "../../ipc/cake-settings-data";
+import { CakeSettingsGetInput, CakeSettingsUpdateInput } from "../../ipc/cake-settings-schema";
 import {
   SessionLabelColor,
   type ProjectSettings,
   type SessionLabel,
   type SessionLabelMutation,
-} from "../../domain/application/application-data";
+} from "../../services/storage/application-data";
 import {
   CurrentProjectSettingsGetInput,
   CurrentProjectSettingsUpdateInput,
   ProjectSettingsGetInput,
   ProjectSettingsUpdateInput,
   type ProjectSettingsChanges,
-} from "../../domain/application/project-settings-schema";
+} from "../../ipc/project-settings-schema";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));

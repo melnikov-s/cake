@@ -1,11 +1,11 @@
 import { Effect, Schema, Stream } from "effect";
 import type { ArtifactPointer } from "../../ipc/artifact-contract";
-import { ArtifactLineageId, ArtifactRevisionNumber } from "../artifacts/artifact-lineage";
+import { ArtifactLineageId, ArtifactRevisionNumber } from "../../services/storage/artifact-lineage";
 import * as artifactWorkflows from "../artifacts/artifactWorkflows";
 import * as projectSessionLocations from "./projectSessionLocations";
 import { resolutionNamespace } from "./projectSessionResolution";
-import type { ProjectSessionLocation } from "./project-session-data";
-import { ProjectSessionError, type ProjectSessionTarget } from "./project-session-data";
+import type { ProjectSessionLocation } from "../../ipc/project-session-data";
+import { ProjectSessionError, type ProjectSessionTarget } from "../../ipc/project-session-data";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";

@@ -6,8 +6,8 @@ import { initializeBackend } from "../../../src/backend/initializeBackend";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "../../../src/domain/application/application-data";
-import type { WorktreeRecord } from "../../../src/domain/worktrees/managed-worktree-data";
+} from "../../../src/services/storage/application-data";
+import type { WorktreeRecord } from "../../../src/services/worktrees/managed-worktree-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";

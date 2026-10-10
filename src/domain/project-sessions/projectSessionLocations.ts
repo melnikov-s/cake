@@ -8,7 +8,7 @@ import {
   type ProjectSessionArchiveContext,
 } from "../../services/storage/SessionArchiveStorage";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
-import type { ProjectSessionLocation } from "./project-session-data";
+import type { ProjectSessionLocation } from "../../ipc/project-session-data";
 
 export const locations = Effect.fn("ProjectSessions.locations")(function* (options?: {
   readonly includeInactive?: boolean;

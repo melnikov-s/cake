@@ -3,12 +3,12 @@ import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
 import { deliver, initialize } from "../../../src/domain/session-families/sessionFamilies";
-import { parseCrossSessionMessage } from "../../../src/domain/conversations/cross-session-coordination";
+import { parseCrossSessionMessage } from "../../../src/services/pi/cross-session-message";
 import {
   makeCakeSessionRuntimesLayer,
   CakeSessionRuntimes,
 } from "../../../src/services/pi/CakeSessionRuntimes";
-import { defaultApplicationState } from "../../../src/domain/application/application-data";
+import { defaultApplicationState } from "../../../src/services/storage/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";

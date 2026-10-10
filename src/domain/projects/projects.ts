@@ -24,8 +24,8 @@ import type {
   ProjectRecord,
   SessionLabelMutation,
   ProjectWorkflowSessionDetails,
-} from "../application/application-data";
-import { defaultProjectWorkflow } from "../application/application-data";
+} from "../../services/storage/application-data";
+import { defaultProjectWorkflow } from "../../services/storage/application-data";
 import { inspect as inspectProjectSession } from "../project-sessions/projectSessionMetadata";
 import * as projectSessionLifecycle from "../project-sessions/projectSessionLifecycle";
 import { ProjectError } from "./project-error";

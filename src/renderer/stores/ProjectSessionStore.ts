@@ -1,13 +1,13 @@
 import { Store, child, computed, createStore, snapshot } from "r-state-tree";
 import { ConversationModeContext, type ConversationModeTarget } from "./ConversationModeStore";
-import { isSessionAssistantThread } from "../../domain/discussion-sessions/discussion-session-data";
+import { isSessionAssistantThread } from "../../ipc/discussion-session-data";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { Conversation } from "../models/Conversation";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
-import type { CakeControlTool } from "../../domain/cake-chats/cake-chat-data";
+import type { CakeControlTool } from "../../ipc/cake-chat-data";
 import type { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
@@ -28,9 +28,9 @@ import { DrawStore } from "./DrawStore";
 import { EditorSelectionsStore, type EditorSelectionsStoreProps } from "./EditorSelectionsStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { SessionActivity } from "../lib/session-activity";
-import type { ProjectSessionPresentationMode } from "../../domain/project-sessions/project-session-presentation";
+import type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
 
-export type { ProjectSessionPresentationMode } from "../../domain/project-sessions/project-session-presentation";
+export type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
 
 export interface SessionTarget {
   workspacePath: string;

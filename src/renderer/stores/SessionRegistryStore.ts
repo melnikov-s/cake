@@ -1,7 +1,7 @@
 import { Store, batch, child, createStore, observable, snapshot, updateStore } from "r-state-tree";
 import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
 import type { ComposerDeliveryInput } from "./ConversationComposerStore";
-import type { CakeControlTool } from "../../domain/cake-chats/cake-chat-data";
+import type { CakeControlTool } from "../../ipc/cake-chat-data";
 import type { Conversation } from "../models/Conversation";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
@@ -15,7 +15,7 @@ import type { SessionCatalogStore } from "./SessionCatalogStore";
 import { SessionObservationRetentionStore } from "./SessionObservationRetentionStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { WorktreeStoreProps } from "./WorktreeStore";
-import type { WorktreeLandingOperation } from "../../domain/worktrees/worktree-landing-data";
+import type { WorktreeLandingOperation } from "../../services/worktrees/worktree-landing-data";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { EditorLocation } from "../../ipc/editor-location";
 import type { EditorSelectionReveal } from "../../ipc/editor-selection";

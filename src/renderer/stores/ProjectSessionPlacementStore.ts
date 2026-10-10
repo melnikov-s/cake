@@ -1,5 +1,5 @@
 import { Store } from "r-state-tree";
-import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
+import type { ProjectSessionControlInvocation } from "../../ipc/project-session-data";
 import type { JsonValue } from "../../ipc/json-contract";
 import { ClientContext } from "./context/ClientContext";
 import type { SessionLayoutStore } from "./SessionLayoutStore";

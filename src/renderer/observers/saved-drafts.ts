@@ -1,4 +1,4 @@
-import type { SavedDraft } from "../../domain/project-sessions/saved-draft-data";
+import type { SavedDraft } from "../../services/storage/saved-draft-data";
 import type { Runtime } from "../runtime";
 
 /** One authoritative backend snapshot at subscription and after each committed mutation. */

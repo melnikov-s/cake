@@ -51,7 +51,7 @@ import {
   desktopPresentationDirectory,
 } from "../services/electron/DesktopHostLive";
 import { makeWindowStateStorageLive } from "../services/storage/WindowStateStorage";
-import type { DesktopHostSelection } from "../domain/application/desktop-host-data";
+import type { DesktopHostSelection } from "../services/electron/desktop-host-data";
 import type { MainLiveOptions } from "./MainLive";
 import { BootstrapLive } from "./BootstrapLive";
 

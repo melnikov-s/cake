@@ -3,7 +3,7 @@ import type {
   ArtifactLineageId,
   ArtifactRevisionNumber,
   ArtifactTextComparison,
-} from "../../domain/artifacts/artifact-lineage";
+} from "../../services/storage/artifact-lineage";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { ClientContext } from "./context/ClientContext";
 

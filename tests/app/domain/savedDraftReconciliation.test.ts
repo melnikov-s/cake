@@ -5,7 +5,7 @@ import {
   reconcileInterrupted,
   recoverUncertain,
 } from "../../../src/domain/project-sessions/savedDrafts";
-import type { SavedDraft } from "../../../src/domain/project-sessions/saved-draft-data";
+import type { SavedDraft } from "../../../src/services/storage/saved-draft-data";
 import { SavedDraftStorage } from "../../../src/services/storage/SavedDraftStorage";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";

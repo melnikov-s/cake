@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { SpeechOutputProvider } from "../../domain/speech/pocket-tts-data";
+import { SpeechOutputProvider } from "../../services/speech/pocket-tts-data";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import {
   SpeechOutputAudio,
@@ -7,9 +7,9 @@ import {
   SpeechOutputRequest,
   SpeechOutputSettings,
   SpeechOutputVoice,
-} from "../../domain/speech/speech-output-data";
+} from "../../services/speech/speech-output-data";
 
-import { SpeechOutputSpeed } from "../../domain/speech/speech-output-speed";
+import { SpeechOutputSpeed } from "../../services/speech/speech-output-speed";
 
 /** Native-only desktop group. Streaming synthesis is a command, not a retried observation. */
 export const SpeechOutputRpc = RpcGroup.make(

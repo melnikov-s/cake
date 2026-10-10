@@ -8,7 +8,7 @@ import {
   ArtifactLineageId,
   ArtifactRevisionNumber,
   formatArtifactRef,
-} from "../../../src/domain/artifacts/artifact-lineage";
+} from "../../../src/services/storage/artifact-lineage";
 import * as artifacts from "../../../src/domain/artifacts/artifacts";
 import * as workflows from "../../../src/domain/artifacts/artifactWorkflows";
 import type { CakeArtifactV1 } from "../../../src/ipc/artifact-contract";

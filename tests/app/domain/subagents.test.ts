@@ -6,7 +6,7 @@ import * as subagents from "../../../src/domain/subagents/subagents";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "../../../src/domain/application/application-data";
+} from "../../../src/services/storage/application-data";
 import type { ConversationSnapshot } from "../../../src/ipc/session-contract";
 import {
   makeCakeSessionRuntimesLayer,

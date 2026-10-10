@@ -7,7 +7,7 @@ import {
   DrawBoardTitle,
   DrawSessionId,
   type DrawBoardError,
-} from "../../../src/domain/draw/draw-board-data";
+} from "../../../src/services/storage/draw-board-data";
 import * as drawBoards from "../../../src/domain/draw/drawBoards";
 import { DrawBoardStorage } from "../../../src/services/storage/DrawBoardStorage";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";

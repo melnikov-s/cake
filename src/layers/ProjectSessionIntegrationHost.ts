@@ -1,40 +1,40 @@
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { Effect } from "effect";
-import type { SourceLocation } from "../../ipc/source-location";
-import type { UtilityModel } from "../../ipc/session-contract";
-import type { CakeModelPresetCatalog } from "../../domain/model-presets/cake-model-selection";
-import type { WorktreeLandingCoordinator } from "../../ipc/worktree-contract";
-import type { JsonValue } from "../../ipc/json-contract";
-import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
-import type { VscodeActionResult } from "../vscode/VsCodeServer";
+import type { SourceLocation } from "../ipc/source-location";
+import type { UtilityModel } from "../ipc/session-contract";
+import type { CakeModelPresetCatalog } from "../ipc/cake-model-selection";
+import type { WorktreeLandingCoordinator } from "../ipc/worktree-contract";
+import type { JsonValue } from "../ipc/json-contract";
+import type { ProjectSessionControlInvocation } from "../ipc/project-session-data";
+import type { VscodeActionResult } from "../services/vscode/VsCodeServer";
 import {
   parseArtifactInput,
   type ArtifactRecord,
   type CakeArtifactV1,
-} from "../../ipc/artifact-contract";
-import type { CakeEvent } from "../../ipc/cake-rpc-contract";
-import { compileInlineWidget } from "../widgets/inline-widget-service";
+} from "../ipc/artifact-contract";
+import type { CakeEvent } from "../ipc/cake-rpc-contract";
+import { compileInlineWidget } from "../services/widgets/inline-widget-service";
 import {
   publishInlineWidget,
   revokeInlineWidget,
-} from "../widgets/inline-widget-document-registry";
+} from "../services/widgets/inline-widget-document-registry";
 import {
   runInlineWidgetGeneration,
   runInlineWidgetRepair,
   runInlineWidgetVisualReview,
   type InlineWidgetRevisionRequest,
-} from "./runtime/sidecar-runtime";
+} from "../services/pi/runtime/sidecar-runtime";
 import type {
   InlineWidgetGenerationRequest,
   InlineWidgetGenerationResult,
   WidgetGenerationReviewDependencies,
-} from "../../domain/widgets/widgetGenerationReview";
-import type { CakeSessionRuntimeOptions } from "./runtime/cake-session-runtime";
-import type { RuntimeUiRequest } from "./runtime/runtime-ui-request";
-import type { ImportWorkspaceFileInput } from "../artifacts/importWorkspaceFile";
-import type { ArtifactProjectionMetadata } from "../artifacts/ArtifactProjection";
-import type { ResolvedAgentArtifact } from "./runtime/cake-artifact-operations";
+} from "../domain/widgets/widgetGenerationReview";
+import type { CakeSessionRuntimeOptions } from "../services/pi/runtime/cake-session-runtime";
+import type { RuntimeUiRequest } from "../services/pi/runtime/runtime-ui-request";
+import type { ImportWorkspaceFileInput } from "../services/artifacts/importWorkspaceFile";
+import type { ArtifactProjectionMetadata } from "../services/artifacts/ArtifactProjection";
+import type { ResolvedAgentArtifact } from "../services/pi/runtime/cake-artifact-operations";
 
 interface ArtifactRepositoryPort {
   readonly upsert: (
@@ -85,30 +85,7 @@ interface ReviewRepositoryPort {
   readonly reviewContextPath?: (workingDirectory: string, sessionId: string) => string;
 }
 
-export type ProjectSessionRuntimeIntegrations = Pick<
-  CakeSessionRuntimeOptions,
-  | "generateInlineWidget"
-  | "reviseInlineWidget"
-  | "resolveArtifact"
-  | "hasLinkedArtifacts"
-  | "listArtifactMetadata"
-  | "historyArtifact"
-  | "restoreArtifact"
-  | "linkArtifact"
-  | "unlinkArtifact"
-  | "importArtifactFile"
-  | "persistArtifact"
-  | "requestArtifact"
-  | "requestUi"
-  | "emitExtensionUiIntent"
-  | "reviewContextPath"
-  | "drawControl"
-> & {
-  readonly requestApplicationControl: (
-    invocation: ProjectSessionControlInvocation,
-    signal: AbortSignal,
-  ) => Promise<JsonValue>;
-};
+import type { ProjectSessionRuntimeIntegrations } from "../services/pi/ProjectSessionRuntimeHost";
 
 /**
  * Cake-owned artifact, UI-request, review, and inline-widget integrations for

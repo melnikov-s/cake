@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
+import { resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import { setSessionFastMode } from "../application/application";
-import type { CakeChatTarget } from "./cake-chat-data";
+import type { CakeChatTarget } from "../../ipc/cake-chat-data";
 import * as cakeChatLifecycle from "./cakeChatLifecycle";
 import type { CakeChatLocation } from "./cakeChatLocations";
 import { makeSubagentControl } from "../subagents/subagentControl";
@@ -80,6 +81,8 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       slashCommands: ["compact", "model", "toolcompact"],
       requestUi: async () => undefined,
       modelPresets,
+      resolveModelSelection: (selection, inherited) =>
+        resolveCakeModelSelection(selection, modelPresets(), inherited),
       fastMode: {
         get: () => application.snapshot().fastModeSessionIds.includes(target.sessionId),
         set: (enabled) => run(setSessionFastMode(target.sessionId, enabled)).then(() => undefined),

@@ -6,7 +6,7 @@ import { app, nativeTheme } from "electron";
 import { cakeEventSchema, type CakeEvent } from "../ipc/cake-rpc-contract";
 import type { JsonValue } from "../ipc/json-contract";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
-import { DrawControlInvocation } from "../domain/draw/draw-control";
+import { DrawControlInvocation } from "../ipc/draw-control";
 import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import { ClientEvents } from "../services/clients/ClientEvents";
 import {
@@ -16,7 +16,7 @@ import {
 import { revokeInlineWidget } from "../services/widgets/inline-widget-document-registry";
 import { InlineWidgets } from "../services/widgets/InlineWidgets";
 import { RenderedWidgetCapture } from "../services/widgets/RenderedWidgetCapture";
-import { ArtifactLineageId } from "../domain/artifacts/artifact-lineage";
+import { ArtifactLineageId } from "../services/storage/artifact-lineage";
 import { ArtifactStorage } from "../services/storage/ArtifactStorage";
 import {
   registerExtensionCompanionScheme,

@@ -3,7 +3,7 @@ import type {
   DesktopSharingError,
   DesktopSharingInput,
   DesktopSharingState,
-} from "../../domain/application/desktop-sharing-data";
+} from "./desktop-sharing-data";
 
 /** Desktop-local host capability. Never exposed by BackendRpc. No persisted opt-in. */
 export class DesktopSharing extends Context.Service<

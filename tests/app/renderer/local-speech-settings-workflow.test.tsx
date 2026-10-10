@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SpeechOutputSettings } from "../../../src/domain/speech/speech-output-data";
+import type { SpeechOutputSettings } from "../../../src/services/speech/speech-output-data";
 import { SettingsSpeechSection } from "../../../src/renderer/components/settings-speech-section";
 import { pocketTtsState, speechOutputSettings } from "../../helpers/speech-output";
 import { createRendererStoreFixture } from "./renderer-store-fixture";

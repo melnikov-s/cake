@@ -3,8 +3,8 @@ import {
   ResolvedManagedWorktreeCleanupPlan,
   ResolvedManagedWorktreeCleanupResult,
 } from "../../domain/worktrees/managed-worktree-cleanup-data";
-import { WorktreeLandingError } from "../../domain/worktrees/worktree-landing-data";
-import { ManagedWorktreeCatalogUpdate } from "../../domain/worktrees/managed-worktree-data";
+import { WorktreeLandingError } from "../../services/worktrees/worktree-landing-data";
+import { ManagedWorktreeCatalogUpdate } from "../../services/worktrees/managed-worktree-data";
 import { WorktreeOperationCatalogUpdate } from "../../domain/worktrees/worktree-operation-data";
 import { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
 import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";

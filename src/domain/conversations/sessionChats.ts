@@ -1,15 +1,15 @@
 import { Effect } from "effect";
-import type { SessionInspectionQuery } from "./session-query-data";
+import type { SessionInspectionQuery } from "../../ipc/session-query-data";
 import type { ChatConfiguration, PiSettingUpdate } from "../../ipc/session-contract";
 import { CakeSessionRuntimes, type CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
-import { encodeCrossSessionMessage } from "./cross-session-coordination";
+import { encodeCrossSessionMessage } from "../../services/pi/cross-session-message";
 import {
   TurnId,
   type SessionChatPromptInput,
   SessionChatError,
   type SessionChatTarget,
-} from "./conversation-data";
+} from "../../ipc/conversation-data";
 import {
   abort as abortConversation,
   applyConfiguration as applyConversationConfiguration,

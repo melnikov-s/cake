@@ -1,7 +1,7 @@
 import { Option, Schema } from "effect";
 import { useEffect, useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
-import type { SessionPlugin } from "../../domain/application/application-data";
+import type { SessionPlugin } from "../../services/storage/application-data";
 import type { JsonObject, JsonValue } from "../../ipc/json-contract";
 import { readWidgetTheme } from "../lib/widget-theme";
 import { useResolvedColorTheme } from "../lib/resolved-color-theme";

@@ -1,5 +1,5 @@
 import { Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
-import { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
+import { WorktreeRecord } from "../worktrees/managed-worktree-data";
 import { atomicWriteFile } from "./internal/atomicFile";
 import { WorktreeStorage, WorktreeStorageError } from "./WorktreeStorage";
 

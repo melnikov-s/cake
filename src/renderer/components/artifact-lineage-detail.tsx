@@ -19,7 +19,7 @@ import {
   decodeArtifactLineageId,
   decodeArtifactRevisionNumber,
   type ArtifactLinkTarget,
-} from "../../domain/artifacts/artifact-lineage";
+} from "../../services/storage/artifact-lineage";
 import type { SessionCatalogStore } from "../stores/SessionCatalogStore";
 import type { ArtifactDetailStore } from "../stores/ArtifactDetailStore";
 import type { ArtifactReferencePreviewStore } from "../stores/ArtifactReferencePreviewStore";

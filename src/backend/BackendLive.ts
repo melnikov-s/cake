@@ -23,7 +23,7 @@ import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
 import { makeMcpSettingsLayer } from "../services/pi/McpSettings";
 import { makePiSettingsLive } from "../services/pi/live/PiSettingsLive";
 import { makeCakeSessionRuntimesLive } from "../services/pi/CakeSessionRuntimes";
-import { makeProjectSessionRuntimeHostLive } from "../services/pi/ProjectSessionRuntimeHostLive";
+import { makeProjectSessionRuntimeHostLive } from "../layers/ProjectSessionRuntimeHostLive";
 import { ProjectSessionConfiguration } from "../services/project-sessions/ProjectSessionConfiguration";
 import { makeProjectAccessLive } from "../services/projects/ProjectAccessLive";
 import { ProjectConfiguration } from "../services/projects/ProjectConfiguration";
@@ -33,7 +33,7 @@ import { ScheduledMessages } from "../services/scheduled-messages/ScheduledMessa
 import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import { makeArtifactStorageLive } from "../services/storage/ArtifactStorageLive";
 import { makeDrawBoardStorageLive } from "../services/storage/DrawBoardStorageLive";
-import { ArtifactGarbageCollectorLive } from "../services/artifacts/ArtifactGarbageCollectorLive";
+import { ArtifactGarbageCollectorLive } from "../layers/ArtifactGarbageCollectorLive";
 import { makeArtifactProjectionLive } from "../services/artifacts/ArtifactProjectionLive";
 import { makeApplicationStorageLive } from "../services/storage/ApplicationStorage";
 import { ApplicationState } from "../services/storage/ApplicationState";

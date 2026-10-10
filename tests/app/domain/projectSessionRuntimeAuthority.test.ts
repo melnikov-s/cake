@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
-import { defaultApplicationState } from "../../../src/domain/application/application-data";
+import { defaultApplicationState } from "../../../src/services/storage/application-data";
 import {
   makeCakeSessionRuntimesLayer,
   type CakeSessionRuntimesAdapter,

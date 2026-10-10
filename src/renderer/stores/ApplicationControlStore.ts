@@ -1,12 +1,9 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
-import type {
-  CakeChatControlRequest,
-  CakeControlTool,
-} from "../../domain/cake-chats/cake-chat-data";
+import type { CakeChatControlRequest, CakeControlTool } from "../../ipc/cake-chat-data";
 import type {
   ProjectSessionControlRequest,
   ProjectSessionControlInvocation,
-} from "../../domain/project-sessions/project-session-data";
+} from "../../ipc/project-session-data";
 import type { JsonValue } from "../../ipc/json-contract";
 import {
   AppControlBridge,

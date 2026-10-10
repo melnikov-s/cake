@@ -3,7 +3,7 @@ import { it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { describe } from "vitest";
 import { admitTurn } from "../../../src/domain/session-families/sessionFamilies";
-import { encodeCrossSessionMessage } from "../../../src/domain/conversations/cross-session-coordination";
+import { encodeCrossSessionMessage } from "../../../src/services/pi/cross-session-message";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";

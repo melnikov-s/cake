@@ -11,7 +11,7 @@ import { Select } from "@/components/ui/select";
 import {
   decodeArtifactLineageId,
   decodeArtifactRevisionNumber,
-} from "../../domain/artifacts/artifact-lineage";
+} from "../../services/storage/artifact-lineage";
 import { IconButton } from "@/components/ui/icon-button";
 import { NavItem } from "@/components/ui/nav-item";
 import { SidePanel } from "@/components/ui/side-panel";

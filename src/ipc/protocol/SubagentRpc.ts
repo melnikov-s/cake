@@ -5,7 +5,7 @@ import {
   SubagentHandleId,
   SubagentParent,
   SubagentUpdate,
-} from "../../domain/subagents/subagent-data";
+} from "../../services/subagents/subagent-data";
 
 export const SubagentRpc = RpcGroup.make(
   Rpc.make("subagents.observe", {

@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { SessionChatError } from "../../domain/conversations/conversation-data";
+import { SessionChatError } from "../conversation-data";
 import { ClientEvents } from "../../services/clients/ClientEvents";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { PiProviderAuthError } from "../../services/pi/model-data";

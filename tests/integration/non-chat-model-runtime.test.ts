@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Effect, Layer, Schema } from "effect";
-import { AgentSettingsInvocation } from "../../src/domain/application/agent-settings-schema";
+import { AgentSettingsInvocation } from "../../src/ipc/agent-settings-schema";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { PiSettings } from "../../src/services/pi/PiSettings";
 import { makePiSettingsLive } from "../../src/services/pi/live/PiSettingsLive";
@@ -19,7 +19,7 @@ import {
   projectNonChatModelCatalog,
 } from "../../src/services/pi/live/PiModelsLive";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
-import type { NonChatModelPreferences } from "../../src/domain/model-preferences/non-chat-model-data";
+import type { NonChatModelPreferences } from "../../src/services/storage/non-chat-model-data";
 import { nativeNonChatScript, nonChatProviderSource } from "../fixtures/non-chat-provider";
 
 const directories: string[] = [];

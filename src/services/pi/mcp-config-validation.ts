@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { MCP_STORED_SECRET } from "../../domain/mcp/mcp-settings-data";
+import { MCP_STORED_SECRET } from "./mcp-settings-data";
 
 const exposure = Schema.Literals(["codemode", "codemode-deferred", "deferred", "direct", "hidden"]);
 const strings = Schema.Record(Schema.String, Schema.String);

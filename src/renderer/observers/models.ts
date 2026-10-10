@@ -4,31 +4,31 @@ import type {
   CakeChatCatalogQuery,
   CakeChatTarget,
   CakeChatControlUpdate,
-} from "../../domain/cake-chats/cake-chat-data";
+} from "../../ipc/cake-chat-data";
 import type {
   CakeChatCatalogUpdate,
   DiscussionCatalogUpdate,
   ProjectCatalogUpdate,
   SessionCatalogUpdate,
 } from "../../domain/application/catalog-data";
-import { SessionChatError } from "../../domain/conversations/conversation-data";
+import { SessionChatError } from "../../ipc/conversation-data";
 import type {
   DiscussionSessionTarget,
   DiscussionSessionUpdate,
-} from "../../domain/discussion-sessions/discussion-session-data";
+} from "../../ipc/discussion-session-data";
 import {
   hasSidecarConversation,
   isSessionAssistantThread,
-} from "../../domain/discussion-sessions/discussion-session-data";
-import type { CakeControlTool } from "../../domain/cake-chats/cake-chat-data";
+} from "../../ipc/discussion-session-data";
+import type { CakeControlTool } from "../../ipc/cake-chat-data";
 import type { ReviewThread } from "../models/ReviewThread";
 import type {
   ProjectSessionCatalogQuery,
   ProjectSessionTarget,
-} from "../../domain/project-sessions/project-session-data";
-import type { SubagentUpdate } from "../../domain/subagents/subagent-data";
-import type { ScheduledMessageUpdate } from "../../domain/scheduled-messages/scheduled-message-data";
-import type { ManagedWorktreeCatalogUpdate } from "../../domain/worktrees/managed-worktree-data";
+} from "../../ipc/project-session-data";
+import type { SubagentUpdate } from "../../services/subagents/subagent-data";
+import type { ScheduledMessageUpdate } from "../../services/scheduled-messages/scheduled-message-data";
+import type { ManagedWorktreeCatalogUpdate } from "../../services/worktrees/managed-worktree-data";
 import type { WorktreeOperationCatalogUpdate } from "../../domain/worktrees/worktree-operation-data";
 import type { CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import type { Runtime } from "../runtime";

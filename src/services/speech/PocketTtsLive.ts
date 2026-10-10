@@ -1,13 +1,13 @@
 import { access, constants, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Effect, Layer, Queue, Schema, Semaphore, Stream, SubscriptionRef } from "effect";
-import type { PocketTtsState } from "../../domain/speech/pocket-tts-data";
+import type { PocketTtsState } from "./pocket-tts-data";
 import {
   SpeechOutputError,
   SpeechOutputRequest,
   type SpeechOutputAudio,
-} from "../../domain/speech/speech-output-data";
-import { SpeechOutputSpeed } from "../../domain/speech/speech-output-speed";
+} from "./speech-output-data";
+import { SpeechOutputSpeed } from "./speech-output-speed";
 import { PocketTts } from "./PocketTts";
 import {
   installPocketTts,

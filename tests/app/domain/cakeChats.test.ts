@@ -11,7 +11,7 @@ import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "../../../src/domain/application/application-data";
+} from "../../../src/services/storage/application-data";
 import type { CakeChatRuntimeConfiguration } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import {
   makeCakeSessionRuntimesLayer,

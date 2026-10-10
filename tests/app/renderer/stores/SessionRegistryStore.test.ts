@@ -4,7 +4,7 @@ import { piBuiltinSlashCommands } from "../../../../src/ipc/session-contract";
 import { SessionSummary } from "../../../../src/renderer/models/SessionSummary";
 import { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
 import { applyDiscussionCatalogUpdate } from "../../../../src/renderer/reducers/DiscussionReducer";
-import { sessionAssistantThreadPath } from "../../../../src/domain/discussion-sessions/discussion-session-data";
+import { sessionAssistantThreadPath } from "../../../../src/ipc/discussion-session-data";
 import { fakeSavedDrafts, type FakeSavedDrafts } from "../fakes/saved-drafts";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
 

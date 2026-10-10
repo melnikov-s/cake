@@ -2,7 +2,7 @@
 import { Buffer } from "node:buffer";
 import { extname } from "node:path";
 import { Schema } from "effect";
-import type { DrawBoardMetadata } from "../../../domain/draw/draw-board-data";
+import type { DrawBoardMetadata } from "../../storage/draw-board-data";
 import type { JsonObject } from "../../../ipc/json-contract";
 import {
   DRAW_APPLY_MAX_OPERATIONS,
@@ -13,7 +13,7 @@ import {
   DrawFrameInput,
   DrawReadScope,
   type DrawControlInvocation,
-} from "../../../domain/draw/draw-control";
+} from "../../../ipc/draw-control";
 import {
   MAX_CAKE_OPERATION_IMAGE_BYTES,
   cakeOperationImageResult,

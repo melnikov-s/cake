@@ -5,8 +5,8 @@ import { acquireOptions } from "../../../src/domain/project-sessions/projectSess
 import {
   encodeCrossSessionMessage,
   parseCrossSessionMessage,
-} from "../../../src/domain/conversations/cross-session-coordination";
-import { defaultApplicationState } from "../../../src/domain/application/application-data";
+} from "../../../src/services/pi/cross-session-message";
+import { defaultApplicationState } from "../../../src/services/storage/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";

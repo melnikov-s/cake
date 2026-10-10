@@ -3,7 +3,7 @@ import type {
   ArtifactLineageId,
   ArtifactRevision,
   ArtifactRevisionNumber,
-} from "../../domain/artifacts/artifact-lineage";
+} from "../storage/artifact-lineage";
 
 const ArtifactProjectionLinkMode = Schema.Literals(["follow-latest", "pinned"]);
 type ArtifactProjectionLinkMode = typeof ArtifactProjectionLinkMode.Type;

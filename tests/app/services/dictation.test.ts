@@ -1,7 +1,7 @@
 import { beforeEach, vi } from "vitest";
 import { expect, it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Schema, Stream } from "effect";
-import { DictationState } from "../../../src/domain/dictation/dictation-data";
+import { DictationState } from "../../../src/services/dictation/dictation-data";
 import { Dictation } from "../../../src/services/dictation/Dictation";
 import { makeDictationLive } from "../../../src/services/dictation/DictationLive";
 

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { applySnapshot, toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { observer } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TurnId } from "../../../src/domain/conversations/conversation-data";
+import { TurnId } from "../../../src/ipc/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { mountRootStore } from "../../../src/renderer/bootstrap/mount-root-store";
 import { Chat } from "../../../src/renderer/components/chat";

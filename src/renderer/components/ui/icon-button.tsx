@@ -7,7 +7,7 @@ import {
   type Ref,
 } from "react";
 import { observer } from "r-state-tree/react";
-import type { CakeHotkeyActionId } from "../../../domain/application/cake-settings-data";
+import type { CakeHotkeyActionId } from "../../../ipc/cake-settings-data";
 import { formatHotkey } from "@/lib/hotkeys";
 import { cn } from "@/lib/utils";
 import { TooltipBubble, useTooltip } from "./tooltip";

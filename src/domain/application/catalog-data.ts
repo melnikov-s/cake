@@ -1,8 +1,8 @@
 import { Schema } from "effect";
-import { ProjectRecord } from "./application-data";
-import { ProjectSessionSummary } from "../project-sessions/project-session-data";
-import { CakeChatSummary } from "../cake-chats/cake-chat-data";
-import { DiscussionThread } from "../discussion-sessions/discussion-session-data";
+import { ProjectRecord } from "../../services/storage/application-data";
+import { ProjectSessionSummary } from "../../ipc/project-session-data";
+import { CakeChatSummary } from "../../ipc/cake-chat-data";
+import { DiscussionThread } from "../../ipc/discussion-session-data";
 
 const ProjectCatalogEvent = Schema.TaggedUnion({
   Replaced: { projects: Schema.Array(ProjectRecord) },

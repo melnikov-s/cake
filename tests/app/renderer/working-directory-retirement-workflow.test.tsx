@@ -2,7 +2,7 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { WorktreeRecord } from "../../../src/domain/worktrees/managed-worktree-data";
+import type { WorktreeRecord } from "../../../src/services/worktrees/managed-worktree-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { QuakeTerminal } from "../../../src/renderer/components/quake-terminal";
 import { WorktreePill } from "../../../src/renderer/components/worktree-pill";

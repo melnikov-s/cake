@@ -1,5 +1,5 @@
 import { Option, Schema } from "effect";
-import { ScheduledMessage } from "./scheduled-message-data";
+import { ScheduledMessage } from "../scheduled-messages/scheduled-message-data";
 
 /** Cake-owned provenance carried by an ordinary Pi user message that a schedule delivered. */
 export const ScheduledMessageOrigin = Schema.Struct({

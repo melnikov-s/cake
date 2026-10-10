@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
-import type { ProjectIcon, SessionLabel } from "../../domain/application/application-data";
-import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
+import type { ProjectIcon, SessionLabel } from "../../services/storage/application-data";
+import type { WorktreeRecord } from "../../services/worktrees/managed-worktree-data";
 import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
 import { IconButton } from "./ui/icon-button";

@@ -1,11 +1,8 @@
 import { Schema } from "effect";
-import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
-import { ThinkingLevel } from "../../services/pi/model-data";
-import { ManagedWorktreeContext } from "../worktrees/managed-worktree-data";
-import {
-  SessionChatConfiguration,
-  SessionChatPromptInput,
-} from "../conversations/conversation-data";
+import { SESSION_TITLE_MAX_LENGTH } from "./session-contract";
+import { ThinkingLevel } from "../services/pi/model-data";
+import { ManagedWorktreeContext } from "../services/worktrees/managed-worktree-data";
+import { SessionChatConfiguration, SessionChatPromptInput } from "./conversation-data";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const boundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));

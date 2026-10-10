@@ -1,5 +1,5 @@
 import { Model, id } from "r-state-tree";
-import type { ArtifactLinkTarget } from "../../domain/artifacts/artifact-lineage";
+import type { ArtifactLinkTarget } from "../../services/storage/artifact-lineage";
 
 export class ArtifactLink extends Model {
   @id id = "";

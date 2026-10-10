@@ -7,7 +7,7 @@ import {
   CakeSessionRuntimes,
   type CakeSessionRuntimeAcquireOptions,
 } from "../../services/pi/CakeSessionRuntimes";
-import type { ProjectSessionLocation } from "../project-sessions/project-session-data";
+import type { ProjectSessionLocation } from "../../ipc/project-session-data";
 import { resolutionNamespace } from "../project-sessions/projectSessionResolution";
 import {
   SessionArchiveStorage,
@@ -26,7 +26,7 @@ import {
   encodeCrossSessionMessage,
   parseCrossSessionMessage,
   type CrossSessionContextSnapshot,
-} from "../conversations/cross-session-coordination";
+} from "../../services/pi/cross-session-message";
 
 const failure = (message: string) =>
   new SessionFamilyStorageError({ operation: "familyLifecycle", message });

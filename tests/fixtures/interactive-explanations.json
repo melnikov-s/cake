@@ -218,11 +218,11 @@
           "claim": "ProjectSessionIntegrationHost.generateInlineWidget extracts one cake-react result, compile-checks it, and on compile failure runs repair with diagnostic/context before compiling repaired source; persistArtifact emits artifact-updated after upsert.",
           "sources": [
             {
-              "path": "src/services/pi/ProjectSessionIntegrationHost.ts",
+              "path": "src/layers/ProjectSessionIntegrationHost.ts",
               "symbol": "ProjectSessionIntegrationHost.generateInlineWidget"
             },
             {
-              "path": "src/services/pi/ProjectSessionIntegrationHost.ts",
+              "path": "src/layers/ProjectSessionIntegrationHost.ts",
               "symbol": "ProjectSessionIntegrationHost.persistArtifact"
             }
           ]

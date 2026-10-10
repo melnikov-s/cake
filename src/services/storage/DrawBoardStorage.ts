@@ -5,7 +5,7 @@ import type {
   DrawBoardMetadata,
   DrawBoardTitle,
   DrawSessionId,
-} from "../../domain/draw/draw-board-data";
+} from "./draw-board-data";
 
 export const DRAW_BOARD_SNAPSHOT_MAX_BYTES = 20 * 1024 * 1024;
 

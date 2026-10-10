@@ -13,14 +13,14 @@ import {
   setSessionUnread,
   trustProject,
 } from "../application/application";
-import { defaultProjectWorkflow } from "../application/application-data";
-import type { WorktreeRecord } from "../worktrees/managed-worktree-data";
+import { defaultProjectWorkflow } from "../../services/storage/application-data";
+import type { WorktreeRecord } from "../../services/worktrees/managed-worktree-data";
 import {
   ProjectSessionError,
   type ProjectSessionLocation,
   type ProjectSessionTarget,
   type WorkingDirectoryResolutionFailure,
-} from "./project-session-data";
+} from "../../ipc/project-session-data";
 import {
   archiveLocation,
   asError,

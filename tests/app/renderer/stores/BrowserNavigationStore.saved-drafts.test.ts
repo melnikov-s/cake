@@ -1,6 +1,6 @@
 import { createStore, mount } from "r-state-tree";
 import { expect, it } from "vitest";
-import type { SavedDraft } from "../../../../src/domain/project-sessions/saved-draft-data";
+import type { SavedDraft } from "../../../../src/services/storage/saved-draft-data";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { BrowserNavigationStore } from "../../../../src/renderer/stores/BrowserNavigationStore";
 

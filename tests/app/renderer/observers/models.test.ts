@@ -5,12 +5,9 @@ import type {
   DiscussionCatalogUpdate,
   SessionCatalogUpdate,
 } from "../../../../src/domain/application/catalog-data";
-import type { DiscussionSessionUpdate } from "../../../../src/domain/discussion-sessions/discussion-session-data";
-import {
-  SessionChatError,
-  type ConversationUpdate,
-} from "../../../../src/domain/conversations/conversation-data";
-import type { CakeChatControlUpdate } from "../../../../src/domain/cake-chats/cake-chat-data";
+import type { DiscussionSessionUpdate } from "../../../../src/ipc/discussion-session-data";
+import { SessionChatError, type ConversationUpdate } from "../../../../src/ipc/conversation-data";
+import type { CakeChatControlUpdate } from "../../../../src/ipc/cake-chat-data";
 import type { CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import { CakeIpcClient } from "../../../../src/ipc/client/CakeIpcClient";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";

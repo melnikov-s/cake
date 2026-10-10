@@ -12,7 +12,7 @@ import {
   ApplicationWriteError,
   makeApplicationStorageLive,
 } from "../../../../src/services/storage/ApplicationStorage";
-import { defaultApplicationState } from "../../../../src/domain/application/application-data";
+import { defaultApplicationState } from "../../../../src/services/storage/application-data";
 import { ApplicationState } from "../../../../src/services/storage/ApplicationState";
 import { updateNonChatModelPreference } from "../../../../src/domain/model-preferences/non-chat-model-preferences";
 import {
@@ -20,6 +20,7 @@ import {
   resolveCakePrompts,
 } from "../../../../src/domain/application/cake-prompts";
 import { setCakePrompts } from "../../../../src/domain/application/application";
+import versionFivePromptDefaults from "../../../../src/services/storage/internal/application-v5-prompt-defaults.json";
 
 interface FakeFileSystemControls {
   readonly files: Map<string, string>;
@@ -257,7 +258,7 @@ describe("ApplicationStorage", () => {
         "Cake is preparing to merge this worktree into {{target}}, but it has uncommitted changes.\n\nInspect the complete working tree, verify the change, and commit all intended work with an appropriate commit message.\n\nDo not merge, rebase, push, switch branches, or modify the target checkout. Cake will merge the committed branch after this turn finishes.";
       for (const worktreeCommit of [
         oldCommitDefault,
-        defaultCakePrompts().worktreeCommit,
+        versionFivePromptDefaults.worktreeCommit,
         "Custom commit wording",
       ]) {
         yield* withStorage(
@@ -267,7 +268,7 @@ describe("ApplicationStorage", () => {
               data: {
                 ...current,
                 cakePrompts: {
-                  ...defaultCakePrompts(),
+                  ...versionFivePromptDefaults,
                   worktreeCommit,
                   worktreeSquashMessage: "Custom squash wording",
                 },
@@ -291,6 +292,37 @@ describe("ApplicationStorage", () => {
         );
       }
     }),
+  );
+
+  it.effect("preserves explicit current-version text and lets domain policy resolve it", () =>
+    withStorage(
+      {
+        [documentPath]: JSON.stringify({
+          version: 6,
+          data: {
+            ...current,
+            cakePrompts: {
+              worktreeCommit: versionFivePromptDefaults.worktreeCommit,
+              dictationCleanup: "Custom cleanup guidance",
+            },
+          },
+        }),
+      },
+      (storage) =>
+        Effect.gen(function* () {
+          const loaded = yield* storage.load();
+          assert.equal(loaded.source, "current");
+          // Historical default removal belongs only to the v5 migration, not current storage.
+          assert.deepEqual(loaded.state.cakePrompts, {
+            worktreeCommit: versionFivePromptDefaults.worktreeCommit,
+            dictationCleanup: "Custom cleanup guidance",
+          });
+          assert.equal(
+            resolveCakePrompts(loaded.state.cakePrompts).dictationCleanup,
+            "Custom cleanup guidance",
+          );
+        }),
+    ),
   );
 
   it.effect("persists only custom overrides and resolves defaults after reset and reload", () =>

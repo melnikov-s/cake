@@ -158,7 +158,7 @@ artifact; it does not implement, routinely review, or execute checks after appro
 
 Own complete files:
 
-- `src/domain/speech/speech-output-data.ts`
+- `src/services/speech/speech-output-data.ts`
 - `src/services/speech/ElevenLabsSpeech.ts`
 - `src/services/speech/ElevenLabsSpeechLive.ts`
 - `src/services/speech/SpeechOutputStorage.ts`
@@ -177,7 +177,7 @@ shared/public testability interface is necessary, propose it before implementing
 
 Own complete destination files:
 
-- `src/domain/conversations/conversation-response-mode.ts`
+- `src/services/pi/response-mode-reminders.ts`
 - `src/renderer/stores/ConversationModeStore.ts`
 - `src/renderer/stores/SpeechSettingsStore.ts`
 - `src/renderer/speech/playback.ts`
@@ -196,7 +196,7 @@ Own **only feature-related bodies/fields** in these existing cutover files; pres
 
 | Exact files                                                                                                                                                                                             | Authorized mechanical changes                                                                                                       |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `src/domain/conversations/conversation-data.ts`, `src/domain/conversations/conversations.ts`, `src/ipc/server/SessionChatHandlers.ts`                                                                   | Carry response mode through existing prompt/steer/follow-up/edit admission                                                          |
+| `src/ipc/conversation-data.ts`, `src/domain/conversations/conversations.ts`, `src/ipc/server/SessionChatHandlers.ts`                                                                                    | Carry response mode through existing prompt/steer/follow-up/edit admission                                                          |
 | `src/services/pi/CakeSessionRuntimes.ts`, `src/services/pi/runtime/cake-session-runtime.ts`, `src/services/pi/runtime/cake-session-runtime-turn-controller.ts`                                          | Append approved optional arguments; decorate and retain input through Pi queues/compaction/edit; strip only visible payloads        |
 | `src/services/pi/runtime/session-projection.ts`, `src/services/pi/runtime/session-title.ts`, `src/services/pi/runtime/cake-session-runtime-continuations.ts`                                            | Strip exact response reminders from display/title/continuation source alongside presentation reminders                              |
 | `src/renderer/stores/ConversationDeliveryStore.ts`, `src/renderer/stores/ConversationComposerStore.ts`, `src/renderer/stores/ConversationSessionStore.ts`, `src/renderer/stores/ProjectSessionStore.ts` | Submission-time mode capability and draft-independent speech target; optional controls capability; preserve existing admission      |

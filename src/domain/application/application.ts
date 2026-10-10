@@ -1,5 +1,6 @@
 import { DateTime, Effect, Schema } from "effect";
-import { normalizeCakePromptOverrides, type CakePromptOverrides } from "./cake-prompts";
+import { normalizeCakePromptOverrides } from "./cake-prompts";
+import { type CakePromptOverrides } from "../../services/storage/cake-prompt-data";
 import { jsonObjectSchema, type JsonObject } from "../../ipc/json-contract";
 import {
   ApplicationState as ApplicationStateSchema,
@@ -12,8 +13,8 @@ import {
   type ProjectWorkflowSessionDetails,
   SessionPlugin,
   type UtilityModel,
-  validateSessionLabelName,
-} from "./application-data";
+} from "../../services/storage/application-data";
+import { validateSessionLabelName } from "../../utils/session-label-name";
 import { ApplicationState as ApplicationStateOwner } from "../../services/storage/ApplicationState";
 
 class ApplicationPolicyError extends Schema.TaggedError<ApplicationPolicyError>()(

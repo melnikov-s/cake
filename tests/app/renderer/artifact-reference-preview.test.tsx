@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { StoreProvider } from "r-state-tree/react";
 import { createStore } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ArtifactReferenceMetadata } from "../../../src/domain/artifacts/artifact-lineage";
+import type { ArtifactReferenceMetadata } from "../../../src/services/storage/artifact-lineage";
 import { ArtifactReferencePreview } from "../../../src/renderer/components/artifact-reference-preview";
 import type { Client } from "../../../src/renderer/client/Client";
 import { ArtifactCatalog } from "../../../src/renderer/models/ArtifactCatalog";

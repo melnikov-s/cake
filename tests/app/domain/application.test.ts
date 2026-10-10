@@ -30,7 +30,7 @@ import {
 import {
   defaultApplicationState,
   SESSION_LABEL_COLORS,
-} from "../../../src/domain/application/application-data";
+} from "../../../src/services/storage/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import {
   ApplicationStorage,

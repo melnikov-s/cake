@@ -3,7 +3,7 @@ import { Context, Deferred, Effect, Exit, Layer, Option, Queue, Scope, Stream } 
 import { RpcServer } from "effect/unstable/rpc";
 import type { FromClientEncoded, FromServerEncoded } from "effect/unstable/rpc/RpcMessage";
 import { describe, expect } from "vitest";
-import { defaultApplicationState } from "../../../src/domain/application/application-data";
+import { defaultApplicationState } from "../../../src/services/storage/application-data";
 import * as cakeChatLocations from "../../../src/domain/cake-chats/cakeChatLocations";
 import { makeCakeRpcServerLive } from "../../../src/ipc/server/CakeRpcServer";
 import {

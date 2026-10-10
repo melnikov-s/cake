@@ -3,7 +3,7 @@ import {
   formatDrawSourceLink,
   isCakeDrawSourceUrl,
   parseDrawSourceLink,
-} from "../../../src/domain/draw/draw-source-link";
+} from "../../../src/utils/draw-source-link";
 
 describe("Cake Draw source links", () => {
   it("round-trips a Working Directory-relative path and exact range", () => {

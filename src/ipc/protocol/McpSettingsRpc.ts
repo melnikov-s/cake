@@ -4,7 +4,7 @@ import {
   McpSettingsMutation,
   McpSettingsSnapshot,
   McpSettingsError,
-} from "../../domain/mcp/mcp-settings-data";
+} from "../../services/pi/mcp-settings-data";
 export const McpSettingsRpc = RpcGroup.make(
   Rpc.make("mcpSettings.get", {
     payload: McpSettingsRead,

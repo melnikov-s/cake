@@ -7,9 +7,9 @@ import {
   CakeChatStartInput,
   CakeChatTarget,
   CakeChatControlUpdate,
-} from "../../domain/cake-chats/cake-chat-data";
+} from "../cake-chat-data";
 import { CakeChatCatalogUpdate } from "../../domain/application/catalog-data";
-import { TurnId } from "../../domain/conversations/conversation-data";
+import { TurnId } from "../conversation-data";
 import { SESSION_TITLE_MAX_LENGTH } from "../session-contract";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 

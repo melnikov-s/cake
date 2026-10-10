@@ -1,6 +1,6 @@
 import { Effect, Layer } from "effect";
 import { PiModels } from "../../../src/services/pi/PiModels";
-import type { ProjectSessionRuntimeIntegrations } from "../../../src/services/pi/ProjectSessionIntegrationHost";
+import type { ProjectSessionRuntimeIntegrations } from "../../../src/services/pi/ProjectSessionRuntimeHost";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";

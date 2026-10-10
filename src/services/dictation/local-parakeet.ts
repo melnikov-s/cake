@@ -16,7 +16,7 @@ import { createInterface } from "node:readline";
 import { Schema } from "effect";
 import manifest from "./parakeet-coreml-manifest.json";
 import vadManifest from "../../../native/dictation/vad-manifest.json";
-import type { DictationAudio, SpeechDetectionAudio } from "../../domain/dictation/dictation-data";
+import type { DictationAudio, SpeechDetectionAudio } from "./dictation-data";
 
 const modelBase = `https://huggingface.co/${manifest.repository}/resolve/${manifest.revision}`;
 const modelBytes = manifest.files.reduce((total, file) => total + file.bytes, 0);

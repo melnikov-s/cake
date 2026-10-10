@@ -1,6 +1,6 @@
 import { drawMermaidArchitecture } from "../../tests/fixtures/draw-mermaid-architecture.ts";
-import { addResponseModeReminder } from "../../src/domain/conversations/conversation-response-mode.ts";
-import { addPresentationModeReminder } from "../../src/domain/project-sessions/presentation-mode-reminders.ts";
+import { addResponseModeReminder } from "../../src/services/pi/response-mode-reminders.ts";
+import { addPresentationModeReminder } from "../../src/services/pi/presentation-mode-reminders.ts";
 import { nestedAssistant, nestedEntries } from "../../tests/fixtures/nested-tool-activity.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";

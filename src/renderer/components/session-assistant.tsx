@@ -1,7 +1,7 @@
 import { useEffect, useState, type MouseEvent } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
-import type { SessionLabel } from "../../domain/application/application-data";
+import type { SessionLabel } from "../../services/storage/application-data";
 import { Chat } from "./chat";
 import { Avatar } from "./ui/avatar";
 import { Popover, PopoverContent, PopoverIconTrigger } from "./ui/popover";

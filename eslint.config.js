@@ -8,7 +8,7 @@ const effectExecutionBoundaries = [
   "src/renderer/runtime.ts", // The one window-owned renderer runtime.
   "src/services/pi/PiCallbackAdapter.ts", // Final Cake Session capability callbacks supplied to Pi.
   "src/services/pi/PiWorkflows.ts", // Final callbacks required by focused external Pi workflows.
-  "src/services/pi/ProjectSessionRuntimeHostLive.ts", // Final artifact and renderer callbacks supplied to Pi.
+  "src/layers/ProjectSessionRuntimeHostLive.ts", // Final artifact and renderer callbacks supplied to Pi.
 ];
 const executionApi = "/^run(Fork|Callback|Promise|Sync)(Exit)?(With)?$/";
 
@@ -86,6 +86,44 @@ export default tseslint.config(
                 "@earendil-works/pi-tui/*",
               ],
               message: "Ordinary Pi package imports belong beneath src/services/pi.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/services/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/domain/**", "**/layers/**"],
+              message:
+                "Services expose capabilities and never import domain policy or composition. Wire domain callbacks in src/layers instead.",
+            },
+            {
+              group: ["@earendil-works/pi-*", "@earendil-works/pi-*/*"],
+              message: "Ordinary Pi package imports belong beneath src/services/pi.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/services/pi/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/domain/**", "**/layers/**"],
+              message:
+                "Services expose capabilities and never import domain policy or composition. Wire domain callbacks in src/layers instead.",
             },
           ],
         },

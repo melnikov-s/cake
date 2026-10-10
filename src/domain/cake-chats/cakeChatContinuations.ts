@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { TurnId, use as useConversation } from "../conversations/conversations";
-import { type CakeChatTarget } from "./cake-chat-data";
+import { type CakeChatTarget } from "../../ipc/cake-chat-data";
 import { acquireForUse, acquireTarget } from "./cakeChatOperations";
 import { asError, publishCatalogChange } from "./cakeChatMetadata";
 import type { CakeChatRuntimeConfiguration } from "./cakeChatRuntime";

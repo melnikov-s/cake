@@ -9,7 +9,7 @@ import {
   Semaphore,
   Stream,
 } from "effect";
-import { SavedDraft } from "../../domain/project-sessions/saved-draft-data";
+import { SavedDraft } from "./saved-draft-data";
 import { atomicWriteFile } from "./internal/atomicFile";
 
 const Document = Schema.Struct({ version: Schema.Literal(1), records: Schema.Array(SavedDraft) });

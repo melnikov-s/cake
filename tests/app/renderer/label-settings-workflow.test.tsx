@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   defaultApplicationState,
   type SessionLabel,
-} from "../../../src/domain/application/application-data";
+} from "../../../src/services/storage/application-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { LabelSettings } from "../../../src/renderer/components/label-settings";
 import { createRendererStoreFixture } from "./renderer-store-fixture";

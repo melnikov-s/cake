@@ -17,7 +17,7 @@ import {
   type ArtifactRevision,
   type ArtifactRevisionMetadata,
   type ArtifactTextComparison,
-} from "../../../src/domain/artifacts/artifact-lineage";
+} from "../../../src/services/storage/artifact-lineage";
 import type { Client } from "../../../src/renderer/client/Client";
 import { ArtifactLibrary } from "../../../src/renderer/components/artifact-library";
 import { sessionSummary } from "./fixtures/catalog-fixtures";

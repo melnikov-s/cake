@@ -10,7 +10,7 @@ import {
   DrawBoardId,
   DrawBoardTitle,
   DrawSessionId,
-} from "../../../../src/domain/draw/draw-board-data";
+} from "../../../../src/services/storage/draw-board-data";
 import {
   DRAW_BOARD_SNAPSHOT_MAX_BYTES,
   DrawBoardStorage,

@@ -1,6 +1,6 @@
 /* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is the drawing-domain entity. */
 import type { JsonValue } from "../../ipc/json-contract";
-import type { DrawSourceLink } from "./draw-source-link";
+import type { DrawSourceLink } from "../../utils/draw-source-link";
 
 /** JSON-safe Cake Draw contracts shared by renderer presentation and explicit agent controls. */
 

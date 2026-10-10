@@ -12,7 +12,7 @@ import {
   use as useConversation,
 } from "../conversations/conversations";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
-import type { ProjectSessionLocation } from "./project-session-data";
+import type { ProjectSessionLocation } from "../../ipc/project-session-data";
 import * as projectSessionLocations from "./projectSessionLocations";
 import { resolutionNamespace } from "./projectSessionResolution";
 import { acquireOptions } from "./projectSessionRuntime";
@@ -22,7 +22,7 @@ import {
   type ProjectSessionPromptInput,
   type ProjectSessionStartInput,
   type ProjectSessionTarget,
-} from "./project-session-data";
+} from "../../ipc/project-session-data";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";

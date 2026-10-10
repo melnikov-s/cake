@@ -1,5 +1,32 @@
 import { Context, Schema, type Effect } from "effect";
-import type { ProjectSessionRuntimeIntegrations } from "./ProjectSessionIntegrationHost";
+import type { CakeSessionRuntimeOptions } from "./runtime/cake-session-runtime";
+import type { ProjectSessionControlInvocation } from "../../ipc/project-session-data";
+import type { JsonValue } from "../../ipc/json-contract";
+
+export type ProjectSessionRuntimeIntegrations = Pick<
+  CakeSessionRuntimeOptions,
+  | "generateInlineWidget"
+  | "reviseInlineWidget"
+  | "resolveArtifact"
+  | "hasLinkedArtifacts"
+  | "listArtifactMetadata"
+  | "historyArtifact"
+  | "restoreArtifact"
+  | "linkArtifact"
+  | "unlinkArtifact"
+  | "importArtifactFile"
+  | "persistArtifact"
+  | "requestArtifact"
+  | "requestUi"
+  | "emitExtensionUiIntent"
+  | "reviewContextPath"
+  | "drawControl"
+> & {
+  readonly requestApplicationControl: (
+    invocation: ProjectSessionControlInvocation,
+    signal: AbortSignal,
+  ) => Promise<JsonValue>;
+};
 
 export class ProjectSessionRuntimeHostError extends Schema.TaggedError<ProjectSessionRuntimeHostError>()(
   "ProjectSessionRuntimeHostError",

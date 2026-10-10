@@ -4,7 +4,7 @@ import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { SessionFamilyStorage, familyMemberIds } from "../../services/storage/SessionFamilyStorage";
-import { ArtifactLineageId } from "./artifact-lineage";
+import { ArtifactLineageId } from "../../services/storage/artifact-lineage";
 
 interface ArtifactGarbageCollectionStats {
   readonly skipped: boolean;

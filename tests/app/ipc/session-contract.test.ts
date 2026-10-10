@@ -4,7 +4,7 @@ import {
   RendererApplicationProjection,
   RendererApplicationState,
   defaultApplicationState,
-} from "../../../src/domain/application/application-data";
+} from "../../../src/services/storage/application-data";
 import {
   applicationStateSchema,
   parsePiBuiltinCommand,

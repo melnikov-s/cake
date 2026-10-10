@@ -8,7 +8,7 @@ import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { CakeChatManagementStore } from "./CakeChatManagementStore";
 import type { CakeChatPendingSessionsStore } from "./CakeChatPendingSessionsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import type { CakeChatTarget } from "../../domain/cake-chats/cake-chat-data";
+import type { CakeChatTarget } from "../../ipc/cake-chat-data";
 import type { CakeChatControls } from "../models/CakeChatControls";
 
 export interface CakeChatSessionStoreProps {

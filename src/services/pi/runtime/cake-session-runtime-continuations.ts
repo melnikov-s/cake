@@ -11,8 +11,8 @@ import {
 } from "./fork-display-provenance";
 import { appendToolCompactedBranch } from "./session-tool-compaction";
 import { projectArtifactPointers, textFromContent } from "./session-projection";
-import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
-import { stripResponseModeReminder } from "../../../domain/conversations/conversation-response-mode";
+import { stripPresentationModeReminder } from "../presentation-mode-reminders";
+import { stripResponseModeReminder } from "../response-mode-reminders";
 
 interface PendingSessionFork {
   readonly entryId?: string;

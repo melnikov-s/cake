@@ -7,7 +7,7 @@ import {
   captureAccelerator,
   captureOutputSize,
   captureRect,
-} from "../../../../src/domain/screen-capture/screen-capture-data";
+} from "../../../../src/services/electron/screen-capture-data";
 
 const native = vi.hoisted(() => ({
   windows: [] as unknown[],

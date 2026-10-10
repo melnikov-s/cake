@@ -1,6 +1,6 @@
 import { useEffect, useId } from "react";
 import { observer } from "r-state-tree/react";
-import { parseArtifactRef, type ArtifactStableRef } from "../../domain/artifacts/artifact-lineage";
+import { parseArtifactRef, type ArtifactStableRef } from "../../services/storage/artifact-lineage";
 import type { InlineArtifactPreviewStore } from "../stores/InlineArtifactPreviewStore";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { ArtifactHost } from "./artifact-host";

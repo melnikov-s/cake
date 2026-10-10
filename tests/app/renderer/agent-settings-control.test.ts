@@ -5,19 +5,19 @@ import { Effect, Layer, ManagedRuntime, Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { applySnapshot, toSnapshot, createStore, mount } from "r-state-tree";
 import { DesktopConnectionStore } from "../../../src/renderer/stores/DesktopConnectionStore";
-import type { DesktopSharingState } from "../../../src/domain/application/desktop-sharing-data";
+import type { DesktopSharingState } from "../../../src/services/electron/desktop-sharing-data";
 import { createTestClient } from "./test-client";
 import { speechOutputSettings } from "../../helpers/speech-output";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationValue,
-} from "../../../src/domain/application/application-data";
+} from "../../../src/services/storage/application-data";
 import * as application from "../../../src/domain/application/application";
 import { defaultCakePrompts } from "../../../src/domain/application/cake-prompts";
 import * as presets from "../../../src/domain/model-presets/modelPresets";
 import { updateNonChatModelPreference } from "../../../src/domain/model-preferences/non-chat-model-preferences";
 import { loadMcpSettings, mutateMcpSettings } from "../../../src/domain/mcp/mcp-settings";
-import { MCP_STORED_SECRET, McpSettingsSnapshot } from "../../../src/domain/mcp/mcp-settings-data";
+import { MCP_STORED_SECRET, McpSettingsSnapshot } from "../../../src/services/pi/mcp-settings-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
 import { makeMcpSettingsLayer } from "../../../src/services/pi/McpSettings";
@@ -36,10 +36,10 @@ import {
 import {
   AgentSettingsInvocation,
   agentSettingsOperations,
-} from "../../../src/domain/application/agent-settings-schema";
+} from "../../../src/ipc/agent-settings-schema";
 import type { Client } from "../../../src/renderer/client/Client";
 import { jsonObjectSchema, type JsonObject } from "../../../src/ipc/json-contract";
-import { TurnId } from "../../../src/domain/conversations/conversation-data";
+import { TurnId } from "../../../src/ipc/conversation-data";
 import { slashCommandSchema } from "../../../src/ipc/session-contract";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";

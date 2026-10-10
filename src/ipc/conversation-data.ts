@@ -1,9 +1,9 @@
 import { Schema } from "effect";
-import { attachmentSchema } from "../../ipc/session-contract";
-import { ThinkingLevel } from "../../services/pi/model-data";
-import { CrossSessionMessageMetadata } from "./cross-session-coordination";
-import { ProjectSessionPresentationMode } from "../project-sessions/project-session-presentation";
-import { ConversationResponseMode } from "./conversation-response-mode";
+import { attachmentSchema } from "./session-contract";
+import { ThinkingLevel } from "../services/pi/model-data";
+import { CrossSessionMessageMetadata } from "../services/pi/cross-session-message";
+import { ProjectSessionPresentationMode } from "./project-session-presentation";
+import { ConversationResponseMode } from "../services/pi/response-mode-reminders";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const boundedText = Schema.String.check(Schema.isMaxLength(262_144));

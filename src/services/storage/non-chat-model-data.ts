@@ -9,6 +9,7 @@ export const NonChatModelReference = Schema.Struct({
 });
 export interface NonChatModelReference extends Schema.Schema.Type<typeof NonChatModelReference> {}
 
+/** Persisted advisory Cake application preferences, not Pi provider configuration. */
 export const NonChatModelPreferences = Schema.Struct({
   image: Schema.optionalKey(NonChatModelReference),
   classifier: Schema.optionalKey(NonChatModelReference),

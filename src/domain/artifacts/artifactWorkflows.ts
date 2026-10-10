@@ -13,7 +13,7 @@ import {
   type ArtifactStableRef,
   formatArtifactRef,
   parseArtifactRef,
-} from "./artifact-lineage";
+} from "../../services/storage/artifact-lineage";
 
 export class ArtifactNotFound extends Schema.TaggedError<ArtifactNotFound>()("ArtifactNotFound", {
   lineageId: Schema.String,

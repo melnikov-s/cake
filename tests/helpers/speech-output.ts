@@ -1,5 +1,5 @@
-import type { PocketTtsState } from "../../src/domain/speech/pocket-tts-data";
-import type { SpeechOutputSettings } from "../../src/domain/speech/speech-output-data";
+import type { PocketTtsState } from "../../src/services/speech/pocket-tts-data";
+import type { SpeechOutputSettings } from "../../src/services/speech/speech-output-data";
 
 export const pocketTtsState = (overrides: Partial<PocketTtsState> = {}): PocketTtsState => ({
   supported: true,

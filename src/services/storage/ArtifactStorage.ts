@@ -8,7 +8,7 @@ import type {
   ArtifactLinkTarget,
   ArtifactRevision,
   ArtifactRevisionNumber,
-} from "../../domain/artifacts/artifact-lineage";
+} from "./artifact-lineage";
 
 export class ArtifactStorageError extends Schema.TaggedError<ArtifactStorageError>()(
   "ArtifactStorageError",

@@ -1,9 +1,9 @@
 import { Effect, Schema } from "effect";
 import { SessionPluginControls } from "./session-plugin-controls";
-import { ThinkingLevel } from "../../services/pi/model-data";
+import { ThinkingLevel } from "../pi/model-data";
 import { SESSION_LABEL_COLORS } from "../../utils/session-label-palette";
-import { CakePromptOverrides } from "./cake-prompts";
-import { NonChatModelPreferences } from "../model-preferences/non-chat-model-data";
+import { CakePromptOverrides } from "./cake-prompt-data";
+import { NonChatModelPreferences } from "./non-chat-model-data";
 
 export { SESSION_LABEL_COLORS } from "../../utils/session-label-palette";
 
@@ -102,23 +102,6 @@ export const SessionLabel = Schema.Struct({
 });
 export interface SessionLabel extends Schema.Schema.Type<typeof SessionLabel> {}
 
-const SESSION_LABEL_NAME_MAX_LENGTH = 40;
-
-export type SessionLabelNameValidation =
-  | { readonly ok: true; readonly name: string }
-  | { readonly ok: false; readonly message: string };
-
-/** Pure label-name policy shared with renderer-side fast validation. */
-export const validateSessionLabelName = (name: string): SessionLabelNameValidation => {
-  const normalized = name.trim();
-  if (!normalized) return { ok: false, message: "Label names cannot be empty" };
-  if (normalized.length > SESSION_LABEL_NAME_MAX_LENGTH)
-    return {
-      ok: false,
-      message: `Label names cannot exceed ${SESSION_LABEL_NAME_MAX_LENGTH} characters`,
-    };
-  return { ok: true, name: normalized };
-};
 const ProjectWorkflowAssignment = Schema.Struct({
   sessionId: nonEmptyBoundedString(256),
   labelIds: boundedArray(Schema.String.check(Schema.isUUID(4)), 100).check(Schema.isUnique()),

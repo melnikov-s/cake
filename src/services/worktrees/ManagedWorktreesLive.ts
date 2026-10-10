@@ -14,11 +14,8 @@ import {
   Stream,
 } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import type { ProjectSettings } from "../../domain/application/application-data";
-import type {
-  ManagedWorktreeCatalogUpdate,
-  WorktreeRecord,
-} from "../../domain/worktrees/managed-worktree-data";
+import type { ProjectSettings } from "../storage/application-data";
+import type { ManagedWorktreeCatalogUpdate, WorktreeRecord } from "./managed-worktree-data";
 import {
   worktreeStatusSchema,
   type WorktreeLandOutcome,

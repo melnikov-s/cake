@@ -8,12 +8,12 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect";
-import type { CakeChatControlRequest } from "../../domain/cake-chats/cake-chat-data";
-import type { ProjectSessionControlInvocation } from "../../domain/project-sessions/project-session-data";
+import type { CakeChatControlRequest } from "../../ipc/cake-chat-data";
+import type { ProjectSessionControlInvocation } from "../../ipc/project-session-data";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import { cakeRpcPayloadSchemas, type CakeEvent } from "../../ipc/cake-rpc-contract";
 import type { JsonValue } from "../../ipc/json-contract";
-import { DrawControlResponse, type DrawControlInvocation } from "../../domain/draw/draw-control";
+import { DrawControlResponse, type DrawControlInvocation } from "../../ipc/draw-control";
 import { ClientConnections } from "../clients/ClientConnections";
 import { ClientEvents } from "../clients/ClientEvents";
 import {

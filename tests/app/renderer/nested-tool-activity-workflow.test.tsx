@@ -5,7 +5,7 @@ import { VirtuosoMockContext } from "react-virtuoso";
 import { afterEach, expect, it } from "vitest";
 import { Schema } from "effect";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import type { ConversationSnapshot } from "../../../src/domain/conversations/conversation-data";
+import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
 import { uiPartSchema } from "../../../src/ipc/session-contract";
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";

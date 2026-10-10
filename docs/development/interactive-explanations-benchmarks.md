@@ -203,7 +203,7 @@ code or coordinates need be exposed in the visual.
   failure runs one repair with the diagnostic/context before compiling the
   repaired source. `persistArtifact` emits `artifact-updated` after repository
   upsert.
-  Source: `src/services/pi/ProjectSessionIntegrationHost.ts#ProjectSessionIntegrationHost.generateInlineWidget`.
+  Source: `src/layers/ProjectSessionIntegrationHost.ts#ProjectSessionIntegrationHost.generateInlineWidget`.
 - `runInlineWidgetGeneration` and `runInlineWidgetRepair` use
   `runIsolatedSession`. That runner creates a Pi `ModelRuntime` and a restricted
   resource loader; widget generation uses `projectTrusted: false` and

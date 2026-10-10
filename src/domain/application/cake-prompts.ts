@@ -1,30 +1,4 @@
-import { Schema } from "effect";
-
-const promptTemplate = Schema.String.check(Schema.isMaxLength(32_768));
-
-/** User-editable guidance for Cake workflow turns and utility-model speech cleanup. */
-export const CakePrompts = Schema.Struct({
-  worktreeCommit: promptTemplate,
-  worktreeRebaseConflict: promptTemplate,
-  worktreePreserveConflict: promptTemplate,
-  worktreeSquashConflict: promptTemplate,
-  worktreeSquashMessage: promptTemplate,
-  dictationCleanup: promptTemplate,
-});
-
-export interface CakePrompts extends Schema.Schema.Type<typeof CakePrompts> {}
-
-/** Persist only custom text. Missing keys follow the current source defaults. */
-export const CakePromptOverrides = Schema.Struct({
-  worktreeCommit: Schema.optionalKey(promptTemplate),
-  worktreeRebaseConflict: Schema.optionalKey(promptTemplate),
-  worktreePreserveConflict: Schema.optionalKey(promptTemplate),
-  worktreeSquashConflict: Schema.optionalKey(promptTemplate),
-  worktreeSquashMessage: Schema.optionalKey(promptTemplate),
-  dictationCleanup: Schema.optionalKey(promptTemplate),
-});
-
-export interface CakePromptOverrides extends Schema.Schema.Type<typeof CakePromptOverrides> {}
+import type { CakePrompts, CakePromptOverrides } from "../../services/storage/cake-prompt-data";
 
 export function normalizeCakePromptOverrides(overrides: CakePromptOverrides): CakePromptOverrides {
   const defaults = defaultCakePrompts();

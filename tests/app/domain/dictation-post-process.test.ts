@@ -2,7 +2,7 @@ import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer } from "effect";
 import { describe, expect } from "vitest";
 import { postProcessDictation } from "../../../src/domain/dictation/post-process";
-import { defaultApplicationState } from "../../../src/domain/application/application-data";
+import { defaultApplicationState } from "../../../src/services/storage/application-data";
 import { makePiModelsLayer, type PiModels } from "../../../src/services/pi/PiModels";
 import { TestClock } from "effect/testing";
 import {

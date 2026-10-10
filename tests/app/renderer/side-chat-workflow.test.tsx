@@ -2,11 +2,8 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  TurnId,
-  type ConversationSnapshot,
-} from "../../../src/domain/conversations/conversation-data";
-import type { DiscussionThread } from "../../../src/domain/discussion-sessions/discussion-session-data";
+import { TurnId, type ConversationSnapshot } from "../../../src/ipc/conversation-data";
+import type { DiscussionThread } from "../../../src/ipc/discussion-session-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SideChatLayout } from "../../../src/renderer/components/side-chat-layout";

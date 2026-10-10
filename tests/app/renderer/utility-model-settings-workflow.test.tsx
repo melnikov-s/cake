@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   defaultApplicationState,
   type ApplicationState,
-} from "../../../src/domain/application/application-data";
+} from "../../../src/services/storage/application-data";
 import type { ModelOption, UtilityModel } from "../../../src/ipc/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";

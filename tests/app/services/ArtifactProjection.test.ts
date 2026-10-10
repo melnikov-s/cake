@@ -21,7 +21,7 @@ import {
   ArtifactLineageId,
   ArtifactRevisionNumber,
   type ArtifactRevision,
-} from "../../../src/domain/artifacts/artifact-lineage";
+} from "../../../src/services/storage/artifact-lineage";
 import type { CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
 import { ArtifactProjection } from "../../../src/services/artifacts/ArtifactProjection";
 import {

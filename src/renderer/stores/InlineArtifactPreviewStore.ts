@@ -1,6 +1,6 @@
 import { observable, Store } from "r-state-tree";
-import type { ArtifactStableRef } from "../../domain/artifacts/artifact-lineage";
-import { parseArtifactRef } from "../../domain/artifacts/artifact-lineage";
+import type { ArtifactStableRef } from "../../services/storage/artifact-lineage";
+import { parseArtifactRef } from "../../services/storage/artifact-lineage";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { ClientContext } from "./context/ClientContext";
 

@@ -85,7 +85,7 @@ Own:
 
 - New client-event Service/implementation files under `src/services/clients/`.
 - `src/services/electron/Electron.ts`, `ElectronLive.ts`, `NativeEvents.ts` (remove/replace the latter if superseded), `src/services/renderer-requests/RendererRequestCoordinator.ts`.
-- Migration of event publication in `src/services/pi/ProjectSessionRuntimeHostLive.ts` and `src/ipc/server/ArtifactHandlers.ts`.
+- Migration of event publication in `src/layers/ProjectSessionRuntimeHostLive.ts` and `src/ipc/server/ArtifactHandlers.ts`.
 - Native event-consumer imports in RPC handlers and necessary caller/test migrations **for the event contract only**.
 - `src/main/MainLive.ts` for shared event-Layer composition and later integrating B's moved implementation import.
 - Focused new/updated tests for these changes.
@@ -101,7 +101,7 @@ Own:
 - `src/services/widgets/inline-widget-protocol.ts`, new host-independent document-registry module and desktop protocol adapter.
 - `src/services/pi/runtime/extension-companion-protocol.ts`, `extension-companions.ts`, existing module registry and new desktop adapter as needed.
 - `src/services/widgets/RenderedWidgetCapture.ts` and new Electron-only Live implementation.
-- `src/services/pi/ProjectSessionIntegrationHost.ts` imports/callers of widget publication.
+- `src/layers/ProjectSessionIntegrationHost.ts` imports/callers of widget publication.
 - `src/main/main.ts` and `src/main/MainApplication.ts` protocol registration imports only.
 - Related focused tests; imports in existing tests for moved publication/capture definitions.
 

@@ -4,7 +4,7 @@ import type {
   McpEntry,
   McpSettingsSnapshot,
   McpSettingsMutation,
-} from "../../domain/mcp/mcp-settings-data";
+} from "../../services/pi/mcp-settings-data";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 import { parseMcpObject, readMcpDraft } from "../lib/mcp-config-draft";

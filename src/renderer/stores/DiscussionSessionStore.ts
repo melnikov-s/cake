@@ -1,5 +1,5 @@
 import { Store, child, createStore } from "r-state-tree";
-import { isSessionAssistantThread } from "../../domain/discussion-sessions/discussion-session-data";
+import { isSessionAssistantThread } from "../../ipc/discussion-session-data";
 import type { ModelPreset, UiPart } from "../../ipc/session-contract";
 import type { ReviewThread } from "../models/ReviewThread";
 import type { Conversation } from "../models/Conversation";

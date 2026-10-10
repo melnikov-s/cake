@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { decodeArtifactLineageId } from "../../domain/artifacts/artifact-lineage";
+import { decodeArtifactLineageId } from "../../services/storage/artifact-lineage";
 import type { ArtifactLibraryStore } from "../stores/ArtifactLibraryStore";
 import type { ArtifactReferencePreviewStore } from "../stores/ArtifactReferencePreviewStore";
 import type { SessionCatalogStore } from "../stores/SessionCatalogStore";

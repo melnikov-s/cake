@@ -1,10 +1,10 @@
 import { Context, type Effect, type Stream } from "effect";
-import type { PocketTtsState } from "../../domain/speech/pocket-tts-data";
+import type { PocketTtsState } from "./pocket-tts-data";
 import type {
   SpeechOutputAudio,
   SpeechOutputError,
   SpeechOutputRequest,
-} from "../../domain/speech/speech-output-data";
+} from "./speech-output-data";
 
 /** Native main owns installation, selection and one warm, serial inference process.
  * Stream cancellation kills active inference; the next explicit request reloads the helper.

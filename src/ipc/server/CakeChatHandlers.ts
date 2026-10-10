@@ -3,7 +3,7 @@ import * as cakeChatMetadata from "../../domain/cake-chats/cakeChatMetadata";
 import * as cakeChatOperations from "../../domain/cake-chats/cakeChatOperations";
 import * as cakeChatContinuations from "../../domain/cake-chats/cakeChatContinuations";
 import * as cakeChatLifecycle from "../../domain/cake-chats/cakeChatLifecycle";
-import { CakeChatError } from "../../domain/cake-chats/cake-chat-data";
+import { CakeChatError } from "../cake-chat-data";
 import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeChatRuntime";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { CakeChatRpc } from "../protocol/CakeChatRpc";

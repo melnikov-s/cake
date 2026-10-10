@@ -5,11 +5,11 @@ import {
   type WorktreeLandingError,
   type WorktreeLandingPhase,
   WorktreeLandingSnapshot,
-} from "../../../src/domain/worktrees/worktree-landing-data";
+} from "../../../src/services/worktrees/worktree-landing-data";
 import { WorktreeOperationCatalogUpdate } from "../../../src/domain/worktrees/worktree-operation-data";
-import type { WorktreeRecord } from "../../../src/domain/worktrees/managed-worktree-data";
-import { defaultApplicationState } from "../../../src/domain/application/application-data";
-import type { CakePrompts } from "../../../src/domain/application/cake-prompts";
+import type { WorktreeRecord } from "../../../src/services/worktrees/managed-worktree-data";
+import { defaultApplicationState } from "../../../src/services/storage/application-data";
+import type { CakePrompts } from "../../../src/services/storage/cake-prompt-data";
 import * as worktreeLandings from "../../../src/domain/worktrees/worktreeLandings";
 import type { WorktreeLandOutcome, WorktreeStatus } from "../../../src/ipc/worktree-contract";
 import {

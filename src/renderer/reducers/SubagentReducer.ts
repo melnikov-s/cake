@@ -3,7 +3,7 @@ import { batch } from "r-state-tree";
 import type {
   SubagentActivity as SubagentActivityValue,
   SubagentUpdate,
-} from "../../domain/subagents/subagent-data";
+} from "../../services/subagents/subagent-data";
 import { conversationSnapshotSchema, uiPartSchema } from "../../ipc/session-contract";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
 import { SubagentActivity } from "../models/SubagentActivity";

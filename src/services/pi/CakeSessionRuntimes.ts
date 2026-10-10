@@ -25,7 +25,7 @@ import { jsonValueSchema, type JsonObject, type JsonValue } from "../../ipc/json
 import type {
   QueuedSessionCommandReceipt,
   SessionInspectionQuery,
-} from "../../domain/conversations/session-query-data";
+} from "../../ipc/session-query-data";
 import type {
   Attachment,
   ChatConfiguration,
@@ -51,8 +51,8 @@ import {
   streamWorkspaceSessions,
 } from "./runtime/session-discovery";
 import type { ReviewParentContext } from "./runtime/sidecar-runtime";
-import type { ProjectSessionPresentationMode } from "../../domain/project-sessions/project-session-presentation";
-import type { ConversationResponseMode } from "../../domain/conversations/conversation-response-mode";
+import type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
+import type { ConversationResponseMode } from "./response-mode-reminders";
 
 const PiSessionCapabilityProfile = Schema.TaggedUnion({
   ProjectSession: {},

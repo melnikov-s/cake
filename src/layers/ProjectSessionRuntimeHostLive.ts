@@ -5,30 +5,30 @@ import {
   ArtifactStableRef,
   artifactRevisionToRecord,
   parseArtifactRef,
-} from "../../domain/artifacts/artifact-lineage";
-import * as artifactWorkflows from "../../domain/artifacts/artifactWorkflows";
-import { ClientEvents } from "../clients/ClientEvents";
-import { ArtifactStorage } from "../storage/ArtifactStorage";
-import { ReviewStorage } from "../storage/ReviewStorage";
-import type { DrawBoardStorage } from "../storage/DrawBoardStorage";
-import * as drawBoards from "../../domain/draw/drawBoards";
-import { WorkspaceFileExport } from "../filesystem/WorkspaceFileExport";
-import { SessionFamilyStorage } from "../storage/SessionFamilyStorage";
-import type { SessionArchiveStorage } from "../storage/SessionArchiveStorage";
-import { RendererRequestCoordinator } from "../renderer-requests/RendererRequestCoordinator";
+} from "../services/storage/artifact-lineage";
+import * as artifactWorkflows from "../domain/artifacts/artifactWorkflows";
+import { ClientEvents } from "../services/clients/ClientEvents";
+import { ArtifactStorage } from "../services/storage/ArtifactStorage";
+import { ReviewStorage } from "../services/storage/ReviewStorage";
+import type { DrawBoardStorage } from "../services/storage/DrawBoardStorage";
+import * as drawBoards from "../domain/draw/drawBoards";
+import { WorkspaceFileExport } from "../services/filesystem/WorkspaceFileExport";
+import { SessionFamilyStorage } from "../services/storage/SessionFamilyStorage";
+import type { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
+import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import { ProjectSessionIntegrationHost } from "./ProjectSessionIntegrationHost";
-import { PiModels } from "./PiModels";
+import { PiModels } from "../services/pi/PiModels";
 import {
   RenderedWidgetCapture,
   RenderedWidgetCaptureError,
-} from "../widgets/RenderedWidgetCapture";
-import { generateReviewedWidget } from "../../domain/widgets/widgetGenerationReview";
-import { importWorkspaceFile } from "../artifacts/importWorkspaceFile";
-import { ArtifactProjection } from "../artifacts/ArtifactProjection";
+} from "../services/widgets/RenderedWidgetCapture";
+import { generateReviewedWidget } from "../domain/widgets/widgetGenerationReview";
+import { importWorkspaceFile } from "../services/artifacts/importWorkspaceFile";
+import { ArtifactProjection } from "../services/artifacts/ArtifactProjection";
 import {
   ProjectSessionRuntimeHost,
   ProjectSessionRuntimeHostError,
-} from "./ProjectSessionRuntimeHost";
+} from "../services/pi/ProjectSessionRuntimeHost";
 
 interface SessionIntegration {
   readonly sessionId: string;

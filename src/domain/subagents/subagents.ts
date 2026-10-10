@@ -27,7 +27,7 @@ import {
   type SubagentStartReceipt,
   type SubagentTask,
   type SubagentUpdate,
-} from "./subagent-data";
+} from "../../services/subagents/subagent-data";
 import {
   PiSessionError,
   CakeSessionRuntimes,
@@ -48,7 +48,7 @@ import {
   SubagentEnvironmentError,
 } from "../../services/subagents/SubagentEnvironment";
 
-export * from "./subagent-data";
+export * from "../../services/subagents/subagent-data";
 
 const MAX_HANDLES_PER_PARENT = 8;
 const MAX_PRIVATE_RUNTIMES_PER_WORKING_DIRECTORY = 32;

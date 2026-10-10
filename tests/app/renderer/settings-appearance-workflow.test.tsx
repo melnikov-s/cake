@@ -5,7 +5,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
-import { defaultProjectSettings } from "../../../src/domain/application/application-data";
+import { defaultProjectSettings } from "../../../src/services/storage/application-data";
 import { SettingsAppearanceSection } from "../../../src/renderer/components/settings-appearance-section";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";

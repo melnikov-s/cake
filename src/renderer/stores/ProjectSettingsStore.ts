@@ -6,8 +6,8 @@ import {
   type ProjectSettings,
   type SessionLabelColor,
   type SessionLabelMutation,
-  validateSessionLabelName,
-} from "../../domain/application/application-data";
+} from "../../services/storage/application-data";
+import { validateSessionLabelName } from "../../utils/session-label-name";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";

@@ -817,21 +817,21 @@ src/
 │   ├── electron/
 │   └── widgets/
 ├── domain/                   # Cake product contexts containing cohesive free Effect modules and owned data
-│   ├── application/          # Application state, availability, catalog projections, and embedded-editor policy
-│   ├── artifacts/            # Artifact data, errors, and operations
-│   ├── cake-chats/           # Cake Chat data, metadata, locations, runtime, lifecycle, and operations
-│   ├── conversations/        # Shared conversation data, operations, and cross-session coordination
-│   ├── discussion-sessions/  # Discussion Session data and operations
+│   ├── application/          # Application mutation, catalog, and embedded-editor policy
+│   ├── artifacts/            # Artifact workflows and lifecycle policy
+│   ├── cake-chats/           # Cake Chat metadata, locations, runtime, lifecycle, and operations
+│   ├── conversations/        # Conversation operations and cross-session delivery policy
+│   ├── discussion-sessions/  # Discussion Session operations
 │   ├── model-presets/        # Model Preset operations and Cake model-selection policy
-│   ├── project-sessions/     # Project Session data, metadata, locations, runtime, lifecycle, and operations
+│   ├── project-sessions/     # Project Session metadata, locations, runtime, lifecycle, and operations
 │   ├── projects/             # Project errors and operations
 │   ├── reviews/              # Review policy and operations
-│   ├── scheduled-messages/   # Scheduled Message data and operations
+│   ├── scheduled-messages/   # Scheduled Message delivery policy and operations
 │   ├── session-families/     # Session Family lifecycle and delivery policy
-│   ├── subagents/            # Subagent Session data, controls, and operations
+│   ├── subagents/            # Subagent Session controls and operations
 │   ├── terminals/            # Working Directory terminal operations
 │   ├── utility-work/         # Bounded utility-model operations and output policy
-│   └── worktrees/            # Managed Worktree data, cleanup, landing, and operations
+│   └── worktrees/            # Managed Worktree cleanup, landing policy, and operations
 ├── layers/                   # Production composition adapters joining domains to callback APIs
 ├── config/                   # Decoded process configuration values
 ├── ipc/
@@ -876,8 +876,11 @@ Client → CakeIpcClient ↔ shared RPC protocol ↔ CakeRpcServer
 CakeRpcServer → domain operations → Services
 ```
 
-Services do not import Cake domain modules. Domain modules do not import
-renderer code. RPC payloads never expose raw Pi, Git, Electron, filesystem,
+Services do not import Cake domain modules or composition adapters, including
+for type-only imports. This direction is enforced by ESLint. `src/layers/`
+may import both Services and domain operations to implement external callback
+wiring; Services receive the resulting callbacks through their own contracts.
+Domain modules do not import renderer code. RPC payloads never expose raw Pi, Git, Electron, filesystem,
 Effect runtime, Store, or Model objects.
 
 ## Schema ownership
@@ -887,14 +890,34 @@ Schemas live beside the authority or boundary they describe:
 ```text
 services/pi/       Pi adapter values and errors
 services/git/      Git values and errors
-services/storage/  stored documents and migrations
+services/storage/  stored documents, application configuration, and migrations
+services/*/        capability inputs, outputs, and errors owned by that Service
 domain/            Cake business values and policies
-ipc/protocol/      values allowed across main and renderer
+ipc/               cross-process inputs, projections, and control schemas
+ipc/protocol/      Effect RPC groups using those contracts
 renderer/models/   reactive projection schemas
 ```
 
 Cross-process and persistence boundaries use Effect Schema. A generic shared
-`types` directory is not an ownership boundary.
+`types` directory is not an ownership boundary. Data purity or a `-data.ts`
+filename does not justify a reverse dependency into domain.
+
+Pi message envelope codecs and exact presentation/response reminder formats
+live in `services/pi/`; coordination delivery policy remains in domain. Model
+selection tool schemas live in `ipc/cake-model-selection.ts`, while preset
+resolution remains domain policy supplied to Pi through a resolver callback.
+The callback reads current application configuration at execution time. Artifact,
+Draw, and widget workflow callbacks are composed in
+`layers/ProjectSessionRuntimeHostLive.ts`; the Pi Service contract does not import
+the composition implementation.
+
+Application prompt schemas and non-chat model preference references live beside
+application configuration in `services/storage/`. Current prompt wording,
+override normalization, and prompt rendering are Cake policy in
+`domain/application/cake-prompts.ts`. Storage migrations recognize a frozen
+snapshot of historical wording; they never import or follow current prompt
+policy. Pi consumes preference references without owning their persistence or
+application mutation policy.
 
 ## Security and extensibility
 

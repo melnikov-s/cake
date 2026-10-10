@@ -5,7 +5,7 @@ import { VirtuosoMockContext } from "react-virtuoso";
 import { Schema } from "effect";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EffectiveArtifactProjection } from "../../../src/domain/artifacts/artifact-lineage";
+import { EffectiveArtifactProjection } from "../../../src/services/storage/artifact-lineage";
 import type { Client } from "../../../src/renderer/client/Client";
 import type { UiPart } from "../../../src/ipc/session-contract";
 import { App } from "../../../src/renderer/components/app";

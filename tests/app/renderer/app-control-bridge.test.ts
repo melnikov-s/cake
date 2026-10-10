@@ -1,8 +1,8 @@
 import { Schema } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CakeChatTarget } from "../../../src/domain/cake-chats/cake-chat-data";
+import { CakeChatTarget } from "../../../src/ipc/cake-chat-data";
 import type { VscodeEditorAction } from "../../../src/ipc/vscode-editor-action";
-import { encodeCrossSessionMessage } from "../../../src/domain/conversations/cross-session-coordination";
+import { encodeCrossSessionMessage } from "../../../src/services/pi/cross-session-message";
 import {
   AppControlBridge,
   type AgentControlSource,

@@ -4,8 +4,8 @@ import type {
   ConversationEvent,
   ConversationSnapshot,
   ConversationUpdate,
-} from "../../domain/conversations/conversation-data";
-import type { DiscussionSessionUpdate } from "../../domain/discussion-sessions/discussion-session-data";
+} from "../../ipc/conversation-data";
+import type { DiscussionSessionUpdate } from "../../ipc/discussion-session-data";
 import {
   extensionUiEventSchema,
   sessionUsageSchema,

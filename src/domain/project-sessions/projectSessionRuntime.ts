@@ -1,4 +1,5 @@
 import * as sessionFamilies from "../session-families/sessionFamilies";
+import { resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import * as projectSessionLocations from "./projectSessionLocations";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
 import * as worktreeLandings from "../worktrees/worktreeLandings";
@@ -24,8 +25,8 @@ import {
   crossSessionContextSnapshot,
   encodeCrossSessionMessage,
   type CrossSessionContextSnapshot,
-} from "../conversations/cross-session-coordination";
-import type { ProjectSessionLocation } from "./project-session-data";
+} from "../../services/pi/cross-session-message";
+import type { ProjectSessionLocation } from "../../ipc/project-session-data";
 import { makeSubagentControl } from "../subagents/subagentControl";
 import {
   generateSessionTitle,
@@ -354,6 +355,8 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           );
       },
       modelPresets,
+      resolveModelSelection: (selection, inherited) =>
+        resolveCakeModelSelection(selection, modelPresets(), inherited),
       nonChatModelPreferences: () => application.snapshot().nonChatModelPreferences ?? {},
       sessionPluginControl: {
         sessionId,

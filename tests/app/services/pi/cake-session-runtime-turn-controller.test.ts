@@ -1,13 +1,13 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import { createCakeSessionRuntimeTurnController } from "../../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
-import { encodeCrossSessionMessage } from "../../../../src/domain/conversations/cross-session-coordination";
+import { encodeCrossSessionMessage } from "../../../../src/services/pi/cross-session-message";
 import { projectQueuedMessages } from "../../../../src/services/pi/runtime/session-projection";
 import {
   addResponseModeReminder,
   stripResponseModeReminder,
   responseModeReminders,
-} from "../../../../src/domain/conversations/conversation-response-mode";
+} from "../../../../src/services/pi/response-mode-reminders";
 
 function deferred() {
   let resolve: () => void = () => undefined;

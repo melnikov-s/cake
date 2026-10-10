@@ -6,7 +6,7 @@ import type {
   ArtifactRevision as ArtifactRevisionValue,
   ArtifactRevisionMetadata,
   EffectiveArtifactProjection,
-} from "../../domain/artifacts/artifact-lineage";
+} from "../../services/storage/artifact-lineage";
 import { ArtifactAssociation } from "./ArtifactAssociation";
 import { ArtifactLineage } from "./ArtifactLineage";
 import { ArtifactLink } from "./ArtifactLink";

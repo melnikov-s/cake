@@ -1,4 +1,4 @@
-import type { SavedDraft } from "../../../../src/domain/project-sessions/saved-draft-data";
+import type { SavedDraft } from "../../../../src/services/storage/saved-draft-data";
 import type { SavedDraftClient } from "../../../../src/renderer/stores/ProjectPendingSessionsStore";
 
 type SavedDraftCreateInput = Parameters<SavedDraftClient["create"]>[0];

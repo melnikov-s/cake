@@ -1,9 +1,6 @@
 import { Context, Effect, FileSystem, Layer, Path, Predicate, Schema, Semaphore } from "effect";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
-import {
-  SavedDraft,
-  type SavedDraft as SavedDraftValue,
-} from "../../domain/project-sessions/saved-draft-data";
+import { SavedDraft, type SavedDraft as SavedDraftValue } from "./saved-draft-data";
 
 const WINDOW_STATE_DOCUMENT_VERSION = 13;
 const WINDOW_STATE_DOCUMENT_NAME = "window-state.json";

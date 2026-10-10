@@ -1,6 +1,6 @@
 import { Effect, Layer, Queue, Stream } from "effect";
-import { collectGarbage } from "../../domain/artifacts/artifactGarbageCollection";
-import { ArtifactGarbageCollector } from "./ArtifactGarbageCollector";
+import { collectGarbage } from "../domain/artifacts/artifactGarbageCollection";
+import { ArtifactGarbageCollector } from "../services/artifacts/ArtifactGarbageCollector";
 
 /** Owns one process-lifetime, serialized, coalescing artifact maintenance worker. */
 export const ArtifactGarbageCollectorLive = Layer.effect(

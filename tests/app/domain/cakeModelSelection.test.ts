@@ -3,9 +3,9 @@ import { Schema } from "effect";
 import { describe, it } from "vitest";
 import {
   CakeModelSelection,
-  resolveCakeModelSelection,
   type CakeModelPresetCatalog,
-} from "../../../src/domain/model-presets/cake-model-selection";
+} from "../../../src/ipc/cake-model-selection";
+import { resolveCakeModelSelection } from "../../../src/domain/model-presets/cake-model-selection";
 
 const catalog: CakeModelPresetCatalog = {
   presets: [

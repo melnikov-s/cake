@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { applySnapshot, batch, type Snapshot } from "r-state-tree";
 import type { DiscussionCatalogUpdate } from "../../domain/application/catalog-data";
-import type { DiscussionThread } from "../../domain/discussion-sessions/discussion-session-data";
+import type { DiscussionThread } from "../../ipc/discussion-session-data";
 import { uiPartSchema } from "../../ipc/session-contract";
 import { ReviewThread } from "../models/ReviewThread";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";

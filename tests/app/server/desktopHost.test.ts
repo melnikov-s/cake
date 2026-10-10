@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeServerUrl } from "../../../src/domain/application/desktop-host-data";
+import { normalizeServerUrl } from "../../../src/services/electron/desktop-host-data";
 import {
   ClientConnections,
   ClientConnectionsLive,

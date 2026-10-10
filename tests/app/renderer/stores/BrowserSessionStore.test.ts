@@ -1,8 +1,8 @@
 import { createStore, observable } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import { TurnId } from "../../../../src/domain/conversations/conversation-data";
+import { TurnId } from "../../../../src/ipc/conversation-data";
 import type { ChatConfiguration } from "../../../../src/ipc/session-contract";
-import type { SavedDraft } from "../../../../src/domain/project-sessions/saved-draft-data";
+import type { SavedDraft } from "../../../../src/services/storage/saved-draft-data";
 import { ClientError, type Client } from "../../../../src/renderer/client/Client";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { BrowserSessionStore } from "../../../../src/renderer/stores/BrowserSessionStore";

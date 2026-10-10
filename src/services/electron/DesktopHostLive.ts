@@ -4,11 +4,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { dialog, session, type App } from "electron";
 import { Effect, Layer, Schema, Semaphore } from "effect";
-import {
-  DesktopHostError,
-  DesktopHostSelection,
-  normalizeServerUrl,
-} from "../../domain/application/desktop-host-data";
+import { DesktopHostError, DesktopHostSelection, normalizeServerUrl } from "./desktop-host-data";
 import { DesktopHost } from "./DesktopHost";
 
 const hostFile = (directory: string) => join(directory, "desktop-host.json");

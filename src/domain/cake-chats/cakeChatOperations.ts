@@ -16,7 +16,11 @@ import {
   TurnId,
   use as useConversation,
 } from "../conversations/conversations";
-import { CakeChatError, type CakeChatStartInput, type CakeChatTarget } from "./cake-chat-data";
+import {
+  CakeChatError,
+  type CakeChatStartInput,
+  type CakeChatTarget,
+} from "../../ipc/cake-chat-data";
 import { asError, inspect, publishCatalogChange, sessionNamespace } from "./cakeChatMetadata";
 
 export const acquireTarget = Effect.fn("CakeChats.acquireTarget")(function* (

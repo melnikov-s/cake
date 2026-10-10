@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { ProjectSettings } from "./application-data";
+import { ProjectSettings } from "../services/storage/application-data";
 
 const boundedProjectPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 

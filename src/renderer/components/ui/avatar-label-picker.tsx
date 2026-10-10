@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { SessionLabel } from "../../../domain/application/application-data";
+import type { SessionLabel } from "../../../services/storage/application-data";
 import { cn } from "../../lib/utils";
 import { Avatar, type AvatarProps } from "./avatar";
 import { Button } from "./button";

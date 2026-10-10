@@ -16,13 +16,13 @@ import {
   ArtifactDigest,
   type ArtifactLink,
   type ArtifactLinkTarget,
-} from "../../../src/domain/artifacts/artifact-lineage";
+} from "../../../src/services/storage/artifact-lineage";
 import type { ArtifactPointer } from "../../../src/ipc/artifact-contract";
 import { getState } from "../../../src/domain/application/application";
 import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "../../../src/domain/application/application-data";
+} from "../../../src/services/storage/application-data";
 import {
   makeCakeSessionRuntimesLayer,
   CakeSessionRuntimes,
@@ -32,7 +32,7 @@ import type {
   CakeSessionRuntime,
   CakeSessionRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-session-runtime";
-import type { ProjectSessionLocation } from "../../../src/domain/project-sessions/project-session-data";
+import type { ProjectSessionLocation } from "../../../src/ipc/project-session-data";
 import { Electron } from "../../../src/services/electron/Electron";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
@@ -67,8 +67,8 @@ import {
   type SessionCatalogChange,
 } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import type { ConversationSnapshot, PiSessionSummary } from "../../../src/ipc/session-contract";
-import type { ConversationUpdate } from "../../../src/domain/conversations/conversation-data";
-import type { WorktreeRecord } from "../../../src/domain/worktrees/managed-worktree-data";
+import type { ConversationUpdate } from "../../../src/ipc/conversation-data";
+import type { WorktreeRecord } from "../../../src/services/worktrees/managed-worktree-data";
 
 const snapshot: ConversationSnapshot = {
   workspacePath: "/project",

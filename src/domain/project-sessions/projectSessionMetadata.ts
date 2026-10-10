@@ -1,12 +1,12 @@
 import { Effect, Stream } from "effect";
 import { SESSION_TITLE_MAX_LENGTH, type PiSessionSummary } from "../../ipc/session-contract";
 import { getState } from "../application/application";
-import type { ApplicationState } from "../application/application-data";
+import type { ApplicationState } from "../../services/storage/application-data";
 import type { SessionCatalogUpdate } from "../application/catalog-data";
 import { toJsonValue } from "../../utils/to-json-value";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import { PiSessionError, CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
-import type { ProjectSessionLocation } from "./project-session-data";
+import type { ProjectSessionLocation } from "../../ipc/project-session-data";
 import * as projectSessionLocations from "./projectSessionLocations";
 import { resolutionNamespace } from "./projectSessionResolution";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
@@ -16,7 +16,7 @@ import {
   type ProjectSessionCatalogQuery,
   type ProjectSessionSummary,
   type ProjectSessionTarget,
-} from "./project-session-data";
+} from "../../ipc/project-session-data";
 import {
   SessionArchiveStorage,
   type ProjectSessionArchiveMetadata,

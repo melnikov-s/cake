@@ -16,7 +16,7 @@ import {
   type CakeChatCatalogQuery,
   type CakeChatPreview,
   type CakeChatSummary,
-} from "./cake-chat-data";
+} from "../../ipc/cake-chat-data";
 
 type CakeChatCatalogEvent = Extract<CakeChatCatalogUpdate, { _tag: "Event" }>["event"];
 

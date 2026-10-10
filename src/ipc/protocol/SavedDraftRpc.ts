@@ -1,13 +1,10 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import {
-  SavedDraft,
-  SavedDraftConfiguration,
-} from "../../domain/project-sessions/saved-draft-data";
+import { SavedDraft, SavedDraftConfiguration } from "../../services/storage/saved-draft-data";
 import { SavedDraftError } from "../../services/storage/SavedDraftStorage";
-import { ProjectSessionError } from "../../domain/project-sessions/project-session-data";
+import { ProjectSessionError } from "../project-session-data";
 import { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
-import { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
+import { WorktreeRecord } from "../../services/worktrees/managed-worktree-data";
 import { attachmentSchema } from "../session-contract";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 

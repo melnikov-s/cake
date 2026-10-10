@@ -1,4 +1,4 @@
-import type { DictationState } from "../../src/domain/dictation/dictation-data";
+import type { DictationState } from "../../src/services/dictation/dictation-data";
 
 export const installedDictationState: DictationState = {
   supported: true,

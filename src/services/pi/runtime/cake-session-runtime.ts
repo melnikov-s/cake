@@ -24,24 +24,28 @@ import {
   type UiPart,
   type UtilityModel,
 } from "../../../ipc/session-contract";
-import type { CakeModelPresetCatalog } from "../../../domain/model-presets/cake-model-selection";
-import type { NonChatModelPreferences } from "../../../domain/model-preferences/non-chat-model-data";
+import type {
+  CakeModelPresetCatalog,
+  CakeModelSelection,
+  ExplicitCakeModelSelection,
+} from "../../../ipc/cake-model-selection";
+import type { NonChatModelPreferences } from "../../storage/non-chat-model-data";
 import {
   crossSessionContextSnapshot,
   type CrossSessionContextSnapshot,
-} from "../../../domain/conversations/cross-session-coordination";
+} from "../cross-session-message";
 import type { PiPendingMessageReorder, PiPendingMessages } from "../conversation-data";
 import type {
   SessionInspectionQuery,
   QueuedSessionCommandReceipt,
-} from "../../../domain/conversations/session-query-data";
+} from "../../../ipc/session-query-data";
 import { inspectSessionHistory } from "./session-inspection";
 import { piBuiltinSlashCommands } from "../../../ipc/session-contract";
 import {
   SubagentResult as subagentResultSchema,
   type ParallelSubagentInput as DomainParallelSubagentInput,
   type SubagentTaskInput as DomainSubagentTaskInput,
-} from "../../../domain/subagents/subagent-data";
+} from "../../subagents/subagent-data";
 import { jsonValueSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
 import type {
   ArtifactRecord,
@@ -55,7 +59,7 @@ import type { BrowserControl } from "./cake-browser-operations";
 import type { WorktreeLandingControl } from "./cake-worktree-operations";
 import type { SessionPluginControl } from "./cake-session-plugin-operations";
 import type { CakeDrawControl } from "./cake-draw-operations";
-import type { ProjectSessionPresentationMode } from "../../../domain/project-sessions/project-session-presentation";
+import type { ProjectSessionPresentationMode } from "../../../ipc/project-session-presentation";
 import { assertSessionPath } from "./session-path";
 import { cakeWorkspaceSessionDirectory, findSessionFile } from "./session-discovery";
 import {
@@ -80,11 +84,11 @@ import {
   shutdownCakeSessionExtensions,
 } from "./cake-session-runtime-resources";
 import { createCakeMcpExtensions } from "./mcp-integration";
-import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
+import { stripPresentationModeReminder } from "../presentation-mode-reminders";
 import {
   stripResponseModeReminder,
   type ConversationResponseMode,
-} from "../../../domain/conversations/conversation-response-mode";
+} from "../response-mode-reminders";
 import {
   createCakeSessionRuntimeCapabilities,
   type GlobalControlTool,
@@ -192,6 +196,11 @@ export interface CakeSessionRuntimeOptions {
   reviewContextPath?(sessionId: string): string;
   utilityModel?(): UtilityModel | undefined;
   modelPresets?(): CakeModelPresetCatalog;
+  /** Cake policy is supplied by composition; Pi only applies concrete configurations. */
+  resolveModelSelection?(
+    selection: CakeModelSelection | undefined,
+    inherited: ExplicitCakeModelSelection | undefined,
+  ): ExplicitCakeModelSelection;
   nonChatModelPreferences?(): NonChatModelPreferences;
   fastMode?: {
     get(): boolean;

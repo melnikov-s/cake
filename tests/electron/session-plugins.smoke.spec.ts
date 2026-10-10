@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { sessionPluginsScenario } from "../../scripts/visual-capture/scenarios";
 import { callRpcHarness, openRpcHarness } from "./rpc-harness";
-import type { ApplicationState } from "../../src/domain/application/application-data";
+import type { ApplicationState } from "../../src/services/storage/application-data";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 

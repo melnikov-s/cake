@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Context, Effect, Exit, Layer, ManagedRuntime, Option, Scope } from "effect";
 import { makeBackendLive } from "../../../src/backend/BackendLive";
 import { resolveCakePaths } from "../../../src/config/CakePaths";
-import { defaultApplicationState } from "../../../src/domain/application/application-data";
+import { defaultApplicationState } from "../../../src/services/storage/application-data";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { ClientWorkspaces } from "../../../src/services/clients/ClientWorkspaces";

@@ -12,8 +12,8 @@ import {
 import { PendingSessionDraftStore, type PendingSessionPrompt } from "./PendingSessionDraftStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { WorktreeDraftChoice } from "./WorktreeCreationStore";
-import type { ProjectSessionPresentationMode } from "../../domain/project-sessions/project-session-presentation";
-import type { ConversationResponseMode } from "../../domain/conversations/conversation-response-mode";
+import type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
+import type { ConversationResponseMode } from "../../services/pi/response-mode-reminders";
 
 export type ComposerDeliveryInput = ConversationDeliveryInput;
 

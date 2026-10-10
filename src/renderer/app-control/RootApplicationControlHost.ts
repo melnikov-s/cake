@@ -16,8 +16,8 @@ import type { ToastStore } from "../stores/ToastStore";
 import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
 import type { ProjectSessionCreationStore } from "../stores/ProjectSessionCreationStore";
 import type { SessionRetirementStore } from "../stores/SessionRetirementStore";
-import { defaultProjectSettings } from "../../domain/application/application-data";
-import { crossSessionContextSnapshot } from "../../domain/conversations/cross-session-coordination";
+import { defaultProjectSettings } from "../../services/storage/application-data";
+import { crossSessionContextSnapshot } from "../../services/pi/cross-session-message";
 
 export interface RootApplicationControlCapabilities {
   client: Client;

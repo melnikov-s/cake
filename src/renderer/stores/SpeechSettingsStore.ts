@@ -2,7 +2,7 @@ import { snapshot, Store } from "r-state-tree";
 import type {
   SpeechOutputSettings,
   SpeechOutputVoice,
-} from "../../domain/speech/speech-output-data";
+} from "../../services/speech/speech-output-data";
 import type { SpeechOutputCommands } from "../client/Client";
 import { voiceDiagnosticReport } from "../speech/diagnostics";
 

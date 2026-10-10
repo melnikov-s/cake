@@ -7,7 +7,7 @@ import { Deferred, Effect, Queue } from "effect";
 import { createElement } from "react";
 import { afterEach, describe, expect, vi } from "vitest";
 import { detectFixtureSpeech } from "../../../helpers/speech-detection";
-import { TurnId } from "../../../../src/domain/conversations/conversation-data";
+import { TurnId } from "../../../../src/ipc/conversation-data";
 import type { CakeEvent } from "../../../../src/ipc/cake-rpc-contract";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import type { UiPart } from "../../../../src/ipc/session-contract";

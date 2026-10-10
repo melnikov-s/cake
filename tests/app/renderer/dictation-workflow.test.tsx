@@ -4,12 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TurnId } from "../../../src/domain/conversations/conversation-data";
+import { TurnId } from "../../../src/ipc/conversation-data";
 import type {
   DictationAudio,
   DictationState,
   PunctuationResult,
-} from "../../../src/domain/dictation/dictation-data";
+} from "../../../src/services/dictation/dictation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SettingsDictationSection } from "../../../src/renderer/components/settings-dictation-section";

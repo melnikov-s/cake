@@ -1,5 +1,5 @@
 import { observer } from "r-state-tree/react";
-import type { SessionPlugin } from "../../domain/application/application-data";
+import type { SessionPlugin } from "../../services/storage/application-data";
 import type { JsonObject, JsonValue } from "../../ipc/json-contract";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import type { SessionPluginStore } from "../stores/SessionPluginStore";

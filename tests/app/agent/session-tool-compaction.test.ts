@@ -10,8 +10,8 @@ import {
   toolCompactProvenanceSchema,
 } from "../../../src/services/pi/runtime/tool-compaction-provenance";
 import { Schema } from "effect";
-import { addResponseModeReminder } from "../../../src/domain/conversations/conversation-response-mode";
-import { addPresentationModeReminder } from "../../../src/domain/project-sessions/presentation-mode-reminders";
+import { addResponseModeReminder } from "../../../src/services/pi/response-mode-reminders";
+import { addPresentationModeReminder } from "../../../src/services/pi/presentation-mode-reminders";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 
 const usage: Usage = {

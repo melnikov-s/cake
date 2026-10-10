@@ -6,7 +6,7 @@ import {
   CaptureResult,
   ScreenCaptureSettings,
   ScreenCaptureSnapshot,
-} from "../domain/screen-capture/screen-capture-data";
+} from "../services/electron/screen-capture-data";
 import { artifactRecordSchema } from "./artifact-contract";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { editorLocationSchema } from "./editor-location";
@@ -20,9 +20,9 @@ import {
   inlineWidgetSourceSchema,
 } from "./inline-widget-contract";
 import { jsonValueSchema } from "./json-contract";
-import { ProjectSettings } from "../domain/application/application-data";
-import { CakePromptOverrides } from "../domain/application/cake-prompts";
-import { ProjectSessionControlRequest } from "../domain/project-sessions/project-session-data";
+import { ProjectSettings } from "../services/storage/application-data";
+import { CakePromptOverrides } from "../services/storage/cake-prompt-data";
+import { ProjectSessionControlRequest } from "./project-session-data";
 import {
   applicationStateSchema,
   attachmentSchema,
@@ -34,9 +34,9 @@ import {
 import {
   WorktreeLandingOperation,
   WorktreeLandingSnapshot,
-} from "../domain/worktrees/worktree-landing-data";
-import { WorktreeRecord } from "../domain/worktrees/managed-worktree-data";
-import { DrawControlRequest } from "../domain/draw/draw-control";
+} from "../services/worktrees/worktree-landing-data";
+import { WorktreeRecord } from "../services/worktrees/managed-worktree-data";
+import { DrawControlRequest } from "./draw-control";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));

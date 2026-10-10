@@ -3,7 +3,7 @@ import {
   addPresentationModeReminder,
   presentationModeFromReminder,
   stripPresentationModeReminder,
-} from "../../../src/domain/project-sessions/presentation-mode-reminders";
+} from "../../../src/services/pi/presentation-mode-reminders";
 import { projectQueuedMessages } from "../../../src/services/pi/runtime/session-projection";
 
 const reminder = (from: "normal" | "vscode" | "draw", to: "normal" | "vscode" | "draw") =>

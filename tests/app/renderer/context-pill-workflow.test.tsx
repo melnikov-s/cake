@@ -7,9 +7,9 @@ import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
-import { addResponseModeReminder } from "../../../src/domain/conversations/conversation-response-mode";
-import { encodeCrossSessionMessage } from "../../../src/domain/conversations/cross-session-coordination";
-import { addPresentationModeReminder } from "../../../src/domain/project-sessions/presentation-mode-reminders";
+import { addResponseModeReminder } from "../../../src/services/pi/response-mode-reminders";
+import { encodeCrossSessionMessage } from "../../../src/services/pi/cross-session-message";
+import { addPresentationModeReminder } from "../../../src/services/pi/presentation-mode-reminders";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 

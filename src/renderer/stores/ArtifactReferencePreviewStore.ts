@@ -5,7 +5,7 @@ import type {
   ArtifactLinkTarget,
   ArtifactRevisionNumber,
   ArtifactStableRef,
-} from "../../domain/artifacts/artifact-lineage";
+} from "../../services/storage/artifact-lineage";
 import type { ArtifactProjectionMetadata } from "../../services/artifacts/ArtifactProjection";
 import type { ArtifactReferencePreviewState } from "../lib/artifact-reference-preview-state";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";

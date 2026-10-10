@@ -1,4 +1,4 @@
-import { TurnId } from "../../../../src/domain/conversations/conversation-data";
+import { TurnId } from "../../../../src/ipc/conversation-data";
 import { child, createStore, mount, Store } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../../src/renderer/client/Client";

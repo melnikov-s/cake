@@ -7,7 +7,7 @@ import {
   defaultApplicationState,
   type ProjectWorkflow,
   type SessionLabel,
-} from "../../../src/domain/application/application-data";
+} from "../../../src/services/storage/application-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import type { ProjectSessionStore } from "../../../src/renderer/stores/ProjectSessionStore";

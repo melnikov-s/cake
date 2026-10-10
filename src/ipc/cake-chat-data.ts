@@ -1,9 +1,6 @@
 import { Schema } from "effect";
-import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
-import {
-  SessionChatConfiguration,
-  SessionChatPromptInput,
-} from "../conversations/conversation-data";
+import { SESSION_TITLE_MAX_LENGTH } from "./session-contract";
+import { SessionChatConfiguration, SessionChatPromptInput } from "./conversation-data";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 

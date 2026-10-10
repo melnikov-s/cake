@@ -5,10 +5,7 @@ import { applySnapshot } from "r-state-tree";
 import { observer } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SESSION_TITLE_MAX_LENGTH } from "../../../src/ipc/session-contract";
-import {
-  TurnId,
-  type ConversationSnapshot,
-} from "../../../src/domain/conversations/conversation-data";
+import { TurnId, type ConversationSnapshot } from "../../../src/ipc/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SidebarCakeChatGroup } from "../../../src/renderer/components/sidebar-cake-chat-group";

@@ -7,10 +7,9 @@ import {
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import { Option, Schema } from "effect";
 import {
-  resolveCakeModelSelection,
   type CakeModelSelection,
   type ExplicitCakeModelSelection,
-} from "../../../domain/model-presets/cake-model-selection";
+} from "../../../ipc/cake-model-selection";
 import type {
   ChatConfiguration,
   ModelOption,
@@ -115,12 +114,18 @@ export function createCakeSessionRuntimeConfiguration(input: {
         }
       : undefined;
 
-  const resolveModelSelection = (selection: CakeModelSelection | undefined) =>
-    resolveCakeModelSelection(
-      selection,
-      options.modelPresets?.() ?? { presets: [] },
-      currentModelSelection(),
-    );
+  const resolveModelSelection = (
+    selection: CakeModelSelection | undefined,
+  ): ExplicitCakeModelSelection => {
+    const inherited = currentModelSelection();
+    if (options.resolveModelSelection) return options.resolveModelSelection(selection, inherited);
+    if (typeof selection === "string")
+      throw new Error("Model preset resolution is unavailable in this runtime");
+    const configuration = selection ?? inherited;
+    if (!configuration)
+      throw new Error("A model selection is required because there is no model to inherit");
+    return { ...configuration };
+  };
 
   const setModel = async (provider: string, modelId: string) => {
     const model = modelRuntime.getModel(provider, modelId);

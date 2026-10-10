@@ -3,7 +3,7 @@ import { Buffer } from "node:buffer";
 import { constants } from "node:fs";
 import { lstat, open, realpath, rmdir, unlink } from "node:fs/promises";
 import { Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
-import { formatArtifactRef } from "../../domain/artifacts/artifact-lineage";
+import { formatArtifactRef } from "../storage/artifact-lineage";
 import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
 import {
   ArtifactProjection,

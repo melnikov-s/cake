@@ -7,11 +7,11 @@ import { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
 import { SpeechSettingsStore } from "./SpeechSettingsStore";
 import type { DesktopConnectionStore } from "./DesktopConnectionStore";
 import { Store, child, createStore, untracked } from "r-state-tree";
-import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
+import type { CakeHotkeyActionId } from "../../ipc/cake-settings-data";
 import {
   decodeArtifactLineageId,
   decodeArtifactRevisionNumber,
-} from "../../domain/artifacts/artifact-lineage";
+} from "../../services/storage/artifact-lineage";
 import type { Client } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";

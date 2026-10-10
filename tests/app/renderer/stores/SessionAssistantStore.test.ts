@@ -1,15 +1,12 @@
 import { child, createStore, mount, Store } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../../src/renderer/client/Client";
-import {
-  TurnId,
-  type ConversationSnapshot,
-} from "../../../../src/domain/conversations/conversation-data";
+import { TurnId, type ConversationSnapshot } from "../../../../src/ipc/conversation-data";
 import {
   isSessionAssistantThread,
   sessionAssistantThreadPath,
   type DiscussionThread,
-} from "../../../../src/domain/discussion-sessions/discussion-session-data";
+} from "../../../../src/ipc/discussion-session-data";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import {
   applyConversationSnapshot,

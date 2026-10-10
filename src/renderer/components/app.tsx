@@ -6,7 +6,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { parseArtifactRef } from "../../domain/artifacts/artifact-lineage";
+import { parseArtifactRef } from "../../services/storage/artifact-lineage";
 import { observer, StoreProvider, useStore } from "r-state-tree/react";
 import {
   Confirmation,
@@ -68,7 +68,7 @@ import {
   cakeNativeHotkeyInputEventName,
   hotkeyFromKeyboardEvent,
 } from "@/lib/hotkeys";
-import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
+import type { CakeHotkeyActionId } from "../../ipc/cake-settings-data";
 import { cn } from "@/lib/utils";
 import { editorLocationFromPath } from "../../ipc/editor-location";
 import type { SourceLocation } from "../../ipc/source-location";

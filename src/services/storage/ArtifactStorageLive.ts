@@ -10,7 +10,7 @@ import {
   type ArtifactLineage,
   type ArtifactLinkTarget,
   type ArtifactRevisionMetadata,
-} from "../../domain/artifacts/artifact-lineage";
+} from "./artifact-lineage";
 import {
   cakeArtifactV1Schema,
   parseArtifactInput,

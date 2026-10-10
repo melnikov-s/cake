@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { encodeCrossSessionMessage } from "../../../src/domain/conversations/cross-session-coordination";
-import type { ScheduledMessage } from "../../../src/domain/scheduled-messages/scheduled-message-data";
+import { encodeCrossSessionMessage } from "../../../src/services/pi/cross-session-message";
+import type { ScheduledMessage } from "../../../src/services/scheduled-messages/scheduled-message-data";
 import {
   encodeScheduledMessage,
   parseScheduledMessage,
   scheduledMessageOrigin,
   type ScheduledMessageOrigin,
-} from "../../../src/domain/scheduled-messages/scheduled-message-envelope";
+} from "../../../src/services/pi/scheduled-message-envelope";
 import {
   locateQueuedMessage,
   projectQueuedMessages,

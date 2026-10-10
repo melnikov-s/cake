@@ -3,11 +3,11 @@ import {
   addResponseModeReminder,
   stripResponseModeReminder,
   responseModeReminders,
-} from "../../../src/domain/conversations/conversation-response-mode";
+} from "../../../src/services/pi/response-mode-reminders";
 import {
   addPresentationModeReminder,
   stripPresentationModeReminder,
-} from "../../../src/domain/project-sessions/presentation-mode-reminders";
+} from "../../../src/services/pi/presentation-mode-reminders";
 
 describe("conversation response-mode contract", () => {
   it("voice input receives the approved brief spoken-response guidance without changing its visible text", () => {

@@ -8,8 +8,8 @@ import type {
   PiSessionUpdate,
 } from "../../services/pi/CakeSessionRuntimes";
 import type { PiQueuedMessages } from "../../services/pi/conversation-data";
-import type { ProjectSessionPresentationMode } from "../project-sessions/project-session-presentation";
-import type { ConversationResponseMode } from "./conversation-response-mode";
+import type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
+import type { ConversationResponseMode } from "../../services/pi/response-mode-reminders";
 import type {
   Annotation,
   Attachment,
@@ -25,9 +25,9 @@ import {
   type ConversationSnapshot,
   type ConversationUpdate,
   type QueuedConversationMessages,
-} from "./conversation-data";
+} from "../../ipc/conversation-data";
 
-export * from "./conversation-data";
+export * from "../../ipc/conversation-data";
 
 /** Maps Pi's transient runtime queue into Cake's conversation projection. */
 export const projectQueuedMessages = (queued: PiQueuedMessages): QueuedConversationMessages => ({

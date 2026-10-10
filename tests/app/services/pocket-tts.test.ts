@@ -4,8 +4,8 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Fiber, Queue, Schema, Stream } from "effect";
-import { PocketTtsState } from "../../../src/domain/speech/pocket-tts-data";
-import type { SpeechOutputAudio } from "../../../src/domain/speech/speech-output-data";
+import { PocketTtsState } from "../../../src/services/speech/pocket-tts-data";
+import type { SpeechOutputAudio } from "../../../src/services/speech/speech-output-data";
 import { PocketTts } from "../../../src/services/speech/PocketTts";
 import { makePocketTtsLive } from "../../../src/services/speech/PocketTtsLive";
 

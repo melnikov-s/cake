@@ -1,4 +1,4 @@
-import type { CakeHotkeyActionId } from "../../domain/application/cake-settings-data";
+import type { CakeHotkeyActionId } from "../../ipc/cake-settings-data";
 import { isMacPlatform } from "./platform";
 
 export interface HotkeyDefinition {

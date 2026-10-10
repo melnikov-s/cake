@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   crossSessionContextSnapshot,
-  deriveCrossSessionDeliveryStatus,
   encodeCrossSessionMessage,
   parseCrossSessionMessage,
   type CrossSessionMessageMetadata,
-} from "../../../src/domain/conversations/cross-session-coordination";
+} from "../../../src/services/pi/cross-session-message";
+import { deriveCrossSessionDeliveryStatus } from "../../../src/domain/conversations/cross-session-coordination";
 import {
   projectQueuedMessages,
   projectSessionEntries,

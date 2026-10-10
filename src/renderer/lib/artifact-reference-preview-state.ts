@@ -1,4 +1,4 @@
-import type { ArtifactReferenceMetadata } from "../../domain/artifacts/artifact-lineage";
+import type { ArtifactReferenceMetadata } from "../../services/storage/artifact-lineage";
 
 export type ArtifactReferencePreviewState = {
   loading: boolean;

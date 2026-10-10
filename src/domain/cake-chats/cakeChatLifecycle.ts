@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import * as subagents from "../subagents/subagents";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
-import { CakeChatError, type CakeChatTarget } from "./cake-chat-data";
+import { CakeChatError, type CakeChatTarget } from "../../ipc/cake-chat-data";
 import { archiveLocation, type CakeChatLocation } from "./cakeChatLocations";
 import { acquireTarget } from "./cakeChatOperations";
 import { asError, sessionNamespace } from "./cakeChatMetadata";

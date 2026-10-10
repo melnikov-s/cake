@@ -3,7 +3,7 @@ import type { Event } from "electron";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer } from "effect";
 import { describe, expect, vi } from "vitest";
-import { defaultApplicationState } from "../../../src/domain/application/application-data";
+import { defaultApplicationState } from "../../../src/services/storage/application-data";
 import { DesktopSharing } from "../../../src/services/electron/DesktopSharing";
 import { MainApplication } from "../../../src/main/MainApplication";
 import { Electron, type ElectronWindowLifecycle } from "../../../src/services/electron/Electron";

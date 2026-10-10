@@ -1,5 +1,5 @@
 import { Store, observable, snapshot } from "r-state-tree";
-import type { DrawBoardMetadata } from "../../domain/draw/draw-board-data";
+import type { DrawBoardMetadata } from "../../services/storage/draw-board-data";
 import type {
   DrawApplyReceipt,
   DrawDocumentSnapshot,

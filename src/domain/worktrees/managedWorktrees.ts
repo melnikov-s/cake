@@ -7,7 +7,7 @@ import {
   familyMemberIds,
   familyMember,
 } from "../../services/storage/SessionFamilyStorage";
-import { defaultProjectSettings } from "../application/application-data";
+import { defaultProjectSettings } from "../../services/storage/application-data";
 import { getState, revokeProjectTrust, trustProject } from "../application/application";
 import { generateWorktreeName, utilityModelSelection } from "../utility-work/utilityWork";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";

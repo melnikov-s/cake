@@ -1,5 +1,5 @@
 import { Store } from "r-state-tree";
-import type { CakePromptOverrides } from "../../domain/application/cake-prompts";
+import type { CakePromptOverrides } from "../../services/storage/cake-prompt-data";
 import type { ApplicationState } from "../../ipc/session-contract";
 import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";

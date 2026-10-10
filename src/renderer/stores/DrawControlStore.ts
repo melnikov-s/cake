@@ -3,7 +3,7 @@ import type {
   DrawControl,
   DrawControlInvocation,
   DrawControlResponse,
-} from "../../domain/draw/draw-control";
+} from "../../ipc/draw-control";
 import type { ProjectSessionStore } from "./ProjectSessionStore";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
 import { SessionRegistryContext } from "./context/SessionRegistryContext";

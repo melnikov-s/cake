@@ -4,7 +4,7 @@ import { PiModelCompletionError, type ModelSelection } from "../../services/pi/m
 import {
   PROJECT_WORKFLOW_SESSION_DESCRIPTION_MAX_LENGTH,
   type SessionLabel,
-} from "../application/application-data";
+} from "../../services/storage/application-data";
 
 const USER_CONTEXT_LIMIT = 8_000;
 const TITLE_CHARACTER_LIMIT = 80;

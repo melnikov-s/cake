@@ -3,7 +3,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ConversationSnapshot } from "../../../src/domain/conversations/conversation-data";
+import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
 import { SidebarCakeChatGroup } from "../../../src/renderer/components/sidebar-cake-chat-group";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";

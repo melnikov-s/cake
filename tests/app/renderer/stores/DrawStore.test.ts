@@ -12,7 +12,7 @@
  */
 import { createStore } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import type { DrawBoardMetadata } from "../../../../src/domain/draw/draw-board-data";
+import type { DrawBoardMetadata } from "../../../../src/services/storage/draw-board-data";
 import type { DrawDocumentSnapshot } from "../../../../src/domain/draw/draw-editor";
 import type { Client } from "../../../../src/renderer/client/Client";
 import type { DrawEditorAdapter } from "../../../../src/renderer/draw/DrawEditorAdapter";

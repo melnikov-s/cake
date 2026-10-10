@@ -10,12 +10,10 @@ import {
   UtilityModel,
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
-} from "../../domain/application/application-data";
-import {
-  CakePrompts,
-  defaultCakePrompts,
-  normalizeCakePromptOverrides,
-} from "../../domain/application/cake-prompts";
+} from "./application-data";
+import { CakePrompts } from "./cake-prompt-data";
+// Frozen wording recognized by the v5 migration, not the current domain defaults.
+import versionFivePromptDefaults from "./internal/application-v5-prompt-defaults.json";
 import { atomicWriteFile, type AtomicFileStage } from "./internal/atomicFile";
 
 const APPLICATION_DOCUMENT_VERSION = 6;
@@ -280,7 +278,8 @@ const migrateVersionThree = Effect.fn("ApplicationStorage.migrateVersionThree")(
 );
 
 const migrateVersionFour = Effect.fn("ApplicationStorage.migrateVersionFour")(
-  (state: ApplicationStateV4) => Effect.succeed({ ...state, cakePrompts: defaultCakePrompts() }),
+  (state: ApplicationStateV4) =>
+    Effect.succeed({ ...state, cakePrompts: versionFivePromptDefaults }),
 );
 
 // Version five stored copies of defaults, so remove known shipped wording while
@@ -288,7 +287,7 @@ const migrateVersionFour = Effect.fn("ApplicationStorage.migrateVersionFour")(
 const migrateVersionFive = Effect.fn("ApplicationStorage.migrateVersionFive")((
   state: ApplicationStateV5,
 ) => {
-  const prompts = { ...state.cakePrompts };
+  const prompts: { -readonly [Key in keyof CakePrompts]?: string } = {};
   const oldCommitDefault = [
     "Cake is preparing to merge this worktree into {{target}}, but it has uncommitted changes.",
     "",
@@ -296,8 +295,17 @@ const migrateVersionFive = Effect.fn("ApplicationStorage.migrateVersionFive")((
     "",
     "Do not merge, rebase, push, switch branches, or modify the target checkout. Cake will merge the committed branch after this turn finishes.",
   ].join("\n");
-  if (prompts.worktreeCommit === oldCommitDefault) prompts.worktreeCommit = "";
-  return Effect.succeed({ ...state, cakePrompts: normalizeCakePromptOverrides(prompts) });
+  // SAFETY: the decoded version-five schema has exactly these declared prompt keys.
+  for (const key of Object.keys(CakePrompts.fields) as Array<keyof CakePrompts>) {
+    const value = state.cakePrompts[key];
+    if (
+      value.trim() &&
+      value !== versionFivePromptDefaults[key] &&
+      !(key === "worktreeCommit" && value === oldCommitDefault)
+    )
+      prompts[key] = value;
+  }
+  return Effect.succeed({ ...state, cakePrompts: prompts });
 });
 
 const writeError = (stage: AtomicFileStage, cause: unknown) =>

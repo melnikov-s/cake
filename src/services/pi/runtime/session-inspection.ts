@@ -1,11 +1,8 @@
 import { Option, Schema } from "effect";
 import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
-import {
-  SessionHistoryEntry,
-  type SessionHistoryQuery,
-} from "../../../domain/conversations/session-query-data";
-import { stripResponseModeReminder } from "../../../domain/conversations/conversation-response-mode";
-import { stripPresentationModeReminder } from "../../../domain/project-sessions/presentation-mode-reminders";
+import { SessionHistoryEntry, type SessionHistoryQuery } from "../../../ipc/session-query-data";
+import { stripResponseModeReminder } from "../response-mode-reminders";
+import { stripPresentationModeReminder } from "../presentation-mode-reminders";
 import { jsonValueSchema } from "../../../ipc/json-contract";
 import { textFromContent } from "./session-projection";
 import {

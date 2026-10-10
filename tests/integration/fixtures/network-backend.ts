@@ -9,7 +9,7 @@ import {
   RendererConnection,
   type RendererConnectionInfo,
 } from "../../../src/ipc/protocol/RendererConnectionMiddleware";
-import { defaultApplicationState } from "../../../src/domain/application/application-data";
+import { defaultApplicationState } from "../../../src/services/storage/application-data";
 import { AgentAvailability } from "../../../src/services/pi/AgentAvailability";
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { ClientEventsLive } from "../../../src/services/clients/ClientEventsLive";

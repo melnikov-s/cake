@@ -21,7 +21,7 @@ import type {
   SubagentHandleId,
   SubagentResult,
   SubagentStatus,
-} from "../../domain/subagents/subagent-data";
+} from "./subagent-data";
 
 export interface SubagentHandleState {
   readonly handleId: SubagentHandleId;

@@ -10,7 +10,7 @@ import {
   WorktreeLandingError,
   type WorktreeLandingOperation,
   type WorktreeLandingSnapshot,
-} from "./worktree-landing-data";
+} from "../../services/worktrees/worktree-landing-data";
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 

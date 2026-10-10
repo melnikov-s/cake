@@ -1,6 +1,6 @@
 import { createStore, observable } from "r-state-tree";
 import { vi } from "vitest";
-import type { ConversationSnapshot } from "../../../src/domain/conversations/conversation-data";
+import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
 import type {
   ChatConfiguration,
   ModelOption,

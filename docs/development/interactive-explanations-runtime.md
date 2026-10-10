@@ -51,7 +51,7 @@ The following pieces are independently useful and should be reused rather than c
   orchestration in `ProjectSessionIntegrationHost`: new Pi integration belongs behind
   `src/services/pi`, and Pi remains the agent-loop/provider authority.
 - **Configured model resolution.** `CakeModelSelection` in
-  `src/domain/model-presets/cake-model-selection.ts` defines a string as a configured preset name,
+  `src/ipc/cake-model-selection.ts` defines a string as a configured preset name,
   never a raw model ID, and resolves it to provider, `modelId`, thinking level, and Fast mode.
   `PiModels.resolve` then checks catalog membership, authentication, availability, supported
   thinking level, and Fast mode. `PiModel.input` also records whether image input is supported.

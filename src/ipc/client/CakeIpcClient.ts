@@ -2,7 +2,7 @@ import type {
   QueuedSessionCommand,
   QueuedSessionCommandReceipt,
   SessionInspectionQuery,
-} from "../../domain/conversations/session-query-data";
+} from "../session-query-data";
 import type {
   DictationAudio,
   DictationError,
@@ -10,19 +10,19 @@ import type {
   SpeechDetectionAudio,
   PunctuationInput,
   PunctuationResult,
-} from "../../domain/dictation/dictation-data";
+} from "../../services/dictation/dictation-data";
 import type {
   SpeechOutputSettings,
   SpeechOutputError,
   SpeechOutputVoice,
   SpeechOutputRequest,
   SpeechOutputAudio,
-} from "../../domain/speech/speech-output-data";
-import type { SpeechOutputProvider } from "../../domain/speech/pocket-tts-data";
+} from "../../services/speech/speech-output-data";
+import type { SpeechOutputProvider } from "../../services/speech/pocket-tts-data";
 import type {
   DesktopHostError,
   DesktopHostSelection,
-} from "../../domain/application/desktop-host-data";
+} from "../../services/electron/desktop-host-data";
 import type {
   AcquireEditor,
   EditorBounds,
@@ -35,7 +35,7 @@ import type {
   McpSettingsMutation,
   McpSettingsSnapshot,
   McpSettingsError,
-} from "../../domain/mcp/mcp-settings-data";
+} from "../../services/pi/mcp-settings-data";
 import { Context, Effect, Layer, type Schema, type Stream } from "effect";
 import { RpcClient } from "effect/unstable/rpc";
 import type { RpcClientError } from "effect/unstable/rpc";
@@ -61,7 +61,7 @@ import type {
   ArtifactStableRef,
   ArtifactTextComparison,
   EffectiveArtifactProjection,
-} from "../../domain/artifacts/artifact-lineage";
+} from "../../services/storage/artifact-lineage";
 import type {
   ArtifactProjectionError,
   ArtifactProjectionMetadata,
@@ -72,15 +72,15 @@ import type {
 } from "../../services/storage/ArtifactStorage";
 import type { PiSettingsError } from "../../services/pi/PiSettings";
 import type { SessionFamilyStorageError } from "../../services/storage/SessionFamilyStorage";
-import type { SavedDraft } from "../../domain/project-sessions/saved-draft-data";
+import type { SavedDraft } from "../../services/storage/saved-draft-data";
 import type { SavedDraftError } from "../../services/storage/SavedDraftStorage";
 import type { SavedDraftCreateInput, SavedDraftActivateInput } from "../protocol/SavedDraftRpc";
-import type { WorktreeRecord } from "../../domain/worktrees/managed-worktree-data";
+import type { WorktreeRecord } from "../../services/worktrees/managed-worktree-data";
 import type {
   DesktopSharingError,
   DesktopSharingInput,
   DesktopSharingState,
-} from "../../domain/application/desktop-sharing-data";
+} from "../../services/electron/desktop-sharing-data";
 import type { ElectronError } from "../../services/electron/Electron";
 import type { InlineWidgetError } from "../../services/widgets/InlineWidgets";
 import type { RenderedWidgetCaptureError } from "../../services/widgets/RenderedWidgetCapture";
@@ -90,8 +90,8 @@ import type {
   ResolvedManagedWorktreeCleanupPlan,
   ResolvedManagedWorktreeCleanupResult,
 } from "../../domain/worktrees/managed-worktree-cleanup-data";
-import type { WorktreeLandingError } from "../../domain/worktrees/worktree-landing-data";
-import type { ManagedWorktreeCatalogUpdate } from "../../domain/worktrees/managed-worktree-data";
+import type { WorktreeLandingError } from "../../services/worktrees/worktree-landing-data";
+import type { ManagedWorktreeCatalogUpdate } from "../../services/worktrees/managed-worktree-data";
 import type { WorktreeOperationCatalogUpdate } from "../../domain/worktrees/worktree-operation-data";
 import type { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
 import type { VsCodeServerError } from "../../services/vscode/VsCodeServer";
@@ -113,8 +113,8 @@ import type {
   SessionLabel,
   SessionLabelMutation,
   ProjectWorkflowSessionDetails,
-} from "../../domain/application/application-data";
-import type { AgentAvailabilitySnapshot } from "../../domain/application/agent-availability-data";
+} from "../../services/storage/application-data";
+import type { AgentAvailabilitySnapshot } from "../../services/pi/agent-availability-data";
 import type { PiSettingUpdate, PiSettings } from "../session-contract";
 import type {
   ProjectSessionError,
@@ -124,7 +124,7 @@ import type {
   ProjectSessionStartInput,
   ProjectSessionTarget,
   WorkingDirectoryResolutionResult,
-} from "../../domain/project-sessions/project-session-data";
+} from "../project-session-data";
 import type {
   ConversationUpdate,
   QueuedConversationMessages,
@@ -133,7 +133,7 @@ import type {
   SessionChatPromptInput,
   SessionChatTarget,
   TurnId,
-} from "../../domain/conversations/conversation-data";
+} from "../conversation-data";
 import type {
   CakeChatCatalogQuery,
   CakeChatError,
@@ -141,7 +141,7 @@ import type {
   CakeChatStartInput,
   CakeChatTarget,
   CakeChatControlUpdate,
-} from "../../domain/cake-chats/cake-chat-data";
+} from "../cake-chat-data";
 import type { ConversationObservationTarget } from "../protocol/ConversationRpc";
 import type {
   DrawBoardCreateInput,
@@ -152,8 +152,8 @@ import type {
   DrawBoardRenameInput,
   DrawBoardSaveInput,
   DrawBoardTarget,
-} from "../../domain/draw/draw-board-data";
-import type { DrawControlResponse } from "../../domain/draw/draw-control";
+} from "../../services/storage/draw-board-data";
+import type { DrawControlResponse } from "../draw-control";
 import type { DrawControlRpcError } from "../protocol/DrawControlRpc";
 import type {
   DiscussionSessionError,
@@ -163,7 +163,7 @@ import type {
   DiscussionThread,
   SessionAssistantEnsureInput,
   SessionAssistantEnsured,
-} from "../../domain/discussion-sessions/discussion-session-data";
+} from "../discussion-session-data";
 import type {
   CakeChatCatalogUpdate,
   DiscussionCatalogUpdate,
@@ -174,13 +174,13 @@ import type {
   SubagentError,
   SubagentHandleId,
   SubagentUpdate,
-} from "../../domain/subagents/subagent-data";
+} from "../../services/subagents/subagent-data";
 import type {
   ScheduleMessageInput,
   ScheduledMessage,
   ScheduledMessageError,
   ScheduledMessageUpdate,
-} from "../../domain/scheduled-messages/scheduled-message-data";
+} from "../../services/scheduled-messages/scheduled-message-data";
 import type {
   DefaultModelPresetNotFoundError,
   DuplicateModelPresetIdError,
@@ -195,7 +195,7 @@ import type {
 import type {
   NonChatModelPreferences,
   NonChatModelPreferenceUpdate,
-} from "../../domain/model-preferences/non-chat-model-data";
+} from "../../services/storage/non-chat-model-data";
 import type {
   ModelSelection,
   PiModel,

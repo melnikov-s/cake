@@ -3,7 +3,7 @@ import type {
   ApplicationState,
   SessionPlugin,
   SessionPluginSharedState,
-} from "../../domain/application/application-data";
+} from "../../services/storage/application-data";
 import type { JsonObject, JsonValue } from "../../ipc/json-contract";
 import { ClientContext } from "./context/ClientContext";
 

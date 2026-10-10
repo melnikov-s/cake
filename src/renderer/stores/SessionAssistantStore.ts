@@ -1,5 +1,5 @@
 import { child, createStore, effect as reactiveEffect, observable, Store } from "r-state-tree";
-import type { CakeControlTool } from "../../domain/cake-chats/cake-chat-data";
+import type { CakeControlTool } from "../../ipc/cake-chat-data";
 import type { Annotation, UiPart } from "../../ipc/session-contract";
 import type { ReviewThread } from "../models/ReviewThread";
 import { describeError } from "../lib/error-details";

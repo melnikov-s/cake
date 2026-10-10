@@ -1,12 +1,12 @@
 import { Schema } from "effect";
-import { ThinkingLevel } from "../../services/pi/model-data";
-import { CakeControlTool } from "../cake-chats/cake-chat-data";
+import { ThinkingLevel } from "../services/pi/model-data";
+import { CakeControlTool } from "./cake-chat-data";
 import {
   CakeSessionIdentity,
   ConversationEvent,
   ConversationSnapshot,
   TurnId,
-} from "../conversations/conversation-data";
+} from "./conversation-data";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const boundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(8_192));

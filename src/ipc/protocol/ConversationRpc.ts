@@ -1,8 +1,8 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { ConversationUpdate, SessionChatError } from "../../domain/conversations/conversation-data";
-import { CakeChatTarget } from "../../domain/cake-chats/cake-chat-data";
-import { ProjectSessionTarget } from "../../domain/project-sessions/project-session-data";
+import { ConversationUpdate, SessionChatError } from "../conversation-data";
+import { CakeChatTarget } from "../cake-chat-data";
+import { ProjectSessionTarget } from "../project-session-data";
 
 /** Validated target needed to assemble the owning Cake Session runtime profile. */
 export const ConversationObservationTarget = Schema.TaggedUnion({

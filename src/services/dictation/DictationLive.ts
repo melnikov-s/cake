@@ -8,7 +8,7 @@ import {
   type SpeechDetectionAudio,
   type PunctuationInput,
   type PunctuationState,
-} from "../../domain/dictation/dictation-data";
+} from "./dictation-data";
 import { Dictation } from "./Dictation";
 import {
   helperAvailable,

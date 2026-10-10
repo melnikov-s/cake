@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { SessionCatalogUpdate } from "../../domain/application/catalog-data";
-import { TurnId } from "../../domain/conversations/conversation-data";
+import { TurnId } from "../conversation-data";
 import {
   ProjectSessionError,
   ProjectSessionCatalogQuery,
@@ -10,7 +10,7 @@ import {
   ProjectSessionStartInput,
   ProjectSessionTarget,
   WorkingDirectoryResolutionResult,
-} from "../../domain/project-sessions/project-session-data";
+} from "../project-session-data";
 import { jsonObjectSchema, jsonValueSchema } from "../json-contract";
 import { SESSION_TITLE_MAX_LENGTH } from "../session-contract";
 

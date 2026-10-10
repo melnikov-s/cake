@@ -1,5 +1,5 @@
-import { stripPresentationModeReminder } from "../../domain/project-sessions/presentation-mode-reminders";
-import { stripResponseModeReminder } from "../../domain/conversations/conversation-response-mode";
+import { stripPresentationModeReminder } from "../../services/pi/presentation-mode-reminders";
+import { stripResponseModeReminder } from "../../services/pi/response-mode-reminders";
 
 export interface SpokenPhrases {
   readonly phrases: readonly string[];

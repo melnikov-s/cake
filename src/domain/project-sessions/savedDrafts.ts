@@ -5,7 +5,7 @@ import { ProjectSessionConfiguration } from "../../services/project-sessions/Pro
 import * as projectSessionLocations from "./projectSessionLocations";
 import * as projectSessionOperations from "./projectSessionOperations";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
-import type { SavedDraft } from "./saved-draft-data";
+import type { SavedDraft } from "../../services/storage/saved-draft-data";
 
 const requireProject = Effect.fn("SavedDrafts.requireProject")(function* (projectPath: string) {
   const locations = yield* projectSessionLocations.locations();

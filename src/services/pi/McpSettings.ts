@@ -8,7 +8,7 @@ import {
   type McpSettingsMutation,
   type McpSettingsRead,
   type McpSettingsSnapshot,
-} from "../../domain/mcp/mcp-settings-data";
+} from "./mcp-settings-data";
 import { NativeMcpConfig } from "./mcp-config-validation";
 
 interface JsonRecord extends Record<string, Schema.Json> {}

@@ -7,8 +7,8 @@ import {
 import { createHash } from "node:crypto";
 import { Option, Schema } from "effect";
 import { decodeArtifactPointer, type ArtifactPointer } from "../../../ipc/artifact-contract";
-import { parseCrossSessionMessage } from "../../../domain/conversations/cross-session-coordination";
-import { parseScheduledMessage } from "../../../domain/scheduled-messages/scheduled-message-envelope";
+import { parseCrossSessionMessage } from "../cross-session-message";
+import { parseScheduledMessage } from "../scheduled-message-envelope";
 import { shouldRenderMarkdown } from "../../../utils/markdown";
 import { splitContextReminders } from "./session-context-reminders";
 import {

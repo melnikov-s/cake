@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { TurnId } from "../../../src/domain/conversations/conversation-data";
+import { TurnId } from "../../../src/ipc/conversation-data";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";

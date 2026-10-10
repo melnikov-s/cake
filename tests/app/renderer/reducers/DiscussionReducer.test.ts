@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { DiscussionThread } from "../../../../src/domain/discussion-sessions/discussion-session-data";
-import type { ConversationSnapshot } from "../../../../src/domain/conversations/conversation-data";
+import type { DiscussionThread } from "../../../../src/ipc/discussion-session-data";
+import type { ConversationSnapshot } from "../../../../src/ipc/conversation-data";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 import { DiscussionCatalog } from "../../../../src/renderer/models/DiscussionCatalog";
 import { Conversation } from "../../../../src/renderer/models/Conversation";

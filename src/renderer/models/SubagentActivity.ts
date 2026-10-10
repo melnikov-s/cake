@@ -1,5 +1,5 @@
 import { Model, id } from "r-state-tree";
-import type { ResolvedAgentModel, SubagentStatus } from "../../domain/subagents/subagent-data";
+import type { ResolvedAgentModel, SubagentStatus } from "../../services/subagents/subagent-data";
 import type { SessionUsage, UiPart } from "../../ipc/session-contract";
 
 /** Passive renderer projection of one live Subagent activity. */

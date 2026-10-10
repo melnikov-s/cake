@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSpeechPlayback } from "../../../src/renderer/speech/playback";
-import type { SpeechOutputAudio } from "../../../src/domain/speech/speech-output-data";
+import type { SpeechOutputAudio } from "../../../src/services/speech/speech-output-data";
 
 function audio(samples: number[]): SpeechOutputAudio {
   const bytes = new Uint8Array(samples.length * 2),

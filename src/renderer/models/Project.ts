@@ -4,7 +4,7 @@ import {
   defaultProjectWorkflow,
   type ProjectSettings,
   type ProjectWorkflow,
-} from "../../domain/application/application-data";
+} from "../../services/storage/application-data";
 
 export class Project extends Model {
   @id path = "";

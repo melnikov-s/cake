@@ -27,8 +27,8 @@ import {
   DRAW_SNAPSHOT_VERSION,
 } from "./DrawDocumentValidation";
 import { serializeExcalidrawDocument } from "./DrawExportSerializer";
-import { DrawFlowOperation, DrawFrameOperation } from "../../domain/draw/draw-control";
-import { formatDrawSourceLink, parseDrawSourceLink } from "../../domain/draw/draw-source-link";
+import { DrawFlowOperation, DrawFrameOperation } from "../../ipc/draw-control";
+import { formatDrawSourceLink, parseDrawSourceLink } from "../../utils/draw-source-link";
 import type {
   DrawArrowhead,
   DrawCreateShape,

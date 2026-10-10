@@ -1,8 +1,5 @@
 import { snapshot, Store } from "r-state-tree";
-import {
-  cakeHotkeyActionIds,
-  type CakeHotkeyActionId,
-} from "../../domain/application/cake-settings-data";
+import { cakeHotkeyActionIds, type CakeHotkeyActionId } from "../../ipc/cake-settings-data";
 import { defaultHotkeyBinding, hotkeyDefinitions, hotkeyFromKeyboardEvent } from "../lib/hotkeys";
 
 /** Owns Cake's persisted, window-scoped application hotkey preferences. */

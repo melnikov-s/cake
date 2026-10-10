@@ -22,7 +22,7 @@ import {
 import type {
   SpeechOutputError,
   SpeechOutputAudio,
-} from "../../../src/domain/speech/speech-output-data";
+} from "../../../src/services/speech/speech-output-data";
 import { ElevenLabsSpeech } from "../../../src/services/speech/ElevenLabsSpeech";
 import { ElevenLabsSpeechLive } from "../../../src/services/speech/ElevenLabsSpeechLive";
 import {
