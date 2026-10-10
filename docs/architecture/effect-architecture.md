@@ -305,6 +305,23 @@ yield * client.electron.openExternal(url);
 const updates = client.sessions.observe(sessionId);
 ```
 
+`CakeIpcClient` derives its grouped methods and call results from the shared RPC
+Group and the generated Effect client. It has no independently handwritten
+operation interface or forwarding list. Void payloads become zero-argument
+methods; other payloads retain their decoded schema types. Small explicit
+payload adapters derive their argument types from those same RPC definitions.
+Focused native-event aliases remain renderer infrastructure for local/remote
+Stream composition.
+
+The Promise `Client` derives ordinary command signatures with one mapped type
+and builds their forwarding with one schema-driven adapter. Streaming RPCs are
+excluded from this command adapter; one-shot synthesis has an explicit consumer.
+Semantic payload adapters supply their own argument arity, so optional and
+multi-argument calls still append `ClientCommandOptions` without sending them
+as RPC payload. All commands continue through the shared cancellation, error,
+host-capability, and uncertain-delivery policy. Result projections, attachment
+uploads, native substitutions, and correlated acceptance checks stay explicit.
+
 The protocol provides:
 
 - Schema-validated payload, success, failure, and stream element types;

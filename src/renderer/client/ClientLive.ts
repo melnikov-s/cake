@@ -1,6 +1,7 @@
 import { Effect, Predicate, Stream } from "effect";
 import { CakeIpcClient, type CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import { makeClientCapabilities } from "./ClientCapabilities";
+import { makeCommandGroup } from "./command-group";
 import type { Runtime } from "../runtime";
 import { ClientError, type Client, type ClientCommandOptions } from "./Client";
 import type { Attachment } from "../../ipc/session-contract";
@@ -147,7 +148,7 @@ export function makeClient(
                   path: attachment.path,
                   offset: 0,
                 })).size;
-          const { id } = yield* client.attachmentUploads["upload-open"](
+          const { id } = yield* client.attachmentUploads.open(
             image
               ? { kind: "image", name: attachment.name, size, mimeType: attachment.mimeType }
               : { kind: "file", name: attachment.name, size },
@@ -156,7 +157,7 @@ export function makeClient(
           if (image) {
             for (let offset = 0; offset < size;) {
               const data = attachment.data.slice((offset / 3) * 4, (offset / 3) * 4 + 262_144);
-              yield* client.attachmentUploads["upload-chunk"]({ id, offset, data });
+              yield* client.attachmentUploads.chunk({ id, offset, data });
               offset +=
                 Math.floor((data.length * 3) / 4) -
                 (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0);
@@ -176,13 +177,13 @@ export function makeClient(
                       offset,
                     });
               if (currentSize !== size) throw new Error("Selected file changed during transfer");
-              yield* client.attachmentUploads["upload-chunk"]({ id, offset, data });
+              yield* client.attachmentUploads.chunk({ id, offset, data });
               offset +=
                 Math.floor((data.length * 3) / 4) -
                 (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0);
             }
           }
-          const { reference } = yield* client.attachmentUploads["upload-finish"]({ id });
+          const { reference } = yield* client.attachmentUploads.finish({ id });
           prepared.push(
             image
               ? {
@@ -200,7 +201,7 @@ export function makeClient(
         Effect.onError(() =>
           Effect.forEach(
             ids,
-            (id) => client.attachmentUploads["upload-discard"]({ id }).pipe(Effect.ignore),
+            (id) => client.attachmentUploads.discard({ id }).pipe(Effect.ignore),
             { discard: true },
           ),
         ),
@@ -305,9 +306,14 @@ export function makeClient(
       throw failure;
     });
   };
-  const capabilities = makeClientCapabilities((operation, command, options) =>
-    run(operation, withClient(command), options),
-  );
+  const execute = <Success, Failure>(
+    operation: string,
+    command: (client: CakeIpcClientService) => Effect.Effect<Success, Failure>,
+    options?: ClientCommandOptions,
+  ) => run(operation, withClient(command), options);
+  const commands = <Group extends keyof CakeIpcClientService>(group: Group) =>
+    makeCommandGroup(group, execute);
+  const capabilities = makeClientCapabilities(execute);
   if (host?.kind === "browser") {
     // Only a validated path on the separately bound editor port may become a frame URL.
     // Do not fall back to the application origin or expose the desktop view bridge.
@@ -378,48 +384,7 @@ export function makeClient(
   }
   return {
     speechOutput: {
-      setProvider: (provider, options) =>
-        run(
-          "speechOutput.setProvider",
-          withClient((client) => client.speechOutput.setProvider(provider)),
-          options,
-        ),
-      installLocal: (options) =>
-        run(
-          "speechOutput.installLocal",
-          withClient((client) => client.speechOutput.installLocal()),
-          options,
-        ),
-      removeLocal: (options) =>
-        run(
-          "speechOutput.removeLocal",
-          withClient((client) => client.speechOutput.removeLocal()),
-          options,
-        ),
-      setApiKey: (key, options) =>
-        run(
-          "speechOutput.setApiKey",
-          withClient((client) => client.speechOutput.setApiKey(key)),
-          options,
-        ),
-      setVoice: (voiceId, options) =>
-        run(
-          "speechOutput.setVoice",
-          withClient((client) => client.speechOutput.setVoice(voiceId)),
-          options,
-        ),
-      setSpeed: (speed, options) =>
-        run(
-          "speechOutput.setSpeed",
-          withClient((client) => client.speechOutput.setSpeed(speed)),
-          options,
-        ),
-      listVoices: (options) =>
-        run(
-          "speechOutput.listVoices",
-          withClient((client) => client.speechOutput.listVoices()),
-          options,
-        ),
+      ...commands("speechOutput"),
       synthesize: (request, consume, options) =>
         run(
           "speechOutput.synthesize",
@@ -435,165 +400,15 @@ export function makeClient(
           options,
         ),
     },
-    dictation: {
-      installPunctuation: (options) =>
-        run(
-          "dictation.installPunctuation",
-          withClient((client) => client.dictation.installPunctuation()),
-          options,
-        ),
-      removePunctuation: (options) =>
-        run(
-          "dictation.removePunctuation",
-          withClient((client) => client.dictation.removePunctuation()),
-          options,
-        ),
-      punctuate: (input, options) =>
-        run(
-          "dictation.punctuate",
-          withClient((client) => client.dictation.punctuate(input)),
-          options,
-        ),
-      install: (options) =>
-        run(
-          "dictation.install",
-          withClient((client) => client.dictation.install()),
-          options,
-        ),
-      setModelPath: (path, options) =>
-        run(
-          "dictation.setModelPath",
-          withClient((client) => client.dictation.setModelPath(path)),
-          options,
-        ),
-      remove: (options) =>
-        run(
-          "dictation.remove",
-          withClient((client) => client.dictation.remove()),
-          options,
-        ),
-      prepare: (options) =>
-        run(
-          "dictation.prepare",
-          withClient((client) => client.dictation.prepare()),
-          options,
-        ),
-      release: (options) =>
-        run(
-          "dictation.release",
-          withClient((client) => client.dictation.release()),
-          options,
-        ),
-      detectSpeech: (audio, options) =>
-        run(
-          "dictation.detectSpeech",
-          withClient((client) => client.dictation.detectSpeech(audio)),
-          options,
-        ),
-      transcribe: (audio, options) =>
-        run(
-          "dictation.transcribe",
-          withClient((client) => client.dictation.transcribe(audio)),
-          options,
-        ),
-    },
-    desktopHost: {
-      current: (options) =>
-        run(
-          "desktopHost.current",
-          withClient((client) => client.desktopHost.current()),
-          options,
-        ),
-      select: (selection, options) =>
-        run(
-          "desktopHost.select",
-          withClient((client) => client.desktopHost.select(selection)),
-          options,
-        ),
-    },
-    backendConnection: {
-      connect: (input, options) =>
-        run(
-          "backendConnection.connect",
-          withClient((client) => client.backendConnection.connect(input)),
-          options,
-        ),
-    },
-    desktopSharing: {
-      configure: (input, options) =>
-        run(
-          "desktopSharing.configure",
-          withClient((client) => client.desktopSharing.configure(input)),
-          options,
-        ),
-    },
-    application: {
-      getHomeDirectory: (options) =>
-        run(
-          "application.getHomeDirectory",
-          withClient((client) => client.application.getHomeDirectory()),
-          options,
-        ),
-      getState: (options) =>
-        run(
-          "application.getState",
-          withClient((client) => client.application.getState()),
-          options,
-        ),
-      setSessionPluginHidden: (input, options) =>
-        run(
-          "application.setSessionPluginHidden",
-          withClient((client) => client.application.setSessionPluginHidden(input)),
-          options,
-        ),
-      setSessionPluginState: (input, options) =>
-        run(
-          "application.setSessionPluginState",
-          withClient((client) => client.application.setSessionPluginState(input)),
-          options,
-        ),
-      setSessionPluginSharedState: (input, options) =>
-        run(
-          "application.setSessionPluginSharedState",
-          withClient((client) => client.application.setSessionPluginSharedState(input)),
-          options,
-        ),
-      deleteSessionPlugin: (input, options) =>
-        run(
-          "application.deleteSessionPlugin",
-          withClient((client) => client.application.deleteSessionPlugin(input)),
-          options,
-        ),
-    },
-    windowState: {
-      load: (options) =>
-        run(
-          "windowState.load",
-          withClient((client) => client.windowState.load()),
-          options,
-        ),
-      save: (snapshot, options) =>
-        run(
-          "windowState.save",
-          withClient((client) => client.windowState.save(snapshot)),
-          options,
-        ),
-    },
-    nonChatModels: {
-      list: (options) =>
-        run(
-          "nonChatModels.list",
-          withClient((client) => client.nonChatModels.list()),
-          options,
-        ),
-      updatePreference: (input, options) =>
-        run(
-          "nonChatModels.updatePreference",
-          withClient((client) => client.nonChatModels.updatePreference(input)),
-          options,
-        ),
-    },
+    dictation: commands("dictation"),
+    desktopHost: commands("desktopHost"),
+    backendConnection: commands("backendConnection"),
+    desktopSharing: commands("desktopSharing"),
+    application: commands("application"),
+    windowState: commands("windowState"),
+    nonChatModels: commands("nonChatModels"),
     models: {
+      ...commands("models"),
       list: (options) =>
         run(
           "models.list",
@@ -611,252 +426,17 @@ export function makeClient(
           ),
           options,
         ),
-      refresh: (options) =>
-        run(
-          "models.refresh",
-          withClient((client) => client.models.refresh()),
-          options,
-        ),
-      login: (input, options) =>
-        run(
-          "models.login",
-          withClient((client) => client.models.login(input)),
-          options,
-        ),
-      logout: (input, options) =>
-        run(
-          "models.logout",
-          withClient((client) => client.models.logout(input)),
-          options,
-        ),
     },
-    mcpSettings: {
-      get: (input, options) =>
-        run(
-          "mcpSettings.get",
-          withClient((client) => client.mcpSettings.get(input)),
-          options,
-        ),
-      mutate: (input, options) =>
-        run(
-          "mcpSettings.mutate",
-          withClient((client) => client.mcpSettings.mutate(input)),
-          options,
-        ),
-    },
-    piSettings: {
-      extensions: (options) =>
-        run(
-          "piSettings.extensions",
-          withClient((client) => client.piSettings.extensions()),
-          options,
-        ),
-      setExtensionEnabled: (toggle, options) =>
-        run(
-          "piSettings.setExtensionEnabled",
-          withClient((client) => client.piSettings.setExtensionEnabled(toggle)),
-          options,
-        ),
-      get: (options) =>
-        run(
-          "piSettings.get",
-          withClient((client) => client.piSettings.get()),
-          options,
-        ),
-      update: (update, options) =>
-        run(
-          "piSettings.update",
-          withClient((client) => client.piSettings.update(update)),
-          options,
-        ),
-      reload: (options) =>
-        run(
-          "piSettings.reload",
-          withClient((client) => client.piSettings.reload()),
-          options,
-        ),
-    },
-    modelPresets: {
-      list: (options) =>
-        run(
-          "modelPresets.list",
-          withClient((client) => client.modelPresets.list()),
-          options,
-        ),
-      create: (input, options) =>
-        run(
-          "modelPresets.create",
-          withClient((client) => client.modelPresets.create(input)),
-          options,
-        ),
-      update: (input, options) =>
-        run(
-          "modelPresets.update",
-          withClient((client) => client.modelPresets.update(input)),
-          options,
-        ),
-      reorder: (input, options) =>
-        run(
-          "modelPresets.reorder",
-          withClient((client) => client.modelPresets.reorder(input)),
-          options,
-        ),
-      remove: (id, options) =>
-        run(
-          "modelPresets.remove",
-          withClient((client) => client.modelPresets.remove(id)),
-          options,
-        ),
-      setDefault: (id, options) =>
-        run(
-          "modelPresets.setDefault",
-          withClient((client) => client.modelPresets.setDefault(id)),
-          options,
-        ),
-      resolve: (id, options) =>
-        run(
-          "modelPresets.resolve",
-          withClient((client) => client.modelPresets.resolve(id)),
-          options,
-        ),
-    },
-    draw: {
-      list: (input, options) =>
-        run(
-          "draw.list",
-          withClient((client) => client.draw.list(input)),
-          options,
-        ),
-      create: (input, options) =>
-        run(
-          "draw.create",
-          withClient((client) => client.draw.create(input)),
-          options,
-        ),
-      read: (input, options) =>
-        run(
-          "draw.read",
-          withClient((client) => client.draw.read(input)),
-          options,
-        ),
-      save: (input, options) =>
-        run(
-          "draw.save",
-          withClient((client) => client.draw.save(input)),
-          options,
-        ),
-      rename: (input, options) =>
-        run(
-          "draw.rename",
-          withClient((client) => client.draw.rename(input)),
-          options,
-        ),
-      delete: (input, options) =>
-        run(
-          "draw.delete",
-          withClient((client) => client.draw.delete(input)),
-          options,
-        ),
-    },
-    drawControl: {
-      respond: (input, options) =>
-        run(
-          "drawControl.respond",
-          withClient((client) => client.drawControl.respond(input)),
-          options,
-        ),
-    },
-    savedDrafts: {
-      list: (options) =>
-        run(
-          "savedDrafts.list",
-          withClient((client) => client.savedDrafts.list()),
-          options,
-        ),
-      create: (input, options) =>
-        run(
-          "savedDrafts.create",
-          withClient((client) => client.savedDrafts.create(input)),
-          options,
-        ),
-      update: (record, expectedRevision, options) =>
-        run(
-          "savedDrafts.update",
-          withClient((client) => client.savedDrafts.update(record, expectedRevision)),
-          options,
-        ),
-      remove: (sessionId, expectedRevision, options) =>
-        run(
-          "savedDrafts.remove",
-          withClient((client) => client.savedDrafts.remove(sessionId, expectedRevision)),
-          options,
-        ),
-      recoverUncertain: (sessionId, expectedRevision, options) =>
-        run(
-          "savedDrafts.recoverUncertain",
-          withClient((client) => client.savedDrafts.recoverUncertain(sessionId, expectedRevision)),
-          options,
-        ),
-      activate: (input, options) =>
-        run(
-          "savedDrafts.activate",
-          withClient((client) => client.savedDrafts.activate(input)),
-          options,
-        ),
-    },
-    scheduledMessages: {
-      list: (targetSessionId, options) =>
-        run(
-          "scheduledMessages.list",
-          withClient((client) => client.scheduledMessages.list(targetSessionId)),
-          options,
-        ),
-      schedule: (input, options) =>
-        run(
-          "scheduledMessages.schedule",
-          withClient((client) => client.scheduledMessages.schedule(input)),
-          options,
-        ),
-      cancel: (id, options) =>
-        run(
-          "scheduledMessages.cancel",
-          withClient((client) => client.scheduledMessages.cancel(id)),
-          options,
-        ),
-    },
-    projectWorkflow: {
-      mutateGlobal: (input, options) =>
-        run(
-          "projectWorkflow.mutateGlobal",
-          withClient((client) => client.projectWorkflow.mutateGlobal(input)),
-          options,
-        ),
-      mutate: (input, options) =>
-        run(
-          "projectWorkflow.mutate",
-          withClient((client) => client.projectWorkflow.mutate(input)),
-          options,
-        ),
-      setSessionLabels: (input, options) =>
-        run(
-          "projectWorkflow.setSessionLabels",
-          withClient((client) => client.projectWorkflow.setSessionLabels(input)),
-          options,
-        ),
-      describeSession: (input, options) =>
-        run(
-          "projectWorkflow.describeSession",
-          withClient((client) => client.projectWorkflow.describeSession(input)),
-          options,
-        ),
-    },
+    mcpSettings: commands("mcpSettings"),
+    piSettings: commands("piSettings"),
+    modelPresets: commands("modelPresets"),
+    draw: commands("draw"),
+    drawControl: commands("drawControl"),
+    savedDrafts: commands("savedDrafts"),
+    scheduledMessages: commands("scheduledMessages"),
+    projectWorkflow: commands("projectWorkflow"),
     projectSessions: {
-      inspect: (target, options) =>
-        run(
-          "projectSessions.inspect",
-          withClient((client) => client.projectSessions.inspect(target)),
-          options,
-        ),
+      ...commands("projectSessions"),
       start: (input, options) =>
         run(
           "projectSessions.start",
@@ -867,82 +447,9 @@ export function makeClient(
           ),
           options,
         ),
-      open: (target, options) =>
-        run(
-          "projectSessions.open",
-          withClient((client) => client.projectSessions.open(target)),
-          options,
-        ),
-      getChangelog: (target, options) =>
-        run(
-          "projectSessions.getChangelog",
-          withClient((client) => client.projectSessions.getChangelog(target)),
-          options,
-        ),
-      navigate: (input, options) =>
-        run(
-          "projectSessions.navigate",
-          withClient((client) => client.projectSessions.navigate(input)),
-          options,
-        ),
-      dispatchExtensionCompanionAction: (input, options) =>
-        run(
-          "projectSessions.dispatchExtensionCompanionAction",
-          withClient((client) => client.projectSessions.dispatchExtensionCompanionAction(input)),
-          options,
-        ),
-      callCakeOperation: (input, options) =>
-        run(
-          "projectSessions.callCakeOperation",
-          withClient((client) => client.projectSessions.callCakeOperation(input)),
-          options,
-        ),
-      toolCompact: (input, options) =>
-        run(
-          "projectSessions.toolCompact",
-          withClient((client) => client.projectSessions.toolCompact(input)),
-          options,
-        ),
-      rename: (target, options) =>
-        run(
-          "projectSessions.rename",
-          withClient((client) => client.projectSessions.rename(target)),
-          options,
-        ),
-      fork: (input, options) =>
-        run(
-          "projectSessions.fork",
-          withClient((client) => client.projectSessions.fork(input)),
-          options,
-        ),
-      resolve: (target, options) =>
-        run(
-          "projectSessions.resolve",
-          withClient((client) => client.projectSessions.resolve(target)),
-          options,
-        ),
-      resolveWorkingDirectory: (input, options) =>
-        run(
-          "projectSessions.resolveWorkingDirectory",
-          withClient((client) => client.projectSessions.resolveWorkingDirectory(input)),
-          options,
-        ),
-      restore: (target, options) =>
-        run(
-          "projectSessions.restore",
-          withClient((client) => client.projectSessions.restore(target)),
-          options,
-        ),
-      respondControl: (sessionId, controlRequestId, result, options) =>
-        run(
-          "projectSessions.respondControl",
-          withClient((client) =>
-            client.projectSessions.respondControl(sessionId, controlRequestId, result),
-          ),
-          options,
-        ),
     },
     sessionChats: {
+      ...commands("sessionChats"),
       prompt: (input, options) =>
         run(
           "sessionChats.prompt",
@@ -973,78 +480,7 @@ export function makeClient(
           ),
           options,
         ),
-      abort: (target, options) =>
-        run(
-          "sessionChats.abort",
-          withClient((client) => client.sessionChats.abort(target)),
-          options,
-        ),
-      history: (input, options) =>
-        run(
-          "sessionChats.history",
-          withClient((client) => client.sessionChats.history(input)),
-          options,
-        ),
-      listQueuedMessages: (target, options) =>
-        run(
-          "sessionChats.listQueuedMessages",
-          withClient((client) => client.sessionChats.listQueuedMessages(target)),
-          options,
-        ),
-      reorderQueuedMessage: (input, options) =>
-        run(
-          "sessionChats.reorderQueuedMessage",
-          withClient((client) => client.sessionChats.reorderQueuedMessage(input)),
-          options,
-        ),
-      clearQueue: (target, options) =>
-        run(
-          "sessionChats.clearQueue",
-          withClient((client) => client.sessionChats.clearQueue(target)),
-          options,
-        ),
-      cancelSteering: (target, options) =>
-        run(
-          "sessionChats.cancelSteering",
-          withClient((client) => client.sessionChats.cancelSteering(target)),
-          options,
-        ),
-      removeQueuedMessage: (input, options) =>
-        run(
-          "sessionChats.removeQueuedMessage",
-          withClient((client) => client.sessionChats.removeQueuedMessage(input)),
-          options,
-        ),
-      steerQueuedMessage: (input, options) =>
-        run(
-          "sessionChats.steerQueuedMessage",
-          withClient((client) => client.sessionChats.steerQueuedMessage(input)),
-          options,
-        ),
-      sendQueuedMessageNow: (input, options) =>
-        run(
-          "sessionChats.sendQueuedMessageNow",
-          withClient((client) => client.sessionChats.sendQueuedMessageNow(input)),
-          options,
-        ),
-      queueCommand: (input, options) =>
-        run(
-          "sessionChats.queueCommand",
-          withClient((client) => client.sessionChats.queueCommand(input)),
-          options,
-        ),
-      inspect: (input, options) =>
-        run(
-          "sessionChats.inspect",
-          withClient((client) => client.sessionChats.inspect(input)),
-          options,
-        ),
-      compact: (input, options) =>
-        run(
-          "sessionChats.compact",
-          withClient((client) => client.sessionChats.compact(input)),
-          options,
-        ),
+
       editMessage: (input, options) =>
         run(
           "sessionChats.editMessage",
@@ -1055,62 +491,9 @@ export function makeClient(
           ),
           options,
         ),
-      setUserMessageMarkdown: (input, options) =>
-        run(
-          "sessionChats.setUserMessageMarkdown",
-          withClient((client) => client.sessionChats.setUserMessageMarkdown(input)),
-          options,
-        ),
-      applyConfiguration: (input, options) =>
-        run(
-          "sessionChats.applyConfiguration",
-          withClient((client) => client.sessionChats.applyConfiguration(input)),
-          options,
-        ),
-      setModel: (input, options) =>
-        run(
-          "sessionChats.setModel",
-          withClient((client) => client.sessionChats.setModel(input)),
-          options,
-        ),
-      setThinkingLevel: (input, options) =>
-        run(
-          "sessionChats.setThinkingLevel",
-          withClient((client) => client.sessionChats.setThinkingLevel(input)),
-          options,
-        ),
-      setFastMode: (input, options) =>
-        run(
-          "sessionChats.setFastMode",
-          withClient((client) => client.sessionChats.setFastMode(input)),
-          options,
-        ),
-      login: (input, options) =>
-        run(
-          "sessionChats.login",
-          withClient((client) => client.sessionChats.login(input)),
-          options,
-        ),
-      logout: (input, options) =>
-        run(
-          "sessionChats.logout",
-          withClient((client) => client.sessionChats.logout(input)),
-          options,
-        ),
     },
     cakeChats: {
-      inspect: (sessionId, options) =>
-        run(
-          "cakeChats.inspect",
-          withClient((client) => client.cakeChats.inspect(sessionId)),
-          options,
-        ),
-      open: (target, options) =>
-        run(
-          "cakeChats.open",
-          withClient((client) => client.cakeChats.open(target)),
-          options,
-        ),
+      ...commands("cakeChats"),
       start: (input, options) =>
         run(
           "cakeChats.start",
@@ -1121,85 +504,10 @@ export function makeClient(
           ),
           options,
         ),
-      respondControl: (controlRequestId, result, options) =>
-        run(
-          "cakeChats.respondControl",
-          withClient((client) => client.cakeChats.respondControl(controlRequestId, result)),
-          options,
-        ),
     },
-    discussionSessions: {
-      list: (input, options) =>
-        run(
-          "discussionSessions.list",
-          withClient((client) => client.discussionSessions.list(input)),
-          options,
-        ),
-      start: (input, options) =>
-        run(
-          "discussionSessions.start",
-          withClient((client) => client.discussionSessions.start(input)),
-          options,
-        ),
-      ensureSessionAssistant: (input, options) =>
-        run(
-          "discussionSessions.ensureSessionAssistant",
-          withClient((client) => client.discussionSessions.ensureSessionAssistant(input)),
-          options,
-        ),
-      setResolved: (target, options) =>
-        run(
-          "discussionSessions.setResolved",
-          withClient((client) => client.discussionSessions.setResolved(target)),
-          options,
-        ),
-    },
-    subagents: {
-      prompt: (input, options) =>
-        run(
-          "subagents.prompt",
-          withClient((client) => client.subagents.prompt(input)),
-          options,
-        ),
-      steer: (input, options) =>
-        run(
-          "subagents.steer",
-          withClient((client) => client.subagents.steer(input)),
-          options,
-        ),
-      abort: (input, options) =>
-        run(
-          "subagents.abort",
-          withClient((client) => client.subagents.abort(input)),
-          options,
-        ),
-      close: (input, options) =>
-        run(
-          "subagents.close",
-          withClient((client) => client.subagents.close(input)),
-          options,
-        ),
-    },
+    discussionSessions: commands("discussionSessions"),
+    subagents: commands("subagents"),
     ...capabilities,
-    foundation: {
-      typedFailure: (options) =>
-        run(
-          "foundation.typedFailure",
-          withClient((client) => client.foundation.typedFailure()),
-          options,
-        ),
-      delay: (input, options) =>
-        run(
-          "foundation.delay",
-          withClient((client) => client.foundation.delay(input)),
-          options,
-        ),
-      activeRequests: (options) =>
-        run(
-          "foundation.activeRequests",
-          withClient((client) => client.foundation.activeRequests()),
-          options,
-        ),
-    },
+    foundation: commands("foundation"),
   };
 }

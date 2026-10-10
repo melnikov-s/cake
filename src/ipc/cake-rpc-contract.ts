@@ -910,5 +910,4 @@ export const cakeRpcSuccessSchemas = {
   "respond-widget-capture": cakeRpcResultSchemas["widget-capture-accepted"],
 } as const;
 
-export type CakeRpcOperation = keyof typeof cakeRpcPayloadSchemas;
 export type CakeEvent = typeof cakeEventSchema.Type;

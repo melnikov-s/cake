@@ -1,4 +1,4 @@
-import type { Effect } from "effect";
+import type { CommandGroup } from "./command-group";
 import type {
   CaptureDestination,
   CaptureRouting,
@@ -51,45 +51,22 @@ import type {
   UtilityModel,
 } from "../../ipc/session-contract";
 import type { WorktreeRecord } from "../../services/worktrees/managed-worktree-data";
-import type { SpeechOutputProvider } from "../../services/speech/pocket-tts-data";
 import type {
   SpeechOutputAudio,
   SpeechOutputRequest,
-  SpeechOutputVoice,
 } from "../../services/speech/speech-output-data";
 
 export interface ClientCommandOptions {
   readonly signal?: AbortSignal;
 }
 
-/** Review skeleton: implementation adds this required group to Client and updates every adapter/fake.
- * Synthesis consumes the RPC stream through runtime.execute, never observation retry machinery.
- */
-export interface SpeechOutputCommands {
-  setProvider(provider: SpeechOutputProvider, options?: ClientCommandOptions): Promise<void>;
-  installLocal(options?: ClientCommandOptions): Promise<void>;
-  removeLocal(options?: ClientCommandOptions): Promise<void>;
-  setApiKey(key: string | null, options?: ClientCommandOptions): Promise<void>;
-  setVoice(voiceId: string, options?: ClientCommandOptions): Promise<void>;
-  setSpeed(speed: number, options?: ClientCommandOptions): Promise<void>;
-  listVoices(options?: ClientCommandOptions): Promise<ReadonlyArray<SpeechOutputVoice>>;
+/** Synthesis is a one-shot Stream consumer, never a retried observation. */
+export type SpeechOutputCommands = CommandGroup<CakeIpcClientService["speechOutput"]> & {
   synthesize(
     request: SpeechOutputRequest,
     consume: (audio: SpeechOutputAudio) => Promise<void>,
     options?: ClientCommandOptions,
   ): Promise<void>;
-}
-
-type CommandGroup<Group> = {
-  readonly [
-    Key in keyof Group as Group[Key] extends (
-      ...args: infer _Arguments
-    ) => Effect.Effect<unknown, unknown, unknown>
-      ? Key
-      : never
-  ]: Group[Key] extends (...args: infer Arguments) => Effect.Effect<infer Success, unknown, unknown>
-    ? (...args: [...Arguments, options?: ClientCommandOptions]) => Promise<Success>
-    : never;
 };
 
 export type EmbeddedEditorStatus = "missing" | "downloading" | "starting" | "ready" | "failed";

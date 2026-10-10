@@ -63,7 +63,7 @@ export const EditorEndpoint = Schema.Struct({
 });
 
 const dimension = Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 100_000 }));
-export const EditorBounds = Schema.Struct({
+const EditorBounds = Schema.Struct({
   requestId,
   visible: Schema.Boolean,
   x: Schema.Number,

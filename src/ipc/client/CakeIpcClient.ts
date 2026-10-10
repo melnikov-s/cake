@@ -1,998 +1,193 @@
-import type {
-  QueuedSessionCommand,
-  QueuedSessionCommandReceipt,
-  SessionInspectionQuery,
-} from "../session-query-data";
-import type {
-  DictationAudio,
-  DictationError,
-  DictationState,
-  SpeechDetectionAudio,
-  PunctuationInput,
-  PunctuationResult,
-} from "../../services/dictation/dictation-data";
-import type {
-  SpeechOutputSettings,
-  SpeechOutputError,
-  SpeechOutputVoice,
-  SpeechOutputRequest,
-  SpeechOutputAudio,
-} from "../../services/speech/speech-output-data";
-import type { SpeechOutputProvider } from "../../services/speech/pocket-tts-data";
-import type {
-  DesktopHostError,
-  DesktopHostSelection,
-} from "../../services/electron/desktop-host-data";
-import type {
-  AcquireEditor,
-  EditorBounds,
-  EditorEndpoint,
-  EditorLease,
-} from "../protocol/VsCodeRpc";
-import type { BackendConnectionError } from "../protocol/BackendConnectionRpc";
-import type {
-  McpSettingsRead,
-  McpSettingsMutation,
-  McpSettingsSnapshot,
-  McpSettingsError,
-} from "../../services/pi/mcp-settings-data";
-import { Context, Effect, Layer, type Schema, type Stream } from "effect";
-import { RpcClient } from "effect/unstable/rpc";
-import type { RpcClientError } from "effect/unstable/rpc";
-import { CakeRpc, type FoundationFailure } from "../protocol/CakeRpc";
-import {
-  NativePreviewTunnelRpc,
-  type NativePreviewInput,
-} from "../protocol/NativePreviewTunnelRpc";
-import type { NativePreviewError } from "../../services/browser/NativePreviewTunnels";
-import type { SessionPluginMutationError } from "../protocol/ApplicationRpc";
-import type { ArtifactError } from "../../domain/artifacts/artifact-data";
-import type { ArtifactNotFound, ArtifactNotLinked } from "../../domain/artifacts/artifactWorkflows";
-import type {
-  ArtifactLineageDetail,
-  ArtifactLineageId,
-  ArtifactLineagePage,
-  ArtifactLink,
-  ArtifactLinkTarget,
-  ArtifactRevision,
-  ArtifactRevisionNumber,
-  ArtifactRevisionPage,
-  ArtifactReferenceMetadata,
-  ArtifactStableRef,
-  ArtifactTextComparison,
-  EffectiveArtifactProjection,
-} from "../../services/storage/artifact-lineage";
-import type {
-  ArtifactProjectionError,
-  ArtifactProjectionMetadata,
-} from "../../services/artifacts/ArtifactProjection";
-import type {
-  ArtifactPublicationConflict,
-  ArtifactStorageError,
-} from "../../services/storage/ArtifactStorage";
-import type { PiSettingsError } from "../../services/pi/PiSettings";
-import type {
-  PiExtensionSetting,
-  PiExtensionToggle,
-} from "../../services/pi/extension-settings-data";
-import type { SessionFamilyStorageError } from "../../services/storage/SessionFamilyStorage";
-import type { SavedDraft } from "../../services/storage/saved-draft-data";
-import type { SavedDraftError } from "../../services/storage/SavedDraftStorage";
-import type { SavedDraftCreateInput, SavedDraftActivateInput } from "../protocol/SavedDraftRpc";
-import type { WorktreeRecord } from "../../services/worktrees/managed-worktree-data";
-import type {
-  DesktopSharingError,
-  DesktopSharingInput,
-  DesktopSharingState,
-} from "../../services/electron/desktop-sharing-data";
-import type { ElectronError } from "../../services/electron/Electron";
-import type { InlineWidgetError } from "../../services/widgets/InlineWidgets";
-import type { RenderedWidgetCaptureError } from "../../services/widgets/RenderedWidgetCapture";
-import type { JsonObject, JsonValue } from "../json-contract";
-import type { TerminalError } from "../../services/terminal/Terminal";
-import type {
-  ResolvedManagedWorktreeCleanupPlan,
-  ResolvedManagedWorktreeCleanupResult,
-} from "../../domain/worktrees/managed-worktree-cleanup-data";
-import type { WorktreeLandingError } from "../../services/worktrees/worktree-landing-data";
-import type { ManagedWorktreeCatalogUpdate } from "../../services/worktrees/managed-worktree-data";
-import type { WorktreeOperationCatalogUpdate } from "../../domain/worktrees/worktree-operation-data";
-import type { ManagedWorktreeError } from "../../services/worktrees/ManagedWorktrees";
-import type { VsCodeServerError } from "../../services/vscode/VsCodeServer";
-import type { BrowserError } from "../../services/browser/Browser";
-import type { WorkspaceFileError } from "../../services/filesystem/WorkspaceFiles";
-import type { AttachmentUploadError } from "../../services/filesystem/AttachmentUploads";
-import type { ProjectError } from "../../domain/projects/project-error";
-import type {
-  CakeEvent as CakeEventEnvelope,
-  CakeRpcOperation,
-  cakeRpcPayloadSchemas,
-  cakeRpcSuccessSchemas,
-} from "../cake-rpc-contract";
+import { Context, Effect, Layer } from "effect";
+import { RpcClient, type Rpc, type RpcClientError, type RpcGroup } from "effect/unstable/rpc";
+import { CakeRpc } from "../protocol/CakeRpc";
+import { NativePreviewTunnelRpc } from "../protocol/NativePreviewTunnelRpc";
+import { groupRpcClient, type GroupedRpcClient } from "./grouped-rpc-client";
+import { bindRpcAdapters } from "./rpc-adapters";
 
-import type {
-  RendererApplicationProjection,
-  RendererApplicationState,
-  ProjectWorkflow,
-  SessionLabel,
-  SessionLabelMutation,
-  ProjectWorkflowSessionDetails,
-} from "../../services/storage/application-data";
-import type { AgentAvailabilitySnapshot } from "../../services/pi/agent-availability-data";
-import type { PiSettingUpdate, PiSettings } from "../session-contract";
-import type {
-  ProjectSessionError,
-  ProjectSessionCatalogQuery,
-  ProjectSessionCompanionActionInput,
-  ProjectSessionPreview,
-  ProjectSessionStartInput,
-  ProjectSessionTarget,
-  WorkingDirectoryResolutionResult,
-} from "../project-session-data";
-import type {
-  ConversationUpdate,
-  ConversationHistoryPage,
-  QueuedConversationMessages,
-  SessionChatConfiguration,
-  SessionChatError,
-  SessionChatPromptInput,
-  SessionChatTarget,
-  TurnId,
-} from "../conversation-data";
-import type {
-  CakeChatCatalogQuery,
-  CakeChatError,
-  CakeChatPreview,
-  CakeChatStartInput,
-  CakeChatTarget,
-  CakeChatControlUpdate,
-} from "../cake-chat-data";
-import type { ConversationObservationTarget } from "../protocol/ConversationRpc";
-import type {
-  DrawBoardCreateInput,
-  DrawBoardDocument,
-  DrawBoardError,
-  DrawBoardListInput,
-  DrawBoardMetadata,
-  DrawBoardRenameInput,
-  DrawBoardSaveInput,
-  DrawBoardTarget,
-} from "../../services/storage/draw-board-data";
-import type { DrawControlResponse } from "../draw-control";
-import type { DrawControlRpcError } from "../protocol/DrawControlRpc";
-import type {
-  DiscussionSessionError,
-  DiscussionSessionStartInput,
-  DiscussionSessionTarget,
-  DiscussionSessionUpdate,
-  DiscussionThread,
-  SessionAssistantEnsureInput,
-  SessionAssistantEnsured,
-} from "../discussion-session-data";
-import type {
-  CakeChatCatalogUpdate,
-  DiscussionCatalogUpdate,
-  ProjectCatalogUpdate,
-  SessionCatalogUpdate,
-} from "../../domain/application/catalog-data";
-import type {
-  SubagentError,
-  SubagentHandleId,
-  SubagentUpdate,
-} from "../../services/subagents/subagent-data";
-import type {
-  ScheduleMessageInput,
-  ScheduledMessage,
-  ScheduledMessageError,
-  ScheduledMessageUpdate,
-} from "../../services/scheduled-messages/scheduled-message-data";
-import type {
-  DefaultModelPresetNotFoundError,
-  DuplicateModelPresetIdError,
-  ModelPresetCreateInput,
-  ModelPresetLimitError,
-  ModelPresetNotFoundError,
-  ModelPresetOrderInput,
-  ModelPresetProjection,
-  ModelPresetUpdateInput,
-  ModelPresetValidationError,
-} from "../../domain/model-presets/modelPresets";
-import type {
-  NonChatModelPreferences,
-  NonChatModelPreferenceUpdate,
-} from "../../services/storage/non-chat-model-data";
-import type {
-  ModelSelection,
-  PiModel,
-  PiNonChatModel,
-  PiModelCatalogError,
-  PiModelResolutionError,
-  PiProviderAuthError,
-} from "../../services/pi/model-data";
-import type {
-  ApplicationEncodeError,
-  ApplicationWriteError,
-} from "../../services/storage/ApplicationStorage";
-import type {
-  WindowStateEncodeError,
-  WindowStateMalformedDocumentError,
-  WindowStateReadError,
-  WindowStateUnsupportedVersionError,
-  WindowStateWriteError,
-} from "../../services/storage/WindowStateStorage";
+export const CakeClientRpc = CakeRpc.merge(NativePreviewTunnelRpc);
+type Rpcs = RpcGroup.Rpcs<typeof CakeClientRpc>;
+type Generated = GroupedRpcClient<Rpcs>;
+type Payload<Tag extends Rpcs["_tag"]> = Rpc.Payload<Extract<Rpcs, { readonly _tag: Tag }>>;
 
-type TransportError = RpcClientError.RpcClientError;
-type FocusedCakeEvent<Type extends CakeEventEnvelope["type"]> = Extract<
-  CakeEventEnvelope,
-  { readonly type: Type }
->;
-type RpcCommand<Type extends CakeRpcOperation, OperationError> = (
-  payload: (typeof cakeRpcPayloadSchemas)[Type]["Type"],
-) => Effect.Effect<(typeof cakeRpcSuccessSchemas)[Type]["Type"], OperationError | TransportError>;
-type RpcOperations<Types extends CakeRpcOperation, OperationError> = {
-  readonly [Type in Types]: RpcCommand<Type, OperationError>;
+/** Only semantic payload adaptations live here. All other operations are generated. */
+export const cakeIpcAdapters = {
+  speechOutput: {
+    setProvider: (
+      rpc: Generated["speechOutput"],
+      provider: Payload<"speechOutput.setProvider">["provider"],
+    ) => rpc.setProvider({ provider }),
+    setApiKey: (rpc: Generated["speechOutput"], key: Payload<"speechOutput.setApiKey">["key"]) =>
+      rpc.setApiKey({ key }),
+    setVoice: (
+      rpc: Generated["speechOutput"],
+      voiceId: Payload<"speechOutput.setVoice">["voiceId"],
+    ) => rpc.setVoice({ voiceId }),
+    setSpeed: (rpc: Generated["speechOutput"], speed: Payload<"speechOutput.setSpeed">["speed"]) =>
+      rpc.setSpeed({ speed }),
+  },
+  dictation: {
+    setModelPath: (rpc: Generated["dictation"], path: Payload<"dictation.setModelPath">["path"]) =>
+      rpc.setModelPath({ path }),
+  },
+  windowState: {
+    save: (rpc: Generated["windowState"], snapshot: Payload<"windowState.save">["snapshot"]) =>
+      rpc.save({ snapshot }),
+  },
+  piSettings: {
+    update: (rpc: Generated["piSettings"], update: Payload<"piSettings.update">["update"]) =>
+      rpc.update({ update }),
+  },
+  modelPresets: {
+    remove: (rpc: Generated["modelPresets"], id: Payload<"modelPresets.remove">["id"]) =>
+      rpc.remove({ id }),
+    setDefault: (rpc: Generated["modelPresets"], id?: Payload<"modelPresets.setDefault">["id"]) =>
+      rpc.setDefault({ id }),
+    resolve: (rpc: Generated["modelPresets"], id: Payload<"modelPresets.resolve">["id"]) =>
+      rpc.resolve({ id }),
+  },
+  cakeChats: {
+    inspect: (rpc: Generated["cakeChats"], sessionId: Payload<"cakeChats.inspect">["sessionId"]) =>
+      rpc.inspect({ sessionId }),
+    respondControl: (
+      rpc: Generated["cakeChats"],
+      controlRequestId: Payload<"cakeChats.respondControl">["controlRequestId"],
+      result: Payload<"cakeChats.respondControl">["result"],
+    ) => rpc.respondControl({ controlRequestId, result }),
+  },
+  savedDrafts: {
+    list: (rpc: Generated["savedDrafts"]) => rpc.list({}),
+    observe: (rpc: Generated["savedDrafts"]) => rpc.observe({}),
+    update: (
+      rpc: Generated["savedDrafts"],
+      record: Payload<"savedDrafts.update">["record"],
+      expectedRevision: Payload<"savedDrafts.update">["expectedRevision"],
+    ) => rpc.update({ record, expectedRevision }),
+    remove: (
+      rpc: Generated["savedDrafts"],
+      sessionId: Payload<"savedDrafts.remove">["sessionId"],
+      expectedRevision: Payload<"savedDrafts.remove">["expectedRevision"],
+    ) => rpc.remove({ sessionId, expectedRevision }),
+    recoverUncertain: (
+      rpc: Generated["savedDrafts"],
+      sessionId: Payload<"savedDrafts.recoverUncertain">["sessionId"],
+      expectedRevision: Payload<"savedDrafts.recoverUncertain">["expectedRevision"],
+    ) => rpc.recoverUncertain({ sessionId, expectedRevision, confirmedNoTurn: true }),
+  },
+  scheduledMessages: {
+    observe: (
+      rpc: Generated["scheduledMessages"],
+      targetSessionId: Payload<"scheduledMessages.observe">["targetSessionId"],
+    ) => rpc.observe({ targetSessionId }),
+    list: (
+      rpc: Generated["scheduledMessages"],
+      targetSessionId?: Payload<"scheduledMessages.list">["targetSessionId"],
+    ) => rpc.list(targetSessionId ? { targetSessionId } : {}),
+    cancel: (rpc: Generated["scheduledMessages"], id: Payload<"scheduledMessages.cancel">["id"]) =>
+      rpc.cancel({ id }),
+  },
+  projectSessions: {
+    respondControl: (
+      rpc: Generated["projectSessions"],
+      sessionId: Payload<"projectSessions.respondControl">["sessionId"],
+      controlRequestId: Payload<"projectSessions.respondControl">["controlRequestId"],
+      result: Payload<"projectSessions.respondControl">["result"],
+    ) => rpc.respondControl({ sessionId, controlRequestId, result }),
+  },
+  subagents: {
+    observe: (
+      rpc: Generated["subagents"],
+      parentSessionId: Payload<"subagents.observe">["parentSessionId"],
+    ) => rpc.observe({ parentSessionId }),
+  },
+  vscode: {
+    release: (rpc: Generated["vscode"], leaseId: Payload<"vscode.release">["leaseId"]) =>
+      rpc.release({ leaseId }),
+    setVisible: (rpc: Generated["vscode"], visible: Payload<"vscode.setVisible">["visible"]) =>
+      rpc.setVisible({ visible }),
+    setTheme: (rpc: Generated["vscode"], theme: Payload<"vscode.setTheme">["theme"]) =>
+      rpc.setTheme({ theme }),
+  },
+  artifacts: {
+    effective: (
+      rpc: Generated["artifacts"],
+      sessionId: Payload<"artifacts.effective">["sessionId"],
+    ) => rpc.effective({ sessionId }),
+    detail: (rpc: Generated["artifacts"], lineageId: Payload<"artifacts.detail">["lineageId"]) =>
+      rpc.detail({ lineageId }),
+    readExact: (
+      rpc: Generated["artifacts"],
+      lineageId: Payload<"artifacts.readExact">["lineageId"],
+      revision: Payload<"artifacts.readExact">["revision"],
+    ) => rpc.readExact({ lineageId, revision }),
+    referenceMetadata: (
+      rpc: Generated["artifacts"],
+      reference: Payload<"artifacts.referenceMetadata">["reference"],
+    ) => rpc.referenceMetadata({ reference }),
+    compareText: (
+      rpc: Generated["artifacts"],
+      lineageId: Payload<"artifacts.compareText">["lineageId"],
+      fromRevision: Payload<"artifacts.compareText">["fromRevision"],
+      toRevision: Payload<"artifacts.compareText">["toRevision"],
+    ) => rpc.compareText({ lineageId, fromRevision, toRevision }),
+    materialize: (
+      rpc: Generated["artifacts"],
+      sessionId: Payload<"artifacts.materialize">["sessionId"],
+      lineageId: Payload<"artifacts.materialize">["lineageId"],
+      revision: Payload<"artifacts.materialize">["revision"],
+    ) => rpc.materialize({ sessionId, lineageId, revision }),
+  },
 };
-type ArtifactOperationFailure =
-  | ArtifactError
-  | ArtifactNotFound
-  | ArtifactNotLinked
-  | ArtifactStorageError
-  | ArtifactPublicationConflict
-  | ArtifactProjectionError
-  | SessionFamilyStorageError
-  | TransportError;
-type ModelPresetMutationError =
-  | ModelPresetValidationError
-  | ModelPresetNotFoundError
-  | DefaultModelPresetNotFoundError
-  | DuplicateModelPresetIdError
-  | ModelPresetLimitError
-  | ApplicationEncodeError
-  | ApplicationWriteError
-  | TransportError;
-type ModelPresetResolutionError =
-  | ModelPresetNotFoundError
-  | PiModelResolutionError
-  | PiModelCatalogError
-  | TransportError;
 
-export interface CakeIpcClientService {
-  readonly speechOutput: {
-    observeSettings(): Stream.Stream<SpeechOutputSettings, SpeechOutputError | TransportError>;
-    setProvider(
-      provider: SpeechOutputProvider,
-    ): Effect.Effect<void, SpeechOutputError | TransportError>;
-    installLocal(): Effect.Effect<void, SpeechOutputError | TransportError>;
-    removeLocal(): Effect.Effect<void, SpeechOutputError | TransportError>;
-    setApiKey(key: string | null): Effect.Effect<void, SpeechOutputError | TransportError>;
-    setVoice(voiceId: string): Effect.Effect<void, SpeechOutputError | TransportError>;
-    setSpeed(speed: number): Effect.Effect<void, SpeechOutputError | TransportError>;
-    listVoices(): Effect.Effect<
-      ReadonlyArray<SpeechOutputVoice>,
-      SpeechOutputError | TransportError
-    >;
-    synthesize(
-      request: SpeechOutputRequest,
-    ): Stream.Stream<SpeechOutputAudio, SpeechOutputError | TransportError>;
-  };
-  readonly dictation: {
-    readonly observeState: () => Stream.Stream<DictationState, TransportError>;
-    readonly install: () => Effect.Effect<void, DictationError | TransportError>;
-    readonly installPunctuation: () => Effect.Effect<void, DictationError | TransportError>;
-    readonly removePunctuation: () => Effect.Effect<void, DictationError | TransportError>;
-    readonly punctuate: (
-      input: PunctuationInput,
-    ) => Effect.Effect<PunctuationResult, DictationError | TransportError>;
-    readonly setModelPath: (path: string) => Effect.Effect<void, DictationError | TransportError>;
-    readonly remove: () => Effect.Effect<void, DictationError | TransportError>;
-    readonly prepare: () => Effect.Effect<void, DictationError | TransportError>;
-    readonly release: () => Effect.Effect<void, DictationError | TransportError>;
-    readonly detectSpeech: (
-      audio: SpeechDetectionAudio,
-    ) => Effect.Effect<boolean, DictationError | TransportError>;
-    readonly transcribe: (
-      audio: DictationAudio,
-    ) => Effect.Effect<string, DictationError | TransportError>;
-  };
-  readonly desktopHost: {
-    readonly current: () => Effect.Effect<DesktopHostSelection, TransportError>;
-    readonly select: (
-      selection: DesktopHostSelection,
-    ) => Effect.Effect<boolean, DesktopHostError | TransportError>;
-  };
-  readonly backendConnection: {
-    readonly connect: (input: {
-      buildId: string;
-    }) => Effect.Effect<{ readonly buildId: string }, BackendConnectionError | TransportError>;
-  };
-  readonly desktopSharing: {
-    readonly configure: (
-      input: DesktopSharingInput,
-    ) => Effect.Effect<DesktopSharingState, DesktopSharingError | TransportError>;
-    readonly observe: () => Stream.Stream<DesktopSharingState, TransportError>;
-  };
-  readonly application: {
-    readonly getHomeDirectory: () => Effect.Effect<string, TransportError>;
-    readonly getState: () => Effect.Effect<RendererApplicationState, TransportError>;
-    readonly observeState: () => Stream.Stream<RendererApplicationProjection, TransportError>;
-    readonly observeAgentAvailability: () => Stream.Stream<
-      AgentAvailabilitySnapshot,
-      TransportError
-    >;
-    readonly setSessionPluginHidden: (input: {
-      readonly sessionId: string;
-      readonly pluginId: string;
-      readonly hidden: boolean;
-    }) => Effect.Effect<void, SessionPluginMutationError | TransportError>;
-    readonly setSessionPluginState: (input: {
-      readonly sessionId: string;
-      readonly pluginId: string;
-      readonly state: Schema.Schema.Type<typeof Schema.Json>;
-    }) => Effect.Effect<void, SessionPluginMutationError | TransportError>;
-    readonly setSessionPluginSharedState: (input: {
-      readonly sessionId: string;
-      readonly key: string;
-      readonly value: Schema.Schema.Type<typeof Schema.Json>;
-    }) => Effect.Effect<void, SessionPluginMutationError | TransportError>;
-    readonly deleteSessionPlugin: (input: {
-      readonly sessionId: string;
-      readonly pluginId: string;
-    }) => Effect.Effect<void, SessionPluginMutationError | TransportError>;
-  };
-  readonly windowState: {
-    readonly load: () => Effect.Effect<
-      Schema.Schema.Type<typeof Schema.Json>,
-      | WindowStateReadError
-      | WindowStateMalformedDocumentError
-      | WindowStateUnsupportedVersionError
-      | WindowStateEncodeError
-      | WindowStateWriteError
-      | TransportError
-    >;
-    readonly save: (
-      snapshot: Schema.Schema.Type<typeof Schema.Json>,
-    ) => Effect.Effect<void, WindowStateEncodeError | WindowStateWriteError | TransportError>;
-  };
-  readonly projects: {
-    readonly observeCatalog: () => Stream.Stream<ProjectCatalogUpdate, TransportError>;
-  };
-  readonly projectWorkflow: {
-    readonly mutateGlobal: (input: {
-      readonly mutation: SessionLabelMutation;
-    }) => Effect.Effect<ReadonlyArray<SessionLabel>, ProjectError | TransportError>;
-    readonly mutate: (input: {
-      readonly projectPath: string;
-      readonly mutation: SessionLabelMutation;
-    }) => Effect.Effect<ProjectWorkflow, ProjectError | TransportError>;
-    readonly setSessionLabels: (input: {
-      readonly projectPath: string;
-      readonly sessionId: string;
-      readonly workingDirectory: string;
-      readonly labelIds: ReadonlyArray<string>;
-    }) => Effect.Effect<ProjectWorkflow, ProjectError | TransportError>;
-    readonly describeSession: (input: {
-      readonly projectPath: string;
-      readonly sessionId: string;
-      readonly workingDirectory: string;
-      readonly title: string;
-      readonly firstUserMessage?: string;
-    }) => Effect.Effect<ProjectWorkflowSessionDetails, ProjectError | TransportError>;
-  };
-  readonly nonChatModels: {
-    readonly list: () => Effect.Effect<
-      ReadonlyArray<PiNonChatModel>,
-      PiModelCatalogError | TransportError
-    >;
-    readonly updatePreference: (
-      input: NonChatModelPreferenceUpdate,
-    ) => Effect.Effect<
-      NonChatModelPreferences,
-      ApplicationEncodeError | ApplicationWriteError | TransportError
-    >;
-  };
-  readonly models: {
-    readonly list: () => Effect.Effect<
-      ReadonlyArray<PiModel>,
-      PiModelCatalogError | TransportError
-    >;
-    readonly refresh: () => Effect.Effect<void, PiModelCatalogError | TransportError>;
-    readonly login: (input: {
-      readonly provider: string;
-      readonly authType: "api_key" | "oauth";
-    }) => Effect.Effect<void, PiProviderAuthError | TransportError>;
-    readonly logout: (input: {
-      readonly provider: string;
-    }) => Effect.Effect<void, PiProviderAuthError | TransportError>;
-  };
-  readonly mcpSettings: {
-    readonly get: (
-      input: McpSettingsRead,
-    ) => Effect.Effect<McpSettingsSnapshot, McpSettingsError | TransportError>;
-    readonly mutate: (
-      input: McpSettingsMutation,
-    ) => Effect.Effect<McpSettingsSnapshot, McpSettingsError | TransportError>;
-  };
-  readonly piSettings: {
-    readonly extensions: () => Effect.Effect<
-      ReadonlyArray<PiExtensionSetting>,
-      PiSettingsError | TransportError
-    >;
-    readonly setExtensionEnabled: (
-      toggle: PiExtensionToggle,
-    ) => Effect.Effect<PiSettings, PiSettingsError | TransportError>;
-    readonly get: () => Effect.Effect<PiSettings, PiSettingsError | TransportError>;
-    readonly update: (
-      update: PiSettingUpdate,
-    ) => Effect.Effect<PiSettings, PiSettingsError | TransportError>;
-    readonly reload: () => Effect.Effect<PiSettings, PiSettingsError | TransportError>;
-  };
-  readonly modelPresets: {
-    readonly list: () => Effect.Effect<ModelPresetProjection, TransportError>;
-    readonly create: (
-      input: ModelPresetCreateInput,
-    ) => Effect.Effect<ModelPresetProjection, ModelPresetMutationError>;
-    readonly update: (
-      input: ModelPresetUpdateInput,
-    ) => Effect.Effect<ModelPresetProjection, ModelPresetMutationError>;
-    readonly reorder: (
-      input: ModelPresetOrderInput,
-    ) => Effect.Effect<ModelPresetProjection, ModelPresetMutationError>;
-    readonly remove: (id: string) => Effect.Effect<ModelPresetProjection, ModelPresetMutationError>;
-    readonly setDefault: (
-      id?: string,
-    ) => Effect.Effect<ModelPresetProjection, ModelPresetMutationError>;
-    readonly resolve: (id: string) => Effect.Effect<ModelSelection, ModelPresetResolutionError>;
-  };
-  readonly conversations: {
-    readonly observe: (
-      target: ConversationObservationTarget,
-    ) => Stream.Stream<ConversationUpdate, SessionChatError | TransportError>;
-  };
-  readonly sessionChats: {
-    readonly prompt: (
-      input: SessionChatPromptInput,
-    ) => Effect.Effect<TurnId, SessionChatError | TransportError>;
-    readonly steer: (
-      input: SessionChatPromptInput,
-    ) => Effect.Effect<TurnId, SessionChatError | TransportError>;
-    readonly followUp: (
-      input: SessionChatPromptInput,
-    ) => Effect.Effect<TurnId, SessionChatError | TransportError>;
-    readonly abort: (
-      target: SessionChatTarget,
-    ) => Effect.Effect<void, SessionChatError | TransportError>;
-    readonly history: (
-      input: SessionChatTarget & { readonly cursor: string },
-    ) => Effect.Effect<ConversationHistoryPage, SessionChatError | TransportError>;
-    readonly listQueuedMessages: (
-      target: SessionChatTarget,
-    ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
-    readonly reorderQueuedMessage: (
-      input: SessionChatTarget & { readonly itemId: string; readonly position: number },
-    ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
-    readonly clearQueue: (
-      target: SessionChatTarget,
-    ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
-    readonly cancelSteering: (
-      target: SessionChatTarget,
-    ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
-    readonly removeQueuedMessage: (
-      input: SessionChatTarget & { readonly partId: string },
-    ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
-    readonly steerQueuedMessage: (
-      input: SessionChatTarget & { readonly partId: string },
-    ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
-    readonly sendQueuedMessageNow: (
-      input: SessionChatTarget & { readonly partId?: string },
-    ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
-    readonly queueCommand: (
-      input: SessionChatTarget & QueuedSessionCommand,
-    ) => Effect.Effect<QueuedSessionCommandReceipt, SessionChatError | TransportError>;
-    readonly inspect: (
-      input: SessionChatTarget & SessionInspectionQuery,
-    ) => Effect.Effect<JsonValue, SessionChatError | TransportError>;
-    readonly compact: (
-      input: SessionChatTarget & { readonly instructions?: string },
-    ) => Effect.Effect<void, SessionChatError | TransportError>;
-    readonly editMessage: (
-      input: SessionChatPromptInput & { readonly entryId: string },
-    ) => Effect.Effect<void, SessionChatError | TransportError>;
-    readonly setUserMessageMarkdown: (
-      input: SessionChatTarget & { readonly entryId: string; readonly renderAsMarkdown: boolean },
-    ) => Effect.Effect<void, SessionChatError | TransportError>;
-    readonly applyConfiguration: (
-      input: SessionChatTarget & { readonly configuration: SessionChatConfiguration },
-    ) => Effect.Effect<void, SessionChatError | TransportError>;
-    readonly setModel: (
-      input: SessionChatTarget & { readonly provider: string; readonly modelId: string },
-    ) => Effect.Effect<void, SessionChatError | TransportError>;
-    readonly setThinkingLevel: (
-      input: SessionChatTarget & { readonly level: SessionChatConfiguration["thinkingLevel"] },
-    ) => Effect.Effect<void, SessionChatError | TransportError>;
-    readonly setFastMode: (
-      input: SessionChatTarget & { readonly enabled: boolean },
-    ) => Effect.Effect<void, SessionChatError | TransportError>;
-    readonly login: (
-      input: SessionChatTarget & {
-        readonly provider: string;
-        readonly authType: "api_key" | "oauth";
-      },
-    ) => Effect.Effect<void, SessionChatError | TransportError>;
-    readonly logout: (
-      input: SessionChatTarget & { readonly provider: string },
-    ) => Effect.Effect<void, SessionChatError | TransportError>;
-  };
-  readonly cakeChats: {
-    readonly observeCatalog: (
-      input: CakeChatCatalogQuery,
-    ) => Stream.Stream<CakeChatCatalogUpdate, CakeChatError | TransportError>;
-    readonly inspect: (
-      sessionId: string,
-    ) => Effect.Effect<CakeChatPreview, CakeChatError | TransportError>;
-    readonly open: (target: CakeChatTarget) => Effect.Effect<void, CakeChatError | TransportError>;
-    readonly observeControls: (
-      target: CakeChatTarget,
-    ) => Stream.Stream<CakeChatControlUpdate, CakeChatError | TransportError>;
-    readonly start: (
-      input: CakeChatStartInput,
-    ) => Effect.Effect<TurnId, CakeChatError | TransportError>;
-    readonly respondControl: (
-      controlRequestId: string,
-      result: Schema.Schema.Type<typeof Schema.Json>,
-    ) => Effect.Effect<void, CakeChatError | TransportError>;
-  };
-  readonly discussionSessions: {
-    readonly observeCatalog: (input: {
-      readonly workingDirectory: string;
-      readonly parentSessionId: string;
-    }) => Stream.Stream<DiscussionCatalogUpdate, DiscussionSessionError | TransportError>;
-    readonly list: (input: {
-      readonly workingDirectory: string;
-      readonly parentSessionId: string;
-    }) => Effect.Effect<ReadonlyArray<DiscussionThread>, DiscussionSessionError | TransportError>;
-    readonly observe: (
-      target: DiscussionSessionTarget,
-    ) => Stream.Stream<DiscussionSessionUpdate, DiscussionSessionError | TransportError>;
-    readonly start: (
-      input: DiscussionSessionStartInput,
-    ) => Effect.Effect<
-      { readonly turnId: TurnId; readonly thread: DiscussionThread },
-      DiscussionSessionError | TransportError
-    >;
-    readonly ensureSessionAssistant: (
-      input: SessionAssistantEnsureInput,
-    ) => Effect.Effect<SessionAssistantEnsured, DiscussionSessionError | TransportError>;
-    readonly setResolved: (
-      target: DiscussionSessionTarget & { readonly resolved: boolean },
-    ) => Effect.Effect<DiscussionThread, DiscussionSessionError | TransportError>;
-  };
-  readonly draw: {
-    readonly list: (
-      input: DrawBoardListInput,
-    ) => Effect.Effect<ReadonlyArray<DrawBoardMetadata>, DrawBoardError | TransportError>;
-    readonly create: (
-      input: DrawBoardCreateInput,
-    ) => Effect.Effect<DrawBoardMetadata, DrawBoardError | TransportError>;
-    readonly read: (
-      input: DrawBoardTarget,
-    ) => Effect.Effect<DrawBoardDocument, DrawBoardError | TransportError>;
-    readonly save: (
-      input: DrawBoardSaveInput,
-    ) => Effect.Effect<DrawBoardMetadata, DrawBoardError | TransportError>;
-    readonly rename: (
-      input: DrawBoardRenameInput,
-    ) => Effect.Effect<DrawBoardMetadata, DrawBoardError | TransportError>;
-    readonly delete: (
-      input: DrawBoardTarget,
-    ) => Effect.Effect<void, DrawBoardError | TransportError>;
-  };
-  readonly drawControl: {
-    readonly respond: (input: {
-      readonly sessionId: string;
-      readonly drawRequestId: string;
-      readonly response: DrawControlResponse;
-    }) => Effect.Effect<void, DrawControlRpcError | TransportError>;
-  };
-  readonly savedDrafts: {
-    readonly list: () => Effect.Effect<ReadonlyArray<SavedDraft>, SavedDraftError | TransportError>;
-    readonly observe: () => Stream.Stream<
-      ReadonlyArray<SavedDraft>,
-      SavedDraftError | TransportError
-    >;
-    readonly create: (
-      input: typeof SavedDraftCreateInput.Type,
-    ) => Effect.Effect<SavedDraft, SavedDraftError | ManagedWorktreeError | TransportError>;
-    readonly update: (
-      record: SavedDraft,
-      expectedRevision: number,
-    ) => Effect.Effect<SavedDraft, SavedDraftError | ManagedWorktreeError | TransportError>;
-    readonly remove: (
-      sessionId: string,
-      expectedRevision: number,
-    ) => Effect.Effect<void, SavedDraftError | TransportError>;
-    readonly recoverUncertain: (
-      sessionId: string,
-      expectedRevision: number,
-    ) => Effect.Effect<SavedDraft, SavedDraftError | TransportError>;
-    readonly activate: (input: typeof SavedDraftActivateInput.Type) => Effect.Effect<
-      {
-        readonly record: SavedDraft;
-        readonly workingDirectory: string;
-        readonly managedWorktree?: WorktreeRecord;
-      },
-      SavedDraftError | ProjectSessionError | ManagedWorktreeError | TransportError
-    >;
-  };
-  readonly scheduledMessages: {
-    readonly observe: (
-      targetSessionId: string,
-    ) => Stream.Stream<ScheduledMessageUpdate, ScheduledMessageError | TransportError>;
-    readonly list: (
-      targetSessionId?: string,
-    ) => Effect.Effect<ReadonlyArray<ScheduledMessage>, ScheduledMessageError | TransportError>;
-    readonly schedule: (
-      input: ScheduleMessageInput,
-    ) => Effect.Effect<ScheduledMessage, ScheduledMessageError | TransportError>;
-    readonly cancel: (id: string) => Effect.Effect<void, ScheduledMessageError | TransportError>;
-  };
-  readonly projectSessions: {
-    readonly observeCatalog: (
-      input: ProjectSessionCatalogQuery,
-    ) => Stream.Stream<SessionCatalogUpdate, ProjectSessionError | TransportError>;
-    readonly inspect: (
-      target: ProjectSessionTarget,
-    ) => Effect.Effect<ProjectSessionPreview, ProjectSessionError | TransportError>;
-    readonly start: (
-      input: ProjectSessionStartInput,
-    ) => Effect.Effect<TurnId, ProjectSessionError | TransportError>;
-    readonly open: (
-      target: ProjectSessionTarget,
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly getChangelog: (
-      target: ProjectSessionTarget,
-    ) => Effect.Effect<string, ProjectSessionError | TransportError>;
-    readonly navigate: (
-      input: ProjectSessionTarget & {
-        readonly entryId: string;
-        readonly summarize: boolean;
-        readonly customInstructions?: string;
-      },
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly dispatchExtensionCompanionAction: (
-      input: ProjectSessionCompanionActionInput,
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly callCakeOperation: (
-      input: ProjectSessionTarget & { readonly command: string; readonly input: JsonObject },
-    ) => Effect.Effect<JsonValue, ProjectSessionError | TransportError>;
-    readonly toolCompact: (
-      input: ProjectSessionTarget & {
-        readonly entryId: string;
-        readonly prompt?: string;
-      },
-    ) => Effect.Effect<{ readonly sessionId: string }, ProjectSessionError | TransportError>;
-    readonly rename: (
-      target: ProjectSessionTarget & { readonly name: string; readonly onlyIfUnnamed?: boolean },
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly fork: (
-      input: ProjectSessionTarget & {
-        readonly entryId: string;
-        readonly destinationWorkingDirectory?: string;
-        readonly resolveSource?: boolean;
-      },
-    ) => Effect.Effect<{ readonly sessionId: string }, ProjectSessionError | TransportError>;
-    readonly resolve: (
-      target: ProjectSessionTarget,
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly resolveWorkingDirectory: (input: {
-      readonly workingDirectory: string;
-    }) => Effect.Effect<WorkingDirectoryResolutionResult, ProjectSessionError | TransportError>;
-    readonly restore: (
-      target: ProjectSessionTarget,
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-    readonly respondControl: (
-      sessionId: string,
-      controlRequestId: string,
-      result: Schema.Schema.Type<typeof Schema.Json>,
-    ) => Effect.Effect<void, ProjectSessionError | TransportError>;
-  };
-  readonly subagents: {
-    readonly observe: (
-      parentSessionId: string,
-    ) => Stream.Stream<SubagentUpdate, SubagentError | TransportError>;
-    readonly prompt: (input: {
-      readonly parentSessionId: string;
-      readonly handleId: SubagentHandleId;
-      readonly text: string;
-    }) => Effect.Effect<void, SubagentError | TransportError>;
-    readonly steer: (input: {
-      readonly parentSessionId: string;
-      readonly handleId: SubagentHandleId;
-      readonly text: string;
-    }) => Effect.Effect<void, SubagentError | TransportError>;
-    readonly abort: (input: {
-      readonly parentSessionId: string;
-      readonly handleId: SubagentHandleId;
-    }) => Effect.Effect<void, SubagentError | TransportError>;
-    readonly close: (input: {
-      readonly parentSessionId: string;
-      readonly handleId: SubagentHandleId;
-    }) => Effect.Effect<void, SubagentError | TransportError>;
-  };
-  readonly electron: RpcOperations<
-    | "configure-screen-capture"
-    | "start-screen-capture"
-    | "screen-capture-state"
-    | "finish-screen-capture"
-    | "choose-project"
-    | "save-draw-export"
-    | "open-external-url"
-    | "show-notification"
-    | "show-transcript-selection-context-menu"
-    | "show-composer-context-menu"
-    | "show-session-context-menu"
-    | "show-project-context-menu"
-    | "set-fullscreen-surface-open",
-    ElectronError
-  >;
-  readonly attachmentUploads: RpcOperations<
-    "upload-open" | "upload-chunk" | "upload-finish" | "upload-discard",
-    AttachmentUploadError
-  >;
-  readonly filesystem: RpcOperations<
-    | "choose-attachments"
-    | "read-selected-file"
-    | "suggest-files"
-    | "read-workspace-file"
-    | "read-workspace-image",
-    WorkspaceFileError
-  >;
-  readonly workspaces: RpcOperations<
-    | "post-process-dictation"
-    | "reword-composer-selection"
-    | "generate-session-title"
-    | "set-utility-model"
-    | "set-cake-prompts"
-    | "set-cake-chat-preferences"
-    | "set-global-custom-instructions"
-    | "load-staged-slash-commands"
-    | "register-project"
-    | "rename-project"
-    | "set-project-settings"
-    | "remove-project"
-    | "delete-session"
-    | "set-session-unread"
-    | "restart-pi"
-    | "inspect-workspace"
-    | "respond-workspace-trust",
-    ProjectError
-  >;
-  readonly managedWorktrees: RpcOperations<
-    | "create-worktree"
-    | "get-worktree-landing"
-    | "start-worktree-landing"
-    | "retry-worktree-landing"
-    | "cancel-worktree-landing"
-    | "start-worktree-rebase"
-    | "discard-worktree",
-    ManagedWorktreeError | WorktreeLandingError
-  > & {
-    readonly observeCatalog: () => Stream.Stream<
-      ManagedWorktreeCatalogUpdate,
-      ManagedWorktreeError | TransportError
-    >;
-    readonly observeOperations: () => Stream.Stream<WorktreeOperationCatalogUpdate, TransportError>;
-    readonly inspectResolvedForProject: (input: {
-      readonly projectPath: string;
-    }) => Effect.Effect<ResolvedManagedWorktreeCleanupPlan, ManagedWorktreeError | TransportError>;
-    readonly discardResolvedForProject: (input: {
-      readonly projectPath: string;
-    }) => Effect.Effect<
-      ResolvedManagedWorktreeCleanupResult,
-      ManagedWorktreeError | TransportError
-    >;
-  };
-  readonly terminals: RpcOperations<
-    | "open-terminal"
-    | "write-terminal"
-    | "resize-terminal"
-    | "get-terminal-status"
-    | "close-terminal"
-    | "close-working-directory-terminals",
-    TerminalError
-  >;
-  readonly browser: RpcOperations<
-    | "open-browser"
-    | "get-browser-state"
-    | "update-browser-bounds"
-    | "navigate-browser"
-    | "browser-action"
-    | "inspect-browser-element"
-    | "native-browser-enter"
-    | "native-browser-cdp"
-    | "native-browser-events"
-    | "respond-browser-native"
-    | "acquire-browser-preview",
-    BrowserError
-  > & {
-    readonly "open-native-preview": (
-      input: NativePreviewInput,
-    ) => Effect.Effect<{ readonly endpoint: string }, NativePreviewError | TransportError>;
-  };
-  readonly vscodeViews: {
-    readonly preferredTheme: () => Effect.Effect<
-      "light" | "dark",
-      VsCodeServerError | TransportError
-    >;
-    readonly open: (
-      input: typeof EditorEndpoint.Type,
-    ) => Effect.Effect<void, VsCodeServerError | TransportError>;
-    readonly updateBounds: (
-      input: typeof EditorBounds.Type,
-    ) => Effect.Effect<void, VsCodeServerError | TransportError>;
-    readonly close: () => Effect.Effect<void, VsCodeServerError | TransportError>;
-    readonly focusCake: () => Effect.Effect<void, VsCodeServerError | TransportError>;
-    readonly observeThemes: () => Stream.Stream<"light" | "dark", TransportError>;
-    readonly observeEvents: CakeIpcClientService["events"]["vscode"];
-  };
-  readonly vscode: RpcOperations<
-    | "get-embedded-editor-state"
-    | "set-vscode-server-path"
-    | "install-embedded-editor"
-    | "reveal-in-embedded-editor"
-    | "open-embedded-editor-source-control"
-    | "perform-embedded-editor-action"
-    | "update-embedded-editor-annotations"
-    | "update-embedded-editor-selection-highlights",
-    VsCodeServerError
-  > & {
-    readonly acquire: (
-      input: typeof AcquireEditor.Type,
-    ) => Effect.Effect<EditorLease, VsCodeServerError | TransportError>;
-    readonly release: (leaseId: string) => Effect.Effect<void, TransportError>;
-    readonly setVisible: (visible: boolean) => Effect.Effect<void, TransportError>;
-    readonly setTheme: (
-      theme: "light" | "dark",
-    ) => Effect.Effect<void, VsCodeServerError | TransportError>;
-    readonly observeState: () => Stream.Stream<
-      (typeof cakeRpcSuccessSchemas)["get-embedded-editor-state"]["Type"],
-      TransportError
-    >;
-  };
-  readonly artifacts: RpcOperations<
-    "respond-artifact" | "respond-ui" | "export-artifacts",
-    ArtifactError
-  > & {
-    readonly catalog: (input: {
-      readonly search?: string;
-      readonly offset?: number;
-      readonly limit?: number;
-    }) => Effect.Effect<ArtifactLineagePage, ArtifactOperationFailure>;
-    readonly effective: (
-      sessionId: string,
-    ) => Effect.Effect<ReadonlyArray<EffectiveArtifactProjection>, ArtifactOperationFailure>;
-    readonly detail: (
-      lineageId: ArtifactLineageId,
-    ) => Effect.Effect<ArtifactLineageDetail, ArtifactOperationFailure>;
-    readonly history: (input: {
-      readonly lineageId: ArtifactLineageId;
-      readonly offset?: number;
-      readonly limit?: number;
-    }) => Effect.Effect<ArtifactRevisionPage, ArtifactOperationFailure>;
-    readonly readExact: (
-      lineageId: ArtifactLineageId,
-      revision: ArtifactRevisionNumber,
-    ) => Effect.Effect<ArtifactRevision, ArtifactOperationFailure>;
-    readonly referenceMetadata: (
-      reference: ArtifactStableRef,
-    ) => Effect.Effect<ArtifactReferenceMetadata, ArtifactOperationFailure>;
-    readonly compareText: (
-      lineageId: ArtifactLineageId,
-      fromRevision: ArtifactRevisionNumber,
-      toRevision: ArtifactRevisionNumber,
-    ) => Effect.Effect<ArtifactTextComparison, ArtifactOperationFailure>;
-    readonly restore: (input: {
-      readonly sessionId: string;
-      readonly lineageId: ArtifactLineageId;
-      readonly sourceRevision: ArtifactRevisionNumber;
-      readonly expectedLatestRevision: number;
-    }) => Effect.Effect<ArtifactRevision, ArtifactOperationFailure>;
-    readonly link: (input: {
-      readonly sessionId: string;
-      readonly lineageId: ArtifactLineageId;
-      readonly target: ArtifactLinkTarget;
-      readonly selection: ArtifactLink["selection"];
-    }) => Effect.Effect<ArtifactLink, ArtifactOperationFailure>;
-    readonly unlink: (input: {
-      readonly sessionId: string;
-      readonly lineageId: ArtifactLineageId;
-      readonly target: ArtifactLinkTarget;
-    }) => Effect.Effect<void, ArtifactOperationFailure>;
-    readonly setSelection: (input: {
-      readonly sessionId: string;
-      readonly lineageId: ArtifactLineageId;
-      readonly target: ArtifactLinkTarget;
-      readonly selection: ArtifactLink["selection"];
-    }) => Effect.Effect<ArtifactLink, ArtifactOperationFailure>;
-    readonly materialize: (
-      sessionId: string,
-      lineageId: ArtifactLineageId,
-      revision: ArtifactRevisionNumber,
-    ) => Effect.Effect<ArtifactProjectionMetadata, ArtifactOperationFailure>;
-  };
-  readonly widgets: RpcOperations<"compile-inline-widget", InlineWidgetError> &
-    RpcOperations<"capture-native-widget" | "respond-widget-capture", RenderedWidgetCaptureError>;
-  readonly events: {
-    readonly application: () => Stream.Stream<
-      FocusedCakeEvent<
-        | "changelog-snapshot"
-        | "complete"
-        | "fatal"
-        | "notification"
-        | "provider-auth-notice"
-        | "extension-ui-intent"
-        | "project-session-control-requested"
-        | "draw-control-requested"
-        | "browser-native-requested"
-        | "widget-capture-requested"
-        | "screen-capture-requested"
-        | "application-hotkey-input"
-        | "window-blurred"
-        | "browser-entered"
-        | "browser-state-changed"
-        | "browser-element-selected"
-        | "renderer-events-ready"
-      >,
-      TransportError
-    >;
-    readonly artifacts: () => Stream.Stream<
-      FocusedCakeEvent<
-        | "artifact-updated"
-        | "artifact-catalog-invalidated"
-        | "artifact-requested"
-        | "ui-request"
-        | "renderer-events-ready"
-      >,
-      TransportError
-    >;
-    readonly terminals: () => Stream.Stream<
-      FocusedCakeEvent<
-        "terminal-data" | "terminal-exited" | "terminal-toggle-requested" | "renderer-events-ready"
-      >,
-      TransportError
-    >;
-    readonly vscode: () => Stream.Stream<
-      FocusedCakeEvent<
-        | "embedded-editor-toggle-mode-requested"
-        | "embedded-editor-selection"
-        | "embedded-editor-back-to-agent"
-        | "embedded-editor-annotation-opened"
-        | "embedded-editor-toggle-chat"
-        | "embedded-editor-toggle-sidebar"
-        | "embedded-editor-selection-cleared"
-        | "embedded-editor-annotation-requested"
-        | "embedded-editor-side-chat-requested"
-        | "renderer-events-ready"
-      >,
-      TransportError
-    >;
-    readonly surfaces: () => Stream.Stream<
-      FocusedCakeEvent<"fullscreen-surface-close-requested" | "renderer-events-ready">,
-      TransportError
-    >;
-  };
-  readonly foundation: {
-    readonly typedFailure: () => Effect.Effect<void, FoundationFailure | TransportError>;
-    readonly stream: (input: {
-      readonly count: number;
-      readonly intervalMs: number;
-    }) => Stream.Stream<number, TransportError>;
-    readonly delay: (input: { readonly durationMs: number }) => Effect.Effect<void, TransportError>;
-    readonly activeRequests: () => Effect.Effect<
-      { readonly delays: number; readonly streams: number },
-      TransportError
-    >;
+/** Assemble the generated transport capability and its semantic payload adapters. */
+function makeCakeIpcClient(client: RpcClient.RpcClient.Flat<Rpcs, RpcClientError.RpcClientError>) {
+  const rpc = groupRpcClient(CakeClientRpc, client);
+  return {
+    ...rpc,
+    speechOutput: {
+      ...rpc.speechOutput,
+      ...bindRpcAdapters(rpc.speechOutput, cakeIpcAdapters.speechOutput),
+    },
+    dictation: { ...rpc.dictation, ...bindRpcAdapters(rpc.dictation, cakeIpcAdapters.dictation) },
+    windowState: {
+      ...rpc.windowState,
+      ...bindRpcAdapters(rpc.windowState, cakeIpcAdapters.windowState),
+    },
+    piSettings: {
+      ...rpc.piSettings,
+      ...bindRpcAdapters(rpc.piSettings, cakeIpcAdapters.piSettings),
+    },
+    modelPresets: {
+      ...rpc.modelPresets,
+      ...bindRpcAdapters(rpc.modelPresets, cakeIpcAdapters.modelPresets),
+    },
+    cakeChats: { ...rpc.cakeChats, ...bindRpcAdapters(rpc.cakeChats, cakeIpcAdapters.cakeChats) },
+    savedDrafts: {
+      ...rpc.savedDrafts,
+      ...bindRpcAdapters(rpc.savedDrafts, cakeIpcAdapters.savedDrafts),
+    },
+    scheduledMessages: {
+      ...rpc.scheduledMessages,
+      ...bindRpcAdapters(rpc.scheduledMessages, cakeIpcAdapters.scheduledMessages),
+    },
+    projectSessions: {
+      ...rpc.projectSessions,
+      ...bindRpcAdapters(rpc.projectSessions, cakeIpcAdapters.projectSessions),
+    },
+    subagents: { ...rpc.subagents, ...bindRpcAdapters(rpc.subagents, cakeIpcAdapters.subagents) },
+    vscode: { ...rpc.vscode, ...bindRpcAdapters(rpc.vscode, cakeIpcAdapters.vscode) },
+    artifacts: { ...rpc.artifacts, ...bindRpcAdapters(rpc.artifacts, cakeIpcAdapters.artifacts) },
+    events: {
+      application: rpc.application.observeEvents,
+      artifacts: rpc.artifacts.observeEvents,
+      terminals: rpc.terminals.observeEvents,
+      vscode: rpc.vscode.observeEvents,
+      surfaces: rpc.electron.observeSurfaceEvents,
+    },
   };
 }
+
+export type CakeIpcClientService = ReturnType<typeof makeCakeIpcClient>;
 
 export class CakeIpcClient extends Context.Service<CakeIpcClient, CakeIpcClientService>()(
   "cake/ipc/client/CakeIpcClient",
@@ -1001,738 +196,10 @@ export class CakeIpcClient extends Context.Service<CakeIpcClient, CakeIpcClientS
 export const CakeIpcClientLive = Layer.effect(
   CakeIpcClient,
   Effect.gen(function* () {
-    const client = yield* RpcClient.make(CakeRpc.merge(NativePreviewTunnelRpc), {
+    const client = yield* RpcClient.make(CakeClientRpc, {
       flatten: true,
       spanPrefix: "CakeIpcClient",
     });
-    return CakeIpcClient.of({
-      speechOutput: {
-        observeSettings: () => client("speechOutput.observeSettings", undefined),
-        setProvider: Effect.fn("CakeIpcClient.speechOutput.setProvider")((provider) =>
-          client("speechOutput.setProvider", { provider }),
-        ),
-        installLocal: Effect.fn("CakeIpcClient.speechOutput.installLocal")(() =>
-          client("speechOutput.installLocal", undefined),
-        ),
-        removeLocal: Effect.fn("CakeIpcClient.speechOutput.removeLocal")(() =>
-          client("speechOutput.removeLocal", undefined),
-        ),
-        setApiKey: Effect.fn("CakeIpcClient.speechOutput.setApiKey")((key) =>
-          client("speechOutput.setApiKey", { key }),
-        ),
-        setVoice: Effect.fn("CakeIpcClient.speechOutput.setVoice")((voiceId) =>
-          client("speechOutput.setVoice", { voiceId }),
-        ),
-        setSpeed: Effect.fn("CakeIpcClient.speechOutput.setSpeed")((speed: number) =>
-          client("speechOutput.setSpeed", { speed }),
-        ),
-        listVoices: Effect.fn("CakeIpcClient.speechOutput.listVoices")(() =>
-          client("speechOutput.listVoices", undefined),
-        ),
-        synthesize: (request) => client("speechOutput.synthesize", request),
-      },
-      dictation: {
-        observeState: () => client("dictation.observeState", undefined),
-        installPunctuation: Effect.fn("CakeIpcClient.dictation.installPunctuation")(() =>
-          client("dictation.installPunctuation", undefined),
-        ),
-        removePunctuation: Effect.fn("CakeIpcClient.dictation.removePunctuation")(() =>
-          client("dictation.removePunctuation", undefined),
-        ),
-        punctuate: Effect.fn("CakeIpcClient.dictation.punctuate")((input: PunctuationInput) =>
-          client("dictation.punctuate", input),
-        ),
-        install: Effect.fn("CakeIpcClient.dictation.install")(() =>
-          client("dictation.install", undefined),
-        ),
-        setModelPath: Effect.fn("CakeIpcClient.dictation.setModelPath")((path) =>
-          client("dictation.setModelPath", { path }),
-        ),
-        remove: Effect.fn("CakeIpcClient.dictation.remove")(() =>
-          client("dictation.remove", undefined),
-        ),
-        prepare: Effect.fn("CakeIpcClient.dictation.prepare")(() =>
-          client("dictation.prepare", undefined),
-        ),
-        release: Effect.fn("CakeIpcClient.dictation.release")(() =>
-          client("dictation.release", undefined),
-        ),
-        detectSpeech: Effect.fn("CakeIpcClient.dictation.detectSpeech")((audio) =>
-          client("dictation.detectSpeech", audio),
-        ),
-        transcribe: Effect.fn("CakeIpcClient.dictation.transcribe")((audio) =>
-          client("dictation.transcribe", audio),
-        ),
-      },
-      desktopHost: {
-        current: () => client("desktopHost.current", undefined),
-        select: (input) => client("desktopHost.select", input),
-      },
-      backendConnection: { connect: (input) => client("backendConnection.connect", input) },
-      application: {
-        getHomeDirectory: Effect.fn("CakeIpcClient.application.getHomeDirectory")(() =>
-          client("application.getHomeDirectory", undefined),
-        ),
-        getState: Effect.fn("CakeIpcClient.application.getState")(() =>
-          client("application.getState", undefined),
-        ),
-        observeState: () => client("application.observeState", undefined),
-        observeAgentAvailability: () => client("application.observeAgentAvailability", undefined),
-        setSessionPluginHidden: Effect.fn("CakeIpcClient.application.setSessionPluginHidden")(
-          (input) => client("application.setSessionPluginHidden", input),
-        ),
-        setSessionPluginState: Effect.fn("CakeIpcClient.application.setSessionPluginState")(
-          (input) => client("application.setSessionPluginState", input),
-        ),
-        setSessionPluginSharedState: Effect.fn(
-          "CakeIpcClient.application.setSessionPluginSharedState",
-        )((input) => client("application.setSessionPluginSharedState", input)),
-        deleteSessionPlugin: Effect.fn("CakeIpcClient.application.deleteSessionPlugin")((input) =>
-          client("application.deleteSessionPlugin", input),
-        ),
-      },
-      windowState: {
-        load: Effect.fn("CakeIpcClient.windowState.load")(() =>
-          client("windowState.load", undefined),
-        ),
-        save: Effect.fn("CakeIpcClient.windowState.save")((snapshot) =>
-          client("windowState.save", { snapshot }),
-        ),
-      },
-      projects: {
-        observeCatalog: () => client("projects.observeCatalog", undefined),
-      },
-      projectWorkflow: {
-        mutateGlobal: Effect.fn("CakeIpcClient.projectWorkflow.mutateGlobal")((input) =>
-          client("projectWorkflow.mutateGlobal", input),
-        ),
-        mutate: Effect.fn("CakeIpcClient.projectWorkflow.mutate")((input) =>
-          client("projectWorkflow.mutate", input),
-        ),
-        setSessionLabels: Effect.fn("CakeIpcClient.projectWorkflow.setSessionLabels")((input) =>
-          client("projectWorkflow.setSessionLabels", input),
-        ),
-        describeSession: Effect.fn("CakeIpcClient.projectWorkflow.describeSession")((input) =>
-          client("projectWorkflow.describeSession", input),
-        ),
-      },
-      nonChatModels: {
-        list: Effect.fn("CakeIpcClient.nonChatModels.list")(() =>
-          client("nonChatModels.list", undefined),
-        ),
-        updatePreference: Effect.fn("CakeIpcClient.nonChatModels.updatePreference")((input) =>
-          client("nonChatModels.updatePreference", input),
-        ),
-      },
-      models: {
-        list: Effect.fn("CakeIpcClient.models.list")(() => client("models.list", undefined)),
-        refresh: Effect.fn("CakeIpcClient.models.refresh")(() =>
-          client("models.refresh", undefined),
-        ),
-        login: Effect.fn("CakeIpcClient.models.login")((input) => client("models.login", input)),
-        logout: Effect.fn("CakeIpcClient.models.logout")((input) => client("models.logout", input)),
-      },
-      mcpSettings: {
-        get: Effect.fn("CakeIpcClient.mcpSettings.get")((input) =>
-          client("mcpSettings.get", input),
-        ),
-        mutate: Effect.fn("CakeIpcClient.mcpSettings.mutate")((input) =>
-          client("mcpSettings.mutate", input),
-        ),
-      },
-      piSettings: {
-        extensions: Effect.fn("CakeIpcClient.piSettings.extensions")(() =>
-          client("piSettings.extensions", undefined),
-        ),
-        setExtensionEnabled: Effect.fn("CakeIpcClient.piSettings.setExtensionEnabled")((toggle) =>
-          client("piSettings.setExtensionEnabled", toggle),
-        ),
-        get: Effect.fn("CakeIpcClient.piSettings.get")(() => client("piSettings.get", undefined)),
-        update: Effect.fn("CakeIpcClient.piSettings.update")((update) =>
-          client("piSettings.update", { update }),
-        ),
-        reload: Effect.fn("CakeIpcClient.piSettings.reload")(() =>
-          client("piSettings.reload", undefined),
-        ),
-      },
-      modelPresets: {
-        list: Effect.fn("CakeIpcClient.modelPresets.list")(() =>
-          client("modelPresets.list", undefined),
-        ),
-        create: Effect.fn("CakeIpcClient.modelPresets.create")((input) =>
-          client("modelPresets.create", input),
-        ),
-        update: Effect.fn("CakeIpcClient.modelPresets.update")((input) =>
-          client("modelPresets.update", input),
-        ),
-        reorder: Effect.fn("CakeIpcClient.modelPresets.reorder")((input) =>
-          client("modelPresets.reorder", input),
-        ),
-        remove: Effect.fn("CakeIpcClient.modelPresets.remove")((id) =>
-          client("modelPresets.remove", { id }),
-        ),
-        setDefault: Effect.fn("CakeIpcClient.modelPresets.setDefault")((id) =>
-          client("modelPresets.setDefault", { id }),
-        ),
-        resolve: Effect.fn("CakeIpcClient.modelPresets.resolve")((id) =>
-          client("modelPresets.resolve", { id }),
-        ),
-      },
-      conversations: {
-        observe: (target) => client("conversations.observe", target),
-      },
-      sessionChats: {
-        prompt: Effect.fn("CakeIpcClient.sessionChats.prompt")((input) =>
-          client("sessionChats.prompt", input),
-        ),
-        steer: Effect.fn("CakeIpcClient.sessionChats.steer")((input) =>
-          client("sessionChats.steer", input),
-        ),
-        followUp: Effect.fn("CakeIpcClient.sessionChats.followUp")((input) =>
-          client("sessionChats.followUp", input),
-        ),
-        abort: Effect.fn("CakeIpcClient.sessionChats.abort")((target) =>
-          client("sessionChats.abort", target),
-        ),
-        history: Effect.fn("CakeIpcClient.sessionChats.history")((input) =>
-          client("sessionChats.history", input),
-        ),
-        listQueuedMessages: Effect.fn("CakeIpcClient.sessionChats.listQueuedMessages")((target) =>
-          client("sessionChats.listQueuedMessages", target),
-        ),
-        reorderQueuedMessage: Effect.fn("CakeIpcClient.sessionChats.reorderQueuedMessage")(
-          (input) => client("sessionChats.reorderQueuedMessage", input),
-        ),
-        clearQueue: Effect.fn("CakeIpcClient.sessionChats.clearQueue")((target) =>
-          client("sessionChats.clearQueue", target),
-        ),
-        cancelSteering: Effect.fn("CakeIpcClient.sessionChats.cancelSteering")((target) =>
-          client("sessionChats.cancelSteering", target),
-        ),
-        removeQueuedMessage: Effect.fn("CakeIpcClient.sessionChats.removeQueuedMessage")((input) =>
-          client("sessionChats.removeQueuedMessage", input),
-        ),
-        steerQueuedMessage: Effect.fn("CakeIpcClient.sessionChats.steerQueuedMessage")((input) =>
-          client("sessionChats.steerQueuedMessage", input),
-        ),
-        sendQueuedMessageNow: Effect.fn("CakeIpcClient.sessionChats.sendQueuedMessageNow")(
-          (input) => client("sessionChats.sendQueuedMessageNow", input),
-        ),
-        queueCommand: Effect.fn("CakeIpcClient.sessionChats.queueCommand")((input) =>
-          client("sessionChats.queueCommand", input),
-        ),
-        inspect: Effect.fn("CakeIpcClient.sessionChats.inspect")((input) =>
-          client("sessionChats.inspect", input),
-        ),
-        compact: Effect.fn("CakeIpcClient.sessionChats.compact")((input) =>
-          client("sessionChats.compact", input),
-        ),
-        editMessage: Effect.fn("CakeIpcClient.sessionChats.editMessage")((input) =>
-          client("sessionChats.editMessage", input),
-        ),
-        setUserMessageMarkdown: Effect.fn("CakeIpcClient.sessionChats.setUserMessageMarkdown")(
-          (input) => client("sessionChats.setUserMessageMarkdown", input),
-        ),
-        applyConfiguration: Effect.fn("CakeIpcClient.sessionChats.applyConfiguration")((input) =>
-          client("sessionChats.applyConfiguration", input),
-        ),
-        setModel: Effect.fn("CakeIpcClient.sessionChats.setModel")((input) =>
-          client("sessionChats.setModel", input),
-        ),
-        setThinkingLevel: Effect.fn("CakeIpcClient.sessionChats.setThinkingLevel")((input) =>
-          client("sessionChats.setThinkingLevel", input),
-        ),
-        setFastMode: Effect.fn("CakeIpcClient.sessionChats.setFastMode")((input) =>
-          client("sessionChats.setFastMode", input),
-        ),
-        login: Effect.fn("CakeIpcClient.sessionChats.login")((input) =>
-          client("sessionChats.login", input),
-        ),
-        logout: Effect.fn("CakeIpcClient.sessionChats.logout")((input) =>
-          client("sessionChats.logout", input),
-        ),
-      },
-      cakeChats: {
-        observeCatalog: (input) => client("cakeChats.observeCatalog", input),
-        inspect: Effect.fn("CakeIpcClient.cakeChats.inspect")((sessionId) =>
-          client("cakeChats.inspect", { sessionId }),
-        ),
-        open: Effect.fn("CakeIpcClient.cakeChats.open")((target) =>
-          client("cakeChats.open", target),
-        ),
-        observeControls: (target) => client("cakeChats.observeControls", target),
-        start: Effect.fn("CakeIpcClient.cakeChats.start")((input) =>
-          client("cakeChats.start", input),
-        ),
-        respondControl: Effect.fn("CakeIpcClient.cakeChats.respondControl")(
-          (controlRequestId, result) =>
-            client("cakeChats.respondControl", { controlRequestId, result }),
-        ),
-      },
-      discussionSessions: {
-        observeCatalog: (input) => client("discussionSessions.observeCatalog", input),
-        list: Effect.fn("CakeIpcClient.discussionSessions.list")((input) =>
-          client("discussionSessions.list", input),
-        ),
-        observe: (target) => client("discussionSessions.observe", target),
-        start: Effect.fn("CakeIpcClient.discussionSessions.start")((input) =>
-          client("discussionSessions.start", input),
-        ),
-        ensureSessionAssistant: Effect.fn(
-          "CakeIpcClient.discussionSessions.ensureSessionAssistant",
-        )((input) => client("discussionSessions.ensureSessionAssistant", input)),
-        setResolved: Effect.fn("CakeIpcClient.discussionSessions.setResolved")((target) =>
-          client("discussionSessions.setResolved", target),
-        ),
-      },
-      draw: {
-        list: Effect.fn("CakeIpcClient.draw.list")((input) => client("draw.list", input)),
-        create: Effect.fn("CakeIpcClient.draw.create")((input) => client("draw.create", input)),
-        read: Effect.fn("CakeIpcClient.draw.read")((input) => client("draw.read", input)),
-        save: Effect.fn("CakeIpcClient.draw.save")((input) => client("draw.save", input)),
-        rename: Effect.fn("CakeIpcClient.draw.rename")((input) => client("draw.rename", input)),
-        delete: Effect.fn("CakeIpcClient.draw.delete")((input) => client("draw.delete", input)),
-      },
-      drawControl: {
-        respond: Effect.fn("CakeIpcClient.drawControl.respond")((input) =>
-          client("drawControl.respond", input),
-        ),
-      },
-      savedDrafts: {
-        list: Effect.fn("CakeIpcClient.savedDrafts.list")(() => client("savedDrafts.list", {})),
-        observe: () => client("savedDrafts.observe", {}),
-        create: Effect.fn("CakeIpcClient.savedDrafts.create")((input) =>
-          client("savedDrafts.create", input),
-        ),
-        update: Effect.fn("CakeIpcClient.savedDrafts.update")((record, expectedRevision) =>
-          client("savedDrafts.update", { record, expectedRevision }),
-        ),
-        remove: Effect.fn("CakeIpcClient.savedDrafts.remove")((sessionId, expectedRevision) =>
-          client("savedDrafts.remove", { sessionId, expectedRevision }),
-        ),
-        recoverUncertain: Effect.fn("CakeIpcClient.savedDrafts.recoverUncertain")(
-          (sessionId, expectedRevision) =>
-            client("savedDrafts.recoverUncertain", {
-              sessionId,
-              expectedRevision,
-              confirmedNoTurn: true,
-            }),
-        ),
-        activate: Effect.fn("CakeIpcClient.savedDrafts.activate")((input) =>
-          client("savedDrafts.activate", input),
-        ),
-      },
-      scheduledMessages: {
-        observe: (targetSessionId) => client("scheduledMessages.observe", { targetSessionId }),
-        list: Effect.fn("CakeIpcClient.scheduledMessages.list")((targetSessionId) =>
-          client("scheduledMessages.list", targetSessionId ? { targetSessionId } : {}),
-        ),
-        schedule: Effect.fn("CakeIpcClient.scheduledMessages.schedule")((input) =>
-          client("scheduledMessages.schedule", input),
-        ),
-        cancel: Effect.fn("CakeIpcClient.scheduledMessages.cancel")((id) =>
-          client("scheduledMessages.cancel", { id }),
-        ),
-      },
-      projectSessions: {
-        observeCatalog: (input) => client("projectSessions.observeCatalog", input),
-        inspect: Effect.fn("CakeIpcClient.projectSessions.inspect")((target) =>
-          client("projectSessions.inspect", target),
-        ),
-        start: Effect.fn("CakeIpcClient.projectSessions.start")((input) =>
-          client("projectSessions.start", input),
-        ),
-        open: Effect.fn("CakeIpcClient.projectSessions.open")((target) =>
-          client("projectSessions.open", target),
-        ),
-        getChangelog: Effect.fn("CakeIpcClient.projectSessions.getChangelog")((target) =>
-          client("projectSessions.getChangelog", target),
-        ),
-        navigate: Effect.fn("CakeIpcClient.projectSessions.navigate")((input) =>
-          client("projectSessions.navigate", input),
-        ),
-        dispatchExtensionCompanionAction: Effect.fn(
-          "CakeIpcClient.projectSessions.dispatchExtensionCompanionAction",
-        )((input) => client("projectSessions.dispatchExtensionCompanionAction", input)),
-        callCakeOperation: Effect.fn("CakeIpcClient.projectSessions.callCakeOperation")((input) =>
-          client("projectSessions.callCakeOperation", input),
-        ),
-        toolCompact: Effect.fn("CakeIpcClient.projectSessions.toolCompact")((input) =>
-          client("projectSessions.toolCompact", input),
-        ),
-        rename: Effect.fn("CakeIpcClient.projectSessions.rename")((input) =>
-          client("projectSessions.rename", input),
-        ),
-        fork: Effect.fn("CakeIpcClient.projectSessions.fork")((input) =>
-          client("projectSessions.fork", input),
-        ),
-        resolve: Effect.fn("CakeIpcClient.projectSessions.resolve")((target) =>
-          client("projectSessions.resolve", target),
-        ),
-        resolveWorkingDirectory: Effect.fn("CakeIpcClient.projectSessions.resolveWorkingDirectory")(
-          (input) => client("projectSessions.resolveWorkingDirectory", input),
-        ),
-        restore: Effect.fn("CakeIpcClient.projectSessions.restore")((target) =>
-          client("projectSessions.restore", target),
-        ),
-        respondControl: Effect.fn("CakeIpcClient.projectSessions.respondControl")(
-          (sessionId, controlRequestId, result) =>
-            client("projectSessions.respondControl", { sessionId, controlRequestId, result }),
-        ),
-      },
-      subagents: {
-        observe: (parentSessionId) => client("subagents.observe", { parentSessionId }),
-        prompt: Effect.fn("CakeIpcClient.subagents.prompt")((input) =>
-          client("subagents.prompt", input),
-        ),
-        steer: Effect.fn("CakeIpcClient.subagents.steer")((input) =>
-          client("subagents.steer", input),
-        ),
-        abort: Effect.fn("CakeIpcClient.subagents.abort")((input) =>
-          client("subagents.abort", input),
-        ),
-        close: Effect.fn("CakeIpcClient.subagents.close")((input) =>
-          client("subagents.close", input),
-        ),
-      },
-
-      desktopSharing: {
-        configure: (input) => client("desktopSharing.configure", input),
-        observe: () => client("desktopSharing.observe", undefined),
-      },
-      electron: {
-        "configure-screen-capture": Effect.fn("CakeIpcClient.electron.configure-screen-capture")(
-          (payload) => client("electron.configure-screen-capture", payload),
-        ),
-        "start-screen-capture": Effect.fn("CakeIpcClient.electron.start-screen-capture")(
-          (payload) => client("electron.start-screen-capture", payload),
-        ),
-        "screen-capture-state": Effect.fn("CakeIpcClient.electron.screen-capture-state")(
-          (payload) => client("electron.screen-capture-state", payload),
-        ),
-        "finish-screen-capture": Effect.fn("CakeIpcClient.electron.finish-screen-capture")(
-          (payload) => client("electron.finish-screen-capture", payload),
-        ),
-        "choose-project": Effect.fn("CakeIpcClient.electron.choose-project")((payload) =>
-          client("electron.choose-project", payload),
-        ),
-        "save-draw-export": Effect.fn("CakeIpcClient.electron.save-draw-export")((payload) =>
-          client("electron.save-draw-export", payload),
-        ),
-        "open-external-url": Effect.fn("CakeIpcClient.electron.open-external-url")((payload) =>
-          client("electron.open-external-url", payload),
-        ),
-        "show-notification": Effect.fn("CakeIpcClient.electron.show-notification")((payload) =>
-          client("electron.show-notification", payload),
-        ),
-        "show-transcript-selection-context-menu": Effect.fn(
-          "CakeIpcClient.electron.show-transcript-selection-context-menu",
-        )((payload) => client("electron.show-transcript-selection-context-menu", payload)),
-        "show-composer-context-menu": Effect.fn(
-          "CakeIpcClient.electron.show-composer-context-menu",
-        )((payload) => client("electron.show-composer-context-menu", payload)),
-        "show-session-context-menu": Effect.fn("CakeIpcClient.electron.show-session-context-menu")(
-          (payload) => client("electron.show-session-context-menu", payload),
-        ),
-        "show-project-context-menu": Effect.fn("CakeIpcClient.electron.show-project-context-menu")(
-          (payload) => client("electron.show-project-context-menu", payload),
-        ),
-        "set-fullscreen-surface-open": Effect.fn(
-          "CakeIpcClient.electron.set-fullscreen-surface-open",
-        )((payload) => client("electron.set-fullscreen-surface-open", payload)),
-      },
-      attachmentUploads: {
-        "upload-open": Effect.fn("CakeIpcClient.attachmentUploads.open")((payload) =>
-          client("attachmentUploads.open", payload),
-        ),
-        "upload-chunk": Effect.fn("CakeIpcClient.attachmentUploads.chunk")((payload) =>
-          client("attachmentUploads.chunk", payload),
-        ),
-        "upload-finish": Effect.fn("CakeIpcClient.attachmentUploads.finish")((payload) =>
-          client("attachmentUploads.finish", payload),
-        ),
-        "upload-discard": Effect.fn("CakeIpcClient.attachmentUploads.discard")((payload) =>
-          client("attachmentUploads.discard", payload),
-        ),
-      },
-      filesystem: {
-        "read-selected-file": Effect.fn("CakeIpcClient.filesystem.read-selected-file")((payload) =>
-          client("filesystem.read-selected-file", payload),
-        ),
-        "choose-attachments": Effect.fn("CakeIpcClient.filesystem.choose-attachments")((payload) =>
-          client("filesystem.choose-attachments", payload),
-        ),
-        "suggest-files": Effect.fn("CakeIpcClient.filesystem.suggest-files")((payload) =>
-          client("filesystem.suggest-files", payload),
-        ),
-        "read-workspace-file": Effect.fn("CakeIpcClient.filesystem.read-workspace-file")(
-          (payload) => client("filesystem.read-workspace-file", payload),
-        ),
-        "read-workspace-image": Effect.fn("CakeIpcClient.filesystem.read-workspace-image")(
-          (payload) => client("filesystem.read-workspace-image", payload),
-        ),
-      },
-      workspaces: {
-        "post-process-dictation": Effect.fn("CakeIpcClient.workspaces.post-process-dictation")(
-          (payload) => client("workspaces.post-process-dictation", payload),
-        ),
-        "reword-composer-selection": Effect.fn(
-          "CakeIpcClient.workspaces.reword-composer-selection",
-        )((payload) => client("workspaces.reword-composer-selection", payload)),
-        "generate-session-title": Effect.fn("CakeIpcClient.workspaces.generate-session-title")(
-          (payload) => client("workspaces.generate-session-title", payload),
-        ),
-        "set-utility-model": Effect.fn("CakeIpcClient.workspaces.set-utility-model")((payload) =>
-          client("workspaces.set-utility-model", payload),
-        ),
-        "set-cake-chat-preferences": Effect.fn(
-          "CakeIpcClient.workspaces.set-cake-chat-preferences",
-        )((payload) => client("workspaces.set-cake-chat-preferences", payload)),
-        "set-cake-prompts": Effect.fn("CakeIpcClient.workspaces.set-cake-prompts")((payload) =>
-          client("workspaces.set-cake-prompts", payload),
-        ),
-        "set-global-custom-instructions": Effect.fn(
-          "CakeIpcClient.workspaces.set-global-custom-instructions",
-        )((payload) => client("workspaces.set-global-custom-instructions", payload)),
-        "load-staged-slash-commands": Effect.fn(
-          "CakeIpcClient.workspaces.load-staged-slash-commands",
-        )((payload) => client("workspaces.load-staged-slash-commands", payload)),
-        "register-project": Effect.fn("CakeIpcClient.workspaces.register-project")((payload) =>
-          client("workspaces.register-project", payload),
-        ),
-        "rename-project": Effect.fn("CakeIpcClient.workspaces.rename-project")((payload) =>
-          client("workspaces.rename-project", payload),
-        ),
-        "set-project-settings": Effect.fn("CakeIpcClient.workspaces.set-project-settings")(
-          (payload) => client("workspaces.set-project-settings", payload),
-        ),
-        "remove-project": Effect.fn("CakeIpcClient.workspaces.remove-project")((payload) =>
-          client("workspaces.remove-project", payload),
-        ),
-        "delete-session": Effect.fn("CakeIpcClient.workspaces.delete-session")((payload) =>
-          client("workspaces.delete-session", payload),
-        ),
-        "set-session-unread": Effect.fn("CakeIpcClient.workspaces.set-session-unread")((payload) =>
-          client("workspaces.set-session-unread", payload),
-        ),
-        "restart-pi": Effect.fn("CakeIpcClient.workspaces.restart-pi")((payload) =>
-          client("workspaces.restart-pi", payload),
-        ),
-        "inspect-workspace": Effect.fn("CakeIpcClient.workspaces.inspect-workspace")((payload) =>
-          client("workspaces.inspect-workspace", payload),
-        ),
-        "respond-workspace-trust": Effect.fn("CakeIpcClient.workspaces.respond-workspace-trust")(
-          (payload) => client("workspaces.respond-workspace-trust", payload),
-        ),
-      },
-      managedWorktrees: {
-        observeCatalog: () => client("managedWorktrees.observeCatalog", undefined),
-        observeOperations: () => client("managedWorktrees.observeOperations", undefined),
-        "create-worktree": Effect.fn("CakeIpcClient.managedWorktrees.create-worktree")((payload) =>
-          client("managedWorktrees.create-worktree", payload),
-        ),
-        "get-worktree-landing": Effect.fn("CakeIpcClient.managedWorktrees.get-worktree-landing")(
-          (payload) => client("managedWorktrees.get-worktree-landing", payload),
-        ),
-        "start-worktree-landing": Effect.fn(
-          "CakeIpcClient.managedWorktrees.start-worktree-landing",
-        )((payload) => client("managedWorktrees.start-worktree-landing", payload)),
-        "retry-worktree-landing": Effect.fn(
-          "CakeIpcClient.managedWorktrees.retry-worktree-landing",
-        )((payload) => client("managedWorktrees.retry-worktree-landing", payload)),
-        "cancel-worktree-landing": Effect.fn(
-          "CakeIpcClient.managedWorktrees.cancel-worktree-landing",
-        )((payload) => client("managedWorktrees.cancel-worktree-landing", payload)),
-        "start-worktree-rebase": Effect.fn("CakeIpcClient.managedWorktrees.start-worktree-rebase")(
-          (payload) => client("managedWorktrees.start-worktree-rebase", payload),
-        ),
-        "discard-worktree": Effect.fn("CakeIpcClient.managedWorktrees.discard-worktree")(
-          (payload) => client("managedWorktrees.discard-worktree", payload),
-        ),
-        inspectResolvedForProject: Effect.fn(
-          "CakeIpcClient.managedWorktrees.inspectResolvedForProject",
-        )((input) => client("managedWorktrees.inspectResolvedForProject", input)),
-        discardResolvedForProject: Effect.fn(
-          "CakeIpcClient.managedWorktrees.discardResolvedForProject",
-        )((input) => client("managedWorktrees.discardResolvedForProject", input)),
-      },
-      terminals: {
-        "open-terminal": Effect.fn("CakeIpcClient.terminals.open-terminal")((payload) =>
-          client("terminals.open-terminal", payload),
-        ),
-        "write-terminal": Effect.fn("CakeIpcClient.terminals.write-terminal")((payload) =>
-          client("terminals.write-terminal", payload),
-        ),
-        "resize-terminal": Effect.fn("CakeIpcClient.terminals.resize-terminal")((payload) =>
-          client("terminals.resize-terminal", payload),
-        ),
-        "get-terminal-status": Effect.fn("CakeIpcClient.terminals.get-terminal-status")((payload) =>
-          client("terminals.get-terminal-status", payload),
-        ),
-        "close-terminal": Effect.fn("CakeIpcClient.terminals.close-terminal")((payload) =>
-          client("terminals.close-terminal", payload),
-        ),
-        "close-working-directory-terminals": Effect.fn(
-          "CakeIpcClient.terminals.close-working-directory-terminals",
-        )((payload) => client("terminals.close-working-directory-terminals", payload)),
-      },
-      browser: {
-        "open-browser": Effect.fn("CakeIpcClient.browser.open-browser")((payload) =>
-          client("browser.open-browser", payload),
-        ),
-        "get-browser-state": Effect.fn("CakeIpcClient.browser.get-browser-state")((payload) =>
-          client("browser.get-browser-state", payload),
-        ),
-        "update-browser-bounds": Effect.fn("CakeIpcClient.browser.update-browser-bounds")(
-          (payload) => client("browser.update-browser-bounds", payload),
-        ),
-        "navigate-browser": Effect.fn("CakeIpcClient.browser.navigate-browser")((payload) =>
-          client("browser.navigate-browser", payload),
-        ),
-        "browser-action": Effect.fn("CakeIpcClient.browser.browser-action")((payload) =>
-          client("browser.browser-action", payload),
-        ),
-        "inspect-browser-element": Effect.fn("CakeIpcClient.browser.inspect-browser-element")(
-          (payload) => client("browser.inspect-browser-element", payload),
-        ),
-        "native-browser-enter": Effect.fn("CakeIpcClient.browser.native-browser-enter")((payload) =>
-          client("browser.native-browser-enter", payload),
-        ),
-        "native-browser-cdp": Effect.fn("CakeIpcClient.browser.native-browser-cdp")((payload) =>
-          client("browser.native-browser-cdp", payload),
-        ),
-        "native-browser-events": Effect.fn("CakeIpcClient.browser.native-browser-events")(
-          (payload) => client("browser.native-browser-events", payload),
-        ),
-        "respond-browser-native": Effect.fn("CakeIpcClient.browser.respond-browser-native")(
-          (payload) => client("browser.respond-browser-native", payload),
-        ),
-        "acquire-browser-preview": Effect.fn("CakeIpcClient.browser.acquire-browser-preview")(
-          (payload) => client("browser.acquire-browser-preview", payload),
-        ),
-        "open-native-preview": Effect.fn("CakeIpcClient.browser.open-native-preview")((payload) =>
-          client("browser.open-native-preview", payload),
-        ),
-      },
-      vscodeViews: {
-        preferredTheme: () => client("vscodeViews.preferredTheme", undefined),
-        open: (input) => client("vscodeViews.open", input),
-        updateBounds: (input) => client("vscodeViews.updateBounds", input),
-        close: () => client("vscodeViews.close", undefined),
-        focusCake: () => client("vscodeViews.focusCake", undefined),
-        observeThemes: () => client("vscodeViews.observeThemes", undefined),
-        observeEvents: () => client("vscodeViews.observeEvents", undefined),
-      },
-      vscode: {
-        acquire: (input) => client("vscode.acquire", input),
-        release: (leaseId) => client("vscode.release", { leaseId }),
-        setVisible: (visible) => client("vscode.setVisible", { visible }),
-        setTheme: (theme) => client("vscode.setTheme", { theme }),
-        observeState: () => client("vscode.observeState", undefined),
-        "get-embedded-editor-state": Effect.fn("CakeIpcClient.vscode.get-embedded-editor-state")(
-          (payload) => client("vscode.get-embedded-editor-state", payload),
-        ),
-        "set-vscode-server-path": Effect.fn("CakeIpcClient.vscode.set-vscode-server-path")(
-          (payload) => client("vscode.set-vscode-server-path", payload),
-        ),
-        "install-embedded-editor": Effect.fn("CakeIpcClient.vscode.install-embedded-editor")(
-          (payload) => client("vscode.install-embedded-editor", payload),
-        ),
-        "update-embedded-editor-selection-highlights": Effect.fn(
-          "CakeIpcClient.vscode.update-embedded-editor-selection-highlights",
-        )((payload) => client("vscode.update-embedded-editor-selection-highlights", payload)),
-        "reveal-in-embedded-editor": Effect.fn("CakeIpcClient.vscode.reveal-in-embedded-editor")(
-          (payload) => client("vscode.reveal-in-embedded-editor", payload),
-        ),
-        "open-embedded-editor-source-control": Effect.fn(
-          "CakeIpcClient.vscode.open-embedded-editor-source-control",
-        )((payload) => client("vscode.open-embedded-editor-source-control", payload)),
-        "perform-embedded-editor-action": Effect.fn(
-          "CakeIpcClient.vscode.perform-embedded-editor-action",
-        )((payload) => client("vscode.perform-embedded-editor-action", payload)),
-        "update-embedded-editor-annotations": Effect.fn(
-          "CakeIpcClient.vscode.update-embedded-editor-annotations",
-        )((payload) => client("vscode.update-embedded-editor-annotations", payload)),
-      },
-      events: {
-        application: () => client("application.observeEvents", undefined),
-        artifacts: () => client("artifacts.observeEvents", undefined),
-        terminals: () => client("terminals.observeEvents", undefined),
-        vscode: () => client("vscode.observeEvents", undefined),
-        surfaces: () => client("electron.observeSurfaceEvents", undefined),
-      },
-      artifacts: {
-        "respond-artifact": Effect.fn("CakeIpcClient.artifacts.respond-artifact")((payload) =>
-          client("artifacts.respond-artifact", payload),
-        ),
-        "respond-ui": Effect.fn("CakeIpcClient.artifacts.respond-ui")((payload) =>
-          client("artifacts.respond-ui", payload),
-        ),
-        "export-artifacts": Effect.fn("CakeIpcClient.artifacts.export-artifacts")((payload) =>
-          client("artifacts.export-artifacts", payload),
-        ),
-        catalog: Effect.fn("CakeIpcClient.artifacts.catalog")((payload) =>
-          client("artifacts.catalog", payload),
-        ),
-        effective: Effect.fn("CakeIpcClient.artifacts.effective")((sessionId) =>
-          client("artifacts.effective", { sessionId }),
-        ),
-        detail: Effect.fn("CakeIpcClient.artifacts.detail")((lineageId) =>
-          client("artifacts.detail", { lineageId }),
-        ),
-        history: Effect.fn("CakeIpcClient.artifacts.history")((payload) =>
-          client("artifacts.history", payload),
-        ),
-        readExact: Effect.fn("CakeIpcClient.artifacts.readExact")((lineageId, revision) =>
-          client("artifacts.readExact", { lineageId, revision }),
-        ),
-        referenceMetadata: Effect.fn("CakeIpcClient.artifacts.referenceMetadata")((reference) =>
-          client("artifacts.referenceMetadata", { reference }),
-        ),
-        compareText: Effect.fn("CakeIpcClient.artifacts.compareText")(
-          (lineageId, fromRevision, toRevision) =>
-            client("artifacts.compareText", { lineageId, fromRevision, toRevision }),
-        ),
-        restore: Effect.fn("CakeIpcClient.artifacts.restore")((payload) =>
-          client("artifacts.restore", payload),
-        ),
-        link: Effect.fn("CakeIpcClient.artifacts.link")((payload) =>
-          client("artifacts.link", payload),
-        ),
-        unlink: Effect.fn("CakeIpcClient.artifacts.unlink")((payload) =>
-          client("artifacts.unlink", payload),
-        ),
-        setSelection: Effect.fn("CakeIpcClient.artifacts.setSelection")((payload) =>
-          client("artifacts.setSelection", payload),
-        ),
-        materialize: Effect.fn("CakeIpcClient.artifacts.materialize")(
-          (sessionId, lineageId, revision) =>
-            client("artifacts.materialize", { sessionId, lineageId, revision }),
-        ),
-      },
-      widgets: {
-        "compile-inline-widget": Effect.fn("CakeIpcClient.widgets.compile-inline-widget")(
-          (payload) => client("widgets.compile-inline-widget", payload),
-        ),
-        "capture-native-widget": Effect.fn("CakeIpcClient.widgets.capture-native-widget")(
-          (payload) => client("widgets.capture-native-widget", payload),
-        ),
-        "respond-widget-capture": Effect.fn("CakeIpcClient.widgets.respond-widget-capture")(
-          (payload) => client("widgets.respond-widget-capture", payload),
-        ),
-      },
-      foundation: {
-        typedFailure: Effect.fn("CakeIpcClient.foundation.typedFailure")(() =>
-          client("foundation.typedFailure", undefined),
-        ),
-        stream: (input) => client("foundation.stream", input),
-        delay: Effect.fn("CakeIpcClient.foundation.delay")((input) =>
-          client("foundation.delay", input),
-        ),
-        activeRequests: Effect.fn("CakeIpcClient.foundation.activeRequests")(() =>
-          client("foundation.activeRequests", undefined),
-        ),
-      },
-    });
+    return CakeIpcClient.of(makeCakeIpcClient(client));
   }),
 );

@@ -9,7 +9,7 @@ import { attachmentSchema } from "../session-contract";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 
 const SessionId = SavedDraft.fields.sessionId;
-export const SavedDraftCreateInput = Schema.Struct({
+const SavedDraftCreateInput = Schema.Struct({
   sessionId: Schema.optionalKey(SessionId),
   projectPath: SavedDraft.fields.projectPath,
   title: SavedDraft.fields.title,
@@ -21,7 +21,7 @@ export const SavedDraftCreateInput = Schema.Struct({
   createdAt: Schema.optionalKey(Schema.String),
   modifiedAt: Schema.optionalKey(Schema.String),
 });
-export const SavedDraftActivateInput = Schema.Struct({
+const SavedDraftActivateInput = Schema.Struct({
   sessionId: SessionId,
   expectedRevision: Schema.Int.check(Schema.isGreaterThan(0)),
   workingDirectory: Schema.optionalKey(Schema.String),
