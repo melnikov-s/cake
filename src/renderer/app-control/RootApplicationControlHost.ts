@@ -13,7 +13,7 @@ import type { SessionLayoutStore } from "../stores/SessionLayoutStore";
 import type { SessionRegistryStore } from "../stores/SessionRegistryStore";
 import type { SettingsStore } from "../stores/SettingsStore";
 import type { ToastStore } from "../stores/ToastStore";
-import type { SessionActivity } from "../lib/session-activity";
+import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
 import type { ProjectSessionCreationStore } from "../stores/ProjectSessionCreationStore";
 import type { SessionRetirementStore } from "../stores/SessionRetirementStore";
 import { defaultProjectSettings } from "../../domain/application/application-data";
@@ -34,9 +34,8 @@ export interface RootApplicationControlCapabilities {
   sessionLayoutStore: SessionLayoutStore;
   sessionRegistry: SessionRegistryStore;
   settingsStore: SettingsStore;
-  sessionActivity(sessionId: string): SessionActivity | undefined;
+  sessionMetadataStore: SessionMetadataStore;
   toastStore: ToastStore;
-  projectSessionWorkingDirectory(sessionId: string): string | undefined;
   requireProjectSessionWorkingDirectory(sessionId: string): string;
   prepareProjectSessionChat(sessionId: string): Promise<void>;
   openSession(sessionId: string, messageId?: string): Promise<boolean>;
@@ -73,7 +72,7 @@ export function createRootApplicationControlHost(
             return { kind: "new-project-chat" as const };
           const summary = capabilities.sessionCatalogStore.find(selection.sessionId);
           const workspacePath =
-            capabilities.projectSessionWorkingDirectory(selection.sessionId) ?? "";
+            capabilities.sessionMetadataStore.workingDirectory(selection.sessionId) ?? "";
           return {
             kind: "project-session" as const,
             sessionId: selection.sessionId,
@@ -124,7 +123,7 @@ export function createRootApplicationControlHost(
       projects: () => capabilities.projectCatalogStore.projects,
       sessions: () => capabilities.sessionCatalogStore.sessions,
       cakeChatSessions: () => capabilities.cakeChatCollectionStore.summaries,
-      sessionActivity: capabilities.sessionActivity,
+      sessionActivity: (sessionId) => capabilities.sessionMetadataStore.sessionActivity(sessionId),
       managedWorktree: (workingDirectory) =>
         capabilities.sessionCatalogStore.managedWorktree(workingDirectory),
       globalSessionLabels: () => capabilities.settingsStore.globalLabels.labels,
@@ -136,7 +135,8 @@ export function createRootApplicationControlHost(
             client: capabilities.client,
             settings: capabilities.settingsStore,
             signal: capabilities.signal,
-            workingDirectory: capabilities.projectSessionWorkingDirectory,
+            workingDirectory: (sessionId) =>
+              capabilities.sessionMetadataStore.workingDirectory(sessionId),
             projectSession: (sessionId) => capabilities.sessionRegistry.findSession(sessionId),
           },
           invocation,

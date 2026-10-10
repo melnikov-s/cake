@@ -6,6 +6,7 @@ import {
 import type { Client } from "../client/Client";
 import type { WindowConversationSelection } from "./AppShellStore";
 import type { ComposerDraftStore } from "./ComposerDraftStore";
+import { ToastContext } from "./context/ToastContext";
 
 /** Owns native capture preferences and destination routing, not chat or transcript state.
  * Preferences/last destination persist in the window snapshot. Captures are single-flight;
@@ -15,7 +16,6 @@ export class ScreenCaptureAttachmentStore extends Store<{
   client: Client["electron"];
   currentTarget(): WindowConversationSelection | undefined;
   findDraft(target: WindowConversationSelection): ComposerDraftStore | undefined;
-  reportError(message: string): void;
 }> {
   @snapshot shortcut = DEFAULT_CAPTURE_SHORTCUT;
   @snapshot maxDimension = DEFAULT_CAPTURE_MAX_DIMENSION;
@@ -39,6 +39,14 @@ export class ScreenCaptureAttachmentStore extends Store<{
     );
   }
 
+  private get toast() {
+    return ToastContext.consume(this)!;
+  }
+
+  private reportError(message: string) {
+    this.toast.show({ tone: "error", title: "Screen capture", message });
+  }
+
   configure() {
     const settings = {
       shortcut: this.recordingShortcut ? "" : this.shortcut,
@@ -52,7 +60,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
       } catch (error) {
         if (!this.signal.aborted) {
           this.error = error instanceof Error ? error.message : String(error);
-          this.props.reportError(this.error);
+          this.reportError(this.error);
         }
       }
     });
@@ -80,11 +88,11 @@ export class ScreenCaptureAttachmentStore extends Store<{
     const target = this.props.currentTarget() ?? this.lastTarget;
     const draft = target && this.props.findDraft(target);
     if (!target || !draft) {
-      this.props.reportError("Open an editable chat before capturing an attachment.");
+      this.reportError("Open an editable chat before capturing an attachment.");
       return;
     }
     if (draft.attachments.length >= 20) {
-      this.props.reportError("A message can include at most 20 attachments.");
+      this.reportError("A message can include at most 20 attachments.");
       return;
     }
     this.busy = true;
@@ -106,7 +114,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
       draft.requestFocus();
     } catch (error) {
       if (!this.signal.aborted)
-        this.props.reportError(error instanceof Error ? error.message : String(error));
+        this.reportError(error instanceof Error ? error.message : String(error));
     } finally {
       this.busy = false;
     }

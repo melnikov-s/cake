@@ -4,17 +4,13 @@ import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalo
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import { ClientContext } from "./context/ClientContext";
 import type { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
-import type { ProjectCatalogStore } from "./ProjectCatalogStore";
+import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
-import type { SessionMetadataStore } from "./SessionMetadataStore";
-import type { SessionRegistryStore } from "./SessionRegistryStore";
+import { SessionRegistryContext } from "./context/SessionRegistryContext";
 import { SidebarSessionListStore } from "./SidebarSessionListStore";
 
 export interface SidebarStoreProps {
-  projects: ProjectCatalogStore;
   catalog: SessionCatalogStore;
-  sessions: SessionRegistryStore;
-  sessionMetadata: SessionMetadataStore;
   worktreeOperations?: WorktreeOperationCatalog;
   cakeChat(): CakeChatCollectionStore;
   selectedConversation?(): { kind: "project-session" | "cake-chat"; sessionId: string } | undefined;
@@ -31,6 +27,14 @@ export interface SidebarStoreProps {
 export class SidebarStore extends Store<SidebarStoreProps> {
   get electron() {
     return ClientContext.consume(this)!.electron;
+  }
+
+  private get projects() {
+    return ProjectCatalogContext.consume(this)!;
+  }
+
+  private get sessions() {
+    return SessionRegistryContext.consume(this)!;
   }
 
   @snapshot hidden = false;
@@ -71,10 +75,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   @child
   get sessionListStore(): SidebarSessionListStore {
     return createStore(SidebarSessionListStore, {
-      projects: this.props.projects,
       catalog: this.props.catalog,
-      sessions: this.props.sessions,
-      sessionMetadata: this.props.sessionMetadata,
       worktreeOperations: this.props.worktreeOperations,
       cakeChat: this.props.cakeChat,
       selectedConversation: this.props.selectedConversation,
@@ -87,11 +88,11 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   get focusModeProjectPath() {
     const path = this.focusedProjectPath;
-    return path && this.props.projects.find(path) ? path : undefined;
+    return path && this.projects.find(path) ? path : undefined;
   }
 
   focusProject(path: string) {
-    if (!this.props.projects.find(path)) return;
+    if (!this.projects.find(path)) return;
     this.focusedProjectPath = path;
     this.sessionListStore.expandActiveGroup(path);
   }
@@ -218,7 +219,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   setSessionUnread(sessionId: string, unread: boolean) {
-    if (!unread) this.props.sessions.findSession(sessionId)?.markRead();
+    if (!unread) this.sessions.findSession(sessionId)?.markRead();
     return this.props.setSessionUnread(sessionId, unread);
   }
 

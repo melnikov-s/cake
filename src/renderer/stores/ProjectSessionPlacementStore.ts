@@ -3,12 +3,11 @@ import type { ProjectSessionControlInvocation } from "../../domain/project-sessi
 import type { JsonValue } from "../../ipc/json-contract";
 import { ClientContext } from "./context/ClientContext";
 import type { SessionLayoutStore } from "./SessionLayoutStore";
-import type { SessionRegistryStore } from "./SessionRegistryStore";
+import { SessionRegistryContext } from "./context/SessionRegistryContext";
+import { SessionMetadataContext } from "./context/SessionMetadataContext";
 
 export interface ProjectSessionPlacementStoreProps {
-  registry: SessionRegistryStore;
   layout: SessionLayoutStore;
-  requireWorkingDirectory(sessionId: string): string;
   dismissSecondarySurfaces(): void;
   selectSession(sessionId: string): void;
   showLoadedSession(sessionId: string): void;
@@ -25,11 +24,20 @@ export class ProjectSessionPlacementStore extends Store<ProjectSessionPlacementS
     return ClientContext.consume(this)!;
   }
 
+  private get registry() {
+    return SessionRegistryContext.consume(this)!;
+  }
+
+  private get metadata() {
+    return SessionMetadataContext.consume(this)!;
+  }
+
   async fork(
     sourceSessionId: string,
     input: Extract<ProjectSessionControlInvocation, { _tag: "ForkSession" }>,
   ): Promise<JsonValue> {
-    const sourceWorkingDirectory = this.props.requireWorkingDirectory(sourceSessionId);
+    const sourceWorkingDirectory = this.metadata.workingDirectory(sourceSessionId);
+    if (!sourceWorkingDirectory) throw new Error("Cake could not find that session");
     const destinationWorkingDirectory = input.destinationWorkingDirectory ?? sourceWorkingDirectory;
     const result = await this.client.projectSessions.fork(
       {
@@ -44,14 +52,14 @@ export class ProjectSessionPlacementStore extends Store<ProjectSessionPlacementS
 
     // Forking writes the transcript but does not assemble its Pi runtime. Register it first so
     // observation can begin, then open the runtime before rename or prompt commands are issued.
-    this.props.registry.load(result.sessionId, destinationWorkingDirectory);
+    this.registry.load(result.sessionId, destinationWorkingDirectory);
     try {
       await this.client.projectSessions.open(
         { sessionId: result.sessionId, workingDirectory: destinationWorkingDirectory },
         { signal: this.signal },
       );
     } catch (error) {
-      this.props.registry.removeSession(result.sessionId);
+      this.registry.removeSession(result.sessionId);
       throw error;
     }
     if (input.title !== undefined)
@@ -100,7 +108,7 @@ export class ProjectSessionPlacementStore extends Store<ProjectSessionPlacementS
   async presentFork(
     input: Extract<ProjectSessionControlInvocation, { _tag: "PresentForkSession" }>,
   ): Promise<JsonValue> {
-    this.props.registry.load(input.forkSessionId, input.workingDirectory);
+    this.registry.load(input.forkSessionId, input.workingDirectory);
     const paneId = this.props.layout.showChildSession(
       input.sourceSessionId,
       input.forkSessionId,
@@ -115,7 +123,7 @@ export class ProjectSessionPlacementStore extends Store<ProjectSessionPlacementS
     parentSessionId: string,
     input: Extract<ProjectSessionControlInvocation, { _tag: "ProjectChildSession" }>,
   ): Promise<JsonValue> {
-    this.props.registry.loadUnlistedFamilySession(
+    this.registry.loadUnlistedFamilySession(
       input.childSessionId,
       input.workingDirectory,
       input.title,
@@ -132,7 +140,7 @@ export class ProjectSessionPlacementStore extends Store<ProjectSessionPlacementS
         { signal: this.signal },
       );
     } catch (error) {
-      this.props.registry.removeSession(input.childSessionId);
+      this.registry.removeSession(input.childSessionId);
       throw error;
     }
     if (input.placement === "none")

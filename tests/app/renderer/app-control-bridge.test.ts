@@ -1,6 +1,5 @@
 import { Schema } from "effect";
-import { createStore, mount } from "r-state-tree";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CakeChatTarget } from "../../../src/domain/cake-chats/cake-chat-data";
 import type { VscodeEditorAction } from "../../../src/ipc/vscode-editor-action";
 import { encodeCrossSessionMessage } from "../../../src/domain/conversations/cross-session-coordination";
@@ -12,8 +11,18 @@ import {
   listSessionAssistantControlTools,
 } from "../../../src/renderer/app-control/AppControlBridge";
 import { Message } from "../../../src/renderer/models/Message";
-import { Conversation } from "../../../src/renderer/models/Conversation";
-import { SessionCoordinationStore } from "../../../src/renderer/stores/SessionCoordinationStore";
+import { createRendererStoreFixture } from "./renderer-store-fixture";
+
+const fixtures: ReturnType<typeof createRendererStoreFixture>[] = [];
+afterEach(() => {
+  for (const fixture of fixtures.splice(0)) fixture[Symbol.dispose]();
+});
+
+function coordinationFixture() {
+  const fixture = createRendererStoreFixture();
+  fixtures.push(fixture);
+  return fixture;
+}
 
 type AppControlHostOverrides = Partial<
   AppControlHost["state"] & AppControlHost["sessions"] & AppControlHost["presentation"]
@@ -29,8 +38,7 @@ type AppControlHostOverrides = Partial<
 function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
   return {
     sessionCoordination:
-      overrides.sessionCoordination ??
-      mount(createStore(SessionCoordinationStore, { sessionById: () => undefined })),
+      overrides.sessionCoordination ?? coordinationFixture().root.sessionCoordinationStore,
     state: {
       currentSelection: overrides.currentSelection ?? (() => ({ kind: "workbench" })),
       userSelection: overrides.userSelection ?? (() => null),
@@ -1555,12 +1563,9 @@ describe("AppControlBridge", () => {
       queuedContent = encodeCrossSessionMessage(text, metadata);
       return "turn-b";
     });
-    const targetSession = Conversation.create({ sessionId: "session-b" });
-    const sessionCoordination = mount(
-      createStore(SessionCoordinationStore, {
-        sessionById: (sessionId) => (sessionId === "session-b" ? targetSession : undefined),
-      }),
-    );
+    const fixture = coordinationFixture();
+    const targetSession = fixture.root.sessionRegistry.load("session-b", "/b").model;
+    const sessionCoordination = fixture.root.sessionCoordinationStore;
     const bridge = new AppControlBridge(
       createHost({
         sessionCoordination,

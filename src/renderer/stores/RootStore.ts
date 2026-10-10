@@ -14,6 +14,10 @@ import {
 } from "../../domain/artifacts/artifact-lineage";
 import type { Client } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
+import { SessionMetadataContext } from "./context/SessionMetadataContext";
+import { SessionRegistryContext } from "./context/SessionRegistryContext";
+import { ToastContext } from "./context/ToastContext";
+import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import { TerminalTopInsetContext } from "./context/TerminalTopInsetContext";
 import { DeliveryAvailabilityContext } from "./context/DeliveryAvailabilityContext";
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
@@ -75,7 +79,7 @@ export class RootStore extends Store<{
       currentTarget: () => this.appShellStore.activeConversation,
       findDraft: (target) => {
         if (target.kind === "project-session") {
-          if (this.sessionCatalogStore.find(target.sessionId)?.resolved) return undefined;
+          if (this.sessionMetadataStore.isResolved(target.sessionId)) return undefined;
           return this.sessionRegistry.findSession(target.sessionId)?.conversationSessionStore
             .composerStore.draftStore;
         }
@@ -83,17 +87,12 @@ export class RootStore extends Store<{
         return this.cakeChatCollectionStore.registry.find(target.sessionId)
           ?.conversationSessionStore.composerStore.draftStore;
       },
-      reportError: (message) =>
-        this.toastStore.show({ tone: "error", title: "Screen capture", message }),
     });
   }
 
   @child
   get drawControlStore(): DrawControlStore {
     return createStore(DrawControlStore, {
-      sessions: () => this.sessionRegistry.sessions,
-      findSession: (sessionId) => this.sessionRegistry.findSession(sessionId),
-      isResolved: (sessionId) => this.sessionCatalogStore.find(sessionId)?.resolved === true,
       activeSessionId: () => this.projectWorkbenchStore.activeSessionId,
       openActiveDraw: () => this.projectWorkbenchStore.presentationStore.openDraw(),
     });
@@ -115,6 +114,22 @@ export class RootStore extends Store<{
 
   [ClientContext.provide]() {
     return this.client;
+  }
+
+  [SessionMetadataContext.provide]() {
+    return this.sessionMetadataStore;
+  }
+
+  [SessionRegistryContext.provide]() {
+    return this.sessionRegistry;
+  }
+
+  [ToastContext.provide]() {
+    return this.toastStore;
+  }
+
+  [ProjectCatalogContext.provide]() {
+    return this.projectCatalogStore;
   }
 
   [TerminalTopInsetContext.provide]() {
@@ -181,7 +196,6 @@ export class RootStore extends Store<{
   @child
   get newSessionStore(): NewSessionStore {
     return createStore(NewSessionStore, {
-      projects: this.projectCatalogStore,
       createCakeChat: () => {
         void this.startCakeChat();
       },
@@ -217,15 +231,8 @@ export class RootStore extends Store<{
     };
   }
 
-  private projectSessionWorkingDirectory(sessionId: string) {
-    return (
-      this.sessionCatalogStore.find(sessionId)?.workingDirectory ??
-      this.sessionRegistry.findSession(sessionId)?.workspacePath
-    );
-  }
-
   private requireProjectSessionWorkingDirectory(sessionId: string) {
-    const workingDirectory = this.projectSessionWorkingDirectory(sessionId);
+    const workingDirectory = this.sessionMetadataStore.workingDirectory(sessionId);
     if (!workingDirectory) throw new Error("Cake could not find that session");
     return workingDirectory;
   }
@@ -263,7 +270,7 @@ export class RootStore extends Store<{
   }
 
   private selectProjectSessionForShell(sessionId: string) {
-    if (this.sessionCatalogStore.find(sessionId)?.resolved)
+    if (this.sessionMetadataStore.isResolved(sessionId))
       this.appShellStore.previewResolvedProjectSession(sessionId);
     else this.appShellStore.selectProjectSession(sessionId);
   }
@@ -284,7 +291,7 @@ export class RootStore extends Store<{
 
   /** Opens the project or Cake Chat session addressed by a Markdown session link. */
   async openSessionLink(sessionId: string) {
-    if (this.sessionCatalogStore.find(sessionId) || this.sessionRegistry.findSession(sessionId)) {
+    if (this.sessionMetadataStore.exists(sessionId)) {
       await this.openSession(sessionId);
       return;
     }
@@ -308,8 +315,7 @@ export class RootStore extends Store<{
 
   private projectControlSource(sessionId: string): AgentControlSource {
     const summary = this.sessionCatalogStore.find(sessionId);
-    const loaded = this.sessionRegistry.findSession(sessionId);
-    const workingDirectory = summary?.workingDirectory ?? loaded?.workspacePath;
+    const workingDirectory = this.sessionMetadataStore.workingDirectory(sessionId);
     const projectPath =
       summary?.projectPath ??
       (workingDirectory
@@ -392,7 +398,7 @@ export class RootStore extends Store<{
     const selection = this.appShellStore.selection;
     const projectSelected = selection.kind === "project-session";
     const projectResolved =
-      projectSelected && this.sessionCatalogStore.find(selection.sessionId)?.resolved === true;
+      projectSelected && this.sessionMetadataStore.isResolved(selection.sessionId);
     const chat =
       selection.kind === "cake-chat"
         ? selection.sessionId
@@ -627,9 +633,7 @@ export class RootStore extends Store<{
   @child
   get projectSessionPlacementStore(): ProjectSessionPlacementStore {
     return createStore(ProjectSessionPlacementStore, {
-      registry: this.sessionRegistry,
       layout: this.sessionLayoutStore,
-      requireWorkingDirectory: (sessionId) => this.requireProjectSessionWorkingDirectory(sessionId),
       dismissSecondarySurfaces: () => this.projectWorkbenchStore.dismissSecondarySurfaces(),
       selectSession: (sessionId) => this.selectProjectSessionForShell(sessionId),
       showLoadedSession: (sessionId) => this.projectWorkbenchStore.showLoadedSession(sessionId),
@@ -701,7 +705,6 @@ export class RootStore extends Store<{
       worktreeOperation: (workspacePath) => this.worktreeOperation(workspacePath),
       openCommandPane: (pane) => this.projectWorkbenchStore.commandPaneStore.open(pane),
       persistNow: () => this.props.flushWindowState(),
-      projectName: (workspacePath) => this.projectCatalogStore.nameForPath(workspacePath),
       renameSession: (sessionId, name) =>
         this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, name),
       toolCompactSession: (entryId, prompt) =>
@@ -716,7 +719,7 @@ export class RootStore extends Store<{
       activateSavedDraft: (sessionId, choice) =>
         this.projectWorkbenchStore.sessionCreationStore.activateSavedDraft(sessionId, choice),
       ensureSessionActive: (sessionId) => {
-        if (!this.sessionCatalogStore.find(sessionId)?.resolved) return true;
+        if (!this.sessionMetadataStore.isResolved(sessionId)) return true;
         return this.projectWorkbenchStore.sessionManagementStore.resolveSession(sessionId, false);
       },
       configureDraftActivation: (sessionId, choice) =>
@@ -725,21 +728,6 @@ export class RootStore extends Store<{
         this.projectWorkbenchStore.sessionCreationStore.choice(sessionId),
       draftActivationCandidates: (sessionId) =>
         this.projectWorkbenchStore.sessionCreationStore.candidates(sessionId),
-      onWorktreeLanded: (_record, result) => {
-        this.toastStore.show(
-          result.resolved
-            ? {
-                tone: "info",
-                title: "Session merged and resolved",
-                message: "This session was merged into the project and resolved.",
-              }
-            : {
-                tone: "info",
-                title: "Worktree merged",
-                message: "Your work was merged back into the project.",
-              },
-        );
-      },
       onWorktreeDiscarded: () => undefined,
       retirement: this.workingDirectoryRetirementStore,
       onResolveWorktree: (workspacePath, options) =>
@@ -752,8 +740,8 @@ export class RootStore extends Store<{
     const selection = this.appShellStore.selection;
     if (selection.kind !== "project-session") return undefined;
     const summary = this.sessionCatalogStore.find(selection.sessionId);
-    if (summary?.resolved) return undefined;
-    const workingDirectory = this.projectSessionWorkingDirectory(selection.sessionId);
+    if (this.sessionMetadataStore.isResolved(selection.sessionId)) return undefined;
+    const workingDirectory = this.sessionMetadataStore.workingDirectory(selection.sessionId);
     if (!workingDirectory) return undefined;
     const projectName =
       summary?.projectName || this.projectCatalogStore.nameForPath(workingDirectory);
@@ -795,15 +783,7 @@ export class RootStore extends Store<{
 
   @child
   get notificationStore(): NotificationStore {
-    return createStore(NotificationStore, {
-      onToast: (toast) => this.toastStore.show(toast),
-      onError: (error) =>
-        this.toastStore.show({
-          tone: "error",
-          title: "Notification failed",
-          message: error instanceof Error ? error.message : String(error),
-        }),
-    });
+    return createStore(NotificationStore);
   }
 
   @child
@@ -825,9 +805,7 @@ export class RootStore extends Store<{
 
   @child
   get projectSettingsStore(): ProjectSettingsStore {
-    return createStore(ProjectSettingsStore, {
-      projects: this.projectCatalogStore,
-    });
+    return createStore(ProjectSettingsStore);
   }
 
   /** Project Session targets currently eligible for Model observation. */
@@ -856,9 +834,7 @@ export class RootStore extends Store<{
 
   @child
   get sessionCoordinationStore(): SessionCoordinationStore {
-    return createStore(SessionCoordinationStore, {
-      sessionById: (sessionId) => this.sessionRegistry.findSession(sessionId)?.model,
-    });
+    return createStore(SessionCoordinationStore);
   }
 
   @child
@@ -875,10 +851,7 @@ export class RootStore extends Store<{
   @child
   get sidebarStore(): SidebarStore {
     return createStore(SidebarStore, {
-      projects: this.projectCatalogStore,
       catalog: this.sessionCatalogStore,
-      sessions: this.sessionRegistry,
-      sessionMetadata: this.sessionMetadataStore,
       worktreeOperations: this.props.projection.worktreeOperations,
       cakeChat: () => this.cakeChatCollectionStore,
       selectedConversation: () => {
@@ -1103,7 +1076,6 @@ export class RootStore extends Store<{
   @child
   get appShellStore(): AppShellStore {
     return createStore(AppShellStore, {
-      projectSessionResolved: (sessionId) => this.sessionCatalogModel.find(sessionId)?.resolved,
       cakeChatSessionResolved: (sessionId) => this.cakeChatCatalogModel.find(sessionId)?.resolved,
       onProjectSessionDeparted: (sessionId) =>
         this.sessionRegistry.findSession(sessionId)?.depart(),
@@ -1129,10 +1101,8 @@ export class RootStore extends Store<{
         sessionLayoutStore: this.sessionLayoutStore,
         sessionRegistry: this.sessionRegistry,
         settingsStore: this.settingsStore,
-        sessionActivity: (sessionId) => this.sessionMetadataStore.sessionActivity(sessionId),
+        sessionMetadataStore: this.sessionMetadataStore,
         toastStore: this.toastStore,
-        projectSessionWorkingDirectory: (sessionId) =>
-          this.projectSessionWorkingDirectory(sessionId),
         requireProjectSessionWorkingDirectory: (sessionId) =>
           this.requireProjectSessionWorkingDirectory(sessionId),
         prepareProjectSessionChat: (sessionId) => this.prepareProjectSessionChat(sessionId),
@@ -1152,9 +1122,7 @@ export class RootStore extends Store<{
         ),
       projectContext: (sessionId) => {
         const catalogSession = this.sessionCatalogStore.find(sessionId);
-        const loadedSession = this.sessionRegistry.findSession(sessionId);
-        const sourceWorkingDirectory =
-          catalogSession?.workingDirectory ?? loadedSession?.workspacePath;
+        const sourceWorkingDirectory = this.sessionMetadataStore.workingDirectory(sessionId);
         return {
           source: this.projectControlSource(sessionId),
           projectPath:

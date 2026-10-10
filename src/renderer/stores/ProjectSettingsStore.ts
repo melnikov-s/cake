@@ -10,12 +10,10 @@ import {
 } from "../../domain/application/application-data";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
-import type { ProjectCatalogStore } from "./ProjectCatalogStore";
+import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 
 /** Owns the project-settings dialog draft and its serialized save workflow. */
-export class ProjectSettingsStore extends Store<{
-  projects: ProjectCatalogStore;
-}> {
+export class ProjectSettingsStore extends Store {
   projectPath: string | undefined;
   worktreeCreateCommand = "";
   worktreeSetupCommands = "";
@@ -32,8 +30,12 @@ export class ProjectSettingsStore extends Store<{
     return ClientContext.consume(this)!;
   }
 
+  private get projects() {
+    return ProjectCatalogContext.consume(this)!;
+  }
+
   get projectName() {
-    return this.projectPath ? this.props.projects.nameForPath(this.projectPath) : "Project";
+    return this.projectPath ? this.projects.nameForPath(this.projectPath) : "Project";
   }
 
   get canSave() {
@@ -43,9 +45,7 @@ export class ProjectSettingsStore extends Store<{
   }
 
   get labels() {
-    return this.projectPath
-      ? (this.props.projects.find(this.projectPath)?.workflow.labels ?? [])
-      : [];
+    return this.projectPath ? (this.projects.find(this.projectPath)?.workflow.labels ?? []) : [];
   }
 
   labelPending(labelId: string) {
@@ -54,7 +54,7 @@ export class ProjectSettingsStore extends Store<{
 
   open(projectPath: string) {
     if (this.saving) return;
-    const settings = this.props.projects.find(projectPath)?.settings ?? defaultProjectSettings();
+    const settings = this.projects.find(projectPath)?.settings ?? defaultProjectSettings();
     this.projectPath = projectPath;
     this.worktreeCreateCommand = settings.worktreeCreateCommand;
     this.worktreeSetupCommands = settings.worktreeSetupCommands;

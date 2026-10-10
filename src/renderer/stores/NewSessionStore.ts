@@ -1,16 +1,19 @@
 import { Store, snapshot } from "r-state-tree";
-import type { ProjectCatalogStore } from "./ProjectCatalogStore";
+import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 
 /** Owns the window's session destination picker. Only the last Project choice
  * is persisted; open/filter state is ephemeral. Creation remains with the existing workflows. */
 export class NewSessionStore extends Store<{
-  projects: ProjectCatalogStore;
   createCakeChat(): void;
   createProjectSession(path: string): void;
 }> {
   open = false;
   query = "";
   @snapshot lastProjectPath: string | undefined;
+
+  private get projects() {
+    return ProjectCatalogContext.consume(this)!;
+  }
 
   get initialChoiceId() {
     // Keep the preference while the Project catalog is still loading. The dialog
@@ -26,9 +29,9 @@ export class NewSessionStore extends Store<{
     const query = this.query.trim().toLocaleLowerCase();
     return [
       { id: "cake-chat", label: "Cake Chat", description: "Chat with Cake" },
-      ...this.props.projects.orderedProjectPaths.map((path) => ({
+      ...this.projects.orderedProjectPaths.map((path) => ({
         id: path,
-        label: this.props.projects.nameForPath(path),
+        label: this.projects.nameForPath(path),
         description: path,
       })),
     ].filter((choice) =>

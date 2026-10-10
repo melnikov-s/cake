@@ -5,11 +5,10 @@ import type {
   DrawControlResponse,
 } from "../../domain/draw/draw-control";
 import type { ProjectSessionStore } from "./ProjectSessionStore";
+import { SessionMetadataContext } from "./context/SessionMetadataContext";
+import { SessionRegistryContext } from "./context/SessionRegistryContext";
 
 export interface DrawControlStoreProps {
-  sessions(): readonly ProjectSessionStore[];
-  findSession(sessionId: string): ProjectSessionStore | undefined;
-  isResolved(sessionId: string): boolean;
   activeSessionId(): string | undefined;
   openActiveDraw(): Promise<void>;
 }
@@ -18,10 +17,18 @@ export interface DrawControlStoreProps {
 export class DrawControlStore extends Store<DrawControlStoreProps> {
   private readonly controls = new Map<string, DrawControl>();
 
+  private get registry() {
+    return SessionRegistryContext.consume(this)!;
+  }
+
+  private get metadata() {
+    return SessionMetadataContext.consume(this)!;
+  }
+
   constructor(props: DrawControlStore["props"]) {
     super(props);
     this.effect(() => {
-      const unregister = this.props.sessions().map((session) =>
+      const unregister = this.registry.sessions.map((session) =>
         this.register({
           sessionId: session.sessionId,
           invoke: (invocation, signal) => this.invokeSession(session.sessionId, invocation, signal),
@@ -74,14 +81,14 @@ export class DrawControlStore extends Store<DrawControlStoreProps> {
       message: "The Draw request was cancelled.",
     });
     if (signal?.aborted) return cancelled();
-    const session = this.props.findSession(sessionId);
+    const session = this.registry.findSession(sessionId);
     if (!session)
       return {
         ok: false,
         code: "SESSION_NOT_VISIBLE",
         message: "This Project Session is not loaded in the invoking Cake window.",
       };
-    if (this.props.isResolved(sessionId))
+    if (this.metadata.isResolved(sessionId))
       return {
         ok: false,
         code: "SESSION_RESOLVED",

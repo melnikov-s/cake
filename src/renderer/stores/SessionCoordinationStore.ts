@@ -5,15 +5,16 @@ import {
   type CoordinationThread,
   type CrossSessionDeliveryProjection,
 } from "../../domain/conversations/cross-session-coordination";
-import type { Conversation } from "../models/Conversation";
+import { SessionRegistryContext } from "./context/SessionRegistryContext";
 
 /**
  * Owns window-scoped, non-authoritative coordination bindings between Project Sessions.
  * Pi remains the authority for every delivered transcript message.
  */
-export class SessionCoordinationStore extends Store<{
-  sessionById(sessionId: string): Conversation | undefined;
-}> {
+export class SessionCoordinationStore extends Store {
+  private get registry() {
+    return SessionRegistryContext.consume(this)!;
+  }
   private readonly threads = observable(new Map<string, CoordinationThread>());
   private readonly latestThreadBySession = observable(new Map<string, string>());
 
@@ -60,7 +61,7 @@ export class SessionCoordinationStore extends Store<{
   }
 
   private deliveryProjection(message: CoordinationMessage): CrossSessionDeliveryProjection {
-    const session = this.props.sessionById(message.targetSessionId);
+    const session = this.registry.findSession(message.targetSessionId)?.model;
     if (!session)
       return {
         messageState: "missing",

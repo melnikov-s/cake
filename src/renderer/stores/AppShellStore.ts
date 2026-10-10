@@ -1,4 +1,5 @@
 import { Store, observable, snapshot } from "r-state-tree";
+import { SessionMetadataContext } from "./context/SessionMetadataContext";
 
 export type AppSurface = "workbench" | "cake-chat" | "artifact-library" | "settings";
 
@@ -20,7 +21,6 @@ export type SessionHistoryEntry =
 
 /** Owns the one active application selection and its session navigation history in this window. */
 export interface AppShellStoreProps {
-  projectSessionResolved(sessionId: string): boolean | undefined;
   cakeChatSessionResolved(sessionId: string): boolean | undefined;
   onProjectSessionDeparted(sessionId: string): void;
 }
@@ -35,6 +35,10 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   @snapshot private sessionHistoryCursor = -1;
   private pendingTraversal: { entry: SessionHistoryEntry; cursor: number } | undefined;
 
+  private get metadata() {
+    return SessionMetadataContext.consume(this)!;
+  }
+
   constructor(props: AppShellStore["props"]) {
     super(props);
     this.reaction(
@@ -43,7 +47,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
         if (!active) return undefined;
         const resolved =
           active.kind === "project-session"
-            ? this.props.projectSessionResolved(active.sessionId)
+            ? this.metadata.isResolved(active.sessionId)
             : this.props.cakeChatSessionResolved(active.sessionId);
         return { ...active, resolved };
       },
@@ -105,7 +109,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
       const entry = this.sessionHistory[cursor]!;
       const resolved =
         entry.kind === "project-session"
-          ? this.props.projectSessionResolved(entry.sessionId)
+          ? this.metadata.isResolved(entry.sessionId)
           : this.props.cakeChatSessionResolved(entry.sessionId);
       if (resolved !== true) return cursor;
     }

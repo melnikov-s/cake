@@ -14,6 +14,21 @@ export class SessionMetadataStore extends Store<{
   worktreeOperations?: WorktreeOperationCatalog;
   globalLabels(): ReadonlyArray<SessionLabel>;
 }> {
+  workingDirectory(sessionId: string) {
+    return (
+      this.props.catalog.find(sessionId)?.workingDirectory ??
+      this.props.sessions.findSession(sessionId)?.workspacePath
+    );
+  }
+
+  exists(sessionId: string) {
+    return !!(this.props.catalog.find(sessionId) || this.props.sessions.findSession(sessionId));
+  }
+
+  isResolved(sessionId: string) {
+    return this.props.catalog.find(sessionId)?.resolved === true;
+  }
+
   projectLabels(projectPath: string) {
     const local = this.props.projects.find(projectPath)?.workflow.labels ?? [];
     return [...this.props.globalLabels(), ...local];

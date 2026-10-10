@@ -1,89 +1,32 @@
-import {
-  applySnapshot,
-  createStore,
-  mount,
-  observable,
-  toSnapshot,
-  type StoreSnapshot,
-} from "r-state-tree";
+import { applySnapshot, createStore, mount, toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { piBuiltinSlashCommands } from "../../../../src/ipc/session-contract";
-import { SessionCatalog } from "../../../../src/renderer/models/SessionCatalog";
 import { SessionSummary } from "../../../../src/renderer/models/SessionSummary";
-import { RootProjection } from "../../../../src/renderer/models/RootProjection";
-import { WorktreeCatalog } from "../../../../src/renderer/models/WorktreeCatalog";
-import { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
-import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
-import { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
 import { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
 import { applyDiscussionCatalogUpdate } from "../../../../src/renderer/reducers/DiscussionReducer";
 import { sessionAssistantThreadPath } from "../../../../src/domain/discussion-sessions/discussion-session-data";
 import { fakeSavedDrafts, type FakeSavedDrafts } from "../fakes/saved-drafts";
+import { createRendererStoreFixture } from "../renderer-store-fixture";
 
 function registryFixture(
   snapshot?: StoreSnapshot,
-  isActive: (sessionId: string) => boolean = () => false,
+  activeSessionId?: string,
   savedDrafts: FakeSavedDrafts = fakeSavedDrafts(),
 ) {
-  const catalogModel = SessionCatalog.create({ sessions: [] });
-  const registryRef: { current?: SessionRegistryStore } = {};
-  const catalog = mount(
-    createStore(SessionCatalogStore, {
-      model: catalogModel,
-      worktrees: WorktreeCatalog.create(),
-      pendingSessions: () => registryRef.current?.pendingSessions.summaries ?? [],
-    }),
-  );
-  const operations = mount(createStore(SessionOperationCoordinatorStore));
-  const models = RootProjection.create();
-  const registry = mount(
-    createStore(SessionRegistryStore, {
-      catalog,
-      savedDrafts: savedDrafts.client,
-      sessionModel: (sessionId, workingDirectory) =>
-        models.projectConversation(sessionId, workingDirectory),
-      discussionCatalog: (sessionId) => models.discussionCatalog(sessionId),
-      subagentCatalog: (sessionId) => models.subagentCatalog(sessionId),
-      scheduledMessageCatalog: (sessionId) => models.scheduledMessageCatalog(sessionId),
-      artifactModel: models.artifacts,
-      operations,
-      reviews: () => {
-        throw new Error("ReviewsStore is not used by this test");
-      },
-      canSubmit: () => true,
-      isActive,
-      worktreeOperation: () => undefined,
-      openCommandPane: async () => undefined,
-      persistNow: async () => undefined,
-      projectName: (workingDirectory) => workingDirectory,
-      renameSession: async () => undefined,
-      toolCompactSession: async () => false,
-      onWorktreeLanded: () => undefined,
-      onWorktreeDiscarded: () => undefined,
-      retirement: {
-        prepare: async () => true,
-      },
-      onResolveWorktree: () => undefined,
-      openEditorLocation: async () => ({ outcome: { view: "file" }, locations: [] }),
-      refreshEditorHighlights: async () => undefined,
-    }),
-    snapshot ? { snapshot } : undefined,
-  );
-  registryRef.current = registry;
+  const fixture = createRendererStoreFixture({
+    client: { savedDrafts: savedDrafts.client },
+    snapshot: snapshot ? { state: {}, children: { sessionRegistry: snapshot } } : undefined,
+  });
+  if (activeSessionId) fixture.root.appShellStore.selectProjectSession(activeSessionId);
   return {
-    catalog,
-    catalogModel,
-    models,
-    operations,
-    registry,
+    root: fixture.root,
+    catalog: fixture.root.sessionCatalogStore,
+    catalogModel: fixture.models.sessionCatalog,
+    models: fixture.models,
+    operations: fixture.root.sessionOperationCoordinator,
+    registry: fixture.root.sessionRegistry,
     savedDrafts,
-    dispose() {
-      registry[Symbol.dispose]();
-      operations[Symbol.dispose]();
-      catalog[Symbol.dispose]();
-      catalogModel[Symbol.dispose]();
-      models[Symbol.dispose]();
-    },
+    dispose: () => fixture[Symbol.dispose](),
   };
 }
 
@@ -129,13 +72,12 @@ describe("SessionRegistryStore materialization", () => {
   });
 
   it("does not reconcile the loaded Store collection when active selection changes", () => {
-    const selection = observable({ sessionId: "session-1" });
-    const fixture = registryFixture(undefined, (sessionId) => sessionId === selection.sessionId);
+    const fixture = registryFixture(undefined, "session-1");
     for (let index = 0; index < 20; index += 1)
       fixture.registry.load(`session-${index}`, "/project");
     const sessionsGetter = vi.spyOn(fixture.registry, "sessions", "get");
 
-    selection.sessionId = "session-2";
+    fixture.root.appShellStore.selectProjectSession("session-2");
 
     expect(sessionsGetter).not.toHaveBeenCalled();
     expect(
@@ -210,7 +152,7 @@ describe("SessionRegistryStore materialization", () => {
   });
 
   it("provides Discussion Stores for staged parents before materialization", () => {
-    const fixture = registryFixture(undefined, (sessionId) => sessionId === "staged");
+    const fixture = registryFixture(undefined, "staged");
     const staged = fixture.registry.pendingSessions.prepareStaged("/project", "staged");
     const reviews = mount(
       createStore(ReviewsStore, {
@@ -565,7 +507,7 @@ describe("SessionRegistryStore materialization", () => {
           },
         },
       },
-      (sessionId) => sessionId === "session-1",
+      "session-1",
     );
 
     expect(

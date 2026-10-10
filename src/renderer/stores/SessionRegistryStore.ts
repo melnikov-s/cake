@@ -19,6 +19,8 @@ import type { WorktreeLandingOperation } from "../../domain/worktrees/worktree-l
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 import type { EditorLocation } from "../../ipc/editor-location";
 import type { EditorSelectionReveal } from "../../ipc/editor-selection";
+import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
+import { ToastContext } from "./context/ToastContext";
 
 export interface SessionRegistryStoreProps {
   catalog?: SessionCatalogStore;
@@ -36,7 +38,6 @@ export interface SessionRegistryStoreProps {
   worktreeOperation(workspacePath: string): WorktreeLandingOperation | undefined;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   persistNow(): Promise<void>;
-  projectName(workingDirectory: string): string;
   renameSession(sessionId: string, name: string): Promise<void>;
   toolCompactSession(entryId: string, prompt?: string): Promise<boolean>;
   modelPresets?(): readonly ModelPreset[];
@@ -49,7 +50,6 @@ export interface SessionRegistryStoreProps {
   configureDraftActivation?(sessionId: string, choice: WorktreeDraftChoice): void;
   sessionCreationChoice?(sessionId: string): WorktreeDraftChoice;
   draftActivationCandidates?(sessionId: string): ExistingWorktreeCandidate[];
-  onWorktreeLanded: WorktreeStoreProps["onLanded"];
   onWorktreeDiscarded: WorktreeStoreProps["onDiscarded"];
   retirement: WorktreeStoreProps["retirement"];
   onResolveWorktree: WorktreeStoreProps["onResolveWorkspace"];
@@ -67,6 +67,14 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   @snapshot readonly targets: SessionTarget[] = observable([]);
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
 
+  private get projects() {
+    return ProjectCatalogContext.consume(this)!;
+  }
+
+  private get toast() {
+    return ToastContext.consume(this)!;
+  }
+
   @child
   get pendingSessions(): ProjectPendingSessionsStore {
     return createStore(ProjectPendingSessionsStore, {
@@ -81,7 +89,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         this.materializeIdentity(sessionId, workingDirectory),
       removeSession: (sessionId) => this.removeSession(sessionId),
       persistNow: this.props.persistNow,
-      projectName: this.props.projectName,
+      projectName: (workingDirectory) => this.projects.nameForPath(workingDirectory),
     });
   }
 
@@ -112,7 +120,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         isActive: () => this.props.isActive(target.sessionId),
         worktreeOperation: () => this.props.worktreeOperation(target.workspacePath),
         openCommandPane: this.props.openCommandPane,
-        projectName: () => this.props.projectName(target.workspacePath),
+        projectName: () => this.projects.nameForPath(target.workspacePath),
         familyId: () =>
           this.props.catalog?.find(target.sessionId)?.familyId ??
           this.pendingSessions.familyId(target.sessionId),
@@ -133,7 +141,21 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
           this.props.sessionCreationChoice?.(target.sessionId) ?? { kind: "current" },
         draftActivationCandidates: () =>
           this.props.draftActivationCandidates?.(target.sessionId) ?? [],
-        onWorktreeLanded: this.props.onWorktreeLanded,
+        onWorktreeLanded: (_record, result) => {
+          this.toast.show(
+            result.resolved
+              ? {
+                  tone: "info",
+                  title: "Session merged and resolved",
+                  message: "This session was merged into the project and resolved.",
+                }
+              : {
+                  tone: "info",
+                  title: "Worktree merged",
+                  message: "Your work was merged back into the project.",
+                },
+          );
+        },
         onWorktreeDiscarded: this.props.onWorktreeDiscarded,
         retirement: this.props.retirement,
         onResolveWorktree: this.props.onResolveWorktree,

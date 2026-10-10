@@ -1,25 +1,34 @@
-import { Store, observable, snapshot } from "r-state-tree";
+import { Store, observable, snapshot, untracked } from "r-state-tree";
 import type { CakeChatCatalogQuery } from "../../domain/cake-chats/cake-chat-data";
 import type { ProjectSessionCatalogQuery } from "../../domain/project-sessions/project-session-data";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import { isActiveSessionActivity } from "../lib/session-activity";
 import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
-import type { ProjectCatalogStore } from "./ProjectCatalogStore";
+import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
-import type { SessionMetadataStore } from "./SessionMetadataStore";
-import type { SessionRegistryStore } from "./SessionRegistryStore";
+import { SessionMetadataContext } from "./context/SessionMetadataContext";
+import { SessionRegistryContext } from "./context/SessionRegistryContext";
 
 /** Owns sidebar session ordering, family presentation, pagination, and catalog demand. */
 export class SidebarSessionListStore extends Store<{
-  projects: ProjectCatalogStore;
   catalog: SessionCatalogStore;
-  sessions: SessionRegistryStore;
-  sessionMetadata: SessionMetadataStore;
   worktreeOperations?: WorktreeOperationCatalog;
   cakeChat(): CakeChatCollectionStore;
   selectedConversation?(): { kind: "project-session" | "cake-chat"; sessionId: string } | undefined;
 }> {
+  private get projects() {
+    return ProjectCatalogContext.consume(this)!;
+  }
+
+  private get sessions() {
+    return SessionRegistryContext.consume(this)!;
+  }
+
+  private get metadata() {
+    return SessionMetadataContext.consume(this)!;
+  }
+
   @snapshot private readonly projectSessionSorts: Record<string, "date" | "label"> = observable({});
   @snapshot private readonly expandedActiveGroups: Record<string, boolean> = observable({
     "cake-chat": true,
@@ -55,8 +64,13 @@ export class SidebarSessionListStore extends Store<{
       () => this.activeLaneMemberships(),
       (memberships) => this.syncActiveLaneOrders(memberships),
     );
-    this.pinSelectedSession();
-    this.syncActiveLaneOrders(this.activeLaneMemberships());
+    // Context is available only once this Store is attached to its ownership tree.
+    this.effect(() => {
+      untracked(() => {
+        this.pinSelectedSession();
+        this.syncActiveLaneOrders(this.activeLaneMemberships());
+      });
+    });
   }
 
   projectSessionSort(path: string): "date" | "label" {
@@ -126,14 +140,12 @@ export class SidebarSessionListStore extends Store<{
         sessionId: session.sessionId,
         active: this.props.cakeChat().registry.find(session.sessionId)?.streaming === true,
       })),
-      ...this.props.projects.orderedProjectPaths.flatMap((path) => {
+      ...this.projects.orderedProjectPaths.flatMap((path) => {
         const { byId, roots } = this.orderedProjectSessionRoots(path, false);
         return this.flattenProjectSessionRoots(byId, roots, true).map((session) => ({
           kind: "project-session" as const,
           sessionId: session.sessionId,
-          active: isActiveSessionActivity(
-            this.props.sessionMetadata.sessionActivity(session.sessionId),
-          ),
+          active: isActiveSessionActivity(this.metadata.sessionActivity(session.sessionId)),
         }));
       }),
     ];
@@ -196,7 +208,7 @@ export class SidebarSessionListStore extends Store<{
     sessionId: string;
     familyChildSessionIds?: readonly string[];
   }) {
-    const own = this.props.sessionMetadata.sessionActivity(session.sessionId);
+    const own = this.metadata.sessionActivity(session.sessionId);
     if (!session.familyChildSessionIds || !this.isFamilyCollapsed(session.sessionId)) return own;
     const descendants = (sessionIds: readonly string[]): string[] =>
       sessionIds.flatMap((id) => {
@@ -205,9 +217,7 @@ export class SidebarSessionListStore extends Store<{
       });
     const activities = [
       own,
-      ...descendants(session.familyChildSessionIds).map((id) =>
-        this.props.sessionMetadata.sessionActivity(id),
-      ),
+      ...descendants(session.familyChildSessionIds).map((id) => this.metadata.sessionActivity(id)),
     ];
     if (activities.includes("waiting")) return "waiting";
     if (activities.includes("running")) return "running";
@@ -244,7 +254,7 @@ export class SidebarSessionListStore extends Store<{
   }
 
   get projectSessionCatalogQueries(): ReadonlyArray<ProjectSessionCatalogQuery> {
-    return this.props.projects.orderedProjectPaths.flatMap((projectPath) => [
+    return this.projects.orderedProjectPaths.flatMap((projectPath) => [
       { projectPath, resolved: false },
       { projectPath, resolved: true },
     ]);
@@ -329,16 +339,12 @@ export class SidebarSessionListStore extends Store<{
     roots.sort((left, right) => {
       if (this.projectSessionSort(projectPath) === "date") return compareByDate(left, right);
       const labelOrder = new Map(
-        this.props.sessionMetadata
-          .projectLabels(projectPath)
-          .map((label, index) => [label.id, index]),
+        this.metadata.projectLabels(projectPath).map((label, index) => [label.id, index]),
       );
       const leftOrder =
-        labelOrder.get(this.props.sessionMetadata.sessionLabelIds(left.sessionId)[0] ?? "") ??
-        Infinity;
+        labelOrder.get(this.metadata.sessionLabelIds(left.sessionId)[0] ?? "") ?? Infinity;
       const rightOrder =
-        labelOrder.get(this.props.sessionMetadata.sessionLabelIds(right.sessionId)[0] ?? "") ??
-        Infinity;
+        labelOrder.get(this.metadata.sessionLabelIds(right.sessionId)[0] ?? "") ?? Infinity;
       return leftOrder - rightOrder || compareByDate(left, right);
     });
     const frozenOrder = preserveActiveOrder
@@ -356,7 +362,7 @@ export class SidebarSessionListStore extends Store<{
 
   private activeLaneMemberships() {
     const activeSessionIds = new Set<string>();
-    for (const session of this.props.sessions.sessions ?? []) {
+    for (const session of this.sessions.sessions) {
       if (isActiveSessionActivity(session.activity)) activeSessionIds.add(session.sessionId);
     }
     for (const operation of this.props.worktreeOperations?.operations ?? []) {

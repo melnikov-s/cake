@@ -1,5 +1,6 @@
 import { Store } from "r-state-tree";
 import { ClientContext } from "./context/ClientContext";
+import { ToastContext } from "./context/ToastContext";
 
 interface AgentNotificationInput {
   readonly title: string;
@@ -16,21 +17,14 @@ interface PendingNotification {
   timer: ReturnType<typeof setTimeout>;
 }
 
-interface NotificationToastInput {
-  readonly title: string;
-  readonly message: string;
-  readonly tone: "info" | "warning" | "error";
-  readonly coalesceKey: string;
-}
-
 const NOTIFICATION_DEBOUNCE_MS = 3_000;
 const UNATTRIBUTED_KEY = "cake-agent";
 
 /** Owns batching and delivery policy for agent-requested notifications. */
-export class NotificationStore extends Store<{
-  onToast(input: NotificationToastInput): void;
-  onError(error: unknown): void;
-}> {
+export class NotificationStore extends Store {
+  private get toast() {
+    return ToastContext.consume(this)!;
+  }
   private readonly pending = new Map<string, PendingNotification>();
 
   constructor(props: NotificationStore["props"]) {
@@ -60,7 +54,7 @@ export class NotificationStore extends Store<{
     const title = pending.input.source
       ? `${pending.input.title} · ${pending.input.source.title}`
       : pending.input.title;
-    this.props.onToast({
+    this.toast.show({
       title,
       message: pending.input.body,
       tone: pending.input.level === "success" ? "info" : pending.input.level,
@@ -78,7 +72,12 @@ export class NotificationStore extends Store<{
         { signal: this.signal },
       )
       .catch((error: unknown) => {
-        if (!this.signal.aborted) this.props.onError(error);
+        if (!this.signal.aborted)
+          this.toast.show({
+            tone: "error",
+            title: "Notification failed",
+            message: error instanceof Error ? error.message : String(error),
+          });
       });
   }
 }

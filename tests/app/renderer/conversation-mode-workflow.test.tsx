@@ -1488,7 +1488,7 @@ describe("Project Session conversation mode", () => {
       await f.frames(0.1, 8);
       await f.frames(0, 33);
       if (action === "selection") act(() => f.root.appShellStore.showSettings());
-      else if (action === "disposal") f.root[Symbol.dispose]();
+      else if (action === "disposal") f[Symbol.dispose]();
       else
         await act(async () => {
           await f.root.conversationModeStore.exit();

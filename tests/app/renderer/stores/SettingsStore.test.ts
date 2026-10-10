@@ -1,42 +1,10 @@
-import { createDictationStore } from "../../../helpers/dictation";
-import { createStore, mount } from "r-state-tree";
 import { describe, expect, it } from "vitest";
-import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
-import { SettingsStore } from "../../../../src/renderer/stores/SettingsStore";
-import { ScreenCaptureAttachmentStore } from "../../../../src/renderer/stores/ScreenCaptureAttachmentStore";
-import { SpeechSettingsStore } from "../../../../src/renderer/stores/SpeechSettingsStore";
-import { SpeechInputSettingsStore } from "../../../../src/renderer/stores/SpeechInputSettingsStore";
-import { createTestClient } from "../test-client";
-
-function createSettingsStore() {
-  const operations = mount(createStore(SessionOperationCoordinatorStore));
-  return mount(
-    createStore(SettingsStore, {
-      dictation: createDictationStore(),
-      speechInput: mount(createStore(SpeechInputSettingsStore)),
-      speech: mount(
-        createStore(SpeechSettingsStore, {
-          client: createTestClient().speechOutput,
-          copyText: async () => {},
-        }),
-      ),
-      operations,
-      screenCapture: mount(
-        createStore(ScreenCaptureAttachmentStore, {
-          client: createTestClient().electron,
-          currentTarget: () => undefined,
-          findDraft: () => undefined,
-          reportError: () => {},
-        }),
-      ),
-      activeSession: () => undefined,
-    }),
-  );
-}
+import { createRendererStoreFixture } from "../renderer-store-fixture";
 
 describe("SettingsStore agent controls", () => {
   it("reads effective values and patches only supplied window settings", () => {
-    const settings = createSettingsStore();
+    using fixture = createRendererStoreFixture();
+    const settings = fixture.root.settingsStore;
 
     expect(settings.settingsSection("appearance")).toMatchObject({
       section: "appearance",
@@ -74,7 +42,8 @@ describe("SettingsStore agent controls", () => {
   });
 
   it("assigns, disables, and restores effective hotkey bindings", () => {
-    const settings = createSettingsStore();
+    using fixture = createRendererStoreFixture();
+    const settings = fixture.root.settingsStore;
 
     settings.updateSettings({
       section: "hotkeys",
