@@ -22,6 +22,7 @@ export type SessionHistoryEntry =
 /** Owns the one active application selection and its session navigation history in this window. */
 export interface AppShellStoreProps {
   cakeChatSessionResolved(sessionId: string): boolean | undefined;
+  sessionInNavigationScope(entry: SessionHistoryEntry): boolean;
   onProjectSessionDeparted(sessionId: string): void;
 }
 
@@ -107,6 +108,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
       cursor += direction
     ) {
       const entry = this.sessionHistory[cursor]!;
+      if (!this.props.sessionInNavigationScope(entry)) continue;
       const resolved =
         entry.kind === "project-session"
           ? this.metadata.isResolved(entry.sessionId)

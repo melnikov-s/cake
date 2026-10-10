@@ -132,15 +132,16 @@ export class SidebarSessionListStore extends Store<{
     return this.flattenProjectSessionRoots(byId, visibleRoots);
   }
 
-  /** Canonical project-sidebar order, independent of pagination, collapse, or focus mode. */
-  adjacentActiveSession(direction: "next" | "previous") {
+  /** Canonical sidebar order within the navigation scope, independent of pagination or collapse. */
+  adjacentActiveSession(direction: "next" | "previous", projectPath?: string) {
+    const projectPaths = projectPath ? [projectPath] : this.projects.orderedProjectPaths;
     const conversations = [
-      ...this.cakeChatSessions().map((session) => ({
+      ...(projectPath ? [] : this.cakeChatSessions()).map((session) => ({
         kind: "cake-chat" as const,
         sessionId: session.sessionId,
         active: this.props.cakeChat().registry.find(session.sessionId)?.streaming === true,
       })),
-      ...this.projects.orderedProjectPaths.flatMap((path) => {
+      ...projectPaths.flatMap((path) => {
         const { byId, roots } = this.orderedProjectSessionRoots(path, false);
         return this.flattenProjectSessionRoots(byId, roots, true).map((session) => ({
           kind: "project-session" as const,

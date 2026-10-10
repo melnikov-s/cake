@@ -234,6 +234,102 @@ describe("Project navigation workflow", () => {
     );
   });
 
+  it("cycles only working sessions in the focused project, wraps, and restores global scope on exit", async () => {
+    using fixture = renderNavigation(undefined, [
+      sessions[0]!,
+      sessionSummary({ sessionId: "idle", projectPath: "/alpha", unread: true }),
+      sessionSummary({
+        sessionId: "second",
+        title: "Second alpha session",
+        projectPath: "/alpha",
+        workingDirectory: "/alpha-worktree",
+        modifiedAt: "2025-01-01T00:00:00.000Z",
+      }),
+      sessions[1]!,
+    ]);
+    await fixture.publishActivity(["alpha", "second", "beta"]);
+    await fixture.publishCakeChatActivity(true);
+    await fixture.user.click(screen.getByRole("button", { name: "Focus on alpha" }));
+    const pane = () =>
+      document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id");
+    pressActiveSessionShortcut("next");
+    await waitFor(() => expect(pane()).toBe("second"));
+    pressActiveSessionShortcut("next");
+    await waitFor(() => expect(pane()).toBe("alpha"));
+    pressActiveSessionShortcut("previous");
+    await waitFor(() => expect(pane()).toBe("second"));
+    await fixture.publishActivity(["alpha", "beta"]);
+    pressActiveSessionShortcut("next");
+    await waitFor(() => expect(pane()).toBe("alpha"));
+    pressActiveSessionShortcut("previous");
+    expect(pane()).toBe("alpha");
+    await fixture.publishActivity(["beta"]);
+    pressActiveSessionShortcut("next");
+    pressActiveSessionShortcut("previous");
+    expect(pane()).toBe("alpha");
+    await fixture.user.click(screen.getByRole("button", { name: "Exit focus mode for alpha" }));
+    pressActiveSessionShortcut("next");
+    await waitFor(() => expect(pane()).toBe("beta"));
+    pressActiveSessionShortcut("next");
+    expect(await screen.findByRole("combobox", { name: "Message Cake Chat" })).toBeDefined();
+  });
+
+  it("enters the focused project's working sessions when the selection belongs to another project", async () => {
+    using fixture = renderNavigation();
+    await fixture.publishActivity(["alpha", "beta"]);
+    await fixture.publishCakeChatActivity(true);
+    await fixture.user.click(screen.getByRole("button", { name: "Focus on beta" }));
+    pressActiveSessionShortcut("previous");
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+      ).toBe("beta"),
+    );
+    pressActiveSessionShortcut("next");
+    pressActiveSessionShortcut("previous");
+    expect(
+      document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id"),
+    ).toBe("beta");
+  });
+
+  it("filters both history directions by project without changing the selection when focus starts", async () => {
+    using fixture = renderNavigation(undefined, [
+      ...sessions,
+      sessionSummary({
+        sessionId: "second",
+        title: "Second alpha session",
+        projectPath: "/alpha",
+        workingDirectory: "/alpha-worktree",
+      }),
+    ]);
+    await fixture.publishActivity([]);
+    await fixture.publishCakeChatActivity(false);
+    await fixture.user.click(screen.getByRole("button", { name: /^beta session / }));
+    await fixture.user.click(screen.getByRole("button", { name: /^Working Cake Chat / }));
+    await fixture.user.click(screen.getByRole("button", { name: /^Second alpha session / }));
+    await fixture.user.click(screen.getByRole("button", { name: "Focus on alpha" }));
+    const pane = () =>
+      document.querySelector('[data-slot="session-pane"]')?.getAttribute("data-session-id");
+    const back = screen.getByRole("button", { name: "Go back in session history" });
+    const forward = screen.getByRole("button", { name: "Go forward in session history" });
+    expect(pane()).toBe("second");
+    await fixture.user.click(back);
+    await waitFor(() => expect(pane()).toBe("alpha"));
+    expect(back.hasAttribute("disabled")).toBe(true);
+    await fixture.user.click(forward);
+    await waitFor(() => expect(pane()).toBe("second"));
+    expect(forward.hasAttribute("disabled")).toBe(true);
+    await fixture.user.click(back);
+    await waitFor(() => expect(pane()).toBe("alpha"));
+    await fixture.user.click(screen.getByRole("button", { name: "Exit focus mode for alpha" }));
+    await fixture.user.click(screen.getByRole("button", { name: "Focus on beta" }));
+    expect(pane()).toBe("alpha");
+    expect(back.hasAttribute("disabled")).toBe(true);
+    await fixture.user.click(forward);
+    await waitFor(() => expect(pane()).toBe("beta"));
+    expect(forward.hasAttribute("disabled")).toBe(true);
+  });
+
   it("reaches a running child inside a collapsed family instead of its idle parent", async () => {
     using fixture = renderNavigation(undefined, [
       sessionSummary({ ...sessions[0]!, familyChildSessionIds: ["child"] }),

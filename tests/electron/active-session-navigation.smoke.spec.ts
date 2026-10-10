@@ -18,7 +18,7 @@ function chunk(content: string, finishReason: string | null = null) {
   })}\n\n`;
 }
 
-test("shifted history shortcuts cycle working sessions across projects while ordinary history stays intact", async () => {
+test("session shortcuts respect Project focus and restore cross-project navigation on exit", async () => {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-active-navigation-"));
   const userData = join(temporaryRoot, "user-data");
@@ -97,6 +97,7 @@ test("shifted history shortcuts cycle working sessions across projects while ord
   );
   for (const [id, project] of [
     ["alpha-worker", alpha],
+    ["alpha-idle", alpha],
     ["beta-worker", beta],
     ["idle-session", beta],
   ]) {
@@ -160,6 +161,8 @@ test("shifted history shortcuts cycle working sessions across projects while ord
       await expect(row(id).locator('[aria-label="Running"]')).toBeVisible();
     }
     await expect.poll(() => streams.length).toBe(2);
+    await row("alpha-idle").locator(".session-row").click();
+    await expect(pane).toHaveAttribute("data-session-id", "alpha-idle");
     await row("idle-session").locator(".session-row").click();
     await expect(pane).toHaveAttribute("data-session-id", "idle-session");
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
@@ -171,6 +174,27 @@ test("shifted history shortcuts cycle working sessions across projects while ord
     await page.keyboard.press(next);
     await expect(pane).toHaveAttribute("data-session-id", "alpha-worker");
     await page.keyboard.press(previous);
+    await expect(pane).toHaveAttribute("data-session-id", "beta-worker");
+
+    await page.getByRole("button", { name: "Focus on alpha" }).click();
+    await expect(pane).toHaveAttribute("data-session-id", "beta-worker");
+    for (const id of ["alpha-worker", "alpha-worker", "alpha-idle", "alpha-worker"]) {
+      await page.keyboard.press(back);
+      await expect(pane).toHaveAttribute("data-session-id", id);
+    }
+    await expect(page.getByRole("button", { name: "Go back in session history" })).toBeDisabled();
+    for (const id of ["alpha-idle", "alpha-worker", "alpha-worker"]) {
+      await page.keyboard.press(forward);
+      await expect(pane).toHaveAttribute("data-session-id", id);
+    }
+    await expect(
+      page.getByRole("button", { name: "Go forward in session history" }),
+    ).toBeDisabled();
+    await page.keyboard.press(next);
+    await page.keyboard.press(previous);
+    await expect(pane).toHaveAttribute("data-session-id", "alpha-worker");
+    await page.getByRole("button", { name: "Exit focus mode for alpha" }).click();
+    await page.keyboard.press(next);
     await expect(pane).toHaveAttribute("data-session-id", "beta-worker");
 
     streams[1]!.end(chunk("Finished.", "stop") + "data: [DONE]\n\n");

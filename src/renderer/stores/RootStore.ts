@@ -410,21 +410,38 @@ export class RootStore extends Store<{
     await this.projectWorkbenchStore.projectOpenStore.chooseProject();
   }
 
+  private sessionInNavigationScope(entry: SessionHistoryEntry) {
+    const projectPath = this.sidebarStore.focusModeProjectPath;
+    return (
+      projectPath === undefined ||
+      (entry.kind === "project-session" &&
+        this.projectControlSource(entry.sessionId).projectPath === projectPath)
+    );
+  }
+
   navigateBack() {
+    // In Project focus, use the scoped visit history rather than unfiltered pane history.
     const sessionId =
-      this.appShellStore.surface === "workbench" && this.sessionLayoutStore.goBack();
+      !this.sidebarStore.focusModeProjectPath &&
+      this.appShellStore.surface === "workbench" &&
+      this.sessionLayoutStore.goBack();
     if (sessionId) void this.openSession(sessionId);
     else void this.navigateToHistoryEntry(this.appShellStore.goBack());
   }
   navigateForward() {
     const sessionId =
-      this.appShellStore.surface === "workbench" && this.sessionLayoutStore.goForward();
+      !this.sidebarStore.focusModeProjectPath &&
+      this.appShellStore.surface === "workbench" &&
+      this.sessionLayoutStore.goForward();
     if (sessionId) void this.openSession(sessionId);
     else void this.navigateToHistoryEntry(this.appShellStore.goForward());
   }
 
   navigateActiveSession(direction: "next" | "previous") {
-    const target = this.sidebarStore.sessionListStore.adjacentActiveSession(direction);
+    const target = this.sidebarStore.sessionListStore.adjacentActiveSession(
+      direction,
+      this.sidebarStore.focusModeProjectPath,
+    );
     if (!target) return;
     if (target.kind === "cake-chat") void this.openCakeChat(target.sessionId);
     else void this.openSession(target.sessionId);
@@ -1146,6 +1163,7 @@ export class RootStore extends Store<{
   get appShellStore(): AppShellStore {
     return createStore(AppShellStore, {
       cakeChatSessionResolved: (sessionId) => this.cakeChatCatalogModel.find(sessionId)?.resolved,
+      sessionInNavigationScope: (entry) => this.sessionInNavigationScope(entry),
       onProjectSessionDeparted: (sessionId) =>
         this.sessionRegistry.findSession(sessionId)?.depart(),
     });
