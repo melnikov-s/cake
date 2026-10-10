@@ -2,6 +2,7 @@ import { Store, observable } from "r-state-tree";
 import {
   captureRect,
   type CaptureArrow,
+  type CaptureDestination,
   type CapturePoint,
   type CaptureRect,
   type ScreenCaptureSnapshot,
@@ -24,6 +25,8 @@ export class ScreenCaptureOverlayStore extends Store<{
 }> {
   snapshot: ScreenCaptureSnapshot | undefined;
   mode: "crop" | "annotate" = "crop";
+  destination: CaptureDestination | undefined;
+  newSessionProjectPath = "";
   readonly arrows: CaptureArrow[] = observable([]);
   dragStart: CapturePoint | undefined;
   dragEnd: CapturePoint | undefined;
@@ -37,9 +40,35 @@ export class ScreenCaptureOverlayStore extends Store<{
   async initialize() {
     try {
       const snapshot = await this.props.client.screenCaptureState({ signal: this.signal });
-      if (!this.signal.aborted) this.snapshot = snapshot;
+      if (!this.signal.aborted) {
+        this.snapshot = snapshot;
+        this.destination = snapshot.routing.defaultDestination;
+        const destination = this.destination;
+        this.newSessionProjectPath =
+          destination.kind === "new-session"
+            ? destination.projectPath
+            : (snapshot.routing.projects.find(
+                (project) =>
+                  destination.kind === "project-session" &&
+                  project.sessions.some((session) => session.sessionId === destination.sessionId),
+              )?.path ??
+              snapshot.routing.projects[0]?.path ??
+              "");
+      }
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
+    }
+  }
+
+  selectDestination(destination: CaptureDestination) {
+    if (this.busy || this.cancelled) return;
+    this.destination = destination;
+    if (destination.kind === "new-session") this.newSessionProjectPath = destination.projectPath;
+    else if (destination.kind === "project-session") {
+      this.newSessionProjectPath =
+        this.snapshot?.routing.projects.find((project) =>
+          project.sessions.some((session) => session.sessionId === destination.sessionId),
+        )?.path ?? this.newSessionProjectPath;
     }
   }
 
@@ -57,7 +86,7 @@ export class ScreenCaptureOverlayStore extends Store<{
   }
   get visibleArrows(): readonly CaptureArrow[] {
     return this.mode === "annotate" && this.dragStart && this.dragEnd
-      ? [...this.arrows, { start: this.dragStart, end: this.dragEnd, label: "" }]
+      ? [...this.arrows, { start: this.dragEnd, end: this.dragStart, label: "" }]
       : this.arrows.slice();
   }
   get labelPoint() {
@@ -83,7 +112,7 @@ export class ScreenCaptureOverlayStore extends Store<{
     if (this.mode === "crop") {
       if (rect.width >= 2 && rect.height >= 2) void this.capture(rect);
     } else {
-      this.arrows.push({ start, end: point, label: "" });
+      this.arrows.push({ start: point, end: start, label: "" });
       this.editingIndex = this.arrows.length - 1;
       this.label = "";
     }
@@ -106,7 +135,8 @@ export class ScreenCaptureOverlayStore extends Store<{
   }
 
   async capture(rect?: CaptureRect) {
-    if (!this.snapshot || this.busy || this.cancelled) return;
+    if (!this.snapshot || !this.destination || this.busy || this.cancelled) return;
+    const destination = { ...this.destination };
     this.commitLabel();
     this.busy = true;
     this.error = undefined;
@@ -119,7 +149,7 @@ export class ScreenCaptureOverlayStore extends Store<{
         this.palette,
       );
       if (this.signal.aborted || this.cancelled) return;
-      await this.props.client.finishScreenCapture(image, { signal: this.signal });
+      await this.props.client.finishScreenCapture({ image, destination }, { signal: this.signal });
     } catch (error) {
       if (!this.signal.aborted && !this.cancelled) this.reportError(error);
     } finally {

@@ -2,6 +2,8 @@ import { Store, snapshot, untracked } from "r-state-tree";
 import {
   DEFAULT_CAPTURE_MAX_DIMENSION,
   DEFAULT_CAPTURE_SHORTCUT,
+  type CaptureDestination,
+  type CaptureRouting,
 } from "../../domain/screen-capture/screen-capture-data";
 import type { Client } from "../client/Client";
 import type { WindowConversationSelection } from "./AppShellStore";
@@ -10,11 +12,14 @@ import { ToastContext } from "./context/ToastContext";
 
 /** Owns native capture preferences and destination routing, not chat or transcript state.
  * Preferences/last destination persist in the window snapshot. Captures are single-flight;
- * destination is fixed at activation and revalidated before appending to its existing draft.
+ * overlay choices are frozen at activation and revalidated before appending. New destinations
+ * create an empty session only after capture succeeds, never on cancellation.
  */
 export class ScreenCaptureAttachmentStore extends Store<{
   client: Client["electron"];
   currentTarget(): WindowConversationSelection | undefined;
+  destinations(): Omit<CaptureRouting, "defaultDestination">;
+  prepareDestination(destination: CaptureDestination): Promise<WindowConversationSelection>;
   findDraft(target: WindowConversationSelection): ComposerDraftStore | undefined;
 }> {
   @snapshot shortcut = DEFAULT_CAPTURE_SHORTCUT;
@@ -85,22 +90,41 @@ export class ScreenCaptureAttachmentStore extends Store<{
 
   async capture() {
     if (this.busy || this.recordingShortcut) return;
-    const target = this.props.currentTarget() ?? this.lastTarget;
-    const draft = target && this.props.findDraft(target);
-    if (!target || !draft) {
-      this.reportError("Open an editable chat before capturing an attachment.");
-      return;
-    }
-    if (draft.attachments.length >= 20) {
-      this.reportError("A message can include at most 20 attachments.");
+    const choices = this.props.destinations();
+    const remembered = this.props.currentTarget() ?? this.lastTarget;
+    const available =
+      remembered &&
+      (remembered.kind === "cake-chat"
+        ? choices.cakeChats.some((session) => session.sessionId === remembered.sessionId)
+        : choices.projects.some((project) =>
+            project.sessions.some((session) => session.sessionId === remembered.sessionId),
+          ));
+    const project = choices.projects[0];
+    const recentSession = project?.sessions[0];
+    const defaultDestination: CaptureDestination | undefined = available
+      ? remembered
+      : recentSession
+        ? { kind: "project-session", sessionId: recentSession.sessionId }
+        : project
+          ? { kind: "new-session", projectPath: project.path }
+          : choices.cakeChats[0]
+            ? { kind: "cake-chat", sessionId: choices.cakeChats[0].sessionId }
+            : undefined;
+    if (!defaultDestination) {
+      this.reportError("Add a Project before capturing an attachment.");
       return;
     }
     this.busy = true;
     try {
-      const data = await this.props.client.startScreenCapture({ signal: this.signal });
-      if (this.signal.aborted || !data) return;
-      if (this.props.findDraft(target) !== draft)
-        throw new Error("The destination chat is no longer editable.");
+      const result = await this.props.client.startScreenCapture(
+        { ...choices, defaultDestination },
+        { signal: this.signal },
+      );
+      if (this.signal.aborted || !result) return;
+      const target = await this.props.prepareDestination(result.destination);
+      if (this.signal.aborted) return;
+      const draft = this.props.findDraft(target);
+      if (!draft) throw new Error("The destination chat is no longer editable.");
       if (draft.attachments.length >= 20)
         throw new Error("The destination draft already has 20 attachments.");
       draft.appendAttachments([
@@ -108,9 +132,10 @@ export class ScreenCaptureAttachmentStore extends Store<{
           kind: "image",
           name: `Screenshot-${new Date().toISOString().replace(/[:.]/g, "-")}.png`,
           mimeType: "image/png",
-          data,
+          data: result.data,
         },
       ]);
+      this.lastTarget = { ...target };
       draft.requestFocus();
     } catch (error) {
       if (!this.signal.aborted)

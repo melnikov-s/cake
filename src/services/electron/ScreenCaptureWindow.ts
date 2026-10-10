@@ -12,6 +12,9 @@ import {
   captureOutputSize,
   DEFAULT_CAPTURE_MAX_DIMENSION,
   DEFAULT_CAPTURE_SHORTCUT,
+  type CaptureDestination,
+  type CaptureRouting,
+  type CaptureResult,
   type ScreenCaptureSettings,
   type ScreenCaptureSnapshot,
 } from "../../domain/screen-capture/screen-capture-data";
@@ -35,7 +38,7 @@ export class ScreenCaptureWindow {
   private stopped = false;
   private overlay: BrowserWindow | undefined;
   private snapshot: ScreenCaptureSnapshot | undefined;
-  private complete: ((data?: string) => void) | undefined;
+  private complete: ((capture?: CaptureResult) => void) | undefined;
 
   constructor(private readonly options: CaptureWindowOptions) {}
 
@@ -76,7 +79,11 @@ export class ScreenCaptureWindow {
     this.settings.delete(window.id);
   }
 
-  async start(owner: BrowserWindow, signal: AbortSignal): Promise<{ data?: string }> {
+  async start(
+    owner: BrowserWindow,
+    routing: CaptureRouting,
+    signal: AbortSignal,
+  ): Promise<{ capture?: CaptureResult }> {
     if (this.stopped) throw new Error("Screen capture has shut down");
     if (signal.aborted) return {};
     if (this.capturing) throw new Error("A screen capture is already open");
@@ -107,6 +114,7 @@ export class ScreenCaptureWindow {
       const pixels = source.thumbnail.getSize();
       this.snapshot = {
         image: source.thumbnail.toDataURL(),
+        routing,
         width: pixels.width,
         height: pixels.height,
         maxDimension: this.settings.get(owner.id)?.maxDimension ?? DEFAULT_CAPTURE_MAX_DIMENSION,
@@ -133,10 +141,10 @@ export class ScreenCaptureWindow {
       overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
       overlay.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
       overlay.webContents.on("will-navigate", (event) => event.preventDefault());
-      const result = new Promise<{ data?: string }>((resolve) => {
-        this.complete = (data) => {
+      const result = new Promise<{ capture?: CaptureResult }>((resolve) => {
+        this.complete = (capture) => {
           this.complete = undefined;
-          resolve(data ? { data } : {});
+          resolve(capture ? { capture } : {});
         };
         overlay.on("closed", () => this.complete?.());
         overlay.webContents.on("render-process-gone", () => this.complete?.());
@@ -174,10 +182,21 @@ export class ScreenCaptureWindow {
     return this.snapshot;
   }
 
-  finish(senderId: number, image?: string) {
+  finish(senderId: number, capture?: { image: string; destination: CaptureDestination }) {
     const snapshot = this.state(senderId);
     let data: string | undefined;
-    if (image) {
+    if (capture) {
+      const { image, destination } = capture;
+      const routing = snapshot.routing;
+      const offered =
+        destination.kind === "new-session"
+          ? routing.projects.some((project) => project.path === destination.projectPath)
+          : destination.kind === "cake-chat"
+            ? routing.cakeChats.some((session) => session.sessionId === destination.sessionId)
+            : routing.projects.some((project) =>
+                project.sessions.some((session) => session.sessionId === destination.sessionId),
+              );
+      if (!offered) throw new Error("Choose an available screenshot destination.");
       if (!image.startsWith("data:image/png;base64,"))
         throw new Error("Screen captures must be PNG images");
       let result = nativeImage.createFromDataURL(image);
@@ -191,7 +210,7 @@ export class ScreenCaptureWindow {
         throw new Error("The captured image is too large. Lower the maximum image dimension.");
     }
     this.overlay?.hide();
-    this.complete?.(data);
+    this.complete?.(data && capture ? { data, destination: capture.destination } : undefined);
   }
 
   stop() {

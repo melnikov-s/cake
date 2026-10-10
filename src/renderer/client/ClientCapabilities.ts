@@ -43,22 +43,22 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
           (client) => client.electron["configure-screen-capture"](input),
           options,
         ).then(() => undefined),
-      startScreenCapture: (options) =>
+      startScreenCapture: (routing, options) =>
         execute(
           "electron.start-screen-capture",
-          (client) => client.electron["start-screen-capture"]({}),
+          (client) => client.electron["start-screen-capture"](routing),
           options,
-        ).then((result) => result.data),
+        ).then((result) => result.capture),
       screenCaptureState: (options) =>
         execute(
           "electron.screen-capture-state",
           (client) => client.electron["screen-capture-state"]({}),
           options,
         ),
-      finishScreenCapture: (image, options) =>
+      finishScreenCapture: (capture, options) =>
         execute(
           "electron.finish-screen-capture",
-          (client) => client.electron["finish-screen-capture"](image ? { image } : {}),
+          (client) => client.electron["finish-screen-capture"](capture ? { capture } : {}),
           options,
         ).then(() => undefined),
       chooseProject: (options) =>

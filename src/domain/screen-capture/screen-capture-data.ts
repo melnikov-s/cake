@@ -9,9 +9,37 @@ export const ScreenCaptureSettings = Schema.Struct({
 });
 export interface ScreenCaptureSettings extends Schema.Schema.Type<typeof ScreenCaptureSettings> {}
 
+export const CaptureDestination = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("project-session"), sessionId: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("cake-chat"), sessionId: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("new-session"), projectPath: Schema.String }),
+]);
+export type CaptureDestination = Schema.Schema.Type<typeof CaptureDestination>;
+
+const CaptureSessionOption = Schema.Struct({ sessionId: Schema.String, title: Schema.String });
+export const CaptureRouting = Schema.Struct({
+  projects: Schema.Array(
+    Schema.Struct({
+      path: Schema.String,
+      name: Schema.String,
+      sessions: Schema.Array(CaptureSessionOption),
+    }),
+  ),
+  cakeChats: Schema.Array(CaptureSessionOption),
+  defaultDestination: CaptureDestination,
+});
+export interface CaptureRouting extends Schema.Schema.Type<typeof CaptureRouting> {}
+
+export const CaptureResult = Schema.Struct({
+  data: Schema.String.check(Schema.isMaxLength(20_000_000)),
+  destination: CaptureDestination,
+});
+export interface CaptureResult extends Schema.Schema.Type<typeof CaptureResult> {}
+
 export const CaptureImage = Schema.String.check(Schema.isMaxLength(48_000_000));
 export const ScreenCaptureSnapshot = Schema.Struct({
   image: CaptureImage,
+  routing: CaptureRouting,
   width: Schema.Int.check(Schema.isGreaterThan(0)),
   height: Schema.Int.check(Schema.isGreaterThan(0)),
   maxDimension: ScreenCaptureSettings.fields.maxDimension,

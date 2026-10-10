@@ -37,8 +37,12 @@ window snapshot; opening Cake Chat or cancelling does not replace that choice.
 `CaptureCanvas` is the controlled screenshot gesture surface: pixel-coordinate pointer capture,
 frozen-image rendering, annotated arrows/labels, and a non-exported crop guide. It delegates
 crop/annotation policy to its owner. `CaptureToolbar` composes shared controls for mode switching,
-undo, full-display attachment, and cancellation. Both are used by the native capture overlay;
-only the flattened screenshot and annotations enter a chat draft.
+undo, full-display attachment, and cancellation. `CaptureDestinationPicker` groups editable
+sessions by Project, pins New session first, and reveals a Project selector for new destinations.
+The overlay defaults to the last visited chat; successful captures append to the chosen draft
+without sending, creating a fresh Project Session only when New session was selected. Arrow
+annotations put the head at pointer-down and the tail/label at pointer-up. These controls stay
+outside the exported image; only the flattened screenshot and annotations enter a chat draft.
 
 ## Context pills
 

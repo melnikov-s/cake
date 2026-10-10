@@ -1,6 +1,9 @@
 import { Schema } from "effect";
 import {
   CaptureImage,
+  CaptureDestination,
+  CaptureRouting,
+  CaptureResult,
   ScreenCaptureSettings,
   ScreenCaptureSnapshot,
 } from "../domain/screen-capture/screen-capture-data";
@@ -359,9 +362,13 @@ const terminalTarget = Schema.Struct({
 
 export const cakeRpcPayloadSchemas = {
   "configure-screen-capture": ScreenCaptureSettings,
-  "start-screen-capture": Schema.Struct({}),
+  "start-screen-capture": CaptureRouting,
   "screen-capture-state": Schema.Struct({}),
-  "finish-screen-capture": Schema.Struct({ image: Schema.optionalKey(CaptureImage) }),
+  "finish-screen-capture": Schema.Struct({
+    capture: Schema.optionalKey(
+      Schema.Struct({ image: CaptureImage, destination: CaptureDestination }),
+    ),
+  }),
   "choose-project": Schema.Struct({}),
   "save-draw-export": Schema.Struct({
     format: Schema.Literals(["png", "svg", "excalidraw"]),
@@ -820,9 +827,7 @@ const cakeRpcResultSchemas = {
 
 export const cakeRpcSuccessSchemas = {
   "configure-screen-capture": Schema.Struct({}),
-  "start-screen-capture": Schema.Struct({
-    data: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(20_000_000))),
-  }),
+  "start-screen-capture": Schema.Struct({ capture: Schema.optionalKey(CaptureResult) }),
   "screen-capture-state": ScreenCaptureSnapshot,
   "finish-screen-capture": Schema.Struct({}),
   "choose-project": cakeRpcResultSchemas["project-chosen"],

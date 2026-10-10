@@ -10,10 +10,12 @@ test("captures and annotates through the hidden native overlay into the existing
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-screen-capture-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
+  const otherProject = join(temporaryRoot, "other-project");
   const cakeHome = join(temporaryRoot, "cake-home");
   await Promise.all([
     mkdir(userData, { recursive: true }),
     mkdir(project, { recursive: true }),
+    mkdir(otherProject, { recursive: true }),
     mkdir(join(cakeHome, "state"), { recursive: true }),
   ]);
   await writeFile(
@@ -36,8 +38,14 @@ test("captures and annotates through the hidden native overlay into the existing
           addedAt: new Date(0).toISOString(),
           lastOpenedAt: new Date(0).toISOString(),
         },
+        {
+          path: otherProject,
+          name: "Other Project",
+          addedAt: new Date(0).toISOString(),
+          lastOpenedAt: new Date(0).toISOString(),
+        },
       ],
-      trustedProjectPaths: [project],
+      trustedProjectPaths: [project, otherProject],
     }),
   );
   const application = await electron.launch({
@@ -119,6 +127,14 @@ test("captures and annotates through the hidden native overlay into the existing
       return overlay;
     };
     let overlay = await begin();
+    const originalDestination = await overlay
+      .getByRole("combobox", { name: "Screenshot destination" })
+      .inputValue();
+    expect(originalDestination).not.toBe("new");
+    const destination = overlay.getByRole("combobox", { name: "Screenshot destination" });
+    await expect(destination.locator("option").first()).toHaveText("New session");
+    await destination.selectOption("new");
+    await overlay.getByRole("combobox", { name: "New session Project" }).selectOption(otherProject);
     await Promise.all([
       overlay.waitForEvent("close"),
       overlay.keyboard.press("Escape").catch((error: unknown) => {
@@ -141,6 +157,9 @@ test("captures and annotates through the hidden native overlay into the existing
     });
     overlay = await opened;
     await expect(overlay.getByRole("button", { name: "Attach full display" })).toBeEnabled();
+    await expect(overlay.getByRole("combobox", { name: "Screenshot destination" })).toHaveValue(
+      originalDestination,
+    );
     await expect
       .poll(() =>
         overlay.locator("canvas").evaluate((canvas) => (canvas as HTMLCanvasElement).width),
@@ -156,6 +175,9 @@ test("captures and annotates through the hidden native overlay into the existing
     await overlay.mouse.up();
     const label = overlay.getByRole("textbox", { name: "Arrow label" });
     await expect(label).toBeFocused();
+    const labelBounds = (await label.boundingBox())!;
+    expect(labelBounds.x).toBeCloseTo(end.x + 12, -1);
+    expect(labelBounds.y).toBeCloseTo(end.y + 12, -1);
     await overlay.keyboard.type("Look here");
     await expect(label).toHaveValue("Look here");
     await overlay.keyboard.press("Enter");
@@ -165,7 +187,6 @@ test("captures and annotates through the hidden native overlay into the existing
     await expect(overlay.getByRole("button", { name: "Undo arrow" })).toBeEnabled();
     await overlay.keyboard.press("Enter");
     await expect.poll(() => application.windows().length).toBe(1);
-    await page.getByRole("button", { name: "Back to chat" }).click();
     const preview = page.getByRole("button", { name: /^View Screenshot-/ });
     await expect(preview).toHaveCount(1);
     const source = await preview.locator("img").getAttribute("src");
@@ -232,7 +253,6 @@ test("captures and annotates through the hidden native overlay into the existing
     );
     await overlay.mouse.up();
     await expect.poll(() => application.windows().length).toBe(1);
-    await page.getByRole("button", { name: "Back to chat" }).click();
     await expect(preview).toHaveCount(2);
     const cropped = await preview.last().locator("img").getAttribute("src");
     const size = await application.evaluate(
@@ -255,6 +275,33 @@ test("captures and annotates through the hidden native overlay into the existing
         return false;
       }, cropped!),
     ).toBe(true);
+
+    await settings.click();
+    overlay = await begin();
+    await overlay.getByRole("combobox", { name: "Screenshot destination" }).selectOption("new");
+    const projectPicker = overlay.getByRole("combobox", { name: "New session Project" });
+    await expect(projectPicker).toHaveValue(project);
+    await projectPicker.selectOption(otherProject);
+    await expect(projectPicker).toHaveValue(otherProject);
+    await overlay.getByRole("button", { name: "Attach full display" }).click();
+    await expect.poll(() => application.windows().length).toBe(1);
+    await expect(preview).toHaveCount(1);
+    await expect(composer).toHaveValue("");
+    await composer.click();
+    await expect(composer).toBeFocused();
+    await page.keyboard.type("New Project screenshot");
+    await expect(composer).toHaveValue("New Project screenshot");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await settings.click();
+    overlay = await begin();
+    const picker = overlay.getByRole("combobox", { name: "Screenshot destination" });
+    expect(await picker.inputValue()).not.toBe(originalDestination);
+    await expect(picker.locator('optgroup[label="Other Project"] option')).toHaveCount(1);
+    await picker.selectOption(originalDestination);
+    await overlay.getByRole("button", { name: "Attach full display" }).click();
+    await expect.poll(() => application.windows().length).toBe(1);
+    await expect(preview).toHaveCount(3);
+    await expect(composer).toHaveValue("Keep this draft plus screenshot");
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

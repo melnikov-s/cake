@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { BrowserWindow } from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { captureRouting } from "../../../helpers/screen-capture";
 import { ScreenCaptureWindow } from "../../../../src/services/electron/ScreenCaptureWindow";
 import {
   captureAccelerator,
@@ -127,7 +128,7 @@ function startOverlay(
       resolve(window);
     };
   });
-  const running = capture.start(owner, signal);
+  const running = capture.start(owner, captureRouting, signal);
   return { created, running };
 }
 
@@ -147,10 +148,41 @@ describe("Native screen capture lifetime", () => {
       height: 1200,
       maxDimension: 1024,
     });
-    capture.finish(window.webContents.id, "data:image/png;base64,composed");
-    expect(await running).toEqual({ data: Buffer.from("resized").toString("base64") });
+    capture.finish(window.webContents.id, {
+      image: "data:image/png;base64,composed",
+      destination: { kind: "project-session", sessionId: "beta" },
+    });
+    expect(await running).toEqual({
+      capture: {
+        data: Buffer.from("resized").toString("base64"),
+        destination: { kind: "project-session", sessionId: "beta" },
+      },
+    });
     expect(native.output).toMatchObject({ width: 1024, height: 512 });
     expect(window.isDestroyed()).toBe(true);
+    capture.stop();
+  });
+  it("allows new sessions only in an offered Project and returns the chosen route", async () => {
+    const { owner, capture } = fixture();
+    const { running, created } = startOverlay(capture, owner);
+    const window = await created;
+    expect(capture.state(window.webContents.id).routing).toEqual(captureRouting);
+    expect(() =>
+      capture.finish(window.webContents.id, {
+        image: "data:image/png;base64,new",
+        destination: { kind: "new-session", projectPath: "/unavailable" },
+      }),
+    ).toThrow("available screenshot destination");
+    capture.finish(window.webContents.id, {
+      image: "data:image/png;base64,new",
+      destination: { kind: "new-session", projectPath: "/other" },
+    });
+    expect(await running).toEqual({
+      capture: {
+        data: Buffer.from("resized").toString("base64"),
+        destination: { kind: "new-session", projectPath: "/other" },
+      },
+    });
     capture.stop();
   });
   it("rejects concurrent activation, tears down on cancellation, and permits another capture", async () => {
@@ -158,9 +190,9 @@ describe("Native screen capture lifetime", () => {
     const controller = new AbortController();
     const { running, created } = startOverlay(capture, owner, controller.signal);
     const window = await created;
-    await expect(capture.start(owner, new AbortController().signal)).rejects.toThrow(
-      "already open",
-    );
+    await expect(
+      capture.start(owner, captureRouting, new AbortController().signal),
+    ).rejects.toThrow("already open");
     controller.abort();
     expect(await running).toEqual({});
     expect(window.isDestroyed()).toBe(true);
@@ -180,7 +212,7 @@ describe("Native screen capture lifetime", () => {
     );
     const { owner, capture } = fixture();
     const controller = new AbortController();
-    const running = capture.start(owner, controller.signal);
+    const running = capture.start(owner, captureRouting, controller.signal);
     controller.abort();
     resolve([]);
     expect(await running).toEqual({});
@@ -207,7 +239,7 @@ describe("Native screen capture lifetime", () => {
         }),
     );
     const { owner, capture } = fixture();
-    const running = capture.start(owner, new AbortController().signal);
+    const running = capture.start(owner, captureRouting, new AbortController().signal);
     capture.stop();
     resolve([]);
     expect(await running).toEqual({});

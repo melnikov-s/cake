@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Button } from "./button";
 import { SegmentedControlButton, SegmentedControlGroup } from "./segmented-control";
 
@@ -6,6 +7,7 @@ export function CaptureToolbar({
   mode,
   busy,
   canUndo,
+  destinationPicker,
   onMode,
   onUndo,
   onCapture,
@@ -14,6 +16,7 @@ export function CaptureToolbar({
   mode: "crop" | "annotate";
   busy: boolean;
   canUndo: boolean;
+  destinationPicker: ReactNode;
   onMode(mode: "crop" | "annotate"): void;
   onUndo(): void;
   onCapture(): void;
@@ -23,41 +26,44 @@ export function CaptureToolbar({
     <div
       role="toolbar"
       aria-label="Screen capture tools"
-      className="flex max-w-full flex-wrap items-center justify-center gap-3 rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-xl"
+      className="flex max-w-full flex-col items-center gap-3 rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-xl"
     >
-      <SegmentedControlGroup aria-label="Capture mode">
-        <SegmentedControlButton
-          active={mode === "crop"}
-          disabled={busy}
-          onClick={() => onMode("crop")}
-        >
-          Crop
-        </SegmentedControlButton>
-        <SegmentedControlButton
-          active={mode === "annotate"}
-          disabled={busy}
-          onClick={() => onMode("annotate")}
-        >
-          Annotate
-        </SegmentedControlButton>
-      </SegmentedControlGroup>
-      <span className="text-xs">
-        {busy
-          ? "Attaching screenshot…"
-          : mode === "crop"
-            ? "Drag a rectangle to attach"
-            : "Drag arrows, then type labels"}
-        <span className="ml-2 text-muted-foreground">Enter: full display · Escape: cancel</span>
-      </span>
-      <Button variant="ghost" size="sm" disabled={busy || !canUndo} onClick={onUndo}>
-        Undo arrow
-      </Button>
-      <Button variant="outline" size="sm" disabled={busy} onClick={onCapture}>
-        Attach full display
-      </Button>
-      <Button variant="ghost" size="sm" onClick={onCancel}>
-        Cancel
-      </Button>
+      {destinationPicker}
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        <SegmentedControlGroup aria-label="Capture mode">
+          <SegmentedControlButton
+            active={mode === "crop"}
+            disabled={busy}
+            onClick={() => onMode("crop")}
+          >
+            Crop
+          </SegmentedControlButton>
+          <SegmentedControlButton
+            active={mode === "annotate"}
+            disabled={busy}
+            onClick={() => onMode("annotate")}
+          >
+            Annotate
+          </SegmentedControlButton>
+        </SegmentedControlGroup>
+        <span className="text-xs">
+          {busy
+            ? "Attaching screenshot…"
+            : mode === "crop"
+              ? "Drag a rectangle to attach"
+              : "Start at the target, drag to the label"}
+          <span className="ml-2 text-muted-foreground">Enter: full display · Escape: cancel</span>
+        </span>
+        <Button variant="ghost" size="sm" disabled={busy || !canUndo} onClick={onUndo}>
+          Undo arrow
+        </Button>
+        <Button variant="outline" size="sm" disabled={busy} onClick={onCapture}>
+          Attach full display
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
     </div>
   );
 }

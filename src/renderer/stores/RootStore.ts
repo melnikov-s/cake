@@ -77,6 +77,75 @@ export class RootStore extends Store<{
     return createStore(ScreenCaptureAttachmentStore, {
       client: this.client.electron,
       currentTarget: () => this.appShellStore.activeConversation,
+      destinations: () => ({
+        projects: this.projectCatalogStore.projects.map((project) => {
+          const catalog = this.sessionCatalogStore.projectSessions(project.path);
+          const catalogIds = new Set(catalog.map((session) => session.sessionId));
+          // Unsent chats live in the window's pending identities, not the Pi catalog.
+          const pending = this.sessionRegistry.sessions.filter(
+            (session) =>
+              this.sessionRegistry.pendingSessions.isTemporary(session.sessionId) &&
+              !catalogIds.has(session.sessionId) &&
+              (this.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
+                session.workspacePath) === project.path,
+          );
+          return {
+            path: project.path,
+            name: project.name,
+            sessions: [
+              ...catalog
+                .filter((session) => !session.resolved)
+                .map((session) => ({ sessionId: session.sessionId, title: session.title })),
+              ...pending.map((session) => ({
+                sessionId: session.sessionId,
+                title:
+                  this.sessionRegistry.pendingSessions.conversation(session.sessionId)?.title ||
+                  "New chat",
+              })),
+            ],
+          };
+        }),
+        cakeChats: this.cakeChatCollectionStore.summaries
+          .filter((session) => !session.resolved)
+          .map((session) => ({ sessionId: session.sessionId, title: session.title })),
+      }),
+      prepareDestination: async (destination) => {
+        if (destination.kind === "new-session") {
+          if (
+            !this.projectCatalogStore.projects.some(
+              (project) => project.path === destination.projectPath,
+            )
+          )
+            throw new Error("The destination Project is no longer available.");
+          const sessionId = crypto.randomUUID();
+          this.sessionRegistry.pendingSessions.prepareStaged(destination.projectPath, sessionId);
+          if (!(await this.openSession(sessionId)))
+            throw new Error("Cake could not create the destination session.");
+          return { kind: "project-session", sessionId };
+        }
+        if (destination.kind === "project-session") {
+          if (this.sessionCatalogStore.find(destination.sessionId)?.resolved)
+            throw new Error("The destination chat is no longer editable.");
+          const loaded = this.sessionRegistry.findSession(destination.sessionId);
+          if (
+            !loaded ||
+            (!loaded.model.sessionFile &&
+              !this.sessionRegistry.pendingSessions.isTemporary(destination.sessionId))
+          ) {
+            if (!(await this.openSession(destination.sessionId)))
+              throw new Error("Cake could not open the destination session.");
+          } else {
+            this.sessionLayoutStore.ensureSession(destination.sessionId);
+            this.projectWorkbenchStore.showLoadedSession(destination.sessionId);
+            this.selectProjectSessionForShell(destination.sessionId);
+          }
+        } else {
+          if (this.cakeChatCatalogModel.find(destination.sessionId)?.resolved)
+            throw new Error("The destination chat is no longer editable.");
+          await this.openCakeChat(destination.sessionId);
+        }
+        return destination;
+      },
       findDraft: (target) => {
         if (target.kind === "project-session") {
           if (this.sessionMetadataStore.isResolved(target.sessionId)) return undefined;

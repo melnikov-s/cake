@@ -587,6 +587,116 @@ const screenCaptureSettingsScenario: VisualCaptureScenario = {
   },
 };
 
+const captureOverlayRegions = new WeakMap<Page, Locator>();
+const screenCaptureOverlayScenario: VisualCaptureScenario = {
+  name: "screen-capture-overlay",
+  description:
+    "Native capture destination picker, per-Project new session, and target-first arrows",
+  states: ["default", "new-session", "annotate"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const otherProject = join(paths.project, "other-project");
+    await mkdir(otherProject, { recursive: true });
+    const timestamp = new Date(0).toISOString();
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        projects: [
+          {
+            path: paths.project,
+            name: "Capture Project",
+            addedAt: timestamp,
+            lastOpenedAt: timestamp,
+          },
+          {
+            path: otherProject,
+            name: "Other Project",
+            addedAt: timestamp,
+            lastOpenedAt: timestamp,
+          },
+        ],
+        trustedProjectPaths: [paths.project, otherProject],
+      }),
+    );
+  },
+  async prepare(page, state, application) {
+    if (!application) throw new Error("Screen capture requires Electron");
+    await assistantMarkdownCode.prepare(page, "default", application);
+    const dimensions = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    // Fake only the native still. Never read the user's desktop or show/focus a window.
+    await application.evaluate(
+      ({ desktopCapturer, nativeImage, screen, systemPreferences }, size) => {
+        const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+        screen.getDisplayNearestPoint = () => ({
+          ...display,
+          size,
+          bounds: { x: 0, y: 0, ...size },
+          scaleFactor: 1,
+        });
+        const bitmap = Buffer.alloc(size.width * size.height * 4);
+        for (let index = 0; index < bitmap.length; index += 4) {
+          bitmap[index] = 90;
+          bitmap[index + 1] = 100;
+          bitmap[index + 2] = 110;
+          bitmap[index + 3] = 255;
+        }
+        const image = nativeImage.createFromBitmap(bitmap, size);
+        desktopCapturer.getSources = async () => [
+          {
+            id: "screen:fixture",
+            name: "Fixture display",
+            display_id: String(display.id),
+            thumbnail: image,
+            appIcon: nativeImage.createEmpty(),
+          },
+        ];
+        systemPreferences.getMediaAccessStatus = () => "granted";
+      },
+      dimensions,
+    );
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /^Screen Capture/ }).click();
+    const opened = application.waitForEvent("window");
+    await page.getByRole("button", { name: "Capture screenshot", exact: true }).click();
+    const overlay = await opened;
+    const toolbar = overlay.getByRole("toolbar", { name: "Screen capture tools" });
+    await expect(overlay.getByRole("button", { name: "Attach full display" })).toBeEnabled();
+    await expect
+      .poll(() =>
+        overlay.locator("canvas").evaluate((canvas) => (canvas as HTMLCanvasElement).width),
+      )
+      .toBe(dimensions.width);
+    if (state === "new-session") {
+      await overlay.getByRole("combobox", { name: "Screenshot destination" }).selectOption("new");
+      await overlay
+        .getByRole("combobox", { name: "New session Project" })
+        .selectOption({ label: "Other Project" });
+    }
+    if (state === "annotate") {
+      await overlay.getByRole("button", { name: "Annotate", exact: true }).click();
+      await overlay.mouse.move(dimensions.width * 0.3, dimensions.height * 0.4);
+      await overlay.mouse.down();
+      await overlay.mouse.move(dimensions.width * 0.6, dimensions.height * 0.65);
+      await overlay.mouse.up();
+      await expect(overlay.getByRole("textbox", { name: "Arrow label" })).toBeFocused();
+      await overlay.keyboard.type("Point to this first");
+      await overlay.keyboard.press("Enter");
+    }
+    await overlay.waitForFunction(() => document.fonts.status === "loaded");
+    await overlay.mouse.move(1, 1);
+    captureOverlayRegions.set(
+      page,
+      state === "annotate" ? overlay.getByLabel("Screen capture", { exact: true }) : toolbar,
+    );
+  },
+  region(page) {
+    const region = captureOverlayRegions.get(page);
+    if (!region) throw new Error("Screen capture overlay is missing");
+    return region;
+  },
+};
+
 const inlineLinks: VisualCaptureScenario = {
   name: "inline-links",
   description: "Consistent artifact, workspace, website, and session links in prose",
@@ -1887,6 +1997,7 @@ export const visualCaptureScenarios = [
   conversationCountdownScenario,
   speechOutputSettingsScenario,
   screenCaptureSettingsScenario,
+  screenCaptureOverlayScenario,
   inlineLinks,
   requestExplanationScenario,
   inlineArtifactScenario,

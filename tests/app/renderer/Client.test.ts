@@ -113,7 +113,12 @@ describe("Client", () => {
       () => client.desktopSharing.configure({ enabled: true, bind: "127.0.0.1", port: 4317 }),
       () => client.windowState.load(),
       () => client.electron.chooseProject(),
-      () => client.electron.startScreenCapture(),
+      () =>
+        client.electron.startScreenCapture({
+          projects: [],
+          cakeChats: [],
+          defaultDestination: { kind: "cake-chat", sessionId: "session" },
+        }),
       () => client.electron.configureScreenCapture({ shortcut: "Mod+Shift+6", maxDimension: 2048 }),
       () => client.electron.screenCaptureState(),
       () => client.electron.finishScreenCapture(),

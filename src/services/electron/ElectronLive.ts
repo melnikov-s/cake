@@ -398,13 +398,13 @@ const makeElectronService = (
         catch: electronError,
       }),
     ),
-    startScreenCapture: Effect.fn("Electron.startScreenCapture")((connectionId) =>
+    startScreenCapture: Effect.fn("Electron.startScreenCapture")((connectionId, routing) =>
       Effect.tryPromise({
         try: (signal) => {
           const owner = BrowserWindow.fromWebContents(requireRendererConnection(connectionId));
           if (!owner || !windows.has(owner.id))
             throw new Error("Screen capture requires a Cake window");
-          return capture.start(owner, signal);
+          return capture.start(owner, routing, signal);
         },
         catch: electronError,
       }),
@@ -418,7 +418,7 @@ const makeElectronService = (
     finishScreenCapture: Effect.fn("Electron.finishScreenCapture")((connectionId, request) =>
       Effect.try({
         try: () => {
-          capture.finish(requireRendererConnection(connectionId).id, request.image);
+          capture.finish(requireRendererConnection(connectionId).id, request.capture);
           return {};
         },
         catch: electronError,

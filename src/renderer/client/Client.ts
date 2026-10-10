@@ -1,5 +1,8 @@
 import type { Effect } from "effect";
 import type {
+  CaptureDestination,
+  CaptureRouting,
+  CaptureResult,
   ScreenCaptureSettings,
   ScreenCaptureSnapshot,
 } from "../../domain/screen-capture/screen-capture-data";
@@ -118,9 +121,15 @@ interface ElectronCommands {
     settings: ScreenCaptureSettings,
     options?: ClientCommandOptions,
   ): Promise<void>;
-  startScreenCapture(options?: ClientCommandOptions): Promise<string | undefined>;
+  startScreenCapture(
+    routing: CaptureRouting,
+    options?: ClientCommandOptions,
+  ): Promise<CaptureResult | undefined>;
   screenCaptureState(options?: ClientCommandOptions): Promise<ScreenCaptureSnapshot>;
-  finishScreenCapture(image?: string, options?: ClientCommandOptions): Promise<void>;
+  finishScreenCapture(
+    capture?: { image: string; destination: CaptureDestination },
+    options?: ClientCommandOptions,
+  ): Promise<void>;
   chooseProject(options?: ClientCommandOptions): Promise<string | undefined>;
   saveDrawExport(
     input: {
