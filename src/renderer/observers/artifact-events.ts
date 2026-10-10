@@ -20,10 +20,6 @@ export const observeArtifactEvents = (runtime: Runtime, root: RootStore) =>
         const storeEvent = toStoreEvent(event);
         if (!storeEvent) return;
         root.extensionUiStore.receive(storeEvent);
-        if (storeEvent.type === "artifact-requested")
-          root.sessionRegistry
-            .findSession(storeEvent.record.artifact.sessionId)
-            ?.receive(storeEvent);
       } catch (error) {
         root.projectWorkbenchStore.setError(error, `Artifact event: ${event.type}`);
       }

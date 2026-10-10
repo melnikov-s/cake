@@ -8,6 +8,7 @@ import {
 import { resolve } from "node:path";
 import { createTurnResultCapture } from "./turn-result-capture";
 import type { PiTurnResult } from "../../../contracts/pi/turn-result-data";
+import type { InterviewRecord } from "../../../contracts/interviews/interview";
 import type { CakeChatMemoryOptions } from "../cake-chat-memory-options";
 import { Option, Schema } from "effect";
 import {
@@ -176,7 +177,7 @@ export interface CakeSessionRuntimeOptions {
   requestUi(request: RuntimeUiRequest): Promise<string | undefined>;
   emitExtensionUiIntent?(intent: ExtensionUiIntent): void;
   persistArtifact?(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
-  requestArtifact?(record: ArtifactRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
+  requestInterview?(record: InterviewRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
   generateInlineWidget?(
     input: InlineWidgetGenerationRequest,
   ): Promise<InlineWidgetGenerationResult>;
@@ -429,8 +430,19 @@ export async function createCakeSessionRuntime(
   });
   const configurationState = createCakeSessionRuntimeConfigurationState(options.fastMode);
   const promptCacheLineage = createPromptCacheLineage();
+  const requestInterview = options.requestInterview;
   const capabilities = await createCakeSessionRuntimeCapabilities({
-    options,
+    options: {
+      ...options,
+      requestInterview: requestInterview
+        ? async (record, signal) => {
+            // The operation just appended Pi-owned interview metadata. Publish it
+            // before asking for an answer so the live transcript owns its view.
+            await emitSnapshot();
+            return requestInterview(record, signal);
+          }
+        : undefined,
+    },
     agentDir,
     settingsManager,
     modelRuntime,

@@ -50,6 +50,13 @@ const LegacyMetadata = Schema.Struct({
   targetSessionId: Schema.optionalKey(Schema.String),
 });
 
+/** Version-one storage included ephemeral blocking requests. They are discarded
+ * during migration, never decoded as current reusable artifacts. */
+const LegacyRequestHeader = Schema.Struct({
+  protocol: Schema.Literal("cake.artifact/v1"),
+  kind: Schema.Literal("request"),
+});
+
 const HistoricalArchitecture = Schema.Struct({
   protocol: Schema.Literal("cake.artifact/v1"),
   id: Schema.String,
@@ -285,6 +292,11 @@ export const makeArtifactStorageLive = (root: string) =>
                 const expected = name.slice(0, -5);
                 if (digest(serialized) !== expected)
                   return yield* storageError("migrate", `Blob ${name} has an invalid digest`);
+                if (
+                  Schema.decodeUnknownOption(Schema.fromJsonString(LegacyRequestHeader))(serialized)
+                    ._tag === "Some"
+                )
+                  return;
                 const decoded = yield* decodeBlob(serialized);
                 blobsByDigest.set(expected, { digest: expected, decoded });
               }),
@@ -334,6 +346,7 @@ export const makeArtifactStorageLive = (root: string) =>
                             "migrate",
                             `Index for ${value.id} is stored under the wrong artifact key`,
                           );
+                        if (value.kind === "request") return;
                         const blob = blobsByDigest.get(value.digest);
                         if (!blob)
                           return yield* storageError(
@@ -400,18 +413,11 @@ export const makeArtifactStorageLive = (root: string) =>
             inheritedPublishers.set(key, publishers);
           }
 
-          const indexedArtifactIds = new Set(
-            indexes
-              .filter(
-                (index) =>
-                  blobsByDigest.get(index.value.digest)?.decoded.snapshot.kind !== "request",
-              )
-              .map((index) => index.value.id),
-          );
+          const indexedArtifactIds = new Set(indexes.map((index) => index.value.id));
           const blobsByArtifactRevision = new Map<string, Map<number, LegacyBlob[]>>();
           for (const blob of blobsByDigest.values()) {
             const snapshot = blob.decoded.snapshot;
-            if (snapshot.kind === "request" || !indexedArtifactIds.has(snapshot.id)) continue;
+            if (!indexedArtifactIds.has(snapshot.id)) continue;
             const byRevision = blobsByArtifactRevision.get(snapshot.id) ?? new Map();
             const candidates = byRevision.get(snapshot.revision) ?? [];
             candidates.push(blob);
@@ -482,7 +488,7 @@ export const makeArtifactStorageLive = (root: string) =>
           const chainByIndex = new Map<LegacyIndex, ReadonlyArray<LegacyBlob>>();
           for (const index of indexes) {
             const tip = blobsByDigest.get(index.value.digest);
-            if (!tip || tip.decoded.snapshot.kind === "request") continue;
+            if (!tip) continue;
             const reversed = [tip];
             let current = tip;
             while (current.decoded.snapshot.revision > 1) {
@@ -776,14 +782,10 @@ export const makeArtifactStorageLive = (root: string) =>
             actualLatestRevision,
           });
         const nextRevision = actualLatestRevision + 1;
-        if (
-          input.snapshot.kind === "request" ||
-          input.snapshot.id !== input.lineageId ||
-          input.snapshot.revision !== nextRevision
-        )
+        if (input.snapshot.id !== input.lineageId || input.snapshot.revision !== nextRevision)
           return yield* storageError(
             "publish",
-            "Artifact snapshot identity/revision must match the lineage next revision and requests are not reusable artifacts",
+            "Artifact snapshot identity/revision must match the lineage next revision",
           );
         if (
           input.restoredFromRevision !== undefined &&

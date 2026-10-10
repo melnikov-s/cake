@@ -10,7 +10,11 @@ import {
 } from "effect";
 import type { CakeChatControlRequest } from "../../ipc/cake-chat-data";
 import type { ProjectSessionControlInvocation } from "../../ipc/project-session-data";
-import type { ArtifactRecord } from "../../ipc/artifact-contract";
+import {
+  validateInterviewResponse,
+  type InterviewRecord,
+  type InterviewResponse,
+} from "../../contracts/interviews/interview";
 import { cakeRpcPayloadSchemas, type CakeEvent } from "../../ipc/cake-rpc-contract";
 import type { JsonValue } from "../../ipc/json-contract";
 import { DrawControlResponse, type DrawControlInvocation } from "../../ipc/draw-control";
@@ -32,7 +36,6 @@ interface RendererUiRequest {
   readonly timeout?: number;
 }
 
-type ArtifactResponse = (typeof cakeRpcPayloadSchemas)["respond-artifact"]["Type"];
 type UiResponse = (typeof cakeRpcPayloadSchemas)["respond-ui"]["Type"];
 
 type SessionTarget =
@@ -48,7 +51,8 @@ type PendingRequest =
       readonly completion: Deferred.Deferred<JsonValue | undefined>;
     }
   | {
-      readonly _tag: "Artifact";
+      readonly _tag: "Interview";
+      readonly record: InterviewRecord;
       readonly sessionId: string;
       readonly connectionId: number;
       readonly operationId: string;
@@ -113,9 +117,9 @@ export interface RendererRequestCoordinatorService {
     requestScopeId: string,
     request: RendererUiRequest,
   ) => Effect.Effect<string | undefined, RendererRequestCoordinatorError>;
-  readonly requestArtifact: (
+  readonly requestInterview: (
     sessionId: string,
-    record: ArtifactRecord,
+    record: InterviewRecord,
     signal: AbortSignal,
   ) => Effect.Effect<JsonValue | undefined, RendererRequestCoordinatorError>;
   readonly requestProjectControl: (
@@ -210,10 +214,10 @@ export interface RendererRequestCoordinatorService {
     sessionId: string,
     response: UiResponse,
   ) => Effect.Effect<void, RendererRequestCoordinatorError>;
-  readonly respondArtifact: (
+  readonly respondInterview: (
     connectionId: number,
     sessionId: string,
-    response: ArtifactResponse,
+    response: InterviewResponse,
   ) => Effect.Effect<void, RendererRequestCoordinatorError>;
   readonly respondProjectControl: (
     connectionId: number,
@@ -248,7 +252,7 @@ const coordinatorError = (operation: string, message: string) =>
   new RendererRequestCoordinatorError({ operation, message });
 
 const cancellationValue = (pending: PendingRequest, stopped: boolean): JsonValue | undefined => {
-  if (pending._tag === "Ui" || pending._tag === "Artifact") return undefined;
+  if (pending._tag === "Ui" || pending._tag === "Interview") return undefined;
   if (pending._tag === "BrowserNative")
     return {
       status: "failed",
@@ -718,37 +722,40 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       return yield* requestUiForConnection(connectionId, sessionId, request);
     });
 
-    const requestArtifact = Effect.fn("RendererRequestCoordinator.requestArtifact")(function* (
+    const requestInterview = Effect.fn("RendererRequestCoordinator.requestInterview")(function* (
       sessionId: string,
-      record: ArtifactRecord,
+      record: InterviewRecord,
       signal: AbortSignal,
     ) {
       if (signal.aborted) return undefined;
+      if (record.sessionId !== sessionId)
+        return yield* coordinatorError("requestInterview", "Interview session does not match");
       const connectionId = yield* Effect.try({
         try: () => requireBinding({ _tag: "ProjectSession", sessionId }),
         catch: (cause) =>
           cause instanceof RendererRequestCoordinatorError
             ? cause
-            : coordinatorError("requestArtifact", String(cause)),
+            : coordinatorError("requestInterview", String(cause)),
       });
       const operationId = crypto.randomUUID();
-      const artifactRequestId = crypto.randomUUID();
+      const interviewRequestId = crypto.randomUUID();
       const completion = yield* Deferred.make<JsonValue | undefined>();
       const entry: PendingRequest = {
-        _tag: "Artifact",
+        _tag: "Interview",
+        record,
         sessionId,
         connectionId,
         operationId,
         completion,
       };
-      pending.set(artifactRequestId, entry);
+      pending.set(interviewRequestId, entry);
       yield* publishProjectEvent(connectionId, {
-        type: "artifact-requested",
+        type: "interview-requested",
         requestId: operationId,
-        artifactRequestId,
+        interviewRequestId,
         record,
-      }).pipe(Effect.tapError(() => Effect.sync(() => pending.delete(artifactRequestId))));
-      return yield* awaitPending(artifactRequestId, entry, signal);
+      }).pipe(Effect.tapError(() => Effect.sync(() => pending.delete(interviewRequestId))));
+      return yield* awaitPending(interviewRequestId, entry, signal);
     });
 
     const requestProjectControl = Effect.fn("RendererRequestCoordinator.requestProjectControl")(
@@ -933,35 +940,47 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
         yield* complete(response.uiRequestId, response.cancelled ? undefined : response.value);
     });
 
-    const respondArtifact = Effect.fn("RendererRequestCoordinator.respondArtifact")(function* (
+    const respondInterview = Effect.fn("RendererRequestCoordinator.respondInterview")(function* (
       connectionId: number,
       sessionId: string,
-      response: ArtifactResponse,
+      response: InterviewResponse,
     ) {
       const request = yield* Effect.try({
         try: () =>
           validateResponse(
-            "respondArtifact",
-            response.artifactRequestId,
-            "Artifact",
+            "respondInterview",
+            response.interviewRequestId,
+            "Interview",
             connectionId,
             sessionId,
           ),
         catch: (cause) =>
           cause instanceof RendererRequestCoordinatorError
             ? cause
-            : coordinatorError("respondArtifact", String(cause)),
+            : coordinatorError("respondInterview", String(cause)),
       });
-      if (request?._tag === "Artifact" && request.operationId !== response.requestId)
+      if (request?._tag !== "Interview")
         return yield* coordinatorError(
-          "respondArtifact",
+          "respondInterview",
+          "This interview is no longer waiting for a response",
+        );
+      if (request.operationId !== response.requestId)
+        return yield* coordinatorError(
+          "respondInterview",
           "The response correlation ID does not match",
         );
-      if (request)
-        yield* complete(
-          response.artifactRequestId,
-          response.cancelled ? undefined : response.value,
-        );
+      const value = response.cancelled
+        ? undefined
+        : yield* Effect.try({
+            try: () =>
+              validateInterviewResponse(request.record.request.responseSchema, response.value),
+            catch: (cause) =>
+              coordinatorError(
+                "respondInterview",
+                cause instanceof Error ? cause.message : String(cause),
+              ),
+          });
+      yield* complete(response.interviewRequestId, value);
     });
 
     const respondProjectControl = Effect.fn("RendererRequestCoordinator.respondProjectControl")(
@@ -1113,7 +1132,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       bind,
       requestUi,
       requestUiForConnection,
-      requestArtifact,
+      requestInterview,
       requestProjectControl,
       requestCakeChatControl,
       requestDrawControl,
@@ -1160,7 +1179,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
           ),
         ),
       respondUi,
-      respondArtifact,
+      respondInterview,
       respondProjectControl,
       respondCakeChatControl,
       respondDrawControl,

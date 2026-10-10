@@ -59,11 +59,6 @@ const LinkMutation = Schema.Struct({
 });
 
 export const ArtifactRpc = RpcGroup.make(
-  Rpc.make("artifacts.respond-artifact", {
-    payload: cakeRpcPayloadSchemas["respond-artifact"],
-    success: cakeRpcSuccessSchemas["respond-artifact"],
-    error: ArtifactError,
-  }),
   Rpc.make("artifacts.respond-ui", {
     payload: cakeRpcPayloadSchemas["respond-ui"],
     success: cakeRpcSuccessSchemas["respond-ui"],

@@ -18,6 +18,7 @@ import { RendererConnectionMiddlewareLive } from "../protocol/RendererConnection
 import { applicationStateHandlers } from "./ApplicationStateHandlers";
 import { drawControlHandlers } from "./DrawControlHandlers";
 import { artifactHandlers } from "./ArtifactHandlers";
+import { interviewHandlers } from "./InterviewHandlers";
 import { makeCakeChatHandlers } from "./CakeChatHandlers";
 import { makeConversationHandlers } from "./ConversationHandlers";
 import { makeFoundationHandlers } from "./FoundationHandlers";
@@ -55,6 +56,7 @@ export const makeBackendRpcServerLive = (
 
     ...applicationStateHandlers,
     ...artifactHandlers,
+    ...interviewHandlers,
     ...drawControlHandlers,
     ...makeCakeChatHandlers(cakeChatConfiguration),
     ...makeConversationHandlers(cakeChatConfiguration),

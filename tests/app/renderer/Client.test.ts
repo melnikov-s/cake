@@ -300,6 +300,7 @@ describe("Client", () => {
       "terminals",
       "browser",
       "vscode",
+      "interviews",
       "artifacts",
       "inlineWidgets",
       "foundation",

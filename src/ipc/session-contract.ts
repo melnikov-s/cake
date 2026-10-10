@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { InterviewRecord, InterviewResult } from "../contracts/interviews/interview";
 import {
   RendererApplicationState,
   UtilityModel as UtilityModelSchema,
@@ -336,6 +337,8 @@ export const uiPartSchema = Schema.Union([
     kind: Schema.Literal("tool"),
     ...workLogOrigin,
     ...toolActivityFields,
+    interview: Schema.optional(InterviewRecord),
+    interviewResult: Schema.optional(InterviewResult),
     artifactId: Schema.optional(stringRange(1, 256)),
     artifactRevision: Schema.optional(
       Schema.Int.check(

@@ -47,7 +47,7 @@ it.effect("creates independent Pi-backed Project Session without any renderer", 
       persistArtifact: async () => {
         throw new Error("Unexpected artifact persistence");
       },
-      requestArtifact: async () => undefined,
+      requestInterview: async () => undefined,
       generateInlineWidget: async () => {
         throw new Error("Unexpected widget generation");
       },

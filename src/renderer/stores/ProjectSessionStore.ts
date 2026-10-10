@@ -1,4 +1,5 @@
-import { Store, child, computed, createStore, snapshot } from "r-state-tree";
+import { Store, child, computed, createStore, observable, snapshot } from "r-state-tree";
+import type { InterviewRecord, InterviewResult } from "../../contracts/interviews/interview";
 import { ConversationModeContext, type ConversationModeTarget } from "./ConversationModeStore";
 import { isSessionAssistantThread } from "../../ipc/discussion-session-data";
 import type { StoreEvent } from "../events/StoreEvent";
@@ -15,7 +16,7 @@ import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ConversationSessionStore } from "./ConversationSessionStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
-import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
+import { InterviewStore } from "./InterviewStore";
 import { SessionArtifactsStore } from "./SessionArtifactsStore";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { MessageCommentsStore } from "./MessageCommentsStore";
@@ -81,12 +82,25 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   @snapshot presentationMode: ProjectSessionPresentationMode = "normal";
   @snapshot workspaceChatSidebarVisible = true;
   @snapshot workspaceChatSidebarWidth = 420;
-  private artifactRequestActive = false;
+  private readonly interviewRequests = observable(
+    new Map<string, Extract<StoreEvent, { type: "interview-requested" }>>(),
+  );
   private readSettledTurnRevision = 0;
   private pendingSideChatThreadId: string | undefined;
 
   constructor(props: ProjectSessionStore["props"]) {
     super(props);
+    this.reaction(
+      () =>
+        this.canonicalParts.flatMap((part) =>
+          part.kind === "tool" && part.interview && part.state !== "running"
+            ? [part.interview.id]
+            : [],
+        ),
+      (settled) => {
+        for (const id of settled) this.interviewRequests.delete(id);
+      },
+    );
     // A new thread is listed before its sidecar conversation is live; the side
     // chat opens once the thread's own conversation Store exists.
     this.reaction(
@@ -191,10 +205,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   /** Routes an event only to the session subsystem that authoritatively owns it. */
   receive(event: StoreEvent) {
-    if (event.type === "artifact-requested") {
-      if (event.record.artifact.sessionId !== this.sessionId) return;
-      this.artifactRequestActive = true;
-      this.artifactInteractionStore.receive(event);
+    if (event.type === "interview-requested") {
+      if (event.record.sessionId !== this.sessionId) return;
+      this.interviewRequests.set(event.record.id, event);
       return;
     }
     if (event.type === "operation-completed" || event.type === "operation-failed") {
@@ -208,7 +221,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     if (event.type === "agent-availability-changed" && event.availability.state === "unavailable") {
       if (this.props.operations.active(this.composerOwner).length > 0)
         this.conversationSessionStore.receive(event);
-      if (this.artifactRequestActive) this.artifactInteractionStore.receive(event);
+      this.interviewRequests.clear();
     }
   }
 
@@ -220,7 +233,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   @computed
   get activity(): SessionActivity | undefined {
-    if (this.artifactRequestActive) return "waiting";
+    if (this.interviewRequests.size > 0) return "waiting";
     if (this.isStreaming) return "running";
     if (this.props.isActive() || this.model.settledTurnRevision <= this.readSettledTurnRevision)
       return undefined;
@@ -440,16 +453,37 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   @child
-  get artifactInteractionStore(): ArtifactInteractionStore {
-    return createStore(ArtifactInteractionStore, {
-      sessionContext: () => ({ sessionId: this.sessionId }),
-      operations: this.props.operations,
-      operationOwner: `artifact-answer:${this.sessionId}`,
-      isStreaming: () => this.isStreaming,
-      onRequestChanged: (active) => {
-        this.artifactRequestActive = active;
-      },
-    });
+  get interviews(): InterviewStore[] {
+    const records = new Map<string, { record: InterviewRecord; result?: InterviewResult }>();
+    for (const part of this.canonicalParts)
+      if (part.kind === "tool" && part.interview?.sessionId === this.sessionId)
+        records.set(part.interview.id, { record: part.interview, result: part.interviewResult });
+    // Requests can arrive before their Pi metadata reaches the projection.
+    for (const [id, request] of this.interviewRequests)
+      if (!records.has(id)) records.set(id, { record: request.record });
+    return [...records.values()].map(({ record, result }) =>
+      createStore(InterviewStore, {
+        key: record.id,
+        record,
+        result,
+        request: this.interviewRequests.get(record.id),
+        operations: this.props.operations,
+        isStreaming: () => this.isStreaming,
+        onResponded: () => {
+          this.interviewRequests.delete(record.id);
+        },
+      }),
+    );
+  }
+
+  interview(id: string) {
+    return this.interviews.find((interview) => interview.record.id === id);
+  }
+  get waitingForInterview() {
+    return this.interviewRequests.size > 0;
+  }
+  get interviewError() {
+    return this.interviews.find((interview) => interview.error);
   }
 
   @child

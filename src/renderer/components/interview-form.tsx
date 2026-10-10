@@ -1,5 +1,9 @@
 import { Option, Schema } from "effect";
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, type KeyboardEvent } from "react";
+import { observer } from "r-state-tree/react";
+import type { InterviewStore } from "../stores/InterviewStore";
+import type { InterviewField } from "../../contracts/interviews/interview";
+import { listedOptions, type InterviewFormValue } from "../lib/interview-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -7,16 +11,6 @@ import { CheckIcon } from "@/components/ui/icons";
 import { StepProgress } from "@/components/ui/step-progress";
 import { cn } from "@/lib/utils";
 import type { JsonValue } from "../../ipc/json-contract";
-
-export interface ArtifactFormField {
-  id: string;
-  label: string;
-  type: "text" | "textarea" | "number" | "checkbox" | "select";
-  placeholder?: string;
-  options?: ReadonlyArray<{ value: string; label: string }>;
-}
-
-type ArtifactFormValue = string | number | boolean;
 
 const inputClassName =
   "w-full rounded-md border border-border bg-background text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
@@ -30,32 +24,12 @@ const answersSchema = Schema.Record(
   Schema.Union([Schema.String, Schema.Number, Schema.Boolean]),
 );
 
-function answersRecord(value: JsonValue | undefined): Record<string, ArtifactFormValue> | null {
+function answersRecord(value: JsonValue | undefined): Record<string, InterviewFormValue> | null {
   const parsed = Schema.decodeUnknownOption(answersSchema)(value);
   return Option.isSome(parsed) ? { ...parsed.value } : null;
 }
 
-function listedOptions(field: ArtifactFormField) {
-  return field.options?.filter(
-    (option) =>
-      option.value.trim().toLowerCase() !== "other" &&
-      option.label
-        .trim()
-        .toLowerCase()
-        .replace(/(?:\.{3}|…)$/, "") !== "other",
-  );
-}
-
-function initialFormValues(fields: ReadonlyArray<ArtifactFormField>) {
-  return Object.fromEntries(
-    fields.flatMap((field) => {
-      const recommended = field.type === "select" ? listedOptions(field)?.[0] : undefined;
-      return recommended ? [[field.id, recommended.value] as const] : [];
-    }),
-  );
-}
-
-function answerText(field: ArtifactFormField, value: ArtifactFormValue | undefined) {
+function answerText(field: InterviewField, value: InterviewFormValue | undefined) {
   if (field.type === "checkbox") return value ? "Yes" : "No";
   if (value === undefined || value === "" || Number.isNaN(value)) return undefined;
   if (field.type === "select")
@@ -63,7 +37,7 @@ function answerText(field: ArtifactFormField, value: ArtifactFormValue | undefin
   return String(value);
 }
 
-/** Shared answer form for form artifacts and form-view request artifacts.
+/** The session-owned interview's stepped form.
  *  Select fields render listed options as radio rows plus one deterministic
  *  freeform "Other" row (discarding a redundant listed Other option).
  *  Multi-question forms step through one question at a time with Back/Next
@@ -73,42 +47,28 @@ function answerText(field: ArtifactFormField, value: ArtifactFormValue | undefin
  *  has been submitted the form shows every question disabled with the
  *  submitted values so it cannot be submitted again. Prose answers, including
  *  Other, use the shared dictation field; numeric choices stay keyboard-only. */
-export function ArtifactForm({
-  fields,
-  requested,
-  submittedAnswer,
-  onSubmit,
-  onSkip,
-}: {
-  fields: ReadonlyArray<ArtifactFormField>;
-  requested: boolean;
-  submittedAnswer?: JsonValue;
-  onSubmit?: (value: JsonValue) => void;
-  onSkip?: () => void;
-}) {
-  const [values, setValues] = useState<Record<string, ArtifactFormValue>>(() =>
-    initialFormValues(fields),
-  );
-  const [localAnswers, setLocalAnswers] = useState<Record<string, ArtifactFormValue> | null>(null);
-  const [customRows, setCustomRows] = useState<ReadonlySet<string>>(new Set());
-  const [step, setStep] = useState(0);
+export const InterviewForm = observer(function InterviewForm({ store }: { store: InterviewStore }) {
+  const view = store.record.request.view;
+  const fields = view.type === "form" ? view.fields : [];
+  const { values, customRows, step, requested } = store;
   const navigated = useRef(false);
   const stepContent = useRef<HTMLDivElement>(null);
   const otherInputs = useRef(new Map<string, HTMLTextAreaElement>());
   const group = useId();
-  const answers = answersRecord(submittedAnswer) ?? localAnswers;
-  const submitted = answers !== null;
+  const answers = answersRecord(store.result?.value);
+  const submitted = store.submitted;
+  const disabled = submitted || store.responding;
   const shown = answers ?? values;
   const stepped = !submitted && fields.length > 1;
   const reviewing = stepped && step >= fields.length;
   const visibleFields = !stepped ? fields : reviewing ? [] : fields.slice(step, step + 1);
-  const answered = (field: ArtifactFormField) =>
+  const answered = (field: InterviewField) =>
     field.type === "checkbox"
       ? shown[field.id] !== undefined
       : answerText(field, shown[field.id]) !== undefined;
   const goTo = (next: number) => {
     navigated.current = true;
-    setStep(Math.max(0, Math.min(fields.length, next)));
+    store.goTo(next);
   };
   useEffect(() => {
     // Keep keyboard flow on the new question, but never steal focus on mount.
@@ -119,25 +79,19 @@ export function ArtifactForm({
       )
       ?.focus();
   }, [step]);
-  const isCustomRow = (field: ArtifactFormField) => {
+  const isCustomRow = (field: InterviewField) => {
     if (customRows.has(field.id)) return true;
     const text = String(shown[field.id] ?? "");
     return text !== "" && !listedOptions(field)?.some((option) => option.value === text);
   };
-  const selectCustomRow = (field: ArtifactFormField) => {
-    setCustomRows((rows) => (rows.has(field.id) ? rows : new Set(rows).add(field.id)));
-    setValues((current) =>
-      listedOptions(field)?.some((option) => option.value === current[field.id])
-        ? { ...current, [field.id]: "" }
-        : current,
-    );
+  const selectCustomRow = (field: InterviewField) => {
+    store.selectCustomRow(field);
   };
   const submitAll = () => {
-    if (submitted) return;
-    setLocalAnswers({ ...values });
-    onSubmit?.(values);
+    if (disabled) return;
+    void store.respond({ ...values });
   };
-  const advanceFromText = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const advanceFromText = (event: KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) => {
     if (
       event.key !== "Enter" ||
       event.shiftKey ||
@@ -148,16 +102,18 @@ export function ArtifactForm({
     )
       return;
     event.preventDefault();
-    event.currentTarget.form?.requestSubmit();
+    event.stopPropagation();
+    advance();
   };
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    // Enter advances through questions; only the review page submits implicitly.
+  const advance = () => {
+    if (disabled) return;
     if (stepped && !reviewing) goTo(step + 1);
     else submitAll();
   };
+  // Live-request fallback can be inside the chat composer's native form. Own
+  // navigation explicitly rather than nesting forms or submitting that composer.
   return (
-    <form className="grid gap-3" onSubmit={submit}>
+    <div className="grid gap-3" role="form" aria-label={store.record.request.title}>
       {submitted && (
         <p className="flex items-center gap-1.5 text-sm font-medium text-foreground" role="status">
           <CheckIcon />
@@ -225,12 +181,13 @@ export function ArtifactForm({
         {visibleFields.map((field) =>
           field.type === "checkbox" ? (
             <label key={field.id} className="flex items-center gap-2.5 text-sm text-foreground">
-              <input
+              <Input
                 type="checkbox"
-                className="accent-primary"
-                disabled={submitted}
+                className="h-auto w-auto rounded-none border-0 p-0 accent-primary"
+                disabled={disabled}
                 checked={Boolean(shown[field.id])}
-                onChange={(event) => setValues({ ...values, [field.id]: event.target.checked })}
+                onChange={(event) => store.setValue(field.id, event.target.checked)}
+                onKeyDown={advanceFromText}
               />
               {field.label}
             </label>
@@ -251,9 +208,9 @@ export function ArtifactForm({
                   id={`${group}-${field.id}`}
                   className={cn(inputClassName, "min-h-28 resize-y py-2")}
                   placeholder={field.placeholder}
-                  disabled={submitted}
+                  disabled={disabled}
                   value={String(shown[field.id] ?? "")}
-                  onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
+                  onChange={(event) => store.setValue(field.id, event.target.value)}
                 />
               ) : field.type === "select" ? (
                 <div aria-label={field.label} className="grid gap-1" role="radiogroup">
@@ -266,21 +223,16 @@ export function ArtifactForm({
                         shown[field.id] === option.value ? "border-ring bg-muted" : "border-border",
                       )}
                     >
-                      <input
+                      <Input
                         type="radio"
                         name={`${group}-${field.id}`}
-                        className="accent-primary outline-none"
+                        className="h-auto w-auto rounded-none border-0 p-0 accent-primary outline-none"
                         value={option.value}
-                        disabled={submitted}
+                        onKeyDown={advanceFromText}
+                        disabled={disabled}
                         checked={shown[field.id] === option.value}
                         onChange={() => {
-                          setCustomRows((rows) => {
-                            if (!rows.has(field.id)) return rows;
-                            const next = new Set(rows);
-                            next.delete(field.id);
-                            return next;
-                          });
-                          setValues({ ...values, [field.id]: option.value });
+                          store.selectOption(field, option.value);
                         }}
                       />
                       <span>{option.label}</span>
@@ -292,12 +244,13 @@ export function ArtifactForm({
                       isCustomRow(field) ? "border-ring bg-muted" : "border-border",
                     )}
                   >
-                    <input
+                    <Input
                       type="radio"
                       name={`${group}-${field.id}`}
-                      className="accent-primary outline-none"
+                      className="h-auto w-auto rounded-none border-0 p-0 accent-primary outline-none"
                       aria-label="Other"
-                      disabled={submitted}
+                      onKeyDown={advanceFromText}
+                      disabled={disabled}
                       checked={isCustomRow(field)}
                       onChange={() => {
                         selectCustomRow(field);
@@ -310,13 +263,13 @@ export function ArtifactForm({
                       aria-label={`${field.label} other option`}
                       placeholder="Other…"
                       className="min-h-9 resize-none border-0 bg-transparent text-sm"
-                      disabled={submitted}
+                      disabled={disabled}
                       value={isCustomRow(field) ? String(shown[field.id] ?? "") : ""}
                       onFocus={() => selectCustomRow(field)}
                       onChange={(event) => {
                         selectCustomRow(field);
                         const value = event.target.value;
-                        setValues((current) => ({ ...current, [field.id]: value }));
+                        store.setValue(field.id, value);
                       }}
                       onKeyDown={advanceFromText}
                       ref={(element) => {
@@ -333,9 +286,9 @@ export function ArtifactForm({
                   id={`${group}-${field.id}`}
                   className={cn(inputClassName, "min-h-9 resize-none px-2.5")}
                   placeholder={field.placeholder}
-                  disabled={submitted}
+                  disabled={disabled}
                   value={String(shown[field.id] ?? "")}
-                  onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
+                  onChange={(event) => store.setValue(field.id, event.target.value)}
                   onKeyDown={advanceFromText}
                 />
               ) : (
@@ -344,14 +297,10 @@ export function ArtifactForm({
                   type="number"
                   className={cn(inputClassName, "h-9 px-2.5")}
                   placeholder={field.placeholder}
-                  disabled={submitted}
+                  disabled={disabled}
                   value={String(shown[field.id] ?? "")}
-                  onChange={(event) =>
-                    setValues({
-                      ...values,
-                      [field.id]: event.target.valueAsNumber,
-                    })
-                  }
+                  onChange={(event) => store.setValue(field.id, event.target.valueAsNumber)}
+                  onKeyDown={advanceFromText}
                 />
               )}
             </div>
@@ -368,17 +317,21 @@ export function ArtifactForm({
             )}
             <div className="flex gap-2">
               {requested && (
-                <Button variant="outline" onClick={onSkip}>
+                <Button
+                  variant="outline"
+                  disabled={store.responding}
+                  onClick={() => void store.respond(undefined, true)}
+                >
                   Skip
                 </Button>
               )}
-              <Button type="submit" data-step-focus>
+              <Button onClick={advance} disabled={store.responding} data-step-focus>
                 {!stepped || reviewing ? "Submit" : step === fields.length - 1 ? "Review" : "Next"}
               </Button>
             </div>
           </div>
         )}
       </div>
-    </form>
+    </div>
   );
-}
+});

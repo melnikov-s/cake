@@ -30,9 +30,9 @@ import { AnnotationItemPopover } from "./annotation-item-popover";
 import type { ArtifactRecord } from "../../ipc/artifact-contract";
 import type { SourceLocation } from "../../ipc/source-location";
 import type { UiPart } from "../../ipc/session-contract";
-import type { ArtifactInteractionStore } from "../stores/ArtifactInteractionStore";
 import type { ChatStore } from "../stores/ChatStore";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
+import type { InterviewStore } from "../stores/InterviewStore";
 import type { InlineArtifactPreviewStore } from "../stores/InlineArtifactPreviewStore";
 import type { MessageCommentsStore, MessageSelectionAnchor } from "../stores/MessageCommentsStore";
 import type { SubagentActivityStore } from "../stores/SubagentActivityStore";
@@ -246,8 +246,8 @@ export interface ChatTranscriptBehavior {
   inlineArtifactPreviews?: InlineArtifactPreviewStore;
   artifacts?: {
     records: ArtifactRecord[];
-    interaction: ArtifactInteractionStore;
   };
+  interviews?: readonly InterviewStore[];
   messageComments?: MessageCommentsStore;
   subagents?: SubagentActivityStore;
   /** Hides the response fullscreen affordance for compact, transient chats. */

@@ -261,8 +261,8 @@ Request validation rejects malformed, excessive, nonfinite, or out-of-range PCM.
 startup and inference timeouts and owns worker cancellation and teardown.
 
 `Textarea` has an explicit `dictation` prop. `ComposerInput` opts in, so all authoritative `Chat`
-consumers share the same behavior. `ArtifactForm` uses it for text, multiline, and select **Other**
-answers in interviews and form artifacts. Enter in a single-line answer drains final recognition
+consumers share the same behavior. `InterviewForm` uses it for text, multiline, and select **Other**
+answers in interviews. Enter in a single-line answer drains final recognition
 before advancing or submitting; multiline answers retain newline behavior. Numeric fields, radio
 choices, and checkboxes do not capture speech. Additional prose fields can opt in without another
 composer or Store. Code/configuration editors, path/search fields, and embedded surfaces stay excluded.

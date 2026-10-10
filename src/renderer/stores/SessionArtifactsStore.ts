@@ -63,10 +63,7 @@ export class SessionArtifactsStore extends Store<{
   get records(): ArtifactRecord[] {
     return this.associations
       .map((association) => association.lineage?.revision(association.selectedRevision)?.record)
-      .filter(
-        (record): record is ArtifactRecord =>
-          record !== undefined && record.artifact.kind !== "request",
-      )
+      .filter((record): record is ArtifactRecord => record !== undefined)
       .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
 

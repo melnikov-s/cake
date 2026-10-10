@@ -648,7 +648,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       }
       return;
     }
-    if (event.type === "artifact-requested") return;
+    if (event.type === "interview-requested") return;
     if (event.type === "changelog-received") {
       return;
     }

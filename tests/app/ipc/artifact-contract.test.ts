@@ -4,7 +4,6 @@ import {
   MAX_ARTIFACT_INPUT_BYTES,
   artifactPointerSchema,
   parseArtifactInput,
-  validateArtifactResponse,
 } from "../../../src/ipc/artifact-contract";
 
 function markdown(markdown = "Hello") {
@@ -27,14 +26,6 @@ describe("cake.artifact/v1 contract", () => {
     expect(() =>
       parseArtifactInput({ ...markdown(), kind: "future-chart", payload: {} }),
     ).toThrow();
-    expect(() =>
-      parseArtifactInput({
-        ...markdown(),
-        kind: "html",
-        payload: { html: "<p>x</p>" },
-        interaction: { mode: "request" },
-      }),
-    ).toThrow("Only request artifacts");
     expect(() =>
       parseArtifactInput({
         ...markdown(),
@@ -128,17 +119,6 @@ describe("cake.artifact/v1 contract", () => {
         kind: "architecture",
       }).kind,
     ).toBe("architecture");
-  });
-
-  it("validates structured responses against the declared JSON schema", () => {
-    const schema = {
-      type: "object" as const,
-      required: ["answer"],
-      properties: { answer: { type: "string" as const, minLength: 1 } },
-    };
-    expect(validateArtifactResponse(schema, { answer: "yes" })).toEqual({ answer: "yes" });
-    expect(() => validateArtifactResponse(schema, {})).toThrow("required");
-    expect(() => validateArtifactResponse(schema, { answer: "" })).toThrow("length");
   });
 
   it("accepts delegated widget source as Cake-owned artifact payload", () => {

@@ -242,7 +242,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
         persistArtifact: async () => {
           throw new Error("Unused artifact storage");
         },
-        requestArtifact: async () => undefined,
+        requestInterview: async () => undefined,
         generateInlineWidget: async () => {
           throw new Error("Unavailable capture");
         },

@@ -8,6 +8,7 @@ import { AnnotationSummary } from "@/components/annotation-summary";
 import { Badge } from "@/components/ui/badge";
 import { IconButton } from "@/components/ui/icon-button";
 import { BrowserIcon, EditIcon, MarkdownIcon, TreeIcon } from "@/components/ui/icons";
+import { Interview } from "@/components/interview";
 import { ArtifactHost } from "@/components/artifact-host";
 import { InlineArtifactPreview } from "./inline-artifact-preview";
 import { CompactionMessage } from "@/components/compaction-message";
@@ -172,18 +173,15 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
     );
   if (part.kind === "command") return <ShellCommand part={part} />;
   if (part.kind === "tool") {
-    // Request artifacts never enter the session artifact catalog; the live
-    // interaction Store is their only record source.
+    const interviewId = part.interview?.id;
+    if (interviewId) {
+      const store = behavior.interviews?.find((candidate) => candidate.record.id === interviewId);
+      if (store) return <Interview store={store} inlineWidgets={behavior.inlineWidgets} />;
+    }
     const record = part.artifactId
-      ? (behavior.artifacts?.interaction.requestRecord(part.artifactId) ??
-        behavior.artifacts?.records.find((candidate) => candidate.artifact.id === part.artifactId))
+      ? behavior.artifacts?.records.find((candidate) => candidate.artifact.id === part.artifactId)
       : undefined;
-    if (
-      part.artifactId &&
-      record?.artifact.kind !== "request" &&
-      behavior.inlineArtifactPreviews &&
-      behavior.inlineWidgets
-    )
+    if (part.artifactId && behavior.inlineArtifactPreviews && behavior.inlineWidgets)
       return (
         <InlineArtifactPreview
           reference={
@@ -195,23 +193,15 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
           inlineWidgets={behavior.inlineWidgets}
         />
       );
-    if (record && behavior.artifacts) {
-      const request =
-        behavior.artifacts.interaction.request?.record.artifact.id === record.artifact.id
-          ? behavior.artifacts.interaction.request
-          : undefined;
+    if (record)
       return (
         <ArtifactHost
           record={record}
-          requested={Boolean(request)}
-          submittedAnswer={behavior.artifacts.interaction.submittedAnswer(record.artifact)}
-          onSubmit={(value) => void behavior.artifacts!.interaction.answer(record, value)}
-          onSkip={() => void behavior.artifacts!.interaction.respond(undefined, true)}
           inlineWidgets={behavior.inlineWidgets}
           onOpenSourceLocation={behavior.openSourceLocation}
+          presentation="inline"
         />
       );
-    }
     return (
       <Tool
         part={part}

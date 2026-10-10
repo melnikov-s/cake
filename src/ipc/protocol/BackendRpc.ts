@@ -12,6 +12,7 @@ import { DiscussionRpc } from "./DiscussionRpc";
 import { SubagentRpc } from "./SubagentRpc";
 import { ApplicationRpc } from "./ApplicationRpc";
 import { ArtifactRpc } from "./ArtifactRpc";
+import { InterviewRpc } from "./InterviewRpc";
 import { CakeChatRpc } from "./CakeChatRpc";
 import { ConversationRpc } from "./ConversationRpc";
 import { DrawControlRpc } from "./DrawControlRpc";
@@ -44,6 +45,7 @@ export const BackendRpc = ApplicationRpc.merge(
   SubagentRpc,
 
   ArtifactRpc,
+  InterviewRpc,
   CakeChatRpc,
   ConversationRpc,
   FoundationRpc,

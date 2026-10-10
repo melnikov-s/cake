@@ -8,7 +8,7 @@ import { _electron as electron, expect, test, type ElectronApplication } from "@
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const execFile = promisify(execFileCallback);
 
-test("opens the artifact workspace, keeps requests inline, and isolates HTML", async () => {
+test("opens the artifact workspace and isolates HTML", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-s4-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -177,7 +177,6 @@ test("opens the artifact workspace, keeps requests inline, and isolates HTML", a
     await expect(page.locator("body")).not.toContainText("compromised");
 
     await artifactControl.click();
-    await expect(page.getByRole("img", { name: "Waiting for your answer" })).toBeVisible();
 
     await page.setViewportSize({ width: 700, height: 900 });
     await artifactControl.click();

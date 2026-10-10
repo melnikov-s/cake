@@ -56,6 +56,137 @@ const createDraft = {
 
 describe("RendererRequestCoordinator", () => {
   it.effect(
+    "validates an interview answer before settling and rejects foreign or duplicate responses",
+    () =>
+      Effect.gen(function* () {
+        const { coordinator, events } = yield* makeFixture;
+        yield* coordinator.registerProjectSession("session", "/projects/cake");
+        yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "session" }, 11);
+        const record = {
+          id: "call-1",
+          sessionId: "session",
+          request: {
+            protocol: "cake.request/v1" as const,
+            id: "choice",
+            title: "Choose",
+            responseSchema: {
+              type: "object" as const,
+              properties: { answer: { type: "boolean" as const } },
+            },
+            view: {
+              type: "form" as const,
+              fields: [{ id: "answer", label: "Answer", type: "checkbox" as const }],
+            },
+            fallback: { markdown: "Choose" },
+          },
+        };
+        const pending = yield* coordinator
+          .requestInterview("session", record, new AbortController().signal)
+          .pipe(Effect.forkChild);
+        const event = yield* Queue.take(events);
+        assert.equal(event.type, "interview-requested");
+        const response = {
+          requestId: event.requestId,
+          interviewRequestId: event.interviewRequestId,
+          sessionId: "session",
+          cancelled: false,
+          value: { answer: true },
+        };
+        for (const [connection, session, value] of [
+          [22, "session", { answer: true }],
+          [11, "wrong-session", { answer: true }],
+          [11, "session", { answer: "invalid" }],
+        ] as const) {
+          expect(
+            (yield* coordinator
+              .respondInterview(connection, session, { ...response, value })
+              .pipe(Effect.exit))._tag,
+          ).toBe("Failure");
+        }
+        expect(
+          (yield* coordinator
+            .respondInterview(11, "session", {
+              ...response,
+              interviewRequestId: "wrong-correlation",
+            })
+            .pipe(Effect.exit))._tag,
+        ).toBe("Failure");
+        yield* coordinator.respondInterview(11, "session", response);
+        expect(yield* Fiber.join(pending)).toEqual({ answer: true });
+        expect(
+          (yield* coordinator.respondInterview(11, "session", response).pipe(Effect.exit))._tag,
+        ).toBe("Failure");
+      }),
+  );
+
+  it.effect("settles interview cancellation and removes aborted or released correlations", () =>
+    Effect.gen(function* () {
+      const { coordinator, events } = yield* makeFixture;
+      yield* coordinator.registerProjectSession("session", "/projects/cake");
+      yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "session" }, 11);
+      const record = {
+        id: "call-1",
+        sessionId: "session",
+        request: {
+          protocol: "cake.request/v1" as const,
+          id: "choice",
+          title: "Choose",
+          responseSchema: { type: "object" as const },
+          view: {
+            type: "form" as const,
+            fields: [{ id: "answer", label: "Answer", type: "text" as const }],
+          },
+          fallback: { markdown: "Choose" },
+        },
+      };
+      const controller = new AbortController();
+      const start = () =>
+        coordinator.requestInterview("session", record, controller.signal).pipe(Effect.forkChild);
+      const cancelled = yield* start();
+      const event = yield* Queue.take(events);
+      assert.equal(event.type, "interview-requested");
+      yield* coordinator.respondInterview(11, "session", {
+        requestId: event.requestId,
+        interviewRequestId: event.interviewRequestId,
+        sessionId: "session",
+        cancelled: true,
+      });
+      expect(yield* Fiber.join(cancelled)).toBeUndefined();
+      const released = yield* start();
+      const releaseEvent = yield* Queue.take(events);
+      assert.equal(releaseEvent.type, "interview-requested");
+      yield* coordinator.releaseSession({ _tag: "ProjectSession", sessionId: "session" });
+      expect(yield* Fiber.join(released)).toBeUndefined();
+      expect(
+        (yield* coordinator
+          .respondInterview(11, "session", {
+            requestId: releaseEvent.requestId,
+            interviewRequestId: releaseEvent.interviewRequestId,
+            sessionId: "session",
+            cancelled: true,
+          })
+          .pipe(Effect.exit))._tag,
+      ).toBe("Failure");
+      yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "session" }, 11);
+      const interrupted = yield* start();
+      const abortEvent = yield* Queue.take(events);
+      assert.equal(abortEvent.type, "interview-requested");
+      controller.abort();
+      expect(yield* Fiber.join(interrupted)).toBeUndefined();
+      expect(
+        (yield* coordinator
+          .respondInterview(11, "session", {
+            requestId: abortEvent.requestId,
+            interviewRequestId: abortEvent.interviewRequestId,
+            sessionId: "session",
+            cancelled: true,
+          })
+          .pipe(Effect.exit))._tag,
+      ).toBe("Failure");
+    }),
+  );
+
+  it.effect(
     "remote browser only accepts the bound desktop reply; no desktop and cancellation settle without a stale result",
     () =>
       Effect.gen(function* () {

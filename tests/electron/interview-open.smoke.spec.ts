@@ -136,6 +136,17 @@ reply({ ready: true });
         const toolMessage = messages.findLast((message) => message.role === "tool");
         if (!toolMessage)
           return streamChunks(response, [
+            ...(!dictationEnabled
+              ? [
+                  chunk({
+                    role: "assistant",
+                    content: Array.from(
+                      { length: 120 },
+                      (_, index) => `Context paragraph ${index + 1}.`,
+                    ).join("\n\n"),
+                  }),
+                ]
+              : []),
             chunk({
               role: "assistant",
               tool_calls: [
@@ -260,8 +271,25 @@ reply({ ready: true });
       await composer.fill("Interview me");
       await composer.press("Enter");
 
-      const form = page.locator('[data-artifact-id="fixture-interview"]');
+      const form = page.locator('[data-interview-id="call_interview"]');
+      const scrollAwayAndBack = async () => {
+        const transcript = page.locator(
+          '.transcript:not([data-slot="content-transition-outgoing"] *)',
+        );
+        await transcript.hover();
+        await page.mouse.wheel(0, -10_000);
+        await transcript.evaluate((element) => {
+          element.scrollTop = 0;
+        });
+        // Prove virtualization actually unmounted the interview, not merely hid it.
+        await expect(form).toHaveCount(0);
+        await transcript.evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
+        await expect(form).toBeVisible();
+      };
       await expect(form).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator('.transcript [data-interview-id="call_interview"]')).toBeVisible();
       await expect(form).toContainText(`Question 1 of ${dictationEnabled ? 4 : 2}`);
       if (dictationEnabled) {
         await form.getByRole("radio", { name: "Other", exact: true }).check();
@@ -289,6 +317,11 @@ reply({ ready: true });
         await configureSpeech("project", "project final");
         await expect(name).toHaveValue("Cake project");
       }
+      if (!dictationEnabled) {
+        await scrollAwayAndBack();
+        await expect(form).toContainText("Question 2 of 2");
+        await expect(name).toHaveValue("Cake");
+      }
       await name.press("Enter");
       if (dictationEnabled) {
         await expect(form).toContainText("Question 3 of 4");
@@ -311,6 +344,12 @@ reply({ ready: true });
         await expect(form).toContainText("Custom: Pacific coast");
         await expect(form).toContainText("Cake project final");
       }
+      if (!dictationEnabled) {
+        await scrollAwayAndBack();
+        await expect(form).toContainText("Review answers");
+        await expect(form).toContainText("EU");
+        await expect(form).toContainText("Cake");
+      }
       expect(toolResults).toHaveLength(0);
       await form.getByRole("button", { name: "Submit" }).click();
 
@@ -318,7 +357,7 @@ reply({ ready: true });
       await expect(page.getByText("Interview received.")).toBeVisible({ timeout: 30_000 });
       expect(toolResults).toHaveLength(1);
       expect(JSON.parse(toolResults[0]!)).toEqual({
-        artifactId: "fixture-interview",
+        interviewId: "call_interview",
         cancelled: false,
         value: dictationEnabled
           ? {

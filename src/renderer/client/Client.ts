@@ -414,17 +414,20 @@ interface VsCodeCommands {
   ): Promise<void>;
 }
 
-interface ArtifactCommands {
+interface InterviewCommands {
   respond(
     input: {
       operationId: string;
       sessionId: string;
-      artifactRequestId: string;
+      interviewRequestId: string;
       value?: JsonValue;
       cancelled: boolean;
     },
     options?: ClientCommandOptions,
   ): Promise<void>;
+}
+
+interface ArtifactCommands {
   respondToUi(
     input: {
       operationId: string;
@@ -558,6 +561,7 @@ export interface Client {
   readonly browser: BrowserCommands;
   readonly vscode: VsCodeCommands;
   readonly artifacts: ArtifactCommands;
+  readonly interviews: InterviewCommands;
   readonly inlineWidgets: InlineWidgetCommands;
   readonly foundation: CommandGroup<CakeIpcClientService["foundation"]>;
 }

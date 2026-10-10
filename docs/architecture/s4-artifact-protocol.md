@@ -1,10 +1,10 @@
 # S4 artifact protocol and ownership
 
-Cake's durable rich-output contract is `cake.artifact/v1`. The blocking input
-contract is `cake.request/v1`. Their shared Effect Schemas validate Pi tool
-input, main-process persistence, Effect RPC, renderer Models, interaction
-responses, and Cake Session pointers. Sharing protocol or storage machinery does
-not make the two concepts the same product surface.
+Cake's durable rich-output contract is `cake.artifact/v1`. Its Effect Schemas
+validate Pi tool input, main-process persistence, Effect RPC, renderer Models,
+and Cake Session pointers. [Interviews](./interviews.md) are a separate primitive
+with their own contract, operation, RPC, transcript metadata, and session-owned
+Stores. They do not use the artifact repository or artifact events.
 
 Unknown protocol versions, unknown kinds, and malformed payloads are hard
 failures. Cake is greenfield and does not reinterpret unsupported protocols as
@@ -45,11 +45,10 @@ session-tree branch, restoring an earlier branch, or running tool compaction doe
 not move, clone, or re-create artifacts. These operations may change which transcript pointers are visible, but effective
 session/family links and stable lineage identities remain unchanged.
 
-Blocking requests are different. They stay inline at the active tool-call position
-because the conversation cannot continue until the user submits or cancels them.
-They do not enter the accessory panel or become reusable deliverables, even if the
-current implementation persists and renders them through shared artifact
-infrastructure.
+Interviews stay inline at their originating tool-call position because the
+conversation waits for submission or cancellation. They never become reusable
+artifacts or enter the accessory panel. They share only presentation primitives
+and widget compilation/sandbox infrastructure with artifacts.
 
 ## Authority and durability
 
@@ -72,9 +71,9 @@ infrastructure.
 - Renderer `Artifact` instances are disposable projections of validated
   repository records. Session snapshots hydrate current records; a focused
   artifact observer applies live repository updates from the existing native
-  event stream directly to loaded renderer Conversation Models. Pending response ownership,
-  cancellation, and routing remain in a focused renderer artifact workflow
-  Store and the main artifact domain operations above `CakeSessionRuntimes`.
+  event stream directly to loaded renderer Conversation Models. Library operations
+  remain in the renderer artifact workflow Store and the main artifact domain
+  operations above `CakeSessionRuntimes`.
 - The catalog records explicit links to a Cake Session or Session Family. A link
   either follows the lineage's latest revision or pins one exact revision. Family
   creation workflows automatically create a family link; standalone fork policy
@@ -151,31 +150,17 @@ Mermaid when they are clearest in the conversation. User-requested widget edits
 use `artifacts.update`; Cake privately applies the requested delta to stored source
 and publishes only after compilation, rendering, and review succeed.
 
-The gateway also exposes `interview.open`, which accepts one
-`cake.request/v1`, persists it at the tool-call position, and waits for one
-schema-validated response or cancellation. Its `view` is either a Cake-rendered
-form definition or a sandboxed HTML/React widget. The form view is preferred for
-ordinary fields; custom code is for genuinely visual interactions.
+The separate `interview.open` operation is documented in
+[Interview ownership and lifecycle](./interviews.md).
 
-Only internal request records may use request mode. These are blocking requests,
-not entries in the session artifact panel. In a form select, the
-first listed option is the agent's recommended option and Cake selects it by
-default; the user may choose another listed option or enter freeform text. A
-pending request has a unique request ID and exactly one terminal settlement.
-Values are checked in the renderer before transport and again at the Pi boundary.
-Invalid values keep the request open. User cancellation, Pi abort signals, Cake Session replacement, session-runtime
-Scope disposal, and loss of the final owning renderer connection all settle it
-as cancelled. Late or mismatched responses are ignored.
-
-The `/cake-artifacts` built-in diagnostic command exercises the same repository
-and response route without provider credentials. It is used by the deterministic
-Electron acceptance test.
+The `/cake-artifacts` built-in diagnostic command exercises reusable artifact
+publication without provider credentials. It does not open interviews.
 
 ## Trusted built-ins and untrusted HTML
 
 The trusted renderer includes Markdown, immutable file snapshots,
 sortable/filterable/selectable/exportable tables, Mermaid diagrams,
-schema-defined forms, media, diffs, HTML frames, and sandboxed generated widgets. Every surface retains its Markdown fallback, and
+media, diffs, HTML frames, and sandboxed generated widgets. Every artifact retains its Markdown fallback, and
 session export concatenates those fallbacks into a readable Markdown document.
 Historical persisted architecture records are decoded only at the storage-read
 boundary and projected as their mandatory Markdown fallback; their immutable
@@ -300,10 +285,10 @@ history, and render-failure recovery, but is not automatically injected into
 transcript context or duplicated as routine viewer chrome. If a
 specialized renderer fails, the viewer displays that fallback directly.
 
-Custom request widgets use that same compiler and sandbox with one additional
+Custom interview widgets use that same compiler and sandbox with one additional
 capability. HTML receives `cakeRequest.submit(value)` and
 `cakeRequest.cancel()`. A React default export receives `submit` and `cancel`
-props. Those functions emit token-tagged messages to the owning request host;
+props. Those functions emit token-tagged messages to the owning interview host;
 they do not expose Cake, IPC, credentials, files, or the parent DOM. The host
 accepts messages only from its own frame and active compilation token, settles
 at most once, and validates the submitted value against the request's declared
@@ -315,7 +300,7 @@ Deterministic tests cover protocol versions, input limits, unsafe media,
 response schemas, widget generation and cancellation before persistence,
 historical architecture fallback migration and fork-pointer verification,
 content addressing, revisions, hydration, Markdown export, driver correlation,
-duplicate/late responses, session replacement, table and form interaction, and
-the empty-sandbox/CSP boundary. The Electron smoke covers
-table sorting, a structured form round trip acknowledged by revision update,
-HTML isolation, Mermaid rendering, and application-restart hydration.
+table interaction and the empty-sandbox/CSP boundary. The artifact Electron smoke
+covers table sorting, HTML isolation, Mermaid rendering, and application-restart
+hydration. Interview response, cancellation, remount, and cleanup coverage is
+separate.

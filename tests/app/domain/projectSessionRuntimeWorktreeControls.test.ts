@@ -85,7 +85,7 @@ describe("Project Session runtime worktree controls", () => {
       persistArtifact: async () => {
         throw new Error("Unexpected artifact persistence");
       },
-      requestArtifact: async () => undefined,
+      requestInterview: async () => undefined,
       generateInlineWidget: async () => {
         throw new Error("Unexpected widget generation");
       },

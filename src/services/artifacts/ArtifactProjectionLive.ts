@@ -79,8 +79,6 @@ export const artifactProjectionContents = (snapshot: CakeArtifactV1): Projection
         fallback,
       ];
     }
-    case "form":
-      return [textContent("form.json", `${JSON.stringify(snapshot.payload, null, 2)}\n`), fallback];
     case "diff":
       return [textContent("changes.diff", snapshot.payload.diff), fallback];
     case "diagram":
@@ -133,8 +131,6 @@ export const artifactProjectionContents = (snapshot: CakeArtifactV1): Projection
         ),
         fallback,
       ];
-    case "request":
-      throw new Error("Blocking requests are not reusable artifact projections");
   }
 };
 

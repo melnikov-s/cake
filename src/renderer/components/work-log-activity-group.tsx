@@ -104,7 +104,7 @@ export const ActivityGroup = observer(function ActivityGroup({
   const turnIsChurning =
     behavior.store.liveWorkPossible &&
     !behavior.waitingForUser &&
-    !behavior.artifacts?.interaction.request;
+    !behavior.interviews?.some((interview) => interview.requested);
   const waitingForNextPart =
     !compacted &&
     turnIsChurning &&

@@ -15,6 +15,7 @@ export interface ClientEventsService {
     connectionId: number,
   ) => Stream.Stream<
     FocusedCakeEvent<
+      | "interview-requested"
       | "changelog-snapshot"
       | "complete"
       | "fatal"
@@ -38,11 +39,7 @@ export interface ClientEventsService {
     connectionId: number,
   ) => Stream.Stream<
     FocusedCakeEvent<
-      | "artifact-updated"
-      | "artifact-catalog-invalidated"
-      | "artifact-requested"
-      | "ui-request"
-      | "renderer-events-ready"
+      "artifact-updated" | "artifact-catalog-invalidated" | "ui-request" | "renderer-events-ready"
     >
   >;
   readonly terminals: (

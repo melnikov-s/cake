@@ -8,6 +8,7 @@ import { CakeRpc } from "../protocol/CakeRpc";
 import { RendererConnectionMiddlewareLive } from "../protocol/RendererConnectionMiddleware";
 import { applicationStateHandlers } from "./ApplicationStateHandlers";
 import { artifactHandlers } from "./ArtifactHandlers";
+import { interviewHandlers } from "./InterviewHandlers";
 import { attachmentUploadHandlers } from "./AttachmentUploadHandlers";
 import { browserHandlers } from "./BrowserHandlers";
 import { browserResponseHandlers } from "./BrowserResponseHandlers";
@@ -59,6 +60,7 @@ export const makeCakeRpcServerLive = (
     ...backendConnectionHandlers,
     ...applicationStateHandlers,
     ...artifactHandlers,
+    ...interviewHandlers,
     ...attachmentUploadHandlers,
     ...browserHandlers,
     ...browserResponseHandlers,

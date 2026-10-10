@@ -5,6 +5,7 @@ import { BackendConnectionRpc } from "./BackendConnectionRpc";
 import { ApplicationRpc } from "./ApplicationRpc";
 import { AttachmentUploadRpc } from "./AttachmentUploadRpc";
 import { ArtifactRpc } from "./ArtifactRpc";
+import { InterviewRpc } from "./InterviewRpc";
 import { BrowserRpc, BrowserResponseRpc } from "./BrowserRpc";
 import { CakeChatRpc } from "./CakeChatRpc";
 import { DiscussionRpc } from "./DiscussionRpc";
@@ -43,6 +44,7 @@ export const CakeRpc = ApplicationRpc.merge(
   DesktopHostRpc,
   BackendConnectionRpc,
   ArtifactRpc,
+  InterviewRpc,
   AttachmentUploadRpc,
   BrowserRpc,
   BrowserResponseRpc,

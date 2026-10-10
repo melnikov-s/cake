@@ -36,33 +36,21 @@ const makeStorage = async (root: string) => {
 
 const tableSnapshot = (
   value: number,
-  options: { id?: string; sessionId?: string; revision?: number; kind?: "table" | "request" } = {},
-): CakeArtifactV1 =>
-  options.kind === "request"
-    ? {
-        protocol: "cake.artifact/v1",
-        id: options.id ?? "scores",
-        sessionId: options.sessionId ?? "session-1",
-        revision: options.revision ?? 1,
-        kind: "request",
-        payload: { request: { value } },
-        fallback: { markdown: `Request ${value}` },
-        interaction: { mode: "request" },
-      }
-    : {
-        protocol: "cake.artifact/v1",
-        id: options.id ?? "scores",
-        sessionId: options.sessionId ?? "session-1",
-        revision: options.revision ?? 1,
-        kind: "table",
-        title: `Scores ${value}`,
-        payload: {
-          columns: [{ id: "score", label: "Score", type: "number" }],
-          rows: [{ id: "one", score: value }],
-        },
-        fallback: { markdown: `| Score |\n| ---: |\n| ${value} |` },
-        interaction: { mode: "present" },
-      };
+  options: { id?: string; sessionId?: string; revision?: number } = {},
+): CakeArtifactV1 => ({
+  protocol: "cake.artifact/v1",
+  id: options.id ?? "scores",
+  sessionId: options.sessionId ?? "session-1",
+  revision: options.revision ?? 1,
+  kind: "table",
+  title: `Scores ${value}`,
+  payload: {
+    columns: [{ id: "score", label: "Score", type: "number" }],
+    rows: [{ id: "one", score: value }],
+  },
+  fallback: { markdown: `| Score |\n| ---: |\n| ${value} |` },
+  interaction: { mode: "present" },
+});
 
 afterEach(async () => {
   await Promise.all(disposeRuntimes.splice(0).map((dispose) => dispose()));
@@ -305,8 +293,13 @@ describe("ArtifactStorage", () => {
 
     const first = tableSnapshot(1);
     const second = tableSnapshot(2, { revision: 2 });
-    const request = tableSnapshot(0, { id: "blocking", kind: "request" });
-    const writeBlob = async (snapshot: CakeArtifactV1) => {
+    const request = {
+      ...tableSnapshot(0, { id: "blocking" }),
+      kind: "request",
+      payload: { request: { value: 0 } },
+      interaction: { mode: "request" },
+    };
+    const writeBlob = async (snapshot: object) => {
       const serialized = `${JSON.stringify(snapshot, null, 2)}\n`;
       const value = hash(serialized);
       await writeFile(join(blobs, `${value}.json`), serialized);
@@ -315,7 +308,11 @@ describe("ArtifactStorage", () => {
     const firstDigest = await writeBlob(first);
     const secondDigest = await writeBlob(second);
     const requestDigest = await writeBlob(request);
-    const writeIndex = async (targetSessionId: string, snapshot: CakeArtifactV1, value: string) => {
+    const writeIndex = async (
+      targetSessionId: string,
+      snapshot: { id: string; sessionId: string; revision: number; kind: string },
+      value: string,
+    ) => {
       const directory = join(sessions, hash("/project"), hash(targetSessionId));
       await mkdir(directory, { recursive: true });
       await writeFile(

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import type { InterviewRecord } from "../contracts/interviews/interview";
 import { resolve } from "node:path";
 import { Effect } from "effect";
 import type { SourceLocation } from "../ipc/source-location";
@@ -99,8 +99,8 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly widgetSessionDir?: string;
   readonly emit: (event: CakeEvent) => void;
   readonly requestUi: (request: RuntimeUiRequest) => Promise<string | undefined>;
-  readonly requestArtifact: (
-    record: ArtifactRecord,
+  readonly requestInterview: (
+    record: InterviewRecord,
     signal: AbortSignal,
   ) => Promise<JsonValue | undefined>;
   readonly requestApplicationControl: (
@@ -161,7 +161,7 @@ export class ProjectSessionIntegrationHost {
   private readonly widgetSessionDir: string;
   private readonly emitEvent: (event: CakeEvent) => void;
   private readonly requestUiFromRenderer: ProjectSessionIntegrationHostOptions["requestUi"];
-  private readonly requestArtifactFromRenderer: ProjectSessionIntegrationHostOptions["requestArtifact"];
+  private readonly requestInterviewFromRenderer: ProjectSessionIntegrationHostOptions["requestInterview"];
   private readonly requestApplicationControlFromRenderer: ProjectSessionIntegrationHostOptions["requestApplicationControl"];
   private readonly drawControl: CakeSessionRuntimeOptions["drawControl"];
   private readonly runWidgetGeneration: typeof runInlineWidgetGeneration;
@@ -181,7 +181,6 @@ export class ProjectSessionIntegrationHost {
     ProjectSessionIntegrationHostOptions["importWorkspaceFile"]
   >;
   private readonly reviewRepository: ReviewRepositoryPort;
-  private readonly requestRevisions = new Map<string, number>();
   private disposed = false;
 
   constructor(options: ProjectSessionIntegrationHostOptions) {
@@ -191,7 +190,7 @@ export class ProjectSessionIntegrationHost {
       options.widgetSessionDir ?? resolve(options.sessionDir, "..", "widget-sessions");
     this.emitEvent = options.emit;
     this.requestUiFromRenderer = options.requestUi;
-    this.requestArtifactFromRenderer = options.requestArtifact;
+    this.requestInterviewFromRenderer = options.requestInterview;
     this.requestApplicationControlFromRenderer = options.requestApplicationControl;
     this.drawControl = options.drawControl;
     this.runWidgetGeneration = options.runWidgetGeneration ?? runInlineWidgetGeneration;
@@ -258,7 +257,7 @@ export class ProjectSessionIntegrationHost {
         this.emit({ type: "extension-ui-intent", sessionId, intent }),
       drawControl: this.drawControl,
       persistArtifact: (artifact) => this.execute(this.persistArtifact(artifact, sessionId)),
-      requestArtifact: (record, signal) => this.requestArtifactFromRenderer(record, signal),
+      requestInterview: (record, signal) => this.requestInterviewFromRenderer(record, signal),
       generateInlineWidget: (input) => this.execute(this.generateInlineWidget(input), input.signal),
       reviseInlineWidget: (input) => this.execute(this.reviseInlineWidget(input), input.signal),
       resolveArtifact: (reference) =>
@@ -292,25 +291,7 @@ export class ProjectSessionIntegrationHost {
     const repository = this.artifactRepository;
     const workingDirectory = this.workspacePath;
     const emit = (event: CakeEvent) => this.emit(event);
-    const requestRevisions = this.requestRevisions;
     return Effect.gen(function* () {
-      if (artifact.kind === "request") {
-        const key = `${artifact.sessionId}\u0000${artifact.id}`;
-        const revision = (requestRevisions.get(key) ?? 0) + 1;
-        requestRevisions.set(key, revision);
-        const snapshot = parseArtifactInput({ ...artifact, revision });
-        const serialized = `${JSON.stringify(snapshot, null, 2)}\n`;
-        const now = new Date().toISOString();
-        const record: ArtifactRecord = {
-          artifact: snapshot,
-          workspacePath: workingDirectory,
-          digest: createHash("sha256").update(serialized).digest("hex"),
-          createdAt: now,
-          updatedAt: now,
-        };
-        emit({ type: "artifact-updated", record });
-        return record;
-      }
       const record = yield* repository.upsert(workingDirectory, artifact);
       if (activeSessionId !== artifact.sessionId)
         yield* repository.linkSession(record, activeSessionId);

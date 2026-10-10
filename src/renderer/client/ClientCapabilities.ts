@@ -18,6 +18,7 @@ export type ClientCapabilities = Pick<
   | "browser"
   | "vscode"
   | "artifacts"
+  | "interviews"
   | "inlineWidgets"
 >;
 
@@ -642,20 +643,22 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
         );
       },
     },
-    artifacts: {
+    interviews: {
       respond: (input, options) =>
         execute(
-          "artifacts.respond-artifact",
+          "interviews.respond",
           (client) =>
-            client.artifacts["respond-artifact"]({
+            client.interviews.respond({
               requestId: input.operationId,
               sessionId: input.sessionId,
-              artifactRequestId: input.artifactRequestId,
+              interviewRequestId: input.interviewRequestId,
               value: input.value,
               cancelled: input.cancelled,
             }),
           options,
-        ).then(() => undefined),
+        ),
+    },
+    artifacts: {
       respondToUi: (input, options) =>
         execute(
           "artifacts.respond-ui",

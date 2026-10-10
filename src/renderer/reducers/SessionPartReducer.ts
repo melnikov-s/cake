@@ -35,6 +35,16 @@ export function messageSnapshots(
     if (part.kind === "annotation")
       return { ...part, ...identity, annotations: [...part.annotations] };
     if (part.kind === "review-run") return { ...part, ...identity, threadIds: [...part.threadIds] };
+    if (part.kind === "tool")
+      // SAFETY: the transport schema validates this plain JSON projection.
+      // r-state-tree's Snapshot type distributes heterogeneous JSON/enum
+      // arrays into homogeneous arrays; its snapshot codec preserves them.
+      return {
+        ...part,
+        ...identity,
+        interview: part.interview as Snapshot<Message>["interview"],
+        interviewResult: part.interviewResult as Snapshot<Message>["interviewResult"],
+      };
     return { ...part, ...identity };
   });
 }

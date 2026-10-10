@@ -1,14 +1,12 @@
 import { Schema } from "effect";
-import { jsonValueSchema, type JsonValue } from "../../../ipc/json-contract";
+import type { JsonValue } from "../../../ipc/json-contract";
 import {
   MAX_ARTIFACT_INPUT_BYTES,
   artifactPointerSchema,
   parseArtifactInput,
-  validateArtifactResponse,
   type ArtifactRecord,
   type CakeArtifactV1,
 } from "../../../ipc/artifact-contract";
-import { cakeRequestV1Schema, parseRequestInput } from "../../../ipc/request-contract";
 import type {
   InlineWidgetGenerationRequest,
   InlineWidgetGenerationResult,
@@ -34,7 +32,6 @@ export interface ResolvedAgentArtifact {
 
 export interface CakeArtifactOperationOptions {
   persistArtifact(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
-  requestArtifact(record: ArtifactRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
   generateInlineWidget?(
     input: InlineWidgetGenerationRequest,
   ): Promise<InlineWidgetGenerationResult>;
@@ -508,86 +505,6 @@ export function createCakeArtifactOperations(
         const parsed = input as typeof artifactUnlinkSchema.Type;
         await options.unlinkArtifact(parsed.lineageId);
         return { lineageId: parsed.lineageId, unlinked: true };
-      },
-    },
-    {
-      command: "interview.open",
-      topic: "interview",
-      summary:
-        "Open one schema-validated interview form or sandboxed request widget and wait for submission or cancellation.",
-      guidance: [
-        "When requirements gathering involves multiple questions or design decisions, use an interview. Present recommended defaults first. Collect independent answers in one structured form.",
-        "Ask one question at a time only when later questions depend on earlier answers or the user wants to discuss each decision. Use chat for follow-up questions that depend on submitted answers.",
-        "Form fields are optional, so response schemas must accept an empty object. Selects accept listed choices or freeform text. Put the recommended select option first; Cake auto-selects it and always adds the freeform option, so do not list an Other option.",
-      ],
-      inputSchema: Schema.Struct({ request: cakeRequestV1Schema }),
-      examples: [
-        {
-          input: {
-            request: {
-              protocol: "cake.request/v1",
-              id: "deployment-settings",
-              title: "Deployment settings",
-              responseSchema: { type: "object", properties: { region: { type: "string" } } },
-              view: {
-                type: "form",
-                fields: [
-                  {
-                    id: "region",
-                    label: "Region",
-                    type: "select",
-                    options: [{ value: "us-east-1", label: "US East" }],
-                  },
-                ],
-              },
-              fallback: { markdown: "Choose a deployment region." },
-            },
-          },
-        },
-      ],
-      result: "The validated response and artifact ID, or an explicit cancelled result.",
-      limitations: [
-        "Request widgets have no network, filesystem, Node, Electron, parent, or Cake API access.",
-      ],
-      async execute(input, context) {
-        // SAFETY: CakeOperationRegistry parsed this value with the definition's input schema.
-        const request = parseRequestInput((input as { request: unknown }).request);
-        const sessionId = runtimeContext(context).sessionManager.getSessionId();
-        const record = await persist(
-          {
-            protocol: "cake.artifact/v1",
-            id: request.id,
-            sessionId,
-            revision: 1,
-            kind: "request",
-            title: request.title,
-            payload: { request },
-            fallback: request.fallback,
-            interaction: { mode: "request", responseSchema: request.responseSchema },
-          },
-          sessionId,
-        );
-        appendPointer(record, pointerOrigin(context));
-        const value = await options.requestArtifact(record, context.signal);
-        if (value === undefined && context.signal.aborted)
-          throw context.signal.reason instanceof Error
-            ? context.signal.reason
-            : new Error("The request ended because its turn was interrupted");
-        if (value === undefined)
-          return Schema.decodeUnknownSync(jsonValueSchema)({
-            artifactId: record.artifact.id,
-            cancelled: true,
-          });
-        return Schema.decodeUnknownSync(jsonValueSchema)({
-          artifactId: record.artifact.id,
-          cancelled: false,
-          value: Schema.decodeUnknownSync(jsonValueSchema)(
-            validateArtifactResponse(
-              request.responseSchema,
-              Schema.decodeUnknownSync(jsonValueSchema)(value),
-            ),
-          ),
-        });
       },
     },
   ];

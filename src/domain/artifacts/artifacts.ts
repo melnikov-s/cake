@@ -13,7 +13,6 @@ import { ArtifactProjection } from "../../services/artifacts/ArtifactProjection"
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import * as artifactWorkflows from "./artifactWorkflows";
 
-type ArtifactResponse = (typeof cakeRpcPayloadSchemas)["respond-artifact"]["Type"];
 type UiResponse = (typeof cakeRpcPayloadSchemas)["respond-ui"]["Type"];
 type ExportArtifacts = (typeof cakeRpcPayloadSchemas)["export-artifacts"]["Type"];
 
@@ -38,18 +37,6 @@ const authorizedWorkingDirectory = Effect.fn("Artifacts.authorizedWorkingDirecto
     operation: "authorize",
     message: "Project path was not selected by the user",
   });
-});
-
-export const respond = Effect.fn("Artifacts.respond")(function* (
-  connectionId: number,
-  request: ArtifactResponse,
-) {
-  yield* authorizedWorkingDirectory(request.sessionId);
-  const coordinator = yield* RendererRequestCoordinator;
-  yield* coordinator
-    .respondArtifact(connectionId, request.sessionId, request)
-    .pipe(asError("respond"));
-  return { artifactRequestId: request.artifactRequestId };
 });
 
 export const respondUi = Effect.fn("Artifacts.respondUi")(function* (

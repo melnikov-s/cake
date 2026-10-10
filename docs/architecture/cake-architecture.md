@@ -31,22 +31,22 @@ VS Code owns source browsing, editing, Source Control, and native Git diffs.
 Every durable fact has exactly one authority. Identity, runtime lifetime, and
 projection lifetime are distinct.
 
-| Concern                                                                  | Authority                                 | Cake's boundary                                                               |
-| ------------------------------------------------------------------------ | ----------------------------------------- | ----------------------------------------------------------------------------- |
-| Conversation messages, tool history, branches, compaction, session names | Pi Session files and `SessionManager`     | Project validated Conversation values; never persist a second transcript      |
-| Models, providers, authentication, Pi settings and resources             | Pi                                        | Expose controls through the Pi adapter                                        |
-| Model presets and utility/non-chat preferences                           | Cake application storage                  | Resolve explicit selections through Pi; never silently substitute a model     |
-| Projects, workflow statuses, routing, Managed Worktree policy            | Cake                                      | Store metadata, not copies of Git or Pi state                                 |
-| Checkouts, branches, working-tree changes                                | Git                                       | Coordinate lifecycle; VS Code presents live changes                           |
-| Session Family membership, order, Working Directory bindings, resolution | Cake                                      | Members keep independent Pi transcripts; only the root owns family resolution |
-| Cross-session coordination                                               | Cake                                      | Own routing, correlation, and closure, not message text                       |
-| Discussion/review scope and anchors                                      | Cake                                      | Replies remain in independent Pi sidecar sessions                             |
-| Pending scheduled delivery                                               | Cake                                      | Own cancellable intent until Pi accepts the ordinary message                  |
-| Draw boards                                                              | Cake main-owned board storage             | Excalidraw owns the editable document; no second graph or transcript          |
-| Artifacts                                                                | Cake global lineage repository            | Immutable revisions with explicit session/family links; caches are disposable |
-| Session Plugins                                                          | Cake application metadata and JSON state  | Session-bound controls with user-owned visibility                             |
-| Window selection, layout, drafts, workflow presentation                  | Cake renderer/window storage              | Presentation state is separate from domain facts                              |
-| Blocking structured requests                                             | Active Pi tool call and `cake.request/v1` | One validated response or cancellation; not a durable artifact                |
+| Concern                                                                  | Authority                                   | Cake's boundary                                                                   |
+| ------------------------------------------------------------------------ | ------------------------------------------- | --------------------------------------------------------------------------------- |
+| Conversation messages, tool history, branches, compaction, session names | Pi Session files and `SessionManager`       | Project validated Conversation values; never persist a second transcript          |
+| Models, providers, authentication, Pi settings and resources             | Pi                                          | Expose controls through the Pi adapter                                            |
+| Model presets and utility/non-chat preferences                           | Cake application storage                    | Resolve explicit selections through Pi; never silently substitute a model         |
+| Projects, workflow statuses, routing, Managed Worktree policy            | Cake                                        | Store metadata, not copies of Git or Pi state                                     |
+| Checkouts, branches, working-tree changes                                | Git                                         | Coordinate lifecycle; VS Code presents live changes                               |
+| Session Family membership, order, Working Directory bindings, resolution | Cake                                        | Members keep independent Pi transcripts; only the root owns family resolution     |
+| Cross-session coordination                                               | Cake                                        | Own routing, correlation, and closure, not message text                           |
+| Discussion/review scope and anchors                                      | Cake                                        | Replies remain in independent Pi sidecar sessions                                 |
+| Pending scheduled delivery                                               | Cake                                        | Own cancellable intent until Pi accepts the ordinary message                      |
+| Draw boards                                                              | Cake main-owned board storage               | Excalidraw owns the editable document; no second graph or transcript              |
+| Artifacts                                                                | Cake global lineage repository              | Immutable revisions with explicit session/family links; caches are disposable     |
+| Session Plugins                                                          | Cake application metadata and JSON state    | Session-bound controls with user-owned visibility                                 |
+| Window selection, layout, drafts, workflow presentation                  | Cake renderer/window storage                | Presentation state is separate from domain facts                                  |
+| Interviews                                                               | Active Pi tool call and interview contracts | One validated response or cancellation; session-owned form state, not an artifact |
 
 Do not mutate Pi JSONL with ad hoc file operations, reconstruct Pi state into a
 competing domain model, or make a Project Session-shaped shadow payload. Main
@@ -219,7 +219,8 @@ with timings, pagination sizes, animation recipes, or operation inventories.
 | Pi adapter assumptions and extension compatibility                      | [Pi contract](./pi-1.0-contract.md), [Pi compatibility](./s3-pi-compatibility.md)                                 |
 | Project lifecycle and Session Families                                  | [Session contract](./s1-session-contract.md), [family contract](./session-family-contract.md)                     |
 | Feature behavior and its tests                                          | [Feature guide index](../features/README.md)                                                                      |
-| Artifacts, widgets, blocking requests                                   | [Artifact protocol](./s4-artifact-protocol.md)                                                                    |
+| Artifacts and widgets                                                   | [Artifact protocol](./s4-artifact-protocol.md)                                                                    |
+| Interviews                                                              | [Interview ownership](./interviews.md)                                                                            |
 | Standalone backend, sharing, browser/remote hosts                       | [Headless backend](../development/headless-backend.md)                                                            |
 | Permanent Cake Chat and memory                                          | [Cake Chat memory](../development/cake-chat-memory.md), [durable runtime](../development/cake-chat-durable.md)    |
 | Renderer workflow verification                                          | [Store testing](../development/renderer-store-testing.md), [Electron testing](../development/electron-testing.md) |

@@ -8,6 +8,7 @@ import {
   ScreenCaptureSnapshot,
 } from "../contracts/desktop/screen-capture-data";
 import { artifactRecordSchema } from "./artifact-contract";
+import { InterviewRecord } from "../contracts/interviews/interview";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { editorLocationSchema } from "./editor-location";
 import { editorAnnotationSnapshotSchema } from "./editor-annotation";
@@ -95,11 +96,11 @@ const cakeEventSchemas = {
     type: Schema.Literal("artifact-catalog-invalidated"),
     lineageId: stringMax(256),
   }),
-  "artifact-requested": Schema.Struct({
-    type: Schema.Literal("artifact-requested"),
+  "interview-requested": Schema.Struct({
+    type: Schema.Literal("interview-requested"),
     requestId: uuid,
-    artifactRequestId: uuid,
-    record: artifactRecordSchema,
+    interviewRequestId: uuid,
+    record: InterviewRecord,
   }),
   "ui-request": Schema.Struct({
     type: Schema.Literal("ui-request"),
@@ -267,6 +268,7 @@ const cakeEventSchemas = {
 } as const;
 
 export const applicationEventSchema = Schema.Union([
+  cakeEventSchemas["interview-requested"],
   cakeEventSchemas["screen-capture-requested"],
   cakeEventSchemas["window-blurred"],
   cakeEventSchemas["renderer-events-ready"],
@@ -290,7 +292,6 @@ export const artifactEventSchema = Schema.Union([
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["artifact-updated"],
   cakeEventSchemas["artifact-catalog-invalidated"],
-  cakeEventSchemas["artifact-requested"],
   cakeEventSchemas["ui-request"],
 ]);
 
@@ -327,7 +328,7 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["changelog-snapshot"],
   cakeEventSchemas["artifact-updated"],
   cakeEventSchemas["artifact-catalog-invalidated"],
-  cakeEventSchemas["artifact-requested"],
+  cakeEventSchemas["interview-requested"],
   cakeEventSchemas["ui-request"],
   cakeEventSchemas["complete"],
   cakeEventSchemas["fatal"],
@@ -687,13 +688,6 @@ export const cakeRpcPayloadSchemas = {
     path: stringMax(4_096),
     approved: Schema.Boolean,
   }),
-  "respond-artifact": Schema.Struct({
-    ...requestBase,
-    artifactRequestId: uuid,
-    sessionId: stringMax(256),
-    value: Schema.optional(jsonValueSchema),
-    cancelled: Schema.Boolean,
-  }),
   "export-artifacts": Schema.Struct({
     sessionId: stringMax(256),
   }),
@@ -819,9 +813,6 @@ const cakeRpcResultSchemas = {
   "ui-response-accepted": Schema.Struct({
     uiRequestId: uuid,
   }),
-  "artifact-response-accepted": Schema.Struct({
-    artifactRequestId: uuid,
-  }),
   "artifacts-exported": Schema.Struct({
     markdown: stringMax(20_000_000),
   }),
@@ -903,7 +894,6 @@ export const cakeRpcSuccessSchemas = {
   "native-browser-events": cakeRpcResultSchemas["browser-native-result"],
   "respond-browser-native": cakeRpcResultSchemas["browser-native-accepted"],
   "acquire-browser-preview": cakeRpcResultSchemas["browser-preview-acquired"],
-  "respond-artifact": cakeRpcResultSchemas["artifact-response-accepted"],
   "respond-ui": cakeRpcResultSchemas["ui-response-accepted"],
   "export-artifacts": cakeRpcResultSchemas["artifacts-exported"],
   "compile-inline-widget": cakeRpcResultSchemas["inline-widget-compiled"],

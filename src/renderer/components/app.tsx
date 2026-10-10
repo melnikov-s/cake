@@ -57,7 +57,7 @@ import { TreeNavigationDialog } from "@/components/tree-navigation-dialog";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
 import { ArtifactWorkspaceLayout } from "@/components/artifact-workspace-layout";
 import { ArtifactLibrary } from "@/components/artifact-library";
-import { BlockingArtifactRequest } from "@/components/blocking-artifact-request";
+import { BlockingInterviews } from "@/components/blocking-interviews";
 import { UiDialog } from "@/components/ui-dialog";
 import { CommandPane } from "@/components/command-pane";
 import { QuakeTerminal } from "@/components/quake-terminal";
@@ -87,7 +87,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
   const composer = session?.conversationSessionStore.composerStore;
   const chatConfiguration = session?.conversationSessionStore.configurationStore;
   const extensionUi = root.extensionUiStore;
-  const artifactInteractions = session?.artifactInteractionStore;
+  const interviewError = session?.interviewError;
   const shell = root.appShellStore;
   const terminal = root.terminalStore;
   const surface = shell.surface;
@@ -112,7 +112,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     reviews.error ??
     chatConfiguration?.error ??
     extensionUi.error ??
-    artifactInteractions?.error;
+    interviewError?.error;
   const chatErrorDetails = workbenchError
     ? workbenchError.details
     : composer?.error
@@ -123,7 +123,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
           ? chatConfiguration.errorDetails
           : extensionUi.error
             ? extensionUi.errorDetails
-            : artifactInteractions?.errorDetails;
+            : interviewError?.errorDetails;
   const sidebarCollapsed = !sidebar.visible;
   const projectSidebarVisible = !sidebarCollapsed && surface !== "settings";
   const sidebarWidth = sidebar.width;
@@ -317,7 +317,8 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       waitingForUser:
         !resolved &&
         paneSession.sessionId === root.sessionLayoutStore.focusedSessionId &&
-        Boolean(extensionUi.request || paneSession.artifactInteractionStore.request),
+        Boolean(extensionUi.request || paneSession.waitingForInterview),
+      interviews: paneSession.interviews,
       messageComments: resolved ? undefined : paneSession.messageCommentsStore,
       subagents: paneSession.subagentActivityStore,
       showSelectionContextMenu: resolved
@@ -328,7 +329,6 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       inlineArtifactPreviews: root.inlineArtifactPreviewStore,
       artifacts: {
         records: paneSession.sessionArtifactsStore.records,
-        interaction: paneSession.artifactInteractionStore,
       },
     };
   };
@@ -719,12 +719,12 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       paneError?.message ??
       paneSession.conversationSessionStore.composerStore.error ??
       paneSession.conversationSessionStore.configurationStore.error ??
-      paneSession.artifactInteractionStore.error;
+      paneSession.interviewError?.error;
     const errorDetails = paneError
       ? paneError.details
       : (paneSession.conversationSessionStore.composerStore.errorDetails ??
         paneSession.conversationSessionStore.configurationStore.errorDetails ??
-        paneSession.artifactInteractionStore.errorDetails);
+        paneSession.interviewError?.errorDetails);
     return {
       transcriptTransition: {
         requestedKey:
@@ -750,11 +750,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       error: errorMessage ? { message: errorMessage, details: errorDetails } : undefined,
       composerContent: root.sessionCatalogStore.find(paneSession.sessionId)
         ?.resolved ? undefined : (
-        <BlockingArtifactRequest
-          session={paneSession}
-          inlineWidgets={root.inlineWidgetStore}
-          onOpenSourceLocation={projectTranscriptBehaviorFor(paneSession).openSourceLocation}
-        />
+        <BlockingInterviews session={paneSession} inlineWidgets={root.inlineWidgetStore} />
       ),
       composerLeadingAccessory: projectComposerLeadingAccessory(paneSession),
       composerHeader: (
@@ -818,11 +814,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       : undefined;
   const workspaceComposerContent =
     session && projectTranscriptBehavior ? (
-      <BlockingArtifactRequest
-        session={session}
-        inlineWidgets={root.inlineWidgetStore}
-        onOpenSourceLocation={projectTranscriptBehavior.openSourceLocation}
-      />
+      <BlockingInterviews session={session} inlineWidgets={root.inlineWidgetStore} />
     ) : undefined;
 
   if (

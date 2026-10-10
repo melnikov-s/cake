@@ -7,7 +7,6 @@ import { ClientContext } from "./context/ClientContext";
 import { ChatStore } from "./ChatStore";
 import { ChatConfigurationStore } from "./ChatConfigurationStore";
 import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import { ArtifactInteractionStore } from "./ArtifactInteractionStore";
 
 /** One browser conversation's presentation/delivery workflow. Backend/Pi remain authority.
  * Draft is owned by shared ChatStore, memory-only for this tab. Commands are single-flight;
@@ -128,14 +127,6 @@ export class BrowserSessionStore extends Store<{
         ),
     });
   }
-  @child get interaction(): ArtifactInteractionStore {
-    return createStore(ArtifactInteractionStore, {
-      sessionContext: () => ({ sessionId: this.id }),
-      operations: this.operations,
-      operationOwner: this.id,
-      isStreaming: () => this.model.streaming,
-    });
-  }
   @child get chat(): ChatStore {
     return createStore(ChatStore, {
       id: () => this.id,
@@ -187,9 +178,7 @@ export class BrowserSessionStore extends Store<{
       focusRequestRevision: () => this.focusRevision,
       hideThinking: () => Boolean(this.model.piSettings?.hideThinkingBlock),
       error: () => ({
-        message: this.uncertain
-          ? undefined
-          : (this.error ?? this.configuration.error ?? this.interaction.error),
+        message: this.uncertain ? undefined : (this.error ?? this.configuration.error),
       }),
     });
   }
@@ -212,7 +201,6 @@ export class BrowserSessionStore extends Store<{
   disconnected() {
     this.synchronized = false;
     this.opened = false;
-    this.interaction.request = undefined;
   }
   receivedSnapshot() {
     this.synchronized = true;

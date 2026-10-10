@@ -186,8 +186,8 @@ export const makeProjectSessionRuntimeHostLive = (
           emit: clientEvents.broadcast,
           execute: (effect, signal) => runAdapter(effect, signal ? { signal } : undefined),
           requestUi: (request) => runAdapter(rendererRequests.requestUi(sessionId, request)),
-          requestArtifact: (record, signal) =>
-            runAdapter(rendererRequests.requestArtifact(sessionId, record, signal)),
+          requestInterview: (record, signal) =>
+            runAdapter(rendererRequests.requestInterview(sessionId, record, signal)),
           requestApplicationControl: (invocation, signal) =>
             runAdapter(rendererRequests.requestProjectControl(sessionId, invocation, signal)),
           drawControl: {

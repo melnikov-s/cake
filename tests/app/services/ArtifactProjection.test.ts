@@ -353,7 +353,6 @@ describe("ArtifactProjection", () => {
         kind: "table",
         payload: { columns: [{ id: "name", label: "Name" }], rows: [{ id: "one", name: "A" }] },
       },
-      { ...base, kind: "form", payload: { fields: [{ id: "name", label: "Name", type: "text" }] } },
       { ...base, kind: "diff", payload: { diff: "--- a\n+++ b" } },
       { ...base, kind: "diagram", payload: { source: "flowchart LR\nA-->B" } },
       { ...base, kind: "html", payload: { html: "<script>secret()</script>" } },
@@ -384,7 +383,6 @@ describe("ArtifactProjection", () => {
     expect(names).toEqual([
       ["content.md", "fallback.md"],
       ["table.json", "table.csv", "fallback.md"],
-      ["form.json", "fallback.md"],
       ["changes.diff", "fallback.md"],
       ["diagram.mmd", "fallback.md"],
       ["content.html.txt", "fallback.md"],

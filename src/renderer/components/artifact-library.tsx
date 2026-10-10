@@ -60,7 +60,6 @@ export const ArtifactLibrary = observer(function ArtifactLibrary({
           <option value="file">File</option>
           <option value="media">Media</option>
           <option value="diff">Diff</option>
-          <option value="form">Form</option>
         </Select>
         <p className="px-1 pb-2 pt-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           {store.total} {store.total === 1 ? "lineage" : "lineages"}

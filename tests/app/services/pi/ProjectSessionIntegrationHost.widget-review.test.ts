@@ -31,7 +31,7 @@ function host(options: {
     sessionDir: "/sessions",
     emit: vi.fn(),
     requestUi: vi.fn(),
-    requestArtifact: vi.fn(),
+    requestInterview: vi.fn(),
     requestApplicationControl: vi.fn(),
     requireVisionModel: async (model) => {
       calls.push(`vision:${model?.id}`);

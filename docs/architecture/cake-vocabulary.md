@@ -205,12 +205,19 @@ against the latest revision. Cake owns bounded payloads and lineage metadata; Pi
 owns only transcript references to stable `cake://artifact/<lineage-id>` or exact
 `cake://artifact/<lineage-id>@rN` refs.
 
+### Interview
+
+An independent structured-input workflow through which an active Pi tool call
+waits for one validated user response or cancellation. An Interview is not an
+Artifact: it has its own contracts, RPC, transcript metadata, and session-owned
+Store instances, and never enters the artifact repository or panel. It may use
+trusted fields or a sandboxed widget. See [interview ownership](./interviews.md).
+
 ### Blocking request
 
-A transient, inline interaction through which an active tool call waits for one
-validated user response or cancellation. A blocking request is not an Artifact
-and is never stored in the reusable artifact catalog, even when it reuses snapshot
-schemas, rendering, or sandbox infrastructure.
+A transient reverse request to a renderer. Interviews are one kind; other kinds
+include renderer queries and project-control interactions. The shared request
+coordinator owns correlation and settlement, not each workflow's product state.
 
 ### Cake Session Runtime
 

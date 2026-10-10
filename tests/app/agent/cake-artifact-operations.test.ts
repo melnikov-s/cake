@@ -47,7 +47,6 @@ describe("Cake widget presentation operation", () => {
         { appendEntry },
         {
           persistArtifact,
-          requestArtifact: vi.fn(async () => undefined),
           generateInlineWidget,
         },
       ),
@@ -98,7 +97,6 @@ describe("Cake widget presentation operation", () => {
         { appendEntry },
         {
           persistArtifact,
-          requestArtifact: vi.fn(async () => undefined),
           generateInlineWidget: vi.fn(async () => {
             controller.abort();
             return {

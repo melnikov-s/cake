@@ -7,6 +7,11 @@ import {
 import { createHash } from "node:crypto";
 import { Option, Schema } from "effect";
 import { decodeArtifactPointer, type ArtifactPointer } from "../../../ipc/artifact-contract";
+import {
+  InterviewEntry,
+  InterviewResult,
+  type InterviewRecord,
+} from "../../../contracts/interviews/interview";
 import { parseCrossSessionMessage } from "../../../contracts/conversations/cross-session-message";
 import { parseScheduledMessage } from "../../../contracts/conversations/scheduled-message-envelope";
 import { shouldRenderMarkdown } from "../../../utils/markdown";
@@ -823,7 +828,7 @@ export function projectSessionEntries(
   const projected: UiPart[] = [];
   const indexes = new Map<string, number>();
   const artifactOrigins = new Map<string, { lineageId: string; revision: number }>();
-  const syntheticArtifactPartIds = new Set<string>();
+  const interviews = new Map<string, InterviewRecord>();
   const append = (part: UiPart) => {
     const existingIndex = indexes.get(part.id);
     if (existingIndex === undefined) {
@@ -994,21 +999,27 @@ export function projectSessionEntries(
             revision: pointer.revision,
           });
       }
-      if (
-        pointer?.kind === "request" &&
-        !projected.some((part) => part.kind === "tool" && part.artifactId === pointer.lineageId)
-      ) {
-        const id = `entry-${entry.id}-artifact`;
-        syntheticArtifactPartIds.add(id);
-        append({
-          id,
-          kind: "tool",
-          name: "cake",
-          command: "interview.open",
-          input: "",
-          artifactId: pointer.lineageId,
-          state: "success",
-        });
+      continue;
+    }
+    if (entry.customType === "cake.interview/v1") {
+      const parsed = Schema.decodeUnknownOption(InterviewEntry)(entry.data);
+      if (Option.isSome(parsed)) {
+        const value = parsed.value;
+        const assistant = entries.find(
+          (candidate) =>
+            candidate.id === value.origin.assistantEntryId &&
+            candidate.type === "message" &&
+            candidate.message.role === "assistant" &&
+            candidate.message.content.some(
+              (content) => content.type === "toolCall" && content.id === value.origin.toolCallId,
+            ),
+        );
+        if (assistant && value.id === value.origin.toolCallId)
+          interviews.set(value.id, {
+            id: value.id,
+            sessionId: value.sessionId,
+            request: value.request,
+          });
       }
       continue;
     }
@@ -1027,6 +1038,22 @@ export function projectSessionEntries(
         artifactRevision: artifact.revision,
       };
   }
+  for (const [toolCallId, interview] of interviews) {
+    const index = indexes.get(boundedProjectionKey(`tool-${toolCallId}`));
+    const part = index === undefined ? undefined : projected[index];
+    if (index === undefined || part?.kind !== "tool") continue;
+    let result: InterviewResult | undefined;
+    if (part.output) {
+      try {
+        const parsed = Schema.decodeUnknownOption(InterviewResult)(JSON.parse(part.output));
+        if (Option.isSome(parsed) && parsed.value.interviewId === interview.id)
+          result = parsed.value;
+      } catch {
+        /* Non-result tool errors remain visible through the tool state. */
+      }
+    }
+    projected[index] = { ...part, interview, interviewResult: result };
+  }
   // Durable entries are settled history. A tool call still marked "running"
   // after the full walk has no recorded result, which means the run was
   // interrupted before the tool settled. Only a live runtime may claim
@@ -1035,20 +1062,7 @@ export function projectSessionEntries(
     for (const [index, part] of projected.entries())
       if (part.kind === "tool" && part.state === "running")
         projected[index] = { ...part, state: "interrupted" };
-  const linkedArtifactIds = new Set(
-    projected.flatMap((part) =>
-      part.kind === "tool" && part.artifactId && !syntheticArtifactPartIds.has(part.id)
-        ? [part.artifactId]
-        : [],
-    ),
-  );
-  return projected.filter(
-    (part) =>
-      !syntheticArtifactPartIds.has(part.id) ||
-      part.kind !== "tool" ||
-      !part.artifactId ||
-      !linkedArtifactIds.has(part.artifactId),
-  );
+  return projected;
 }
 
 export function imageContent(attachments: Attachment[]) {
@@ -1154,7 +1168,7 @@ export function projectDurableArtifactLineageIds(sessionManager: SessionManager)
       continue;
     const pointer = decodeArtifactPointer(Reflect.get(entry, "data"));
     if (!pointer) throw new Error("Malformed durable cake.artifact/v1 Pi entry");
-    if (pointer.kind !== "request") lineageIds.add(pointer.lineageId);
+    lineageIds.add(pointer.lineageId);
   }
   return [...lineageIds];
 }
@@ -1165,7 +1179,7 @@ export function projectArtifactPointers(sessionManager: SessionManager): Artifac
     if (entry.type !== "custom" || Reflect.get(entry, "customType") !== "cake.artifact/v1")
       continue;
     const parsed = decodeArtifactPointer(Reflect.get(entry, "data"));
-    if (!parsed || parsed.kind === "request") continue;
+    if (!parsed) continue;
     const current = pointers.get(parsed.lineageId);
     if (!current || parsed.revision > current.revision) pointers.set(parsed.lineageId, parsed);
   }

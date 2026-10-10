@@ -5,10 +5,6 @@ import { ArtifactRpc } from "../protocol/ArtifactRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 
 export const artifactHandlers = ArtifactRpc.of({
-  "artifacts.respond-artifact": (request) =>
-    Effect.flatMap(RendererConnection, ({ connectionId }) =>
-      artifacts.respond(connectionId, request),
-    ),
   "artifacts.respond-ui": (request) =>
     Effect.flatMap(RendererConnection, ({ connectionId }) =>
       artifacts.respondUi(connectionId, request),

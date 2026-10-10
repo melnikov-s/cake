@@ -1,42 +1,27 @@
 import { Option, Schema } from "effect";
 import { useEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/ai-elements/markdown";
-import { cn } from "@/lib/utils";
 import { observer } from "r-state-tree/react";
-import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
-import type { JsonValue } from "../../ipc/json-contract";
-import type { CakeRequestView } from "../../ipc/request-contract";
+import type { InterviewStore } from "../stores/InterviewStore";
 import { inlineWidgetMessageSchema } from "../../utils/inline-widget-message";
 import { InlineWidgetFrame } from "./inline-widget-frame";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 
-export const RequestWidget = observer(function RequestWidget({
-  artifact,
-  view,
-  requested,
-  fallback,
-  onSubmit,
-  onSkip,
+export const InterviewWidget = observer(function InterviewWidget({
+  interview,
   store,
-  fill = false,
 }: {
-  artifact: Extract<CakeArtifactV1, { kind: "request" }>;
-  view: Extract<CakeRequestView, { type: "widget" }>;
-  requested: boolean;
-  fallback: string;
-  onSubmit?: (value: JsonValue) => void;
-  onSkip?: () => void;
+  interview: InterviewStore;
   store: InlineWidgetStore;
-  fill?: boolean;
 }) {
-  const id = `${artifact.sessionId}:request:${artifact.id}:${artifact.revision}`;
+  const view = interview.record.request.view;
+  const id = `${interview.record.sessionId}:interview:${interview.record.id}`;
   const state = store.state(id);
   const iframe = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(220);
-  useEffect(
-    () => store.prepare(id, view.language, view.source, "request"),
-    [id, store, view.language, view.source],
-  );
+  useEffect(() => {
+    if (view.type === "widget") store.prepare(id, view.language, view.source, "request");
+  }, [id, store, view]);
   useEffect(() => {
     const receive = (event: MessageEvent) => {
       const parsed = Schema.decodeUnknownOption(inlineWidgetMessageSchema)(event.data);
@@ -50,22 +35,24 @@ export const RequestWidget = observer(function RequestWidget({
       if (parsed.value.type === "height")
         setHeight(Math.max(120, Math.min(1_200, Math.ceil(parsed.value.value))));
       if (parsed.value.type === "error") store.reportRuntimeError(id, String(parsed.value.value));
-      if (parsed.value.type === "submit") onSubmit?.(parsed.value.value);
-      if (requested && parsed.value.type === "cancel") onSkip?.();
+      if (parsed.value.type === "submit") void interview.respond(parsed.value.value);
+      if (interview.requested && parsed.value.type === "cancel")
+        void interview.respond(undefined, true);
     };
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
-  }, [id, onSkip, onSubmit, requested, state?.compiled, store]);
+  }, [id, interview, state?.compiled, store]);
 
-  if (state?.status === "error") return <Markdown>{fallback}</Markdown>;
+  if (state?.status === "error")
+    return <Markdown>{interview.record.request.fallback.markdown}</Markdown>;
   if (!state?.compiled) return <div className="min-h-30" aria-busy="true" />;
   return (
     <InlineWidgetFrame
       ref={iframe}
-      title={artifact.title ?? artifact.id}
+      title={interview.record.request.title}
       compiled={state.compiled}
-      className={cn("w-full border-none", fill && "h-full")}
-      style={fill ? undefined : { height }}
+      className="w-full border-none"
+      style={{ height }}
     />
   );
 });

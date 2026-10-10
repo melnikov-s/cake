@@ -35,6 +35,7 @@ import {
   createCakeArtifactOperations,
   type PiArtifactOperationHost,
 } from "./cake-artifact-operations";
+import { createCakeInterviewOperations } from "./cake-interview-operations";
 import { createCakeModelOperations } from "./cake-model-operations";
 import { createCakeSettingsOperations } from "./cake-settings-operations";
 import { createCakeNonChatModelOperations } from "./cake-non-chat-model-operations";
@@ -443,7 +444,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }));
-  const requestArtifact = options.requestArtifact ?? (async () => undefined);
+  const requestInterview = options.requestInterview ?? (async () => undefined);
   const operationApi: RuntimeOperationApiReference = {};
   const operationRegistry: RuntimeOperationRegistryReference = {};
   const captureOperationRegistry = (registry: CakeOperationRegistry) => {
@@ -1596,7 +1597,6 @@ export async function createCakeSessionRuntimeCapabilities(input: {
                   : []),
                 ...createCakeArtifactOperations(pi, {
                   persistArtifact,
-                  requestArtifact,
                   generateInlineWidget: options.generateInlineWidget,
                   reviseInlineWidget: options.reviseInlineWidget,
                   resolveArtifact: options.resolveArtifact,
@@ -1608,6 +1608,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
                   unlinkArtifact: options.unlinkArtifact,
                   importArtifactFile: options.importArtifactFile,
                 }),
+                ...createCakeInterviewOperations(pi, { requestInterview }),
                 ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
                 ...(options.browserControl
                   ? createCakeBrowserOperations(options.browserControl)
@@ -1632,7 +1633,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
             ],
             captureOperationRegistry,
           ),
-          createCakeArtifactExtension({ persistArtifact, requestArtifact }),
+          createCakeArtifactExtension({ persistArtifact }),
           ...(options.reviewContextPath
             ? [reviewContextExtension(options.reviewContextPath, () => runtimeIdentity.sessionId)]
             : []),

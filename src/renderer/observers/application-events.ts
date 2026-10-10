@@ -153,6 +153,10 @@ export const observeApplicationEvents = (
           });
           return;
         }
+        if (storeEvent.type === "interview-requested") {
+          root.sessionRegistry.findSession(storeEvent.record.sessionId)?.receive(storeEvent);
+          return;
+        }
         if (storeEvent.type === "project-session-control-requested") {
           void root.applicationControlStore.handleProjectSessionRequest(storeEvent);
           return;

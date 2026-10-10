@@ -140,7 +140,9 @@ export const ChatTranscript = observer(function ChatTranscript({
     parts,
     store.streaming,
     store.submitting,
-    Boolean(behavior.waitingForUser || behavior.artifacts?.interaction.request),
+    Boolean(
+      behavior.waitingForUser || behavior.interviews?.some((interview) => interview.requested),
+    ),
   );
   useLayoutEffect(() => {
     store.transcriptInteraction.syncChangedFilesOpen(showAssistantLoading);

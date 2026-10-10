@@ -1,5 +1,5 @@
 import type { AgentAvailabilityEntry } from "../../contracts/pi/agent-availability-data";
-import type { ArtifactRecord } from "../../ipc/artifact-contract";
+import type { InterviewRecord } from "../../contracts/interviews/interview";
 import type { CakeEvent } from "../../ipc/cake-rpc-contract";
 
 type NativePassthroughEvent = Extract<
@@ -28,10 +28,10 @@ export type StoreEvent =
       markdown: string;
     }
   | {
-      type: "artifact-requested";
+      type: "interview-requested";
       operationId: string;
-      artifactRequestId: string;
-      record: ArtifactRecord;
+      interviewRequestId: string;
+      record: InterviewRecord;
     }
   | {
       type: "ui-requested";
@@ -97,11 +97,11 @@ export type StoreEvent =
     };
 
 export function toStoreEvent(event: CakeEvent): StoreEvent | undefined {
-  if (event.type === "artifact-requested")
+  if (event.type === "interview-requested")
     return {
-      type: "artifact-requested",
+      type: "interview-requested",
       operationId: event.requestId,
-      artifactRequestId: event.artifactRequestId,
+      interviewRequestId: event.interviewRequestId,
       record: event.record,
     };
   if (event.type === "changelog-snapshot")

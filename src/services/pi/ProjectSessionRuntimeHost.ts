@@ -16,7 +16,7 @@ export type ProjectSessionRuntimeIntegrations = Pick<
   | "unlinkArtifact"
   | "importArtifactFile"
   | "persistArtifact"
-  | "requestArtifact"
+  | "requestInterview"
   | "requestUi"
   | "emitExtensionUiIntent"
   | "reviewContextPath"

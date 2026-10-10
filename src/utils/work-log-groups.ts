@@ -2,7 +2,7 @@ import type { UiPart } from "../ipc/session-contract";
 
 export function isWorkLogPart(part: UiPart): boolean {
   return (
-    (part.kind === "tool" && !part.artifactId) ||
+    (part.kind === "tool" && !part.artifactId && !part.interview) ||
     part.kind === "reasoning" ||
     (part.kind === "command" && part.origin === "compacted")
   );

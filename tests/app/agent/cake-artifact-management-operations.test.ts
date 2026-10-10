@@ -64,7 +64,6 @@ function makeHarness(initial: CakeArtifactV1 = markdown(1, "one")) {
       current = artifact;
       return record(artifact);
     }),
-    requestArtifact: vi.fn(),
     resolveArtifact: vi.fn(async (reference) => {
       const match = /@r(\d+)$/.exec(reference);
       const selected = match
@@ -185,7 +184,6 @@ describe("Cake artifact management operations", () => {
         },
         {
           persistArtifact: vi.fn(),
-          requestArtifact: vi.fn(),
           hasLinkedArtifacts: vi.fn(async () => linked),
           listArtifactMetadata,
           linkArtifact: vi.fn(async () => {

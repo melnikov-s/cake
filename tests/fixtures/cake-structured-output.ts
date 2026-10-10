@@ -60,8 +60,5 @@ export function artifactOperationOptions(
     async persistArtifact() {
       throw new Error("Unexpected write in read-only fixture");
     },
-    async requestArtifact() {
-      throw new Error("Unexpected request in read-only fixture");
-    },
   };
 }

@@ -5,6 +5,7 @@ import { CakeIpcClient, type CakeIpcClientService } from "../ipc/client/CakeIpcC
 import { FoundationFailure } from "../ipc/protocol/CakeRpc";
 import type { JsonObject } from "../ipc/json-contract";
 import { cakeRpcPayloadSchemas } from "../ipc/cake-rpc-contract";
+import { InterviewResponse } from "../contracts/interviews/interview";
 import { makeRuntime } from "./runtime";
 
 const bridge = window.cake;
@@ -205,9 +206,9 @@ function invokeSmokeCommand(
       return Schema.decodeUnknownEffect(
         cakeRpcPayloadSchemas["update-embedded-editor-annotations"],
       )(payload).pipe(Effect.flatMap(client.vscode["update-embedded-editor-annotations"]));
-    case "respond-artifact":
-      return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["respond-artifact"])(payload).pipe(
-        Effect.flatMap(client.artifacts["respond-artifact"]),
+    case "respond-interview":
+      return Schema.decodeUnknownEffect(InterviewResponse)(payload).pipe(
+        Effect.flatMap(client.interviews.respond),
       );
     case "respond-ui":
       return Schema.decodeUnknownEffect(cakeRpcPayloadSchemas["respond-ui"])(payload).pipe(

@@ -255,11 +255,20 @@ describe("SessionRegistryStore materialization", () => {
     session.model.streaming = true;
     expect(session.activity).toBe("running");
     session.receive({
-      type: "artifact-requested",
+      type: "interview-requested",
       operationId: "interview-operation",
-      artifactRequestId: "interview-request",
+      interviewRequestId: "interview-request",
       record: {
-        artifact: { sessionId: "session-1", id: "interview", revision: 1 },
+        sessionId: "session-1",
+        id: "interview",
+        request: {
+          protocol: "cake.request/v1",
+          id: "choice",
+          title: "Choose",
+          responseSchema: { type: "object" },
+          view: { type: "form", fields: [{ id: "answer", label: "Answer", type: "text" }] },
+          fallback: { markdown: "Choose" },
+        },
       },
     } as never);
     expect(session.activity).toBe("waiting");
