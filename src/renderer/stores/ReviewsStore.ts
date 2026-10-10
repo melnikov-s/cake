@@ -1,5 +1,9 @@
 import { Store, child, createStore } from "r-state-tree";
-import { hasSidecarConversation, type DiscussionAnchor } from "../../ipc/discussion-session-data";
+import {
+  hasSidecarConversation,
+  type DiscussionAnchor,
+  type DiscussionSessionStartInput,
+} from "../../ipc/discussion-session-data";
 import type { Annotation, ModelPreset } from "../../ipc/session-contract";
 import type { ReviewThread } from "../models/ReviewThread";
 import type { Conversation } from "../models/Conversation";
@@ -237,21 +241,20 @@ export class ReviewsStore extends Store<ReviewsStoreProps> {
     if (!body.trim() && annotations.length === 0) return undefined;
     this.clearError();
     const parent = this.props.sessionRegistry.findModel(context.sessionId);
+    const input: DiscussionSessionStartInput = {
+      parentSessionId: context.sessionId,
+      workingDirectory: context.workingDirectory,
+      anchor,
+      text: body.trim(),
+      annotations: [...annotations],
+    };
+    if (parent?.model)
+      Object.assign(input, {
+        model: { provider: parent.model.provider, id: parent.model.modelId },
+        thinkingLevel: parent.thinkingLevel,
+      });
     try {
-      const accepted = await this.client.discussionSessions.start(
-        {
-          parentSessionId: context.sessionId,
-          workingDirectory: context.workingDirectory,
-          anchor,
-          text: body.trim(),
-          annotations: [...annotations],
-          model: parent?.model
-            ? { provider: parent.model.provider, id: parent.model.modelId }
-            : undefined,
-          thinkingLevel: parent?.model ? parent.thinkingLevel : undefined,
-        },
-        { signal: this.signal },
-      );
+      const accepted = await this.client.discussionSessions.start(input, { signal: this.signal });
       return this.signal.aborted ? undefined : accepted.thread.id;
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);

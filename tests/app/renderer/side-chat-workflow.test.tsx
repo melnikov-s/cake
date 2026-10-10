@@ -2,8 +2,12 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Schema } from "effect";
 import { TurnId, type ConversationSnapshot } from "../../../src/ipc/conversation-data";
-import type { DiscussionThread } from "../../../src/ipc/discussion-session-data";
+import {
+  DiscussionSessionStartInput,
+  type DiscussionThread,
+} from "../../../src/ipc/discussion-session-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SideChatLayout } from "../../../src/renderer/components/side-chat-layout";
@@ -60,7 +64,11 @@ function thread(id: string, title: string): DiscussionThread {
 
 function renderSideChats(
   start: Client["discussionSessions"]["start"],
-  options: { threads?: DiscussionThread[]; selection?: MessageSelectionAnchor } = {},
+  options: {
+    threads?: DiscussionThread[];
+    selection?: MessageSelectionAnchor;
+    withoutModel?: boolean;
+  } = {},
 ) {
   const fixture = createRendererStoreFixture({
     client: { discussionSessions: { start } },
@@ -76,7 +84,9 @@ function renderSideChats(
   const session = fixture.root.sessionRegistry.load("parent-1", "/project");
   fixture.root.projectWorkbenchStore.projectOpenStore.projectPath = "/project";
   fixture.root.appShellStore.selectProjectSession("parent-1");
-  applyConversationSnapshot(session.model, conversation("parent-1"));
+  const snapshot = conversation("parent-1");
+  if (options.withoutModel) Object.assign(snapshot, { model: undefined });
+  applyConversationSnapshot(session.model, snapshot);
   let revision = 0;
   function publish(threads: DiscussionThread[]) {
     for (const item of threads) {
@@ -141,38 +151,50 @@ function renderSideChats(
 afterEach(cleanup);
 
 describe("Secondary conversation workflows", () => {
-  it("creates a session-wide side chat from the composer and opens it when the catalog arrives", async () => {
-    const created = thread("new-thread", "Compare approaches");
-    const start = vi.fn<Client["discussionSessions"]["start"]>(async () => ({
-      turnId: TurnId.make("10000000-0000-4000-8000-000000000001"),
-      thread: created,
-    }));
-    using fixture = renderSideChats(start);
-    const input = screen.getByRole<HTMLTextAreaElement>("combobox");
-    await fixture.user.type(input, "/sidechat Compare approaches");
-    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() =>
-      expect(start).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({
-          parentSessionId: "parent-1",
-          workingDirectory: "/project",
-          text: "Compare approaches",
-          anchor: created.anchor,
+  it.each([false, true])(
+    "creates a session-wide side chat (without model: %s) and opens it when the catalog arrives",
+    async (withoutModel) => {
+      const created = thread("new-thread", "Compare approaches");
+      const start = vi.fn<Client["discussionSessions"]["start"]>(async (input) => {
+        // Exercise the same encoder as RPC; a typed fake alone accepts explicit undefined keys.
+        Schema.encodeSync(DiscussionSessionStartInput)(input);
+        return {
+          turnId: TurnId.make("10000000-0000-4000-8000-000000000001"),
+          thread: created,
+        };
+      });
+      using fixture = renderSideChats(start, { withoutModel });
+      const input = screen.getByRole<HTMLTextAreaElement>("combobox");
+      await fixture.user.type(input, "/sidechat Compare approaches");
+      await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+      const expectedInput: DiscussionSessionStartInput = {
+        parentSessionId: "parent-1",
+        workingDirectory: "/project",
+        text: "Compare approaches",
+        anchor: created.anchor,
+        annotations: [],
+      };
+      if (!withoutModel)
+        Object.assign(expectedInput, {
           model: { provider: "openai-codex", id: "gpt-5.6-sol" },
           thinkingLevel: "high",
-        }),
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      ),
-    );
-    expect(input.value).toBe("");
-    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
-    fixture.publish([created]);
-    const panel = await screen.findByRole("complementary", { name: "Side chat" });
-    expect(within(panel).getByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
-    await fixture.user.click(within(panel).getByRole("button", { name: "Close Side chat" }));
-    expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
-    expect(screen.getByRole("combobox")).toBeDefined();
-  });
+        });
+      await waitFor(() =>
+        expect(start).toHaveBeenCalledExactlyOnceWith(
+          expectedInput,
+          expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        ),
+      );
+      expect(input.value).toBe("");
+      expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
+      fixture.publish([created]);
+      const panel = await screen.findByRole("complementary", { name: "Side chat" });
+      expect(within(panel).getByRole("combobox", { name: "Reply to side chat" })).toBeDefined();
+      await fixture.user.click(within(panel).getByRole("button", { name: "Close Side chat" }));
+      expect(screen.queryByRole("complementary", { name: "Side chat" })).toBeNull();
+      expect(screen.getByRole("combobox")).toBeDefined();
+    },
+  );
 
   it("replaces the open side chat from the session menu and can reopen it after closing", async () => {
     const start = vi.fn<Client["discussionSessions"]["start"]>();
@@ -203,12 +225,17 @@ describe("Secondary conversation workflows", () => {
     expect(start).not.toHaveBeenCalled();
   });
 
-  it.each([undefined, "cake-s4-table"])(
-    "submits an already-open selection draft with artifact id %s and hands off to the live thread",
-    async (artifactId) => {
+  it.each([
+    { artifactId: undefined, entryId: "entry-1" },
+    { artifactId: undefined, entryId: undefined },
+    { artifactId: "cake-s4-table", entryId: "entry-1" },
+    { artifactId: "cake-s4-table", entryId: undefined },
+  ])(
+    "submits a selection draft ($artifactId, $entryId) and hands off to the live thread",
+    async ({ artifactId, entryId }) => {
       const selection: MessageSelectionAnchor = {
         messageId: "assistant-1",
-        entryId: "entry-1",
+        entryId,
         selectedText: "Original selection",
         startOffset: 4,
         endOffset: 22,
@@ -229,16 +256,19 @@ describe("Secondary conversation workflows", () => {
           contextBefore: selection.contextBefore,
           contextAfter: selection.contextAfter,
           diff: "",
-          messageId: artifactId ? undefined : selection.messageId,
-          entryId: selection.entryId,
           startOffset: selection.startOffset,
           endOffset: selection.endOffset,
         },
       };
-      const start = vi.fn<Client["discussionSessions"]["start"]>(async () => ({
-        turnId: TurnId.make("10000000-0000-4000-8000-000000000001"),
-        thread: created,
-      }));
+      if (!artifactId) Object.assign(created.anchor, { messageId: selection.messageId });
+      if (entryId !== undefined) Object.assign(created.anchor, { entryId });
+      const start = vi.fn<Client["discussionSessions"]["start"]>(async (input) => {
+        Schema.encodeSync(DiscussionSessionStartInput)(input);
+        return {
+          turnId: TurnId.make("10000000-0000-4000-8000-000000000001"),
+          thread: created,
+        };
+      });
       using fixture = renderSideChats(start, { selection });
       const input = screen.getByRole<HTMLTextAreaElement>("combobox", {
         name: "Message about selected text",

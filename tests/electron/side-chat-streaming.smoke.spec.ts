@@ -22,7 +22,12 @@ const visibleFraction = async (element: Locator, scroller: Locator) => {
   }, view);
 };
 
-test("side chat keeps its transcript visible and its composer available while streaming", async () => {
+test("side chat keeps its transcript visible and its composer available while streaming", () =>
+  verifySideChat(false));
+test("creates a side chat from a work-log selection without a transcript entry ID", () =>
+  verifySideChat(true));
+
+async function verifySideChat(selection: boolean) {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-side-chat-streaming-"));
   const userData = join(temporaryRoot, "user-data");
@@ -134,7 +139,10 @@ test("side chat keeps its transcript visible and its composer available while st
         timestamp,
         message: {
           role: "assistant",
-          content: [{ type: "text", text: "The settings shape is explicit." }],
+          content: [
+            { type: "thinking", thinking: "The configuration remains inspectable." },
+            { type: "text", text: "The settings shape is explicit." },
+          ],
           api: "openai-completions",
           provider: "stream-provider",
           model: "fixture-model",
@@ -173,13 +181,56 @@ test("side chat keeps its transcript visible and its composer available while st
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await composer.click();
     await expect(composer).toBeFocused();
-    await page.keyboard.type("/sidechat Explain the settings shape in detail");
-    await expect(composer).toHaveValue("/sidechat Explain the settings shape in detail");
-    await page.keyboard.press("Enter");
+    if (selection) {
+      await page.locator('[data-slot="activity-group"] > summary').click();
+      await page.getByRole("button", { name: /Reasoning/ }).click();
+      const passage = page.getByText("The configuration remains inspectable.", { exact: true });
+      const target = await passage.evaluate((element) => {
+        const node = element.firstChild!;
+        const start = node.textContent!.indexOf("configuration");
+        const range = document.createRange();
+        range.setStart(node, start);
+        range.setEnd(node, start + "configuration".length);
+        const rect = range.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      });
+      await page.mouse.dblclick(target.x, target.y);
+      await expect
+        .poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
+        .toBe("configuration");
+      await application.evaluate(({ Menu }) => {
+        const build = Menu.buildFromTemplate.bind(Menu);
+        Menu.buildFromTemplate = (template) => {
+          const menu = build(template);
+          menu.popup = (options) => {
+            const item = menu.items.find((candidate) => candidate.label === "Chat about this");
+            if (!item?.click) throw new Error("Missing selection chat action");
+            item.click(item, options.window!, { triggeredByAccelerator: false });
+            options.callback?.();
+          };
+          return menu;
+        };
+      });
+      await page.mouse.click(target.x, target.y, { button: "right" });
+      const draft = page.getByRole("combobox", { name: "Message about selected text" });
+      await expect(draft).toBeFocused();
+      await draft.pressSequentially("Explain the settings shape in detail");
+      await expect(draft).toHaveValue("Explain the settings shape in detail");
+      const panel = page.getByRole("complementary", { name: "Side chat" });
+      await expect(panel.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await draft.press("Enter");
+      await expect(draft).toHaveCount(0);
+    } else {
+      await page.keyboard.type("/sidechat Explain the settings shape in detail");
+      await expect(composer).toHaveValue("/sidechat Explain the settings shape in detail");
+      await page.keyboard.press("Enter");
+    }
 
     const sideChat = page.getByRole("complementary", { name: "Side chat" });
     await expect(sideChat).toBeVisible();
-    const sideChatInput = sideChat.getByRole("combobox", { name: "Reply to side chat" });
+    const sideChatInput = sideChat.getByRole("combobox", {
+      name: selection ? "Reply to selection side chat" : "Reply to side chat",
+    });
     const streamedAnswer = sideChat.getByText("Side chat streamed answer", { exact: false });
 
     await expect.poll(() => responses.length).toBe(1);
@@ -239,4 +290,4 @@ test("side chat keeps its transcript visible and its composer available while st
     server.close();
     await rm(temporaryRoot, { recursive: true, force: true });
   }
-});
+}

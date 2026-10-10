@@ -138,11 +138,11 @@ export class MessageCommentsStore extends Store<MessageCommentsStoreProps> {
       contextBefore: selection.contextBefore,
       contextAfter: selection.contextAfter,
       diff: "",
-      messageId: selection.artifactId ? undefined : selection.messageId,
-      entryId: selection.entryId,
       startOffset: selection.startOffset,
       endOffset: selection.endOffset,
     };
+    if (!selection.artifactId) Object.assign(anchor, { messageId: selection.messageId });
+    if (selection.entryId !== undefined) Object.assign(anchor, { entryId: selection.entryId });
     return this.props.reviews().createThread(anchor, body, annotations.slice());
   }
 }
