@@ -100,6 +100,8 @@ it.skipIf(!existsSync("/opt/homebrew/bin/code-server"))(
         PATH: process.env.PATH,
         HOME: root,
         CAKE_HOME: home,
+        PI_CODING_AGENT_DIR: join(home, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
         CAKE_SERVER_ENABLED: "true",
         CAKE_SERVER_BROWSER_ENABLED: "true",
         CAKE_SERVER_PORT: "0",

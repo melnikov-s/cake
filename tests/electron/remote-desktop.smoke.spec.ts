@@ -118,6 +118,8 @@ test("remote Electron uses the full shell and only the server owns agent state",
       PATH: process.env.PATH,
       HOME: directory,
       CAKE_HOME: home,
+      PI_CODING_AGENT_DIR: join(home, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
       CAKE_SERVER_ENABLED: "true",
       CAKE_SERVER_ALLOW_MISSING_ORIGIN: "true",
       CAKE_SERVER_PORT: "0",
@@ -165,6 +167,8 @@ test("remote Electron uses the full shell and only the server owns agent state",
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: userData,
         CAKE_HOME: localHome,
+        PI_CODING_AGENT_DIR: join(localHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
     try {
@@ -526,6 +530,8 @@ test("failed remote connection can retry and deliberately relaunch local, then s
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: userData,
         CAKE_HOME: home,
+        PI_CODING_AGENT_DIR: join(home, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
   let application = await launch();

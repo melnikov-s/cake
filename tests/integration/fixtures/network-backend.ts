@@ -304,6 +304,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       withMemberLock: (_sessionId, effect) => effect,
     }),
     Layer.mock(SessionArchiveStorage, {
+      resolvedIds: () => Effect.succeed(new Set<string>()),
       projectMigrationComplete: () => Effect.succeed(true),
       resolvedProjects: () => Stream.empty,
       locate: () => Effect.succeed("active" as const),

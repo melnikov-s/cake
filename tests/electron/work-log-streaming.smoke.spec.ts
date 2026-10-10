@@ -104,6 +104,8 @@ test("streaming work logs keep their DOM and follow their own bottom", async () 
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
       CAKE_HOME: cakeHome,
+      PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
     },
   });
   try {

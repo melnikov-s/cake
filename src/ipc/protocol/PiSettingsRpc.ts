@@ -1,8 +1,19 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Schema } from "effect";
+import { PiExtensionSetting, PiExtensionToggle } from "../../services/pi/extension-settings-data";
 import { PiSettingsError } from "../../services/pi/PiSettings";
 import { piSettingUpdateSchema, piSettingsSchema } from "../session-contract";
 
 export const PiSettingsRpc = RpcGroup.make(
+  Rpc.make("piSettings.extensions", {
+    success: Schema.Array(PiExtensionSetting),
+    error: PiSettingsError,
+  }),
+  Rpc.make("piSettings.setExtensionEnabled", {
+    payload: PiExtensionToggle,
+    success: piSettingsSchema,
+    error: PiSettingsError,
+  }),
   Rpc.make("piSettings.get", {
     success: piSettingsSchema,
     error: PiSettingsError,

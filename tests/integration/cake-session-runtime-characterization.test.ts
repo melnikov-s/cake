@@ -4,8 +4,12 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { configureCakePiAgentDirectory } from "../../src/services/pi/runtime/mcp-integration";
+import {
+  createAgentSession,
+  type AgentSession,
+  SessionManager,
+} from "@earendil-works/pi-coding-agent";
+import { resolveCakePaths } from "../../src/config/CakePaths";
 import {
   createCakeSessionRuntime,
   type CakeSessionRuntime,
@@ -16,6 +20,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 const temporaryDirectories: string[] = [];
 const servers: Server[] = [];
 const runtimes: CakeSessionRuntime[] = [];
+const nativeSessions: AgentSession[] = [];
 
 interface Deferred {
   readonly promise: Promise<void>;
@@ -98,8 +103,7 @@ async function createFixtureRuntime(
   events: CakeSessionRuntimeEvent[],
   options: { sessionFile?: string } = {},
 ) {
-  vi.stubEnv("PI_CODING_AGENT_DIR", process.env.PI_CODING_AGENT_DIR);
-  configureCakePiAgentDirectory(join(directory, "agent"));
+  vi.stubEnv("PI_CODING_AGENT_DIR", join(directory, "agent"));
   const runtime = await createCakeSessionRuntime({
     cwd: directory,
     agentDir: join(directory, "agent"),
@@ -118,6 +122,7 @@ async function createFixtureRuntime(
 
 afterEach(async () => {
   for (const runtime of runtimes.splice(0)) await runtime.dispose();
+  for (const session of nativeSessions.splice(0)) session.dispose();
   vi.unstubAllEnvs();
   for (const server of servers.splice(0))
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -127,6 +132,71 @@ afterEach(async () => {
 });
 
 describe("CakeSessionRuntime characterization", () => {
+  it("continues Pi → Cake → Pi with the same shared file and session ID", async () => {
+    const directory = await createTemporaryDirectory();
+    const agent = join(directory, "shared-agent");
+    vi.stubEnv("PI_CODING_AGENT_DIR", agent);
+    vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", "");
+    vi.stubEnv("PI_PROVIDER", "");
+    vi.stubEnv("PI_MODEL", "");
+    const paths = resolveCakePaths({ env: { CAKE_HOME: join(directory, "cake") } });
+    await mkdir(agent);
+    await writeFile(
+      join(agent, "settings.json"),
+      JSON.stringify({ defaultProvider: "fixture-provider", defaultModel: "fixture-model" }),
+    );
+    await registerFixtureProvider(directory, (index, response) =>
+      finishTextResponse(response, `Shared reply ${index}`),
+    );
+    const terminal = await createAgentSession({ cwd: directory, agentDir: paths.piAgent });
+    nativeSessions.push(terminal.session);
+    const fixtureModel = terminal.session.modelRuntime.getModel(
+      "fixture-provider",
+      "fixture-model",
+    );
+    if (!fixtureModel) throw new Error("Fixture provider did not load; never use an ambient model");
+    await terminal.session.setModel(fixtureModel);
+    await terminal.session.prompt("Started in terminal");
+    const manager = terminal.session.sessionManager;
+    const id = manager.getSessionId();
+    const file = manager.getSessionFile()!;
+    expect(file.startsWith(paths.piSessions)).toBe(true);
+    terminal.session.dispose();
+    const runtime = await createCakeSessionRuntime({
+      cwd: directory,
+      agentDir: paths.piAgent,
+      sessionDir: paths.piSessions,
+      trusted: true,
+      sessionId: id,
+      requestUi: async () => undefined,
+      onEvent: () => {},
+    });
+    runtimes.push(runtime);
+    expect(runtime.sessionId).toBe(id);
+    expect(runtime.sessionFile).toBe(file);
+    expect(JSON.stringify((await runtime.snapshot()).parts)).toContain("Started in terminal");
+    await runtime.setModel("fixture-provider", "fixture-model");
+    await runtime.prompt("Continued in Cake", "prompt", [], false, undefined, undefined, false);
+    await runtime.dispose();
+    const continued = await createAgentSession({
+      cwd: directory,
+      agentDir: paths.piAgent,
+      sessionManager: SessionManager.open(file),
+    });
+    nativeSessions.push(continued.session);
+    const continuedModel = continued.session.modelRuntime.getModel(
+      "fixture-provider",
+      "fixture-model",
+    );
+    if (!continuedModel)
+      throw new Error("Fixture provider did not load; never use an ambient model");
+    await continued.session.setModel(continuedModel);
+    expect(continued.session.sessionManager.getSessionId()).toBe(id);
+    expect(JSON.stringify(continued.session.messages)).toContain("Continued in Cake");
+    await continued.session.prompt("Returned to terminal");
+    expect(continued.session.messages.filter((message) => message.role === "user")).toHaveLength(3);
+    expect(JSON.stringify(continued.session.messages)).toContain("Shared reply 3");
+  });
   it("projects streaming text and a tool lifecycle before the settled snapshot", async () => {
     const directory = await createTemporaryDirectory();
     const finalResponseStarted = deferred();

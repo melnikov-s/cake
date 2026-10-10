@@ -144,6 +144,8 @@ test("native images appear in Chat and only explicitly requested originals are s
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
       CAKE_HOME: cakeHome,
+      PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
       PI_OFFLINE: "1",
       OPENROUTER_API_KEY: "",
     },

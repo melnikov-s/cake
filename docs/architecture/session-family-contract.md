@@ -107,7 +107,7 @@ Family storage version 5 persists recursive parentage, per-child Working
 Directory bindings, sender/recipient request and reply correlation, response
 expectations, and notice attempts. It has no per-child resolution state or
 lifecycle synchronization journals. Version 4 journals are discarded on decode;
-the root's actual transcript namespace determines the entire family's state. Version 1 and 2 documents
+the root's Cake-owned resolution metadata determines the entire family's state. Version 1 and 2 documents
 migrate their flat children into direct children of the root with the family's
 shared Working Directory; version 3 recursive documents migrate legacy turns as
 response-expected work. The delivery worker retries already-due notices; it does
@@ -121,16 +121,17 @@ that never materialized a Pi transcript.
 
 Only the family root owns resolution. Every child inherits its immediate parent's
 resolution recursively, so every descendant derives the root's state. A child's
-own transcript namespace never determines whether it is resolved. Resolve and
+own transcript location never determines whether it is resolved. Resolve and
 restore requests addressed to any member target the root authority. Resolution
 requires all members to be inactive and no family turn to have accepted delivery
 pending consumption. Main rechecks these conditions under the family admission
 lock; it never aborts work or queues a later resolve.
 
-Resolving archives only the root transcript and publishes the authority change
-before attempting checkout cleanup. Child transcripts stay in place. Catalogs,
-conversation observations, message admission, and cleanup eligibility derive
-resolution from the root, including when older stored namespaces disagree.
+Resolving updates only the root's Cake-owned resolution metadata and publishes the
+authority change before attempting checkout cleanup. Every Pi transcript stays in
+its normal directory. Catalogs, conversation observations, message admission, and
+cleanup eligibility derive resolution from the root, including when older per-member
+metadata disagrees.
 There is no member-by-member lifecycle transition or synchronization journal.
 Landed descendant worktrees retire child-first after their final effectively
 active session is resolved. A cleanup failure cannot leave children unresolved.

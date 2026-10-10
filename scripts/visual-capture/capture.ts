@@ -89,6 +89,8 @@ export async function captureVisual(
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: paths.userData,
         CAKE_HOME: paths.cakeHome,
+        PI_CODING_AGENT_DIR: join(paths.cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
     const page = await application.firstWindow();
@@ -193,6 +195,8 @@ async function captureBrowserPage(
       ...process.env,
       HOME: paths.cakeHome,
       CAKE_HOME: paths.cakeHome,
+      PI_CODING_AGENT_DIR: join(paths.cakeHome, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
       CAKE_SERVER_ENABLED: "true",
       CAKE_SERVER_BROWSER_ENABLED: "true",
       CAKE_SERVER_PORT: "0",

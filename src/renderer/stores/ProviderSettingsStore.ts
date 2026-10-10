@@ -4,6 +4,7 @@ import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { PiNonChatModel } from "../../services/pi/model-data";
+import type { PiExtensionSetting } from "../../services/pi/extension-settings-data";
 
 export interface ProviderAuthNotice {
   readonly type: "info" | "progress" | "auth_url" | "device_code";
@@ -28,6 +29,12 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   readonly authNotices: Record<string, ProviderAuthNotice> = observable({});
   loadingModels = true;
   loadingSettings = true;
+  /** Pi is authority; this Store owns ephemeral settings-panel requests only. */
+  readonly extensionSources: PiExtensionSetting[] = observable([]);
+  extensionsLoading = false;
+  extensionUpdateId: string | undefined;
+  private extensionsLoaded = false;
+  private extensionLoadRevision = 0;
   piSettings: PiSettings | undefined;
   error: string | undefined;
   errorDetails: string | undefined;
@@ -75,7 +82,41 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
     await this.run(async () => {
       const value = await this.client.piSettings.update(update, { signal: this.signal });
       if (!this.signal.aborted) this.piSettings = value;
+      if (this.extensionsLoaded && (update.key === "extensions" || update.key === "packages"))
+        await this.loadExtensions();
     });
+  }
+
+  async loadExtensions() {
+    if (this.extensionsLoading || this.signal.aborted) return;
+    const revision = ++this.extensionLoadRevision;
+    this.extensionsLoading = true;
+    await this.run(async () => {
+      const entries = await this.client.piSettings.extensions({ signal: this.signal });
+      if (!this.signal.aborted && revision === this.extensionLoadRevision) {
+        this.extensionSources.splice(0, this.extensionSources.length, ...entries);
+        this.extensionsLoaded = true;
+      }
+    });
+    if (!this.signal.aborted && revision === this.extensionLoadRevision)
+      this.extensionsLoading = false;
+  }
+
+  async setExtensionEnabled(id: string, enabled: boolean) {
+    if (this.extensionUpdateId || this.extensionsLoading || this.signal.aborted) return;
+    this.extensionUpdateId = id;
+    try {
+      await this.run(async () => {
+        const settings = await this.client.piSettings.setExtensionEnabled(
+          { id, enabled },
+          { signal: this.signal },
+        );
+        if (!this.signal.aborted) this.piSettings = settings;
+        await this.loadExtensions();
+      });
+    } finally {
+      if (!this.signal.aborted) this.extensionUpdateId = undefined;
+    }
   }
 
   setCodemodeInlineBudget(value: string) {
@@ -90,6 +131,7 @@ export class ProviderSettingsStore extends Store<ProviderSettingsStoreProps> {
   async reloadPi() {
     await this.run(async () => {
       this.piSettings = await this.client.piSettings.reload({ signal: this.signal });
+      if (this.extensionsLoaded) await this.loadExtensions();
     });
   }
 

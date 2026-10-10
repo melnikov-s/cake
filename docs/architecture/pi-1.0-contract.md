@@ -63,9 +63,11 @@ Cake Chat, auxiliary Discussion/Subagent runtimes, and explicit tool allowlists
 (including empty lists) do not receive these factories. Pi's builtin disable and
 replacement-extension rules remain effective.
 
-Backend bootstrap sets `PI_CODING_AGENT_DIR` to Cake's resolved backend Pi root
-before acquiring Pi resources. Eligible runtime construction rejects a different
-root rather than reading another user's config or credentials. Pi owns personal
+Backend bootstrap delegates the agent home to Pi's `getAgentDir()` and never
+sets `PI_CODING_AGENT_DIR`. Cake and terminal Pi share configuration, resources
+and primary project transcripts. Eligible runtime construction rejects a root
+that disagrees with Pi's process-level home, rather than reading another
+configuration or credential directory. Pi owns personal
 `mcp.json`, `mcp-auth.json`, and `mcp.log` there; project `.pi/mcp.json` loads only
 with project trust and overrides same-name personal servers.
 

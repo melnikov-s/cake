@@ -25,6 +25,8 @@ const environment = (root: string) => ({
   PATH: process.env.PATH,
   HOME: root,
   CAKE_HOME: root,
+  PI_CODING_AGENT_DIR: join(root, "pi"),
+  PI_CODING_AGENT_SESSION_DIR: "",
 });
 
 beforeAll(async () => {

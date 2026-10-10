@@ -15,10 +15,7 @@ import {
   type AgentSession,
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  configureCakePiAgentDirectory,
-  createCakeMcpExtensions,
-} from "../../src/services/pi/runtime/mcp-integration";
+import { createCakeMcpExtensions } from "../../src/services/pi/runtime/mcp-integration";
 import { shutdownCakeSessionExtensions } from "../../src/services/pi/runtime/cake-session-runtime-resources";
 import { projectSessionEntries } from "../../src/services/pi/runtime/session-projection";
 import { createCakeSessionRuntimeEventProjection } from "../../src/services/pi/runtime/cake-session-runtime-event-projection";
@@ -40,10 +37,9 @@ async function openImages(options: { authenticated?: boolean; fetch?: typeof fet
   cleanups.push(() => rm(cwd, { recursive: true, force: true }));
   const agentDir = join(cwd, "agent");
   await mkdir(agentDir);
-  vi.stubEnv("PI_CODING_AGENT_DIR", process.env.PI_CODING_AGENT_DIR);
   vi.stubEnv("OPENROUTER_API_KEY", "");
   vi.stubEnv("PI_OFFLINE", "1");
-  configureCakePiAgentDirectory(agentDir);
+  vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
   const modelRuntime = await ModelRuntime.create({
     authPath: join(agentDir, "auth.json"),
     modelsPath: null,

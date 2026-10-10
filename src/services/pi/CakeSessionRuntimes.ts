@@ -67,6 +67,7 @@ export const PiSessionQuery = Schema.Struct({
   sessionDirectory: Schema.String,
   resolvedSessionDirectory: Schema.optionalKey(Schema.String),
   direct: Schema.optionalKey(Schema.Boolean),
+  excludedSessionIds: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 export interface PiSessionQuery extends Schema.Schema.Type<typeof PiSessionQuery> {}
 
@@ -1164,6 +1165,7 @@ export const makeCakeSessionRuntimesLive = (): Layer.Layer<
               )
             : streamWorkspaceSessionIds(query.workingDirectory, query.sessionDirectory, {
                 direct: query.direct,
+                excludedSessionIds: query.excludedSessionIds,
               }),
         catalog: (query) =>
           coordinatorDirectory(query.sessionDirectory)
@@ -1172,6 +1174,7 @@ export const makeCakeSessionRuntimesLive = (): Layer.Layer<
               )
             : streamWorkspaceSessions(query.workingDirectory, query.sessionDirectory, {
                 direct: query.direct,
+                excludedSessionIds: query.excludedSessionIds,
               }),
         catalogEntry: (query, sessionId) =>
           coordinatorDirectory(query.sessionDirectory)
@@ -1199,7 +1202,6 @@ export const makeCakeSessionRuntimesLive = (): Layer.Layer<
                     target.workingDirectory,
                     target.sessionId,
                     target.sessionDirectory,
-                    target.resolvedSessionDirectory,
                     target.direct,
                   ),
                 catch: (cause) => cause,

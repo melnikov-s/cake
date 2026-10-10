@@ -101,6 +101,8 @@ test("separate Node backend serves a real leased code-server workbench to remote
       PATH: process.env.PATH,
       HOME: directory,
       CAKE_HOME: home,
+      PI_CODING_AGENT_DIR: join(home, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
       CAKE_SERVER_ENABLED: "true",
       CAKE_SERVER_ALLOW_MISSING_ORIGIN: "true",
       CAKE_SERVER_PORT: "0",
@@ -151,6 +153,8 @@ test("separate Node backend serves a real leased code-server workbench to remote
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: userData,
         CAKE_HOME: localHome,
+        PI_CODING_AGENT_DIR: join(localHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
         CAKE_VSCODE_SERVER_PATH: "/must-not-launch-local-code-server",
       },
     });
@@ -226,6 +230,8 @@ test("separate Node backend serves a real leased code-server workbench to remote
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: observerData,
         CAKE_HOME: join(directory, "observer-backend-must-not-exist"),
+        PI_CODING_AGENT_DIR: join(directory, "observer-backend-must-not-exist", "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
     const observerPage = await observer.firstWindow();

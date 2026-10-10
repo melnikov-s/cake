@@ -17,6 +17,7 @@ import { ModelPicker } from "./model-picker";
 import { ModelPresetSettings } from "./model-preset-settings";
 import { SettingsLinesField } from "./settings/settings-lines-field";
 import { SettingsPackagesField } from "./settings/settings-packages-field";
+import { SettingsExtensionsSection } from "./settings-extensions-section";
 import { SettingsTextField } from "./settings/settings-text-field";
 import { Input } from "./ui/input";
 import { SearchIcon } from "./ui/icons";
@@ -532,6 +533,7 @@ export const SettingsPage = observer(function SettingsPage({
               </section>
 
               <SettingsNativeToolsSection providers={providers} />
+              <SettingsExtensionsSection providers={providers} />
 
               <section className="border-t border-border py-5" aria-labelledby="resources-title">
                 <header className="mb-4 flex items-start justify-between gap-4">

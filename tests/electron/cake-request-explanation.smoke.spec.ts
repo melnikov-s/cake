@@ -24,6 +24,8 @@ for (const theme of ["light", "dark"] as const) {
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: paths.userData,
         CAKE_HOME: paths.cakeHome,
+        PI_CODING_AGENT_DIR: join(paths.cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
     try {

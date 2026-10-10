@@ -1,13 +1,15 @@
-import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Effect, Stream } from "effect";
 import {
   cakeWorkspaceSessionDirectory,
   forkWorkspaceSession,
   loadWorkspacePiSessionPreview,
+  streamWorkspaceSessions,
 } from "../../../src/services/pi/runtime/session-discovery";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import { appendToolCompactedBranch } from "../../../src/services/pi/runtime/session-tool-compaction";
@@ -36,19 +38,39 @@ function assistant(content: AssistantMessage["content"], model = "fixture"): Ass
 
 const temporaryDirectories: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true })));
 });
 
 describe("loadWorkspacePiSessionPreview", () => {
-  it("reconstructs compacted work logs from a resolved Pi transcript", async () => {
+  it("filters resolved IDs before opening transcripts for catalog titles", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-session-title-filter-"));
+    temporaryDirectories.push(root);
+    const cwd = join(root, "project");
+    const sessionRoot = join(root, "sessions");
+    const directory = cakeWorkspaceSessionDirectory(cwd, sessionRoot);
+    const active = SessionManager.create(cwd, directory);
+    active.appendMessage({ role: "user", content: "Active work", timestamp: 1 });
+    const resolved = SessionManager.create(cwd, directory);
+    resolved.appendMessage({ role: "user", content: "Resolved work", timestamp: 2 });
+    const open = vi.spyOn(SessionManager, "open");
+    const catalog = await Effect.runPromise(
+      streamWorkspaceSessions(cwd, sessionRoot, {
+        excludedSessionIds: [resolved.getSessionId()],
+      }).pipe(Stream.runCollect),
+    );
+    expect(catalog.map((item) => item.id)).toEqual([active.getSessionId()]);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open.mock.calls[0]?.[0]).toBe(active.getSessionFile());
+  });
+  it("reconstructs compacted work logs from a persisted Pi transcript", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-session-preview-"));
     temporaryDirectories.push(root);
     const cwd = join(root, "project");
     const activeSessionRoot = join(root, "sessions");
-    const resolvedSessionRoot = join(root, "resolved-sessions");
     const manager = SessionManager.create(
       cwd,
-      cakeWorkspaceSessionDirectory(cwd, resolvedSessionRoot),
+      cakeWorkspaceSessionDirectory(cwd, activeSessionRoot),
     );
 
     manager.appendMessage({ role: "user", content: "Inspect the project", timestamp: 1 });
@@ -106,7 +128,6 @@ describe("loadWorkspacePiSessionPreview", () => {
       cwd,
       manager.getSessionId(),
       activeSessionRoot,
-      resolvedSessionRoot,
     );
 
     expect(preview?.sessionFile).toBe(manager.getSessionFile());
@@ -130,12 +151,11 @@ describe("loadWorkspacePiSessionPreview", () => {
     ).not.toHaveProperty("origin");
   });
 
-  it("preserves compacted display work through a fork and resolved-session reopen without adding model context", async () => {
+  it("preserves compacted display work through a fork and reopen without adding model context", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-fork-display-provenance-"));
     temporaryDirectories.push(root);
     const cwd = join(root, "project");
     const activeSessionRoot = join(root, "sessions");
-    const resolvedSessionRoot = join(root, "resolved-sessions");
     const manager = SessionManager.create(
       cwd,
       cakeWorkspaceSessionDirectory(cwd, activeSessionRoot),
@@ -229,15 +249,7 @@ describe("loadWorkspacePiSessionPreview", () => {
       "historical output",
     );
 
-    const resolvedDirectory = cakeWorkspaceSessionDirectory(cwd, resolvedSessionRoot);
-    await mkdir(resolvedDirectory, { recursive: true });
-    await rename(fork.sessionFile!, join(resolvedDirectory, basename(fork.sessionFile!)));
-    const reopened = await loadWorkspacePiSessionPreview(
-      cwd,
-      fork.sessionId,
-      activeSessionRoot,
-      resolvedSessionRoot,
-    );
+    const reopened = await loadWorkspacePiSessionPreview(cwd, fork.sessionId, activeSessionRoot);
     expect(
       reopened?.parts.find((part) => part.kind === "tool" && part.id === "tool-historical-read"),
     ).toMatchObject({ origin: "compacted", output: "historical output" });

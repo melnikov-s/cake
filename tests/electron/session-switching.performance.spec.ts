@@ -230,6 +230,8 @@ test("opens a new family child among hundreds of restored session identities", a
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: f.userData,
       CAKE_HOME: f.home,
+      PI_CODING_AGENT_DIR: join(f.home, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
     },
   });
   try {
@@ -359,6 +361,8 @@ test("compares warm session switching in isolated baseline and patched Electron 
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: f.userData,
         CAKE_HOME: f.home,
+        PI_CODING_AGENT_DIR: join(f.home, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
     try {

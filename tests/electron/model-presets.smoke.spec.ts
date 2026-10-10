@@ -34,6 +34,8 @@ async function launch(temporaryRoot: string, cakeHome: string) {
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: join(temporaryRoot, "user-data"),
       CAKE_HOME: cakeHome,
+      PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
     },
   });
 }

@@ -312,8 +312,16 @@ export const resolveWorkingDirectory = Effect.fn("ProjectSessions.resolveWorking
           ? `Cake could not find Working Directory ${workingDirectory}`
           : `Working Directory collision detected: ${workingDirectory}`,
       );
+    const archive = yield* SessionArchiveStorage;
+    const excluded = yield* archive
+      .resolvedIds(archiveLocation(location))
+      .pipe(asError("resolveWorkingDirectory"));
     const activeSessionIds = yield* (yield* CakeSessionRuntimes)
-      .sessionIds({ workingDirectory, sessionDirectory: location.sessionDirectory })
+      .sessionIds({
+        workingDirectory,
+        sessionDirectory: location.sessionDirectory,
+        excludedSessionIds: [...excluded],
+      })
       .pipe(
         Stream.runCollect,
         Effect.map((items) => Array.from(items)),
@@ -334,6 +342,15 @@ export const resolveWorkingDirectory = Effect.fn("ProjectSessions.resolveWorking
     const selected = new Set<string>();
     for (const activeSessionId of activeSessionIds) {
       const family = familyByMember.get(activeSessionId);
+      if (
+        family &&
+        (yield* resolutionNamespace(family.parentSessionId, {
+          cwd: family.workingDirectory,
+          activeRoot: location.sessionDirectory,
+          resolvedRoot: location.resolvedSessionDirectory,
+        }).pipe(asError("resolveWorkingDirectory"))) === "resolved"
+      )
+        continue;
       const sessionId = family?.parentSessionId ?? activeSessionId;
       if (selected.has(sessionId)) continue;
       const sessionIds = family ? familyMembers(family) : [sessionId];

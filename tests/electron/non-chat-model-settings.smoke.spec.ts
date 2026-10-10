@@ -73,6 +73,12 @@ test("image/classifier preferences and native execution controls persist and rea
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: userData,
         CAKE_HOME: cakeHome,
+        PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
+        PI_PROVIDER: "",
+        PI_MODEL: "",
+        PI_SESSION_FILE: "",
+        PI_SESSION_ID: "",
       },
     });
   let app = await launch();

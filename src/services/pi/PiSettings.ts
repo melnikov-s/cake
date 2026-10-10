@@ -6,6 +6,7 @@ import {
   type PiSettings as PiSettingsValue,
 } from "../../ipc/session-contract";
 import { applyPiSetting, projectPiSettings } from "./runtime/settings-translation";
+import { PiExtensionSetting, type PiExtensionToggle } from "./extension-settings-data";
 
 export class PiSettingsError extends Schema.TaggedError<PiSettingsError>()("PiSettingsError", {
   operation: Schema.String,
@@ -17,6 +18,10 @@ export class PiSettings extends Context.Service<
   {
     readonly load: () => Effect.Effect<PiSettingsValue, PiSettingsError>;
     readonly update: (update: PiSettingUpdate) => Effect.Effect<PiSettingsValue, PiSettingsError>;
+    readonly extensions: () => Effect.Effect<ReadonlyArray<PiExtensionSetting>, PiSettingsError>;
+    readonly setExtensionEnabled: (
+      toggle: PiExtensionToggle,
+    ) => Effect.Effect<PiSettingsValue, PiSettingsError>;
   }
 >()("cake/services/pi/PiSettings") {}
 
@@ -36,6 +41,10 @@ export const makePiSettingsLayer = (
   writeExecutionSetting?: (
     update: PiExecutionSettingUpdate,
   ) => Effect.Effect<void, PiSettingsError>,
+  extensionSettings?: {
+    readonly list: () => Effect.Effect<ReadonlyArray<PiExtensionSetting>, PiSettingsError>;
+    readonly toggle: (toggle: PiExtensionToggle) => Effect.Effect<void, PiSettingsError>;
+  },
 ) =>
   Layer.effect(
     PiSettings,
@@ -103,6 +112,52 @@ export const makePiSettingsLayer = (
         ),
       );
 
-      return PiSettings.of({ load, update });
+      const extensions = Effect.fn("PiSettings.extensions")(() =>
+        lock.withPermits(1)(
+          Effect.gen(function* () {
+            if (!extensionSettings)
+              return yield* settingsError("extensions", "Extension discovery is unavailable");
+            yield* Effect.tryPromise({
+              try: () => settingsManager.reload(),
+              catch: (cause) => settingsError("extensions", cause),
+            });
+            yield* read("extensions");
+            return yield* extensionSettings.list().pipe(
+              Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(PiExtensionSetting))),
+              Effect.mapError((cause) => settingsError("extensions", cause)),
+            );
+          }),
+        ),
+      );
+      const setExtensionEnabled = Effect.fn("PiSettings.setExtensionEnabled")(
+        (toggle: PiExtensionToggle) =>
+          lock.withPermits(1)(
+            Effect.gen(function* () {
+              if (!extensionSettings)
+                return yield* settingsError(
+                  "setExtensionEnabled",
+                  "Extension discovery is unavailable",
+                );
+              yield* Effect.tryPromise({
+                try: () => settingsManager.reload(),
+                catch: (cause) => settingsError("setExtensionEnabled", cause),
+              });
+              yield* read("setExtensionEnabled");
+              yield* extensionSettings.toggle(toggle);
+              yield* Effect.tryPromise({
+                try: () => settingsManager.flush(),
+                catch: (cause) => settingsError("setExtensionEnabled", cause),
+              });
+              const errors = settingsManager.drainErrors();
+              if (errors.length)
+                return yield* settingsError(
+                  "setExtensionEnabled",
+                  errors.map((error) => error.error.message).join("\n"),
+                );
+              return yield* read("setExtensionEnabled");
+            }),
+          ),
+      );
+      return PiSettings.of({ load, update, extensions, setExtensionEnabled });
     }),
   );

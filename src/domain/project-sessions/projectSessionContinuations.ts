@@ -38,8 +38,7 @@ const withContinuationSource = Effect.fn("ProjectSessions.withContinuationSource
   const effective = yield* resolutionNamespace(target.sessionId, archiveLocation(source)).pipe(
     asError(operation),
   );
-  // Read archived sources in place. Temporarily moving a family root would
-  // temporarily change the lifecycle authority for all of its descendants.
+  // Read resolved sources in place without changing the family's metadata.
   return {
     result: yield* use(source, namespace === "resolved"),
     source,
@@ -116,7 +115,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
         .catalogEntry(
           {
             workingDirectory: source.workingDirectory,
-            sessionDirectory: archived ? source.resolvedSessionDirectory : source.sessionDirectory,
+            sessionDirectory: source.sessionDirectory,
           },
           input.target.sessionId,
         )
@@ -139,9 +138,7 @@ export const fork = Effect.fn("ProjectSessions.fork")(function* (input: {
             sessionId: input.target.sessionId,
             entryId: input.entryId,
             title: forkTitle,
-            source: archived
-              ? { ...source, sessionDirectory: source.resolvedSessionDirectory }
-              : source,
+            source,
             destination,
           })
           .pipe(asError("fork"));

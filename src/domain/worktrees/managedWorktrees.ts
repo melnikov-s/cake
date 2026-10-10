@@ -213,14 +213,27 @@ const activeSessionInWorkingDirectory = Effect.fn(
       return true;
   }
   const familyIds = new Set(families.flatMap(familyMemberIds));
-  return yield* (yield* CakeSessionRuntimes).catalog({ workingDirectory, sessionDirectory }).pipe(
-    Stream.filter((session) => !familyIds.has(session.id)),
-    Stream.runHead,
-    Effect.map(Option.isSome),
-    Effect.mapError((cause) =>
-      policyError("ManagedWorktrees.activeSessionInWorkingDirectory", cause),
-    ),
-  );
+  const resolvedIds = yield* (yield* SessionArchiveStorage)
+    .resolvedIds({
+      cwd: workingDirectory,
+      activeRoot: sessionDirectory,
+      resolvedRoot: configuration.resolvedSessionDirectory,
+    })
+    .pipe(
+      Effect.mapError((cause) =>
+        policyError("ManagedWorktrees.activeSessionInWorkingDirectory", cause),
+      ),
+    );
+  return yield* (yield* CakeSessionRuntimes)
+    .catalog({ workingDirectory, sessionDirectory, excludedSessionIds: [...resolvedIds] })
+    .pipe(
+      Stream.filter((session) => !familyIds.has(session.id)),
+      Stream.runHead,
+      Effect.map(Option.isSome),
+      Effect.mapError((cause) =>
+        policyError("ManagedWorktrees.activeSessionInWorkingDirectory", cause),
+      ),
+    );
 });
 
 const discoverResolvedForProject = Effect.fn("ManagedWorktrees.discoverResolvedForProject")(

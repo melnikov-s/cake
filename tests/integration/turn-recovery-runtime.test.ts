@@ -4,7 +4,6 @@ import { createServer, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { configureCakePiAgentDirectory } from "../../src/services/pi/runtime/mcp-integration";
 import { TURN_RECOVERY_NOTICE_PART_ID } from "../../src/services/pi/runtime/turn-recovery";
 import {
   createCakeSessionRuntime,
@@ -85,8 +84,7 @@ async function registerFixtureProvider(
 }
 
 async function createFixtureRuntime(directory: string, onEvent = vi.fn()) {
-  vi.stubEnv("PI_CODING_AGENT_DIR", process.env.PI_CODING_AGENT_DIR);
-  configureCakePiAgentDirectory(join(directory, "agent"));
+  vi.stubEnv("PI_CODING_AGENT_DIR", join(directory, "agent"));
   const runtime = await createCakeSessionRuntime({
     cwd: directory,
     agentDir: join(directory, "agent"),

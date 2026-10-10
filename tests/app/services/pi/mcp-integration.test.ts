@@ -18,7 +18,6 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   getAgentDir: () => process.env.PI_CODING_AGENT_DIR,
 }));
 import {
-  configureCakePiAgentDirectory,
   createCakeMcpExtensions,
   type CakeMcpIntegrationOptions,
 } from "../../../../src/services/pi/runtime/mcp-integration";
@@ -29,15 +28,10 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 function bootstrap() {
-  vi.stubEnv("PI_CODING_AGENT_DIR", "inherited-root");
-  configureCakePiAgentDirectory(runtime.agentDir);
+  vi.stubEnv("PI_CODING_AGENT_DIR", runtime.agentDir);
 }
 
 describe("Cake native MCP integration contract", () => {
-  it("pins Pi's global agent directory to the resolved backend root, overriding inherited configuration", () => {
-    bootstrap();
-    expect(process.env.PI_CODING_AGENT_DIR).toBe(runtime.agentDir);
-  });
   it("rejects mismatched roots before constructing extensions", () => {
     vi.stubEnv("PI_CODING_AGENT_DIR", "another-root");
     expect(() => createCakeMcpExtensions({ runtime })).toThrow("global agent directory");

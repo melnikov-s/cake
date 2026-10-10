@@ -185,6 +185,8 @@ test("remote Electron loads backend widgets and companion actions, then Pi revie
       PATH: process.env.PATH,
       HOME: directory,
       CAKE_HOME: home,
+      PI_CODING_AGENT_DIR: join(home, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
       CAKE_SERVER_ENABLED: "true",
       CAKE_SERVER_ALLOW_MISSING_ORIGIN: "true",
       CAKE_SERVER_PORT: "0",
@@ -249,6 +251,8 @@ export default function RemoteWidget() {
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: userData,
         CAKE_HOME: join(directory, "local-must-not-exist"),
+        PI_CODING_AGENT_DIR: join(directory, "local-must-not-exist", "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
     try {

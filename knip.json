@@ -5,6 +5,7 @@
     "src/renderer/index.html",
     "src/assets/vscode-companion/extension.js",
     "src/server/main.ts",
+    "src/services/pi/PiSessionMigrationCommand.ts",
     "tests/integration/fixtures/headless-backend.ts"
   ],
   "ignoreDependencies": ["vscode"],

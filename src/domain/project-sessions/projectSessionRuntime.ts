@@ -160,8 +160,8 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     .pipe(Effect.mapError((cause) => compositionError("acquireOptions", cause)));
   const member = family && familyMember(family, sessionId);
   const isChild = member?.parentSessionId !== undefined;
-  // Child transcripts from the former per-member lifecycle may still be archived.
-  // Moving one into Pi's runtime namespace does not change inherited resolution.
+  // Clear former per-member resolution metadata without changing inherited
+  // family resolution. Storage migrates any old archived transcript in place.
   if (
     isChild &&
     !newSession &&
@@ -316,7 +316,6 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         .filter(Boolean)
         .join("\n\n"),
       sessionDir: configuration.sessionDirectory,
-      resolvedSessionDir: configuration.resolvedSessionDirectory,
       newSession,
       sessionId,
       utilityModel: () => application.snapshot().utilityModel,

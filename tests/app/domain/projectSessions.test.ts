@@ -1,4 +1,11 @@
 import assert from "node:assert/strict";
+import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { FileSystem, Path } from "effect";
+import { makeSessionArchiveStorageLive } from "../../../src/services/storage/SessionArchiveStorageLive";
+import {
+  cakeWorkspaceSessionDirectory,
+  streamWorkspaceSessions,
+} from "../../../src/services/pi/runtime/session-discovery";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Fiber, Layer, Queue, Schema, Stream, SubscriptionRef } from "effect";
 import * as TestClock from "effect/testing/TestClock";
@@ -326,10 +333,16 @@ const makeLayer = (
   const adapter: CakeSessionRuntimesAdapter = {
     sessionIds: (query) => {
       hooks.onSessionIds?.();
-      if (hooks.sessionIds) return hooks.sessionIds(query.workingDirectory);
+      if (hooks.sessionIds)
+        return hooks
+          .sessionIds(query.workingDirectory)
+          .pipe(Stream.filter((id) => !query.excludedSessionIds?.includes(id)));
       if (hooks.catalog)
-        return hooks.catalog(query.workingDirectory).pipe(Stream.map((item) => item.id));
-      return hooks.sessionExists === false || resolvedSessionIds.has("session-1")
+        return hooks.catalog(query.workingDirectory).pipe(
+          Stream.map((item) => item.id),
+          Stream.filter((id) => !query.excludedSessionIds?.includes(id)),
+        );
+      return hooks.sessionExists === false || query.excludedSessionIds?.includes("session-1")
         ? Stream.empty
         : Stream.make("session-1");
     },
@@ -338,8 +351,8 @@ const makeLayer = (
       if (hooks.catalog)
         return hooks
           .catalog(query.workingDirectory)
-          .pipe(Stream.filter((item) => !resolvedSessionIds.has(item.id)));
-      return hooks.sessionExists === false || resolvedSessionIds.has("session-1")
+          .pipe(Stream.filter((item) => !query.excludedSessionIds?.includes(item.id)));
+      return hooks.sessionExists === false || query.excludedSessionIds?.includes("session-1")
         ? Stream.empty
         : Stream.make({
             id: "session-1",
@@ -351,7 +364,7 @@ const makeLayer = (
           });
     },
     catalogEntry: (_query, sessionId) =>
-      hooks.sessionExists === false || resolvedSessionIds.has(sessionId)
+      hooks.sessionExists === false
         ? Effect.succeed(undefined)
         : Effect.succeed({
             id: sessionId,
@@ -553,6 +566,7 @@ const makeLayer = (
     Layer.succeed(
       SessionArchiveStorage,
       SessionArchiveStorage.of({
+        relocate: () => Effect.void,
         resolve: () => Effect.succeed(false),
         restore: () => Effect.succeed(false),
         deleteResolved: () => Effect.void,
@@ -573,6 +587,13 @@ const makeLayer = (
               : resolvedSessionIds.has(sessionId)
                 ? "resolved"
                 : "active",
+          ),
+        resolvedIds: () =>
+          Effect.succeed(
+            new Set([
+              ...resolvedSessionIds,
+              ...(hooks.resolvedProjectEntries ?? []).map((entry) => entry.sessionId),
+            ]),
           ),
         resolved: (location) => {
           hooks.onResolvedCatalog?.(location.cwd);
@@ -783,6 +804,151 @@ const sessionSummary = (id: string): PiSessionSummary => ({
 });
 
 describe("Project Sessions domain", () => {
+  it.effect(
+    "projects metadata-only resolution into both catalog lanes while Pi files stay discoverable",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fs.makeTempDirectoryScoped({ prefix: "cake-resolution-catalog-" });
+        const cwd = path.join(root, "project");
+        const sessionDirectory = path.join(root, "sessions");
+        const resolvedSessionDirectory = path.join(root, "old-archives");
+        const directory = cakeWorkspaceSessionDirectory(cwd, sessionDirectory);
+        yield* fs.makeDirectory(directory, { recursive: true });
+        const files: string[] = [];
+        for (const id of ["session-1", "session-2"]) {
+          const file = path.join(directory, `2026-01-01T00-00-00-000Z_${id}.jsonl`);
+          files.push(file);
+          yield* fs.writeFileString(
+            file,
+            [
+              { type: "session", version: 3, id, cwd, timestamp: "2026-01-01T00:00:00.000Z" },
+              {
+                type: "message",
+                id: "user",
+                parentId: null,
+                timestamp: "2026-01-01T00:00:00.000Z",
+                message: { role: "user", content: id, timestamp: 1 },
+              },
+            ]
+              .map((entry) => JSON.stringify(entry))
+              .join("\n") + "\n",
+          );
+        }
+        const [sessionFile] = files;
+        assert.ok(sessionFile);
+        const original = yield* fs.readFileString(sessionFile);
+        yield* Effect.gen(function* () {
+          const archive = yield* SessionArchiveStorage;
+          yield* Effect.gen(function* () {
+            const model = SessionCatalog.create({});
+            const received = yield* Queue.unbounded<SessionCatalogUpdate>();
+            for (const resolved of [false, true]) {
+              const query = { projectPath: cwd, resolved };
+              const updates = yield* projectSessionMetadata.observeCatalog(query);
+              yield* updates.pipe(
+                Stream.runForEach((update) =>
+                  Effect.sync(() => applySessionCatalogGroupUpdate(model, query, update)).pipe(
+                    Effect.andThen(Queue.offer(received, update)),
+                  ),
+                ),
+                Effect.forkScoped,
+              );
+            }
+            yield* Queue.take(received);
+            yield* Queue.take(received);
+            assert.equal(model.find("session-1")?.resolved, false);
+            assert.equal(model.find("session-2")?.resolved, false);
+            yield* projectSessionLifecycle.resolve({
+              sessionId: "session-1",
+              workingDirectory: cwd,
+            });
+            yield* Queue.take(received);
+            yield* Queue.take(received);
+            assert.equal(model.find("session-1")?.resolved, true);
+            assert.equal(model.find("session-2")?.resolved, false);
+            // The file remains present: a late active notification must not
+            // reintroduce it into the active lane.
+            yield* (yield* SessionCatalogChanges).publish({
+              _tag: "ProjectSessionChanged",
+              sessionId: "session-1",
+              projectPath: cwd,
+              workingDirectory: cwd,
+              resolved: false,
+            });
+            yield* Queue.take(received);
+            yield* Queue.take(received);
+            assert.equal(model.find("session-1")?.resolved, true);
+            assert.equal(yield* fs.readFileString(sessionFile), original);
+            assert.deepEqual(
+              (yield* streamWorkspaceSessions(cwd, sessionDirectory).pipe(Stream.runCollect))
+                .map((item) => item.id)
+                .sort(),
+              ["session-1", "session-2"],
+            );
+            // A fresh initial listing must use the persisted index, not old file placement.
+            const fresh = yield* projectSessionMetadata.observeCatalog({
+              projectPath: cwd,
+              resolved: false,
+            });
+            const [initial] = yield* fresh.pipe(Stream.take(1), Stream.runCollect);
+            assert.equal(initial?._tag, "Snapshot");
+            if (initial?._tag === "Snapshot")
+              assert.deepEqual(
+                initial.sessions.map((item) => item.sessionId),
+                ["session-2"],
+              );
+            yield* projectSessionLifecycle.restore({
+              sessionId: "session-1",
+              workingDirectory: cwd,
+            });
+            yield* Queue.take(received);
+            yield* Queue.take(received);
+            assert.equal(model.find("session-1")?.resolved, false);
+            yield* (yield* SessionCatalogChanges).publish({
+              _tag: "ProjectSessionChanged",
+              sessionId: "session-1",
+              projectPath: cwd,
+              workingDirectory: cwd,
+              resolved: true,
+            });
+            yield* Queue.take(received);
+            yield* Queue.take(received);
+            assert.equal(model.find("session-1")?.resolved, false);
+            assert.equal(yield* fs.readFileString(sessionFile), original);
+          }).pipe(
+            Effect.provideService(SessionArchiveStorage, archive),
+            Effect.provideService(ProjectSessionConfiguration, {
+              agentDirectory: path.join(root, "agent"),
+              sessionDirectory,
+              resolvedSessionDirectory,
+            }),
+            Effect.provide(
+              makeLayer(defaultApplicationState(), {
+                locations: [
+                  {
+                    projectPath: cwd,
+                    projectName: "Project",
+                    workingDirectory: cwd,
+                    sessionDirectory,
+                    resolvedSessionDirectory,
+                  },
+                ],
+                catalog: () => streamWorkspaceSessions(cwd, sessionDirectory),
+              }),
+            ),
+          );
+        }).pipe(
+          Effect.provide(
+            makeSessionArchiveStorageLive(path.join(root, "metadata"), {
+              activeRoot: sessionDirectory,
+              resolvedRoot: resolvedSessionDirectory,
+            }),
+          ),
+        );
+      }).pipe(Effect.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer))),
+  );
   it.effect(
     "projects parent-only resolve and restore through both catalog lanes for the whole nested family",
     () => {
@@ -1710,7 +1876,7 @@ describe("Project Sessions domain", () => {
         .spyOn(projectSessionLocations, "forkToWorkingDirectory")
         .mockImplementation((input) =>
           Effect.sync(() => {
-            assert.equal(input.source.sessionDirectory, "/resolved-sessions");
+            assert.equal(input.source.sessionDirectory, "/sessions");
             assert.equal(input.destination.sessionDirectory, "/sessions");
             return {
               sessionId: "forked",

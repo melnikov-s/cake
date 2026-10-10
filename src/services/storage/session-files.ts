@@ -1,6 +1,7 @@
 import { opendir, readdir, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { Stream } from "effect";
+import { piProjectSessionDirectory, piSessionMatchesWorkingDirectory } from "../pi/PiPaths";
 
 const SESSION_FILE_PATTERN = /^(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)_(.+)\.jsonl$/;
 
@@ -11,12 +12,16 @@ export interface SessionFileMetadata {
   readonly modifiedAt: string;
 }
 
-/** Mirror Pi's documented per-working-directory layout without opening a Pi runtime. */
+/** Pi's normal layout or its configured custom directory; no runtime acquisition. */
 export function workingDirectorySessionPath(workingDirectory: string, root: string) {
-  const normalized = resolve(workingDirectory);
-  const safePath = `--${normalized.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
-  return join(resolve(root), safePath);
+  return piProjectSessionDirectory(workingDirectory, root).directory;
 }
+
+const isSharedProjectDirectory = (input: {
+  workingDirectory: string;
+  root: string;
+  direct?: boolean;
+}) => !input.direct && piProjectSessionDirectory(input.workingDirectory, input.root).shared;
 
 export function sessionDirectoryPath(input: {
   readonly workingDirectory: string;
@@ -102,9 +107,12 @@ export function streamSessionFileIds(input: {
   readonly root: string;
   readonly direct?: boolean;
 }): Stream.Stream<string, unknown> {
-  return Stream.fromAsyncIterable(
-    readDirectorySessionIds(sessionDirectoryPath(input)),
-    (cause) => cause,
+  const directory = sessionDirectoryPath(input);
+  const shared = isSharedProjectDirectory(input);
+  return Stream.fromAsyncIterable(readDirectorySessionIds(directory), (cause) => cause).pipe(
+    Stream.filter(
+      (id) => !shared || piSessionMatchesWorkingDirectory(input.workingDirectory, id, directory),
+    ),
   );
 }
 
@@ -115,7 +123,13 @@ export function streamSessionFiles(input: {
   readonly direct?: boolean;
 }): Stream.Stream<SessionFileMetadata, unknown> {
   const directory = sessionDirectoryPath(input);
-  return Stream.fromAsyncIterable(readDirectoryMetadata(directory), (cause) => cause);
+  const shared = isSharedProjectDirectory(input);
+  return Stream.fromAsyncIterable(readDirectoryMetadata(directory), (cause) => cause).pipe(
+    Stream.filter(
+      (item) =>
+        !shared || piSessionMatchesWorkingDirectory(input.workingDirectory, item.id, directory),
+    ),
+  );
 }
 
 /** Resolves one exact session file by filename metadata without reading any transcript. */
@@ -138,6 +152,11 @@ export async function findSessionFileById(
   const suffix = `_${sessionId}.jsonl`;
   const matches = entries.filter((entry) => entry.isFile() && entry.name.endsWith(suffix));
   if (matches.length > 1) throw new Error(`Session ID collision detected: ${sessionId}`);
+  if (
+    isSharedProjectDirectory(input) &&
+    !piSessionMatchesWorkingDirectory(input.workingDirectory, sessionId, directory)
+  )
+    return undefined;
   return matches[0] ? join(directory, matches[0].name) : undefined;
 }
 

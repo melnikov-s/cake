@@ -1,9 +1,15 @@
 import { Context, type Effect, Schema, type Stream } from "effect";
 import type { PiSessionSummary } from "../../ipc/session-contract";
 
+export const SessionResolutionIndex = Schema.Struct({
+  version: Schema.Literal(1),
+  directories: Schema.Record(Schema.String, Schema.Array(Schema.String)),
+});
+
 export const SessionArchiveLocation = Schema.Struct({
   cwd: Schema.String,
   activeRoot: Schema.String,
+  /** Former archive root, used only to migrate persisted transcripts back in place. */
   resolvedRoot: Schema.String,
   direct: Schema.optionalKey(Schema.Boolean),
 });
@@ -44,6 +50,14 @@ export class SessionArchiveStorageError extends Schema.TaggedError<SessionArchiv
 export class SessionArchiveStorage extends Context.Service<
   SessionArchiveStorage,
   {
+    /** Explicit migration operation: rebind metadata after an exclusive transcript copy. */
+    readonly relocate: (
+      sessionId: string,
+      from: SessionArchiveLocation,
+      to: SessionArchiveLocation,
+      resolved: boolean,
+      metadata?: ProjectSessionArchiveMetadata,
+    ) => Effect.Effect<void, SessionArchiveStorageError>;
     readonly resolve: (
       sessionId: string,
       location: SessionArchiveLocation,
@@ -64,6 +78,10 @@ export class SessionArchiveStorage extends Context.Service<
       sessionId: string,
       location: SessionArchiveLocation,
     ) => Effect.Effect<"active" | "resolved" | undefined, SessionArchiveStorageError>;
+    /** One metadata read per listing; never reads transcript bodies. */
+    readonly resolvedIds: (
+      location: SessionArchiveLocation,
+    ) => Effect.Effect<ReadonlySet<string>, SessionArchiveStorageError>;
     readonly resolved: (
       location: SessionArchiveLocation,
     ) => Stream.Stream<PiSessionSummary, SessionArchiveStorageError>;

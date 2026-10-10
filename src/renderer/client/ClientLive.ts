@@ -645,6 +645,18 @@ export function makeClient(
         ),
     },
     piSettings: {
+      extensions: (options) =>
+        run(
+          "piSettings.extensions",
+          withClient((client) => client.piSettings.extensions()),
+          options,
+        ),
+      setExtensionEnabled: (toggle, options) =>
+        run(
+          "piSettings.setExtensionEnabled",
+          withClient((client) => client.piSettings.setExtensionEnabled(toggle)),
+          options,
+        ),
       get: (options) =>
         run(
           "piSettings.get",

@@ -29,6 +29,8 @@ it("compiled standalone host serves the shared browser shell independently of cw
       PATH: process.env.PATH,
       HOME: home,
       CAKE_HOME: home,
+      PI_CODING_AGENT_DIR: join(home, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
       CAKE_SERVER_ENABLED: "true",
       CAKE_SERVER_BROWSER_ENABLED: "true",
       CAKE_SERVER_PORT: "0",

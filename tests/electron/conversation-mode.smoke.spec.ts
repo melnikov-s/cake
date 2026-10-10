@@ -284,6 +284,8 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       CAKE_SMOKE_DICTATION_HELPER: helper,
       CAKE_ELECTRON_USER_DATA: userData,
       CAKE_HOME: cakeHome,
+      PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
     },
   });
   const page = await application.firstWindow();

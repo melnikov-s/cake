@@ -71,6 +71,10 @@ import type {
   ArtifactStorageError,
 } from "../../services/storage/ArtifactStorage";
 import type { PiSettingsError } from "../../services/pi/PiSettings";
+import type {
+  PiExtensionSetting,
+  PiExtensionToggle,
+} from "../../services/pi/extension-settings-data";
 import type { SessionFamilyStorageError } from "../../services/storage/SessionFamilyStorage";
 import type { SavedDraft } from "../../services/storage/saved-draft-data";
 import type { SavedDraftError } from "../../services/storage/SavedDraftStorage";
@@ -409,6 +413,13 @@ export interface CakeIpcClientService {
     ) => Effect.Effect<McpSettingsSnapshot, McpSettingsError | TransportError>;
   };
   readonly piSettings: {
+    readonly extensions: () => Effect.Effect<
+      ReadonlyArray<PiExtensionSetting>,
+      PiSettingsError | TransportError
+    >;
+    readonly setExtensionEnabled: (
+      toggle: PiExtensionToggle,
+    ) => Effect.Effect<PiSettings, PiSettingsError | TransportError>;
     readonly get: () => Effect.Effect<PiSettings, PiSettingsError | TransportError>;
     readonly update: (
       update: PiSettingUpdate,
@@ -1130,6 +1141,12 @@ export const CakeIpcClientLive = Layer.effect(
         ),
       },
       piSettings: {
+        extensions: Effect.fn("CakeIpcClient.piSettings.extensions")(() =>
+          client("piSettings.extensions", undefined),
+        ),
+        setExtensionEnabled: Effect.fn("CakeIpcClient.piSettings.setExtensionEnabled")((toggle) =>
+          client("piSettings.setExtensionEnabled", toggle),
+        ),
         get: Effect.fn("CakeIpcClient.piSettings.get")(() => client("piSettings.get", undefined)),
         update: Effect.fn("CakeIpcClient.piSettings.update")((update) =>
           client("piSettings.update", { update }),

@@ -187,6 +187,7 @@ export async function suggestProjectFiles(options: {
 
 export interface StreamWorkspaceSessionsOptions {
   direct?: boolean;
+  excludedSessionIds?: ReadonlyArray<string>;
 }
 
 /** Streams active session IDs from filenames without reading transcript titles or file metadata. */
@@ -195,11 +196,12 @@ export function streamWorkspaceSessionIds(
   sessionDir: string,
   options: StreamWorkspaceSessionsOptions = {},
 ): Stream.Stream<string, unknown> {
+  const excluded = new Set(options.excludedSessionIds);
   return streamSessionFileIds({
     workingDirectory: cwd,
     root: sessionDir,
     direct: options.direct,
-  });
+  }).pipe(Stream.filter((id) => !excluded.has(id)));
 }
 
 /** Streams cheap file metadata for active sessions without opening transcript bodies. */
@@ -208,11 +210,14 @@ export function streamWorkspaceSessions(
   sessionDir: string,
   options: StreamWorkspaceSessionsOptions = {},
 ): Stream.Stream<PiSessionSummary, unknown> {
+  const excluded = new Set(options.excludedSessionIds);
   return streamSessionFiles({
     workingDirectory: cwd,
     root: sessionDir,
     direct: options.direct,
   }).pipe(
+    // Filter Cake lifecycle metadata before opening Pi files to derive titles.
+    Stream.filter((item) => !excluded.has(item.id)),
     Stream.mapEffect(
       (item) =>
         Effect.try({
@@ -248,28 +253,15 @@ export async function loadWorkspacePiSessionPreview(
   cwd: string,
   sessionId: string,
   sessionDir: string,
-  resolvedSessionDir?: string,
   direct = false,
 ): Promise<PiSessionPreview | undefined> {
   const activeDirectory = direct
     ? resolve(sessionDir)
     : cakeWorkspaceSessionDirectory(cwd, sessionDir);
   const activeTarget = await findSessionFile(cwd, sessionId, sessionDir, direct);
-  const resolvedDirectory = resolvedSessionDir
-    ? direct
-      ? resolve(resolvedSessionDir)
-      : cakeWorkspaceSessionDirectory(cwd, resolvedSessionDir)
-    : undefined;
-  const resolvedTarget = resolvedSessionDir
-    ? await findSessionFile(cwd, sessionId, resolvedSessionDir, direct)
-    : undefined;
-  const target = activeTarget ?? resolvedTarget;
+  const target = activeTarget;
   if (!target) return undefined;
-  const manager = SessionManager.open(
-    target,
-    activeTarget ? activeDirectory : resolvedDirectory!,
-    cwd,
-  );
+  const manager = SessionManager.open(target, activeDirectory, cwd);
   const branch = manager.getBranch();
   let model: { provider: string; modelId: string } | undefined;
   for (const entry of branch) {

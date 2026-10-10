@@ -74,6 +74,8 @@ test("desktop Settings shares the existing backend; window closure, reopen, disa
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: userData,
       CAKE_HOME: home,
+      PI_CODING_AGENT_DIR: join(home, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
     },
   });
   const childProcess = application.process();

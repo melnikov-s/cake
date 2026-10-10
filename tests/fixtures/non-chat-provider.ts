@@ -12,7 +12,8 @@ export default (pi) => {
     const output = createAssistantMessageEventStream();
     const last = context.messages.findLast(message => message.role === "user" || message.role === "toolResult");
     const prompt = last?.role === "user" ? last.content.filter(p => p.type === "text").map(p => p.text).join("\\n") : "";
-    const code = prompt.startsWith("SCRIPT:") ? prompt.slice(7) : undefined;
+    // Generated fixture scripts occupy one line; Cake may append response-mode instructions.
+    const code = prompt.startsWith("SCRIPT:") ? prompt.slice(7).split("\\n", 1)[0] : undefined;
     const message = { role: "assistant", api: model.api, provider: model.provider, model: model.id, timestamp: Date.now(),
       content: code ? [{ type: "toolCall", id: "native-script", name: "codemode", arguments: { code } }] : [{ type: "text", text: last?.role === "toolResult" ? "Native result: " + JSON.stringify(last.content) : "Fixture ready" }],
       stopReason: code ? "toolUse" : "stop", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };

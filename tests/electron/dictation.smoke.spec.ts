@@ -151,6 +151,8 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
         CAKE_SMOKE_DICTATION_HELPER: helper,
         CAKE_ELECTRON_USER_DATA: userData,
         CAKE_HOME: cakeHome,
+        PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
   let application = await launch();

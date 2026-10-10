@@ -225,6 +225,8 @@ test("remote Pi Browser Mode controls desktop Chromium and previews backend loca
       PATH: process.env.PATH,
       HOME: root,
       CAKE_HOME: home,
+      PI_CODING_AGENT_DIR: join(home, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
       CAKE_SERVER_ENABLED: "true",
       CAKE_SERVER_ALLOW_MISSING_ORIGIN: "true",
       CAKE_SERVER_PORT: "0",
@@ -271,6 +273,8 @@ test("remote Pi Browser Mode controls desktop Chromium and previews backend loca
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: userData,
         CAKE_HOME: join(root, "desktop-must-not-start-backend"),
+        PI_CODING_AGENT_DIR: join(root, "desktop-must-not-start-backend", "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
     try {

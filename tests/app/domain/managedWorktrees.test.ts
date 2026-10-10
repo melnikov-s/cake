@@ -113,6 +113,10 @@ const makeLayer = (options: {
         }
         return Effect.succeed("resolved" as const);
       },
+      resolvedIds: () =>
+        Effect.succeed(
+          new Set(options.resolvedWorkingDirectories.map((_cwd, index) => `resolved-${index}`)),
+        ),
       projectMigrationComplete: () => Effect.succeed(true),
       resolvedProjects: (projectPath) =>
         Stream.fromIterable(

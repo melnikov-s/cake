@@ -3,7 +3,6 @@ import {
   createMcpExtension,
   createToolSearchExtension,
   getAgentDir,
-  type InlineExtension,
   type McpExtensionOptions,
 } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
@@ -24,15 +23,6 @@ export interface CakeMcpIntegrationOptions {
 }
 
 /**
- * Backend bootstrap only, before acquiring Pi resources. Pins Pi's process-global
- * agent directory to Cake's backend agent directory, including MCP config/auth/logs.
- * Never switch this directory per session or from a renderer request.
- */
-export function configureCakePiAgentDirectory(agentDirectory: string): void {
-  process.env.PI_CODING_AGENT_DIR = resolve(agentDirectory);
-}
-
-/**
  * Supplies named, builtin, replaceable MCP/tool-search/codemode factories only
  * for primary Project Session runtimes without a fixed tool allowlist.
  * Restricted runtimes receive no factories, even when personal MCP config exists.
@@ -50,7 +40,7 @@ export function configureCakePiAgentDirectory(agentDirectory: string): void {
  * through Pi's notification, and redirect-URL input uses Cake's existing UI.
  * Automatic native URL opening and a structured connection screen are deferred.
  */
-export function createCakeMcpExtensions(options: CakeMcpIntegrationOptions): InlineExtension[] {
+export function createCakeMcpExtensions(options: CakeMcpIntegrationOptions) {
   const { runtime } = options;
   if (runtime.auxiliary || runtime.globalControl || runtime.tools !== undefined) return [];
   if (resolve(getAgentDir()) !== resolve(runtime.agentDir))

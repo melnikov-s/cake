@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { piAgentDirectory } from "../services/pi/PiPaths";
 
 export interface CakePaths {
   home: string;
@@ -24,6 +25,8 @@ export interface CakePaths {
 export interface ResolveCakePathsOptions {
   env?: NodeJS.ProcessEnv;
   homeDirectory?: string;
+  /** Explicit backend/test boundary; production delegates resolution to Pi. */
+  piAgentDirectory?: string;
 }
 
 /** The single authority for Cake-owned durable and disposable filesystem locations. */
@@ -31,18 +34,19 @@ export function resolveCakePaths(options: ResolveCakePathsOptions = {}): CakePat
   const env = options.env ?? process.env;
   const homeDirectory = options.homeDirectory ?? homedir();
   const home = resolve(env.CAKE_HOME || join(homeDirectory, ".cake"));
-  const piAgent = join(home, "pi");
+  const piAgent = resolve(options.piAgentDirectory ?? piAgentDirectory());
   const state = join(home, "state");
   return {
     home,
     piAgent,
     piSessions: join(piAgent, "sessions"),
     piResolvedSessions: join(piAgent, "resolved-sessions"),
-    piReviewSessions: join(piAgent, "review-sessions"),
-    piWidgetSessions: join(piAgent, "widget-sessions"),
-    piSubagentSessions: join(piAgent, "subagent-sessions"),
-    piGlobalChatSessions: join(piAgent, "global-chat", "sessions"),
-    piGlobalChatResolvedSessions: join(piAgent, "global-chat", "resolved-sessions"),
+    // GUI-specific Pi sidecars are not primary project sessions or configuration.
+    piReviewSessions: join(home, "pi", "review-sessions"),
+    piWidgetSessions: join(home, "pi", "widget-sessions"),
+    piSubagentSessions: join(home, "pi", "subagent-sessions"),
+    piGlobalChatSessions: join(home, "pi", "global-chat", "sessions"),
+    piGlobalChatResolvedSessions: join(home, "pi", "global-chat", "resolved-sessions"),
     state,
     sessionFamilies: join(state, "session-families.json"),
     resolvedProjectMetadata: join(state, "resolved-project-metadata"),

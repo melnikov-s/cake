@@ -7,7 +7,12 @@ location, and migration never change authority.
 ## Storage roots
 
 Cake resolves its persistent home once. The default is `~/.cake`; `CAKE_HOME`
-replaces that root for tests and alternate installations.
+replaces Cake-owned metadata and sidecar roots for tests and alternate installations.
+Pi independently resolves its agent home through `getAgentDir()` (normally
+`~/.pi/agent`, honoring `PI_CODING_AGENT_DIR`). Cake does not set that variable.
+Primary Project Sessions use Pi's normal encoded-cwd session directory, or the
+`PI_CODING_AGENT_SESSION_DIR` / startup `sessionDir` setting, with native cwd
+filtering for shared custom directories. Tests must explicitly isolate both homes.
 
 ```text
 ~/.cake/
@@ -18,21 +23,18 @@ replaces that root for tests and alternate installations.
 │   ├── session-metadata/
 │   ├── session-families.json
 │   ├── resolved-project-metadata/
+│   │   └── resolution.json
 │   ├── artifacts/
 │   └── reviews/
 ├── pi/
-│   ├── auth.json
-│   ├── models.json
-│   ├── models-cache.json
-│   ├── settings.json
-│   ├── sessions/
-│   ├── resolved-sessions/
+│   ├── sessions/                   # old Cake primary sessions; migration input only
+│   ├── resolved-sessions/          # old Cake archives; migration input only
 │   ├── review-sessions/
 │   ├── widget-sessions/
 │   ├── subagent-sessions/
 │   └── global-chat/
 │       ├── sessions/
-│       └── resolved-sessions/
+│       └── resolved-sessions/      # former storage; migration input only
 └── cache/
     └── artifact-projections/
 ```
@@ -44,14 +46,39 @@ publication, lineage reachability, or garbage collection.
 
 Cake-owned durable domain data and configuration—including registered Projects,
 each Project's managed-worktree commands, and Project-scoped custom session workflow
-columns and assignments—live beneath `state/` so they move together with Pi sessions
-when `CAKE_HOME` changes. Workflow status is independent from the Pi transcript and
-Cake's active/resolved transcript namespace. Electron's
+columns and assignments—live beneath `state/` and follow `CAKE_HOME`.
+Primary Pi transcripts and Pi configuration do not follow `CAKE_HOME`. Workflow status is independent from the Pi transcript and
+Cake's resolution metadata. Electron's
 `app.getPath("userData")`, with `CAKE_ELECTRON_USER_DATA` as its test override,
 contains only window/renderer presentation state and machine-local Electron or
 embedded-editor data. `CakePaths` resolves durable Cake locations and disposable
 cache roots in main;
 renderer code never constructs storage paths.
+
+## Explicit shared-Pi session migration
+
+Startup does not run the shared-directory migration. Stop Cake and terminal Pi,
+then inspect `pnpm migrate:pi:sessions --plan`; explicitly opt in with
+`pnpm migrate:pi:sessions --apply`. Planning is read-only. The command scans old
+`<CAKE_HOME>/pi/sessions` and `resolved-sessions`, preserving transcript IDs,
+filenames, bytes, modification times, branches and compactions. It rejects stale
+plans, duplicate source IDs and existing destination files/IDs before applying
+any entry; exclusive file creation also protects against destination races.
+
+Resolution directory keys and resolved-project routing records are rebound to
+Pi's destination. Cake metadata/family IDs do not change. Atomic per-session
+receipts make completed copies recognizable on rerun without overwriting later
+Pi continuations. Original files remain backups, preserving old Pi
+`parentSession` references. Do not remove those backups while forks still refer
+to them. Cake-only sidecar transcripts are not imported into primary Pi discovery.
+
+The command deliberately does **not** copy or merge credentials, models,
+settings, packages, or resource directories: existing Pi configuration wins,
+and old Cake configuration remains untouched for manual review. Extension
+switches in **Execution & resources → Automatic extensions** use native global
+Pi `+`/`-` overrides and package extension filters. They discover resources
+without installing packages or executing extensions, affect terminal Pi too,
+and reload idle Cake runtimes (active runtimes reload after their turn).
 
 ## Focused storage Services
 
@@ -177,10 +204,24 @@ Pi JSONL directly.
 
 Project Sessions create, continue, inspect, and fork beneath Cake's configured
 Pi session roots. Resolving a settled session disposes its live runtime and
-atomically moves the transcript to the matching Cake-managed archive root;
-restoring or messaging it moves it back before Pi opens it. Archive location is
-Cake's resolution fact, while Pi remains the transcript-format and session
-engine authority.
+atomically updates Cake-owned resolution metadata. Restoring or messaging it
+clears that metadata before Pi opens it. Neither operation moves or modifies
+the Pi transcript. Pi remains the transcript-format and session engine authority.
+
+`state/resolved-project-metadata/resolution.json` is a versioned index of resolved
+IDs keyed by their normal session directory, including direct Cake Chat roots.
+Backend updates are serialized and atomically replace the metadata document.
+Catalogs read the IDs once per listing and exclude resolved sessions before
+opening Pi transcripts to derive titles; no LSM, transcript scan, or second
+transcript database is needed. Project routing records retain the original
+Project, Working Directory, and worktree name, but are not a second resolution
+authority.
+
+Former archive roots are migration input only. Storage records each archived
+session as resolved before moving its original file back to the normal root;
+retries preserve status and reject destination collisions instead of overwriting
+files. Project archive migration v2 also uses retained routing records for
+retired worktrees. No new resolved transcript files are created in archive roots.
 
 Session Family identity, parent membership, direct-child creation order, fixed
 Project and Working Directory bindings, and creation correlation are Cake-owned

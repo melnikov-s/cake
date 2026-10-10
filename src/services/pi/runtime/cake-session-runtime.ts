@@ -155,6 +155,7 @@ export interface CakeSessionRuntimeOptions {
   trusted: boolean;
   agentDir: string;
   sessionDir: string;
+  /** Legacy Cake Chat sidecar cleanup only; primary Pi sessions stay in sessionDir. */
   resolvedSessionDir?: string;
   newSession?: boolean;
   sessionId?: string;

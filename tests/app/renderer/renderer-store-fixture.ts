@@ -30,6 +30,7 @@ export function createRendererStoreFixture(options: RendererStoreFixtureOptions 
   const client = createTestClient({
     ...options.client,
     nonChatModels: { list: async () => [], ...options.client?.nonChatModels },
+    piSettings: { extensions: async () => [], ...options.client?.piSettings },
     // The real Session Registry refreshes its main-owned Saved Draft snapshot when mounted.
     savedDrafts: {
       list: async () => [],

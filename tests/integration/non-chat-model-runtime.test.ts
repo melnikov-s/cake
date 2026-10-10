@@ -12,7 +12,6 @@ import {
   createCakeSessionRuntime,
   type CakeSessionRuntime,
 } from "../../src/services/pi/runtime/cake-session-runtime";
-import { configureCakePiAgentDirectory } from "../../src/services/pi/runtime/mcp-integration";
 import {
   createSessionlessRuntime,
   projectModelCatalog,
@@ -51,8 +50,7 @@ async function setup() {
       defaultTools: ["+codemode"],
     }),
   );
-  vi.stubEnv("PI_CODING_AGENT_DIR", process.env.PI_CODING_AGENT_DIR);
-  configureCakePiAgentDirectory(agentDir);
+  vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
   return { cwd, agentDir, trace };
 }
 const reference = (modelId: string) => ({ provider: "non-chat-fixture", modelId });

@@ -9,6 +9,14 @@ const reloadSessions = (operation: string) =>
   );
 
 export const piSettingsHandlers = PiSettingsRpc.of({
+  "piSettings.extensions": () => Effect.flatMap(PiSettings, (settings) => settings.extensions()),
+  "piSettings.setExtensionEnabled": (toggle) =>
+    Effect.gen(function* () {
+      const settings = yield* PiSettings;
+      const value = yield* settings.setExtensionEnabled(toggle);
+      yield* reloadSessions("setExtensionEnabled");
+      return value;
+    }),
   "piSettings.get": () => Effect.flatMap(PiSettings, (settings) => settings.load()),
   "piSettings.update": ({ update }) =>
     Effect.gen(function* () {

@@ -13,7 +13,6 @@ import {
   type McpTransportFactory,
 } from "@earendil-works/pi-coding-agent";
 import {
-  configureCakePiAgentDirectory,
   createCakeMcpExtensions,
   type CakeMcpIntegrationOptions,
 } from "../../src/services/pi/runtime/mcp-integration";
@@ -155,8 +154,7 @@ async function directoryFixture() {
   const agentDir = join(cwd, "agent");
   await mkdir(agentDir);
   await mkdir(join(cwd, ".pi"));
-  vi.stubEnv("PI_CODING_AGENT_DIR", process.env.PI_CODING_AGENT_DIR);
-  configureCakePiAgentDirectory(agentDir);
+  vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
   return { cwd, agentDir };
 }
 const server = {

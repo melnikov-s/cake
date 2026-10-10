@@ -15,6 +15,8 @@ test("main Effect runtime starts with bounded memory and finalizes before Electr
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: join(temporaryRoot, "user-data"),
       CAKE_HOME: join(temporaryRoot, "cake-home"),
+      PI_CODING_AGENT_DIR: join(temporaryRoot, "cake-home", "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
     },
   });
 

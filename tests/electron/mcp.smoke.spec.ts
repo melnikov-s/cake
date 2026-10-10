@@ -95,6 +95,8 @@ export default (pi) => {
             PATH: process.env.PATH,
             HOME: root,
             CAKE_HOME: cakeHome,
+            PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+            PI_CODING_AGENT_SESSION_DIR: "",
             CAKE_SERVER_ENABLED: "true",
             CAKE_SERVER_ALLOW_MISSING_ORIGIN: "true",
             CAKE_SERVER_PORT: "0",
@@ -142,6 +144,8 @@ export default (pi) => {
         CAKE_ELECTRON_SMOKE: "1",
         CAKE_ELECTRON_USER_DATA: userData,
         CAKE_HOME: remote ? localHome : cakeHome,
+        PI_CODING_AGENT_DIR: join(remote ? localHome : cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
     try {

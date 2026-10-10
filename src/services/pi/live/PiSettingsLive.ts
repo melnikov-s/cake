@@ -2,6 +2,7 @@ import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { Effect, FileSystem, Layer, Path, Schema } from "effect";
 import { makePiSettingsLayer, PiSettingsError, type PiExecutionSettingUpdate } from "../PiSettings";
 import { atomicWriteFile } from "../../storage/internal/atomicFile";
+import { listPiExtensionSettings, togglePiExtensionSetting } from "./PiExtensionSettings";
 
 const settingsObject = Schema.Record(Schema.String, Schema.Unknown);
 interface PiGlobalSettingsDocument extends Schema.Schema.Type<typeof settingsObject> {}
@@ -66,8 +67,21 @@ export const makePiSettingsLive = (agentDirectory: string) =>
         );
       });
       const manager = yield* Effect.sync(() =>
-        SettingsManager.create(agentDirectory, agentDirectory, { projectTrusted: true }),
+        SettingsManager.create(agentDirectory, agentDirectory, { projectTrusted: false }),
       );
-      return makePiSettingsLayer(manager, writeExecutionSetting);
+      return makePiSettingsLayer(manager, writeExecutionSetting, {
+        list: Effect.fn("PiSettingsLive.extensions")(() =>
+          Effect.tryPromise({
+            try: () => listPiExtensionSettings(agentDirectory, manager),
+            catch: error,
+          }),
+        ),
+        toggle: Effect.fn("PiSettingsLive.setExtensionEnabled")((toggle) =>
+          Effect.tryPromise({
+            try: () => togglePiExtensionSetting(agentDirectory, manager, toggle),
+            catch: error,
+          }),
+        ),
+      });
     }),
   );

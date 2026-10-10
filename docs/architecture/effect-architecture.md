@@ -400,10 +400,11 @@ discovers sessions from filename and filesystem metadata, then opens each Pi JSO
 derive its bounded title from the latest session-name entry or first user message. Pi is the sole
 durable title authority. Runtime title changes publish scoped title events so active
 renderer projections update immediately, including started sessions still awaiting
-registration in the disk-backed catalog. Cake's archive index stores
-routing metadata only; active and resolved catalogs derive titles from the transcript in either
-namespace. Resolution belongs to standalone sessions and family roots. Child transcripts stay
-in place and inherit the root's namespace through domain policy. Family catalog and conversation
+registration in the disk-backed catalog. Cake owns a versioned resolution index and
+separate project routing metadata; Pi files remain in their normal directory.
+Active catalogs load resolved IDs once and filter filename metadata before opening
+Pi transcripts for titles. Resolution belongs to standalone sessions and family roots.
+Child transcripts stay in place and inherit the root's metadata-derived resolution through domain policy. Family catalog and conversation
 Streams project this derived state; renderer Models are window-lifetime read projections, not
 independent child lifecycle authorities. Root transitions and turn admission share the family
 lock. There is no persisted member-resolution synchronization journal.

@@ -3,6 +3,7 @@ import { Context } from "effect";
 export interface ProjectSessionConfigurationService {
   readonly agentDirectory: string;
   readonly sessionDirectory: string;
+  /** Former archive root; only persisted-file migration uses this directory. */
   readonly resolvedSessionDirectory: string;
 }
 

@@ -35,6 +35,8 @@ test("a second launch on the same profile exits and hands its window request to 
     CAKE_ELECTRON_SMOKE: "1",
     CAKE_ELECTRON_USER_DATA: join(temporaryRoot, "user-data"),
     CAKE_HOME: join(temporaryRoot, "cake-home"),
+    PI_CODING_AGENT_DIR: join(temporaryRoot, "cake-home", "pi"),
+    PI_CODING_AGENT_SESSION_DIR: "",
   };
   const application = await electron.launch({ args: [repositoryRoot], cwd: repositoryRoot, env });
 

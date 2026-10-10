@@ -47,8 +47,11 @@ CAKE_HOME=/absolute/path/to/isolated-cake-data pnpm start:server
 ```
 
 This starts **no network listener**. `CAKE_HOME` is required, nonempty and absolute.
-It uses the existing Cake directory layout (`state/`, `pi/`, `cache/`). Preconfigure
-projects there. Provider credentials remain backend-owned; supported remote desktop
+It uses Cake-owned `state/`, auxiliary `pi/` sidecars, and `cache/`. Pi separately
+uses its standard agent home, honoring `PI_CODING_AGENT_DIR`; `CAKE_HOME` alone
+does not isolate credentials or primary sessions. For an isolated host, also set
+`PI_CODING_AGENT_DIR=/absolute/path/to/isolated-pi-agent`. Preconfigure projects
+in Cake's state directory. Provider credentials remain backend-owned; supported remote desktop
 provider setup is presented on the initiating device (see below). A headless host
 without a desktop client has no interactive provider setup UI. Do not
 point separate Electron and Node processes at the same data directory concurrently.
