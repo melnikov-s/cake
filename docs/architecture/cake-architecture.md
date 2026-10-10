@@ -451,8 +451,14 @@ The window Store hierarchy mirrors the product surfaces:
   acceptance, deduplication, invocation, response delivery, and lifetime cancellation. The typed
   application-control host adapter composes narrow capabilities from their focused owners; Root
   retains genuine cross-Store navigation and Session Family presentation coordination rather than
-  interpreting the protocol itself. Plugin command interpretation likewise stays at the plugin
-  boundary. Neither adapter duplicates workflows or exposes the transport bridge to other Stores.
+  interpreting the protocol itself. Application controls are defined in focused area modules under
+  `renderer/app-control`: each definition couples its argument schema, discovery metadata and
+  typed handler. One immutable registry derives global and session-assistant catalogs and dispatches
+  by command name; internal controls remain invocable without being advertised. Explicitly targeted
+  Project Session controls share a live-catalog validation gate. Shared Settings schema/discovery
+  data stays renderer-independent, with execution attached through the originating window's host.
+  Plugin command interpretation likewise stays at the plugin boundary. Neither adapter duplicates
+  workflows or exposes the transport bridge to other Stores.
 - `AppShellStore` owns the window's one mutually exclusive application
   selection: a Project Session, a Cake Chat Session, settings, or an empty
   workbench. A Project Session selection stores only its globally unique Session

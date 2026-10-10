@@ -1,15 +1,23 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CakeChatTarget } from "../../../src/ipc/cake-chat-data";
 import type { VscodeEditorAction } from "../../../src/ipc/vscode-editor-action";
 import { encodeCrossSessionMessage } from "../../../src/services/pi/cross-session-message";
 import {
   AppControlBridge,
-  type AgentControlSource,
-  type AppControlHost,
   listAppControlTools,
   listSessionAssistantControlTools,
 } from "../../../src/renderer/app-control/AppControlBridge";
+import type {
+  AgentControlSource,
+  AppControlHost,
+  AppControlResult,
+} from "../../../src/renderer/app-control/app-control-data";
+import { AppControlRegistry } from "../../../src/renderer/app-control/app-control-registry";
+import {
+  defineControl,
+  type ControlContext,
+} from "../../../src/renderer/app-control/control-definition";
 import { Message } from "../../../src/renderer/models/Message";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -178,6 +186,133 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
     },
   };
 }
+
+describe("AppControlRegistry", () => {
+  it("derives help from the input schema and decodes defaults before calling the typed handler", async () => {
+    const args = Schema.Struct({
+      text: Schema.Trim.check(Schema.isMinLength(1)),
+      uppercase: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+    });
+    const run = vi.fn(
+      async (
+        input: typeof args.Type,
+        _context: ControlContext,
+        command: "app.user-selection",
+      ): Promise<AppControlResult> => ({
+        ok: true,
+        command,
+        text: input.uppercase ? input.text.toUpperCase() : input.text,
+      }),
+    );
+    const registry = new AppControlRegistry([
+      defineControl({
+        command: "app.user-selection",
+        args,
+        scope: "global",
+        discovery: { topic: "app", summary: "Read a selection." },
+        run,
+      }),
+    ]);
+    expect(registry.listTools("global")[0]?.parameters).toEqual(
+      Schema.toStandardJSONSchemaV1(args)["~standard"].jsonSchema.input({ target: "draft-07" }),
+    );
+    const context: ControlContext = { host: createHost() };
+    await expect(
+      registry.invoke({ name: "app.user-selection", arguments: { text: "  selected  " } }, context),
+    ).resolves.toEqual({
+      result: { ok: true, command: "app.user-selection", text: "selected" },
+    });
+    expect(run).toHaveBeenCalledWith(
+      { text: "selected", uppercase: false },
+      context,
+      "app.user-selection",
+    );
+    await expect(
+      registry.invoke(
+        { name: "app.user-selection", arguments: { text: "chosen", uppercase: true } },
+        context,
+      ),
+    ).resolves.toMatchObject({ result: { text: "CHOSEN" } });
+    for (const arguments_ of [{ text: "  " }, { text: "valid", uppercase: "yes" }]) {
+      await expect(
+        registry.invoke({ name: "app.user-selection", arguments: arguments_ }, context),
+      ).rejects.toThrow();
+    }
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects duplicate registrations and unknown or malformed invocations without running a handler", async () => {
+    const run = vi.fn(async (): Promise<AppControlResult> => ({
+      ok: true,
+      command: "app.user-selection",
+      text: null,
+    }));
+    const control = defineControl({
+      command: "app.user-selection",
+      args: Schema.Struct({}),
+      scope: "global",
+      discovery: { topic: "app", summary: "Read a selection." },
+      run,
+    });
+    expect(() => new AppControlRegistry([control, control])).toThrow(
+      "Duplicate application control app.user-selection",
+    );
+    const registry = new AppControlRegistry([control]);
+    const context: ControlContext = { host: createHost() };
+    for (const input of [
+      { name: "unknown", arguments: {} },
+      { name: 123, arguments: {} },
+      { name: "app.user-selection" },
+      { name: "app.user-selection", arguments: null },
+    ]) {
+      await expect(registry.invoke(input, context)).rejects.toThrow();
+    }
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("separates discovery scope from execution, retaining assistant-only and internal controls", async () => {
+    const registry = new AppControlRegistry([
+      defineControl({
+        command: "app.user-selection",
+        args: Schema.Struct({}),
+        scope: "global",
+        discovery: { topic: "app", summary: "Read a selection." },
+        run: async (_input, _context, command) => ({ ok: true, command, text: null }),
+      }),
+      defineControl({
+        command: "vscode.enter",
+        args: Schema.Struct({}),
+        scope: "session-assistant",
+        discovery: { topic: "vscode", summary: "Enter the editor." },
+        run: async (_input, _context, command) => ({ ok: true, command, entered: true }),
+      }),
+      defineControl({
+        command: "worktrees.merge",
+        args: Schema.Struct({}),
+        scope: "internal",
+        run: async (_input, _context, command) => ({
+          ok: false,
+          command,
+          error: "Managed Worktree controls are unavailable",
+        }),
+      }),
+    ]);
+    expect(registry.listTools("global").map((tool) => tool.command)).toEqual([
+      "app.user-selection",
+    ]);
+    expect(registry.listTools("session-assistant").map((tool) => tool.command)).toEqual([
+      "app.user-selection",
+      "vscode.enter",
+    ]);
+    const context: ControlContext = { host: createHost() };
+    await expect(
+      registry.invoke({ name: "vscode.enter", arguments: {} }, context),
+    ).resolves.toMatchObject({ result: { entered: true } });
+    await expect(
+      registry.invoke({ name: "worktrees.merge", arguments: {} }, context),
+    ).resolves.toMatchObject({ result: { ok: false, command: "worktrees.merge" } });
+  });
+});
 
 describe("AppControlBridge", () => {
   it("constructs a Cake Chat RPC target without explicit undefined optional fields", () => {

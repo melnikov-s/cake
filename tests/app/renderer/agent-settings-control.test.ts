@@ -283,9 +283,9 @@ describe("Agent Settings through the real application-control/Client/domain boun
           agentSettingsOperations.some((op) => op.command === tool.command),
         ),
       ).toHaveLength(agentSettingsOperations.length);
-      expect(
-        listSessionAssistantControlTools().some((tool) => tool.command === "settings.mcp.update"),
-      ).toBe(false);
+      expect(listSessionAssistantControlTools()).toEqual(
+        expect.arrayContaining(listAppControlTools()),
+      );
       for (const [command, input] of [
         ["settings.pi.update", { key: "codemodeInlineBudget", value: -1 }],
         ["settings.pi.update", { key: "unknown", value: true }],

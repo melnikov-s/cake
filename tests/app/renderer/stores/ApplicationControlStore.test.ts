@@ -2,7 +2,7 @@ import { createStore, mount, observable } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { CakeChatControlRequest } from "../../../../src/ipc/cake-chat-data";
 import type { JsonValue } from "../../../../src/ipc/json-contract";
-import type { AppControlHost } from "../../../../src/renderer/app-control/AppControlBridge";
+import type { AppControlHost } from "../../../../src/renderer/app-control/app-control-data";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { ApplicationControlStore } from "../../../../src/renderer/stores/ApplicationControlStore";
 

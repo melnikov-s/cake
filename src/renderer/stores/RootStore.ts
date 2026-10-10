@@ -30,7 +30,7 @@ import { ReviewsStore } from "./ReviewsStore";
 import { SettingsStore } from "./SettingsStore";
 import { ExtensionUiStore } from "./ExtensionUiStore";
 import { FullscreenSurfaceStore } from "./FullscreenSurfaceStore";
-import type { AgentControlSource } from "../app-control/AppControlBridge";
+import type { AgentControlSource } from "../app-control/app-control-data";
 import { createRootApplicationControlHost } from "../app-control/RootApplicationControlHost";
 import { createSessionPluginOperationAdapter } from "../app-control/SessionPluginOperationAdapter";
 import { CakeChatCollectionStore } from "./CakeChatCollectionStore";

@@ -1,4 +1,4 @@
-import type { AppControlHost } from "./AppControlBridge";
+import type { AppControlHost } from "./app-control-data";
 import { invokeAgentSettings } from "./AgentSettingsControl";
 import type { Client } from "../client/Client";
 import type { AppShellStore } from "../stores/AppShellStore";

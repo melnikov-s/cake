@@ -7,10 +7,9 @@ import type {
 import type { JsonValue } from "../../ipc/json-contract";
 import {
   AppControlBridge,
-  type AgentControlSource,
-  type AppControlHost,
   listSessionAssistantControlTools,
 } from "../app-control/AppControlBridge";
+import type { AgentControlSource, AppControlHost } from "../app-control/app-control-data";
 import type { Client } from "../client/Client";
 import { AppControlOperationStore } from "./AppControlOperationStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
