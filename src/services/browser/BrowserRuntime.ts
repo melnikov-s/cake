@@ -44,6 +44,7 @@ export class BrowserRuntime {
   private readonly entries = new Map<string, BrowserEntry>();
   private readonly activeByOwner = new Map<number, string>();
   private readonly boundsByOwner = new Map<number, BrowserBounds>();
+  private readonly fullscreenOwners = new Set<number>();
 
   constructor(private readonly options: BrowserRuntimeOptions) {}
 
@@ -135,6 +136,14 @@ export class BrowserRuntime {
     return this.snapshot(entry);
   }
 
+  setFullscreenSurfaceOpen(ownerId: number, open: boolean) {
+    if (open) this.fullscreenOwners.add(ownerId);
+    else this.fullscreenOwners.delete(ownerId);
+    for (const entry of this.entries.values()) {
+      if (entry.ownerId === ownerId) this.applyBounds(entry);
+    }
+  }
+
   async navigate(
     ownerId: number,
     sessionId: string,
@@ -195,6 +204,7 @@ export class BrowserRuntime {
   closeForWindow(ownerId: number) {
     this.activeByOwner.delete(ownerId);
     this.boundsByOwner.delete(ownerId);
+    this.fullscreenOwners.delete(ownerId);
     for (const [sessionId, entry] of this.entries) {
       if (entry.ownerId !== ownerId) continue;
       this.entries.delete(sessionId);
@@ -206,6 +216,7 @@ export class BrowserRuntime {
   dispose() {
     for (const ownerId of new Set([...this.entries.values()].map((entry) => entry.ownerId)))
       this.closeForWindow(ownerId);
+    this.fullscreenOwners.clear();
   }
 
   private installListeners(entry: BrowserEntry) {
@@ -288,7 +299,14 @@ export class BrowserRuntime {
   private applyBounds(entry: BrowserEntry) {
     const bounds = this.boundsByOwner.get(entry.ownerId);
     const active = this.activeByOwner.get(entry.ownerId) === entry.sessionId;
-    entry.view.setVisible(Boolean(active && bounds?.visible && hasGeometry(bounds)));
+    entry.view.setVisible(
+      Boolean(
+        active &&
+        !this.fullscreenOwners.has(entry.ownerId) &&
+        bounds?.visible &&
+        hasGeometry(bounds),
+      ),
+    );
     if (!bounds || !hasGeometry(bounds)) return;
     entry.view.setBounds({
       x: Math.round(bounds.x),

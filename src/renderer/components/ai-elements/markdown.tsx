@@ -28,6 +28,8 @@ import { cn } from "@/lib/utils";
 import type { SourceLocation } from "../../../ipc/source-location";
 import { parseSourceLocation } from "../../../utils/source-location";
 import { Link } from "../ui/link";
+import { MarkdownTable } from "../ui/markdown-table";
+import { FullscreenSurface } from "../fullscreen-surface";
 import { MermaidFullscreen } from "../mermaid-fullscreen";
 import { MarkdownImage } from "../markdown-image";
 import { MarkdownCodeBlock, streamingCodeMarker } from "./markdown-code-block";
@@ -282,11 +284,6 @@ const markdownControls = {
     copy: true,
     download: false,
   },
-  table: {
-    copy: true,
-    download: false,
-    fullscreen: true,
-  },
   mermaid: {
     copy: true,
     download: false,
@@ -299,7 +296,7 @@ const codeBlockPresentation =
   "[&_[data-streamdown=code-block]]:relative [&_[data-streamdown=code-block]]:gap-0 [&_[data-streamdown=code-block]]:rounded-none [&_[data-streamdown=code-block]]:border-0 [&_[data-streamdown=code-block]]:bg-transparent [&_[data-streamdown=code-block]]:p-0 [&_[data-streamdown=code-block-header]]:hidden [&_[data-streamdown=code-block-actions]]:!absolute [&_[data-streamdown=code-block-actions]]:!top-2 [&_[data-streamdown=code-block-actions]]:!right-2 [&_[data-streamdown=code-block-actions]]:!mt-0 [&_[data-streamdown=code-block-actions]]:!h-auto [&_[data-streamdown=code-block-actions]]:opacity-0 [&_[data-streamdown=code-block-actions]]:transition-opacity [&_[data-streamdown=code-block-actions]>div]:!border-0 [&_[data-streamdown=code-block-actions]>div]:!bg-transparent [&_[data-streamdown=code-block-actions]>div]:!p-0 [&_[data-streamdown=code-block-actions]>div]:!backdrop-blur-none [&_[data-streamdown=code-block]:hover_[data-streamdown=code-block-actions]]:opacity-100 [&_[data-streamdown=code-block]:focus-within_[data-streamdown=code-block-actions]]:opacity-100";
 
 const richBlockPresentation =
-  "[&_[data-streamdown=table-wrapper]]:relative [&_[data-streamdown=table-wrapper]]:border-0 [&_[data-streamdown=table-wrapper]]:bg-transparent [&_[data-streamdown=table-wrapper]]:p-0 [&_[data-streamdown=table-wrapper]>div:first-child>button]:opacity-0 [&_[data-streamdown=table-wrapper]>div:first-child>button]:transition-opacity [&_[data-streamdown=table-wrapper]:hover>div:first-child>button]:opacity-100 [&_[data-streamdown=table-wrapper]:focus-within>div:first-child>button]:opacity-100 [&_[data-streamdown=mermaid-block]]:border-0 [&_[data-streamdown=mermaid-block]]:bg-transparent [&_[data-streamdown=mermaid-block]]:p-0 [&_[data-streamdown=mermaid-block-actions]]:border-0 [&_[data-streamdown=mermaid-block-actions]]:bg-transparent [&_[data-streamdown=mermaid-block-actions]]:p-0 [&_[data-streamdown=mermaid-block-actions]]:backdrop-blur-none [&_[data-streamdown=mermaid-block-actions]>button:last-child]:opacity-0 [&_[data-streamdown=mermaid-block-actions]>button:last-child]:transition-opacity [&_[data-streamdown=mermaid-block]:hover_[data-streamdown=mermaid-block-actions]>button:last-child]:opacity-100 [&_[data-streamdown=mermaid-block]:focus-within_[data-streamdown=mermaid-block-actions]>button:last-child]:opacity-100";
+  "[&_[data-streamdown=mermaid-block]]:border-0 [&_[data-streamdown=mermaid-block]]:bg-transparent [&_[data-streamdown=mermaid-block]]:p-0 [&_[data-streamdown=mermaid-block-actions]]:border-0 [&_[data-streamdown=mermaid-block-actions]]:bg-transparent [&_[data-streamdown=mermaid-block-actions]]:p-0 [&_[data-streamdown=mermaid-block-actions]]:backdrop-blur-none [&_[data-streamdown=mermaid-block-actions]>button:last-child]:opacity-0 [&_[data-streamdown=mermaid-block-actions]>button:last-child]:transition-opacity [&_[data-streamdown=mermaid-block]:hover_[data-streamdown=mermaid-block-actions]>button:last-child]:opacity-100 [&_[data-streamdown=mermaid-block]:focus-within_[data-streamdown=mermaid-block-actions]>button:last-child]:opacity-100";
 
 type FenceLocation = {
   contentStart: number;
@@ -483,6 +480,7 @@ function MarkdownRenderer({
   const colorTheme = useResolvedColorTheme();
   const linkActions = useContext(MarkdownLinkContext);
   const [fullscreenMermaid, setFullscreenMermaid] = useState<string>();
+  const [fullscreenTable, setFullscreenTable] = useState<ReactNode>();
   const plugins = useMemo(
     () => (richPlugins ? { ...configuredPlugins, ...richPlugins } : configuredPlugins),
     [richPlugins],
@@ -534,6 +532,11 @@ function MarkdownRenderer({
   const components = useMemo<Components>(() => {
     const openSourceLocation = onOpenSourceLocation;
     return {
+      table(allProps) {
+        const props = { ...allProps };
+        delete props.node;
+        return <MarkdownTable {...props} onFullscreen={setFullscreenTable} />;
+      },
       p({ node, children, ...paragraphProps }) {
         // Only a standalone artifact image is a block embed. Prose links and
         // images mixed with text retain their ordinary inline link behavior.
@@ -620,6 +623,15 @@ function MarkdownRenderer({
           {renderedSource}
         </Streamdown>
       </div>
+      {fullscreenTable && (
+        <FullscreenSurface
+          eyebrow="Table"
+          title="Table"
+          onClose={() => setFullscreenTable(undefined)}
+        >
+          {fullscreenTable}
+        </FullscreenSurface>
+      )}
       {fullscreenMermaid && (
         <MermaidFullscreen
           svg={fullscreenMermaid}

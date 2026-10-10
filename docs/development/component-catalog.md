@@ -52,6 +52,18 @@ Consecutive context parts share a wrapping horizontal group in the authoritative
 Chat transcript. Removed historical context stays inspectable with a
 “removed from context” label after Tool Compact.
 
+## Markdown tables and fullscreen content
+
+`MarkdownTable` presents Streamdown's parsed React cells with its existing table-copy
+control and Cake's shared `FullscreenButton`. The caller owns the fullscreen intent;
+`Markdown` keeps the rendered table above the parser lifecycle and displays it in
+`FullscreenSurface`, preserving cell formatting and link actions. Fullscreen tables,
+diagrams, images, responses, and artifacts all use that surface and its window-local
+`FullscreenSurfaceStore`. Electron tracks the set of open surfaces per connection;
+native VS Code and browser views remain hidden until the last surface closes, then
+restore only if their latest requested bounds are visible. Fullscreen visibility is
+transient presentation state, never a workspace-mode change or persisted preference.
+
 ## Inline links
 
 `Link` is the shared anchor for Markdown, source citations, session links, and

@@ -79,6 +79,37 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
           timestamp: 0,
         },
       },
+      {
+        type: "message",
+        id: "assistant-1",
+        parentId: "user-1",
+        timestamp,
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: [
+                "| Layer | Status |\n| - | - |\n| Browser | **Running** |",
+                "The browser keeps running while fullscreen content is displayed. ".repeat(12),
+              ].join("\n\n"),
+            },
+          ],
+          api: "anthropic-messages",
+          provider: "anthropic",
+          model: "fixture",
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+          stopReason: "stop",
+          timestamp: 1,
+        },
+      },
     ]
       .map((entry) => JSON.stringify(entry))
       .join("\n") + "\n",
@@ -281,6 +312,36 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
         return view?.getVisible() ?? false;
       }, `${origin}/second`);
     await expect.poll(nativeBrowserVisible).toBe(true);
+    const table = page.locator('.transcript [data-streamdown="table-wrapper"]');
+    await table.getByRole("button", { name: "View table fullscreen" }).click({ force: true });
+    const tableFullscreen = page.getByRole("dialog", { name: "Table", exact: true });
+    await expect(tableFullscreen).toBeVisible();
+    await expect.poll(nativeBrowserVisible).toBe(false);
+    await page.keyboard.press("Escape");
+    await expect(tableFullscreen).toHaveCount(0);
+    await expect.poll(nativeBrowserVisible).toBe(true);
+    await page.getByRole("button", { name: "View response fullscreen" }).click({ force: true });
+    const reader = page.getByRole("dialog", { name: "Cake", exact: true });
+    await expect(reader).toBeVisible();
+    await expect.poll(nativeBrowserVisible).toBe(false);
+    await reader.getByRole("button", { name: "View table fullscreen" }).click({ force: true });
+    await expect(tableFullscreen).toBeVisible();
+    await expect(tableFullscreen.locator('[data-streamdown="strong"]')).toHaveText("Running");
+    expect(
+      await tableFullscreen.evaluate((surface) => {
+        const element = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+        return Boolean(element && surface.contains(element));
+      }),
+    ).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(tableFullscreen).toHaveCount(0);
+    await expect(reader).toBeVisible();
+    await expect.poll(nativeBrowserVisible).toBe(false);
+    await page.keyboard.press("Escape");
+    await expect(reader).toHaveCount(0);
+    await expect.poll(nativeBrowserVisible).toBe(true);
+    await expect.poll(nativeBrowserBounds).toEqual(originalBounds);
+
     await page.locator(`.session-item[data-session-id="${otherSessionId}"]`).click();
     await expect(page.locator(".transcript").getByText("Other browser fixture")).toBeVisible();
     await expect(addressInput).toBeHidden();

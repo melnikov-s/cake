@@ -17,6 +17,7 @@ vi.mock("streamdown", () => ({
   defaultRehypePlugins: {},
   parseMarkdownIntoBlocks: (markdown: string) => [markdown],
   Streamdown: vi.fn(({ children }: { children: string }) => <div>{children}</div>),
+  TableCopyDropdown: () => <span>Copy table</span>,
 }));
 
 describe("Markdown", () => {
@@ -71,13 +72,12 @@ describe("Markdown", () => {
     );
   });
 
-  it("uses borderless table and Mermaid frames with only copy and hover-fullscreen actions", () => {
+  it("uses Cake's table presentation and borderless Mermaid frames with copy and fullscreen actions", () => {
     act(() => root.render(<Markdown>{"| A | B |\n| - | - |\n| 1 | 2 |"}</Markdown>));
 
     const props = vi.mocked(Streamdown).mock.calls.at(-1)![0];
     expect(props.controls).toEqual({
       code: { copy: true, download: false },
-      table: { copy: true, download: false, fullscreen: true },
       mermaid: {
         copy: true,
         download: false,
@@ -85,14 +85,59 @@ describe("Markdown", () => {
         panZoom: false,
       },
     });
-    expect(props.className).toContain("[&_[data-streamdown=table-wrapper]]:border-0");
+    expect(props.components?.table).toBeTypeOf("function");
     expect(props.className).toContain("[&_[data-streamdown=mermaid-block]]:border-0");
-    expect(props.className).toContain(
-      "[&_[data-streamdown=table-wrapper]>div:first-child>button]:opacity-0",
-    );
     expect(props.className).toContain(
       "[&_[data-streamdown=mermaid-block-actions]>button:last-child]:opacity-0",
     );
+  });
+
+  it("keeps parsed fullscreen table cells and their actions when streaming settles", () => {
+    const onClick = vi.fn();
+    vi.mocked(Streamdown).mockImplementation(({ components }) => {
+      const Table = components?.table;
+      if (!Table || typeof Table !== "function") throw new Error("Expected Cake's table renderer");
+      return createElement(Table, {
+        children: (
+          <tbody>
+            <tr>
+              <td>
+                <strong>Formatted</strong>
+                <a href="#source" onClick={onClick}>
+                  Source
+                </a>
+              </td>
+            </tr>
+          </tbody>
+        ),
+      });
+    });
+    act(() =>
+      root.render(
+        <FullscreenSurfaceFixture>
+          <Markdown streaming>table</Markdown>
+        </FullscreenSurfaceFixture>,
+      ),
+    );
+    act(() =>
+      container.querySelector<HTMLButtonElement>('[aria-label="View table fullscreen"]')!.click(),
+    );
+    const fullscreen = document.body.querySelector<HTMLElement>('[role="dialog"]');
+    expect(fullscreen?.querySelector("strong")?.textContent).toBe("Formatted");
+    act(() => fullscreen?.querySelector<HTMLAnchorElement>("a")?.click());
+    expect(onClick).toHaveBeenCalledOnce();
+    act(() =>
+      root.render(
+        <FullscreenSurfaceFixture>
+          <Markdown>settled</Markdown>
+        </FullscreenSurfaceFixture>,
+      ),
+    );
+    expect(document.body.querySelector('[role="dialog"]')).toBe(fullscreen);
+    act(() =>
+      fullscreen?.querySelector<HTMLButtonElement>('[aria-label="Exit fullscreen Table"]')?.click(),
+    );
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it("keeps a fullscreen Mermaid diagram open when streaming settles", async () => {

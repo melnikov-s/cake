@@ -1,5 +1,5 @@
 import { BrowserWindow } from "electron";
-import { Effect, Layer, Option, Schema } from "effect";
+import { Effect, Layer, Option, Schema, Stream } from "effect";
 import { jsonValueSchema } from "../../ipc/json-contract";
 import { Electron } from "../electron/Electron";
 import { ClientEvents } from "../clients/ClientEvents";
@@ -28,6 +28,12 @@ export const makeBrowserLive = (remote = false) =>
         },
       });
       yield* Effect.addFinalizer(() => Effect.sync(() => runtime.dispose()));
+      yield* electron.fullscreenSurfaceChanges().pipe(
+        Stream.runForEach(({ connectionId, open }) =>
+          Effect.sync(() => runtime.setFullscreenSurfaceOpen(connectionId, open)),
+        ),
+        Effect.forkScoped,
+      );
 
       const native = <A>(operation: string, execute: (signal: AbortSignal) => Promise<A>) =>
         Effect.tryPromise({ try: execute, catch: (cause) => browserError(operation, cause) });
