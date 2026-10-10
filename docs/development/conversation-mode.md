@@ -16,6 +16,8 @@ Conversation mode is opt-in for existing writable Project Sessions in Cake deskt
 
 While the agent is speaking, detected speech is tentative: playback and synthesis continue until Parakeet recognizes at least four words within three seconds of detection, or a leading **stop** or **wait** command (optionally preceded by **please**). Recognition, not sound onset, confirms the interruption. Short acknowledgments such as “okay,” “all right” and “oh, I see” are discarded when the utterance ends or the window expires; they never become queued messages. Timed-out speech stays rejected until a quiet boundary, and late recognition cannot interrupt. A short response while the agent is quiet is accepted normally.
 
+Detected speech while output is idle—waiting for a reply or between spoken sentences—does not cancel output or revoke the pending reply's speech eligibility. Empty recognition and an unconsumed queued follow-up therefore cannot silently suppress the answer.
+
 A confirmed interruption silences playback and cancels pending synthesis, not Pi/tool work. The full captured utterance is submitted once after final recognition. The interrupted answer remains readable but stays unspoken until Pi actually consumes a new user input. Queuing an input alone does not lift that suppression. Mode entry never replays history or an already-running response.
 
 ## Privacy and billing

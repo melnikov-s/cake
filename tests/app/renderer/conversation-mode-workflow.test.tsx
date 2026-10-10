@@ -596,6 +596,40 @@ describe("Project Session conversation mode", () => {
     await f.frames(0, 33);
     expect(f.prompt).not.toHaveBeenCalled();
   });
+  it.each([
+    { betweenSentences: false, text: "" },
+    { betweenSentences: true, text: "" },
+    { betweenSentences: false, text: "all right" },
+    { betweenSentences: true, text: "all right" },
+  ])(
+    "quiet onset preserves speech eligibility (between sentences: $betweenSentences, recognized: '$text')",
+    async ({ betweenSentences, text }) => {
+      using f = fixture({ streaming: true, transcribe: async () => text });
+      await f.enter();
+      f.publish([consumed()]);
+      if (betweenSentences) {
+        f.publish([consumed(), assistant("First sentence. ")]);
+        await waitFor(() => expect(f.root.conversationModeStore.speaking).toBe(false));
+        expect(f.synthesize).toHaveBeenCalledTimes(1);
+      }
+      const stops = vi.mocked(f.playback.stop).mock.calls.length;
+      await f.frames(0.1, 8);
+      await f.frames(0, 33);
+      expect(f.transcribe).toHaveBeenCalled();
+      expect(f.prompt).toHaveBeenCalledTimes(text ? 1 : 0);
+      expect(f.playback.stop).toHaveBeenCalledTimes(stops);
+      // A queued follow-up is not consumed yet; the original reply must still
+      // speak without relying on a new user projection to restore eligibility.
+      f.publish([
+        consumed(),
+        assistant(betweenSentences ? "First sentence. Still answering. " : "Still answering. "),
+      ]);
+      await waitFor(() => expect(f.synthesize).toHaveBeenCalledTimes(betweenSentences ? 2 : 1));
+      expect(f.synthesize.mock.calls.at(-1)?.[0].text).toBe("Still answering.");
+      expect(f.abort).not.toHaveBeenCalled();
+      expect(f.microphone.open).toHaveBeenCalledTimes(1);
+    },
+  );
   it("retains detector-frame preroll including the speech onset before recognition", async () => {
     using f = fixture();
     await f.enter();

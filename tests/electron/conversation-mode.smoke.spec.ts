@@ -1034,6 +1034,62 @@ test("quieter follow-up speech with syllable gaps is accepted after a spoken rep
   }
 });
 
+for (const betweenSentences of [false, true]) {
+  test(`empty recognition while ${betweenSentences ? "between spoken sentences" : "waiting for a reply"} does not suppress speech`, async () => {
+    const f = await launch({ recognitionTexts: [""] });
+    const diagnostics: string[] = [];
+    f.page.on("console", (message) => {
+      if (message.text().startsWith("[cake.voice]")) diagnostics.push(message.text());
+    });
+    try {
+      await f.configure();
+      await f.page.getByRole("button", { name: "Enter conversation mode" }).click();
+      await expect(f.page.getByRole("button", { name: "Mute input" })).toBeVisible();
+      const composer = f.page.getByRole("combobox", { name: "Message", exact: true });
+      await composer.fill("First request");
+      await f.page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect.poll(() => f.responses.length).toBe(1);
+      if (betweenSentences) {
+        f.sendText("First sentence. ");
+        await expect.poll(() => speechHttpRequests(f.application)).toEqual(["First sentence."]);
+        await emitSpeechPcm(f.application, true);
+        await expect
+          .poll(() => diagnostics.some((event) => event.includes('"event":"output-complete"')))
+          .toBe(true);
+      }
+      // The detector sees speech, but Parakeet returns no words. There is no
+      // active output to interrupt and no new input to restore eligibility.
+      await f.frames([
+        [0.1, 8],
+        [0, 30],
+      ]);
+      await expect(composer).toHaveValue("");
+      f.sendText("The answer must still be spoken. ", true);
+      await expect
+        .poll(() => speechHttpRequests(f.application))
+        .toEqual(
+          betweenSentences
+            ? ["First sentence.", "The answer must still be spoken."]
+            : ["The answer must still be spoken."],
+        );
+      await emitSpeechPcm(f.application, true);
+      await expect
+        .poll(() =>
+          f.page.evaluate(() => {
+            const fixture = Reflect.get(globalThis, "conversationAudioFixture") as {
+              nodes: AudioBufferSourceNode[];
+            };
+            return fixture.nodes.length;
+          }),
+        )
+        .toBe(betweenSentences ? 2 : 1);
+      expect(f.responses).toHaveLength(1);
+    } finally {
+      await f.close();
+    }
+  });
+}
+
 for (const { text, frames } of [
   { text: "Wait.", frames: 2 },
   { text: "Actually change that approach", frames: 8 },

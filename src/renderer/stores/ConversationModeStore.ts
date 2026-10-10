@@ -377,8 +377,10 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       this.onset = speech ? this.onset + samples.length : 0;
       // Recognition now decides barge-in; a short spoken "stop" must reach it too.
       if (this.onset < 3200) return;
+      // Quiet input is not an interruption. Cancelling here would suppress an
+      // upcoming reply (or its next sentence) even if recognition returns empty.
+      // Only the transcript-confirmed barge-in path below suppresses output.
       const tentative = this.speaking;
-      if (!tentative) this.interrupt();
       run = {
         id: crypto.randomUUID(),
         chunks: this.preroll,
