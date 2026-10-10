@@ -1,4 +1,9 @@
 import type {
+  QueuedSessionCommand,
+  QueuedSessionCommandReceipt,
+  SessionInspectionQuery,
+} from "../../domain/conversations/session-query-data";
+import type {
   DictationAudio,
   DictationError,
   DictationState,
@@ -465,6 +470,12 @@ export interface CakeIpcClientService {
     readonly sendQueuedMessageNow: (
       input: SessionChatTarget & { readonly partId?: string },
     ) => Effect.Effect<QueuedConversationMessages, SessionChatError | TransportError>;
+    readonly queueCommand: (
+      input: SessionChatTarget & QueuedSessionCommand,
+    ) => Effect.Effect<QueuedSessionCommandReceipt, SessionChatError | TransportError>;
+    readonly inspect: (
+      input: SessionChatTarget & SessionInspectionQuery,
+    ) => Effect.Effect<JsonValue, SessionChatError | TransportError>;
     readonly compact: (
       input: SessionChatTarget & { readonly instructions?: string },
     ) => Effect.Effect<void, SessionChatError | TransportError>;
@@ -1202,6 +1213,12 @@ export const CakeIpcClientLive = Layer.effect(
         ),
         sendQueuedMessageNow: Effect.fn("CakeIpcClient.sessionChats.sendQueuedMessageNow")(
           (input) => client("sessionChats.sendQueuedMessageNow", input),
+        ),
+        queueCommand: Effect.fn("CakeIpcClient.sessionChats.queueCommand")((input) =>
+          client("sessionChats.queueCommand", input),
+        ),
+        inspect: Effect.fn("CakeIpcClient.sessionChats.inspect")((input) =>
+          client("sessionChats.inspect", input),
         ),
         compact: Effect.fn("CakeIpcClient.sessionChats.compact")((input) =>
           client("sessionChats.compact", input),

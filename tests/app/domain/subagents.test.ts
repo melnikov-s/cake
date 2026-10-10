@@ -166,6 +166,12 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
         options.onEvent({ type: "streaming", sessionId, streaming: false });
       },
       setUserMessageMarkdown: async () => undefined,
+      queueCommand: async () => {
+        throw new Error("Unexpected queueCommand");
+      },
+      inspectSession: async () => {
+        throw new Error("Unexpected inspectSession");
+      },
       compact: async () => undefined,
       abort: async () => {
         if (!isParent)

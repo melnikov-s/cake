@@ -225,8 +225,8 @@ const sideChatConfiguration = Effect.fn("DiscussionSessions.sideChatConfiguratio
 /**
  * The session assistant is an ordinary side chat on the utility model with the
  * validated Cake application-control gateway for its parent Project Session.
- * Unlike a read-only side chat, it can run shell commands in the parent's
- * Working Directory so it can carry out quick tasks, not only inspect them.
+ * Unlike a read-only side chat, it has the standard file and shell tools in
+ * the parent's Working Directory, plus the complete validated application controls.
  */
 const sessionAssistantConfiguration = Effect.fn("DiscussionSessions.sessionAssistantConfiguration")(
   function* (record: DiscussionSessionRecord, tools: ReadonlyArray<CakeControlTool>) {
@@ -260,7 +260,7 @@ const sessionAssistantConfiguration = Effect.fn("DiscussionSessions.sessionAssis
         parentSessionId: record.parentSessionId,
         tools: controlTools,
       }),
-      tools: ["read", "bash", "cake"],
+      tools: ["read", "bash", "edit", "write", "grep", "find", "ls", "cake"],
       sessionControl: {
         tools: controlTools,
         // Pi requires a Promise callback; this is the final adapter from the

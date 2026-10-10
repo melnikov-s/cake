@@ -15,7 +15,7 @@ const PiPendingMessage = Schema.Struct({
   partId: Schema.optionalKey(Schema.String),
   lane: Schema.Literals(["steering", "follow-up"]),
   position: Schema.Int.check(Schema.isGreaterThan(0)),
-  state: Schema.Literals(["queued", "compaction-held"]),
+  state: Schema.Literals(["queued", "compaction-held", "command-queued"]),
   text: queuedText,
   crossSession: Schema.optionalKey(CrossSessionMessageMetadata),
 });

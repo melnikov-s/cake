@@ -131,6 +131,12 @@ const makeLayer = (options: { readonly assistant?: boolean } = {}) => {
         options.onEvent({ type: "streaming", sessionId, streaming: false });
       },
       setUserMessageMarkdown: async () => undefined,
+      queueCommand: async () => {
+        throw new Error("Unexpected queueCommand");
+      },
+      inspectSession: async () => {
+        throw new Error("Unexpected inspectSession");
+      },
       compact: async () => undefined,
       abort: async () => undefined,
       setModel: async (provider, modelId) => {
@@ -463,9 +469,21 @@ describe("Discussion Sessions domain", () => {
         assert.equal(sidecar.auxiliary, true);
         assert.equal(sidecar.globalControl, undefined);
         // The assistant can run shell commands, unlike a read-only side chat.
-        assert.deepEqual(sidecar.tools, ["read", "bash", "cake"]);
+        assert.deepEqual(sidecar.tools, [
+          "read",
+          "bash",
+          "edit",
+          "write",
+          "grep",
+          "find",
+          "ls",
+          "cake",
+        ]);
         assert.match(sidecar.additionalSystemPrompt ?? "", /Session Assistant attached to/);
-        assert.match(sidecar.additionalSystemPrompt ?? "", /run shell commands with the bash tool/);
+        assert.match(
+          sidecar.additionalSystemPrompt ?? "",
+          /standard read, search, edit, write, and shell tools/,
+        );
         assert.match(sidecar.additionalSystemPrompt ?? "", /sessions\.open/);
         assert.deepEqual(fixture.modelSelections.at(-1), {
           provider: "google",

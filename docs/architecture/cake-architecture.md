@@ -148,9 +148,11 @@ active branch. Ordinary discussions receive only their scope or anchor, nearby
 context, their own transcript, and read-only file tools. Each Project Session has
 at most one avatar assistant Discussion Session. Its quick bubble and full chat
 are two presentations of that same durable transcript; it uses the configured
-utility model and adds only the validated Cake application-control gateway.
-Assistant, assistant-message, and code-anchored chats cannot modify project
-files. The code anchor changes the source material, not the sidecar's authority.
+utility model and exposes the complete validated Cake application-control gateway,
+standard file/shell tools, and `sessions.cake` for the parent's live Cake capability
+registry. Session-assistant actions are explicitly user-directed; ordinary
+assistant-message and code-anchored discussions remain read-only. The code anchor
+changes the source material, not the sidecar's authority.
 In the renderer each sidecar has its own Conversation projection driven by the
 shared conversation reducer and wrapped by the shared conversation Store; the
 parent's Discussion catalog carries only thread metadata and a persisted
@@ -246,9 +248,35 @@ remain advisory metadata until the owning feature validates and commits them.
 The composer-avatar session assistant is the interactive exception to plain
 completion: it is a durable Discussion Session on the configured utility model.
 It receives the same regenerated parent projection as other side chats, never
-parent tool calls, and exposes read-only file access plus a parent-scoped,
-validated Cake application-control gateway—including embedded VS Code entry and
-source navigation—but no shell or direct file mutation tools. Because Cake
+an eager dump of parent tool calls. It has standard read/search/edit/write/shell
+tools plus the complete validated Cake application-control gateway—including
+embedded VS Code entry and source navigation. `sessions.cake` discovers and invokes
+the parent's live Cake registry without copying its tools or rebinding the sidecar.
+Singular operations forwarded through that gateway use the parent's authority;
+"this session" in an assistant request means the parent, not the sidecar.
+
+Read-only `sessions.history`, `sessions.compactions`, `sessions.tree`,
+`sessions.context`, `sessions.usage`, and `sessions.commands` inspect the target's
+Pi authority through the shared `sessionChats` boundary. History combines text,
+entry-type, role, tool-name, timestamp, and branch filters before pagination and
+clipping. History defaults to the active branch; compactions and tree default to
+all branches. Compaction evidence includes current-branch membership and source
+references, distinguishing current tool compaction from compaction elsewhere in
+the tree. Arbitrary hidden custom-entry payloads are not exposed as transcript text.
+
+`sessions.queue-command` accepts queueable slash commands into the same ordered
+follow-up lane as messages. Commands are transient Pi-adapter intents, not user
+messages or a second transcript. `/compact` and `/toolcompact` execute only
+between responses; tool compaction selects the latest completed assistant response
+at execution time. Live extension/template/skill commands can also be queued;
+unsupported built-ins are rejected rather than sent to the model. Command acceptance
+returns a queued receipt, never a completion claim. Pending commands have stable
+process-lifetime identities and projected part IDs for inspection, reordering,
+cancellation, and explicit send-now, but cannot enter the steering lane. The
+runtime's existing queue-edit gate serializes queue replacements. Accepted commands
+retain a runtime lease until execution or cancellation settles; stop preserves
+pending commands and clear/disposal cancels them. Command failures appear as notices.
+No command queue survives application restart. Because Cake
 operation is this assistant's primary role, its system prompt eagerly embeds the
 complete protocol generated from its actual operation registry instead of making
 the utility model discover topics first. Its Pi transcript owns its conversation

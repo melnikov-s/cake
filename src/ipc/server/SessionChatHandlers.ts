@@ -37,6 +37,8 @@ export const sessionChatHandlers = SessionChatRpc.of({
     sessionChats.steerQueuedMessage(target, partId),
   "sessionChats.sendQueuedMessageNow": ({ partId, ...target }) =>
     sessionChats.sendQueuedMessageNow(target, partId),
+  "sessionChats.queueCommand": sessionChats.queueCommand,
+  "sessionChats.inspect": sessionChats.inspect,
   "sessionChats.compact": ({ instructions, ...target }) =>
     sessionChats.compact(target, instructions),
   "sessionChats.editMessage": (input) =>

@@ -1,6 +1,12 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import {
+  QueuedSessionCommand,
+  QueuedSessionCommandReceipt,
+  SessionInspectionQuery,
+} from "../../domain/conversations/session-query-data";
+import { jsonValueSchema } from "../json-contract";
+import {
   QueuedConversationMessages,
   SessionChatConfiguration,
   SessionChatError,
@@ -64,6 +70,16 @@ export const SessionChatRpc = RpcGroup.make(
   Rpc.make("sessionChats.sendQueuedMessageNow", {
     payload: { ...SessionChatTarget.fields, partId: Schema.optionalKey(Schema.String) },
     success: QueuedConversationMessages,
+    error: SessionChatError,
+  }),
+  Rpc.make("sessionChats.queueCommand", {
+    payload: { ...SessionChatTarget.fields, ...QueuedSessionCommand.fields },
+    success: QueuedSessionCommandReceipt,
+    error: SessionChatError,
+  }),
+  Rpc.make("sessionChats.inspect", {
+    payload: { ...SessionChatTarget.fields, ...SessionInspectionQuery.fields },
+    success: jsonValueSchema,
     error: SessionChatError,
   }),
   Rpc.make("sessionChats.compact", {

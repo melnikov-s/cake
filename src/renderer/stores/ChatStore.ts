@@ -28,6 +28,7 @@ import {
 export interface QueuedPrompt {
   id: string;
   itemId?: string;
+  command?: string;
   text: string;
   attachments: Attachment[];
   renderUserMessageAsMarkdown: boolean;
@@ -343,7 +344,9 @@ export class ChatStore extends Store<ChatStoreProps> {
       await this.stopAndSendQueuedPrompt(steering.id);
       return true;
     }
-    const queued = this.queuedPrompts.find((entry) => entry.state === "queued" && !entry.pending);
+    const queued = this.queuedPrompts.find(
+      (entry) => entry.state === "queued" && !entry.pending && !entry.command,
+    );
     if (empty && queued) {
       await this.steerQueuedPrompt(queued.id);
       return true;

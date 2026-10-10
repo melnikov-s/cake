@@ -1009,6 +1009,18 @@ export function makeClient(
           withClient((client) => client.sessionChats.sendQueuedMessageNow(input)),
           options,
         ),
+      queueCommand: (input, options) =>
+        run(
+          "sessionChats.queueCommand",
+          withClient((client) => client.sessionChats.queueCommand(input)),
+          options,
+        ),
+      inspect: (input, options) =>
+        run(
+          "sessionChats.inspect",
+          withClient((client) => client.sessionChats.inspect(input)),
+          options,
+        ),
       compact: (input, options) =>
         run(
           "sessionChats.compact",

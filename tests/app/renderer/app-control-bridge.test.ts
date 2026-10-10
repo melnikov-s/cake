@@ -133,6 +133,22 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
           throw new Error("not used");
         }),
       sendMessage: overrides.sendMessage ?? (async () => "turn-1"),
+      callCakeOperation:
+        overrides.callCakeOperation ??
+        (async () => {
+          throw new Error("Unexpected callCakeOperation");
+        }),
+      query: overrides.query ?? (async () => ({ items: [] })),
+      queueCommand:
+        overrides.queueCommand ??
+        (async () => {
+          throw new Error("Unexpected queueCommand");
+        }),
+      reorderQueuedMessage:
+        overrides.reorderQueuedMessage ??
+        (async () => {
+          throw new Error("Unexpected reorderQueuedMessage");
+        }),
       compact: overrides.compact ?? (async () => undefined),
       scheduleMessage:
         overrides.scheduleMessage ??
@@ -1651,9 +1667,21 @@ describe("AppControlBridge", () => {
     ).resolves.toMatchObject({ ok: false, error: "That session thread is closed." });
   });
 
-  it("lists and dequeues another session's pending messages in bulk", async () => {
+  it("inspects structured pending inputs and dequeues their text in bulk", async () => {
     const messages = { steering: ["Change direction"], followUp: ["Do this next"] };
-    const listPendingMessages = vi.fn(async () => messages);
+    const pending = {
+      items: [
+        {
+          itemId: "input-1",
+          partId: "queued-follow-up-1",
+          lane: "follow-up",
+          position: 1,
+          state: "command-queued",
+          text: "/compact",
+        },
+      ],
+    };
+    const query = vi.fn(async () => pending);
     const dequeuePendingMessages = vi.fn(async () => messages);
     const bridge = new AppControlBridge(
       createHost({
@@ -1669,20 +1697,106 @@ describe("AppControlBridge", () => {
             draft: false,
           },
         ],
-        listPendingMessages,
+        query,
         dequeuePendingMessages,
       }),
     );
 
     await expect(
       bridge.invoke({ name: "sessions.pending", arguments: { sessionId: "session-1" } }),
-    ).resolves.toMatchObject({ ok: true, messages });
+    ).resolves.toMatchObject({ ok: true, result: pending });
     await expect(
       bridge.invoke({ name: "sessions.dequeue", arguments: { sessionId: "session-1" } }),
     ).resolves.toMatchObject({ ok: true, messages });
 
-    expect(listPendingMessages).toHaveBeenCalledWith("session-1");
+    expect(query).toHaveBeenCalledWith("session-1", { kind: "pending" });
     expect(dequeuePendingMessages).toHaveBeenCalledWith("session-1");
+  });
+
+  it("exposes all application controls plus parent Cake discovery and validates queued commands and history filters", async () => {
+    const tools = listSessionAssistantControlTools().map(({ command }) => command);
+    for (const tool of listAppControlTools()) expect(tools).toContain(tool.command);
+    expect(tools).toEqual(
+      expect.arrayContaining([
+        "sessions.cake",
+        "sessions.queue-command",
+        "sessions.history",
+        "sessions.compactions",
+        "sessions.context",
+        "sessions.usage",
+        "sessions.tree",
+        "sessions.commands",
+        "sessions.reorder",
+      ]),
+    );
+    const queueCommand = vi.fn(async () => ({
+      itemId: "00000000-0000-4000-8000-000000000001",
+      status: "queued" as const,
+    }));
+    const query = vi.fn(async () => ({ entries: [], total: 0 }));
+    const callCakeOperation = vi.fn(async () => ({ sessionId: "parent", tokens: 120 }));
+    const bridge = new AppControlBridge(
+      createHost({
+        sessions: () => [
+          {
+            sessionId: "parent",
+            title: "Parent",
+            workingDirectory: "/project",
+            projectName: "Project",
+            modifiedAt: "2026-01-01T00:00:00Z",
+            messageCount: 1,
+            resolved: false,
+            draft: false,
+          },
+        ],
+        queueCommand,
+        query,
+        callCakeOperation,
+      }),
+    );
+    await expect(
+      bridge.invoke({
+        name: "sessions.queue-command",
+        arguments: { sessionId: "parent", command: "/toolcompact" },
+      }),
+    ).resolves.toMatchObject({ ok: true, status: "queued" });
+    expect(queueCommand).toHaveBeenCalledWith("parent", "/toolcompact");
+    await expect(
+      bridge.invoke({
+        name: "sessions.history",
+        arguments: {
+          sessionId: "parent",
+          toolName: "bash",
+          roles: ["toolResult"],
+          query: "test",
+          branch: "all",
+          limit: 5,
+        },
+      }),
+    ).resolves.toMatchObject({ ok: true, result: { total: 0 } });
+    expect(query).toHaveBeenCalledWith(
+      "parent",
+      expect.objectContaining({ kind: "history", toolName: "bash", branch: "all", limit: 5 }),
+    );
+    await expect(
+      bridge.invoke({
+        name: "sessions.cake",
+        arguments: { sessionId: "parent", command: "context.status" },
+      }),
+    ).resolves.toMatchObject({ ok: true, result: { sessionId: "parent", tokens: 120 } });
+    expect(callCakeOperation).toHaveBeenCalledWith("parent", "context.status", {});
+    await expect(
+      bridge.invoke({
+        name: "sessions.queue-command",
+        arguments: { sessionId: "parent", command: "not a slash command" },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      bridge.invoke({
+        name: "sessions.history",
+        arguments: { sessionId: "parent", limit: 10_000 },
+      }),
+    ).rejects.toThrow();
   });
 
   it("includes the managed worktree associated with each listed session", async () => {

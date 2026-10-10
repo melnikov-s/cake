@@ -167,6 +167,25 @@ function queuedTexts() {
 afterEach(cleanup);
 
 describe("Prompt queue workflow", () => {
+  it("projects commands in the shared queue with reordering and cancellation, without message-only edit or steering actions", async () => {
+    using fixture = renderQueue({ followUp: ["Next task"], steering: [] });
+    await act(async () => {
+      await fixture.controller.queueCommand("/toolcompact");
+    });
+    expect(queuedTexts()).toEqual(["Next task", "/toolcompact"]);
+    expect(screen.getByRole("button", { name: "Send now as steering: Next task" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Edit queued prompt: Next task" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Send now as steering: /toolcompact" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit queued prompt: /toolcompact" })).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Move up: /toolcompact" }));
+    expect(queuedTexts()).toEqual(["/toolcompact", "Next task"]);
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Cancel queued message: /toolcompact" }),
+    );
+    expect(queuedTexts()).toEqual(["Next task"]);
+    expect(fixture.pi.abort).not.toHaveBeenCalled();
+  });
+
   it("interleaves user and agent inputs in both lanes and reorders through authoritative positions", async () => {
     using fixture = renderQueue({
       steering: ["First steer", encodeCrossSessionMessage("Agent steer", metadata)],

@@ -139,6 +139,12 @@ const makeLayer = (
       operations.push("edit");
     },
     setUserMessageMarkdown: async () => undefined,
+    queueCommand: async () => {
+      throw new Error("Unexpected queueCommand");
+    },
+    inspectSession: async () => {
+      throw new Error("Unexpected inspectSession");
+    },
     compact: async () => {
       operations.push("compact");
     },

@@ -97,6 +97,18 @@ function createHost(
         throw new Error("not used");
       },
       sendMessage: async () => "turn",
+      callCakeOperation: async () => {
+        throw new Error("Unexpected callCakeOperation");
+      },
+      query: async () => {
+        throw new Error("Unexpected query");
+      },
+      queueCommand: async () => {
+        throw new Error("Unexpected queueCommand");
+      },
+      reorderQueuedMessage: async () => {
+        throw new Error("Unexpected reorderQueuedMessage");
+      },
       compact: async () => undefined,
       scheduleMessage: async () => {
         throw new Error("not used");

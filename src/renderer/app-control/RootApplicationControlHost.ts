@@ -264,6 +264,29 @@ export function createRootApplicationControlHost(
             { signal: capabilities.signal },
           );
         }),
+      callCakeOperation: (sessionId, command, input) =>
+        capabilities.client.projectSessions.callCakeOperation(
+          { sessionId, command, input },
+          { signal: capabilities.signal },
+        ),
+      query: (sessionId, query) =>
+        capabilities.client.sessionChats.inspect(
+          { sessionId, ...query },
+          { signal: capabilities.signal },
+        ),
+      queueCommand: (sessionId, command) =>
+        capabilities.applicationControlStore().runOperation(async () => {
+          await capabilities.prepareProjectSessionChat(sessionId);
+          return capabilities.client.sessionChats.queueCommand(
+            { sessionId, command },
+            { signal: capabilities.signal },
+          );
+        }),
+      reorderQueuedMessage: (sessionId, itemId, position) =>
+        capabilities.client.sessionChats.reorderQueuedMessage(
+          { sessionId, itemId, position },
+          { signal: capabilities.signal },
+        ),
       compact: (sessionId, instructions) =>
         capabilities.applicationControlStore().runOperation(async () => {
           await capabilities.prepareProjectSessionChat(sessionId);

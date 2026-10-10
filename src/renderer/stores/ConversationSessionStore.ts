@@ -320,13 +320,18 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
               id: part.partKey,
               text: part.text ?? "",
               itemId: part.queuedInput?.itemId,
+              command: part.queuedInput?.command,
               attachments: part.queuedInput?.attachments.slice() ?? [],
               renderUserMessageAsMarkdown:
                 part.queuedInput?.renderUserMessageAsMarkdown ?? part.renderAs === "markdown",
               state: part.deliveryState,
               source: part.crossSession,
               scheduled: part.scheduled,
-              editable: Boolean(part.queuedInput) && !part.crossSession && !part.scheduled,
+              editable:
+                Boolean(part.queuedInput) &&
+                !part.queuedInput?.command &&
+                !part.crossSession &&
+                !part.scheduled,
             },
           ]
         : [],
@@ -440,7 +445,8 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
 
   private async editQueuedPrompt(id: string) {
     const part = this.model.parts.find((item) => item.partKey === id);
-    if (!part?.queuedInput || part.crossSession || part.scheduled) return;
+    if (!part?.queuedInput || part.queuedInput.command || part.crossSession || part.scheduled)
+      return;
     const input = part.queuedInput;
     if (!(await this.editRuntimeQueuedPrompt(id, "remove")) || this.signal.aborted) return;
     this.composerStore.draftStore.restore(input.text, input.attachments);

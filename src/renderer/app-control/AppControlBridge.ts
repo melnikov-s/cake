@@ -1,11 +1,22 @@
 import { Effect, Schema } from "effect";
 import {
+  SessionHistoryQuery,
+  QueuedSessionCommand,
+  type SessionInspectionQuery,
+  type QueuedSessionCommandReceipt,
+} from "../../domain/conversations/session-query-data";
+import {
   AgentSettingsInvocation,
   agentSettingsOperations,
   agentSettingsGuidance,
   agentSettingsSections,
 } from "../../domain/application/agent-settings-schema";
-import { jsonObjectSchema, jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
+import {
+  jsonObjectSchema,
+  jsonValueSchema,
+  type JsonValue,
+  type JsonObject,
+} from "../../ipc/json-contract";
 import {
   SESSION_TITLE_MAX_LENGTH,
   thinkingLevelSchema,
@@ -98,6 +109,35 @@ const appControlArgumentSchemas = {
   "sessions.list": emptyArgumentsSchema,
   "sessions.list-family": emptyArgumentsSchema,
   "sessions.info": sessionIdTargetSchema,
+  "sessions.cake": Schema.Struct({
+    ...sessionIdTargetSchema.fields,
+    command: bounded(1, 256),
+    input: Schema.optionalKey(jsonObjectSchema),
+  }),
+  "sessions.history": Schema.Struct({
+    ...sessionIdTargetSchema.fields,
+    ...SessionHistoryQuery.fields,
+  }),
+  "sessions.compactions": Schema.Struct({
+    ...sessionIdTargetSchema.fields,
+    ...SessionHistoryQuery.fields,
+  }),
+  "sessions.tree": Schema.Struct({
+    ...sessionIdTargetSchema.fields,
+    ...SessionHistoryQuery.fields,
+  }),
+  "sessions.context": sessionIdTargetSchema,
+  "sessions.usage": sessionIdTargetSchema,
+  "sessions.commands": sessionIdTargetSchema,
+  "sessions.queue-command": Schema.Struct({
+    ...sessionIdTargetSchema.fields,
+    ...QueuedSessionCommand.fields,
+  }),
+  "sessions.reorder": Schema.Struct({
+    ...sessionIdTargetSchema.fields,
+    itemId: Schema.String.check(Schema.isUUID(4)),
+    position: Schema.Int.check(Schema.isGreaterThan(0)),
+  }),
   "sessions.open": sessionNavigationTargetSchema,
   "sessions.create": Schema.Struct({
     workspacePath: bounded(1, 4_096),
@@ -351,6 +391,15 @@ const appControlInvocationSchema = Schema.Union([
   invocation("sessions.list"),
   invocation("sessions.list-family"),
   invocation("sessions.info"),
+  invocation("sessions.cake"),
+  invocation("sessions.history"),
+  invocation("sessions.compactions"),
+  invocation("sessions.tree"),
+  invocation("sessions.context"),
+  invocation("sessions.usage"),
+  invocation("sessions.commands"),
+  invocation("sessions.queue-command"),
+  invocation("sessions.reorder"),
   invocation("sessions.open"),
   invocation("sessions.create"),
   invocation("sessions.create-draft"),
@@ -556,6 +605,14 @@ export interface AppControlHost {
       crossSession?: CrossSessionMessageMetadata,
     ): Promise<string>;
     compact(sessionId: string, instructions?: string): Promise<void>;
+    query(sessionId: string, query: SessionInspectionQuery): Promise<JsonValue>;
+    callCakeOperation(sessionId: string, command: string, input: JsonObject): Promise<JsonValue>;
+    queueCommand(sessionId: string, command: string): Promise<QueuedSessionCommandReceipt>;
+    reorderQueuedMessage(
+      sessionId: string,
+      itemId: string,
+      position: number,
+    ): Promise<QueuedConversationMessages>;
     scheduleMessage(input: {
       targetSessionId: string;
       text: string;
@@ -734,6 +791,27 @@ export type AppControlResult =
   | { ok: true; command: "sessions.compact"; target: SessionTarget; status: "compacted" }
   | {
       ok: true;
+      command:
+        | "sessions.cake"
+        | "sessions.history"
+        | "sessions.compactions"
+        | "sessions.tree"
+        | "sessions.context"
+        | "sessions.usage"
+        | "sessions.commands";
+      target: SessionTarget;
+      result: JsonValue;
+    }
+  | {
+      ok: true;
+      command: "sessions.queue-command";
+      target: SessionTarget;
+      itemId: string;
+      status: "queued";
+    }
+  | { ok: true; command: "sessions.reorder"; messages: QueuedConversationMessages }
+  | {
+      ok: true;
       command: "sessions.schedule";
       target: SessionTarget;
       scheduledMessage: ScheduledMessage;
@@ -741,10 +819,10 @@ export type AppControlResult =
     }
   | { ok: true; command: "sessions.scheduled"; messages: readonly ScheduledMessage[] }
   | { ok: true; command: "sessions.cancel-scheduled"; id: string; status: "cancelled" }
+  | { ok: true; command: "sessions.pending"; result: JsonValue }
   | {
       ok: true;
       command:
-        | "sessions.pending"
         | "sessions.dequeue"
         | "sessions.cancel-queued"
         | "sessions.steer-queued"
@@ -1047,6 +1125,72 @@ const modelControlOperations = [
     result:
       "The target's metadata, full sessionFile path, firstUserMessage, selection, and activity state.",
   },
+  {
+    ...operation(
+      "sessions.cake",
+      "sessions",
+      "Discover or invoke any Cake capability registered on the target Project Session, using that session's own authority and scope.",
+      appControlArgumentSchemas["sessions.cake"],
+    ),
+    guidance: [
+      "This exposes the parent's full live Cake catalog, including artifacts, draw, browser, models, plugins, worktrees, session configuration, forks and family operations when available.",
+      "Use command: help for the topic index, a topic name for its protocol, or <operation>.help for one exact schema. Then invoke that command with input containing only its operation arguments.",
+      "Singular session.*, context.* and other session-scoped operations apply to the targeted parent, never to the assistant's side chat. Do not claim success without checking the operation result.",
+    ],
+    examples: [{ input: { sessionId: "parent-session-id", command: "help" } }],
+  },
+  ...(
+    [
+      [
+        "sessions.history",
+        "Read or search authoritative session history. Combine text, entry type, role, tool name, time and branch filters; results are paginated and clipped.",
+      ],
+      [
+        "sessions.compactions",
+        "Inspect normal and tool compactions, including inactive branches and source-branch references. active distinguishes current-branch compaction from historical compaction.",
+      ],
+      [
+        "sessions.tree",
+        "Inspect session-tree entries and branch relationships, including the active branch. Results are paginated.",
+      ],
+      [
+        "sessions.context",
+        "Inspect the target session's context use, limit and remaining capacity.",
+      ],
+      ["sessions.usage", "Inspect provider-reported tokens and cost for the target session."],
+      [
+        "sessions.commands",
+        "List the target session's slash commands and whether each can be queued.",
+      ],
+    ] as const
+  ).map(([command, summary]) => ({
+    ...operation(command, "sessions", summary, appControlArgumentSchemas[command]),
+    guidance: [
+      "For the session assistant, this session means the attached parent Project Session, not the assistant side chat.",
+      "History defaults to the active branch; compactions and tree default to all branches. Use leafId for a particular branch, or branch: all for the full tree.",
+      "Filters are combined with AND; entries are chronological. offset/limit paginate matched entries; truncated indicates clipped evidence.",
+    ],
+  })),
+  {
+    ...operation(
+      "sessions.queue-command",
+      "sessions",
+      "Queue a slash command to execute between responses without interrupting the active response.",
+      appControlArgumentSchemas["sessions.queue-command"],
+    ),
+    guidance: [
+      "Inspect sessions.commands for queueable commands. /compact accepts instructions; /toolcompact takes no arguments and uses the latest completed assistant response when executed.",
+      "Commands share the follow-up queue with messages and preserve its order. Use sessions.pending, sessions.reorder, or sessions.cancel-queued to inspect, reorder or cancel pending work.",
+      "The receipt confirms acceptance, not completion. Commands cannot be steered into a running response. Pending commands are process-lifetime state, not durable scheduling.",
+    ],
+    examples: [{ input: { sessionId: "parent-session-id", command: "/toolcompact" } }],
+  },
+  operation(
+    "sessions.reorder",
+    "sessions",
+    "Move a queued command or message to a one-based position within its existing lane.",
+    appControlArgumentSchemas["sessions.reorder"],
+  ),
   operation(
     "sessions.open",
     "sessions",
@@ -1148,7 +1292,7 @@ const modelControlOperations = [
   operation(
     "sessions.pending",
     "sessions",
-    "List all steering and follow-up messages currently queued in one explicitly targeted Project Session.",
+    "List queued commands and messages with itemIds, partIds, lanes, states and positions for inspection, reordering and cancellation.",
     appControlArgumentSchemas["sessions.pending"],
   ),
   operation(
@@ -1325,7 +1469,7 @@ export function listAppControlTools() {
 }
 
 export function listSessionAssistantControlTools() {
-  return decodedControlTools([...modelControlOperations, ...sessionAssistantControlOperations]);
+  return [...listAppControlTools(), ...decodedControlTools(sessionAssistantControlOperations)];
 }
 
 export class AppControlBridge {
@@ -1724,11 +1868,66 @@ export class AppControlBridge {
     const workspacePath = known.workingDirectory;
     const target = { workspacePath, sessionId };
 
+    if (invocation.name === "sessions.cake")
+      return {
+        ok: true,
+        command: invocation.name,
+        target,
+        result: await this.host.sessions.callCakeOperation(
+          sessionId,
+          invocation.arguments.command,
+          invocation.arguments.input ?? {},
+        ),
+      };
+    if (invocation.name === "sessions.queue-command")
+      return {
+        ok: true,
+        command: invocation.name,
+        target,
+        ...(await this.host.sessions.queueCommand(sessionId, invocation.arguments.command)),
+      };
+    if (invocation.name === "sessions.reorder")
+      return {
+        ok: true,
+        command: invocation.name,
+        messages: await this.host.sessions.reorderQueuedMessage(
+          sessionId,
+          invocation.arguments.itemId,
+          invocation.arguments.position,
+        ),
+      };
+    if (
+      invocation.name === "sessions.history" ||
+      invocation.name === "sessions.compactions" ||
+      invocation.name === "sessions.tree" ||
+      invocation.name === "sessions.context" ||
+      invocation.name === "sessions.usage" ||
+      invocation.name === "sessions.commands"
+    ) {
+      const kind =
+        invocation.name === "sessions.history"
+          ? "history"
+          : invocation.name === "sessions.compactions"
+            ? "compactions"
+            : invocation.name === "sessions.tree"
+              ? "tree"
+              : invocation.name === "sessions.context"
+                ? "context"
+                : invocation.name === "sessions.usage"
+                  ? "usage"
+                  : "commands";
+      return {
+        ok: true,
+        command: invocation.name,
+        target,
+        result: await this.host.sessions.query(sessionId, { ...invocation.arguments, kind }),
+      };
+    }
     if (invocation.name === "sessions.pending")
       return {
         ok: true,
         command: invocation.name,
-        messages: await this.host.sessions.listPendingMessages(sessionId),
+        result: await this.host.sessions.query(sessionId, { kind: "pending" }),
       };
     if (invocation.name === "sessions.dequeue" || invocation.name === "sessions.clear-queue")
       return {

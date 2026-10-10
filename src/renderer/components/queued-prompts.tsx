@@ -103,7 +103,8 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                       {entry.state === "steering" ? (
                         <LoadingSpinner label={`Steering: ${label}`} />
                       ) : (
-                        store.canSteerQueuedPrompt && (
+                        store.canSteerQueuedPrompt &&
+                        !entry.command && (
                           <IconButton
                             disabled={entry.pending}
                             tooltip="Send now as steering"

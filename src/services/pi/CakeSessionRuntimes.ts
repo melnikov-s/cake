@@ -1,5 +1,6 @@
 import {
   Context,
+  Deferred,
   Effect,
   Equal,
   Exit,
@@ -21,6 +22,10 @@ import type {
 } from "./conversation-data";
 import type { ArtifactPointer } from "../../ipc/artifact-contract";
 import { jsonValueSchema, type JsonObject, type JsonValue } from "../../ipc/json-contract";
+import type {
+  QueuedSessionCommandReceipt,
+  SessionInspectionQuery,
+} from "../../domain/conversations/session-query-data";
 import type {
   Attachment,
   ChatConfiguration,
@@ -175,6 +180,12 @@ export interface CakeSessionHandle {
     renderAsMarkdown: boolean,
   ) => Effect.Effect<void, PiSessionError>;
   readonly abort: () => Effect.Effect<void, PiSessionError>;
+  readonly queueCommand: (
+    command: string,
+  ) => Effect.Effect<QueuedSessionCommandReceipt, PiSessionError>;
+  readonly inspectSession: (
+    query: SessionInspectionQuery,
+  ) => Effect.Effect<JsonValue, PiSessionError>;
   readonly executeCommand: (
     command: string,
     arguments_: string,
@@ -766,6 +777,32 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               undefined,
               responseMode,
             ),
+          queueCommand: Effect.fn("CakeSessionRuntimes.queueCommand")(function* (command) {
+            // Like accepted prompts, commands retain their runtime until completion or cancellation.
+            const commandScope = yield* Scope.make();
+            const completed = yield* Deferred.make<void>();
+            const receipt = yield* RcMap.get(runtimes, key).pipe(
+              Effect.provideService(Scope.Scope, commandScope),
+              Effect.flatMap((retained) =>
+                runtimeOperation("queueCommand", () =>
+                  retained.runtime.queueCommand(command, () => {
+                    Deferred.doneUnsafe(completed, Effect.void);
+                  }),
+                ).pipe(shared.queueEdits.withPermit),
+              ),
+              sessionError("queueCommand"),
+              Effect.onExit((exit) =>
+                Exit.isFailure(exit) ? Scope.close(commandScope, Exit.void) : Effect.void,
+              ),
+            );
+            yield* Deferred.await(completed).pipe(
+              Effect.ensuring(Scope.close(commandScope, Exit.void)),
+              Effect.forkIn(layerScope),
+            );
+            return receipt;
+          }),
+          inspectSession: (query) =>
+            call("inspectSession", (runtime) => runtime.inspectSession(query)),
           listQueuedMessages: () =>
             call("listQueuedMessages", (runtime) => runtime.listQueuedMessages()),
           pendingMessages: () => call("pendingMessages", (runtime) => runtime.pendingMessages()),

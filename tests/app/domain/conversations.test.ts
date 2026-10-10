@@ -56,6 +56,8 @@ const makeHandle = (deliveries: string[], isStreaming: () => boolean): CakeSessi
   setThinkingLevel: () => Effect.void,
   setPiSetting: () => Effect.void,
   navigate: () => Effect.void,
+  queueCommand: () => Effect.die("Unexpected queueCommand"),
+  inspectSession: () => Effect.die("Unexpected inspectSession"),
   compact: () => Effect.void,
   rename: () => Effect.void,
   fork: () => Effect.die("Unexpected fork"),

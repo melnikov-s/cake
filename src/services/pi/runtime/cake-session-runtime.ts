@@ -31,6 +31,12 @@ import {
   type CrossSessionContextSnapshot,
 } from "../../../domain/conversations/cross-session-coordination";
 import type { PiPendingMessageReorder, PiPendingMessages } from "../conversation-data";
+import type {
+  SessionInspectionQuery,
+  QueuedSessionCommandReceipt,
+} from "../../../domain/conversations/session-query-data";
+import { inspectSessionHistory } from "./session-inspection";
+import { piBuiltinSlashCommands } from "../../../ipc/session-contract";
 import {
   SubagentResult as subagentResultSchema,
   type ParallelSubagentInput as DomainParallelSubagentInput,
@@ -357,6 +363,8 @@ export interface CakeSessionRuntime {
   ): Promise<void>;
   setUserMessageMarkdown(entryId: string, renderAsMarkdown: boolean): Promise<void>;
   compact(instructions?: string): Promise<void>;
+  queueCommand(command: string, onSettled?: () => void): Promise<QueuedSessionCommandReceipt>;
+  inspectSession(query: SessionInspectionQuery): Promise<JsonValue>;
   abort(): Promise<void>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: ThinkingLevel): Promise<void>;
@@ -596,6 +604,38 @@ export async function createCakeSessionRuntime(
     emitPart,
     emitSnapshot: () => emitSnapshot(),
     emitSnapshotInBackground,
+    reportQueuedCommandError: (command, error) => {
+      session.sessionManager.appendCustomMessageEntry(
+        "cake.queued-command-error",
+        `Queued command failed (${command}): ${error instanceof Error ? error.message : String(error)}`,
+        true,
+      );
+    },
+    executeQueuedCommand: async (command) => {
+      await resources.drainReloads();
+      const name = command.slice(1).split(/\s/, 1)[0];
+      if (name === "compact") {
+        await turnController.compact(command.slice("/compact".length).trim() || undefined);
+      } else if (name === "toolcompact") {
+        const entry = session.sessionManager
+          .getBranch()
+          .findLast(
+            (entry) =>
+              entry.type === "message" &&
+              entry.message.role === "assistant" &&
+              entry.message.stopReason === "stop" &&
+              entry.message.content.some((block) => block.type === "text" && block.text.trim()),
+          );
+        if (!entry) throw new Error("Tool compaction requires a completed assistant response");
+        await continuations.toolCompact(entry.id);
+      } else {
+        if (!resources.commandCatalog().some((item) => item.name === name))
+          throw new Error(`Command /${name} is no longer available`);
+        await recovery.withResponseRetries(() =>
+          session.prompt(command, { source: "interactive" }),
+        );
+      }
+    },
   });
   compactionQueuedMessages = turnController.compactionQueuedMessages;
   queueProjection.parts = turnController.queuedParts;
@@ -852,6 +892,57 @@ export async function createCakeSessionRuntime(
       );
     },
     compact: turnController.compact,
+    async queueCommand(command, onSettled) {
+      const name = command.slice(1).split(/\s/, 1)[0];
+      if (
+        name !== "compact" &&
+        name !== "toolcompact" &&
+        !resources.commandCatalog().some((item) => item.name === name)
+      )
+        throw new Error(
+          `Command /${name} cannot be queued. Inspect sessions.commands for available commands.`,
+        );
+      if (name === "toolcompact" && command.trim() !== "/toolcompact")
+        throw new Error("Queued /toolcompact takes no arguments");
+      return turnController.queueCommand(command, onSettled);
+    },
+    async inspectSession(query) {
+      if (disposed) throw new Error("The Cake runtime has been disposed");
+      const api = capabilities.operationApi.current;
+      if (!api) throw new Error("The Cake session is not ready");
+      if (query.kind === "context") return api.contextStatus();
+      if (query.kind === "usage") return api.usage();
+      if (query.kind === "pending")
+        return Schema.decodeUnknownSync(jsonValueSchema)(await turnController.pendingMessages());
+      if (query.kind === "commands")
+        return Schema.decodeUnknownSync(jsonValueSchema)({
+          commands: [...piBuiltinSlashCommands, ...resources.commandCatalog()].map((command) => ({
+            name: command.name,
+            description: command.description,
+            source: command.source,
+            queueable:
+              command.name === "compact" ||
+              command.name === "toolcompact" ||
+              command.source !== "builtin",
+          })),
+        });
+      return inspectSessionHistory(
+        session.sessionManager,
+        query.kind === "compactions"
+          ? {
+              ...query,
+              branch: query.branch ?? (query.leafId ? "active" : "all"),
+              types: ["compaction", "tool-compaction"],
+            }
+          : query.kind === "tree"
+            ? {
+                ...query,
+                branch: query.branch ?? (query.leafId ? "active" : "all"),
+                maxChars: query.maxChars ?? 200,
+              }
+            : query,
+      );
+    },
     executingTurnIds: turnController.executingTurnIds,
     prompt(
       text,

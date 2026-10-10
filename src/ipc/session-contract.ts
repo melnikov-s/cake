@@ -297,6 +297,7 @@ export const uiPartSchema = Schema.Union([
     queuedInput: Schema.optionalKey(
       Schema.Struct({
         itemId: Schema.String.check(Schema.isUUID(4)),
+        command: Schema.optionalKey(boundedText),
         text: boundedText,
         attachments: Schema.Array(attachmentSchema).check(Schema.isMaxLength(20)),
         renderUserMessageAsMarkdown: Schema.Boolean,

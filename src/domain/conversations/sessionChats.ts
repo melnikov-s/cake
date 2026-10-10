@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import type { SessionInspectionQuery } from "./session-query-data";
 import type { ChatConfiguration, PiSettingUpdate } from "../../ipc/session-contract";
 import { CakeSessionRuntimes, type CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
@@ -152,6 +153,20 @@ export const sendQueuedMessageNow = Effect.fn("SessionChats.sendQueuedMessageNow
   return yield* useConversation(acquire(target.sessionId), (handle) =>
     handle.sendQueuedMessageNow(partId),
   ).pipe(Effect.map(projectQueuedMessages), asError("sendQueuedMessageNow"));
+});
+
+export const queueCommand = Effect.fn("SessionChats.queueCommand")(function* (
+  input: SessionChatTarget & { readonly command: string },
+) {
+  const handle = yield* acquire(input.sessionId);
+  return yield* handle.queueCommand(input.command).pipe(asError("queueCommand"));
+});
+
+export const inspect = Effect.fn("SessionChats.inspect")(function* (
+  input: SessionChatTarget & SessionInspectionQuery,
+) {
+  const handle = yield* acquire(input.sessionId);
+  return yield* handle.inspectSession(input).pipe(asError("inspect"));
 });
 
 export const compact = Effect.fn("SessionChats.compact")(function* (

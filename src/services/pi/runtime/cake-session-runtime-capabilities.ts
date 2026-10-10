@@ -31,6 +31,10 @@ import {
 import { SessionLabelColor } from "../../../domain/application/application-data";
 import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
 import { SESSION_TITLE_MAX_LENGTH } from "../../../ipc/session-contract";
+import {
+  SessionHistoryQuery,
+  QueuedSessionCommand,
+} from "../../../domain/conversations/session-query-data";
 import { artifactRecordSchema, type CakeArtifactV1 } from "../../../ipc/artifact-contract";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import {
@@ -852,6 +856,75 @@ export async function createCakeSessionRuntimeCapabilities(input: {
           "The family identity, root and calling session identities, and family members in stable tree order.",
         execute: (_input, context) =>
           api().invokeAppControl("sessions.list-family", {}, context.signal),
+      },
+      {
+        command: "sessions.cake",
+        topic: "sessions",
+        summary:
+          "Discover or invoke any Cake capability registered on a target Project Session, in that session's own scope.",
+        inputSchema: Schema.Struct({
+          sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+          command: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+          input: Schema.optionalKey(jsonObjectSchema),
+        }),
+        guidance: [
+          "Use command: help for the target's topic index, a topic name for its protocol, or <operation>.help for an exact schema, then invoke it with operation arguments in input.",
+          "Singular session.* and context.* operations act on the target, not the caller. A session assistant uses its attached parent's ID.",
+        ],
+        examples: [{ input: { sessionId: "target-session-id", command: "help" } }],
+        result: "The parent-scoped Cake operation's result or protocol.",
+        execute: invokeAppControl("sessions.cake"),
+      },
+      ...(["history", "compactions", "tree", "context", "usage", "commands"] as const).map(
+        (kind): CakeOperationDefinition => ({
+          command: `sessions.${kind}`,
+          topic: "sessions",
+          summary:
+            kind === "history"
+              ? "Read or search authoritative session history with combined text, type, role, tool, time and branch filters."
+              : kind === "compactions"
+                ? "Inspect normal and tool compactions across all branches; active identifies current-branch compactions."
+                : kind === "tree"
+                  ? "Inspect paginated session-tree entries and branch relationships."
+                  : kind === "commands"
+                    ? "List available slash commands and their queueability."
+                    : `Inspect the target session's ${kind}.`,
+          guidance: [
+            "Supply the target Project Session ID. A session assistant targets its parent, not its own side chat.",
+            "History defaults to the active branch; compactions and tree default to all branches. leafId selects an exact branch; it cannot be combined with branch: all.",
+            "Filters combine with AND before pagination. Entries are chronological; nextOffset continues the result. truncated indicates clipped evidence.",
+          ],
+          inputSchema:
+            kind === "history" || kind === "compactions" || kind === "tree"
+              ? Schema.Struct({
+                  sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+                  ...SessionHistoryQuery.fields,
+                })
+              : Schema.Struct({
+                  sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+                }),
+          examples: [{ input: { sessionId: "target-session-id" } }],
+          result: "A bounded authoritative session query result.",
+          execute: invokeAppControl(`sessions.${kind}`),
+        }),
+      ),
+      {
+        command: "sessions.queue-command",
+        topic: "sessions",
+        summary:
+          "Queue a slash command between responses without interrupting the active response.",
+        inputSchema: Schema.Struct({
+          sessionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+          ...QueuedSessionCommand.fields,
+        }),
+        guidance: [
+          "Inspect sessions.commands for queueable commands. /compact accepts instructions; /toolcompact takes no arguments and uses the latest completed assistant response when executed.",
+          "Commands preserve follow-up queue order. Inspect, reorder or cancel through sessions.pending, sessions.reorder and sessions.cancel-queued. Commands cannot be steered.",
+          "Acceptance is not completion. Pending commands live only for the runtime's lifetime.",
+        ],
+        examples: [{ input: { sessionId: "target-session-id", command: "/toolcompact" } }],
+        result: "A queued receipt with a stable itemId.",
+        execute: invokeAppControl("sessions.queue-command"),
       },
       {
         command: "sessions.info",

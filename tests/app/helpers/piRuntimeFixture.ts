@@ -63,6 +63,12 @@ export function fakeRuntime(
     }),
     prompt: async () => undefined,
     setUserMessageMarkdown: async () => undefined,
+    queueCommand: async () => {
+      throw new Error("Unexpected queueCommand");
+    },
+    inspectSession: async () => {
+      throw new Error("Unexpected inspectSession");
+    },
     compact: async () => undefined,
     abort: async () => undefined,
     setModel: async () => undefined,

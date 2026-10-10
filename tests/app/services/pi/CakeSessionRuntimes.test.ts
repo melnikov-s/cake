@@ -31,6 +31,50 @@ const adapter = (
 });
 
 describe("CakeSessionRuntimes", () => {
+  it.effect(
+    "retains a queued command's runtime after the caller releases it, until execution or cancellation settles",
+    () =>
+      Effect.gen(function* () {
+        const finalized = yield* Deferred.make<void>();
+        let finalizations = 0;
+        let settleCommand: () => void = () => undefined;
+        const layer = makeCakeSessionRuntimesLayer({
+          sessionIds: () => Stream.empty,
+          catalog: () => Stream.empty,
+          catalogEntry: () => Effect.succeed(undefined),
+          inspect: () => Effect.succeed(undefined),
+          changelog: () => Effect.succeed(""),
+          createRuntime: (runtimeOptions) =>
+            Effect.succeed({
+              ...fakeRuntime(runtimeOptions, () => {
+                finalizations += 1;
+                Deferred.doneUnsafe(finalized, Effect.void);
+              }),
+              queueCommand: async (_command, onSettled) => {
+                settleCommand = onSettled ?? (() => undefined);
+                return {
+                  itemId: "00000000-0000-4000-8000-000000000001",
+                  status: "queued" as const,
+                };
+              },
+            }),
+        });
+        const context = yield* Layer.build(layer);
+        const sessions = Context.get(context, CakeSessionRuntimes);
+        const callerScope = yield* Scope.make();
+        const handle = yield* sessions
+          .acquire(options())
+          .pipe(Effect.provideService(Scope.Scope, callerScope));
+        const receipt = yield* handle.queueCommand("/toolcompact");
+        assert.equal(receipt.status, "queued");
+        yield* Scope.close(callerScope, Exit.void);
+        assert.equal(finalizations, 0);
+        settleCommand();
+        yield* Deferred.await(finalized);
+        assert.equal(finalizations, 1);
+      }),
+  );
+
   it.effect("serializes whole-queue edits across handles to the same runtime", () =>
     Effect.gen(function* () {
       const entered = yield* Deferred.make<void>();

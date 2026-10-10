@@ -156,6 +156,12 @@ const fakeRuntime = (
   },
   editMessage: async () => onOperation?.("edit"),
   setUserMessageMarkdown: async () => undefined,
+  queueCommand: async () => {
+    throw new Error("Unexpected queueCommand");
+  },
+  inspectSession: async () => {
+    throw new Error("Unexpected inspectSession");
+  },
   compact: async () => onOperation?.("compact"),
   abort: async () => onOperation?.("abort"),
   setModel: async () => onOperation?.("model"),
