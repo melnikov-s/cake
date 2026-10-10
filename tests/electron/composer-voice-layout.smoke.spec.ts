@@ -6,7 +6,7 @@ import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenario
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("inline assistant stacks dictation underneath and reserves two input rows", async () => {
+test("dictation leads the toolbar and conversation mode sits beside Send at every width", async () => {
   test.setTimeout(60_000);
   const root = await mkdtemp(join(tmpdir(), "cake-composer-voice-layout-"));
   const paths = {
@@ -31,9 +31,12 @@ test("inline assistant stacks dictation underneath and reserves two input rows",
     const page = await application.firstWindow();
     await scenario.prepare(page, "default", application);
     const input = page.getByRole("combobox", { name: "Message", exact: true });
-    const assistant = page.locator('[data-slot="composer-leading-accessory"] button');
-    await expect(assistant).toBeVisible();
-    const indicator = page.locator('[data-slot="dictation-indicator"]');
+    const indicator = page.locator(
+      '[data-slot="composer-dictation"] [data-slot="dictation-indicator"]',
+    );
+    const mute = indicator.getByRole("button", { name: "Mute dictation", exact: true });
+    const enter = page.getByRole("button", { name: "Enter conversation mode", exact: true });
+    const send = page.getByRole("button", { name: "Send", exact: true });
     const resize = async (width: number) => {
       await application.evaluate(({ BrowserWindow }, width) => {
         BrowserWindow.getAllWindows()[0]!.setContentSize(width, 750);
@@ -41,62 +44,63 @@ test("inline assistant stacks dictation underneath and reserves two input rows",
     };
     const layout = () =>
       input.evaluate((element) => {
-        const row = element.closest('[data-slot="composer-input"]')!;
-        const assistant = row
-          .querySelector('[data-slot="composer-leading-accessory"] button')!
-          .getBoundingClientRect();
-        const voice = row
-          .querySelector('[data-slot="dictation-indicator"] button')!
-          .getBoundingClientRect();
+        const form = element.closest("form")!;
+        const toolbar = form.querySelector('[data-slot="composer-toolbar"]')!;
+        const buttons = [...toolbar.querySelectorAll("button")];
+        const dictation = toolbar.querySelector('[data-slot="dictation-indicator"] button')!;
+        const conversation = toolbar.querySelector('[aria-label="Conversation mode"] button')!;
+        const voice = dictation.getBoundingClientRect();
+        const entry = conversation.getBoundingClientRect();
+        const submit = buttons.at(-1)!.getBoundingClientRect();
         const field = element.getBoundingClientRect();
-        const style = getComputedStyle(element);
         return {
-          stacked:
-            voice.top >= assistant.bottom &&
-            Math.abs(voice.left + voice.width / 2 - assistant.left - assistant.width / 2) < 1,
-          voiceInside: voice.left >= field.left && voice.bottom <= field.bottom,
-          twoRows:
-            field.height >=
-            2 * parseFloat(style.lineHeight) +
-              parseFloat(style.paddingTop) +
-              parseFloat(style.paddingBottom),
-          indent: parseFloat(style.textIndent),
+          dictationFirst: buttons[0] === dictation,
+          conversationBeforeSend: buttons.at(-2) === conversation,
+          toolbarAligned: Math.abs(voice.top + voice.height / 2 - entry.top - entry.height / 2) < 1,
+          besideSend: entry.right <= submit.left && submit.left - entry.right < 12,
+          belowInput: voice.top >= field.bottom,
+          indent: parseFloat(getComputedStyle(element).textIndent),
           height: field.height,
         };
       });
-    await resize(1000);
-    await input.fill("");
-    await expect.poll(async () => (await layout()).stacked).toBe(true);
-    const compact = await layout();
-    expect(compact.voiceInside).toBe(true);
-    expect(compact.twoRows).toBe(true);
-    expect(compact.indent).toBe(0);
-    await expect(input).toBeFocused();
-    await input.pressSequentially("Typed in compact layout");
-    await expect(input).toHaveValue("Typed in compact layout");
-    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    await indicator.getByRole("button", { name: "Mute dictation", exact: true }).click();
-    await expect(input).toBeFocused();
-    await expect(
-      indicator.getByRole("button", { name: "Unmute dictation", exact: true }),
-    ).toBeVisible();
-    expect(await layout()).toEqual(compact);
-
-    await resize(1600);
-    await expect.poll(async () => (await layout()).stacked).toBe(false);
-    const wide = await layout();
-    expect(wide.voiceInside).toBe(true);
-    expect(wide.twoRows).toBe(false);
-    expect(wide.indent).toBe(32);
-    await expect(input).toHaveValue("Typed in compact layout");
-
-    await resize(1000);
-    await expect.poll(async () => (await layout()).stacked).toBe(true);
-    expect(await layout()).toEqual(compact);
-    await input.fill("First line\nSecond line\nThird line\nFourth line");
-    expect((await layout()).height).toBeGreaterThan(compact.height);
-    await expect(input).toBeFocused();
-    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    for (const width of [1000, 1600, 1000]) {
+      await resize(width);
+      await input.fill("");
+      await expect(mute).toBeVisible();
+      await expect(enter).toBeVisible();
+      await expect.poll(async () => (await layout()).toolbarAligned).toBe(true);
+      const empty = await layout();
+      expect(empty).toMatchObject({
+        dictationFirst: true,
+        conversationBeforeSend: true,
+        besideSend: true,
+        belowInput: true,
+        indent: 0,
+      });
+      await expect(input).toBeFocused();
+      await input.pressSequentially("Typed with toolbar controls");
+      await expect(input).toHaveValue("Typed with toolbar controls");
+      await expect(send).toBeEnabled();
+      await mute.click();
+      await expect(input).toBeFocused();
+      const unmute = indicator.getByRole("button", { name: "Unmute dictation", exact: true });
+      await expect(unmute).toBeVisible();
+      expect(await layout()).toEqual(empty);
+      await unmute.click();
+      // Portaled controls preserve the writing target during keyboard navigation too.
+      await input.press("Tab");
+      await expect(mute).toBeFocused();
+      await mute.press("Escape");
+      await expect(input).toBeFocused();
+      await expect(input).toHaveValue("Typed with toolbar controls");
+      await expect(unmute).toBeVisible();
+      await unmute.click();
+      await input.fill("First line\nSecond line\nThird line\nFourth line");
+      expect((await layout()).height).toBeGreaterThan(empty.height);
+      await expect(input).toBeFocused();
+      await expect(send).toBeEnabled();
+      await expect.poll(async () => (await layout()).belowInput).toBe(true);
+    }
   } finally {
     await application.close();
     await rm(root, { recursive: true, force: true });

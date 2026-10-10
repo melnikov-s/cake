@@ -293,12 +293,6 @@ export const Chat = observer(function Chat({
         toolbarLeading={
           !activatingDraft && (
             <>
-              {store.conversationMode && (
-                <ChatConversationControls
-                  conversation={store.conversationMode.workflow}
-                  target={store.conversationMode.target}
-                />
-              )}
               {store.canAttach && (
                 <IconButton tooltip="Attach files" onClick={() => void store.addAttachments()}>
                   <PaperclipIcon />
@@ -314,6 +308,12 @@ export const Chat = observer(function Chat({
           <>
             {!activatingDraft && <Usage store={store} />}
             {!activatingDraft && pluginActions}
+            {!activatingDraft && store.conversationMode && (
+              <ChatConversationControls
+                conversation={store.conversationMode.workflow}
+                target={store.conversationMode.target}
+              />
+            )}
             <ChatSubmitAction store={store} />
           </>
         }

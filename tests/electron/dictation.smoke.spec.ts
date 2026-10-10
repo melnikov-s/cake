@@ -261,20 +261,18 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await configure({ ready: true, text: "Spoken next." });
     await expect(composer).toHaveValue("Typed first. Spoken next.");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    // In the wide layout the assistant has its own gutter and dictation leads the first line.
-    // Compact assistant/voice stacking is covered by composer-voice-layout.smoke.spec.ts.
+    // Dictation stays in the toolbar, separate from the input at every width.
     await application.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]!.setContentSize(1600, 900);
     });
-    const composerControl = composer.locator("..").getByRole("button", { name: "Mute dictation" });
-    const textInset = await composer.evaluate((element) =>
-      parseFloat(getComputedStyle(element).paddingLeft),
+    const composerControl = page
+      .locator('[data-slot="composer-dictation"]')
+      .getByRole("button", { name: "Mute dictation" });
+    expect((await composerControl.boundingBox())!.y).toBeGreaterThanOrEqual(
+      (await composer.boundingBox())!.y + (await composer.boundingBox())!.height,
     );
-    expect(
-      (await composerControl.boundingBox())!.x - (await composer.boundingBox())!.x,
-    ).toBeCloseTo(textInset, 0);
-    // Check Chromium's actual textarea rendering, not a mirror element: only the first
-    // line is inset for the leading meter, including both soft wraps and explicit newlines.
+    // Check Chromium's actual textarea rendering: both soft wraps and explicit
+    // newlines start at the same normal text inset.
     await configure({ ready: true, hold: true });
     for (const text of ["M".repeat(500), "MMMM\nMMMM"]) {
       await composer.fill(text);
@@ -319,7 +317,7 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
         });
         return { lineStarts, left, indent: parseFloat(style.textIndent) };
       }, screenshot.toString("base64"));
-      expect(positions.indent).toBeGreaterThan(24);
+      expect(positions.indent).toBe(0);
       expect(positions.lineStarts[0]! - positions.left - positions.indent).toBeGreaterThanOrEqual(
         0,
       );

@@ -1,9 +1,10 @@
-import type { FormEvent, ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { Composer, ComposerToolbar } from "@/components/ai-elements/composer";
 import { ChatConfigurationSelector } from "@/components/chat-configuration-selector";
 import type { ChatConfigurationStore } from "../stores/ChatConfigurationStore";
 import { cn } from "@/lib/utils";
+import { DictationIndicatorContext } from "../dictation/dictation-indicator-context";
 
 /** The authoritative composer frame shared by every Cake chat surface. */
 export const ChatComposer = observer(function ChatComposer({
@@ -31,6 +32,7 @@ export const ChatComposer = observer(function ChatComposer({
   leadingAccessoryVisible?: boolean;
   className?: string;
 }) {
+  const [dictationSlot, setDictationSlot] = useState<HTMLDivElement | null>(null);
   // Anchor the accessory to the input row when one exists so it tracks the textarea
   // beneath annotations and attachments; the offsets compensate for the Composer
   // frame's 0.75rem padding and 1px border so the resting position is unchanged.
@@ -65,41 +67,42 @@ export const ChatComposer = observer(function ChatComposer({
       {header}
       <div className="relative">
         {!input && accessoryNode}
-        <Composer
-          className={cn(
-            "relative z-10 border-border/90 bg-composer shadow-[0_24px_80px_-30px_hsl(var(--shadow)/0.55),0_2px_10px_hsl(var(--shadow)/0.08)]",
-            leadingAccessory &&
-              "[&_textarea]:pl-12 @4xl/composer-dock:[&_textarea]:pl-2 @4xl/composer-dock:[&_[data-slot=dictation-indicator]]:left-2",
-            // Inset assistant and dictation share a column; reserve it on every text line.
-            leadingAccessory &&
-              (leadingAccessoryVisible
-                ? "@max-4xl/composer-dock:[&_textarea]:min-h-18 @max-4xl/composer-dock:[&_textarea]:indent-0 @max-4xl/composer-dock:[&_[data-slot=dictation-indicator]]:left-[calc(0.5rem-1px)] @max-4xl/composer-dock:[&_[data-slot=dictation-indicator]]:top-[calc(2.5rem-1px)]"
-                : "@max-4xl/composer-dock:[&_[data-slot=dictation-indicator]]:left-12"),
-          )}
-          onSubmit={onSubmit}
-        >
-          {children}
-          {input && (
-            <div data-slot="composer-input" className="relative">
-              {accessoryNode}
-              {input}
-            </div>
-          )}
-          <ComposerToolbar
-            data-slot="composer-toolbar"
-            separated={toolbarSeparated}
+        <DictationIndicatorContext.Provider value={dictationSlot}>
+          <Composer
             className={cn(
-              "flex min-w-0 items-center justify-between gap-3 px-1.5 py-1",
-              leadingAccessory && !input && "pl-12 @4xl/composer-dock:pl-1.5",
+              "relative z-10 border-border/90 bg-composer shadow-[0_24px_80px_-30px_hsl(var(--shadow)/0.55),0_2px_10px_hsl(var(--shadow)/0.08)]",
+              leadingAccessory && "[&_textarea]:pl-12 @4xl/composer-dock:[&_textarea]:pl-2",
             )}
+            onSubmit={onSubmit}
           >
-            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-              {toolbarLeading}
-              {configuration && <ChatConfigurationSelector configuration={configuration} />}
-            </div>
-            <div className="flex shrink-0 items-center gap-1">{toolbarActions}</div>
-          </ComposerToolbar>
-        </Composer>
+            {children}
+            {input && (
+              <div data-slot="composer-input" className="relative">
+                {accessoryNode}
+                {input}
+              </div>
+            )}
+            <ComposerToolbar
+              data-slot="composer-toolbar"
+              separated={toolbarSeparated}
+              className={cn(
+                "flex min-w-0 items-center justify-between gap-3 px-1.5 py-1",
+                leadingAccessory && !input && "pl-12 @4xl/composer-dock:pl-1.5",
+              )}
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+                <div
+                  ref={setDictationSlot}
+                  data-slot="composer-dictation"
+                  className="flex shrink-0 items-center empty:hidden"
+                />
+                {toolbarLeading}
+                {configuration && <ChatConfigurationSelector configuration={configuration} />}
+              </div>
+              <div className="flex shrink-0 items-center gap-1">{toolbarActions}</div>
+            </ComposerToolbar>
+          </Composer>
+        </DictationIndicatorContext.Provider>
       </div>
     </div>
   );

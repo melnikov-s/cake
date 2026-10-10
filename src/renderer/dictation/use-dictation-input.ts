@@ -92,12 +92,12 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
         store?.focus(target.current);
     },
     onBlur(event: FocusEvent<HTMLTextAreaElement>) {
-      // Keyboard navigation into the in-field mute control keeps this writing target.
+      // Keyboard navigation into this field's inline or portaled control keeps its target.
       if (
         event.relatedTarget instanceof Element &&
-        event.currentTarget.parentElement
-          ?.querySelector('[data-slot="dictation-indicator"]')
-          ?.contains(event.relatedTarget)
+        event.relatedTarget
+          .closest('[data-slot="dictation-indicator"]')
+          ?.getAttribute("data-dictation-target") === id
       )
         return;
       if (enabled) store?.blur(id);

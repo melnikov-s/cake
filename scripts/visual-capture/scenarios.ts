@@ -1227,7 +1227,7 @@ const projectCustomInstructionsScenario: VisualCaptureScenario = {
 
 const dictationInputScenario: VisualCaptureScenario = {
   name: "dictation-input",
-  description: "Real Chat composer with leading dictation bars and first-line-only text spacing",
+  description: "Real Chat composer with toolbar dictation and conversation mode beside Send",
   states: ["default", "preparing", "error", "speaking", "wrapped", "muted"],
   environment: conversationCountdownScenario.environment,
   seed: conversationCountdownScenario.seed,
@@ -1272,7 +1272,7 @@ const dictationInputScenario: VisualCaptureScenario = {
     const input = page.getByRole("combobox", { name: "Message", exact: true });
     await input.fill(
       state === "wrapped"
-        ? "Let’s refine the voice conversation together. The speech bars sit at the beginning of the first line, while the rest of this longer dictated message wraps back to the normal left edge of the input."
+        ? "Let’s refine the voice conversation together. The dictation bars sit in the bottom-left toolbar, while this longer dictated message wraps at the normal left edge of the input."
         : "Let’s refine the voice conversation together.",
     );
     if (state === "preparing") {

@@ -1,6 +1,14 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import { observer } from "r-state-tree/react";
-import { useRef, useImperativeHandle, type Ref, type TextareaHTMLAttributes } from "react";
+import {
+  useContext,
+  useRef,
+  useImperativeHandle,
+  type Ref,
+  type TextareaHTMLAttributes,
+} from "react";
+import { createPortal } from "react-dom";
+import { DictationIndicatorContext } from "../../dictation/dictation-indicator-context";
 import { useDictationInput } from "../../dictation/use-dictation-input";
 import { DictationIndicator } from "./dictation-indicator";
 import { TextareaProvisionalText } from "./textarea-provisional-text";
@@ -51,6 +59,8 @@ export const Textarea = observer(function Textarea({
   onKeyDown,
   ...props
 }: TextareaProps) {
+  const indicatorDestination = useContext(DictationIndicatorContext);
+  const inlineIndicator = indicatorDestination === undefined;
   const input = useRef<HTMLTextAreaElement | null>(null);
   useImperativeHandle(ref, () => {
     if (!input.current) throw new Error("Textarea ref is not mounted");
@@ -71,7 +81,7 @@ export const Textarea = observer(function Textarea({
     textareaVariants({ size, font }),
     className,
     // Keep the first-line inset stable through preparation, listening and finishing.
-    active && "indent-8",
+    active && inlineIndicator && "indent-8",
   );
   const field = (
     <textarea
@@ -106,6 +116,14 @@ export const Textarea = observer(function Textarea({
       }}
     />
   );
+  const indicator = voice.store && (
+    <DictationIndicator
+      store={voice.store}
+      targetId={voice.id}
+      anchor={input}
+      inline={inlineIndicator}
+    />
+  );
   // Keep the DOM shape stable when conversation mode temporarily owns this field.
   return (
     <div
@@ -116,7 +134,9 @@ export const Textarea = observer(function Textarea({
       {pending && (
         <TextareaProvisionalText anchor={input} span={pending} className={presentation} />
       )}
-      {voice.store && <DictationIndicator store={voice.store} targetId={voice.id} anchor={input} />}
+      {inlineIndicator
+        ? indicator
+        : indicatorDestination && createPortal(indicator, indicatorDestination)}
     </div>
   );
 });

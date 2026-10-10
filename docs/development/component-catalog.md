@@ -80,7 +80,9 @@ Exact-value span matching prevents stale highlighting after manual edits. `Texta
 `provisionalText` from voice mode; ordinary dictation supplies its registered insertion span.
 Cleanup completion, fallback, opting out, focus changes and sealing edits restore normal styling.
 
-`DictationIndicator` sits at the beginning of the focused writing field. A circular
+`DictationIndicator` sits at the beginning of the focused writing field by default.
+In shared Chat composers, `DictationIndicatorContext` supplies a DOM portal destination
+at the bottom-left of the toolbar, before attachments and configuration. A circular
 `IconButton` contains a compact `VoiceMeter`; clicking toggles mute/unmute, with a
 crossed waveform while muted. Tooltips and accessible names describe the action,
 and `aria-pressed` reflects mute. The control remains visible while muted, and
@@ -90,8 +92,9 @@ Listening/mute are announced accessibly, not displayed as a popup. Preparing and
 finishing replace the meter with the shared `LoadingSpinner` inside the circle;
 `aria-busy` reflects loading and all status text is screen-reader-only, including
 failures. Errors use a destructive crossed-waveform icon with details in its tooltip.
-Textarea reserves only the first line for the circle in every state; wrapped lines
-use the normal writing edge. Settings omit the changing capture-status paragraph.
+Inline fields reserve only the first line for the circle in every state; wrapped lines
+use the normal writing edge. Chat composers use the normal writing edge on every line
+and reserve no input rows for dictation. Settings omit the changing capture-status paragraph.
 See [local dictation](dictation.md) for lifecycle details.
 
 `VoiceMeter` is a decorative seven-bar microphone-level display. Supply a normalized
@@ -118,7 +121,8 @@ ear control. Status changes never add a badge or wrap the controls into another 
 It owns no microphone,
 provider requests, timers or workflow state. `ChatConversationControls` maps the focused
 window `ConversationModeStore` and Project Session target into this primitive;
-other Chat kinds omit the capability. See [conversation mode](conversation-mode.md).
+other Chat kinds omit the capability. In Chat, the controls sit in the right-hand
+composer toolbar immediately before Send. See [conversation mode](conversation-mode.md).
 
 Speech output settings compose the shared `Select`, `Button` and `Callout` for provider
 selection and explicit local-model download/progress/cancel/removal; native readiness

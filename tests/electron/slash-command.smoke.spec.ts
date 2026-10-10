@@ -112,8 +112,8 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
     });
 
     const initialHeight = await composer.evaluate((input) => input.getBoundingClientRect().height);
-    // The inline assistant column reserves room for the voice control below it.
-    expect(initialHeight).toBe(72);
+    // Voice controls live in the toolbar, leaving a single initial input row.
+    expect(initialHeight).toBe(40);
 
     await composer.click();
     await expect(composer).toBeFocused();

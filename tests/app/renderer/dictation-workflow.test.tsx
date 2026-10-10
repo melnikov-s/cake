@@ -652,7 +652,7 @@ describe("Dictation writing-field workflow", () => {
     expect(status.classList.contains("sr-only")).toBe(true);
     expect(control.getAttribute("aria-busy")).toBe("true");
     expect(control.querySelector('[role="status"]')).not.toBeNull();
-    expect(message().classList.contains("indent-8")).toBe(true);
+    expect(control.closest('[data-slot="composer-dictation"]')).not.toBeNull();
     expect(fixture.audio.getUserMedia).not.toHaveBeenCalled();
     await act(async () => model.resolve());
     // Preparation is idempotent; each focus generation may re-prepare after a voice handoff.
@@ -664,7 +664,7 @@ describe("Dictation writing-field workflow", () => {
     listening();
     expect(control.getAttribute("aria-busy")).toBe("false");
     expect(control.querySelector('[data-slot="voice-meter"]')).not.toBeNull();
-    expect(message().classList.contains("indent-8")).toBe(true);
+    expect(control.closest('[data-slot="composer-dictation"]')).not.toBeNull();
     await fixture.audio.push(new Float32Array(12_800));
     await fixture.recognize(0, "Latest field receives speech");
     expect(message().value).toBe("Latest field receives speech");
@@ -1063,7 +1063,7 @@ describe("Dictation writing-field workflow", () => {
     const control = screen.getByRole("button", { name: "Mute dictation" });
     expect(control.getAttribute("aria-busy")).toBe("true");
     expect(control.querySelector('[role="status"]')).not.toBeNull();
-    expect(message().classList.contains("indent-8")).toBe(true);
+    expect(control.closest('[data-slot="composer-dictation"]')).not.toBeNull();
     expect(fixture.prompt).not.toHaveBeenCalled();
     await fixture.recognize(0, "Beginning");
     await waitFor(() => expect(fixture.requests).toHaveLength(2));
@@ -1135,7 +1135,11 @@ describe("Dictation writing-field workflow", () => {
     expect(
       screen.getByRole("button", { name: "Mute dictation" }).classList.contains("text-destructive"),
     ).toBe(true);
-    expect(message().classList.contains("indent-8")).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Mute dictation" })
+        .closest('[data-slot="composer-dictation"]'),
+    ).not.toBeNull();
     expect(fixture.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
     expect(fixture.prompt).not.toHaveBeenCalled();
     expect(message().value).toBe("Keep draft");

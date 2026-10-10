@@ -7,15 +7,17 @@ import { IconButton } from "./icon-button";
 import { VoiceMeter } from "./voice-meter";
 import { cn } from "../../lib/utils";
 
-/** Leading circular voice activity/mute control; pointer activation retains writing focus. */
+/** Circular dictation activity/mute control; pointer activation retains writing focus. */
 export const DictationIndicator = observer(function DictationIndicator({
   store,
   targetId,
   anchor,
+  inline = true,
 }: {
   store: DictationStore;
   targetId: string;
   anchor: RefObject<HTMLTextAreaElement | null>;
+  inline?: boolean;
 }) {
   if (!store.enabled || store.activeTargetId !== targetId) return null;
   const failed = store.phase === "error" && !store.muted;
@@ -24,7 +26,8 @@ export const DictationIndicator = observer(function DictationIndicator({
   return (
     <div
       data-slot="dictation-indicator"
-      className="absolute top-2 left-2 flex items-center"
+      data-dictation-target={targetId}
+      className={cn("flex items-center", inline && "absolute top-2 left-2")}
       onBlur={(event) => {
         if (
           event.relatedTarget === anchor.current ||
