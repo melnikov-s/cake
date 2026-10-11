@@ -56,6 +56,16 @@ function fixture(overrides: Partial<CakeSessionRuntimeOptions> = {}) {
   };
 }
 
+describe("live Project Session continuation policy", () => {
+  // Review stubs: exercise the real continuation adapter with controlled policy callbacks.
+  it.todo("checks current policy before scheduling a fork and again before executing it");
+  it.todo(
+    "does not defer a family resolution request in a runtime created before family promotion",
+  );
+  it.todo("uses resolveDeferredStandalone rather than broadening a deferred request to a family");
+  it.todo("reports committed resolution with cleanup failure without claiming resolution failed");
+});
+
 describe("automatic session titles", () => {
   it("commits a late utility result while the main turn is still streaming", async () => {
     const generated = deferred<string>();

@@ -160,6 +160,11 @@ function renderWorktree(
 afterEach(cleanup);
 
 describe("Worktree operation workflows", () => {
+  // Review stub: use the real operation projection and its existing UI owner.
+  it.todo(
+    "presents a landed and resolved operation with cleanup warnings without offering another merge",
+  );
+
   it("refreshes status when a turn ends and submits commit-and-merge with explicit dirty-target confirmation", async () => {
     const startLanding = vi.fn<Client["managedWorktrees"]["startLanding"]>(async () =>
       operation("waiting"),

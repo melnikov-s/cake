@@ -155,6 +155,9 @@ const awaitPhase = (phase: WorktreeLandingPhase) =>
   });
 
 describe("WorktreeLandings", () => {
+  // Review stub: a completed Git landing must not be repeated to repair checkout cleanup.
+  it.todo("retains landed status and exposes cleanup failures after resolution committed");
+
   it.effect("reserves, asks the Project Session to commit, then lands", () => {
     const events: string[] = [];
     let status = { ...baseStatus(), dirtyCount: 2, aheadCount: 0 };

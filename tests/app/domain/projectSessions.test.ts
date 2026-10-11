@@ -812,6 +812,17 @@ const sessionSummary = (id: string): PiSessionSummary => ({
 });
 
 describe("Project Sessions domain", () => {
+  // Review stubs: extend/consolidate the existing lifecycle cases at implementation.
+  it.todo(
+    "rejects active, pending, or non-root resolution with ResolutionRejected before committing",
+  );
+  it.todo(
+    "reports ResolutionCleanupFailed with all committed family IDs while keeping them resolved",
+  );
+  it.todo("includes committed IDs and typed cleanup failures in a mixed Working Directory result");
+  it.todo("rejects deferred standalone resolution under the admission lock after family promotion");
+  it.todo("resolves a still-standalone deferred request after its turn settles");
+
   it.effect(
     "projects metadata-only resolution into both catalog lanes while Pi files stay discoverable",
     () =>

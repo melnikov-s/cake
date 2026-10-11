@@ -98,6 +98,11 @@ function resolveButton(name = "one") {
 afterEach(cleanup);
 
 describe("Working Directory retirement workflow", () => {
+  // Review stub: navigation follows committed IDs, not the absence of cleanup warnings.
+  it.todo(
+    "retires committed sessions in a mixed batch while presenting rejection and cleanup details",
+  );
+
   it("closes idle terminals before resolving the worktree without a confirmation", async () => {
     using fixture = renderRetirement(async () => ({ runningProgramCount: 0 }));
     await fixture.user.click(resolveButton());

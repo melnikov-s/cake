@@ -1,4 +1,5 @@
 import { Effect, Stream } from "effect";
+import type { ProjectSessionResolutionDomainFailure } from "../../contracts/project-sessions/project-session-resolution";
 import * as artifacts from "../artifacts/artifacts";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
 import * as drawBoards from "../draw/drawBoards";
@@ -296,6 +297,23 @@ export const resolve = Effect.fn("ProjectSessions.resolve")((target: ProjectSess
 export const restore = Effect.fn("ProjectSessions.restore")((target: ProjectSessionTarget) =>
   transition(target, false, "restore"),
 );
+
+/**
+ * Review skeleton: a deferred standalone request must not gain family-wide authority.
+ * Check standalone membership and commit under the existing admission lock. Do not
+ * call the public locking resolve operation while already holding that lock.
+ */
+export const resolveDeferredStandalone: (
+  target: ProjectSessionTarget,
+) => Effect.Effect<
+  void,
+  ProjectSessionError | ProjectSessionResolutionDomainFailure,
+  Effect.Services<ReturnType<typeof resolve>>
+> = Effect.fn("ProjectSessions.resolveDeferredStandalone")(function* () {
+  return yield* Effect.die(
+    "Unimplemented review skeleton: ProjectSessions.resolveDeferredStandalone",
+  );
+});
 
 /** Discovers and resolves every active Project Session in one Working Directory sequentially. */
 export const resolveWorkingDirectory = Effect.fn("ProjectSessions.resolveWorkingDirectory")(

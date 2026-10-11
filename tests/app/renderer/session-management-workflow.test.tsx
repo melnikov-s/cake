@@ -121,6 +121,13 @@ function region(resolved = false) {
 afterEach(cleanup);
 
 describe("Session management workflow", () => {
+  // Review stubs: real UI/Root/Models/Stores; fake only Client and authority updates.
+  it.todo(
+    "retires the resolved session and shows cleanup failure even when its projection arrives later",
+  );
+  it.todo("keeps the session open when resolution is explicitly rejected");
+  it.todo("does not retire a session on an uncertain transport failure");
+
   it("deletes a resolved saved draft through its native menu without deleting a Project Session", async () => {
     const savedDrafts = fakeSavedDrafts();
     const draft: SavedDraft = {

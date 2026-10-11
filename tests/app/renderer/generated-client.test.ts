@@ -54,6 +54,10 @@ const requests = (messages: FromClientEncoded[]) =>
 const presetId = "00000000-0000-4000-8000-000000000001";
 
 describe("generated renderer command adaptation", () => {
+  // Review stubs: use the existing encoded RPC harness, not a raw mocked rejection.
+  it.todo("preserves ResolutionRejected through RPC and ClientError.domainFailure");
+  it.todo("preserves ResolutionCleanupFailed identities and cleanup details through RPC");
+
   it("derives every transport method, including Streams, from the shared protocol", async () => {
     const test = harness(() => {
       throw new Error("Assembly must not dispatch a command");

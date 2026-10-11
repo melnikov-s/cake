@@ -1,4 +1,5 @@
 import type { CommandGroup } from "./command-group";
+import type { ProjectSessionResolutionDomainFailure } from "../../contracts/project-sessions/project-session-resolution";
 import type {
   CaptureDestination,
   CaptureRouting,
@@ -574,17 +575,22 @@ export type ClientErrorKind =
   | "unexpected"
   | "unsupported";
 
+/** Only explicitly supported, validated domain failures cross the Promise boundary. */
+export type ClientDomainFailure = ProjectSessionResolutionDomainFailure;
+
 export class ClientError extends Error {
   readonly _tag = "ClientError";
+  readonly domainFailure: ClientDomainFailure | undefined;
 
   constructor(
     readonly kind: ClientErrorKind,
     readonly operation: string,
     message: string,
     readonly details: string,
-    options?: ErrorOptions,
+    options?: ErrorOptions & { readonly domainFailure?: ClientDomainFailure },
   ) {
     super(message, options);
     this.name = "ClientError";
+    this.domainFailure = options?.domainFailure;
   }
 }

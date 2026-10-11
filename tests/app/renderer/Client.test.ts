@@ -20,6 +20,15 @@ const browserDevices = () => ({
 });
 
 describe("Client", () => {
+  // Review stubs: domain metadata is allowlisted; arbitrary rejection objects stay private.
+  it.todo(
+    "retains validated resolution failures without classifying them as uncertain transport delivery",
+  );
+  it.todo("does not attach malformed or unrelated tagged values as ClientError.domainFailure");
+  it.todo(
+    "does not erase an already received committed outcome when the caller signal later aborts",
+  );
+
   it("cancelled optional cleanup does not block remote commands as uncertain delivery", async () => {
     const controller = new AbortController();
     const uncertain = vi.fn();

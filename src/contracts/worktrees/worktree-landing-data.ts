@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { worktreeStatusSchema } from "../../ipc/worktree-contract";
+import { ResolutionCleanupFailed } from "../project-sessions/project-session-resolution";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
@@ -32,6 +33,10 @@ export const WorktreeLandingOperation = Schema.Struct({
     Schema.Literals(["commit", "conflict", "rebase-conflict", "squash-message"]),
   ),
   error: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(16_384))),
+  /** Resolution committed; these warnings must not turn a landed merge into a failed merge. */
+  cleanupFailures: Schema.optionalKey(
+    Schema.Array(ResolutionCleanupFailed).check(Schema.isMaxLength(10_000)),
+  ),
 });
 export interface WorktreeLandingOperation extends Schema.Schema.Type<
   typeof WorktreeLandingOperation

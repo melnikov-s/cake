@@ -8,6 +8,7 @@ import {
 import { resolve } from "node:path";
 import { createTurnResultCapture } from "./turn-result-capture";
 import type { PiTurnResult } from "../../../contracts/pi/turn-result-data";
+import type { ProjectSessionAgentPolicy } from "../../../contracts/project-sessions/project-session-agent-policy";
 import type { InterviewRecord } from "../../../contracts/interviews/interview";
 import type { CakeChatMemoryOptions } from "../cake-chat-memory-options";
 import { Option, Schema } from "effect";
@@ -153,6 +154,16 @@ export type CakeSessionRuntimeEvent =
   | { type: "streaming"; sessionId: string; streaming: boolean }
   | { type: "usage-updated"; sessionId: string; usage: SessionUsage }
   | { type: "extension-ui"; sessionId: string; event: ExtensionUiEvent };
+
+/**
+ * Proposed replacement for captured familyInfo/deferResolution options.
+ * At approved cutover, currentSessionControl composes this contract and deletes
+ * the old fields. Merely reading policy does not authorize a later mutation.
+ */
+export interface ProjectSessionLivePolicyControl {
+  readPolicy(): Promise<ProjectSessionAgentPolicy>;
+  resolveDeferredStandalone(): Promise<void>;
+}
 
 export interface CakeSessionRuntimeOptions {
   cwd: string;
