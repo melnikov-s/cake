@@ -260,8 +260,11 @@ it.skipIf(!existsSync("/opt/homebrew/bin/code-server"))(
           const quickOpen = editor.locator(".quick-input-widget input");
           await expect(quickOpen).toBeVisible();
           await quickOpen.fill("qualification.ts");
-          await expect(editor.locator(".quick-input-list")).toContainText("qualification.ts");
-          await page.keyboard.press("Enter");
+          await editor
+            .locator(".quick-input-list")
+            .getByText("qualification.ts", { exact: true })
+            .first()
+            .click();
           await expect(editor.locator(".tab.active")).toContainText("qualification.ts", {
             timeout: 20_000,
           });
