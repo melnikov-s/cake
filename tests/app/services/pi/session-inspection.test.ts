@@ -4,6 +4,7 @@ import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { inspectSessionHistory } from "../../../../src/services/pi/runtime/session-inspection";
 import { appendToolCompactedBranch } from "../../../../src/services/pi/runtime/session-tool-compaction";
+import { toolCompactEntryType } from "../../../../src/services/pi/runtime/tool-compaction-provenance";
 import {
   SessionHistoryQuery,
   QueuedSessionCommand,
@@ -113,7 +114,15 @@ describe("session inspection", () => {
     const compacted = appendToolCompactedBranch(session, reportId);
     expect(inspectSessionHistory(session, { types: ["tool-compaction"] })).toMatchObject({
       total: 1,
-      entries: [{ active: true, sourceLeafId: reportId, replayedMessages: 2 }],
+      entries: [
+        {
+          active: true,
+          customType: toolCompactEntryType,
+          text: expect.stringContaining("tool-compacted continuation"),
+          sourceLeafId: reportId,
+          replayedMessages: 2,
+        },
+      ],
     });
     expect(inspectSessionHistory(session, { toolName: "bash" })).toMatchObject({ total: 0 });
     expect(inspectSessionHistory(session, { leafId: reportId, toolName: "bash" })).toMatchObject({
@@ -135,7 +144,10 @@ describe("session inspection", () => {
   it("includes normal compaction evidence without exposing hidden custom extension payloads", () => {
     const { session, reportId } = history();
     session.appendCompaction("Preserved verification decisions", reportId, 10_000);
-    session.appendCustomEntry("extension.private", { secret: "not transcript content" });
+    session.appendCustomEntry("extension.private", {
+      summary: "Private extension summary",
+      secret: "not transcript content",
+    });
     expect(inspectSessionHistory(session, { types: ["compaction"] })).toMatchObject({
       entries: [
         {
@@ -147,6 +159,38 @@ describe("session inspection", () => {
     });
     expect(inspectSessionHistory(session, { query: "not transcript content" })).toMatchObject({
       total: 0,
+    });
+    expect(inspectSessionHistory(session, { query: "Private extension summary" })).toMatchObject({
+      total: 0,
+    });
+    expect(inspectSessionHistory(session, { types: ["custom"] })).toMatchObject({
+      total: 1,
+      entries: [{ customType: "extension.private", text: "extension.private" }],
+    });
+    expect(inspectSessionHistory(session, { types: ["tool-compaction"] })).toMatchObject({
+      total: 0,
+    });
+  });
+
+  it.each([
+    { name: "missing summary", data: { secret: "hidden marker payload" } },
+    { name: "non-text summary", data: { summary: 42, secret: "hidden marker payload" } },
+    {
+      name: "invalid checkpoint ID",
+      data: { summary: "hidden marker payload", systemCheckpointEntryId: "" },
+    },
+  ])("keeps a malformed Tool Compact marker hidden ($name)", ({ data }) => {
+    const { session } = history();
+    session.appendCustomEntry(toolCompactEntryType, data);
+    expect(inspectSessionHistory(session, { types: ["tool-compaction"] })).toMatchObject({
+      total: 0,
+    });
+    expect(inspectSessionHistory(session, { query: "hidden marker payload" })).toMatchObject({
+      total: 0,
+    });
+    expect(inspectSessionHistory(session, { types: ["custom"] })).toMatchObject({
+      total: 1,
+      entries: [{ customType: toolCompactEntryType, text: toolCompactEntryType }],
     });
   });
 

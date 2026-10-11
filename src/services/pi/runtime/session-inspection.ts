@@ -10,6 +10,7 @@ import { jsonValueSchema } from "../../../contracts/serialization/json-contract"
 import { textFromContent } from "./session-projection";
 import {
   toolCompactEntryType,
+  toolCompactMarkerSchema,
   toolCompactProvenanceEntryType,
   toolCompactProvenanceSchema,
 } from "./tool-compaction-provenance";
@@ -70,6 +71,13 @@ function projectEntry(entry: SessionEntry, active: boolean): MutableHistoryEntry
     base.customType = entry.customType;
     // Do not expose arbitrary hidden extension state as transcript content.
     base.text = entry.customType;
+    if (entry.customType === toolCompactEntryType) {
+      const marker = Schema.decodeUnknownOption(toolCompactMarkerSchema)(entry.data);
+      if (Option.isSome(marker)) {
+        base.type = "tool-compaction";
+        base.text = marker.value.summary;
+      }
+    }
   } else if (entry.type === "model_change") {
     base.text = `${entry.provider}/${entry.modelId}`;
   } else if (entry.type === "thinking_level_change") {
