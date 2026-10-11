@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { TurnId } from "../../../../src/ipc/conversation-data";
 import { createTestClient as createClient, type TestClientOverrides } from "../test-client";
-import { defaultApplicationState } from "../../../../src/contracts/application/application-data";
 import { mountRootStore } from "../../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";
 
@@ -30,170 +29,15 @@ const sessionSummary = (sessionId: string, workingDirectory: string) => ({
   draft: false,
 });
 
-function deferred<T = void>() {
-  let resolve!: (value: T) => void;
-  return {
-    promise: new Promise<T>((complete) => (resolve = complete)),
-    resolve,
-  };
-}
-
-describe("RootStore session navigation", () => {
-  it("routes repeated surface shortcuts to toggles and returns from Settings", async () => {
-    const models = RootProjection.create();
-    applySnapshot(models.sessionCatalog, {
-      sessions: [sessionSummary("session", projectPath)],
-      resolvedHasMoreByProject: {},
-    });
-    const root = mountRootStore(
-      createTestClient(),
-      { state: {}, children: {} },
-      async () => undefined,
-      models,
-    );
-    try {
-      root.sessionRegistry.load("session", projectPath);
-      root.appShellStore.selectProjectSession("session");
-      root.projectWorkbenchStore.showLoadedSession("session");
-      const presentation = root.projectWorkbenchStore.presentationStore;
-      const ide = vi.spyOn(presentation, "toggleIde").mockResolvedValue();
-      const changes = vi.spyOn(presentation, "toggleWorkspaceChanges").mockResolvedValue();
-      const browser = vi.spyOn(presentation, "toggleBrowser").mockResolvedValue();
-      root.commands.execute("open-editor");
-      root.commands.execute("open-editor");
-      root.commands.execute("open-changes");
-      root.commands.execute("open-changes");
-      root.commands.execute("toggle-browser");
-      root.commands.execute("toggle-browser");
-      expect(ide).toHaveBeenCalledTimes(2);
-      expect(changes).toHaveBeenCalledTimes(2);
-      expect(browser).toHaveBeenCalledTimes(2);
-      ide.mockRestore();
-      changes.mockRestore();
-      browser.mockRestore();
-      const back = vi.spyOn(presentation, "backToAgent").mockResolvedValue();
-      const openIde = vi.spyOn(presentation, "openIde").mockResolvedValue();
-      const openChanges = vi.spyOn(presentation, "openWorkspaceChanges").mockResolvedValue();
-      const openBrowser = vi.spyOn(presentation, "openBrowser").mockResolvedValue();
-      presentation.embeddedEditorStore.visible = false;
-      await presentation.toggleIde();
-      await presentation.toggleWorkspaceChanges();
-      presentation.embeddedEditorStore.visible = true;
-      await presentation.toggleIde();
-      await presentation.toggleWorkspaceChanges();
-      presentation.browserStore.visible = false;
-      await presentation.toggleBrowser();
-      presentation.browserStore.visible = true;
-      await presentation.toggleBrowser();
-      expect(back).toHaveBeenCalledTimes(3);
-      expect(openIde).toHaveBeenCalledOnce();
-      expect(openChanges).toHaveBeenCalledOnce();
-      expect(openBrowser).toHaveBeenCalledOnce();
-
-      root.commands.execute("open-settings");
-      expect(root.appShellStore.surface).toBe("settings");
-      root.commands.execute("open-settings");
-      expect(root.appShellStore.surface).toBe("workbench");
-    } finally {
-      root[Symbol.dispose]();
-      models[Symbol.dispose]();
-    }
-  });
-  it("keeps the current session selected while a new session is prepared", async () => {
-    const models = RootProjection.create();
-    const client = createTestClient();
-    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
-    const preparation = deferred();
-    vi.spyOn(root.projectWorkbenchStore, "startNewSession").mockReturnValue(preparation.promise);
-
-    try {
-      root.appShellStore.selectProjectSession("current-session");
-
-      const creating = root.navigationStore.createSession("/projects/another");
-
-      expect(root.appShellStore.activeConversation).toEqual({
-        kind: "project-session",
-        sessionId: "current-session",
-      });
-
-      preparation.resolve();
-      await creating;
-    } finally {
-      root[Symbol.dispose]();
-      models[Symbol.dispose]();
-    }
-  });
-
-  it("switches directly between staged chats in different Projects and restores their drafts", async () => {
-    const models = RootProjection.create();
-    const otherProjectPath = "/projects/another";
-    const inspect = vi.fn(async (input: { operationId: string; path: string }) => ({
-      ...input,
-      trustRequired: false,
-    }));
-    const client = createTestClient({
-      workspaces: {
-        inspect,
-        registerProject: vi.fn(async (path, name) => ({
-          ...defaultApplicationState(),
-          projects: [
-            {
-              path,
-              name,
-              addedAt: "2026-01-01T00:00:00.000Z",
-              lastOpenedAt: "2026-01-01T00:00:00.000Z",
-            },
-          ],
-        })),
-        loadStagedSlashCommands: vi.fn(async () => []),
-      },
-    });
-    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
-
-    try {
-      await root.navigationStore.createSession(projectPath);
-      const first = root.projectWorkbenchStore.activeSession!;
-      const firstDraft = first.conversationSessionStore.composerStore.draftStore;
-      firstDraft.setText("First project draft");
-      const focusRevision = firstDraft.focusRequestRevision;
-
-      // Repeated requests in the same Project must reuse and focus its composer.
-      await root.navigationStore.createSession(projectPath);
-      expect(root.projectWorkbenchStore.activeSession).toBe(first);
-      expect(firstDraft.text).toBe("First project draft");
-      expect(firstDraft.focusRequestRevision).toBeGreaterThan(focusRevision);
-      expect(inspect).toHaveBeenCalledTimes(1);
-
-      await root.navigationStore.createSession(otherProjectPath);
-      const second = root.projectWorkbenchStore.activeSession!;
-      expect(second.sessionId).not.toBe(first.sessionId);
-      expect(second.workspacePath).toBe(otherProjectPath);
-      expect(root.projectWorkbenchStore.projectOpenStore.projectPath).toBe(otherProjectPath);
-      expect(root.appShellStore.activeConversation).toEqual({
-        kind: "project-session",
-        sessionId: second.sessionId,
-      });
-      const secondDraft = second.conversationSessionStore.composerStore.draftStore;
-      expect(secondDraft.text).toBe("");
-      secondDraft.setText("Second project draft");
-      expect(inspect).toHaveBeenCalledTimes(2);
-
-      await root.navigationStore.createSession(projectPath);
-      expect(root.projectWorkbenchStore.activeSession).toBe(first);
-      expect(firstDraft.text).toBe("First project draft");
-      await root.navigationStore.createSession(otherProjectPath);
-      expect(root.projectWorkbenchStore.activeSession).toBe(second);
-      expect(secondDraft.text).toBe("Second project draft");
-      expect(root.sessionRegistry.pendingSessions.isStaged(first.sessionId)).toBe(true);
-      expect(root.sessionRegistry.pendingSessions.isStaged(second.sessionId)).toBe(true);
-      expect(inspect).toHaveBeenCalledTimes(2);
-      expect(root.sessionLayoutStore.panes).toHaveLength(1);
-    } finally {
-      root[Symbol.dispose]();
-      models[Symbol.dispose]();
-    }
-  });
-
+// Retained transport/composition contracts: agent-originated Project Session
+// controls enter through ApplicationControlStore/DrawControlStore, not React
+// actions. Keep real Root and typed external Client fakes for correlation,
+// registration rollback and background focus policy; do not invent GUI controls.
+// Product navigation/retirement/removal journeys moved to root-app-workflow;
+// surface transitions are covered by app-shell-navigation, browser,
+// embedded-editor and workbench workflows. Shortcut forwarding-count assertions
+// were implementation-only, not user-facing behavior.
+describe("RootStore agent-control transport and composition", () => {
   it("opens projected family children in one reusable pane", async () => {
     const models = RootProjection.create();
     applySnapshot(models.sessionCatalog, {
@@ -327,39 +171,6 @@ describe("RootStore session navigation", () => {
         expect.objectContaining({ ok: true, command: "vscode.enter" }),
         expect.anything(),
       );
-    } finally {
-      root[Symbol.dispose]();
-      models[Symbol.dispose]();
-    }
-  });
-
-  it("does not navigate to a background session for a Draw control", async () => {
-    const models = RootProjection.create();
-    const root = mountRootStore(
-      createTestClient(),
-      { state: {}, children: {} },
-      async () => undefined,
-      models,
-    );
-    const invoke = vi.fn(async () => ({
-      ok: false as const,
-      code: "BOARD_NOT_OPEN" as const,
-      message: "No whiteboard is open.",
-    }));
-
-    try {
-      root.appShellStore.selectProjectSession("focused");
-      root.sessionLayoutStore.ensureSession("focused");
-      root.drawControlStore.register({ sessionId: "background", invoke });
-
-      await root.drawControlStore.invoke("background", { _tag: "Enter" });
-
-      expect(invoke).toHaveBeenCalledOnce();
-      expect(root.appShellStore.activeConversation).toEqual({
-        kind: "project-session",
-        sessionId: "focused",
-      });
-      expect(root.sessionLayoutStore.focusedSessionId).toBe("focused");
     } finally {
       root[Symbol.dispose]();
       models[Symbol.dispose]();
@@ -605,39 +416,6 @@ describe("RootStore session navigation", () => {
     }
   });
 
-  it("retires resolved Project Session renderer ownership and creates a project fallback", async () => {
-    const models = RootProjection.create();
-    applySnapshot(models.sessionCatalog, {
-      sessions: [sessionSummary("active", projectPath)],
-      resolvedHasMoreByProject: {},
-    });
-    const resolve = vi.fn(async () => undefined);
-    const client = createTestClient({ projectSessions: { resolve } });
-    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
-    const createSession = vi
-      .spyOn(root.navigationStore, "createSession")
-      .mockResolvedValue(undefined);
-
-    try {
-      root.sessionRegistry.load("active", projectPath);
-      root.sessionLayoutStore.ensureSession("active");
-      root.appShellStore.selectProjectSession("active");
-
-      await root.sessionRetirementStore.setProjectSessionResolved("active", true);
-
-      expect(resolve).toHaveBeenCalledWith(
-        { sessionId: "active", workingDirectory: projectPath },
-        expect.objectContaining({ signal: expect.any(AbortSignal) }),
-      );
-      expect(root.sessionRegistry.findSession("active")).toBeUndefined();
-      expect(root.sessionLayoutStore.hasSession("active")).toBe(false);
-      expect(createSession).toHaveBeenCalledWith(projectPath);
-    } finally {
-      root[Symbol.dispose]();
-      models[Symbol.dispose]();
-    }
-  });
-
   it("routes independent session creation through a new managed worktree when requested", async () => {
     const models = RootProjection.create();
     const parentWorktreePath = "/projects/.cake-worktrees/parent-task";
@@ -666,11 +444,8 @@ describe("RootStore session navigation", () => {
     const start = vi.fn<Client["projectSessions"]["start"]>(async () =>
       TurnId.make("10000000-0000-4000-8000-000000000001"),
     );
-    const controlResults: unknown[] = [];
-    const respondControl = vi.fn(
-      async (_sessionId: string, _controlRequestId: string, result: unknown) => {
-        controlResults.push(result);
-      },
+    const respondControl = vi.fn<Client["projectSessions"]["respondControl"]>(
+      async () => undefined,
     );
     const client = createTestClient({
       managedWorktrees: { create: createWorktree },
@@ -712,17 +487,17 @@ describe("RootStore session navigation", () => {
         }),
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
-      const managedResult = controlResults[0];
+      const managedResult = respondControl.mock.calls[0]?.[2];
+      const createdSessionId = start.mock.calls[0]?.[0].sessionId;
+      if (!createdSessionId) throw new Error("Expected the started session identity");
       expect(managedResult).toMatchObject({
+        sessionId: createdSessionId,
         ok: true,
         command: "sessions.create",
         workspacePath: worktreePath,
         status: "started",
         managedWorktree,
       });
-      if (!managedResult || typeof managedResult !== "object" || !("sessionId" in managedResult))
-        throw new Error("Expected the created session identity");
-      const createdSessionId = String(managedResult.sessionId);
       expect(root.sessionRegistry.findSession(createdSessionId)?.workspacePath).toBe(worktreePath);
       const createdSummary = root.sessionCatalogStore.find(createdSessionId);
       expect(createdSummary).toMatchObject({
@@ -754,12 +529,12 @@ describe("RootStore session navigation", () => {
         }),
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
-      expect(controlResults[1]).toMatchObject({
+      expect(respondControl.mock.calls[1]?.[2]).toMatchObject({
         ok: true,
         workspacePath: projectPath,
         status: "started",
       });
-      expect(controlResults[1]).not.toHaveProperty("managedWorktree");
+      expect(respondControl.mock.calls[1]?.[2]).not.toHaveProperty("managedWorktree");
     } finally {
       root[Symbol.dispose]();
       models[Symbol.dispose]();
@@ -785,16 +560,8 @@ describe("RootStore session navigation", () => {
     const start = vi.fn<Client["projectSessions"]["start"]>(async () =>
       TurnId.make("10000000-0000-4000-8000-000000000001"),
     );
-    const responses: Array<{
-      sessionId: string;
-      controlRequestId: string;
-      result: unknown;
-      options: unknown;
-    }> = [];
-    const respondControl = vi.fn(
-      async (sessionId: string, controlRequestId: string, result: unknown, options: unknown) => {
-        responses.push({ sessionId, controlRequestId, result, options });
-      },
+    const respondControl = vi.fn<Client["projectSessions"]["respondControl"]>(
+      async () => undefined,
     );
     const client = createTestClient({
       managedWorktrees: {
@@ -825,110 +592,16 @@ describe("RootStore session navigation", () => {
       });
 
       expect(start).not.toHaveBeenCalled();
-      expect(responses).toEqual([
-        {
-          sessionId: "source-session",
-          controlRequestId: "00000000-0000-4000-8000-000000000005",
-          result: expect.objectContaining({
-            ok: false,
-            command: "sessions.create",
-            error: "managed checkout setup failed",
-          }),
-          options: expect.objectContaining({ signal: expect.any(AbortSignal) }),
-        },
-      ]);
-    } finally {
-      root[Symbol.dispose]();
-      models[Symbol.dispose]();
-    }
-  });
-
-  it("cleans Project navigation and loaded sessions after delete-on-remove succeeds", async () => {
-    const models = RootProjection.create();
-    applySnapshot(models.projects, {
-      projects: [
-        {
-          path: projectPath,
-          name: "Example",
-          addedAt: "2026-01-01T00:00:00.000Z",
-          lastOpenedAt: "2026-01-01T00:00:00.000Z",
-        },
-      ],
-    });
-    applySnapshot(models.sessionCatalog, {
-      sessions: [sessionSummary("removed-session", projectPath)],
-      resolvedHasMoreByProject: {},
-    });
-    const removeProject = vi.fn<Client["workspaces"]["removeProject"]>(async () =>
-      defaultApplicationState(),
-    );
-    const client = createTestClient({ workspaces: { removeProject } });
-    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
-
-    try {
-      root.sessionRegistry.load("removed-session", projectPath);
-      root.sessionLayoutStore.ensureSession("removed-session");
-      root.appShellStore.selectProjectSession("removed-session");
-
-      await expect(root.projectRemovalStore.remove(projectPath, true)).resolves.toBe(true);
-
-      expect(removeProject).toHaveBeenCalledWith(
-        projectPath,
-        true,
+      expect(respondControl).toHaveBeenCalledExactlyOnceWith(
+        "source-session",
+        "00000000-0000-4000-8000-000000000005",
+        expect.objectContaining({
+          ok: false,
+          command: "sessions.create",
+          error: "managed checkout setup failed",
+        }),
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
-      expect(root.sessionRegistry.findSession("removed-session")).toBeUndefined();
-      expect(root.appShellStore.selection).toEqual({ kind: "workbench" });
-    } finally {
-      root[Symbol.dispose]();
-      models[Symbol.dispose]();
-    }
-  });
-
-  it("does not replace a session selected while worktree resolution is in flight", async () => {
-    const models = RootProjection.create();
-    applySnapshot(models.sessionCatalog, {
-      sessions: [
-        sessionSummary("worktree-session", worktreePath),
-        sessionSummary("current-session", projectPath),
-      ],
-      resolvedHasMoreByProject: {},
-    });
-    const resolution = deferred<{
-      projectPath: string;
-      workingDirectory: string;
-      resolvedSessionIds: string[];
-      failures: [];
-    }>();
-    const client = createTestClient({
-      projectSessions: { resolveWorkingDirectory: vi.fn(() => resolution.promise) },
-    });
-    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
-    const createSession = vi
-      .spyOn(root.navigationStore, "createSession")
-      .mockResolvedValue(undefined);
-
-    try {
-      root.appShellStore.selectProjectSession("worktree-session");
-      const resolving = root.projectWorkbenchStore.resolveWorktreeWorkspace(worktreePath, {
-        initiatingSessionId: "worktree-session",
-        workingDirectoryRetired: true,
-      });
-      root.appShellStore.selectProjectSession("current-session");
-
-      resolution.resolve({
-        projectPath,
-        workingDirectory: worktreePath,
-        resolvedSessionIds: ["worktree-session"],
-        failures: [],
-      });
-      await resolving;
-
-      expect(root.appShellStore.activeConversation).toEqual({
-        kind: "project-session",
-        sessionId: "current-session",
-      });
-      expect(createSession).not.toHaveBeenCalled();
     } finally {
       root[Symbol.dispose]();
       models[Symbol.dispose]();
