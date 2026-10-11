@@ -28,9 +28,12 @@ import { resolveCakePaths } from "../config/CakePaths";
 import { piAgentDirectory } from "../services/pi/PiPaths";
 import { MainApplication } from "./MainApplication";
 import { makeMainLive } from "./MainLive";
+import { installStdioErrorHandlers } from "./stdio-errors";
 import cakeIconPath from "../assets/cake.png?asset";
 import annotationMenuIconPath from "../assets/menu-annotation.png?asset";
 import chatMenuIconPath from "../assets/menu-chat.png?asset";
+
+installStdioErrorHandlers(process.stdout, process.stderr);
 
 app.setName("Cake");
 registerInlineWidgetScheme();
