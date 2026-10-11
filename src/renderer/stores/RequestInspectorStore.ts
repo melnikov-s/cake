@@ -1,98 +1,121 @@
 import { batch, Store } from "r-state-tree";
-import type {
-  RequestInspectionHistory,
-  RequestInspectionPayload,
-} from "../../contracts/conversations/request-inspection";
+import type { RequestInspectionPayload } from "../../contracts/conversations/request-inspection";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 
-/** Window-local diagnostics UI. Backend owns captured bodies; never persisted in window
- * snapshots. Latest user intent wins; close/disposal invalidates late reads. No LLM calls. */
+/** Backend owns immutable captures. This session-owned, window-local reader is never persisted.
+ * Poll only while open, serialize reads, and fetch bodies only when the newest capture changes.
+ * Close/disposal aborts reads and timers; late results cannot replace a reopened view. No LLM calls. */
 export class RequestInspectorStore extends Store<{ sessionId: string }> {
   open = false;
   loading = false;
   error: string | undefined;
-  history: RequestInspectionHistory | undefined;
+  copyError: string | undefined;
   payload: RequestInspectionPayload | undefined;
-  query = "";
-  notice: string | undefined;
+  copied = false;
   private revision = 0;
+  private requestController: AbortController | undefined;
+  private pollTimer: ReturnType<typeof setTimeout> | undefined;
+  private copyTimer: ReturnType<typeof setTimeout> | undefined;
+
+  constructor(props: RequestInspectorStore["props"]) {
+    super(props);
+    this.effect(() => () => this.close());
+  }
 
   show() {
+    if (this.open || this.signal.aborted) return;
     this.open = true;
-    void this.refresh();
+    void this.readLatest();
   }
+
   close() {
     this.revision += 1;
+    this.requestController?.abort();
+    this.requestController = undefined;
+    clearTimeout(this.pollTimer);
+    clearTimeout(this.copyTimer);
+    this.pollTimer = undefined;
+    this.copyTimer = undefined;
     batch(() => {
       this.open = false;
       this.loading = false;
       this.payload = undefined;
-      this.history = undefined;
-      this.query = "";
       this.error = undefined;
-      this.notice = undefined;
+      this.copyError = undefined;
+      this.copied = false;
     });
   }
-  setQuery(query: string) {
-    this.query = query;
+
+  private current(revision: number, signal: AbortSignal) {
+    return revision === this.revision && !signal.aborted && this.open;
   }
-  private async request(action: "history" | "payload" | "clear", id?: string) {
+
+  private async readLatest() {
     const revision = ++this.revision;
-    this.loading = true;
-    this.error = undefined;
-    this.notice = undefined;
-    this.payload = undefined;
+    const controller = new AbortController();
+    this.requestController = controller;
+    const signal = AbortSignal.any([this.signal, controller.signal]);
+    if (!this.payload) this.loading = true;
     try {
       const client = ClientContext.consume(this)!;
-      const result = await client.cakeChats.requestInspection(
-        id === undefined
-          ? { sessionId: this.props.sessionId, action }
-          : { sessionId: this.props.sessionId, action, id },
-        { signal: this.signal },
+      const { history } = await client.cakeChats.requestInspection(
+        { sessionId: this.props.sessionId, action: "history" },
+        { signal },
       );
-      if (revision !== this.revision || this.signal.aborted || !this.open) return;
-      this.history = result.history;
-      this.payload = result.payload;
-      if (action === "history") {
-        const latest = result.history.entries.at(-1);
-        if (latest) await this.select(latest.id);
+      if (!this.current(revision, signal)) return;
+      const latest = history.entries.at(-1);
+      if (!latest) {
+        this.payload = undefined;
+      } else if (latest.id !== this.payload?.entry.id) {
+        batch(() => {
+          this.payload = undefined;
+          this.loading = true;
+          this.copied = false;
+          this.copyError = undefined;
+        });
+        clearTimeout(this.copyTimer);
+        const result = await client.cakeChats.requestInspection(
+          { sessionId: this.props.sessionId, action: "payload", id: latest.id },
+          { signal },
+        );
+        if (!this.current(revision, signal)) return;
+        this.payload = result.payload;
+      } else if (
+        this.payload &&
+        (this.payload.entry.state !== latest.state ||
+          this.payload.entry.status !== latest.status ||
+          this.payload.entry.limitation !== latest.limitation)
+      ) {
+        this.payload = { ...this.payload, entry: latest };
       }
+      this.error = undefined;
     } catch (error) {
-      if (revision === this.revision && !this.signal.aborted)
-        this.error = describeError(error).message;
+      if (this.current(revision, signal)) this.error = describeError(error).message;
     } finally {
-      if (revision === this.revision && !this.signal.aborted) this.loading = false;
+      if (this.current(revision, signal)) {
+        this.loading = false;
+        this.requestController = undefined;
+        this.pollTimer = setTimeout(() => void this.readLatest(), 1000);
+      }
     }
   }
-  refresh() {
-    return this.request("history");
-  }
-  select(id: string) {
-    this.query = "";
-    return this.request("payload", id);
-  }
-  clear() {
-    return this.request("clear");
-  }
+
   async copy() {
-    const raw = this.payload?.raw;
-    if (raw === undefined) return;
-    try {
-      await navigator.clipboard.writeText(raw);
-      this.notice = "Raw payload copied";
-    } catch (error) {
-      this.error = describeError(error).message;
-    }
-  }
-  export() {
     const payload = this.payload;
     if (payload?.raw === undefined) return;
-    const url = URL.createObjectURL(new Blob([payload.raw], { type: "application/json" }));
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `cake-chat-${payload.entry.boundary}-${payload.entry.id}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    this.copyError = undefined;
+    try {
+      await navigator.clipboard.writeText(payload.raw);
+      if (!this.open || this.signal.aborted || this.payload?.entry.id !== payload.entry.id) return;
+      this.copied = true;
+      clearTimeout(this.copyTimer);
+      this.copyTimer = setTimeout(() => {
+        this.copied = false;
+      }, 1500);
+    } catch (error) {
+      if (this.open && !this.signal.aborted && this.payload?.entry.id === payload.entry.id)
+        this.copyError = describeError(error).message;
+    }
   }
 }

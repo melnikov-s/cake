@@ -1614,7 +1614,7 @@ const cakeChatScenario: VisualCaptureScenario = {
     ).toBeVisible();
     if (state === "inspector") {
       await page.getByRole("button", { name: "Inspect context", exact: true }).click();
-      await expect(page.getByText(/No captured requests yet/)).toBeVisible();
+      await expect(page.getByText("No captured context yet.", { exact: true })).toBeVisible();
     }
     if (state === "settings") {
       await page.getByRole("button", { name: "Open settings", exact: true }).click();
@@ -1745,7 +1745,7 @@ const cakeChatInspectorScenario: VisualCaptureScenario = {
   name: "cake-chat-inspector",
   description:
     "Permanent Cake Chat request inspector showing an actual outbound request to a local deterministic provider",
-  states: ["icon", "default", "raw"],
+  states: ["icon", "default", "memory"],
   async seed(paths, theme) {
     await cakeChatScenario.seed(paths, theme);
     return openRequestInspectorFixture(paths);
@@ -1760,31 +1760,14 @@ const cakeChatInspectorScenario: VisualCaptureScenario = {
       page.getByText("Request captured by the local inspection fixture.", { exact: true }),
     ).toBeVisible();
     await page.getByRole("button", { name: "Inspect context", exact: true }).click();
-    const requests = page.getByRole("combobox", { name: "Captured request", exact: true });
-    await expect(requests).toBeEnabled();
-    const id = await requests
-      .locator("option")
-      .evaluateAll((options) =>
-        options
-          .find((option) => option.textContent?.includes("coordinator · HTTP attempt"))
-          ?.getAttribute("value"),
-      );
-    if (!id) throw new Error("The local provider request was not captured");
-    await requests.selectOption(id);
+    const context = page.getByRole("dialog", { name: "Context", exact: true });
     await expect(
-      page.getByText("Exact serialized HTTP request body", { exact: true }),
-    ).toBeVisible();
-    if (state === "raw") {
-      await page.getByRole("button", { name: "Raw view", exact: true }).click();
-    } else {
-      await page.getByRole("button", { name: /^Payload\b/ }).click();
-      await page.getByRole("button", { name: /^messages\b/ }).click();
-      const memoryTrigger = page.getByRole("button", { name: /^\[1\]/ });
-      await memoryTrigger.click();
-      const memory = memoryTrigger.locator("..");
-      await memory.getByRole("button", { name: /^role\b/ }).click();
-      await memory.getByRole("button", { name: /^content\b/ }).click();
-      await expect(memory).toContainText("<current-time>");
+      context.getByRole("button", { name: "Copy raw context", exact: true }),
+    ).toBeEnabled();
+    await expect(context).toContainText("What context will you use to coordinate my next task?");
+    if (state === "memory") {
+      await context.getByRole("button", { name: "Instructions", exact: true }).click();
+      await expect(context).toContainText("<current-time>");
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);

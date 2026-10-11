@@ -193,7 +193,7 @@ test("permanent Cake Chat retains its input, history and settings across restart
     expect(inspectBounds!.x).toBeGreaterThan(900);
     expect(inspectBounds!.y).toBeLessThan(70);
     await inspectButton.click();
-    await expect(page.getByText(/No captured requests yet/)).toBeVisible();
+    await expect(page.getByText("No captured context yet.", { exact: true })).toBeVisible();
     expect(requests).toHaveLength(0);
     await expect(page.getByRole("button", { name: "Close", exact: true })).toBeFocused();
     await page.keyboard.press("Escape");
@@ -339,6 +339,34 @@ test("permanent Cake Chat retains its input, history and settings across restart
       CAKE_CHAT_SESSION_ID,
     );
     await expect(input).toBeVisible();
+    // Inspect the in-flight coordinator call before its reply starts background summaries.
+    await inspectButton.click();
+    const contextDialog = page.getByRole("dialog", { name: "Context", exact: true });
+    await expect(contextDialog).toContainText("Discuss my priorities again");
+    await expect(page.getByRole("button", { name: "Close", exact: true })).toBeFocused();
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => {
+            Reflect.set(window, "capturedContextRaw", text);
+          },
+        },
+      });
+    });
+    const copyContext = page.getByRole("button", { name: "Copy raw context", exact: true });
+    await expect(copyContext.locator("svg")).toHaveCount(1);
+    await copyContext.focus();
+    await expect(copyContext).toBeFocused();
+    const requestCount = requests.length;
+    await page.keyboard.press("Enter");
+    await expect(contextDialog.getByRole("status")).toHaveText("Raw context copied");
+    expect(await page.evaluate(() => Reflect.get(window, "capturedContextRaw"))).toBe(
+      requestBodies.at(-1),
+    );
+    expect(requests).toHaveLength(requestCount);
+    await page.keyboard.press("Escape");
+    await expect(inspectButton).toBeFocused();
     await page.getByRole("button", { name: "Artifacts", exact: true }).click();
     await page.getByRole("button", { name: "Browse all artifacts", exact: true }).click();
     await expect(coordinator.getByRole("img", { name: "Running" })).toBeVisible();
@@ -357,49 +385,6 @@ test("permanent Cake Chat retains its input, history and settings across restart
     await coordinator.click();
     await expect(page.getByText(/^Coordinator reply\./).first()).toBeVisible();
     await expect(page.locator("[data-context-state]")).toHaveCount(0);
-    await inspectButton.click();
-    const requestSelector = page.getByRole("combobox", { name: "Captured request", exact: true });
-    await expect(requestSelector).toBeEnabled();
-    const coordinatorRequest = await requestSelector
-      .locator("option")
-      .evaluateAll((options) =>
-        options
-          .find((option) => option.textContent?.includes("coordinator · HTTP attempt"))
-          ?.getAttribute("value"),
-      );
-    expect(coordinatorRequest).toBeTruthy();
-    await requestSelector.selectOption(coordinatorRequest!);
-    await expect(
-      page.getByText("Exact serialized HTTP request body", { exact: true }),
-    ).toBeVisible();
-    const searchContext = page.getByRole("textbox", {
-      name: "Search captured context",
-      exact: true,
-    });
-    await expect(searchContext).toBeFocused();
-    await searchContext.pressSequentially("priorities");
-    await expect(searchContext).toHaveValue("priorities");
-    await expect(page.locator('[data-slot="structured-data"]')).not.toHaveCount(0);
-    await page.evaluate(() => {
-      Object.defineProperty(navigator, "clipboard", {
-        configurable: true,
-        value: {
-          writeText: async (text: string) => {
-            Reflect.set(window, "capturedContextRaw", text);
-          },
-        },
-      });
-    });
-    const requestCount = requests.length;
-    await page.getByRole("button", { name: "Copy raw", exact: true }).click();
-    await expect(page.getByText("Raw payload copied", { exact: true })).toBeVisible();
-    expect(await page.evaluate(() => Reflect.get(window, "capturedContextRaw"))).toBe(
-      requestBodies.at(-1),
-    );
-    expect(requests).toHaveLength(requestCount);
-    await searchContext.focus();
-    await page.keyboard.press("Escape");
-    await expect(inspectButton).toBeFocused();
     const database = join(cakeHome, "pi", "global-chat", "coordinator.sqlite");
     await expect
       .poll(() =>
@@ -428,21 +413,10 @@ test("permanent Cake Chat retains its input, history and settings across restart
       .toBe(1);
     expect(summaryBodies.length).toBeGreaterThan(0);
     await inspectButton.click();
-    await expect(requestSelector).toBeEnabled();
-    const summaryRequest = await requestSelector
-      .locator("option")
-      .evaluateAll((options) =>
-        options
-          .find((option) => option.textContent?.includes("memory-summary · HTTP attempt"))
-          ?.getAttribute("value"),
-      );
-    expect(summaryRequest).toBeTruthy();
-    await requestSelector.selectOption(summaryRequest!);
-    await expect(
-      page.getByText("Exact serialized HTTP request body", { exact: true }),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Copy raw", exact: true }).click();
-    await expect(page.getByText("Raw payload copied", { exact: true })).toBeVisible();
+    // The newest call is now the memory summary: there is no selection step.
+    await expect(contextDialog).toContainText("You write the memory of Cake Chat");
+    await copyContext.click();
+    await expect(contextDialog.getByRole("status")).toHaveText("Raw context copied");
     expect(await page.evaluate(() => Reflect.get(window, "capturedContextRaw"))).toBe(
       summaryBodies.at(-1),
     );

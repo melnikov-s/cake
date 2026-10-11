@@ -1,34 +1,33 @@
 import { observer } from "r-state-tree/react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { RequestInspectorStore } from "../stores/RequestInspectorStore";
-import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
-import { InspectIcon } from "./ui/icons";
-import { Input } from "./ui/input";
-import { Select } from "./ui/select";
+import { CheckIcon, CloseIcon, CopyIcon, InspectIcon } from "./ui/icons";
 import { Callout } from "./ui/callout";
-import { DialogBackdrop, DialogContent, DialogTitle, DialogDescription } from "./ui/dialog";
-import { StructuredData } from "./ui/structured-data";
-import { MarkdownCodeBlock, streamingCodeMarker } from "./ai-elements/markdown-code-block";
-
+import { DialogBackdrop, DialogContent, DialogTitle } from "./ui/dialog";
+import { ReadableData } from "./ui/readable-data";
+import { LoadingSpinner } from "./ui/loading-state";
 import { parseStructuredData } from "../lib/structured-data";
+import { requestContextSections } from "../lib/request-context";
 
 export const RequestInspector = observer(function RequestInspector({
   store,
 }: {
   store: RequestInspectorStore;
 }) {
-  const [rawView, setRawView] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => () => store.close(), [store]);
   const close = () => {
     store.close();
     trigger.current?.focus();
   };
   const payload = store.payload;
-  const value = useMemo(
-    () => (payload?.raw === undefined ? null : parseStructuredData(payload.raw)),
+  const sections = useMemo(
+    () =>
+      payload?.raw === undefined ? [] : requestContextSections(parseStructuredData(payload.raw)),
     [payload?.raw],
   );
+  const error = store.error ?? store.copyError;
   return (
     <>
       <IconButton ref={trigger} tooltip="Inspect context" onClick={() => store.show()}>
@@ -43,159 +42,69 @@ export const RequestInspector = observer(function RequestInspector({
           }}
         >
           <DialogContent
-            className="flex max-h-[90vh] max-w-[70rem] flex-col gap-3"
+            className="flex max-h-[90vh] max-w-[54rem] flex-col gap-6"
             data-cake-private-preview="true"
           >
             <div className="flex items-center justify-between gap-3">
-              <DialogTitle id="request-inspector-title">Cake Chat · Inspect context</DialogTitle>
-              <Button autoFocus variant="ghost" size="sm" onClick={close}>
-                Close
-              </Button>
+              <DialogTitle id="request-inspector-title">Context</DialogTitle>
+              <div className="flex items-center gap-1">
+                <IconButton
+                  ariaLabel="Copy raw context"
+                  tooltip={store.copied ? "Copied" : "Copy raw context"}
+                  disabled={payload?.raw === undefined}
+                  onClick={() => void store.copy()}
+                >
+                  {store.copied ? <CheckIcon /> : <CopyIcon />}
+                </IconButton>
+                <IconButton autoFocus tooltip="Close" onClick={close}>
+                  <CloseIcon />
+                </IconButton>
+              </div>
             </div>
-            <DialogDescription>
-              Captured requests, not a fresh preview. HTTP bodies are captured after provider
-              formatting and Fast mode, at Pi’s injected fetch boundary. Provider-internal prompts
-              are not observable. Non-HTTP payloads are labelled intermediate, not exact.
-            </DialogDescription>
-            <p className="text-xs text-muted-foreground">
-              Local backend memory only · last {store.history?.maxEntries ?? 40} captures, up to{" "}
-              {Math.round((store.history?.maxBytes ?? 67108864) / 1048576)} MiB · lost on restart ·{" "}
-              {store.history?.evicted ?? 0} evicted. Clear forgets captured bodies, not the
-              conversation. Includes coordinator, compaction and memory-summary model calls.
-            </p>
-            <div className="flex items-center gap-2">
-              <Select
-                aria-label="Captured request"
-                value={payload?.entry.id ?? ""}
-                onChange={(event) => void store.select(event.target.value)}
-                disabled={store.loading || !store.history?.entries.length}
-              >
-                {!payload && (
-                  <option value="">{store.loading ? "Loading…" : "Select a request"}</option>
-                )}
-                {[...(store.history?.entries ?? [])].reverse().map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.capturedAt} · {entry.provider}/{entry.modelId} · {entry.purpose} ·{" "}
-                    {entry.boundary === "http-body"
-                      ? `HTTP attempt ${entry.attempt}`
-                      : "Intermediate payload"}{" "}
-                    · {entry.state}
-                  </option>
-                ))}
-              </Select>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={store.loading}
-                onClick={() => void store.refresh()}
-              >
-                Refresh
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={store.loading || !store.history?.entries.length}
-                onClick={() => void store.clear()}
-              >
-                Clear history
-              </Button>
-            </div>
-            {store.loading && (
-              <p role="status" className="text-sm text-muted-foreground">
-                Loading captured context…
-              </p>
+            {store.copied && (
+              <span role="status" className="sr-only">
+                Raw context copied
+              </span>
             )}
-            {store.error && (
+            {store.loading && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <LoadingSpinner label="Loading context" />
+                <p>Loading context…</p>
+              </div>
+            )}
+            {error && (
               <Callout variant="error" role="alert">
-                {store.error}
+                {error}
               </Callout>
             )}
-            {!store.loading && !store.error && !store.history?.entries.length && (
+            {!store.loading && !store.error && !payload && (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                No captured requests yet. Capture starts when this backend sends a Cake Chat model
-                request; earlier calls cannot be reconstructed.
+                No captured context yet.
               </p>
             )}
             {payload && (
               <>
-                <Callout
-                  variant={
-                    payload.entry.boundary === "http-body" && !payload.entry.limitation
-                      ? "info"
-                      : "warning"
-                  }
-                >
-                  <strong>
-                    {payload.entry.boundary === "http-body" && !payload.entry.limitation
-                      ? "Exact serialized HTTP request body"
-                      : "Intermediate or unavailable capture — NOT an exact outbound body"}
-                  </strong>
-                  {payload.entry.limitation && <p>{payload.entry.limitation}</p>}
-                  <p className="break-all">
-                    Request {payload.entry.id} · Call {payload.entry.callId} · {payload.entry.api} ·{" "}
-                    {payload.entry.byteSize.toLocaleString()} bytes · {payload.entry.state}
-                    {payload.entry.status === undefined ? "" : ` · HTTP ${payload.entry.status}`}
-                  </p>
-                  <p className="break-all">
-                    Invocation settings (provider-adjusted settings remain in body):{" "}
-                    {payload.entry.settings}
-                  </p>
-                </Callout>
-                <div className="flex items-center gap-2">
-                  <Input
-                    autoFocus
-                    aria-label="Search captured context"
-                    placeholder="Search full captured payload…"
-                    value={store.query}
-                    onChange={(event) => store.setQuery(event.target.value)}
-                  />
-                  <Button variant="outline" size="sm" onClick={() => setRawView(!rawView)}>
-                    {rawView ? "Structured view" : "Raw view"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={payload.raw === undefined}
-                    onClick={() => void store.copy()}
-                  >
-                    Copy raw
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={payload.raw === undefined}
-                    onClick={() => store.export()}
-                  >
-                    Export raw
-                  </Button>
-                </div>
-                {store.notice && (
-                  <p role="status" className="text-xs text-muted-foreground">
-                    {store.notice}
-                  </p>
+                {(payload.entry.boundary !== "http-body" ||
+                  payload.entry.limitation ||
+                  payload.raw === undefined) && (
+                  <Callout variant="warning">
+                    {payload.entry.boundary !== "http-body"
+                      ? "Intermediate capture, not the exact outbound request. "
+                      : ""}
+                    {payload.entry.limitation ??
+                      (payload.raw === undefined ? "The request body was not retained." : "")}
+                  </Callout>
                 )}
                 {payload.raw !== undefined && (
-                  <div className="min-h-0 overflow-auto rounded-lg border border-border p-3">
-                    <p className="mb-3 text-xs text-muted-foreground">
-                      {rawView
-                        ? "Plain-text rendering of the captured string. Search is available in Structured view. Copy/export retain every byte of the captured UTF-8 JSON body."
-                        : "Readable rendering, not the raw body. Search includes collapsed values; expand fields to read complete contents. Images are previews; base64 remains in raw export. Remote references are not fetched."}
-                    </p>
-                    {rawView ? (
-                      <MarkdownCodeBlock
-                        isIncomplete
-                        code={payload.raw}
-                        language="text"
-                        meta={`${streamingCodeMarker} noLineNumbers preserveWhitespace`}
+                  <div className="min-h-0 space-y-6 overflow-auto" key={payload.entry.id}>
+                    {sections.map((section, index) => (
+                      <ReadableData
+                        key={index}
+                        title={section.title}
+                        value={section.value}
+                        defaultOpen={section.defaultOpen}
                       />
-                    ) : (
-                      <StructuredData
-                        key={payload.entry.id}
-                        value={value}
-                        query={store.query}
-                        showEmpty
-                      />
-                    )}
+                    ))}
                   </div>
                 )}
               </>
