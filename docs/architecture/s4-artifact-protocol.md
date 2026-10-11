@@ -140,19 +140,31 @@ is the Cake-home artifact repository, and the v1 inline protocol cap is
 
 The built-in `cake` gateway exposes session-contextual `artifacts.list`,
 `artifacts.search`, `artifacts.history`, `artifacts.resolve-reference`,
-`artifacts.create`, `artifacts.update`, `artifacts.restore`, `artifacts.link`, and
-`artifacts.unlink` operations over global lineages and their effective links.
+`artifacts.create`, `artifacts.update`, `artifacts.replace`, `artifacts.restore`,
+`artifacts.link`, and `artifacts.unlink` operations over global lineages and their effective links.
 There is no payload-returning `artifacts.read` operation. Agents create
 substantial Markdown documents directly without supplying duplicate fallback
 text; Markdown is both the payload and readable fallback. They can also import
 bounded workspace-relative files as immutable snapshots with a safe filename,
 MIME type, byte size, and encoded content. Cake derives revision numbers. Create
 begins a new global lineage at revision one and creates the appropriate session
-or family link. Update keeps the stable lineage ID and publishes exactly the next
-immutable revision using latest-revision CAS. Restore is the same publication
+or family link. Update and replace keep the stable lineage ID and publish exactly
+the next immutable revision using latest-revision CAS via `expectedRevision`.
+Update accepts targeted Markdown `edits`, each with non-empty `oldText` and a
+`newText` replacement (empty for deletion). It invokes Pi's public `createEditTool`
+with in-memory read/write operations over staged artifact bytes, not a Cake-owned
+matching algorithm. Pi owns matching, uniqueness, overlap checks, limited
+whitespace/typography normalization, BOM and line-ending preservation, and no-op
+rejection. All edits match the same original revision, not intermediate results.
+Invalid, unchanged, or cancelled edits publish nothing. Artifact projection files
+are never rewritten; Cake publishes the staged result through its existing
+revision/CAS boundary. Replace accepts the complete Markdown document, a replacement
+workspace-relative file path, or widget revision instructions.
+Stored revisions remain complete immutable snapshots; agents
+must not edit projection files directly. Restore is the same publication
 path with old content and `restoredFromRevision` metadata, producing `N+1`
 rather than moving latest. Link and unlink append no transcript pointers.
-Create, update, and restore each append one bounded exact-revision pointer without
+Create, update, replace, and restore each append one bounded exact-revision pointer without
 payload or fallback content.
 
 The `widgets.present` path remains the creation operation for substantial,
@@ -162,7 +174,7 @@ source references, bounded data, and a readable Markdown fallback. A restricted
 specialist chooses the visual form and may combine prose and controls with
 SVG/D3 inside the generated widget. Small diagrams remain inline
 Mermaid when they are clearest in the conversation. User-requested widget edits
-use `artifacts.update`; Cake privately applies the requested delta to stored source
+use `artifacts.replace`; Cake privately applies the requested delta to stored source
 and publishes only after compilation, rendering, and review succeed.
 
 The separate `interview.open` operation is documented in
@@ -298,7 +310,7 @@ explicit link: temporary read leases are deferred until Cake has a truthful
 lifetime and persistence owner for them.
 
 Normal artifact presentation does not expose generated Source or a renderer-local
-Repair control. User-requested repair is a durable `artifacts.update`: a new
+Repair control. User-requested repair is a durable `artifacts.replace`: a new
 restricted descendant of the accepted artifact generation branch receives stored
 source, stored brief, requested delta, and bounded diagnostics as untrusted data.
 It retains the artifact branch's context rather than silently importing later

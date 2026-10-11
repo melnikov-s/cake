@@ -1,3 +1,4 @@
+import { createEditTool } from "@earendil-works/pi-coding-agent";
 import { Schema } from "effect";
 import type { JsonValue } from "../../../ipc/json-contract";
 import {
@@ -124,7 +125,18 @@ const artifactReferenceSchema = Schema.String.check(
 );
 const artifactResolveSchema = Schema.Struct({ reference: artifactReferenceSchema });
 const expectedRevisionSchema = Schema.Int.check(Schema.isGreaterThan(0));
-const artifactUpdateSchema = Schema.Union([
+const artifactUpdateSchema = Schema.Struct({
+  lineageId: artifactIdSchema,
+  expectedRevision: expectedRevisionSchema,
+  title: Schema.optionalKey(titleSchema),
+  edits: Schema.Array(
+    Schema.Struct({
+      oldText: markdownSchema,
+      newText: Schema.String.check(Schema.isMaxLength(MAX_ARTIFACT_INPUT_BYTES)),
+    }),
+  ).check(Schema.isMinLength(1)),
+});
+const artifactReplaceSchema = Schema.Union([
   Schema.Struct({
     lineageId: artifactIdSchema,
     expectedRevision: expectedRevisionSchema,
@@ -324,7 +336,7 @@ export function createCakeArtifactOperations(
         "Keep investigations, explanations, ordinary implementation details, progress, and reports in chat by default. Create text/Markdown artifacts only when the user explicitly requests them, except for a spec serving as a shared, durable reference that this session can read after compaction or child sessions can read for coordinated implementation. Shared-reference usefulness, not length or formatting, is the purpose; merely being an investigation does not qualify.",
         "Markdown is the readable content itself and does not need a separate fallback argument. This text/Markdown policy does not restrict non-text visual artifacts or explicitly requested file deliverables.",
         "Import a workspace file when the file itself is the reusable deliverable. Cake snapshots it; later workspace changes do not mutate the artifact.",
-        "Choose a stable descriptive ID. Use artifacts.update, rather than creating a second ID, when revising the same deliverable.",
+        "Choose a stable descriptive ID. Use artifacts.update for targeted Markdown edits or artifacts.replace for full replacements, file snapshots, and widget revision instructions, rather than creating a second ID.",
       ],
       inputSchema: artifactCreateSchema,
       examples: [
@@ -376,12 +388,77 @@ export function createCakeArtifactOperations(
     {
       command: "artifacts.update",
       topic: "artifacts",
-      summary: "Durably edit, fix, revise, or repair an existing artifact.",
+      summary: "Apply targeted text replacements to an existing Markdown artifact.",
       guidance: [
-        "Use this operation when the user asks to edit, fix, revise, or repair an artifact. Cake preserves its stable ID and publishes the next immutable revision.",
-        "Markdown updates replace the complete document. File updates snapshot a replacement workspace-relative path. Widget updates accept revision instructions and run isolated generation, rendering, and visual review before publication.",
+        "Read the current exact revision before editing. Send only changed blocks, not the complete document.",
+        "Uses Pi's edit tool with artifact-backed in-memory read/write operations: the same matching, uniqueness, overlap, BOM/line-ending preservation, limited whitespace/typography normalization, and no-op rejection as file edits. All edits are matched against the original revision, not incrementally. Supply exact oldText with enough context to be unique; merge overlapping or nested edits.",
+        "Use an empty newText to delete a block. Keep oldText as small as possible while still unique. Cake publishes one new immutable revision and preserves the stable ID.",
+        "Use artifacts.replace for full Markdown rewrites, replacement file snapshots, or widget revision instructions. Never edit read-only artifact projection files directly.",
       ],
       inputSchema: artifactUpdateSchema,
+      examples: [
+        {
+          input: {
+            lineageId: "design-plan",
+            expectedRevision: 1,
+            edits: [{ oldText: "Original sentence.", newText: "Revised sentence." }],
+          },
+        },
+      ],
+      result: "Bounded newly published revision metadata and its read-only projection path.",
+      async execute(input, context) {
+        // SAFETY: CakeOperationRegistry parsed input with artifactUpdateSchema.
+        const update = input as typeof artifactUpdateSchema.Type;
+        const resolved = await resolveArtifact(update.lineageId);
+        const current = resolved.record;
+        if (current.artifact.revision !== update.expectedRevision)
+          throw new Error(
+            `Artifact ${update.lineageId} is at revision ${current.artifact.revision}; expected ${update.expectedRevision}`,
+          );
+        if (current.artifact.kind !== "markdown")
+          throw new Error(`Artifact ${update.lineageId} is ${current.artifact.kind}, not markdown`);
+        // Pi edits staged bytes only; Cake still owns immutable revision publication.
+        let markdown = current.artifact.payload.markdown;
+        const editTool = createEditTool(current.workspacePath, {
+          operations: {
+            access: async () => undefined,
+            readFile: async () => Buffer.from(markdown, "utf-8"),
+            writeFile: async (_path, content) => {
+              markdown = content;
+            },
+          },
+        });
+        await editTool.execute(
+          context.toolCallId,
+          { path: resolved.metadata.exactPath, edits: [...update.edits] },
+          context.signal,
+        );
+        if (context.signal.aborted) throw new Error("Artifact update was cancelled");
+        const sessionId = runtimeContext(context).sessionManager.getSessionId();
+        let artifact: CakeArtifactV1 = {
+          ...current.artifact,
+          sessionId,
+          revision: update.expectedRevision + 1,
+          payload: { markdown },
+          fallback: { markdown },
+        };
+        if (update.title !== undefined) artifact = { ...artifact, title: update.title };
+        const record = await persist(artifact, sessionId);
+        appendPointer(record, pointerOrigin(context));
+        return (
+          await resolveArtifact(`cake://artifact/${record.artifact.id}@r${artifact.revision}`)
+        ).metadata;
+      },
+    },
+    {
+      command: "artifacts.replace",
+      topic: "artifacts",
+      summary: "Replace an existing artifact or revise a widget from instructions.",
+      guidance: [
+        "Use this operation when the user asks to edit, fix, revise, or repair an artifact. Cake preserves its stable ID and publishes the next immutable revision.",
+        "Markdown replacements require the complete document; prefer artifacts.update for targeted text edits. File replacements snapshot a replacement workspace-relative path. Widget replacements accept revision instructions and run isolated generation, rendering, and visual review before publication.",
+      ],
+      inputSchema: artifactReplaceSchema,
       examples: [
         {
           input: {
@@ -393,8 +470,8 @@ export function createCakeArtifactOperations(
       ],
       result: "Bounded newly published revision metadata and its read-only projection path.",
       async execute(input, context) {
-        // SAFETY: CakeOperationRegistry parsed input with artifactUpdateSchema.
-        const update = input as typeof artifactUpdateSchema.Type;
+        // SAFETY: CakeOperationRegistry parsed input with artifactReplaceSchema.
+        const update = input as typeof artifactReplaceSchema.Type;
         const current = (await resolveArtifact(update.lineageId)).record;
         if (current.artifact.revision !== update.expectedRevision)
           throw new Error(

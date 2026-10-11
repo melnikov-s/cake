@@ -65,7 +65,9 @@ it("Project Sessions publish qualifying Markdown directly and include references
     "When the user explicitly requests a text artifact or a spec qualifies as a shared, durable reference under the guidance above",
   );
   expect(projectPrompt).toContain("publish Markdown directly with `artifacts.create`");
-  expect(projectPrompt).toContain("revise it with `artifacts.update`");
+  expect(projectPrompt).toContain("revise it with `artifacts.update` for targeted Markdown edits");
+  expect(projectPrompt).toContain("Use `artifacts.replace` for full Markdown rewrites");
+  expect(projectPrompt).toContain("Both require `expectedRevision`");
   expect(projectPrompt).toContain(
     "artifact reference and relevant revision in child-session assignments",
   );
