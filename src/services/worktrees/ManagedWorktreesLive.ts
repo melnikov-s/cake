@@ -146,7 +146,13 @@ export const ManagedWorktreesLive: Layer.Layer<
       state: "landed" | "resolved" | "discarded" | "missing",
     ) {
       yield* updateRecord(record, (current) => {
-        const closed: WorktreeRecord = { ...current, state };
+        const retainPreviousState =
+          state === "resolved" && (current.state === "landed" || current.state === "discarded");
+        const closed: WorktreeRecord = {
+          ...current,
+          state,
+          resolvedFrom: retainPreviousState ? current.state : undefined,
+        };
         Reflect.deleteProperty(closed, "pendingStrategy");
         return closed;
       });
@@ -1085,7 +1091,11 @@ export const ManagedWorktreesLive: Layer.Layer<
                   branchExists ? record.branch : record.baseBranch,
                 );
               }
-              const restored = { ...record, state: "active" as const };
+              const restored: WorktreeRecord = {
+                ...record,
+                state: record.resolvedFrom === "landed" ? "landed" : "active",
+                resolvedFrom: undefined,
+              };
               yield* updateRecord(record, () => restored);
               return restored;
             }),

@@ -718,7 +718,11 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     ]);
 
     await expect(worktrees.restoreResolved(record.worktreePath)).resolves.toMatchObject({
-      state: "active",
+      state: "landed",
+    });
+    await expect(worktrees.status(record.worktreePath)).resolves.toMatchObject({
+      record: { state: "landed" },
+      merged: true,
     });
     expect(existsSync(record.worktreePath)).toBe(true);
     await expect(
@@ -738,7 +742,7 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     const restoration = worktrees.restoreResolved(record.worktreePath);
 
     await cleanup;
-    await expect(restoration).resolves.toMatchObject({ state: "active" });
+    await expect(restoration).resolves.toMatchObject({ state: "landed" });
     expect(existsSync(record.worktreePath)).toBe(true);
   });
 

@@ -1,9 +1,17 @@
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, FileSystem, Layer, Ref } from "effect";
+import { Deferred, Effect, Fiber, FileSystem, Layer, Queue, Ref, Stream } from "effect";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect } from "vitest";
 import { defaultProjectSettings } from "../../../../src/contracts/application/application-data";
-import type { WorktreeRecord } from "../../../../src/contracts/worktrees/managed-worktree-data";
+import type {
+  ManagedWorktreeCatalogUpdate,
+  WorktreeRecord,
+} from "../../../../src/contracts/worktrees/managed-worktree-data";
+import { WorktreeStatusIcon } from "../../../../src/renderer/components/worktree-status-icon";
+import { WorktreeCatalog } from "../../../../src/renderer/models/WorktreeCatalog";
+import { applyManagedWorktreeCatalogUpdate } from "../../../../src/renderer/reducers/WorktreeCatalogReducer";
 import { BootstrapLive } from "../../../../src/main/BootstrapLive";
 import { Git, GitError, type GitRunner } from "../../../../src/services/git/Git";
 import { makeGitLive } from "../../../../src/services/git/GitLive";
@@ -124,6 +132,97 @@ const makeLayer = (
 };
 
 describe("ManagedWorktrees Effect service", () => {
+  it.effect.each(["landed", "discarded"] as const)(
+    "retains the landing classification of a %s worktree through resolution and restoration",
+    (previousState) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const temporary = yield* fileSystem.makeTempDirectoryScoped();
+          const repository = `${temporary}/repo`;
+          const worktreePath = `${temporary}/worktree`;
+          yield* fileSystem.makeDirectory(`${repository}/.git`, { recursive: true });
+          if (previousState === "landed")
+            yield* fileSystem.makeDirectory(worktreePath, { recursive: true });
+          const initial: WorktreeRecord = {
+            ...record(repository, worktreePath, "agent/restoration"),
+            state: previousState,
+          };
+          const persisted = yield* Ref.make<ReadonlyArray<WorktreeRecord>>([initial]);
+          const live = (records: ReadonlyArray<WorktreeRecord>) =>
+            ManagedWorktreesLive.pipe(
+              Layer.provide(
+                makeLayer(records, {
+                  save: (next) => Ref.set(persisted, next),
+                  onRun: (_cwd, args) => {
+                    if (args[0] === "worktree" && args[1] === "remove")
+                      return fileSystem
+                        .remove(worktreePath, { recursive: true, force: true })
+                        .pipe(Effect.orDie);
+                    if (args[0] === "worktree" && args[1] === "add")
+                      return fileSystem
+                        .makeDirectory(worktreePath, { recursive: true })
+                        .pipe(Effect.orDie);
+                    return Effect.void;
+                  },
+                }),
+              ),
+            );
+
+          yield* Effect.gen(function* () {
+            const worktrees = yield* ManagedWorktrees;
+            yield* worktrees.cleanupResolved(worktreePath);
+            expect(yield* worktrees.records()).toEqual([
+              { ...initial, state: "resolved", resolvedFrom: previousState },
+            ]);
+            expect(yield* fileSystem.exists(worktreePath)).toBe(false);
+          }).pipe(Effect.provide(live([initial])));
+
+          // Reacquire the service from persisted records, as after restarting Cake.
+          const retired = yield* Ref.get(persisted);
+          yield* Effect.gen(function* () {
+            const worktrees = yield* ManagedWorktrees;
+            const updates = yield* Queue.unbounded<ManagedWorktreeCatalogUpdate>();
+            yield* worktrees.observe().pipe(
+              Stream.runForEach((update) => Queue.offer(updates, update)),
+              Effect.forkScoped,
+            );
+            const catalog = WorktreeCatalog.create();
+            applyManagedWorktreeCatalogUpdate(catalog, yield* Queue.take(updates));
+            const projected = catalog.find(worktreePath);
+            expect(projected?.state).toBe("resolved");
+            expect(projected?.resolvedFrom).toBe(previousState);
+
+            const expectedState = previousState === "landed" ? "landed" : "active";
+            const restored = yield* worktrees.restoreResolved(worktreePath);
+            expect(restored).toEqual({ ...initial, state: expectedState });
+            expect(yield* Ref.get(persisted)).toEqual([restored]);
+            expect(yield* fileSystem.exists(worktreePath)).toBe(true);
+            applyManagedWorktreeCatalogUpdate(catalog, yield* Queue.take(updates));
+            expect(catalog.find(worktreePath)).toBe(projected);
+            expect(projected?.state).toBe(expectedState);
+            expect(projected?.resolvedFrom).toBeUndefined();
+            const icon = renderToStaticMarkup(
+              createElement(WorktreeStatusIcon, { state: projected?.state }),
+            );
+            expect(icon).toContain(
+              `aria-label="${previousState === "landed" ? "Merged worktree" : "Open worktree"}"`,
+            );
+            if (previousState === "landed") {
+              expect(yield* worktrees.status(worktreePath)).toMatchObject({
+                record: { state: "landed" },
+                merged: true,
+              });
+              // A second resolve/unresolve must preserve the classification too.
+              yield* worktrees.cleanupResolved(worktreePath);
+              yield* worktrees.restoreResolved(worktreePath);
+              expect(yield* worktrees.records()).toEqual([initial]);
+            }
+          }).pipe(Effect.provide(live(retired)));
+        }).pipe(Effect.provide(BootstrapLive)),
+      ),
+  );
+
   it.effect(
     "keeps exact FIFO reservations per repository while repositories remain independent",
     () =>

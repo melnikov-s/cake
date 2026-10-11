@@ -12,6 +12,8 @@ export const WorktreeRecord = Schema.Struct({
   parentWorktreePath: Schema.optional(bounded(1, 4_096)),
   baseCommit: Schema.optional(bounded(1, 256)),
   state: Schema.optional(Schema.Literals(["active", "landed", "resolved", "discarded", "missing"])),
+  // Retirement must retain landing classification. Explicit undefined clears the live projection.
+  resolvedFrom: Schema.optional(Schema.Literals(["landed", "discarded"])),
   pendingStrategy: Schema.optionalKey(Schema.Literals(["preserve", "squash"])),
   resolveAfterLanding: Schema.optionalKey(Schema.Boolean),
   createdAt: Schema.String,

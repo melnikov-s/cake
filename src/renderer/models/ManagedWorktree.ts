@@ -10,6 +10,7 @@ export class ManagedWorktree extends Model {
   baseCommit: string | undefined;
   parentWorktreePath: string | undefined;
   state: WorktreeRecord["state"];
+  resolvedFrom: WorktreeRecord["resolvedFrom"];
   createdAt = "";
   pendingStrategy: WorktreeRecord["pendingStrategy"];
   resolveAfterLanding: WorktreeRecord["resolveAfterLanding"];
