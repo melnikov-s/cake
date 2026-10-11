@@ -6,8 +6,14 @@ import {
 } from "./taskInputs";
 import type { SessionInspectionQuery } from "../../ipc/session-query-data";
 import type { ChatConfiguration, PiSettingUpdate } from "../../ipc/session-contract";
-import { CakeSessionRuntimes, type CakeSessionHandle } from "../../services/pi/CakeSessionRuntimes";
+import {
+  CakeSessionRuntimes,
+  type CakeSessionHandle,
+  type PiSessionError,
+} from "../../services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
+import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
+import type { PiQueuedMessages } from "../../services/pi/conversation-data";
 import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import {
   TurnId,
@@ -142,30 +148,57 @@ export const reorderQueuedMessage = Effect.fn("SessionChats.reorderQueuedMessage
   ).pipe(Effect.map(projectQueuedMessages), asError("reorderQueuedMessage"));
 });
 
+const withdrawQueuedMessages = Effect.fn("SessionChats.withdrawQueuedMessages")(function* (
+  sessionId: string,
+  selection: "all" | "steering" | { readonly partId: string },
+  cancel: (handle: CakeSessionHandle) => Effect.Effect<PiQueuedMessages, PiSessionError>,
+) {
+  const handle = yield* acquire(sessionId);
+  if (handle.profile !== "ProjectSession" && handle.profile !== "CakeChatSession")
+    return projectQueuedMessages(yield* cancel(handle));
+  const storage = yield* SessionFamilyStorage;
+  // The outbox must not re-admit a report between Pi removing it and recording
+  // the user's withdrawal. This gate never waits for a model response.
+  return yield* storage.withNoticeDelivery(
+    Effect.gen(function* () {
+      const pending = (yield* handle.pendingMessages()).items.filter(
+        (item) =>
+          selection === "all" ||
+          (selection === "steering" ? item.lane === "steering" : item.partId === selection.partId),
+      );
+      const result = yield* cancel(handle);
+      const messageIds = pending.flatMap((item) =>
+        item.crossSession ? [item.crossSession.messageId] : [],
+      );
+      if (messageIds.length) yield* storage.withdrawNotices(sessionId, messageIds);
+      return projectQueuedMessages(result);
+    }).pipe(Effect.uninterruptible),
+  );
+});
+
 export const clearQueue = Effect.fn("SessionChats.clearQueue")(function* (
   target: SessionChatTarget,
 ) {
-  return yield* useConversation(acquire(target.sessionId), (handle) => handle.clearQueue()).pipe(
-    Effect.map(projectQueuedMessages),
-    asError("clearQueue"),
-  );
+  return yield* withdrawQueuedMessages(target.sessionId, "all", (handle) =>
+    handle.clearQueue(),
+  ).pipe(asError("clearQueue"));
 });
 
 export const cancelSteering = Effect.fn("SessionChats.cancelSteering")(function* (
   target: SessionChatTarget,
 ) {
-  return yield* useConversation(acquire(target.sessionId), (handle) =>
+  return yield* withdrawQueuedMessages(target.sessionId, "steering", (handle) =>
     handle.cancelSteering(),
-  ).pipe(Effect.map(projectQueuedMessages), asError("cancelSteering"));
+  ).pipe(asError("cancelSteering"));
 });
 
 export const removeQueuedMessage = Effect.fn("SessionChats.removeQueuedMessage")(function* (
   target: SessionChatTarget,
   partId: string,
 ) {
-  return yield* useConversation(acquire(target.sessionId), (handle) =>
+  return yield* withdrawQueuedMessages(target.sessionId, { partId }, (handle) =>
     handle.removeQueuedMessage(partId),
-  ).pipe(Effect.map(projectQueuedMessages), asError("removeQueuedMessage"));
+  ).pipe(asError("removeQueuedMessage"));
 });
 
 export const steerQueuedMessage = Effect.fn("SessionChats.steerQueuedMessage")(function* (

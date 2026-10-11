@@ -304,6 +304,18 @@ test("permanent Cake Chat retains its input, history and settings across restart
         { label: "Mark as Unread", enabled: false },
         { label: "Copy Session ID", enabled: true },
       ]);
+    for (let index = 0; index < 6; index += 1) {
+      await input.fill(`Cancel queued ${index}`);
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+    }
+    const queue = page.getByRole("list", { name: "Queued prompts" });
+    await expect(queue.getByRole("listitem")).toHaveCount(6);
+    for (let index = 0; index < 6; index += 1) {
+      await page
+        .getByRole("button", { name: `Cancel queued message: Cancel queued ${index}`, exact: true })
+        .click();
+      await expect(queue.getByRole("listitem")).toHaveCount(5 - index);
+    }
     await page.getByRole("button", { name: "Open Artifact Library", exact: true }).click();
     await expect(coordinator.getByRole("img", { name: "Running" })).toBeVisible();
     releaseFirstReply?.();

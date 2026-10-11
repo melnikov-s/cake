@@ -18,6 +18,7 @@ import { SessionArchiveStorage } from "../../../src/services/storage/SessionArch
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { fakeRuntime, snapshot } from "../helpers/piRuntimeFixture";
+import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 
 const location = {
   projectPath: "/project",
@@ -167,9 +168,8 @@ describe("Session Family outcome delivery", () => {
                   parts: [
                     {
                       id: replyId,
-                      kind: "text" as const,
-                      status: "complete" as const,
-                      role: "user" as const,
+                      kind: "context" as const,
+                      title: "Session · Child",
                       text: "Finished",
                       crossSession: {
                         version: 1 as const,
@@ -218,21 +218,15 @@ describe("Session Family outcome delivery", () => {
                 ...fakeRuntime(runtimeOptions, () => undefined),
                 snapshot: async () => ({
                   ...snapshot,
-                  parts: transcript.flatMap((content) => {
-                    const message = parseCrossSessionMessage(content);
-                    return message
-                      ? [
-                          {
-                            id: message.metadata.messageId,
-                            kind: "text" as const,
-                            status: "complete" as const,
-                            role: "user" as const,
-                            text: message.text,
-                            crossSession: message.metadata,
-                          },
-                        ]
-                      : [];
-                  }),
+                  parts: projectSessionEntries(
+                    transcript.map((content, index) => ({
+                      type: "message",
+                      id: String(index),
+                      parentId: null,
+                      timestamp: "2026-01-01T00:00:00.000Z",
+                      message: { role: "user", content, timestamp: index },
+                    })),
+                  ),
                 }),
                 prompt: async (text: string, delivery: string) => {
                   assert.equal(delivery, "prompt");

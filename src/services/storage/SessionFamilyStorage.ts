@@ -193,6 +193,14 @@ export class SessionFamilyStorage extends Context.Service<
       deliveryTurnId: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly completeNotice: (turnId: string) => Effect.Effect<void, SessionFamilyStorageError>;
+    /** Serializes retry admission with explicit queue withdrawal, not model execution. */
+    readonly withNoticeDelivery: <A, E, R>(
+      effect: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<A, E, R>;
+    readonly withdrawNotices: (
+      recipientSessionId: string,
+      messageIds: ReadonlyArray<string>,
+    ) => Effect.Effect<void, SessionFamilyStorageError>;
     readonly removeUnmaterializedChild: (
       sessionId: string,
     ) => Effect.Effect<void, SessionFamilyStorageError>;
@@ -256,6 +264,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const lock = yield* Semaphore.make(1);
+      const noticeDeliveryLock = yield* Semaphore.make(1);
 
       const loadUnlocked = Effect.fn("SessionFamilyStorage.loadUnlocked")(function* () {
         if (
@@ -666,6 +675,37 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           }),
         })),
       );
+      const withdrawNotices = Effect.fn("SessionFamilyStorage.withdrawNotices")(
+        (recipientSessionId: string, messageIds: ReadonlyArray<string>) =>
+          update((document) => {
+            const withdrawn = document.turns.filter(
+              (turn) =>
+                turn.senderSessionId === recipientSessionId &&
+                (messageIds.includes(turn.turnId) ||
+                  turn.replyMessageIds?.some((id) => messageIds.includes(id))),
+            );
+            return {
+              ...document,
+              turns: document.turns.flatMap((turn) =>
+                !withdrawn.includes(turn)
+                  ? [turn]
+                  : turn.outcome
+                    ? []
+                    : [{ ...turn, reported: true }],
+              ),
+              spawnedSessions: document.spawnedSessions.map((spawn) =>
+                withdrawn.some(
+                  (turn) =>
+                    turn.sessionId === spawn.sessionId &&
+                    turn.completionContract &&
+                    turn.requestMessageId === spawn.sessionId,
+                )
+                  ? { ...spawn, handoffSettled: true, reportDelivered: false }
+                  : spawn,
+              ),
+            };
+          }),
+      );
       const removeUnmaterializedChild = Effect.fn("SessionFamilyStorage.removeUnmaterializedChild")(
         (sessionId: string) =>
           update((document) => ({
@@ -711,6 +751,8 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         confirmResponse,
         markNoticeAttempt,
         completeNotice,
+        withNoticeDelivery: (effect) => noticeDeliveryLock.withPermit(effect),
+        withdrawNotices,
         removeUnmaterializedChild,
         removeProject,
       });

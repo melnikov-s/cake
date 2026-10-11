@@ -35,6 +35,33 @@ const child = (requestId: string, childSessionId: string) => ({
 
 describe("SessionFamilyStorage", () => {
   it.effect(
+    "withdraws only selected recipient reports and does not revive canceled explicit replies on settlement",
+    () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        const completed = turn({ outcome: "complete" });
+        const activeReply = turn({ turnId: "active", replyMessageIds: ["reply"] });
+        const unrelated = turn({ turnId: "keep", outcome: "complete" });
+        const otherRecipient = turn({
+          turnId: "other",
+          senderSessionId: "other-parent",
+          replyMessageIds: ["reply"],
+          outcome: "complete",
+        });
+        for (const item of [completed, activeReply, unrelated, otherRecipient])
+          yield* storage.recordTurn(item);
+        yield* storage.withdrawNotices("parent", ["turn", "reply"]);
+        assert.deepEqual((yield* storage.state()).turns, [
+          { ...activeReply, reported: true },
+          unrelated,
+          otherRecipient,
+        ]);
+        yield* storage.settleTurn("active", "complete");
+        assert.deepEqual((yield* storage.state()).turns, [unrelated, otherRecipient]);
+      }).pipe(Effect.provide(testLayer())),
+  );
+
+  it.effect(
     "migrates version 4 partial transitions to root-owned lifecycle without losing membership or delivery",
     () => {
       const family = {

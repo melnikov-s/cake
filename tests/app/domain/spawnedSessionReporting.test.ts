@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Layer, Schema, Stream } from "effect";
+import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
 import { describe } from "vitest";
 import * as families from "../../../src/domain/session-families/sessionFamilies";
 import { acquireOptions as projectOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
@@ -27,6 +27,9 @@ import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktre
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { fakeRuntime, snapshot } from "../helpers/piRuntimeFixture";
+import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
+import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
+import * as sessionChats from "../../../src/domain/conversations/sessionChats";
 
 const location = {
   projectPath: "/project",
@@ -66,6 +69,22 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   const deliveries: string[] = [];
   const submittedAttachments = new Map<string, readonly Attachment[]>();
   const queue: string[] = [];
+  let beforeRemove = async () => {};
+  const queued = new Map<
+    string,
+    { text: string; steering: boolean; canceled: Deferred.Deferred<void, TurnCanceledError> }
+  >();
+  const listQueue = () => ({
+    steering: [...queued.values()].filter((item) => item.steering).map((item) => item.text),
+    followUp: [...queued.values()].filter((item) => !item.steering).map((item) => item.text),
+  });
+  const removeQueued = (id: string) => {
+    const item = queued.get(id);
+    if (!item) throw new Error("That message was already consumed");
+    queued.delete(id);
+    queue.splice(queue.indexOf(item.text), 1);
+    Effect.runSync(Deferred.fail(item.canceled, new TurnCanceledError()));
+  };
   const harness = familyStorageHarness();
   const environment = Layer.mergeAll(
     WorkflowTestLive,
@@ -114,23 +133,47 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
                   ...snapshot,
                   sessionId: options.sessionId ?? "unexpected",
                   streaming: busy,
-                  parts: transcript.flatMap((content) => {
-                    const message = parseCrossSessionMessage(content);
-                    return message
-                      ? [
-                          {
-                            id: message.metadata.messageId,
-                            kind: "text" as const,
-                            role: "user" as const,
-                            status: "complete" as const,
-                            text: message.text,
-                            crossSession: message.metadata,
-                          },
-                        ]
-                      : [];
-                  }),
+                  parts: projectSessionEntries(
+                    transcript.map((content, index) => ({
+                      type: "message",
+                      id: String(index),
+                      parentId: null,
+                      timestamp: "2026-01-01T00:00:00.000Z",
+                      message: { role: "user", content, timestamp: index },
+                    })),
+                  ),
                 }),
-                listQueuedMessages: async () => ({ steering: [], followUp: [...queue] }),
+                listQueuedMessages: async () => listQueue(),
+                pendingMessages: async () => ({
+                  items: [...queued].map(([id, item], index) => ({
+                    itemId: id,
+                    partId: id,
+                    lane: item.steering ? ("steering" as const) : ("follow-up" as const),
+                    position: index + 1,
+                    state: "queued" as const,
+                    text: item.text,
+                    crossSession: parseCrossSessionMessage(item.text)?.metadata,
+                  })),
+                }),
+                removeQueuedMessage: async (partId) => {
+                  await beforeRemove();
+                  removeQueued(partId);
+                  return listQueue();
+                },
+                clearQueue: async () => {
+                  for (const id of queued.keys()) removeQueued(id);
+                  return listQueue();
+                },
+                cancelSteering: async () => {
+                  for (const [id, item] of queued) if (item.steering) removeQueued(id);
+                  return listQueue();
+                },
+                steerQueuedMessage: async (partId) => {
+                  const item = queued.get(partId);
+                  assert.ok(item);
+                  item.steering = true;
+                  return listQueue();
+                },
                 prompt: (text, delivery, _attachments, _markdown, turnId) =>
                   Effect.runPromise(
                     Effect.gen(function* () {
@@ -142,8 +185,14 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
                         deliveries.push(delivery);
                         if (delivery === "follow-up") {
                           queue.push(text);
+                          const canceled = yield* Deferred.make<void, TurnCanceledError>();
+                          queued.set(turnId, { text, steering: false, canceled });
                           yield* Deferred.succeed(received, undefined);
-                          yield* Deferred.await(consumeQueued);
+                          yield* Effect.raceFirst(
+                            Deferred.await(consumeQueued),
+                            Deferred.await(canceled),
+                          );
+                          queued.delete(turnId);
                           queue.splice(queue.indexOf(text), 1);
                         }
                         transcript.push(text);
@@ -187,6 +236,9 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
     transcript,
     deliveries,
     submittedAttachments,
+    beforeRemove: (callback: () => Promise<void>) => {
+      beforeRemove = callback;
+    },
     run: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(
         Effect.provideService(SessionFamilyStorage, observedStorage),
@@ -325,6 +377,112 @@ describe("automatic spawned-session reporting", () => {
         );
       }),
   );
+  it.effect.each([
+    { destination: "cake-chat", action: "remove" },
+    { destination: "cake-chat", action: "clear" },
+    { destination: "cake-chat", action: "steering" },
+    { destination: "project", action: "remove" },
+    { destination: "project", action: "clear" },
+    { destination: "project", action: "steering" },
+  ] as const)(
+    "$destination: withdrawing a child report with $action survives delivery retries and journal reload",
+    ({ destination, action }) =>
+      Effect.gen(function* () {
+        const f = yield* fixture(true);
+        yield* f.run(
+          Effect.gen(function* () {
+            const sessionId = destination === "cake-chat" ? CAKE_CHAT_SESSION_ID : parentId;
+            if (destination === "cake-chat") yield* createFromChat();
+            else {
+              const root = yield* projectOptions({ location, sessionId, newSession: false });
+              yield* (yield* CakeSessionRuntimes).acquire(root);
+              yield* Effect.promise(() =>
+                root.runtime.currentSessionControl!.createChildSession!(
+                  {
+                    requestId: "cancel-child",
+                    title: "Child",
+                    initialPrompt: createArgs.initialPrompt,
+                    model: configuration,
+                    placement: "none",
+                    senderContext: { usedTokens: null, windowTokens: null },
+                  },
+                  new AbortController().signal,
+                ),
+              );
+            }
+            yield* Deferred.await(f.entered);
+            yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });
+            yield* Deferred.await(f.settled);
+            const turn = yield* onlyTurn();
+            yield* families.deliver(turn);
+            yield* Deferred.await(f.received);
+            const handle = yield* (yield* CakeSessionRuntimes).acquireSession(sessionId);
+            const [report] = (yield* handle.pendingMessages()).items;
+            assert.ok(report?.crossSession && report.partId);
+            // A queued card is not a consumed receipt; background retries must keep it once.
+            yield* families.deliver(turn);
+            assert.equal((yield* onlyTurn()).reported, false);
+            assert.equal(f.deliveries.length, 1);
+            if (action === "steering") {
+              yield* sessionChats.steerQueuedMessage({ sessionId }, report.partId);
+              yield* sessionChats.cancelSteering({ sessionId });
+            } else if (action === "clear") yield* sessionChats.clearQueue({ sessionId });
+            else {
+              f.beforeRemove(async () => {
+                throw new Error("Queue removal failed");
+              });
+              const rejected = yield* Effect.result(
+                sessionChats.removeQueuedMessage({ sessionId }, report.partId),
+              );
+              assert.equal(rejected._tag, "Failure");
+              assert.equal((yield* onlyTurn()).turnId, turn.turnId);
+              assert.equal((yield* handle.pendingMessages()).items.length, 1);
+              const removing = yield* Deferred.make<void>();
+              const release = yield* Deferred.make<void>();
+              f.beforeRemove(() =>
+                Effect.runPromise(
+                  Effect.gen(function* () {
+                    yield* Deferred.succeed(removing, undefined);
+                    yield* Deferred.await(release);
+                  }),
+                ),
+              );
+              const cancellation = yield* sessionChats
+                .removeQueuedMessage({ sessionId }, report.partId)
+                .pipe(Effect.forkScoped);
+              yield* Deferred.await(removing);
+              const retry = yield* families.deliver(turn).pipe(Effect.forkScoped);
+              yield* Deferred.succeed(release, undefined);
+              yield* Fiber.join(cancellation);
+              yield* Fiber.join(retry);
+            }
+            assert.deepEqual((yield* handle.pendingMessages()).items, []);
+            assert.ok(
+              !(yield* f.storage.state()).turns.some((item) => item.turnId === turn.turnId),
+            );
+            // Even an already-read worker pass cannot re-submit the withdrawn report.
+            yield* families.deliver(turn);
+            assert.equal(f.deliveries.length, 1);
+            yield* Deferred.succeed(f.consumeQueued, undefined);
+            assert.deepEqual(f.transcript, []);
+            yield* Effect.gen(function* () {
+              const storage = yield* SessionFamilyStorage;
+              assert.ok(
+                !(yield* storage.state()).turns.some((item) => item.turnId === turn.turnId),
+              );
+              yield* families.deliver(turn);
+              assert.equal(f.deliveries.length, 1);
+              if (destination === "cake-chat") {
+                const spawn = (yield* storage.state()).spawnedSessions[0];
+                assert.equal(spawn?.handoffSettled, true);
+                assert.equal(spawn?.reportDelivered, false);
+              }
+            }).pipe(Effect.provide(familyStorageHarness(f.harness.files).layer));
+          }),
+        );
+      }),
+  );
+
   it.effect.each([false, true])(
     "global creation records origin and delivers/wakes idle or busy Cake Chat (%s)",
     (busy) =>

@@ -443,6 +443,8 @@ const makeLayer = (
       confirmResponse: () => Effect.void,
       markNoticeAttempt: () => Effect.void,
       completeNotice: () => Effect.void,
+      withNoticeDelivery: (effect) => effect,
+      withdrawNotices: () => Effect.void,
       removeUnmaterializedChild: () => Effect.void,
       removeProject: (projectPath) =>
         hooks.familyRemovalError

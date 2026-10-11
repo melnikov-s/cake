@@ -525,57 +525,61 @@ const deliverOutcome = Effect.fn("SessionFamilies.deliverOutcome")(function* (
   text: string,
 ) {
   const storage = yield* SessionFamilyStorage;
-  // Re-read the journal: a correlated explicit reply can have satisfied it since this pass began.
-  const current = (yield* storage.state()).turns.find(
-    (item) => item.turnId === turn.turnId && !item.reported,
-  );
-  if (!current) return;
-  turn = current;
-  if (turn.senderSessionId === CAKE_CHAT_SESSION_ID)
-    text = yield* prepareCoordinatorNotice(turn.senderSessionId, text).pipe(
-      Effect.mapError((error) => failure(error.message)),
-    );
-  else
-    yield* inheritTaskInputProtection(turn.sessionId, turn.senderSessionId).pipe(
-      Effect.mapError((error) => failure(error.message)),
-    );
-  const snapshot = yield* sender.snapshot();
-  const receipt = snapshot.parts.find(
-    (part) =>
-      part.kind === "text" &&
-      part.crossSession &&
-      (part.crossSession.messageId === turn.turnId ||
-        (turn.outcome === "complete" &&
-          turn.replyMessageIds?.includes(part.crossSession.messageId))) &&
-      !part.deliveryState,
-  );
-  if (receipt?.kind === "text" && receipt.crossSession) {
-    if (turn.replyMessageIds?.includes(receipt.crossSession.messageId))
-      yield* storage.confirmResponse(receipt.crossSession.messageId);
-    else yield* storage.completeNotice(turn.turnId);
-    return;
-  }
-  const queue = yield* sender.listQueuedMessages();
-  const queuedMessages = [...queue.steering, ...queue.followUp];
-  if (
-    queuedMessages.some((content) => {
-      const reply = parseCrossSessionMessage(content);
-      return (
-        turn.outcome === "complete" &&
-        reply &&
-        turn.replyMessageIds?.includes(reply.metadata.messageId)
+  return yield* storage.withNoticeDelivery(
+    Effect.gen(function* () {
+      // Re-read the journal: a correlated explicit reply or queue withdrawal can have satisfied it since this pass began.
+      const current = (yield* storage.state()).turns.find(
+        (item) => item.turnId === turn.turnId && !item.reported,
       );
-    })
-  )
-    return;
-  if (queuedMessages.includes(text)) return;
-  if (turn.deliveryTurnId && (yield* sender.currentTurnIds()).includes(turn.deliveryTurnId)) return;
-  // Match ordinary user delivery: start an idle sender, or queue behind its
-  // active turn without steering or interrupting it.
-  const deliveryTurnId = snapshot.streaming
-    ? yield* sender.followUp(text, [], false)
-    : yield* sender.prompt(text, [], false);
-  yield* storage.markNoticeAttempt(turn.turnId, deliveryTurnId);
+      if (!current) return;
+      turn = current;
+      if (turn.senderSessionId === CAKE_CHAT_SESSION_ID)
+        text = yield* prepareCoordinatorNotice(turn.senderSessionId, text).pipe(
+          Effect.mapError((error) => failure(error.message)),
+        );
+      else
+        yield* inheritTaskInputProtection(turn.sessionId, turn.senderSessionId).pipe(
+          Effect.mapError((error) => failure(error.message)),
+        );
+      const snapshot = yield* sender.snapshot();
+      const receipt = snapshot.parts.find(
+        (part) =>
+          (part.kind === "context" || (part.kind === "text" && !part.deliveryState)) &&
+          part.crossSession &&
+          (part.crossSession.messageId === turn.turnId ||
+            (turn.outcome === "complete" &&
+              turn.replyMessageIds?.includes(part.crossSession.messageId))),
+      );
+      if (receipt && "crossSession" in receipt && receipt.crossSession) {
+        if (turn.replyMessageIds?.includes(receipt.crossSession.messageId))
+          yield* storage.confirmResponse(receipt.crossSession.messageId);
+        else yield* storage.completeNotice(turn.turnId);
+        return;
+      }
+      const queue = yield* sender.listQueuedMessages();
+      const queuedMessages = [...queue.steering, ...queue.followUp];
+      if (
+        queuedMessages.some((content) => {
+          const reply = parseCrossSessionMessage(content);
+          return (
+            turn.outcome === "complete" &&
+            reply &&
+            turn.replyMessageIds?.includes(reply.metadata.messageId)
+          );
+        })
+      )
+        return;
+      if (queuedMessages.includes(text)) return;
+      if (turn.deliveryTurnId && (yield* sender.currentTurnIds()).includes(turn.deliveryTurnId))
+        return;
+      // Match ordinary user delivery: start an idle sender, or queue behind its
+      // active turn without steering or interrupting it.
+      const deliveryTurnId = snapshot.streaming
+        ? yield* sender.followUp(text, [], false)
+        : yield* sender.prompt(text, [], false);
+      yield* storage.markNoticeAttempt(turn.turnId, deliveryTurnId);
+    }),
+  );
 });
 
 /** Routes the coordinator as a primary Cake destination, not a Project catalog entry. */
