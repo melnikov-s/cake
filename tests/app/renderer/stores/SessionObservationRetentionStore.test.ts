@@ -1,90 +1,88 @@
-import { createStore, mount, observable, type StoreSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import type { ProjectSessionStore } from "../../../../src/renderer/stores/ProjectSessionStore";
-import { SessionObservationRetentionStore } from "../../../../src/renderer/stores/SessionObservationRetentionStore";
+import { applyConversationUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
+import { createRendererStoreFixture } from "../renderer-store-fixture";
 
-function session(sessionId: string, running = false) {
-  return {
-    sessionId,
-    model: {
-      streaming: running,
-      activeTurnIds: [],
-    },
-    subagentActivityStore: { activeRuns: [] },
-  } as unknown as ProjectSessionStore;
-}
-
-function fixture(options?: { snapshot?: StoreSnapshot; selected?: string; visible?: string }) {
-  const sessions: ProjectSessionStore[] = observable([]);
-  const store = mount(
-    createStore(SessionObservationRetentionStore, {
-      findSession: (sessionId) => sessions.find((item) => item.sessionId === sessionId),
-      isActive: (sessionId) => sessionId === options?.selected,
-      isVisible: (sessionId) => sessionId === options?.visible,
-    }),
-    options?.snapshot ? { snapshot: options.snapshot } : undefined,
-  );
-  return { sessions, store };
-}
-
-describe("SessionObservationRetentionStore", () => {
-  it("does not restore process-local warm demand for persisted materialized sessions", () => {
-    const { sessions, store } = fixture({
+// Renderer transport infrastructure contracts: Root supplies observation targets to Model
+// synchronization. React rendering cannot prove lookup complexity or subscription demand,
+// and a fabricated observer would not test the real transport. Keep real Root/Models/Stores.
+// SessionRegistryStore.test.ts already covers startup warm-demand reset, selected/archive
+// demand, and running sessions surviving the four-idle LRU; retain only the distinct gaps here.
+describe("Session observation-demand integration", () => {
+  it("looks up only materialized identities while trimming a much larger restored collection", () => {
+    using fixture = createRendererStoreFixture({
       snapshot: {
-        state: { materializedSessionIds: ["one", "two"] },
-        children: {},
+        state: {},
+        children: {
+          sessionRegistry: {
+            state: {
+              targets: Array.from({ length: 100 }, (_, index) => ({
+                sessionId: `session-${index}`,
+                workspacePath: "/project",
+              })),
+            },
+            children: {},
+          },
+        },
       },
     });
-    sessions.push(session("one"), session("two"));
+    const registry = fixture.root.sessionRegistry;
+    for (let index = 0; index < 5; index += 1) registry.load(`session-${index}`, "/project");
 
-    expect(store.sessions).toEqual([]);
-    store.retain("two");
-    expect(store.sessions.map((item) => item.sessionId)).toEqual(["two"]);
-
-    store[Symbol.dispose]();
-  });
-
-  it("looks up only materialized sessions when trimming the warm set", () => {
-    const sessions = observable(
-      Array.from({ length: 5 }, (_, index) => session(`session-${index}`)),
-    );
-    const findSession = vi.fn((sessionId: string) =>
-      sessions.find((item) => item.sessionId === sessionId),
-    );
-    const store = mount(
-      createStore(SessionObservationRetentionStore, {
-        findSession,
-        isActive: () => false,
-      }),
-    );
-    for (const item of sessions) store.materialize(item.sessionId);
-
-    findSession.mockClear();
-    store.retain("session-0");
+    // Monitor the real identity lookup; do not replace it or its returned Stores.
+    const findSession = vi.spyOn(registry, "findSession");
+    registry.observationRetention.retain("session-0");
     expect(new Set(findSession.mock.calls.map(([sessionId]) => sessionId))).toEqual(
-      new Set(sessions.map((item) => item.sessionId)),
+      new Set(Array.from({ length: 5 }, (_, index) => `session-${index}`)),
     );
-    store[Symbol.dispose]();
+    expect(fixture.root.projectSessionObservationTargets).toHaveLength(4);
+    expect(fixture.root.projectSessionObservationTargets).toContainEqual({
+      sessionId: "session-0",
+      workingDirectory: "/project",
+      allowCreate: false,
+    });
   });
 
-  it("keeps selected, visible, and running pins outside the four-session idle LRU", () => {
-    const { sessions, store } = fixture({ selected: "selected", visible: "visible" });
-    for (const item of [session("selected"), session("visible"), session("running", true)]) {
-      sessions.push(item);
-      store.materialize(item.sessionId);
-    }
-    for (let index = 0; index < 5; index += 1) {
-      const item = session(`idle-${index}`);
-      sessions.push(item);
-      store.materialize(item.sessionId);
-    }
+  it("pins a visible nonselected pane outside the idle LRU alongside selected and running sessions", () => {
+    using fixture = createRendererStoreFixture();
+    const { root, models } = fixture;
+    const registry = root.sessionRegistry;
+    for (const sessionId of ["selected", "visible", "running"])
+      registry.load(sessionId, "/project");
+    // Establish a real two-pane surface: one session is selected, the other is merely visible.
+    root.sessionLayoutStore.ensureSession("selected");
+    root.sessionLayoutStore.splitFocused("visible", "x");
+    root.appShellStore.selectProjectSession("selected");
+    applyConversationUpdate(models.projectConversation("running", "/project"), {
+      _tag: "Snapshot",
+      revision: 1,
+      snapshot: {
+        sessionId: "running",
+        sessionFile: "/project/running.jsonl",
+        parts: [],
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: true,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      },
+    });
 
-    expect(store.sessions).toHaveLength(7);
-    expect(store.sessions.map((item) => item.sessionId)).toEqual(
+    for (let index = 0; index < 5; index += 1) registry.load(`idle-${index}`, "/project");
+
+    const demand = root.projectSessionObservationTargets;
+    expect(demand).toHaveLength(7);
+    expect(demand.map(({ sessionId }) => sessionId)).toEqual(
       expect.arrayContaining(["selected", "visible", "running", "idle-4"]),
     );
-    expect(store.sessions.map((item) => item.sessionId)).not.toContain("idle-0");
-
-    store[Symbol.dispose]();
+    expect(demand.map(({ sessionId }) => sessionId)).not.toContain("idle-0");
+    expect(
+      demand.every(
+        ({ workingDirectory, allowCreate }) => workingDirectory === "/project" && !allowCreate,
+      ),
+    ).toBe(true);
   });
 });
