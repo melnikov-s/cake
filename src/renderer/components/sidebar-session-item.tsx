@@ -296,7 +296,7 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                 selected ? "text-primary/80" : "text-muted-foreground/80",
               )}
             >
-              {source ? (
+              {source && (
                 <>
                   <span className="flex min-w-0 items-center gap-1" title={source.name}>
                     {source.kind === "cake-chat" ? (
@@ -314,22 +314,21 @@ export const SidebarSessionItem = observer(function SidebarSessionItem({
                   </span>
                   <span aria-hidden="true">·</span>
                 </>
-              ) : (
-                branch && (
-                  <>
-                    {managedWorktree && (
-                      <WorktreeStatusIcon state={managedWorktree.state} className="shrink-0" />
-                    )}
-                    <span className="truncate">{branch}</span>
-                    {showBaseBranch && (
-                      <>
-                        <span aria-hidden="true">→</span>
-                        <span className="truncate">{baseBranch}</span>
-                      </>
-                    )}
-                    <span aria-hidden="true">·</span>
-                  </>
-                )
+              )}
+              {branch && (
+                <>
+                  {managedWorktree && (
+                    <WorktreeStatusIcon state={managedWorktree.state} className="shrink-0" />
+                  )}
+                  <span className="truncate">{branch}</span>
+                  {showBaseBranch && (
+                    <>
+                      <span aria-hidden="true">→</span>
+                      <span className="truncate">{baseBranch}</span>
+                    </>
+                  )}
+                  <span aria-hidden="true">·</span>
+                </>
               )}
               <time
                 className={cn(

@@ -2,6 +2,7 @@ import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
+import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import type { WorktreeLandingOperation } from "../../../src/contracts/worktrees/worktree-landing-data";
 import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
 import { App } from "../../../src/renderer/components/app";
@@ -115,6 +116,9 @@ export function renderSidebarNavigation(
           resolvedHasMoreByProject: {},
         }),
       );
+    },
+    async publishWorktrees(worktrees: readonly WorktreeRecord[]) {
+      await act(async () => applySnapshot(fixture.models.worktrees, { worktrees: [...worktrees] }));
     },
     async publishWorktreeOperations(operations: readonly WorktreeLandingOperation[]) {
       await act(async () =>

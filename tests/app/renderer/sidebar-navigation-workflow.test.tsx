@@ -154,6 +154,48 @@ describe("Sidebar navigation workflow", () => {
     expect(order()).toEqual(["root", "planner", "worker", "sibling", "standalone"]);
   });
 
+  it("keeps project and worktree details visible in Activity through mode and lifecycle changes", async () => {
+    using fixture = renderSidebarNavigation({
+      projects: [project],
+      sessions: [
+        sidebarSummary("feature", 3, { workingDirectory: "/cake-feature" }),
+        sidebarSummary("checkout", 2),
+        sidebarSummary("draft", 1, { workingDirectory: "/cake-feature", draft: true }),
+      ],
+    });
+    const worktree = {
+      projectPath: "/cake",
+      worktreePath: "/cake-feature",
+      branch: "agent/feature-branch",
+      baseBranch: "agent/release",
+      state: "active" as const,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    await fixture.publishWorktrees([worktree]);
+    const assertWorktree = (state: "Open worktree" | "Merged worktree") => {
+      expect(within(row("feature")).getByText("feature-branch")).toBeDefined();
+      expect(within(row("feature")).getByText("release")).toBeDefined();
+      expect(within(row("feature")).getByRole("img", { name: state })).toBeDefined();
+      expect(row("feature").querySelector("time")?.textContent).toBeTruthy();
+      expect(row("checkout").querySelector("[data-worktree-state]")).toBeNull();
+      expect(row("draft").querySelector("[data-worktree-state]")).toBeNull();
+      expect(within(row("draft")).queryByText("feature-branch")).toBeNull();
+    };
+    assertWorktree("Open worktree");
+    await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
+    assertWorktree("Open worktree");
+    for (const id of ["feature", "checkout", "draft"]) {
+      expect(within(row(id)).getByText("cake")).toBeDefined();
+    }
+    await fixture.publishWorktrees([{ ...worktree, state: "landed" }]);
+    assertWorktree("Merged worktree");
+    await fixture.user.click(screen.getByRole("button", { name: "Show projects" }));
+    assertWorktree("Merged worktree");
+    await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
+    assertWorktree("Merged worktree");
+    expect(within(row("feature")).getByText("cake")).toBeDefined();
+  });
+
   it("reveals ten roots per click without charging family children or sharing limits across projects and lanes", async () => {
     const singles = Array.from({ length: 20 }, (_, index) =>
       sidebarSummary(`single-${index}`, 20 - index),
