@@ -8,6 +8,8 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { registerAgentDirectoryExtensionProviders } from "./extension-providers";
+import { createPromptCacheLineage } from "./prompt-cache-lineage";
+import { createWidgetContextExtension } from "./widget-context-extension";
 import { createNestedToolActivityProjection } from "./nested-tool-activity-projection";
 import { canonicalPathIsInsideRoot } from "./workspace-paths";
 import type {
@@ -34,6 +36,10 @@ export interface IsolatedSessionOptions {
   sessionManager: SessionManager;
   projectTrusted: boolean;
   systemPrompt: string;
+  /** Retains ancestor prompt sections and appends the restricted widget task. */
+  inheritWidgetContext?: boolean;
+  /** Explicit roots that may contain this session's cache ancestors. */
+  promptCacheSessionRoots?: ReadonlyArray<string>;
   prompt: string;
   images?: ReadonlyArray<{
     readonly type: "image";
@@ -122,11 +128,13 @@ export async function runIsolatedSession(
     modelsPath: `${options.agentDir}/models.json`,
     modelsStorePath: `${options.agentDir}/models-cache.json`,
   });
-  // No extensions bind to an isolated session, but the agent directory's
-  // providers still apply so a utility model reachable from a main chat is
-  // reachable here.
+  // Discovered extensions stay disabled. The agent directory's providers still
+  // apply, as do explicit Cake-owned context/cache hooks for widget branches.
   await registerAgentDirectoryExtensionProviders(options.agentDir, modelRuntime);
   const resourceRoot = options.resourceRoot;
+  const promptCacheLineage = options.promptCacheSessionRoots
+    ? createPromptCacheLineage()
+    : undefined;
   const resourceLoader = new DefaultResourceLoader({
     cwd: options.cwd,
     agentDir: options.agentDir,
@@ -136,7 +144,14 @@ export async function runIsolatedSession(
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: !options.includeContextFiles,
-    systemPrompt: options.systemPrompt,
+    systemPrompt: options.inheritWidgetContext ? undefined : options.systemPrompt,
+    appendSystemPromptOverride: options.inheritWidgetContext ? () => [] : undefined,
+    extensionFactories: [
+      ...(promptCacheLineage ? [promptCacheLineage.extension] : []),
+      ...(options.inheritWidgetContext
+        ? [createWidgetContextExtension(options.sessionManager, options.systemPrompt)]
+        : []),
+    ],
     skillsOverride: resourceRoot
       ? (current) => ({
           ...current,
@@ -177,7 +192,13 @@ export async function runIsolatedSession(
     };
     options.signal?.addEventListener("abort", abort, { once: true });
     try {
-      if (options.bindExtensions) await session.bindExtensions({ mode: "rpc" });
+      if (promptCacheLineage && options.promptCacheSessionRoots)
+        await promptCacheLineage.attach({
+          sessionManager: options.sessionManager,
+          sessionRoots: options.promptCacheSessionRoots,
+        });
+      if (options.bindExtensions || promptCacheLineage || options.inheritWidgetContext)
+        await session.bindExtensions({ mode: "rpc" });
       if (options.model) {
         const model = modelRuntime.getModel(options.model.provider, options.model.id);
         if (!model)

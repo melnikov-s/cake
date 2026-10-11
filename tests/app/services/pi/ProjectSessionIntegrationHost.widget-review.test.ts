@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { generateReviewedWidget } from "../../../../src/domain/widgets/widgetGenerationReview";
 import { ProjectSessionIntegrationHost } from "../../../../src/layers/ProjectSessionIntegrationHost";
-import type { InlineWidgetGenerationRequest } from "../../../../src/domain/widgets/widgetGenerationReview";
+import type { InlineWidgetGenerationRequest } from "../../../../src/services/pi/runtime/sidecar-runtime";
 import { RenderedWidgetCaptureError } from "../../../../src/contracts/widgets/rendered-widget-capture-errors";
 import { inlineWidgetDocument } from "../../../../src/services/widgets/inline-widget-document-registry";
 
@@ -22,6 +22,8 @@ function host(options: {
   const captureStates: unknown[] = [];
   const capturedTokens: string[] = [];
   const reviewContexts: string[] = [];
+  const repairInputs: unknown[] = [];
+  const reviewInputs: unknown[] = [];
   let token = 0;
   const integration = new ProjectSessionIntegrationHost({
     workspacePath: "/workspace",
@@ -59,11 +61,14 @@ function host(options: {
       if (options.captureError) throw options.captureError;
       return { pngBase64: "cG5n", diagnostics: ["widget=560x480"] };
     },
-    runWidgetRepair: async ({ diagnostic }) => {
-      calls.push(`repair:${diagnostic?.split(":")[0]}`);
+    runWidgetRepair: async (input) => {
+      repairInputs.push(input);
+      calls.push(`repair:${input.diagnostic?.split(":")[0]}`);
       return { sessionId: "repair", response: source("Repaired") };
     },
-    runWidgetVisualReview: async ({ signal, context }) => {
+    runWidgetVisualReview: async (input) => {
+      reviewInputs.push(input);
+      const { signal, context } = input;
       reviewContexts.push(context);
       calls.push("review");
       return {
@@ -74,11 +79,25 @@ function host(options: {
       };
     },
   });
-  return { integration, calls, generationInputs, captureStates, capturedTokens, reviewContexts };
+  return {
+    integration,
+    calls,
+    generationInputs,
+    repairInputs,
+    reviewInputs,
+    captureStates,
+    capturedTokens,
+    reviewContexts,
+  };
 }
 
 const request = (signal?: AbortSignal): InlineWidgetGenerationRequest => ({
   sessionId: "project-session",
+  parentConversation: {
+    sessionId: "project-session",
+    sessionFile: "/sessions/source.jsonl",
+    entryId: "source-entry",
+  },
   brief: "Show the flow",
   fallback: "Readable fallback",
   model: { provider: "fixture", id: "vision" },
@@ -99,7 +118,18 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     const fixture = host({ reviews: ["ACCEPT_CURRENT"] });
     const initialState = { topic: "Cake and Pi", step: 1 };
     await generate(fixture.integration, { ...request(), surface: "session-plugin", initialState });
-    expect(fixture.generationInputs).toEqual([expect.objectContaining({ initialState })]);
+    expect(fixture.generationInputs).toEqual([
+      expect.objectContaining({
+        initialState,
+        conversation: { type: "parent", origin: request().parentConversation },
+        sessionRoots: ["/sessions", "/widget-sessions"],
+      }),
+    ]);
+    expect(fixture.reviewInputs).toEqual([
+      expect.objectContaining({
+        conversation: { type: "continue", sessionId: "generation-session" },
+      }),
+    ]);
     expect(fixture.captureStates).toEqual([initialState]);
     expect(JSON.parse(fixture.reviewContexts[0]!)).toMatchObject({ initialState });
   });
@@ -110,6 +140,7 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
 
     const result = await revise({
       sessionId: "project-session",
+      generationSessionId: "existing-generation",
       source: "export default function Existing(){ return <div>Existing</div> }",
       brief: "Show the flow",
       fallback: "Readable fallback",
@@ -118,6 +149,14 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     });
 
     expect(result.source).toContain("function Repaired");
+    expect(fixture.repairInputs).toEqual([
+      expect.objectContaining({
+        conversation: { type: "revision", sessionId: "existing-generation" },
+      }),
+    ]);
+    expect(fixture.reviewInputs).toEqual([
+      expect.objectContaining({ conversation: { type: "continue", sessionId: "repair" } }),
+    ]);
     expect(fixture.calls).toEqual([
       "vision:vision",
       "repair:Requested durable revision",
@@ -154,6 +193,15 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     await expect(generate(fixture.integration, request())).rejects.toThrow("third replacement");
     expect(fixture.calls.filter((call) => call.startsWith("capture"))).toHaveLength(2);
     expect(fixture.calls).toContain("repair:Compilation failed");
+    expect(fixture.repairInputs).toEqual([
+      expect.objectContaining({
+        conversation: { type: "continue", sessionId: "generation-session" },
+      }),
+    ]);
+    for (const input of fixture.reviewInputs)
+      expect(input).toMatchObject({
+        conversation: { type: "continue", sessionId: "generation-session" },
+      });
   });
 
   it("does not spend a candidate repair on renderer infrastructure failure", async () => {

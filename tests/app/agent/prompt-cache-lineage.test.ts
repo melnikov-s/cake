@@ -62,7 +62,7 @@ describe("prompt cache lineage", () => {
     const { manager } = createPersistedSession(directory, sessionDir);
 
     await expect(
-      resolvePromptCacheLineageKey({ sessionManager: manager, sessionRoot }),
+      resolvePromptCacheLineageKey({ sessionManager: manager, sessionRoots: [sessionRoot] }),
     ).resolves.toBe(manager.getSessionId());
   });
 
@@ -77,10 +77,10 @@ describe("prompt cache lineage", () => {
     expect(child.getSessionId()).not.toBe(root.getSessionId());
     expect(grandchild.getSessionId()).not.toBe(child.getSessionId());
     await expect(
-      resolvePromptCacheLineageKey({ sessionManager: child, sessionRoot }),
+      resolvePromptCacheLineageKey({ sessionManager: child, sessionRoots: [sessionRoot] }),
     ).resolves.toBe(root.getSessionId());
     await expect(
-      resolvePromptCacheLineageKey({ sessionManager: grandchild, sessionRoot }),
+      resolvePromptCacheLineageKey({ sessionManager: grandchild, sessionRoots: [sessionRoot] }),
     ).resolves.toBe(root.getSessionId());
   });
 
@@ -95,10 +95,10 @@ describe("prompt cache lineage", () => {
 
     // Root is gone: the child is the oldest readable ancestor for both.
     await expect(
-      resolvePromptCacheLineageKey({ sessionManager: child, sessionRoot }),
+      resolvePromptCacheLineageKey({ sessionManager: child, sessionRoots: [sessionRoot] }),
     ).resolves.toBe(child.getSessionId());
     await expect(
-      resolvePromptCacheLineageKey({ sessionManager: grandchild, sessionRoot }),
+      resolvePromptCacheLineageKey({ sessionManager: grandchild, sessionRoots: [sessionRoot] }),
     ).resolves.toBe(child.getSessionId());
   });
 
@@ -115,7 +115,7 @@ describe("prompt cache lineage", () => {
     manager.newSession({ parentSession: outsideFile });
 
     await expect(
-      resolvePromptCacheLineageKey({ sessionManager: manager, sessionRoot }),
+      resolvePromptCacheLineageKey({ sessionManager: manager, sessionRoots: [sessionRoot] }),
     ).resolves.toBe(manager.getSessionId());
   });
 

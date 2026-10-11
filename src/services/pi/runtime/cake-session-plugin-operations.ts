@@ -1,4 +1,6 @@
 import { Schema } from "effect";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { captureWidgetConversation } from "./widget-conversation";
 import { SessionPluginControls } from "../../../contracts/application/session-plugin-controls";
 import type { SessionPlugin } from "../../../contracts/application/application-data";
 import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
@@ -154,6 +156,8 @@ export function createCakeSessionPluginOperations(
         }
         const generated = await control.generate({
           sessionId: control.sessionId,
+          // SAFETY: the Cake gateway supplies Pi's validated tool runtime context.
+          parentConversation: captureWidgetConversation(context.runtime as ExtensionContext),
           brief: request.brief,
           data: request.data,
           initialState: request.initialState ?? null,

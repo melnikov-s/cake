@@ -24,9 +24,10 @@ import {
   runInlineWidgetRepair,
   runInlineWidgetVisualReview,
   type InlineWidgetRevisionRequest,
+  type InlineWidgetGenerationRequest,
 } from "../services/pi/runtime/sidecar-runtime";
 import type {
-  InlineWidgetGenerationRequest,
+  InlineWidgetGenerationRequest as WidgetReviewInput,
   InlineWidgetGenerationResult,
   WidgetGenerationReviewDependencies,
 } from "../domain/widgets/widgetGenerationReview";
@@ -113,7 +114,7 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly runWidgetVisualReview?: typeof runInlineWidgetVisualReview;
   readonly compileWidget?: typeof compileInlineWidget;
   readonly runReviewedWidget: (
-    input: InlineWidgetGenerationRequest,
+    input: WidgetReviewInput,
     dependencies: WidgetGenerationReviewDependencies,
   ) => Effect.Effect<InlineWidgetGenerationResult, unknown, never>;
   /** Final Pi callback adapter. This is the only place this host executes Effects. */
@@ -159,6 +160,7 @@ export class ProjectSessionIntegrationHost {
   readonly workspacePath: string;
   private readonly agentDir: string;
   private readonly widgetSessionDir: string;
+  private readonly widgetSessionRoots: ReadonlyArray<string>;
   private readonly emitEvent: (event: CakeEvent) => void;
   private readonly requestUiFromRenderer: ProjectSessionIntegrationHostOptions["requestUi"];
   private readonly requestInterviewFromRenderer: ProjectSessionIntegrationHostOptions["requestInterview"];
@@ -188,6 +190,7 @@ export class ProjectSessionIntegrationHost {
     this.agentDir = options.agentDir;
     this.widgetSessionDir =
       options.widgetSessionDir ?? resolve(options.sessionDir, "..", "widget-sessions");
+    this.widgetSessionRoots = [options.sessionDir, this.widgetSessionDir];
     this.emitEvent = options.emit;
     this.requestUiFromRenderer = options.requestUi;
     this.requestInterviewFromRenderer = options.requestInterview;
@@ -313,6 +316,8 @@ export class ProjectSessionIntegrationHost {
         cwd: this.workspacePath,
         agentDir: this.agentDir,
         sessionDir: this.widgetSessionDir,
+        sessionRoots: this.widgetSessionRoots,
+        conversation: { type: "parent", origin: input.parentConversation },
         ...input,
       }),
     );
@@ -324,7 +329,7 @@ export class ProjectSessionIntegrationHost {
       fallback: input.fallback,
       revisionInstructions: input.instructions,
     });
-    const generationInput: InlineWidgetGenerationRequest = {
+    const generationInput: WidgetReviewInput = {
       sessionId: input.sessionId,
       brief: input.brief,
       fallback: input.fallback,
@@ -336,6 +341,8 @@ export class ProjectSessionIntegrationHost {
         cwd: this.workspacePath,
         agentDir: this.agentDir,
         sessionDir: this.widgetSessionDir,
+        sessionRoots: this.widgetSessionRoots,
+        conversation: { type: "revision", sessionId: input.generationSessionId },
         language: "react",
         capability: "display",
         source: input.source,
@@ -348,15 +355,25 @@ export class ProjectSessionIntegrationHost {
   }
 
   private reviewWidget(
-    input: InlineWidgetGenerationRequest,
+    input: WidgetReviewInput,
     context: string,
     generate: () => ReturnType<typeof runInlineWidgetGeneration>,
   ) {
+    let generationSessionId: string | undefined;
+    const conversation = () => {
+      if (!generationSessionId) throw new Error("Widget generation has not started");
+      return { type: "continue" as const, sessionId: generationSessionId };
+    };
     const fromPromise = <A>(evaluate: (signal: AbortSignal) => Promise<A>) =>
       Effect.tryPromise({ try: evaluate, catch: (cause) => cause });
     return this.runReviewedWidget(input, {
       requireVisionModel: (model) => fromPromise(() => this.requireVisionModel(model)),
-      generate: () => fromPromise(() => generate()),
+      generate: () =>
+        fromPromise(async () => {
+          const generated = await generate();
+          generationSessionId = generated.sessionId;
+          return generated;
+        }),
       compile: (source) =>
         fromPromise(() =>
           this.compileWidget(
@@ -379,6 +396,8 @@ export class ProjectSessionIntegrationHost {
             cwd: this.workspacePath,
             agentDir: this.agentDir,
             sessionDir: this.widgetSessionDir,
+            sessionRoots: this.widgetSessionRoots,
+            conversation: conversation(),
             language: "react",
             capability: input.surface === "session-plugin" ? "session-plugin" : "display",
             source,
@@ -408,6 +427,8 @@ export class ProjectSessionIntegrationHost {
             cwd: this.workspacePath,
             agentDir: this.agentDir,
             sessionDir: this.widgetSessionDir,
+            sessionRoots: this.widgetSessionRoots,
+            conversation: conversation(),
             source,
             context,
             diagnostic,

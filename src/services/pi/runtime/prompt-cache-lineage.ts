@@ -68,7 +68,7 @@ async function readLineageHeader(sessionFile: string) {
  */
 export async function resolvePromptCacheLineageKey(input: {
   sessionManager: SessionManager;
-  sessionRoot: string;
+  sessionRoots: ReadonlyArray<string>;
 }): Promise<string> {
   const header = input.sessionManager.getHeader();
   let key = input.sessionManager.getSessionId();
@@ -80,11 +80,15 @@ export async function resolvePromptCacheLineageKey(input: {
     const path = resolve(next);
     if (visited.has(path)) break;
     visited.add(path);
-    try {
-      assertSessionPath(path, input.sessionRoot, "Parent session file");
-    } catch {
-      break;
-    }
+    const allowed = input.sessionRoots.some((root) => {
+      try {
+        assertSessionPath(path, root, "Parent session file");
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    if (!allowed) break;
     const ancestor = await readLineageHeader(path);
     if (!ancestor) break;
     key = ancestor.id;
@@ -116,7 +120,10 @@ export function applyPromptCacheLineageKey(
 export interface PromptCacheLineage {
   readonly extension: InlineExtension;
   /** Resolves and activates the lineage key for the session this runtime serves. */
-  attach(input: { sessionManager: SessionManager; sessionRoot: string }): Promise<void>;
+  attach(input: {
+    sessionManager: SessionManager;
+    sessionRoots: ReadonlyArray<string>;
+  }): Promise<void>;
   key(): string | undefined;
 }
 

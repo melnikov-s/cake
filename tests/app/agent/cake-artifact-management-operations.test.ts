@@ -140,6 +140,53 @@ describe("Cake artifact management operations", () => {
     ).rejects.toThrow("expected 1");
   });
 
+  it("revises from the accepted widget generation branch and publishes its new branch identity", async () => {
+    const initial: CakeArtifactV1 = {
+      protocol: "cake.artifact/v1",
+      id: "chart",
+      sessionId: "original-parent",
+      revision: 1,
+      kind: "widget",
+      payload: {
+        language: "react",
+        source: "export default function Chart(){return null}",
+        brief: "Verified chart",
+        generationSessionId: "accepted-generation",
+      },
+      fallback: { markdown: "Chart" },
+      interaction: { mode: "present" },
+    };
+    const { registry, callbacks } = makeHarness(initial);
+    const revise = vi.fn(async () => ({
+      language: "react" as const,
+      source: "export default function Revised(){return null}",
+      generationSessionId: "revision-branch",
+    }));
+    callbacks.reviseInlineWidget = revise;
+    await registry.invoke(
+      {
+        command: "artifacts.update",
+        input: { lineageId: "chart", expectedRevision: 1, instructions: "Use clearer labels" },
+      },
+      context(),
+    );
+    expect(revise).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-1",
+        generationSessionId: "accepted-generation",
+        source: initial.payload.source,
+        instructions: "Use clearer labels",
+      }),
+    );
+    expect(callbacks.persistArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-1",
+        revision: 2,
+        payload: expect.objectContaining({ generationSessionId: "revision-branch" }),
+      }),
+    );
+  });
+
   it("appends one restore pointer while link and unlink append none", async () => {
     const { registry, appendEntry, callbacks } = makeHarness(markdown(2, "two"));
     await registry.invoke(

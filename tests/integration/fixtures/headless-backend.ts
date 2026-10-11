@@ -123,6 +123,11 @@ try {
         await assert.rejects(
           options.runtime.generateInlineWidget({
             sessionId: inputSessionId,
+            parentConversation: {
+              sessionId: inputSessionId,
+              sessionFile: `${paths.piSessions}/source.jsonl`,
+              entryId: "source-entry",
+            },
             brief: "Show a chart",
             fallback: "Chart unavailable",
             model: { provider: "test", id: "test" },

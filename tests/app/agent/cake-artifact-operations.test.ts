@@ -6,6 +6,7 @@ import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-ope
 const runtime = {
   sessionManager: {
     getSessionId: () => "session-1",
+    getSessionFile: () => "/sessions/source.jsonl",
     getLeafId: () => "assistant-1",
   },
   model: { provider: "provider", id: "model" },
@@ -61,6 +62,11 @@ describe("Cake widget presentation operation", () => {
     expect(generateInlineWidget).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: "session-1",
+        parentConversation: {
+          sessionId: "session-1",
+          sessionFile: "/sessions/source.jsonl",
+          entryId: "assistant-1",
+        },
         brief: widgetRequest.input.widget.brief,
         data: widgetRequest.input.widget.data,
         fallback: widgetRequest.input.widget.fallback.markdown,

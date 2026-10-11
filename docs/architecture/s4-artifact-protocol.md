@@ -188,9 +188,17 @@ the Pi transcript, while the generated implementation does not enter the
 project session's model context.
 
 Cake checks that the active configured model is available, authenticated and
-supports image input, then starts a hidden, persisted Pi session with tools,
-extensions, skills, context files and project trust disabled. That agent returns
-one React component from the untrusted brief. Electron main compile-checks it and
+supports image input, then forks a hidden, persisted Pi conversation from the
+caller's captured ancestor path. The fork excludes sibling branches and later
+parent messages, retains Pi's compaction/context edits, and cuts before an
+unfinished assistant/tool-result batch. The explicit widget assignment is appended
+to that complete prefix. Executable tools, discovered extensions, resource loading
+and project trust remain disabled; inherited instructions do not grant capabilities.
+Cake-owned inline hooks preserve inherited prompt sections, append restricted task
+instructions, and reuse the existing fork-lineage provider cache-key policy across
+the explicitly allowed project/widget session roots. Transcript and transport
+identities stay independent; actual cache hits remain provider/prefix-dependent.
+That agent returns one React component from the untrusted brief. Electron main compile-checks it and
 loads the compiled sandbox document in a fixed-size, main-owned hidden offscreen
 `BrowserWindow` with deterministic artifact-panel dimensions. The host waits for
 the same bounded ready/runtime protocol used by normal widget display, then captures
@@ -210,9 +218,9 @@ attempts. Hidden windows and transient compiled tokens are released on settlemen
 
 Only accepted source reaches existing widget artifact persistence. The Pi
 pointer remains bounded metadata, while the fallback is available through the
-exact-revision projection. Review turns use separate persisted restricted Pi sessions
-with the same resolved model and full context; they do not share one transcript.
-PNG image blocks are retained in those private Pi transcripts, not in the widget
+exact-revision projection. Generation, repair and visual review turns continue the
+same persisted restricted Pi branch with the same resolved model and inherited
+context. PNG image blocks are retained in that private Pi transcript, not in the widget
 artifact or the primary conversation. The screenshot covers a bounded preview,
 not every interaction or possible delayed update; review is visual feedback,
 not a guarantee of correctness or aesthetic quality.
@@ -275,9 +283,12 @@ explicit link: temporary read leases are deferred until Cake has a truthful
 lifetime and persistence owner for them.
 
 Normal artifact presentation does not expose generated Source or a renderer-local
-Repair control. User-requested repair is a durable `artifacts.update`: another
-isolated Pi session receives stored source, stored brief, requested delta, and
-bounded diagnostics as untrusted data. Cake compiles and visually reviews the
+Repair control. User-requested repair is a durable `artifacts.update`: a new
+restricted descendant of the accepted artifact generation branch receives stored
+source, stored brief, requested delta, and bounded diagnostics as untrusted data.
+It retains the artifact branch's context rather than silently importing later
+parent messages. Forking leaves the previous accepted revision's transcript
+unchanged, including when a revision fails or loses a publication conflict. Cake compiles and visually reviews the
 returned source through the same boundary before publishing the next revision.
 The generated implementation never enters the primary project-session context.
 Readable fallback remains required for explicit artifact inspection, export,

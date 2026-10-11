@@ -505,7 +505,7 @@ export async function createCakeSessionRuntime(
   // directories, so lineage resolution is bounded by the shared session root.
   await promptCacheLineage.attach({
     sessionManager: session.sessionManager,
-    sessionRoot: resolve(options.sessionDir),
+    sessionRoots: [resolve(options.sessionDir)],
   });
   let disposed = false;
   let disposePromise: Promise<void> | undefined;

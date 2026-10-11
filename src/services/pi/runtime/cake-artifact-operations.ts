@@ -12,6 +12,7 @@ import type {
   InlineWidgetGenerationResult,
   InlineWidgetRevisionRequest,
 } from "./sidecar-runtime";
+import { captureWidgetConversation } from "./widget-conversation";
 import { ArtifactProjectionMetadata } from "../../../contracts/artifacts/artifact-projection-data";
 import type {
   CakeOperationDefinition,
@@ -71,6 +72,7 @@ export interface PiArtifactOperationHost {
 interface PiToolRuntimeContext {
   sessionManager: {
     getSessionId(): string;
+    getSessionFile(): string | undefined;
     getLeafId(): string | null;
   };
   model?: { provider: string; id: string };
@@ -435,6 +437,7 @@ export function createCakeArtifactOperations(
             throw new Error("Durable widget revision is unavailable");
           const generated = await options.reviseInlineWidget({
             sessionId,
+            generationSessionId: current.artifact.payload.generationSessionId,
             source: current.artifact.payload.source,
             brief: current.artifact.payload.brief,
             fallback: current.artifact.fallback.markdown,
@@ -537,6 +540,7 @@ export function createCakeArtifactOperations(
         "The persisted widget artifact ID after generation, rendered screenshot review, and acceptance complete.",
       limitations: [
         "Generated widgets have no filesystem, Node, Electron, parent-DOM or Cake API access. CSP blocks fetch/XHR/WebSocket; generic widgets permit passive HTTPS/data images and media. Supply local data and request self-contained output.",
+        "Generation inherits the caller's ancestor context at creation time, excluding sibling branches and unfinished tool calls. Revisions follow the artifact's generation branch, not later parent messages.",
         "Every successfully rendered candidate is reviewed from an actual Cake Electron screenshot. Review screenshots are retained in private Pi widget-session transcripts under Cake's existing session retention policy.",
       ],
       async execute(input, context) {
@@ -549,6 +553,7 @@ export function createCakeArtifactOperations(
         const sessionId = runtime.sessionManager.getSessionId();
         const generated = await options.generateInlineWidget!({
           sessionId,
+          parentConversation: captureWidgetConversation(runtime),
           brief: widget.brief,
           data: widget.data,
           fallback: widget.fallback.markdown,
