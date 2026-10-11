@@ -1,356 +1,122 @@
-import { createStore, mount, toSnapshot, updateStore } from "r-state-tree";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { EditorSelectionsStore } from "../../../../src/renderer/stores/EditorSelectionsStore";
+import { describe, expect, it, vi } from "vitest";
 import { workingDirectoryEditorLocation } from "../../../../src/ipc/editor-location";
+import { TurnId } from "../../../../src/ipc/conversation-data";
 import type { Client } from "../../../../src/renderer/client/Client";
-import type { ExtensionUiStore } from "../../../../src/renderer/stores/ExtensionUiStore";
-import type { ProjectCatalogStore } from "../../../../src/renderer/stores/ProjectCatalogStore";
-import { ProjectWorkbenchStore } from "../../../../src/renderer/stores/ProjectWorkbenchStore";
-import type { ReviewsStore } from "../../../../src/renderer/stores/ReviewsStore";
-import type { SessionCatalogStore } from "../../../../src/renderer/stores/SessionCatalogStore";
-import type { SessionRegistryStore } from "../../../../src/renderer/stores/SessionRegistryStore";
-import { SessionOperationCoordinatorStore } from "../../../../src/renderer/stores/SessionOperationCoordinatorStore";
-import { mountWithClient } from "../mount-with-client";
+import type { DrawBoardMetadata } from "../../../../src/contracts/draw/draw-board-data";
+import type { DrawDocumentSnapshot } from "../../../../src/contracts/draw/draw-editor";
+import type { DrawEditorAdapter } from "../../../../src/renderer/draw/DrawEditorAdapter";
+import { applyConversationUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
+import { fakeSavedDrafts } from "../fakes/saved-drafts";
+import { projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
+import { createRendererStoreFixture } from "../renderer-store-fixture";
+import type { TestClientOverrides } from "../test-client";
 
-function mountWorkbench(
-  registry: SessionRegistryStore,
-  catalog: SessionCatalogStore,
-  client: Client,
-  initialActiveSessionId?: string,
-  restoreStagedSession?: (projectPath: string) => string | undefined,
-  workflow?: {
-    prepareWorkingDirectoryRetirement?(workingDirectories: readonly string[]): Promise<boolean>;
-    onWorktreeSessionsResolved?(sessionIds: readonly string[], projectPath: string): Promise<void>;
-    openSessionById?(sessionId: string): Promise<void>;
-    reviews?: Partial<ReviewsStore>;
-  },
-) {
-  let activeSessionId = initialActiveSessionId;
-  const selectSession = vi.fn((sessionId: string) => {
-    activeSessionId = sessionId;
-  });
-  const operations = mount(createStore(SessionOperationCoordinatorStore));
-  const mounted = mountWithClient(
-    createStore(ProjectWorkbenchStore, {
-      retirement: {
-        prepare: workflow?.prepareWorkingDirectoryRetirement ?? (async () => true),
-      },
-      sessionRegistry: registry,
-      operations,
-      projects: {
-        nameFromPath: (path: string) => path.split("/").at(-1) ?? path,
-        nameForPath: (path: string) => path.split("/").at(-1) ?? path,
-        recordOpened: vi.fn(),
-      } as unknown as ProjectCatalogStore,
-      globalLabels: () => [],
-      reviews: () =>
-        ({
-          codeThreadsForSession: () => [],
-          threadStreaming: () => false,
-          ...workflow?.reviews,
-        }) as unknown as ReviewsStore,
-      extensionUi: () => ({ clear: vi.fn() }) as unknown as ExtensionUiStore,
-      catalog,
-      startCakeChat: async () => undefined,
-      onWorktreeSessionsResolved: workflow?.onWorktreeSessionsResolved ?? (async () => undefined),
-      openSessionById: workflow?.openSessionById ?? (async () => undefined),
-      activeSessionId: () => activeSessionId,
-      restoreStagedSession,
-      selectSession,
-      toggleProjectSidebar: vi.fn(),
-      enterIdeSidebarMode: vi.fn(),
-      leaveIdeSidebarMode: vi.fn(),
-      projectSidebarWidth: () => 292,
-    }),
+function loadedWorkbench(client: TestClientOverrides = {}) {
+  const fixture = createRendererStoreFixture({
     client,
-  );
-  return { ...mounted, operations, selectSession };
+    projects: [projectRecord({ path: "/project" })],
+    sessions: [sessionSummary({ sessionId: "session-1", projectPath: "/project" })],
+  });
+  const session = fixture.root.sessionRegistry.load("session-1", "/project");
+  fixture.root.appShellStore.selectProjectSession("session-1");
+  fixture.root.projectWorkbenchStore.showLoadedSession("session-1");
+  return { ...fixture, session };
 }
 
-const selectionStores: EditorSelectionsStore[] = [];
-afterEach(() => {
-  for (const store of selectionStores.splice(0)) store[Symbol.dispose]();
-});
-function emptySelections() {
-  const store = mount(
-    createStore(EditorSelectionsStore, {
-      sessionId: "session-1",
-      openLocation: async () => {
-        throw new Error("Unexpected editor navigation");
-      },
-      refreshHighlights: async () => undefined,
-    }),
-  );
-  selectionStores.push(store);
-  return store;
-}
-
-function loadedSessionStub(model: { sessionFile: string }, workspacePath = "/project") {
-  return {
-    sessionId: "session-1",
-    workspacePath,
-    model,
-    editorSelectionsStore: emptySelections(),
-    presentationMode: "normal" as const,
-    workspaceChatSidebarVisible: true,
-    workspaceChatSidebarWidth: 420,
-    showPresentation: vi.fn(),
-    toggleWorkspaceChatSidebar: vi.fn(),
-    showWorkspaceChatSidebar: vi.fn(),
-    setWorkspaceChatSidebarWidth: vi.fn(),
-    conversationSessionStore: {
-      composerStore: {
-        draftStore: {
-          requestFocus: vi.fn(),
-          setEditorContextAttachment: vi.fn(),
-        },
-      },
-    },
-    markRead: vi.fn(),
-  };
-}
-
-// Migration backlog: retain the remaining startup, background-session,
-// and editing-surface contracts until equivalent real workflow coverage replaces them.
-// Navigation moved to project-navigation-workflow; new-session opening to
-// project-open-workflow; saved Draft worktree naming to worktree-creation-workflow;
-// bulk cleanup and worktree resolution to workbench-workflow; fork selection
-// and identity-only runtime opening to session-continuation-workflow.
-describe("ProjectWorkbenchStore startup selection", () => {
-  it("hydrates its runtime view from the shell selection without persisting another selection", async () => {
-    const inspect = vi.fn(async (input: { operationId: string; path: string }) => ({
+// GUI navigation, staged-composer restoration and resolved-session editing policy
+// are covered by project-navigation, root-app, session-identity and workbench workflows.
+// The cached-session failure/error journey now lives in workbench-lifecycle-workflow.
+// These remaining entries are bootstrap or externally initiated controls, not GUI actions.
+describe("Project workbench bootstrap and external-control integration", () => {
+  it("re-authorizes the shell's restored selection before accepting its workspace", async () => {
+    const inspect = vi.fn<Client["workspaces"]["inspect"]>(async (input) => ({
       ...input,
       trustRequired: true,
     }));
-    const load = vi.fn();
-    const registry = {
-      findSession: () => undefined,
-      load,
-      pendingSessions: { isTemporary: () => false, isDraft: () => false },
-    } as unknown as SessionRegistryStore;
-    const {
-      root,
-      subject: store,
-      operations,
-      selectSession,
-    } = mountWorkbench(
-      registry,
-      {} as SessionCatalogStore,
-      { workspaces: { inspect } } as unknown as Client,
-      "session-1",
-    );
+    const open = vi.fn<Client["projectSessions"]["open"]>();
+    using fixture = createRendererStoreFixture({
+      projects: [projectRecord({ path: "/project" })],
+      sessions: [sessionSummary({ sessionId: "session-1", projectPath: "/project" })],
+      client: { workspaces: { inspect }, projectSessions: { open } },
+    });
+    fixture.root.appShellStore.selectProjectSession("session-1");
 
-    await store.initialize({ workspacePath: "/project", sessionId: "session-1" });
+    // Root.initialize is the renderer bootstrap boundary; there is no user control for it.
+    await fixture.root.initialize();
 
-    expect(store.projectOpenStore.projectPath).toBe("/project");
-    expect(store.activeSessionId).toBe("session-1");
-    expect(load).toHaveBeenCalledWith("session-1", "/project");
     expect(inspect).toHaveBeenCalledWith(
       expect.objectContaining({ path: "/project" }),
-      expect.any(Object),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    const snapshot = toSnapshot(store);
-    expect(snapshot.state).not.toHaveProperty("selectedSessionId");
-    expect(snapshot.state).not.toHaveProperty("projectPath");
-    expect(snapshot.children.projectOpenStore).toMatchObject({
-      state: { projectPath: "/project" },
+    expect(fixture.root.projectWorkbenchStore.projectOpenStore.pendingTrustPath).toBe("/project");
+    expect(fixture.root.sessionRegistry.findSession("session-1")?.workspacePath).toBe("/project");
+    expect(fixture.root.appShellStore.selection).toEqual({
+      kind: "project-session",
+      sessionId: "session-1",
     });
-    expect(selectSession).not.toHaveBeenCalled();
-
-    root[Symbol.dispose]();
-    operations[Symbol.dispose]();
+    expect(open).not.toHaveBeenCalled();
   });
 
-  it("restores the focused pane's staged composer when starting a new session", async () => {
-    const stagedSession = { sessionId: "staged-1", workspacePath: "/project" };
-    const registry = {
-      findSession: (sessionId: string) =>
-        sessionId === stagedSession.sessionId ? stagedSession : undefined,
-      pendingSessions: { isStaged: () => false },
-    } as unknown as SessionRegistryStore;
-    const restoreStagedSession = vi.fn(() => stagedSession.sessionId);
-    const {
-      root,
-      subject: store,
-      operations,
-      selectSession,
-    } = mountWorkbench(
-      registry,
-      {} as SessionCatalogStore,
-      {} as Client,
-      undefined,
-      restoreStagedSession,
-    );
-    const showLoadedSession = vi.spyOn(store, "showLoadedSession").mockReturnValue(true);
+  it.each(["draft", "prompted"] as const)(
+    "creates an agent-originated %s session without replacing the visible conversation",
+    async (kind) => {
+      const drafts = fakeSavedDrafts();
+      const start = vi.fn<Client["projectSessions"]["start"]>(async () =>
+        TurnId.make("10000000-0000-4000-8000-000000000001"),
+      );
+      using fixture = loadedWorkbench({
+        savedDrafts: drafts.client,
+        projectSessions: { start },
+      });
+      // Let the mount-time Saved Draft refresh settle before creating a new authority record.
+      await fixture.root.sessionRegistry.pendingSessions.refreshSavedDrafts();
+      const creation = fixture.root.projectWorkbenchStore.sessionCreationStore;
 
-    await store.startNewSession("/project");
+      const created =
+        kind === "draft"
+          ? await creation.createDraft("/other-project", "Background", "Run the tests")
+          : await creation.createPrompted("/other-project", "Background", "Run the tests");
 
-    expect(restoreStagedSession).toHaveBeenCalledWith("/project");
-    expect(selectSession).toHaveBeenCalledWith(stagedSession.sessionId);
-    expect(showLoadedSession).toHaveBeenCalledWith(stagedSession.sessionId);
+      expect(fixture.root.sessionRegistry.findSession(created)?.workspacePath).toBe(
+        "/other-project",
+      );
+      expect(fixture.root.projectWorkbenchStore.projectOpenStore.projectPath).toBe("/project");
+      expect(fixture.root.appShellStore.selection).toEqual({
+        kind: "project-session",
+        sessionId: "session-1",
+      });
+      if (kind === "draft") {
+        expect(drafts.records.get(created)).toMatchObject({
+          projectPath: "/other-project",
+          title: "Background",
+          text: "Run the tests",
+          status: "saved",
+        });
+        expect(start).not.toHaveBeenCalled();
+      } else {
+        expect(start).toHaveBeenCalledWith(
+          expect.objectContaining({
+            sessionId: created,
+            workingDirectory: "/other-project",
+            name: "Background",
+            text: "Run the tests",
+          }),
+          expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
+        expect(fixture.root.sessionRegistry.pendingSessions.isTemporary(created)).toBe(false);
+      }
+    },
+  );
 
-    root[Symbol.dispose]();
-    operations[Symbol.dispose]();
-  });
-
-  it("creates agent drafts in the background without changing the visible session", async () => {
-    const pendingConversation = { setName: vi.fn(), setConfiguration: vi.fn() };
-    const pendingSessions = {
-      prepare: vi.fn(),
-      conversation: vi.fn(() => pendingConversation),
-      createDraft: vi.fn(async () => undefined),
-    };
-    const registry = {
-      findSession: () => undefined,
-      pendingSessions,
-      removeSession: vi.fn(),
-    } as unknown as SessionRegistryStore;
-    const {
-      root,
-      subject: store,
-      operations,
-      selectSession,
-    } = mountWorkbench(registry, {} as SessionCatalogStore, {} as Client, "visible-session");
-    store.projectOpenStore.projectPath = "/visible-project";
-
-    const created = await store.sessionCreationStore.createDraft(
-      "/other-project",
-      "Draft",
-      "Do this later",
-    );
-
-    expect(pendingSessions.prepare).toHaveBeenCalledWith("/other-project", created);
-    expect(pendingSessions.createDraft).toHaveBeenCalledWith(created, "Do this later", []);
-    expect(store.projectOpenStore.projectPath).toBe("/visible-project");
-    expect(store.activeSessionId).toBe("visible-session");
-    expect(selectSession).not.toHaveBeenCalled();
-
-    root[Symbol.dispose]();
-    operations[Symbol.dispose]();
-  });
-
-  it("starts agent-created sessions in the background without changing the visible session", async () => {
-    const start = vi.fn(async () => undefined);
-    const pendingConversation = { setName: vi.fn(), setConfiguration: vi.fn() };
-    const pendingSessions = {
-      prepare: vi.fn(),
-      conversation: vi.fn(() => pendingConversation),
-      projectSubmission: vi.fn(),
-      materialize: vi.fn(),
-    };
-    const registry = {
-      findSession: () => undefined,
-      pendingSessions,
-      removeSession: vi.fn(),
-    } as unknown as SessionRegistryStore;
-    const {
-      root,
-      subject: store,
-      operations,
-      selectSession,
-    } = mountWorkbench(
-      registry,
-      {} as SessionCatalogStore,
-      { projectSessions: { start } } as unknown as Client,
-      "visible-session",
-    );
-    store.projectOpenStore.projectPath = "/visible-project";
-
-    const created = await store.sessionCreationStore.createPrompted(
-      "/other-project",
-      "Background",
-      "Run the tests",
-    );
-
-    expect(start).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionId: created,
-        workingDirectory: "/other-project",
-        name: "Background",
-        text: "Run the tests",
-      }),
-      expect.any(Object),
-    );
-    expect(pendingSessions.materialize).toHaveBeenCalledWith(created, "/other-project");
-    expect(store.projectOpenStore.projectPath).toBe("/visible-project");
-    expect(store.activeSessionId).toBe("visible-session");
-    expect(selectSession).not.toHaveBeenCalled();
-
-    root[Symbol.dispose]();
-    operations[Symbol.dispose]();
-  });
-
-  it("keeps a failed open attached to the selected session error state", async () => {
-    const error = new Error("Cake could not find Project Session session-1");
-    const open = vi.fn(async () => Promise.reject(error));
-    const registry = {
-      findSession: () => undefined,
-    } as unknown as SessionRegistryStore;
-    const catalog = {
-      find: (sessionId: string) => ({
-        sessionId,
-        workingDirectory: "/project",
-        unread: false,
-      }),
-    } as SessionCatalogStore;
-    const {
-      root,
-      subject: store,
-      operations,
-    } = mountWorkbench(registry, catalog, {
-      projectSessions: { open },
-    } as unknown as Client);
-
-    await store.openSession("session-1");
-
-    expect(store.contextError("session-1")).toEqual({
-      message: "Cake could not find Project Session session-1",
-      details: expect.stringContaining("Context:\nOpening Project Session"),
-    });
-
-    root[Symbol.dispose]();
-    operations[Symbol.dispose]();
-  });
-
-  it("routes explicit VS Code selection actions to the code-chat draft and the project composer", () => {
-    const draftStore = {
-      addSourceAttachment: vi.fn(),
-      requestFocus: vi.fn(),
-      setEditorContextAttachment: vi.fn(),
-    };
-    const session = {
-      workspacePath: "/project",
-      model: { sessionId: "session-1", sessionFile: "/sessions/session-1.jsonl" },
-      editorSelectionsStore: emptySelections(),
-      presentationMode: "vscode" as const,
-      workspaceChatSidebarVisible: true,
-      workspaceChatSidebarWidth: 420,
-      showWorkspaceChatSidebar: vi.fn(),
-      conversationSessionStore: { composerStore: { draftStore } },
-      markRead: vi.fn(),
-    };
-    const reviews = {
-      prepareDraft: vi.fn(),
-      cancelDraft: vi.fn(),
-      clearActiveThread: vi.fn(),
-    };
-    const registry = {
-      findSession: (sessionId: string) => (sessionId === "session-1" ? session : undefined),
-      pendingSessions: { isTemporary: () => false },
-    } as unknown as SessionRegistryStore;
-    const {
-      root,
-      subject: store,
-      operations,
-    } = mountWorkbench(
-      registry,
-      {} as SessionCatalogStore,
-      {} as unknown as Client,
-      "session-1",
-      undefined,
-      { reviews: reviews as unknown as Partial<ReviewsStore> },
-    );
-    store.projectOpenStore.projectPath = "/project";
+  it("routes native editor selection requests only to their working directory, replacing a code-chat draft with an annotation", () => {
+    using fixture = loadedWorkbench();
+    const store = fixture.root.projectWorkbenchStore;
+    const session = fixture.session;
+    const reviews = fixture.root.reviewsStore;
+    const draft = session.conversationSessionStore.composerStore.draftStore;
+    // Native editor emits these transport events; jsdom cannot honestly initiate that selection.
+    session.showPresentation("vscode");
+    session.workspaceChatSidebarVisible = false;
     store.presentationStore.embeddedEditorStore.visible = true;
     const selection = {
       path: "src/main.ts",
@@ -363,21 +129,20 @@ describe("ProjectWorkbenchStore startup selection", () => {
       contextAfter: "}",
     };
 
-    // Selections from another Working Directory never touch this session.
     store.receive({
       type: "embedded-editor-side-chat-requested",
       workspacePath: "/elsewhere",
       ...selection,
     });
-    expect(reviews.prepareDraft).not.toHaveBeenCalled();
+    expect(reviews.draftAnchor).toBeUndefined();
+    expect(session.workspaceChatSidebarVisible).toBe(false);
 
     store.receive({
       type: "embedded-editor-side-chat-requested",
       workspacePath: "/project",
       ...selection,
     });
-    expect(reviews.clearActiveThread).toHaveBeenCalledTimes(1);
-    expect(reviews.prepareDraft).toHaveBeenCalledWith({
+    expect(reviews.draftAnchor).toEqual({
       path: "src/main.ts",
       view: "file",
       start: { diffLine: 4, oldLine: 5, newLine: 5, column: 2 },
@@ -387,8 +152,17 @@ describe("ProjectWorkbenchStore startup selection", () => {
       contextAfter: "}",
       diff: "",
     });
-    expect(session.showWorkspaceChatSidebar).toHaveBeenCalledTimes(1);
-    expect(draftStore.addSourceAttachment).not.toHaveBeenCalled();
+    expect(session.workspaceChatSidebarVisible).toBe(true);
+    expect(draft.attachments).toHaveLength(0);
+
+    store.receive({
+      type: "embedded-editor-annotation-requested",
+      workspacePath: "/elsewhere",
+      ...selection,
+      comment: "Ignore this other workspace",
+    });
+    expect(reviews.draftAnchor).toBeDefined();
+    expect(draft.attachments).toHaveLength(0);
 
     store.receive({
       type: "embedded-editor-annotation-requested",
@@ -396,156 +170,234 @@ describe("ProjectWorkbenchStore startup selection", () => {
       ...selection,
       comment: "Why is this here?",
     });
-    // The annotation lands in the project composer, so any code-chat draft steps aside.
-    expect(reviews.cancelDraft).toHaveBeenCalledTimes(1);
-    expect(reviews.clearActiveThread).toHaveBeenCalledTimes(2);
-    expect(draftStore.addSourceAttachment).toHaveBeenCalledWith({
-      kind: "source",
-      name: "src/main.ts",
-      location: { path: "src/main.ts", range: { start: { line: 4 }, end: { line: 5 } } },
-      selectedText: "const answer =\n  calculate();",
-      comment: "Why is this here?",
-    });
-    expect(session.showWorkspaceChatSidebar).toHaveBeenCalledTimes(2);
-
-    root[Symbol.dispose]();
-    operations[Symbol.dispose]();
-  });
-
-  it("keeps Draw open when its working document cannot be flushed", async () => {
-    const flush = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("disk full"))
-      .mockResolvedValue(undefined);
-    const showPresentation = vi.fn();
-    const requestFocus = vi.fn();
-    const session = {
-      sessionId: "session-1",
-      workspacePath: "/project",
-      model: { sessionId: "session-1", sessionFile: "/session.jsonl" },
-      editorSelectionsStore: emptySelections(),
-      presentationMode: "draw" as const,
-      drawStore: { flush },
-      showPresentation,
-      conversationSessionStore: {
-        composerStore: {
-          draftStore: { setEditorContextAttachment: vi.fn(), requestFocus },
-        },
-      },
-      markRead: vi.fn(),
-    };
-    const registry = {
-      findSession: vi.fn(() => session),
-      pendingSessions: { isTemporary: vi.fn(() => false) },
-    } as unknown as SessionRegistryStore;
-    const {
-      root,
-      subject: store,
-      operations,
-    } = mountWorkbench(registry, {} as SessionCatalogStore, {} as Client, "session-1");
-
-    await store.presentationStore.backToAgent();
-    expect(showPresentation).not.toHaveBeenCalled();
-    expect(requestFocus).not.toHaveBeenCalled();
-
-    await store.presentationStore.backToAgent();
-    expect(flush).toHaveBeenCalledTimes(2);
-    expect(showPresentation).toHaveBeenCalledWith("normal");
-    expect(requestFocus).toHaveBeenCalledOnce();
-
-    root[Symbol.dispose]();
-    operations[Symbol.dispose]();
-  });
-
-  it("switches from Draw to VS Code and reveals an exact source location", async () => {
-    const flush = vi.fn(async () => undefined);
-    const session = {
-      ...loadedSessionStub({ sessionFile: "/session.jsonl" }),
-      presentationMode: "draw" as const,
-      drawStore: { flush },
-    };
-    const registry = {
-      findSession: vi.fn(() => session),
-      pendingSessions: { isTemporary: vi.fn(() => false) },
-    } as unknown as SessionRegistryStore;
-    const catalog = {
-      find: vi.fn(() => ({ sessionId: "session-1", resolved: false })),
-    } as unknown as SessionCatalogStore;
-    const open = vi.fn(async () => undefined);
-    const reveal = vi.fn(async () => ({ outcome: { view: "file" as const }, locations: [] }));
-    const updateSelectionHighlights = vi.fn(async () => undefined);
-    const updateAnnotations = vi.fn(async () => undefined);
-    const {
-      root,
-      subject: store,
-      operations,
-    } = mountWorkbench(
-      registry,
-      catalog,
+    expect(reviews.draftAnchor).toBeUndefined();
+    expect(draft.attachments).toEqual([
       {
-        vscode: { open, reveal, updateAnnotations, updateSelectionHighlights },
-      } as unknown as Client,
-      "session-1",
-    );
-    store.projectOpenStore.projectPath = "/project";
-    updateStore(session.editorSelectionsStore, {
-      openLocation: (location, signal) =>
-        store.presentationStore.openSelectionLocation("session-1", location, signal),
-      refreshHighlights: () =>
-        store.presentationStore.embeddedEditorStore.syncSelectionHighlights(),
+        kind: "source",
+        name: "src/main.ts",
+        location: { path: "src/main.ts", range: { start: { line: 4 }, end: { line: 5 } } },
+        selectedText: "const answer =\n  calculate();",
+        comment: "Why is this here?",
+      },
+    ]);
+    expect(session.workspaceChatSidebarVisible).toBe(true);
+  });
+});
+
+const drawBoard: DrawBoardMetadata = {
+  id: "11111111-1111-4111-8111-111111111111",
+  sessionId: "session-1",
+  title: "Board 1",
+  revision: 0,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+};
+const emptyDocument: DrawDocumentSnapshot = {
+  type: "cake-excalidraw",
+  version: 1,
+  source: "cake",
+  elements: [],
+  appState: { viewBackgroundColor: "#ffffff" },
+  files: {},
+};
+const editedDocument: DrawDocumentSnapshot = {
+  ...emptyDocument,
+  appState: { viewBackgroundColor: "#f8f9fa" },
+};
+
+// A document-only native boundary: no simulated canvas, geometry, playback,
+// export implementation or Store callbacks. Every unused editor operation fails.
+function documentEditorBoundary() {
+  let document = emptyDocument;
+  const unexpected = () => {
+    throw new Error("Unexpected native editor operation");
+  };
+  const adapter: DrawEditorAdapter = {
+    snapshotDocument: () => document,
+    loadDocument: (snapshot) => {
+      document = snapshot;
+    },
+    exportDocument: unexpected,
+    read: unexpected,
+    render: async () => unexpected(),
+    apply: unexpected,
+    applyAnimated: async () => unexpected(),
+    insertMermaid: async () => unexpected(),
+    clear: unexpected,
+  };
+  return {
+    adapter,
+    replaceDocument(snapshot: DrawDocumentSnapshot) {
+      document = snapshot;
+    },
+  };
+}
+function saveGate() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+async function drawingWorkbench(client: TestClientOverrides = {}) {
+  let authorityBoard = drawBoard;
+  let persistedDocument = emptyDocument;
+  const persistSave: Client["draw"]["save"] = async (input) => {
+    if (input.boardId !== authorityBoard.id || input.expectedRevision !== authorityBoard.revision)
+      throw new Error("Unexpected board revision");
+    persistedDocument = input.snapshot;
+    authorityBoard = { ...authorityBoard, revision: authorityBoard.revision + 1 };
+    return authorityBoard;
+  };
+  const save = vi.fn<Client["draw"]["save"]>(persistSave);
+  const fixture = loadedWorkbench({
+    ...client,
+    draw: {
+      list: async () => [authorityBoard],
+      read: async () => ({ board: authorityBoard, snapshot: persistedDocument }),
+      save,
+    },
+  });
+  const session = fixture.session;
+  applyConversationUpdate(session.model, {
+    _tag: "Snapshot",
+    revision: 1,
+    snapshot: {
+      sessionId: session.sessionId,
+      sessionFile: "/sessions/session-1.jsonl",
+      parts: [],
+      models: [],
+      thinkingLevel: "off",
+      availableThinkingLevels: ["off"],
+      streaming: false,
+      diagnostics: [],
+      commands: [],
+      compatibility: { resources: [], diagnostics: [] },
+      extensionUi: { statuses: [] },
+      tree: [],
+    },
+  });
+  await session.drawStore.initialize();
+  const editor = documentEditorBoundary();
+  session.drawStore.attachEditor(editor.adapter);
+  session.showPresentation("draw");
+  editor.replaceDocument(editedDocument);
+  session.drawStore.editorChanged();
+  return {
+    ...fixture,
+    save,
+    persistSave,
+    persisted: () => ({ board: authorityBoard, document: persistedDocument }),
+  };
+}
+
+// These native-document coordination regressions use the real Root/Registry/
+// Session/Draw/Presentation/Selections composition. Draw App loading/retry is
+// covered elsewhere; these assertions do not claim native focus or source geometry.
+describe("Draw document navigation integration", () => {
+  it("keeps Draw open after a failed flush and returns to Agent only once the retry commits", async () => {
+    using fixture = await drawingWorkbench();
+    const session = fixture.session;
+    const presentation = fixture.root.projectWorkbenchStore.presentationStore;
+    const draft = session.conversationSessionStore.composerStore.draftStore;
+    const originalFocusRevision = draft.focusRequestRevision;
+    fixture.save.mockRejectedValueOnce(new Error("disk full"));
+
+    await presentation.backToAgent();
+
+    expect(session.presentationMode).toBe("draw");
+    expect(draft.focusRequestRevision).toBe(originalFocusRevision);
+    expect(session.drawStore.error).toContain("disk full");
+    expect(fixture.persisted()).toEqual({ board: drawBoard, document: emptyDocument });
+
+    const started = saveGate();
+    const finish = saveGate();
+    fixture.save.mockImplementationOnce(async (input, options) => {
+      started.resolve();
+      await finish.promise;
+      return fixture.persistSave(input, options);
+    });
+    const returning = presentation.backToAgent();
+    await started.promise;
+    expect(session.presentationMode).toBe("draw");
+    expect(draft.focusRequestRevision).toBe(originalFocusRevision);
+    finish.resolve();
+    await returning;
+
+    expect(session.presentationMode).toBe("normal");
+    expect(draft.focusRequestRevision).toBe(originalFocusRevision + 1);
+    expect(session.drawStore.error).toBeUndefined();
+    expect(fixture.persisted()).toEqual({
+      board: { ...drawBoard, revision: 1 },
+      document: editedDocument,
+    });
+    expect(fixture.save).toHaveBeenCalledTimes(2);
+    for (const [input] of fixture.save.mock.calls)
+      expect(input).toEqual({
+        sessionId: "session-1",
+        boardId: drawBoard.id,
+        expectedRevision: 0,
+        snapshot: editedDocument,
+      });
+  });
+
+  it("commits Draw's dirty document before switching to VS Code and revealing the exact source location", async () => {
+    const order: string[] = [];
+    const open = vi.fn<Client["vscode"]["open"]>(async () => {
+      order.push("editor-open");
+    });
+    const reveal = vi.fn<Client["vscode"]["reveal"]>(async () => {
+      order.push("editor-reveal");
+      return { outcome: { view: "file" }, locations: [] };
+    });
+    using fixture = await drawingWorkbench({
+      vscode: {
+        open,
+        reveal,
+        updateSelectionHighlights: async () => undefined,
+        updateAnnotations: async () => undefined,
+      },
+    });
+    const started = saveGate();
+    const finish = saveGate();
+    fixture.save.mockImplementationOnce(async (input, options) => {
+      order.push("save-start");
+      started.resolve();
+      await finish.promise;
+      const committed = await fixture.persistSave(input, options);
+      order.push("save-commit");
+      return committed;
     });
     const location = workingDirectoryEditorLocation({
       path: "src/app.ts",
       range: { start: { line: 4, column: 2 }, end: { line: 8, column: 7 } },
     });
+    const opening = fixture.root.projectWorkbenchStore.presentationStore.openFile(location);
+    await started.promise;
 
-    await store.presentationStore.openFile(location);
-
-    expect(flush).toHaveBeenCalledOnce();
-    expect(session.showPresentation).toHaveBeenCalledWith("vscode");
-    expect(open).toHaveBeenCalledWith("/project", expect.anything());
-    expect(reveal).toHaveBeenCalledWith("/project", location, expect.anything());
-
-    root[Symbol.dispose]();
-    operations[Symbol.dispose]();
-  });
-
-  it("does not open editing surfaces for a resolved session", async () => {
-    const session = {
-      ...loadedSessionStub({ sessionFile: "/session.jsonl" }),
-      presentationMode: "vscode" as const,
-    };
-    const registry = {
-      findSession: vi.fn(() => session),
-      pendingSessions: { isTemporary: vi.fn(() => false) },
-    } as unknown as SessionRegistryStore;
-    const catalog = {
-      find: vi.fn(() => ({ sessionId: "session-1", resolved: true })),
-    } as unknown as SessionCatalogStore;
-    const open = vi.fn(async () => undefined);
-    const openSourceControl = vi.fn(async () => undefined);
-    const {
-      root,
-      subject: store,
-      operations,
-    } = mountWorkbench(
-      registry,
-      catalog,
-      { vscode: { open, openSourceControl } } as unknown as Client,
-      "session-1",
-    );
-    store.projectOpenStore.projectPath = "/project";
-
-    store.presentationStore.restore();
-    await store.presentationStore.openIde();
-    await store.presentationStore.openWorkspaceChanges();
-    await store.presentationStore.openFile(workingDirectoryEditorLocation({ path: "src/app.ts" }));
-
-    expect(store.presentationStore.embeddedEditorStore.visible).toBe(false);
+    expect(fixture.session.presentationMode).toBe("draw");
+    expect(fixture.persisted()).toEqual({ board: drawBoard, document: emptyDocument });
     expect(open).not.toHaveBeenCalled();
-    expect(openSourceControl).not.toHaveBeenCalled();
+    expect(reveal).not.toHaveBeenCalled();
+    finish.resolve();
+    await opening;
 
-    root[Symbol.dispose]();
-    operations[Symbol.dispose]();
+    expect(order).toEqual(["save-start", "save-commit", "editor-open", "editor-reveal"]);
+    expect(fixture.session.presentationMode).toBe("vscode");
+    expect(fixture.session.drawStore.activeBoard?.revision).toBe(1);
+    expect(fixture.persisted()).toEqual({
+      board: { ...drawBoard, revision: 1 },
+      document: editedDocument,
+    });
+    expect(fixture.save).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledExactlyOnceWith(
+      "/project",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(reveal).toHaveBeenCalledExactlyOnceWith(
+      "/project",
+      location,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 });
