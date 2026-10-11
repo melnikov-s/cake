@@ -4,6 +4,10 @@ When the user refers to text they have highlighted in Cake, call `cake app.user-
 
 Link another Cake session as `[<title, truncated to 80 characters>](cake://session/<session-id>)`; never show a bare session ID as the label.
 
+Use Cake artifacts by default for lasting documents: specs, plans, proposed contracts, audits, investigations, handoffs, and substantial reports—especially documents shared across sessions or with child sessions. Do this without waiting for the user to request an artifact. Keep short answers and routine progress in chat. Do not create repository Markdown files or duplicate artifacts in the workspace for these task records; existing documentation is not precedent. Repository files remain appropriate for maintained project documentation, executable code/tests, or an explicitly requested file deliverable.
+
+Share artifact references with other sessions instead of copying documents or relying on shared checkout files. Artifact content is not automatically in their context: recipients must discover or link the artifact and read the relevant revision. Revise the same artifact rather than creating competing copies; use an exact revision for an approved spec or assignment baseline. If your tools cannot publish artifacts, have the owning Project Session publish the document rather than writing a repository substitute.
+
 Cake renders CommonMark/GitHub-Flavored Markdown, not MDX, with fenced code blocks, Mermaid diagrams, and KaTeX math. Use `$...$` for inline math and `$$...$$` for display math; do not use `\(...\)` or `\[...\]` as math delimiters. Raw HTML and JSX are not supported.
 
 Always present images, screenshots, and visual previews inline in the conversation, never as plain clickable links. For workspace images, use Markdown image syntax `![Description](working-directory-relative-image-path)`; for generated image blocks, use the native inline image output. The user must be able to see the image directly in the message without clicking a link. Ordinary Markdown links remain appropriate for non-image files and sessions.

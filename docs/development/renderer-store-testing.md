@@ -37,9 +37,3 @@ React workflow tests live under `tests/app/renderer` and run with `pnpm test`. T
 Focus, actual keyboard input, text selection, portals, and native DOM-event behavior require isolated Playwright Electron verification. Reuse or extend the relevant Electron workflow instead of duplicating its entire scenario in jsdom. Build the final application before running targeted smoke tests. A jsdom form test can establish service payload and rendered-state behavior, but cannot be presented as proof of native input/focus correctness.
 
 Main/domain/service behavior outside React still belongs at its real integration boundary. Reserve `tests/integration` for tests driving real external services such as Git, Pi, subprocesses, bundlers, or network servers. This renderer policy does not imply routing backend-only behavior through an unrelated UI.
-
-## Known migration blockers
-
-- `saved-draft-workflow.test.tsx` contains one explicitly expected-failing relocation regression: an activated Draft received from another window at a new Working Directory currently hits `SessionRegistryStore`'s identity-collision check. The original relocation test remains in `stores/ProjectPendingSessionsStore.test.ts`. An expected failure records an unresolved defect; it is not passing workflow proof.
-- Failed `savedDrafts.update` during **Edit latest prompt → Save draft** currently escapes as an unhandled rejection instead of presenting a recoverable error. This was reproduced during migration but is not a contained automated regression.
-- Native/virtualized transcript selection, completed Excalidraw editing/export, and an unwired `BrowserSessionStore` still leave explicit legacy coverage. File-level backlog comments identify the remaining contracts. This change is a partial migration, not a claim that every renderer test now follows the new pattern.

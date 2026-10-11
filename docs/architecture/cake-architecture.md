@@ -91,7 +91,7 @@ projections needed by a surface. References do not transfer ownership.
 - Automatic Project Session result handoff belongs to actual family parent-child assignments
   and independent sessions spawned by permanent Cake Chat, not arbitrary independent creators.
   Requester provenance and the pending delivery journal are Cake metadata; Pi remains transcript
-  and run authority. See [spawned-session reporting](../development/spawned-session-reporting.md).
+  and run authority.
 
 ## Process boundaries
 
@@ -221,9 +221,9 @@ with timings, pagination sizes, animation recipes, or operation inventories.
 | Persistent storage                                                      | [Cake storage](./cake-storage.md)                                                                                 |
 | Pi adapter assumptions and extension compatibility                      | [Pi contract](./pi-1.0-contract.md), [Pi compatibility](./s3-pi-compatibility.md)                                 |
 | Project lifecycle and Session Families                                  | [Session contract](./s1-session-contract.md), [family contract](./session-family-contract.md)                     |
-| Feature behavior and its tests                                          | [Feature guide index](../features/README.md)                                                                      |
+| Feature behavior and its tests                                          | [Source](../../src/), [workflow tests](../../tests/app/)                                                          |
 | Artifacts and widgets                                                   | [Artifact protocol](./s4-artifact-protocol.md)                                                                    |
 | Interviews                                                              | [Interview ownership](./interviews.md)                                                                            |
 | Standalone backend, sharing, browser/remote hosts                       | [Headless backend](../development/headless-backend.md)                                                            |
-| Permanent Cake Chat and memory                                          | [Cake Chat memory](../development/cake-chat-memory.md), [durable runtime](../development/cake-chat-durable.md)    |
+| Permanent Cake Chat and memory                                          | [Durable runtime](../../src/services/pi-durable/), [tests](../../tests/app/services/pi-durable/)                  |
 | Renderer workflow verification                                          | [Store testing](../development/renderer-store-testing.md), [Electron testing](../development/electron-testing.md) |

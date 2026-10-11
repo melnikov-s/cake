@@ -70,7 +70,7 @@ export function createCakeWorkflowOperations(control: WorkflowControl): CakeOper
     guidance: [
       "When suggesting script orchestration in normal conversation, prepare the script then call workflows.propose: it presents the interactive execution choice and starts the frozen program only after Run workflow. Continue normally returns choice normal: continue agent-led work without launching a workflow. Cancellation starts nothing. Never infer acceptance from your own text or replace this surface with a conversational yes/no question.",
       "An explicit user request to use a workflow already chooses execution: call workflows.start directly, without redundant confirmation. After choosing workflow, do not ask for script, phase, worker, retry or tool approvals. There is no permanent dynamic mode or permission system.",
-      "Read docs/development/dynamic-workflows.md or request workflows.authoring before writing a workflow. The script coordinates agents; it has no direct filesystem, shell, network or module loading.",
+      "Request workflows.authoring before writing a workflow. The script coordinates agents; it has no direct filesystem, shell, network or module loading.",
       "Execution belongs to the explicitly targeted Project Session, never Cake Chat or a discussion. Intermediate results go to the script; one final report returns to the owner.",
       "Workers share the owner's Working Directory. Separate agent context does not isolate files. Avoid parallel overlapping edits; cancellation and retries do not undo changes.",
     ],

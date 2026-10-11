@@ -1,86 +1,82 @@
-# Conversation mode
+# Conversation mode: setup and troubleshooting
 
-Conversation mode is opt-in for existing writable Project Sessions in Cake desktop. It keeps the same Pi session, model, context, tools and transcript; there is no second conversational LLM. Agent controls can inspect the saved voice list and change the desktop's default voice.
+Conversation mode uses the existing writable Project Session in Cake desktop,
+including its model, tools and transcript. It is not a separate conversational LLM.
 
 ## Setup and use
 
-1. Install/select local Parakeet in **Settings → Voice & Dictation** ([requirements](dictation.md)). Apple Silicon and macOS 14+ are required. Nothing downloads automatically. Voice mode shares the engine and microphone but does not require the Dictation mode toggle to be enabled.
-2. On that same page, under **Speech output**, choose an output provider:
-   - **Pocket TTS (local):** explicitly download the approximately 370 MB fp16 Core ML English model and Alba voice. Requires the bundled native engine, Apple Silicon and macOS 14+. No API key, Python or developer tools are required. See [local speech output](local-speech-output.md).
-   - **ElevenLabs:** save your own API key, refresh voices and choose a voice. The voice list persists across restarts. Cake uses Flash `eleven_flash_v2_5` with ordered 24 kHz PCM streaming. No generated preview is requested.
-   - **Speaking speed:** the selected provider has its own saved speed: Pocket TTS supports 1–2×; ElevenLabs supports 1–1.2×. The slider's limit and explanation follow the provider selection. Pocket TTS adjusts audio locally while preserving pitch; faster output may sound less natural. ElevenLabs applies speed during synthesis. Changes affect subsequent phrases, not already generated/queued audio.
-     Provider choice persists. Cloud key, voice, each provider's speed and voice list survive switching providers. Nothing downloads or falls back automatically.
-3. In an existing Project Session, choose **Enter conversation mode**, then wait for **Listening**. Subsequent ordinary spoken and typed messages receive brief natural spoken-response guidance. Code and detailed tables stay visible in chat.
-4. Speak continuously: recognized words update the composer live, like dictation. Utility mode marks the spoken span gray until cleanup finishes; local mode keeps a recent gray tail revisable across pauses. Typed text retains its normal styling. Only nonempty recognized text from the current utterance arms automatic sending; noise with empty recognition does not show a countdown, even if the composer already contains typed text. With default timings, after one second of quiet, a circular ring appears over the ear and fills over the next two seconds. Delayed recognition can reveal the ring partway through that same pause. If recognition withdraws all of the current utterance's provisional words, its inserted span and countdown clear without deleting typed text. Three seconds of quiet sends the complete composer, including typed text, files and annotations, through its normal submission path. Resuming speech hides the ring and resets the countdown, including the one-second hidden delay. Click the ear during the countdown to cancel sending without muting or clearing the draft; resume speaking to rearm the next pause. A busy session receives ordinary queued follow-up input, never an implicit steer or abort.
-5. **Mute input** (outside a countdown) stops capture; text already transcribed stays in the composer while accepted work and output continue. **Exit conversation mode** restores text-oriented subsequent submissions. Window blur, selection changes and disposal exit automatically. Voice mode suppresses dictation only in that composer; the global Dictation mode preference remains unchanged. On exit or session switch, focused-field dictation resumes automatically. Focusing a different dictation-enabled writing field exits voice mode to hand back the shared recognizer.
+1. Install/select local Parakeet in **Settings → Voice & Dictation**. See
+   [dictation requirements](dictation.md). Apple Silicon and macOS 14+ are required;
+   models do not download automatically. Voice mode does not require the Dictation
+   preference to be enabled.
+2. Under **Speech output**, select either [Pocket TTS (local)](local-speech-output.md)
+   and download its model, or **ElevenLabs**, supplying your own API key and selecting
+   a voice. Each provider retains its speed setting; there is no automatic fallback.
+3. Enter conversation mode in an existing Project Session and wait for capture readiness.
+4. Speech updates the normal composer. A quiet pause after recognized speech arms
+   automatic sending of the **complete composer, including typed text and attachments**.
+   Resume speaking to reset the countdown, or click the ear during the countdown to
+   cancel sending without clearing the draft. Busy sessions queue ordinary follow-up input.
+5. Outside the countdown, the ear mutes input without stopping accepted agent work or
+   speech output. Exit voice mode to return to ordinary text interaction. Window blur
+   or session changes exit automatically; focused-field dictation can resume if enabled.
 
-With default interruption settings, while the agent is speaking, detected speech is tentative: playback and synthesis continue until Parakeet recognizes at least four words within three seconds of detection, or a leading **stop** or **wait** command (optionally preceded by **please**). Recognition, not sound onset, confirms the interruption. Short acknowledgments such as “okay,” “all right” and “oh, I see” are discarded when the utterance ends or the window expires; they never become queued messages. Timed-out speech stays rejected until a quiet boundary, and late recognition cannot interrupt. A short response while the agent is quiet is accepted normally.
+A confirmed spoken interruption stops playback, not Pi/tool work. Short acknowledgments
+may be ignored while the agent speaks. Interrupted answers remain readable. Voice mode
+speaks new assistant prose rather than replaying history, code blocks or tool output.
 
-Detected speech while output is idle—waiting for a reply or between spoken sentences—does not cancel output or revoke the pending reply's speech eligibility. Empty recognition and an unconsumed queued follow-up therefore cannot silently suppress the answer.
+## Speech input and text processing
 
-A confirmed interruption silences playback and cancels pending synthesis, not Pi/tool work. The full captured utterance is submitted once after final recognition. The interrupted answer remains readable but stays unspoken until Pi actually consumes a new user input. Queuing an input alone does not lift that suppression. Mode entry never replays history or an already-running response.
+Use **Speech input** settings to tune detection sensitivity and advanced send/interruption
+controls. Settings label which controls apply to both dictation and voice mode. Changes
+apply to the next capture: refocus a writing field or exit/re-enter voice mode.
 
-## Speech input settings
+Stricter detection can reject more noise but also miss quiet speech. It cannot reliably
+separate a hallucinated short word from a genuine short reply. Use a closer/directional
+microphone, reduce excessive input gain, or use headphones if speaker leakage triggers
+capture. Browser echo cancellation is not a guarantee of full-duplex audio quality.
 
-In **Settings → Voice & Dictation → Speech input**, the **Speech detection sensitivity** slider adjusts the probability needed to start speech. Move toward **Reject more noise** to reduce unwanted capture, or **More sensitive** for soft speech. The percentage is a detector threshold, not microphone gain. Start with the default 60%; try 75–85% for background noise and check that quiet real speech is still recognized.
-
-Expand **Advanced speech input** for the remaining controls:
-
-| Control                           | Applies to             | Default  | Purpose                                                                                                                                                       |
-| --------------------------------- | ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Speech detection sensitivity      | Dictation + voice mode | 60%      | Probability needed to start speech; stricter thresholds reject more noise but can miss soft speech.                                                           |
-| Speech continuation threshold     | Dictation + voice mode | 40%      | Keep word/syllable gaps together after onset; cannot exceed the starting threshold.                                                                           |
-| Minimum speech duration           | Dictation + voice mode | 200 ms   | Ignore brief noises; detector decisions arrive in 256 ms frames.                                                                                              |
-| Audio lookback                    | Dictation + voice mode | 600 ms   | Preserve speech beginnings, including the full minimum-speech window even when lookback is zero.                                                              |
-| Maximum utterance length          | Dictation + voice mode | 30 s     | Dictation finalizes native segments and keeps appending; voice mode finalizes for manual sending, never auto-submits merely at the cap.                       |
-| Pause before automatic send       | Voice mode only        | 3 s      | Allow longer thinking pauses. Recognized utterance text is still required.                                                                                    |
-| Countdown display delay           | Voice mode only        | 1 s      | Hide short-pause rings without changing the send deadline; always shorter than the send pause. Zero shows a ring at the first quiet frame, not during speech. |
-| Words required to interrupt       | Voice mode only        | 4        | Raise this to avoid treating acknowledgments as interruptions.                                                                                                |
-| Interruption recognition window   | Voice mode only        | 3,000 ms | Time allowed for recognition to confirm barge-in; late recognition stays rejected.                                                                            |
-| Allow short interruption commands | Voice mode only        | On       | Allow leading “stop”/“wait,” optionally preceded by “please,” without reaching the word count.                                                                |
-
-**Reset speech input settings** restores all these controls. Changes apply to the next capture, not mid-capture: refocus the writing field for dictation, or exit and re-enter voice mode. Both workflows send the same five shared controls to native recognition, so a lower capture threshold is not silently overridden by a fixed ASR threshold. Native dictation now uses the common 600 ms lookback rather than its previous fixed 256 ms lookback. Native phrase endpoint silence (1.5 seconds) and tail padding (256 ms) remain internal recognizer timing, separate from automatic submission. Stricter detection cannot reliably distinguish a recognition hallucination such as “yeah” from a real short answer.
-
-`SpeechInputSettingsStore` owns these local preferences as a focused Root Store child. Their lifetime and persistence are window-scoped through the existing Store snapshot/window-state path; the last local edit wins. Values are bounded and coupled thresholds/timings are normalized on snapshot read and edit. `ConversationModeStore` captures a normalized copy per entry and `DictationStore` captures only the applicable shared recognition values per microphone capture. Native recognition freezes them per utterance ID; microphone resources, live utterances, countdowns and timers remain transient. Advanced-section disclosure state is component-local presentation state.
+**Text processing** chooses Raw, Local punctuation or Utility cleanup. See
+[processing privacy and setup](dictation.md#text-processing-three-exclusive-modes).
+Gray spoken text is provisional; typed text remains ordinary composer content.
+Review important dictated instructions before sending.
 
 ## Privacy and billing
 
-Microphone audio and Parakeet inference stay local. Audio buffers are memory-only; mode and audio are not persisted. **Text processing** in Settings → Voice & Dictation offers exclusive Raw, Local punctuation and Utility cleanup modes for both input workflows. Local English punctuation is offline after its explicit model download. Utility cleanup is the default; when a utility model is configured, it receives only the current spoken utterance before sending, with the user-editable cleanup prompt. Typed draft prefixes are not included. This may add latency and provider costs. Without a configured model or on processing failure, raw recognition is retained. See [processing policy and limits](dictation.md#text-processing-three-exclusive-modes). Accepted text becomes ordinary Pi transcript input and follows the active model/provider's usual policy.
+Microphone audio and Parakeet recognition stay local. Accepted text becomes normal Pi
+input and follows the selected chat provider's policy. Utility cleanup may separately
+send the spoken insertion to the configured utility provider and incur costs.
 
-With Pocket TTS selected, speech synthesis stays on this desktop without network requests or speech-provider billing. Installation downloads pinned data from Hugging Face only when requested; chat still follows its selected provider's network policy.
+Pocket TTS synthesis is offline after installation. ElevenLabs receives selected assistant
+prose, not microphone audio, reasoning, tool logs or the full transcript. Retention and
+quota depend on the account plan; free-tier access is not unlimited use or a commercial
+license. Cake does not silently switch providers or automatically retry billed synthesis.
 
-With ElevenLabs selected, only selected assistant prose is sent to ElevenLabs—not microphone audio, reasoning, tool logs or the complete transcript. Provider retention depends on the account plan; Cake does not promise zero retention. Your ElevenLabs quota/billing is separate from chat billing. Free-tier availability is neither unlimited use nor a commercial license. Cake never upgrades plans, retries billed synthesis automatically, or silently substitutes providers.
+The ElevenLabs key is encrypted using Electron safeStorage in
+`<Electron userData>/speech-output/settings.json`; insecure/unavailable encryption rejects
+persistence. Remote-backend desktop sessions use the viewing desktop's speech services.
+Browser/headless clients do not offer native conversation mode.
 
-Native main stores the API key encrypted using Electron safeStorage in `<Electron userData>/speech-output/settings.json`, rejecting unavailable encryption and insecure `basic_text` storage. Only secret-free settings (configured/not-configured, selected voice, speed and saved voice list) cross RPC. Changing/removing the API key clears the account-specific voice list while preserving the selected voice and speed. The masked transient key draft clears after save/remove/disposal. Remote-backend desktop sessions still use this desktop's local speech services; browser/headless clients reject native speech operations and do not offer conversation controls.
+## Troubleshooting and diagnostics
 
-## Agent voice controls
+Missing native engines in a slim build are expected: use a full build only when local
+native speech is needed. For microphone permission and model setup, see [dictation](dictation.md).
+After configuration, permission or provider failures, fix the cause and explicitly
+re-enter voice mode. Normal text chat and accepted work remain available.
 
-`settings.speech.get` returns secret-free settings, provider and installation state, and the selected provider's voice list without a network call. `settings.speech.refresh-voices` explicitly refreshes and persists the ElevenLabs list when selected; locally it returns the built-in Alba voice without HTTP. `settings.speech.set-voice` selects an ID from it, changing the desktop default for subsequent synthesis. Already playing/queued audio is unchanged. These controls target the designated originating desktop like other native settings; they do not generate preview audio or implement per-character/per-call voice overrides.
+Use **Settings → Voice & Dictation → Copy voice diagnostics** after an attempt. Window-local
+metadata is also logged under `[cake.voice]`; it records capture/playback transitions,
+phrase lengths, timing and audio scheduling, not conversation text, credentials or PCM.
+The trace clears on reload. Error details may additionally include unaccepted recognized
+text, so inspect them before sharing.
 
-## Coordination and limitations
+For ElevenLabs synthesis failures, native main retains the latest private report at
+`<Electron userData>/speech-output/last-failure.json`. It includes timing, failure reason,
+validated provider request metadata and byte/chunk counts, but no key, voice ID, spoken
+text, response body or audio. Check its timestamp: cancellation or a later success does
+not replace an older failure. Report that file and the approximate failure time.
 
-`ConversationModeStore` owns window-local capture, speech-classification-driven utterance boundaries, tentative interruption decisions and their capture-scoped deadlines, serial recognition/finalization/submission, transcript-derived raw cursors, phrase queues and playback cancellation. Candidate timers are cleared on confirmation, rejection, mute, exit and disposal; rejecting speech does not cancel or restart the native recognizer. Main still owns Pi and secure speech storage. Response mode is captured per submission and carried through Pi queues, compaction, reordering and send-now. Text is the initial default; exact Cake response reminders are added only when the mode changes relative to preceding Pi history and applicable queued inputs. Chat discloses those transitions as context pills, separate from user text. Editable queues, titles and continuation source text omit them; Tool Compact removes all injected reminders from replay and restores the text default.
-
-Manually typed slash skills or prompt templates while conversation mode is active may miss the response-style instruction. Only assistant replies are spoken; normal spoken conversation flow is unaffected.
-
-The bundled local Silero detector supplies speech decisions, replacing the energy gate. The capture adapter classifies 256 ms frames serially; the Store retains short preroll, bounded eight-second unprocessed audio and a configurable utterance limit (30 seconds by default). The countdown follows detected non-speech rather than low volume, so loud non-speech does not keep postponing a send and quiet classified speech can start an utterance or interruption. The configurable send boundary and transcript-confirmed barge-in remain voice-mode policies, separate from native recognition's 1.5-second phrase boundary. Both modes share one offline detector model with independent recurrent states. Browser echo cancellation/noise suppression help, but this is not phone-grade full duplex. Use headphones if speaker leakage triggers capture. Parakeet latency, physical microphone tuning, phrase seams and voice quality remain device/account dependent.
-
-Short invented words (for example, “yeah”) can be recognition hallucinations on ambiguous noise, not literal words that the detector heard. Cake does not blacklist these words, since short genuine replies remain valid. Silero defaults to a 0.6 probability threshold to start speech and 0.4 to continue it. Both dictation and voice mode override them per capture through the same settings above, for capture classification and native recognition. Raising the onset threshold can miss soft speech. Choosing a closer/directional microphone or reducing excessive microphone input gain can also reduce noise at the source.
-
-Only stable new assistant prose is spoken. Fenced code, tables, reasoning, errors and tools are skipped. Links use labels rather than URLs. Live-to-settled render identity and absolute raw offsets prevent repeat playback. Phrase requests are serial, bounded to 2,000 characters, and audio playback schedules at most five seconds ahead, starting before the complete answer arrives.
-
-Configuration, permission, recognition backlog and provider failures stop optional voice resources with an actionable error, leaving text chat and accepted agent work available. Unaccepted recognized text remains visible for manual recovery. Fix the cause and explicitly re-enter; no automatic retry or fallback occurs.
-
-## Speech diagnostics
-
-After trying voice mode, use **Settings → Voice & Dictation → Copy voice diagnostics** to copy the last 100 window-local diagnostic events, even if no error appeared. The same metadata is logged as JSON in the developer console under `[cake.voice]`. The trace records entry/exit/interruption, whether a new reply was eligible for speech, phrase lengths, selected provider, effective voice-mode preferences at entry, time to first audio, chunk counts, AudioContext state and the first scheduled chunk's amplitude. It contains no conversation text, credentials, voice/session IDs, paths or PCM, and clears when the window reloads. Error toasts include a frozen trace in their copyable technical details (alongside the existing error and any unaccepted recognized text).
-
-Playback reuses the context opened on entry rather than recreating it for each output batch. Resume is bounded to five seconds; an output context that remains suspended, or suspends while playback is draining, reports an actionable error instead of silently waiting. A provider completing without delivering any audio also fails visibly. A running context with nonzero samples proves scheduling, not that the OS output device is audible; check the system volume/output device if those events appear but you still hear nothing. Copying diagnostics does not synthesize a preview, download assets, or retry a provider.
-
-For ElevenLabs failures, native main writes a structured console warning and replaces `<Electron userData>/speech-output/last-failure.json` on synthesis failure. This private, bounded report survives restarting Cake and contains only the latest failure: timestamp, elapsed milliseconds, failure reason/kind, HTTP status, validated content type/provider request ID, received chunk/byte counts, largest chunk size, emitted byte count and whether a sample byte was left over. It contains no API key, voice ID, spoken text, response body or audio. Diagnostic write failures do not change the synthesis error or trigger a retry. Cancellation and successful synthesis do not overwrite the last failure.
-
-For `invalid-audio`, `unexpected-content-type`, `empty-stream` and `incomplete-sample` distinguish the checks. HTTP read sizes are arbitrary: large network chunks are split into sample-aligned PCM frames of at most 65,536 bytes, not treated as corrupt audio. Give the report and the approximate time of the failure when debugging; an older report may describe a previous attempt.
-
-## Verification
-
-Focused domain, queue, real Root/Model/Store/shared Chat workflow and playback tests use controlled external boundaries. Isolated compiled Electron smoke tests prove native inputs/Select, retained typing and enabled submission, real microphone/worklet capture, streaming playback and blur cleanup without credentials, downloads or billed requests. Deterministic fakes do not prove physical-microphone quality, real provider availability/quotas or voice quality; live validation needs explicit consent. An opt-in native Pocket TTS integration test checks offline loading, incremental non-silent sample-aligned PCM, cancellation and reload against explicitly supplied local Core ML assets; it does not establish perceptual quality parity with the official runtime.
+Nonzero scheduled samples prove audio scheduling, not that the OS output device is audible.
+Check system volume and output selection. Diagnostics do not download models, synthesize
+preview audio or retry a provider. Physical microphone quality and paid-provider availability
+require explicit live validation, not inference from deterministic tests.
