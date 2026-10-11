@@ -86,7 +86,13 @@ test("opens attached images fullscreen from the uniform composer tile and from t
     const tile = preview.locator("..");
     const bounds = (await tile.boundingBox())!;
     expect(bounds).toMatchObject({ width: 192, height: 80 });
-    // The whole label-first tile is the preview action, not just its text.
+    const thumbnail = preview.getByRole("img", { name: "wide.png", exact: true });
+    await expect(thumbnail).toBeVisible();
+    await expect(thumbnail).toHaveAttribute("src", `data:image/png;base64,${imageData}`);
+    await expect
+      .poll(() => thumbnail.evaluate((image: HTMLImageElement) => image.naturalWidth))
+      .toBe(320);
+    // The whole tile is the preview action, not just the thumbnail.
     await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height - 8);
     const fullscreen = page.getByRole("dialog", { name: "wide.png", exact: true });
     await expect(fullscreen).toBeVisible({ timeout: 3_000 });

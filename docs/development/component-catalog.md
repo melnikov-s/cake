@@ -60,11 +60,13 @@ outside the exported image; only the flattened screenshot and annotations enter 
 
 ## Attachment tiles and text previews
 
-`AttachmentTile` is the shared label-first composer surface for files, screenshots,
-pasted text and source selections. Every tile is 192 × 80 pixels, with a centered,
-two-line filename/label and the same top-right removal control. Image thumbnails
-stay in the enlarged preview, not in the attachment row. Long labels wrap within
-the tile and expose their full text on hover.
+`AttachmentTile` is the shared composer surface for files, screenshots,
+pasted text and source selections. Every tile is 192 × 80 pixels with the same
+top-right removal control. Images show an object-contained thumbnail via `imageSrc`
+and open the original in the shared fullscreen preview. Non-image attachments retain
+a centered, two-line filename/label. Long labels wrap within the tile and expose
+their full text on hover. Thumbnails are renderer presentation only; Cake Chat
+still admits opaque input references rather than image payloads to its model context.
 
 `TextAttachment` composes AttachmentTile and Popover for an explicit user-only
 preview (bounded to 16,000 characters). Source selections use the same tile with

@@ -1,12 +1,14 @@
+import { cn } from "@/lib/utils";
 import { Button } from "./button";
 import { IconButton } from "./icon-button";
 import { CloseIcon } from "./icons";
 import { PopoverTrigger } from "./popover";
 
-/** One fixed-size, label-first surface for every composer attachment. */
+/** One fixed-size composer surface with image thumbnails or file labels. */
 export function AttachmentTile({
   name,
   displayName = name,
+  imageSrc,
   onRemove,
   onClick,
   popover = false,
@@ -14,14 +16,25 @@ export function AttachmentTile({
 }: {
   name: string;
   displayName?: string;
+  imageSrc?: string;
   onRemove?(): void;
   onClick?(): void;
   popover?: boolean;
   ariaLabel?: string;
 }) {
-  const bodyClassName =
-    "flex h-full w-full items-center justify-center rounded-lg px-4 py-6 font-mono text-xs font-normal leading-4 text-foreground";
-  const label = (
+  const bodyClassName = cn(
+    "flex h-full w-full items-center justify-center rounded-lg font-mono text-xs font-normal leading-4 text-foreground",
+    imageSrc ? "overflow-hidden p-1" : "px-4 py-6",
+  );
+  const content = imageSrc ? (
+    <img
+      src={imageSrc}
+      alt={name}
+      title={name}
+      draggable={false}
+      className="h-full w-full rounded-md object-contain"
+    />
+  ) : (
     <span
       className="min-w-0 line-clamp-2 whitespace-pre-line text-center [overflow-wrap:anywhere]"
       data-slot="attachment-label"
@@ -37,14 +50,14 @@ export function AttachmentTile({
     >
       {popover ? (
         <PopoverTrigger variant="ghost" className={bodyClassName} aria-label={ariaLabel}>
-          {label}
+          {content}
         </PopoverTrigger>
       ) : onClick ? (
         <Button variant="ghost" className={bodyClassName} aria-label={ariaLabel} onClick={onClick}>
-          {label}
+          {content}
         </Button>
       ) : (
-        <div className={bodyClassName}>{label}</div>
+        <div className={bodyClassName}>{content}</div>
       )}
       {onRemove && (
         <IconButton

@@ -221,23 +221,24 @@ test("permanent Cake Chat retains its input, history and settings across restart
     }, privateImage);
     const imageTile = page.getByRole("button", { name: "View pixel.png enlarged", exact: true });
     await expect(imageTile).toBeVisible();
+    const thumbnail = imageTile.getByRole("img", { name: "pixel.png", exact: true });
+    await expect(thumbnail).toBeVisible();
+    await expect(thumbnail).toHaveAttribute("src", `data:image/png;base64,${privateImage}`);
+    await expect
+      .poll(() => thumbnail.evaluate((image: HTMLImageElement) => image.naturalWidth))
+      .toBe(1);
     const tiles = page.locator('.workbench-composer [data-slot="attachment-tile"]');
     await expect(tiles).toHaveCount(3);
     const geometry = await tiles.evaluateAll((elements) =>
       elements.map((element) => {
         const tile = element.getBoundingClientRect();
         const remove = element.querySelector('[aria-label^="Remove "]')?.getBoundingClientRect();
-        const label = element
-          .querySelector('[data-slot="attachment-label"]')
-          ?.getBoundingClientRect();
         return {
           width: tile.width,
           height: tile.height,
           top: tile.top,
           removeTop: remove ? remove.top - tile.top : null,
           removeRight: remove ? tile.right - remove.right : null,
-          labelCenterX: label ? Math.round(label.left + label.width / 2 - tile.left) : null,
-          labelCenterY: label ? Math.round(label.top + label.height / 2 - tile.top) : null,
         };
       }),
     );
@@ -247,12 +248,21 @@ test("permanent Cake Chat retains its input, history and settings across restart
       height: 80,
       removeTop: 5,
       removeRight: 5,
-      labelCenterX: 96,
-      labelCenterY: 40,
     });
-    // The uniformly sized image tile still opens the original preview.
+    // Non-image files keep their labels; image tiles render the actual pixels instead.
+    const documentTile = tiles.filter({ hasText: "requirements.md" });
+    await expect(documentTile.locator('[data-slot="attachment-label"]')).toHaveText(
+      "requirements.md",
+    );
+    await expect(documentTile.locator("img")).toHaveCount(0);
+    await expect(pastedChip.locator('[data-slot="attachment-label"]')).toContainText("Pasted text");
+    // The thumbnail still opens the original preview without changing model access.
     await imageTile.click();
-    await expect(page.getByRole("img", { name: "pixel.png", exact: true })).toBeVisible();
+    const fullscreen = page.getByRole("dialog", { name: "pixel.png", exact: true });
+    await expect(fullscreen.getByRole("img", { name: "pixel.png", exact: true })).toHaveAttribute(
+      "src",
+      `data:image/png;base64,${privateImage}`,
+    );
     await page.keyboard.press("Escape");
     // Removing one tile uses its corner control and leaves the others intact.
     await page.getByRole("button", { name: "Remove requirements.md", exact: true }).click();

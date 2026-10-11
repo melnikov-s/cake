@@ -29,6 +29,7 @@ export function ImagePreview({
       {presentation === "attachment" ? (
         <AttachmentTile
           name={alt}
+          imageSrc={src}
           ariaLabel={`View ${alt} enlarged`}
           onClick={() => setOpen(true)}
           onRemove={onRemove}
