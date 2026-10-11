@@ -270,9 +270,40 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
       };
     });
     await page.getByRole("button", { name: "Back to chat" }).click();
-    await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
     const composer = page.getByRole("combobox", { name: "Message", exact: true });
-    await composer.click();
+    const focusAnchor = page.getByRole("group", {
+      name: "Press Tab to write",
+      exact: true,
+    });
+    await expect(focusAnchor).toBeFocused();
+    await expect(composer).not.toBeFocused();
+    await expect(indicator).toHaveCount(0);
+    expect(await page.evaluate(() => Reflect.get(window, "dictationCaptures"))).toBe(0);
+    await page.keyboard.press("Tab");
+    await expect(composer).toBeFocused();
+    await expect(indicator).toHaveText("Listening");
+    await page.keyboard.type("Explicitly chosen input");
+    await expect(composer).toHaveValue("Explicitly chosen input");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await composer.fill("");
+
+    // Temporary mute preserves typing-mode convenience focus, even across sessions.
+    await composer.press("Escape");
+    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await expect(composer).toBeFocused();
+    await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
+    await expect(composer).toBeFocused();
+    await page.getByRole("button", { name: "Unmute dictation", exact: true }).click();
+    await expect(indicator).toHaveText("Listening");
+
+    // New-session mount and returning-session focus requests both park, with native Tab entry.
+    await page.getByRole("button", { name: "New chat in project", exact: true }).click();
+    await expect(focusAnchor).toBeFocused();
+    await expect(composer).not.toBeFocused();
+    await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
+    await expect(focusAnchor).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(composer).toBeFocused();
     await expect(indicator).toHaveText("Listening");
     await expect(composer).toHaveValue("");
     const captures = await page.evaluate(() => Reflect.get(window, "dictationCaptures"));

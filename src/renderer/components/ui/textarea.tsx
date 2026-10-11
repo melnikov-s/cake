@@ -43,6 +43,8 @@ export interface TextareaProps
   /** Optional voice-mode span; dictation supplies its own through the registered target. */
   provisionalText?: ProvisionalTextSpan;
   ref?: Ref<HTMLTextAreaElement>;
+  /** Non-editable focus destination; native forward Tab enters the textarea. */
+  focusAnchorRef?: Ref<HTMLDivElement>;
 }
 
 export const Textarea = observer(function Textarea({
@@ -52,6 +54,7 @@ export const Textarea = observer(function Textarea({
   font,
   dictation = false,
   provisionalText,
+  focusAnchorRef,
   onFocus,
   onBlur,
   onChange,
@@ -127,7 +130,11 @@ export const Textarea = observer(function Textarea({
   // Keep the DOM shape stable when conversation mode temporarily owns this field.
   return (
     <div
-      className="relative grid w-full min-w-0"
+      ref={focusAnchorRef}
+      tabIndex={focusAnchorRef ? -1 : undefined}
+      role={focusAnchorRef ? "group" : undefined}
+      aria-label={focusAnchorRef ? "Press Tab to write" : undefined}
+      className="relative grid w-full min-w-0 outline-none"
       data-slot={dictation ? "dictation-field" : "textarea-field"}
     >
       {field}

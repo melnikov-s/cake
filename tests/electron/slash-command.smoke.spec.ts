@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -89,8 +89,28 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
     }),
   );
 
+  const dictationModel = join(userData, "dictation", "model");
+  await mkdir(dictationModel, { recursive: true });
+  await writeFile(
+    join(userData, "dictation", "settings.json"),
+    JSON.stringify({ modelPath: dictationModel }),
+  );
+  const helper = join(temporaryRoot, "dictation-helper");
+  // Replace only native recognition; real preferences, Store, audio, focus, and delivery remain.
+  await writeFile(
+    helper,
+    `#!${process.execPath}
+const readline = require('node:readline');
+console.log(JSON.stringify({ ready: true }));
+readline.createInterface({ input: process.stdin }).on('line', line => {
+  const request = JSON.parse(line);
+  console.log(JSON.stringify(request.operation === 'detectSpeech' ? { speech: false } : { text: '' }));
+});
+`,
+  );
+  await chmod(helper, 0o755);
   const application = await electron.launch({
-    args: [repositoryRoot],
+    args: [repositoryRoot, "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
     cwd: repositoryRoot,
     env: {
       PATH: process.env.PATH,
@@ -98,6 +118,7 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
       LANG: process.env.LANG,
       HOME: home,
       CAKE_ELECTRON_SMOKE: "1",
+      CAKE_SMOKE_DICTATION_HELPER: helper,
       CAKE_ELECTRON_USER_DATA: userData,
       CAKE_HOME: cakeHome,
       PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
@@ -107,7 +128,7 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
 
   try {
     const page = await application.firstWindow();
-    const composer = page.getByLabel("Message");
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
     expect(await installLocalModelHttpGuard(application, origin)).toEqual({
       allowedOrigin: origin,
@@ -163,6 +184,31 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
     await composer.press("Enter");
     await expect(page.locator(".session-item.active")).toHaveCount(1, { timeout: 20_000 });
     await expect(composer).toHaveValue("");
+
+    if (process.platform === "darwin" && process.arch === "arm64") {
+      await page.getByRole("button", { name: "Open settings", exact: true }).click();
+      await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+      await page.getByRole("switch", { name: "Dictation mode" }).click();
+      await page.getByRole("button", { name: "Back to chat" }).click();
+      const anchor = page.getByRole("group", { name: "Press Tab to write", exact: true });
+      await expect(anchor).toBeFocused();
+      await expect(composer).not.toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(composer).toBeFocused();
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+      await page.keyboard.type("Send without restarting dictation");
+      await expect(composer).toHaveValue("Send without restarting dictation");
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await page.keyboard.press("Enter");
+      await expect(composer).toHaveValue("");
+      await expect(anchor).toBeFocused();
+      await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+      await page.keyboard.press("Tab");
+      await expect(composer).toBeFocused();
+      await page.keyboard.type("Next deliberate draft");
+      await expect(composer).toHaveValue("Next deliberate draft");
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    }
   } finally {
     await application.close();
     server.closeAllConnections();

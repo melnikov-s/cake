@@ -1,5 +1,7 @@
 import {
+  useCallback,
   useEffect,
+  useImperativeHandle,
   useId,
   useLayoutEffect,
   useMemo,
@@ -7,13 +9,21 @@ import {
   useState,
   type ComponentProps,
   type KeyboardEvent,
+  type Ref,
 } from "react";
+import { useOptionalStore } from "r-state-tree/react";
+import { DictationStore } from "../stores/DictationStore";
 import { flushSync } from "react-dom";
 import type { FileSuggestion, ConversationSnapshot } from "../../ipc/session-contract";
 import { ComposerInput } from "./ai-elements/composer";
 import { NavItem } from "./ui/nav-item";
 
 type SlashCommand = ConversationSnapshot["commands"][number];
+
+export interface ComposerFocusHandle {
+  /** Returns true only when the editable input was focused, rather than its Tab anchor. */
+  requestFocus(): boolean;
+}
 
 interface SlashCommandComboboxProps extends Omit<
   ComponentProps<typeof ComposerInput>,
@@ -22,6 +32,7 @@ interface SlashCommandComboboxProps extends Omit<
   commands: ReadonlyArray<SlashCommand>;
   focusEnabled?: boolean;
   focusRequestRevision?: number;
+  focusRef?: Ref<ComposerFocusHandle>;
   value: string;
   suggestFiles?(prefix: string): Promise<ReadonlyArray<FileSuggestion>>;
   onValueChange(value: string): void;
@@ -120,6 +131,8 @@ export function SlashCommandCombobox({
   commands,
   focusEnabled = true,
   focusRequestRevision,
+  focusRef,
+  autoFocus = false,
   value,
   suggestFiles,
   onValueChange,
@@ -129,6 +142,29 @@ export function SlashCommandCombobox({
   ...inputProps
 }: SlashCommandComboboxProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const focusAnchorRef = useRef<HTMLDivElement>(null);
+  const dictation = useOptionalStore(DictationStore);
+  const focusEnabledRef = useRef(focusEnabled);
+  focusEnabledRef.current = focusEnabled;
+  const initialFocus = useRef(autoFocus);
+  const requestFocus = useCallback(() => {
+    const input = inputRef.current;
+    if (!focusEnabledRef.current || !input?.isConnected) return false;
+    // Read current intent at execution time, including after async submit/animation frames.
+    // Phase is deliberately irrelevant: enabled + unmuted can start listening on focus.
+    if (dictation?.enabled && !dictation.muted) {
+      focusAnchorRef.current?.focus({ preventScroll: true });
+      return false;
+    }
+    input.focus();
+    return true;
+  }, [dictation]);
+  useImperativeHandle(focusRef, () => ({ requestFocus }), [requestFocus]);
+  useLayoutEffect(() => {
+    if (!initialFocus.current) return;
+    initialFocus.current = false;
+    requestFocus();
+  }, [requestFocus]);
   const suggestFilesRef = useRef(suggestFiles);
   const lastFocusRequestRevision = useRef(focusRequestRevision);
   const requestRevision = useRef(0);
@@ -180,9 +216,9 @@ export function SlashCommandCombobox({
     const previousRevision = lastFocusRequestRevision.current;
     lastFocusRequestRevision.current = focusRequestRevision;
     if (!focusEnabled || !focusRequestRevision || focusRequestRevision === previousRevision) return;
-    const frame = requestAnimationFrame(() => inputRef.current?.focus());
+    const frame = requestAnimationFrame(requestFocus);
     return () => cancelAnimationFrame(frame);
-  }, [focusEnabled, focusRequestRevision]);
+  }, [focusEnabled, focusRequestRevision, requestFocus]);
 
   useLayoutEffect(() => {
     if (pendingCursor.current === undefined) return;
@@ -233,7 +269,7 @@ export function SlashCommandCombobox({
     pendingCursor.current = nextCursor;
     setCursor(nextCursor);
     commitValue(nextValue);
-    requestAnimationFrame(() => inputRef.current?.focus());
+    requestAnimationFrame(requestFocus);
     return nextValue;
   };
 
@@ -245,7 +281,9 @@ export function SlashCommandCombobox({
     try {
       await onSubmit(submittedValue);
     } finally {
-      requestAnimationFrame(() => inputRef.current?.focus());
+      // Empty Enter is not a send and must not interrupt ongoing dictation.
+      if (submittedValue?.trim() || document.activeElement !== inputRef.current)
+        requestAnimationFrame(requestFocus);
     }
   };
 
@@ -273,9 +311,7 @@ export function SlashCommandCombobox({
     setActiveIndex(0);
     setDismissedMention(undefined);
     commitValue(nextValue);
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
-    });
+    requestAnimationFrame(requestFocus);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -372,6 +408,7 @@ export function SlashCommandCombobox({
       )}
       <ComposerInput
         {...inputProps}
+        focusAnchorRef={focusAnchorRef}
         ref={(node) => {
           inputRef.current = node;
           forwardedInputRef?.(node);

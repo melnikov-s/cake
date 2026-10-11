@@ -1,6 +1,9 @@
 import type { RefObject } from "react";
 import { observer } from "r-state-tree/react";
-import { SlashCommandCombobox } from "@/components/slash-command-combobox";
+import {
+  SlashCommandCombobox,
+  type ComposerFocusHandle,
+} from "@/components/slash-command-combobox";
 import type { ChatStore } from "../stores/ChatStore";
 import { isLargePaste } from "../../contracts/conversations/task-input";
 
@@ -15,6 +18,7 @@ interface ComposerSelection {
 export const ChatComposerInput = observer(function ChatComposerInput({
   store,
   inputRef,
+  focusRef,
   focusEnabled,
   onReword,
   onPromptedReword,
@@ -22,6 +26,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
 }: {
   store: ChatStore;
   inputRef: RefObject<HTMLTextAreaElement | null>;
+  focusRef: RefObject<ComposerFocusHandle | null>;
   focusEnabled: boolean;
   onReword(selection: ComposerSelection): void;
   onPromptedReword(selection: ComposerSelection): void;
@@ -38,6 +43,7 @@ export const ChatComposerInput = observer(function ChatComposerInput({
       provisionalText={voiceOwnsInput ? conversation.workflow.provisionalInput : undefined}
       autoFocus={focusEnabled}
       focusEnabled={focusEnabled}
+      focusRef={focusRef}
       data-cake-hint-key="i"
       aria-label={store.inputLabel}
       aria-busy={store.rewording}

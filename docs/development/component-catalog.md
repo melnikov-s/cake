@@ -23,6 +23,10 @@ See `AGENTS.md` for renderer implementation rules.
 | [Link](../../src/renderer/components/ui/link.tsx)                                                                                                                       | Shared anchors, source references and Cake links with destination tooltips.                    |
 | [LoadingState](../../src/renderer/components/ui/loading-state.tsx)                                                                                                      | Shared loading treatments.                                                                     |
 
+`Textarea.focusAnchorRef` exposes a non-editable, programmatically focusable wrapper.
+Focusing it positions native forward Tab at the textarea without activating dictation;
+it does not add a tab stop or intercept normal Tab/Shift+Tab navigation.
+
 ## Navigation and layout
 
 | Component                                                                                                                                    | Use for                                                                                   |

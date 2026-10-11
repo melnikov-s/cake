@@ -123,6 +123,8 @@ function browserAudio(options: { permission?: Promise<void>; microphoneReady?: P
 function renderDictation(
   options: {
     modelReady?: Promise<void>;
+    submissionReady?: Promise<void>;
+    composerFocusEnabled?: boolean;
     permission?: Promise<void>;
     microphoneReady?: Promise<void>;
     snapshot?: StoreSnapshot;
@@ -147,9 +149,10 @@ function renderDictation(
     requests.push({ audio: input, reply });
     return reply.promise;
   });
-  const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
-    TurnId.make("10000000-0000-4000-8000-000000000001"),
-  );
+  const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => {
+    await options.submissionReady;
+    return TurnId.make("10000000-0000-4000-8000-000000000001");
+  });
   const sessionId = "dictation-session";
   const fixture = createRendererStoreFixture({
     projects: [projectRecord({ path: "/project" })],
@@ -203,7 +206,7 @@ function renderDictation(
       <Chat
         store={session.conversationSessionStore.chatStore}
         embedded
-        composerFocusEnabled={false}
+        composerFocusEnabled={options.composerFocusEnabled ?? false}
       />
     </StoreProvider>,
   );
@@ -216,6 +219,9 @@ function renderDictation(
     release,
     requests,
     prompt,
+    requestFocus() {
+      act(() => session.conversationSessionStore.composerStore.draftStore.requestFocus());
+    },
     async recognize(index: number, text: string) {
       await act(async () => {
         requests[index]!.reply.resolve(text);
@@ -240,6 +246,59 @@ afterEach(() => {
 });
 
 describe("Dictation writing-field workflow", () => {
+  it("parks convenience focus only while dictation is enabled and unmuted, leaving capture to explicit Tab", async () => {
+    using f = renderDictation({ composerFocusEnabled: true });
+    expect(document.activeElement).toBe(message());
+    await f.user.click(mode());
+    f.requestFocus();
+    const anchor = message().parentElement!;
+    await waitFor(() => expect(document.activeElement).toBe(anchor));
+    expect(f.audio.getUserMedia).not.toHaveBeenCalled();
+    expect(f.root.dictationStore.activeTargetId).toBeUndefined();
+
+    await f.user.tab();
+    expect(document.activeElement).toBe(message());
+    await waitFor(() => expect(f.audio.getUserMedia).toHaveBeenCalledOnce());
+    await f.user.type(message(), "Explicit input");
+    expect(message().value).toBe("Explicit input");
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Send" }).disabled).toBe(false);
+    await f.user.keyboard("{Escape}");
+    expect(f.root.dictationStore.muted).toBe(true);
+    await f.user.click(screen.getByLabelText("Use an existing Core ML Parakeet model folder"));
+    f.requestFocus();
+    await waitFor(() => expect(document.activeElement).toBe(message()));
+    expect(f.audio.getUserMedia).toHaveBeenCalledOnce();
+
+    await f.user.click(mode());
+    f.requestFocus();
+    await waitFor(() => expect(document.activeElement).toBe(message()));
+    expect(f.audio.getUserMedia).toHaveBeenCalledOnce();
+  });
+
+  it("parks focus after a real asynchronous send and stops capture until explicit focus", async () => {
+    const submission = deferred<void>();
+    using f = renderDictation({ composerFocusEnabled: true, submissionReady: submission.promise });
+    await f.user.click(mode());
+    f.requestFocus();
+    await waitFor(() => expect(document.activeElement).toBe(message().parentElement));
+    await f.user.tab();
+    await waitFor(() => expect(f.audio.getUserMedia).toHaveBeenCalledOnce());
+    await f.user.type(message(), "Send this request");
+    await f.user.keyboard("{Enter}");
+    await waitFor(() => expect(f.requests).toHaveLength(1));
+    await f.recognize(0, "");
+    await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+    await act(async () => submission.resolve());
+    await waitFor(() => expect(document.activeElement).toBe(message().parentElement));
+    expect(message().value).toBe("");
+    expect(f.root.dictationStore.activeTargetId).toBeUndefined();
+    expect(f.audio.tracks.every((track) => track.stop.mock.calls.length > 0)).toBe(true);
+    const captures = f.audio.getUserMedia.mock.calls.length;
+    await f.user.tab();
+    expect(document.activeElement).toBe(message());
+    await waitFor(() => expect(f.audio.getUserMedia).toHaveBeenCalledTimes(captures + 1));
+  });
+
   it("empty Enter keeps listening without reopening capture, including pending noise-only recognition", async () => {
     using f = renderDictation();
     await f.user.click(mode());

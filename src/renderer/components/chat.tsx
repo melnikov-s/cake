@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { AnnotationSummary } from "@/components/annotation-summary";
 import { ChatComposer } from "@/components/chat-composer";
 import { ChatComposerInput } from "@/components/chat-composer-input";
+import type { ComposerFocusHandle } from "./slash-command-combobox";
 import { ChatSubmitAction } from "@/components/chat-submit-action";
 import { ImagePreview } from "@/components/image-preview";
 import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-transcript";
@@ -165,6 +166,7 @@ export const Chat = observer(function Chat({
   const layoutRef = useRef<HTMLDivElement>(null);
   const composerDockRef = useRef<HTMLDivElement>(null);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
+  const composerFocusRef = useRef<ComposerFocusHandle>(null);
   const transcriptRef = useRef<ChatTranscriptHandle>(null);
   const [promptedSelection, setPromptedSelection] = useState<{
     draft: string;
@@ -213,7 +215,7 @@ export const Chat = observer(function Chat({
     requestAnimationFrame(() => {
       const input = composerInputRef.current;
       if (!input) return;
-      input.focus();
+      composerFocusRef.current?.requestFocus();
       input.setSelectionRange(selection.start, selection.end);
     });
   };
@@ -232,10 +234,11 @@ export const Chat = observer(function Chat({
       setPromptedSelection(undefined);
       return;
     }
-    input.focus();
+    const focused = composerFocusRef.current?.requestFocus();
     input.setSelectionRange(selection.start, selection.end);
-    // Chromium's editing command records the replacement as one native undo step.
-    const recordedUndo = document.execCommand("insertText", false, rewritten);
+    // Chromium's editing command needs editable focus. Do not acquire it just for undo
+    // while unmuted dictation is enabled; update the draft without restarting capture.
+    const recordedUndo = focused && document.execCommand("insertText", false, rewritten);
     if (!recordedUndo)
       store.setDraft(
         `${selection.draft.slice(0, selection.start)}${rewritten}${selection.draft.slice(selection.end)}`,
@@ -281,6 +284,7 @@ export const Chat = observer(function Chat({
               key={store.id}
               store={store}
               inputRef={composerInputRef}
+              focusRef={composerFocusRef}
               focusEnabled={composerFocusEnabled}
               onReword={(selection) => void reword(selection)}
               onPromptedReword={setPromptedSelection}
