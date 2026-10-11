@@ -758,6 +758,7 @@ describe("Cake Chat composition observer", () => {
           target: { sessionId: "cake-chat-1", tools: [] },
           conversation: projection.cakeChatConversation("cake-chat-1"),
           controls: controlModel,
+          subagents: projection.subagentCatalog("cake-chat-1"),
         },
       ],
     });
@@ -793,6 +794,7 @@ describe("Cake Chat composition observer", () => {
           target: { sessionId: "cake-chat-1", tools: [] },
           conversation: projection.cakeChatConversation("cake-chat-1"),
           controls: controlModel,
+          subagents: projection.subagentCatalog("cake-chat-1"),
         },
       ],
     });
@@ -820,6 +822,7 @@ describe("Cake Chat composition observer", () => {
           target: { sessionId: "cake-chat-1", tools: [] },
           conversation: projection.cakeChatConversation("cake-chat-1"),
           controls: controlModel,
+          subagents: projection.subagentCatalog("cake-chat-1"),
         },
       ],
     });

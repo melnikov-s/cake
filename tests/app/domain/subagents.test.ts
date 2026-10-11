@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, Layer, Queue, Ref, Stream, SubscriptionRef } from "effect";
+import {
+  Deferred,
+  Effect,
+  Fiber,
+  Layer,
+  Queue,
+  Ref,
+  Schema,
+  Stream,
+  SubscriptionRef,
+} from "effect";
 import { describe } from "vitest";
 import * as subagents from "../../../src/domain/subagents/subagents";
 import {
@@ -31,7 +41,13 @@ import { ApplicationState } from "../../../src/services/storage/ApplicationState
 
 const applicationValue: ApplicationStateValue = {
   ...defaultApplicationState(),
-  trustedProjectPaths: ["/project"],
+  trustedProjectPaths: ["/project", "/another"],
+  projects: ["/project", "/another", "/untrusted"].map((path) => ({
+    path,
+    name: path.slice(1),
+    addedAt: "now",
+    lastOpenedAt: "now",
+  })),
 };
 
 const parentSnapshot: ConversationSnapshot = {
@@ -96,6 +112,7 @@ interface Fixture {
   readonly active: Ref.Ref<number>;
   readonly maximumActive: Ref.Ref<number>;
   readonly completions: Ref.Ref<ReadonlyArray<unknown>>;
+  readonly reports: Queue.Queue<unknown>;
   readonly parentMessages: Ref.Ref<ReadonlyArray<string>>;
 }
 
@@ -107,17 +124,49 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
   const active = yield* Ref.make(0);
   const maximumActive = yield* Ref.make(0);
   const completions = yield* Ref.make<ReadonlyArray<unknown>>([]);
+  const reports = yield* Queue.unbounded<unknown>();
   const parentMessages = yield* Ref.make<ReadonlyArray<string>>([]);
 
   const runtime = (options: CakeSessionRuntimeOptions): CakeSessionRuntime => {
     const sessionId = options.sessionId ?? "parent";
     const isParent = sessionId.startsWith("parent");
     let streaming = false;
+    let answered = false;
     let activeTurnIds: string[] = [];
     const snapshot = (): ConversationSnapshot => ({
       ...parentSnapshot,
       sessionId,
-      sessionFile: `/sessions/${sessionId}.jsonl`,
+      sessionFile: options.ephemeral ? "" : `/sessions/${sessionId}.jsonl`,
+      workspacePath: options.cwd,
+      parts: options.projectInvestigation
+        ? [
+            {
+              id: "system",
+              kind: "context",
+              title: "System prompt",
+              text: "PRIVATE_WORKER_CONTEXT",
+            },
+            {
+              id: "read",
+              kind: "tool",
+              name: "read",
+              input: "config.ts",
+              output: "PRIVATE_TOOL_OUTPUT",
+              state: "success",
+            },
+            ...(answered
+              ? [
+                  {
+                    id: "answer",
+                    kind: "text" as const,
+                    role: "assistant" as const,
+                    status: "complete" as const,
+                    text: "Evidence: config.ts:12 defines the setting.",
+                  },
+                ]
+              : []),
+          ]
+        : [],
       streaming,
     });
     return {
@@ -162,6 +211,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
         await Effect.runPromise(Deferred.await(gate));
         activeTurnIds = turnId ? activeTurnIds.filter((id) => id !== turnId) : activeTurnIds;
         streaming = false;
+        answered = true;
         await Effect.runPromise(Ref.update(active, (count) => count - 1));
         options.onEvent({ type: "streaming", sessionId, streaming: false });
       },
@@ -187,6 +237,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
       recordReviewRun: () => undefined,
       notifySubagentCompletion: async (result) => {
         await Effect.runPromise(Ref.update(completions, (values) => [...values, result]));
+        await Effect.runPromise(Queue.offer(reports, result));
       },
       rename: async () => undefined,
       fork: async () => ({
@@ -255,6 +306,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
     active,
     maximumActive,
     completions,
+    reports,
     parentMessages,
   };
 });
@@ -284,6 +336,160 @@ const completeChild = Effect.fn("SubagentsTest.completeChild")(function* (
   const gate = (yield* Ref.get(fixture.childGates)).get(sessionId);
   assert.ok(gate);
   yield* Deferred.succeed(gate, undefined);
+});
+
+const cakeChatParent = (fixture: Fixture): subagents.SubagentParentRuntime => ({
+  ...parent(fixture),
+  parentSessionId: "parent-cake-chat",
+  workingDirectory: "/home",
+  options: {
+    profile: { _tag: "CakeChatSession" },
+    runtime: {
+      ...fixture.parentOptions.runtime,
+      sessionId: "parent-cake-chat",
+      cwd: "/home",
+      globalControl: { tools: [], invoke: async () => ({}) },
+    },
+  },
+});
+
+describe("Cake Chat project investigators", () => {
+  it.effect("validates registered trusted project roots before constructing a worker", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture();
+      yield* Effect.gen(function* () {
+        for (const projectPath of [undefined, "/missing", "/untrusted", "/project/worktree"])
+          assert.ok(
+            (yield* subagents
+              .start(
+                { task: "Inspect config", ...(projectPath ? { projectPath } : {}) },
+                cakeChatParent(fixture),
+              )
+              .pipe(Effect.flip)) instanceof subagents.SubagentError,
+          );
+        assert.equal(yield* Ref.get(fixture.constructions), 0);
+        const wrongCaller = yield* subagents
+          .start({ task: "Inspect", projectPath: "/another" }, parent(fixture))
+          .pipe(Effect.flip);
+        assert.match(wrongCaller.message, /only to Cake Chat/);
+      }).pipe(Effect.provide(fixture.layer));
+    }),
+  );
+
+  it.effect("aborts a queued follow-up before it can start on an existing private runtime", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture();
+      yield* Effect.gen(function* () {
+        const first = yield* subagents.start(
+          { task: "First investigation", projectPath: "/another" },
+          cakeChatParent(fixture),
+        );
+        const firstSession = yield* Queue.take(fixture.childStarted);
+        yield* completeChild(fixture, firstSession);
+        yield* Queue.take(fixture.reports);
+        const blockers: string[] = [];
+        for (let i = 0; i < 4; i++) {
+          yield* subagents.start(
+            { task: `Occupy slot ${i}`, projectPath: "/another" },
+            cakeChatParent(fixture),
+          );
+          blockers.push(yield* Queue.take(fixture.childStarted));
+        }
+        yield* subagents.prompt(
+          "parent-cake-chat",
+          first.handleId,
+          "Must not start after cancellation",
+          "follow-up",
+          true,
+        );
+        yield* subagents.abort("parent-cake-chat", first.handleId);
+        const cancelled = Schema.decodeUnknownSync(subagents.SubagentResult)(
+          yield* Queue.take(fixture.reports),
+        );
+        assert.equal(cancelled.handleId, first.handleId);
+        assert.equal(cancelled.status, "aborted");
+        assert.deepEqual(cancelled.parts, []);
+        for (const sessionId of blockers) yield* completeChild(fixture, sessionId);
+        yield* Effect.forEach(blockers, () => Queue.take(fixture.reports));
+        assert.equal(yield* Queue.size(fixture.childStarted), 0);
+        assert.equal(yield* Ref.get(fixture.active), 0);
+      }).pipe(Effect.provide(fixture.layer));
+    }),
+  );
+
+  it.effect(
+    "binds an in-memory worker to the selected root and keeps its detailed activity private across async follow-ups",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        yield* Effect.gen(function* () {
+          const receipt = yield* subagents.start(
+            {
+              task: "Inspect config",
+              projectPath: "/another",
+              instructions: "Also explain the defaults",
+            },
+            cakeChatParent(fixture),
+          );
+          const sessionId = yield* Queue.take(fixture.childStarted);
+          const options = (yield* Ref.get(fixture.constructedOptions)).find(
+            (item) => item.sessionId === sessionId,
+          );
+          assert.ok(options);
+          assert.equal(options.cwd, "/another");
+          assert.equal(options.ephemeral, true);
+          assert.equal(options.projectInvestigation, true);
+          assert.equal(options.isolatedSystemPrompt, undefined);
+          assert.equal(options.tools, undefined);
+          assert.equal(receipt.projectPath, "/another");
+          const coordinator = yield* SubagentCoordinator;
+          assert.equal(
+            (yield* SubscriptionRef.get(coordinator.state)).handles.get(receipt.handleId)
+              ?.parentSessionId,
+            "parent-cake-chat",
+          );
+          yield* completeChild(fixture, sessionId);
+          const first = Schema.decodeUnknownSync(subagents.SubagentResult)(
+            yield* Queue.take(fixture.reports),
+          );
+          assert.equal(first.parts.length, 1);
+          assert.match(JSON.stringify(first), /config.ts:12/);
+          assert.doesNotMatch(JSON.stringify(first), /PRIVATE_/);
+          assert.match(
+            JSON.stringify(
+              (yield* SubscriptionRef.get(coordinator.state)).handles.get(receipt.handleId)?.parts,
+            ),
+            /PRIVATE_TOOL_OUTPUT/,
+          );
+          assert.equal(subagents.SubagentResult.make(first).projectPath, "/another");
+          const followUp = yield* subagents.prompt(
+            "parent-cake-chat",
+            receipt.handleId,
+            "Recheck the current default",
+            "follow-up",
+            true,
+          );
+          assert.equal(
+            Schema.decodeUnknownSync(subagents.SubagentStartReceipt)(followUp).handleId,
+            receipt.handleId,
+          );
+          assert.equal(yield* Queue.take(fixture.childStarted), sessionId);
+          yield* completeChild(fixture, sessionId);
+          const second = Schema.decodeUnknownSync(subagents.SubagentResult)(
+            yield* Queue.take(fixture.reports),
+          );
+          assert.equal(second.parts.length, 1);
+          assert.doesNotMatch(JSON.stringify(second), /PRIVATE_/);
+          assert.equal(yield* Ref.get(fixture.constructions), 1);
+          yield* subagents.close("parent-cake-chat", receipt.handleId);
+          assert.equal((yield* SubscriptionRef.get(coordinator.state)).handles.size, 0);
+          const closed = yield* subagents
+            .prompt("parent-cake-chat", receipt.handleId, "Again", "follow-up", true)
+            .pipe(Effect.flip);
+          assert.match(closed.message, /does not belong/);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
 });
 
 describe("Subagents", () => {

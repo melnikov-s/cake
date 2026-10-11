@@ -802,6 +802,7 @@ export class RootStore extends Store<{
       isSelected: () => this.appShellStore.selection.kind === "cake-chat",
       sessionModel: (sessionId) => this.props.projection.cakeChatConversation(sessionId),
       controlsModel: (sessionId) => this.props.projection.controlsForCakeChat(sessionId),
+      subagentCatalog: (sessionId) => this.props.projection.subagentCatalog(sessionId),
       workflowCatalog: (sessionId) => this.props.projection.workflowCatalog(sessionId),
       tools: () => this.applicationControlStore.tools(),
       modelPresets: () => this.settingsStore.modelPresets.presets,

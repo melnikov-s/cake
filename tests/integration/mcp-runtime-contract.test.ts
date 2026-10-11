@@ -221,6 +221,7 @@ async function openSession(
     resourceLoader,
     settingsManager,
     sessionManager: SessionManager.inMemory(cwd),
+    ...(options.restriction?.projectInvestigation ? { excludeTools: ["edit", "write"] } : {}),
   });
   sessions.push(session);
   const intents: ExtensionUiIntent[] = [];
@@ -281,6 +282,22 @@ async function openSession(
 }
 
 describe("Cake native MCP runtime contract", () => {
+  it("allows configured MCP in project investigators while keeping edit/write excluded after tool activation", async () => {
+    const h = await openSession({ restriction: { auxiliary: true, projectInvestigation: true } });
+    await h.bind();
+    await h.session.prompt("/mcp");
+    expect(h.entries).toHaveLength(1);
+    const tools = h.session.getActiveToolNames();
+    expect(tools).toContain("mcp__fixture__echo");
+    expect(tools).toContain("bash");
+    expect(tools).not.toContain("edit");
+    expect(tools).not.toContain("write");
+    h.session.setActiveToolsByName([...tools, "edit", "write"]);
+    expect(h.session.getActiveToolNames()).not.toContain("edit");
+    expect(h.session.getActiveToolNames()).not.toContain("write");
+    expect((await h.invoke("mcp__fixture__echo", {})).isError).toBe(false);
+    expect(h.session.sessionFile).toBeUndefined();
+  });
   it("connects only on session_start and preserves ordinary default tools", async () => {
     const h = await openSession();
     expect(h.entries).toEqual([]);

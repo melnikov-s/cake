@@ -390,6 +390,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
         root.cakeChatCollectionStore.pendingSessions.isPending(paneSession.sessionId),
     },
     transcriptBehavior: {
+      subagents: paneSession.subagentActivityStore,
       inlineWidgets: root.inlineWidgetStore,
       inlineArtifactPreviews: root.inlineArtifactPreviewStore,
     },

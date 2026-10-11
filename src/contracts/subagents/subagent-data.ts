@@ -50,6 +50,7 @@ export interface ResolvedAgentModel extends Schema.Schema.Type<typeof ResolvedAg
 
 export const SubagentTaskInput = Schema.Struct({
   task: nonEmptyBoundedString(262_144),
+  projectPath: Schema.optionalKey(nonEmptyBoundedString(4_096)),
   model: Schema.optionalKey(AgentModelPreference),
   instructions: Schema.optionalKey(boundedString(32_768)),
   fastMode: Schema.optionalKey(Schema.Boolean),
@@ -58,6 +59,7 @@ export interface SubagentTaskInput extends Schema.Schema.Type<typeof SubagentTas
 
 export const SubagentTask = Schema.Struct({
   task: SubagentTaskInput.fields.task,
+  projectPath: SubagentTaskInput.fields.projectPath,
   model: AgentModelPreference,
   instructions: Schema.optionalKey(boundedString(32_768)),
   fastMode: Schema.Boolean,
@@ -80,6 +82,7 @@ export const SubagentActivity = Schema.Struct({
   handleId: SubagentHandleId,
   revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   task: SubagentTask.fields.task,
+  projectPath: SubagentTask.fields.projectPath,
   status: SubagentStatus,
   resolvedModel: ResolvedAgentModel,
   fastMode: Schema.Boolean,
@@ -93,6 +96,7 @@ export interface SubagentActivity extends Schema.Schema.Type<typeof SubagentActi
 export const SubagentResult = Schema.Struct({
   handleId: SubagentHandleId,
   task: SubagentTask.fields.task,
+  projectPath: SubagentTask.fields.projectPath,
   status: SubagentStatus,
   resolvedModel: ResolvedAgentModel,
   fastMode: Schema.Boolean,
@@ -106,6 +110,7 @@ export interface SubagentResult extends Schema.Schema.Type<typeof SubagentResult
 export const SubagentStartReceipt = Schema.Struct({
   handleId: SubagentHandleId,
   task: SubagentTask.fields.task,
+  projectPath: SubagentTask.fields.projectPath,
   status: SubagentStatus,
   fastMode: Schema.Boolean,
   resolvedModel: ResolvedAgentModel,

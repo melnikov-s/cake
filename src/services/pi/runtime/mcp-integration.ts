@@ -14,7 +14,7 @@ import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
 export interface CakeMcpIntegrationOptions {
   readonly runtime: Pick<
     CakeSessionRuntimeOptions,
-    "agentDir" | "auxiliary" | "globalControl" | "tools"
+    "agentDir" | "auxiliary" | "globalControl" | "tools" | "projectInvestigation"
   >;
   /** Test boundary only; production uses Pi's standard configuration loader. */
   readonly loadConfig?: McpExtensionOptions["loadConfig"];
@@ -24,8 +24,10 @@ export interface CakeMcpIntegrationOptions {
 
 /**
  * Supplies named, builtin, replaceable MCP/tool-search/codemode factories only
- * for primary Project Session runtimes without a fixed tool allowlist.
- * Restricted runtimes receive no factories, even when personal MCP config exists.
+ * for primary Project Session runtimes and project investigators without a fixed
+ * tool allowlist. Other auxiliary runtimes receive no factories, even when personal
+ * MCP config exists. Investigators use normal MCP discovery; their mutation
+ * prohibition is prompt policy, not a transport sandbox.
  *
  * Production requires Pi's global agent directory to match runtime.agentDir;
  * a mismatch rejects initialization rather than using another credential root.
@@ -42,7 +44,12 @@ export interface CakeMcpIntegrationOptions {
  */
 export function createCakeMcpExtensions(options: CakeMcpIntegrationOptions) {
   const { runtime } = options;
-  if (runtime.auxiliary || runtime.globalControl || runtime.tools !== undefined) return [];
+  if (
+    (runtime.auxiliary && !runtime.projectInvestigation) ||
+    runtime.globalControl ||
+    runtime.tools !== undefined
+  )
+    return [];
   if (resolve(getAgentDir()) !== resolve(runtime.agentDir))
     throw new Error("Pi's global agent directory must match Cake's backend agent directory");
   return [

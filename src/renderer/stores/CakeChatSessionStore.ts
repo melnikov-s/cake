@@ -11,6 +11,8 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 import type { CakeChatTarget } from "../../ipc/cake-chat-data";
 import type { CakeChatControls } from "../models/CakeChatControls";
 import type { WorkflowCatalog } from "../models/WorkflowCatalog";
+import type { SubagentCatalog } from "../models/SubagentCatalog";
+import { SubagentActivityStore } from "./SubagentActivityStore";
 import { WorkflowRunStore } from "./WorkflowRunStore";
 import { workflowOwnerReferences } from "../../utils/workflow-references";
 
@@ -18,6 +20,7 @@ export interface CakeChatSessionStoreProps {
   sessionId: string;
   model: Conversation;
   controls: CakeChatControls;
+  subagentCatalog: SubagentCatalog;
   workflowCatalog(sessionId: string): WorkflowCatalog;
   target(): CakeChatTarget;
   pendingSessions: CakeChatPendingSessionsStore;
@@ -49,6 +52,15 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         model: this.props.workflowCatalog(sessionId),
       }),
     );
+  }
+
+  @child
+  get subagentActivityStore(): SubagentActivityStore {
+    return createStore(SubagentActivityStore, {
+      sessionId: this.sessionId,
+      model: this.props.subagentCatalog,
+      parts: () => this.model.uiParts,
+    });
   }
 
   @child

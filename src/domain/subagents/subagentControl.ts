@@ -67,7 +67,13 @@ export const makeSubagentControl =
         ).then((value) => Schema.decodeUnknownSync(jsonValueSchema)(value)),
       prompt: (input, parentSessionId, signal) =>
         runEffect(
-          subagents.prompt(parentSessionId, input.handleId, input.text, input.delivery),
+          subagents.prompt(
+            parentSessionId,
+            input.handleId,
+            input.text,
+            input.delivery,
+            options().profile._tag === "CakeChatSession",
+          ),
           signal,
         ).then((value) => Schema.decodeUnknownSync(jsonValueSchema)(value)),
       wait: (handleId, parentSessionId, signal, onUpdate) =>

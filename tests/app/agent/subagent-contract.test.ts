@@ -10,6 +10,12 @@ describe("subagent contract", () => {
     expect(Schema.decodeUnknownSync(subagentTaskSchema)({ task: "Inspect the adapter" })).toEqual({
       task: "Inspect the adapter",
     });
+    expect(
+      Schema.decodeUnknownSync(subagentTaskSchema)({
+        task: "Inspect the adapter",
+        projectPath: "/registered/project",
+      }),
+    ).toEqual({ task: "Inspect the adapter", projectPath: "/registered/project" });
   });
 
   it("uses the shared preset-or-explicit model selection schema", () => {
@@ -88,6 +94,40 @@ describe("subagent contract", () => {
         toolCallId: "call-1",
         runtime: {},
       },
+    );
+
+    const resolve = (selection: Parameters<typeof resolveCakeModelSelection>[0]) =>
+      resolveCakeModelSelection(selection, { presets: [preset] }, inherited);
+    const ordinary = createAgentControlOperations(control, () => "parent", resolve);
+    const projectAware = createAgentControlOperations(control, () => "cake-chat", resolve, true);
+    expect(ordinary[0]?.guidance).toContain(
+      "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
+    );
+    expect(projectAware[0]?.guidance?.join("\n")).toContain(
+      "Delegate every question depending on a registered project's code",
+    );
+    expect(projectAware[0]?.guidance?.join("\n")).toContain("clarify ambiguous project identity");
+    await new CakeOperationRegistry(projectAware).invoke(
+      {
+        command: "subagents.start",
+        input: { task: "Inspect current config", projectPath: "/registered/project" },
+      },
+      { signal: new AbortController().signal, toolCallId: "call-project", runtime: {} },
+    );
+    expect(control.start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectPath: "/registered/project",
+        model: {
+          prefer: "exact",
+          provider: inherited.provider,
+          modelId: inherited.modelId,
+          thinkingLevel: inherited.thinkingLevel,
+        },
+        fastMode: false,
+      }),
+      "cake-chat",
+      expect.any(AbortSignal),
+      "tool-call-project",
     );
 
     expect(run).toHaveBeenCalledWith(

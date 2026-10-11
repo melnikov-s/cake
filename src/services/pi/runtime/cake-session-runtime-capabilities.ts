@@ -57,6 +57,7 @@ import commonPromptTemplate from "./prompts/common.md?raw";
 import interviewPromptTemplate from "./prompts/interview.md?raw";
 import projectInteractionPromptTemplate from "./prompts/project-interaction.md?raw";
 import projectPromptTemplate from "./prompts/project.md?raw";
+import projectInvestigationPrompt from "./prompts/project-investigation.md?raw";
 import { renderPromptTemplate } from "./prompt-template";
 import {
   parallelSubagentSchema,
@@ -139,6 +140,7 @@ export function createAgentControlOperations(
   control: NonNullable<CakeSessionRuntimeOptions["agentControl"]>,
   parentSessionId: () => string | undefined,
   resolveModel: (selection: CakeModelSelection | undefined) => ExplicitCakeModelSelection,
+  projectAware = false,
 ): CakeOperationDefinition[] {
   const promptSchema = Schema.Struct({
     handleId: Schema.String.check(Schema.isUUID()),
@@ -146,12 +148,20 @@ export function createAgentControlOperations(
   });
   const handleSchema = Schema.Struct({ handleId: Schema.String.check(Schema.isUUID()) });
   const guidance = [
-    "Subagents are private, hidden, bounded workers—not full Project Sessions. A request for a child session, related session, or Session Family member is not subagent delegation; use sessions.create-child instead.",
-    "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
+    projectAware
+      ? "Subagents are private, hidden project investigators—not full Project Sessions. Use sessions.create for implementation in an independent Project Session, not an investigation worker."
+      : "Subagents are private, hidden, bounded workers—not full Project Sessions. A request for a child session, related session, or Session Family member is not subagent delegation; use sessions.create-child instead.",
+    projectAware
+      ? "Delegate every question depending on a registered project's code, architecture, configuration or current behavior. Discover exact project paths with app.state, supply projectPath, and clarify ambiguous project identity before starting. No separate delegation permission is needed for Cake Chat investigations."
+      : "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
     "Use subagents.start for ordinary delegation so the parent turn remains independent and the user can continue messaging it. Start multiple handles for parallel work; Cake automatically queues each compact final report to the parent, so do not poll.",
     "Use subagents.run, subagents.parallel, or subagents.wait only when the user explicitly requires the parent turn to block on delegated work.",
-    "Each subagent has read, bash, edit, write, and one bounded message_parent tool, but no Cake controls, project instructions, skills, or recursive delegation.",
-    "Handles are parent-owned and remain available for follow-up until explicitly closed; parallel batches contain at most eight tasks.",
+    projectAware
+      ? "Project investigators use the registered project root and normal applicable instructions, skills, extensions and MCP. They omit edit/write and prohibit all mutations, including shell/MCP writes, even if their parent requests them. This is an investigation-only prompt policy, not a read-only sandbox. Implementation belongs in a normal Project Session."
+      : "Each subagent has read, bash, edit, write, and one bounded message_parent tool, but no Cake controls, project instructions, skills, or recursive delegation.",
+    projectAware
+      ? "Handles are parent-owned and available for related follow-ups until explicitly closed or the backend exits. Workers are in-memory and never restored after restart. Follow-ups are asynchronous; detailed live activity is not retained in Cake Chat history."
+      : "Handles are parent-owned and remain available for follow-up until explicitly closed; parallel batches contain at most eight tasks.",
     "When model is omitted, a subagent inherits the calling session's current model, thinking level, and Fast mode setting.",
   ];
   const resolveTask = (input: SubagentTaskInput): DomainSubagentTaskInput => {
@@ -222,10 +232,13 @@ export function createAgentControlOperations(
       summary:
         "Start one isolated parent-owned subagent asynchronously. Cake queues its compact final report to the parent without interrupting active work.",
       schema: subagentTaskSchema,
-      example: {
-        task: "Monitor the test run",
-        model: "Sol",
-      },
+      example: projectAware
+        ? {
+            task: "Explain the authentication flow with file/line evidence",
+            projectPath: "/registered/project",
+            model: "Sol",
+          }
+        : { task: "Monitor the test run", model: "Sol" },
       run: (input, parent, signal, _onUpdate, anchor) =>
         control.start(resolveTask(input), parent, signal, anchor),
     }),
@@ -1567,90 +1580,93 @@ export async function createCakeSessionRuntimeCapabilities(input: {
                 ...(options.auxiliaryProjectResources ? [] : [cakeProjectSystemPrompt]),
                 ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : []),
                 ...(detectedWorktreePrompt ? [detectedWorktreePrompt] : []),
+                ...(options.projectInvestigation ? [projectInvestigationPrompt] : []),
               ],
         additionalSkillPaths: [],
         additionalPromptTemplatePaths: [],
         additionalExtensionPaths: [],
-        noExtensions: options.auxiliary,
-        noSkills: options.auxiliary && !options.auxiliaryProjectResources,
-        noPromptTemplates: options.auxiliary,
-        noThemes: options.auxiliary,
+        noExtensions: options.auxiliary && !options.projectInvestigation,
+        noSkills:
+          options.auxiliary && !options.auxiliaryProjectResources && !options.projectInvestigation,
+        noPromptTemplates: options.auxiliary && !options.projectInvestigation,
+        noThemes: options.auxiliary && !options.projectInvestigation,
         noContextFiles: options.isolatedSystemPrompt !== undefined,
-        extensionFactories: options.auxiliaryProjectResources
-          ? [...requestExtensions]
-          : [
-              ...requestExtensions,
-              createCakeGatewayExtension(
-                (pi) => [
-                  ...filterRuntimeOperations([
-                    ...localOperations(),
-                    ...(!options.auxiliary &&
-                    options.tools === undefined &&
-                    options.nonChatModelPreferences
-                      ? createCakeNonChatModelOperations(
-                          options.nonChatModelPreferences,
-                          input.modelRuntime,
-                        )
+        extensionFactories:
+          options.auxiliaryProjectResources || options.projectInvestigation
+            ? [...requestExtensions]
+            : [
+                ...requestExtensions,
+                createCakeGatewayExtension(
+                  (pi) => [
+                    ...filterRuntimeOperations([
+                      ...localOperations(),
+                      ...(!options.auxiliary &&
+                      options.tools === undefined &&
+                      options.nonChatModelPreferences
+                        ? createCakeNonChatModelOperations(
+                            options.nonChatModelPreferences,
+                            input.modelRuntime,
+                          )
+                        : []),
+                      ...(options.modelPresets
+                        ? createCakeModelOperations(options.modelPresets)
+                        : []),
+                      ...(options.sessionPluginControl && options.generateInlineWidget
+                        ? createCakeSessionPluginOperations({
+                            ...options.sessionPluginControl,
+                            generate: options.generateInlineWidget,
+                          })
+                        : []),
+                      ...createCakeArtifactOperations(pi, {
+                        persistArtifact,
+                        generateInlineWidget: options.generateInlineWidget,
+                        reviseInlineWidget: options.reviseInlineWidget,
+                        resolveArtifact: options.resolveArtifact,
+                        hasLinkedArtifacts: options.hasLinkedArtifacts,
+                        listArtifactMetadata: options.listArtifactMetadata,
+                        historyArtifact: options.historyArtifact,
+                        restoreArtifact: options.restoreArtifact,
+                        linkArtifact: options.linkArtifact,
+                        unlinkArtifact: options.unlinkArtifact,
+                        importArtifactFile: options.importArtifactFile,
+                      }),
+                      ...createCakeInterviewOperations(pi, { requestInterview }),
+                      ...(options.vscodeControl
+                        ? createCakeVscodeOperations(options.vscodeControl)
+                        : []),
+                      ...(options.browserControl
+                        ? createCakeBrowserOperations(options.browserControl)
+                        : []),
+                      ...(drawControl ? createCakeDrawOperations(drawControl) : []),
+                      ...(options.worktreeLandingControl
+                        ? createCakeWorktreeOperations(options.worktreeLandingControl)
+                        : []),
+                      ...(options.agentControl
+                        ? createAgentControlOperations(
+                            options.agentControl,
+                            () => runtimeIdentity.sessionId,
+                            resolveApiModel,
+                          )
+                        : []),
+                    ]),
+                    // An explicitly granted control gateway is not subject to the
+                    // read-only auxiliary trimming above.
+                    ...(options.sessionControl
+                      ? createGlobalControlOperations(options.sessionControl, resolveApiModel)
                       : []),
-                    ...(options.modelPresets
-                      ? createCakeModelOperations(options.modelPresets)
-                      : []),
-                    ...(options.sessionPluginControl && options.generateInlineWidget
-                      ? createCakeSessionPluginOperations({
-                          ...options.sessionPluginControl,
-                          generate: options.generateInlineWidget,
-                        })
-                      : []),
-                    ...createCakeArtifactOperations(pi, {
-                      persistArtifact,
-                      generateInlineWidget: options.generateInlineWidget,
-                      reviseInlineWidget: options.reviseInlineWidget,
-                      resolveArtifact: options.resolveArtifact,
-                      hasLinkedArtifacts: options.hasLinkedArtifacts,
-                      listArtifactMetadata: options.listArtifactMetadata,
-                      historyArtifact: options.historyArtifact,
-                      restoreArtifact: options.restoreArtifact,
-                      linkArtifact: options.linkArtifact,
-                      unlinkArtifact: options.unlinkArtifact,
-                      importArtifactFile: options.importArtifactFile,
-                    }),
-                    ...createCakeInterviewOperations(pi, { requestInterview }),
-                    ...(options.vscodeControl
-                      ? createCakeVscodeOperations(options.vscodeControl)
-                      : []),
-                    ...(options.browserControl
-                      ? createCakeBrowserOperations(options.browserControl)
-                      : []),
-                    ...(drawControl ? createCakeDrawOperations(drawControl) : []),
-                    ...(options.worktreeLandingControl
-                      ? createCakeWorktreeOperations(options.worktreeLandingControl)
-                      : []),
-                    ...(options.agentControl
-                      ? createAgentControlOperations(
-                          options.agentControl,
-                          () => runtimeIdentity.sessionId,
-                          resolveApiModel,
-                        )
-                      : []),
-                  ]),
-                  // An explicitly granted control gateway is not subject to the
-                  // read-only auxiliary trimming above.
-                  ...(options.sessionControl
-                    ? createGlobalControlOperations(options.sessionControl, resolveApiModel)
-                    : []),
-                ],
-                captureOperationRegistry,
-              ),
-              createCakeArtifactExtension({ persistArtifact }),
-              ...(options.reviewContextPath
-                ? [
-                    reviewContextExtension(
-                      options.reviewContextPath,
-                      () => runtimeIdentity.sessionId,
-                    ),
-                  ]
-                : []),
-            ],
+                  ],
+                  captureOperationRegistry,
+                ),
+                createCakeArtifactExtension({ persistArtifact }),
+                ...(options.reviewContextPath
+                  ? [
+                      reviewContextExtension(
+                        options.reviewContextPath,
+                        () => runtimeIdentity.sessionId,
+                      ),
+                    ]
+                  : []),
+              ],
       }),
   });
   return {

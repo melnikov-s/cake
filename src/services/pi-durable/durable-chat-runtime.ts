@@ -182,7 +182,7 @@ export async function createDurableCakeChatRuntime(
       ...createGlobalControlOperations(options.globalControl, resolveModel),
       ...createCakeModelOperations(options.modelPresets ?? (() => ({ presets: [] }))),
       ...(options.agentControl
-        ? createAgentControlOperations(options.agentControl, () => sessionId, resolveModel)
+        ? createAgentControlOperations(options.agentControl, () => sessionId, resolveModel, true)
         : []),
       ...[
         {
@@ -587,7 +587,7 @@ export async function createDurableCakeChatRuntime(
     async notifySubagentCompletion(result) {
       const parsed = Schema.decodeUnknownOption(SubagentResult)(result);
       const provenance = Option.isSome(parsed)
-        ? `\n\nWorker provenance: ${JSON.stringify({ handleId: parsed.value.handleId, status: parsed.value.status, resolvedModel: parsed.value.resolvedModel, fastMode: parsed.value.fastMode, usage: parsed.value.usage })}`
+        ? `\n\nWorker provenance: ${JSON.stringify({ handleId: parsed.value.handleId, projectPath: parsed.value.projectPath, status: parsed.value.status, resolvedModel: parsed.value.resolvedModel, fastMode: parsed.value.fastMode, usage: parsed.value.usage })}`
         : "";
       const submission = await admit(
         subagentCompletionMessage(result) + provenance,

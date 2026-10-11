@@ -132,6 +132,7 @@ type ModelInput = {
     target: CakeChatTarget;
     conversation: Conversation;
     controls: CakeChatControls;
+    subagents: SubagentCatalog;
   }>;
   readonly discussionSessions?: ReadonlyArray<{
     thread: ReviewThread;
@@ -383,7 +384,7 @@ export const createModelObserver = (
       );
     }
 
-    for (const { target, conversation, controls } of input.cakeChats) {
+    for (const { target, conversation, controls, subagents } of input.cakeChats) {
       assertSessionIdentity(conversation, target.sessionId);
       observe(
         `conversation:${target.sessionId}`,
@@ -391,6 +392,12 @@ export const createModelObserver = (
         (client) => client.conversations.observe({ _tag: "CakeChatSession", ...target }),
         (update) => applyConversationUpdate(conversation, update),
         { clear: () => unloadConversationProjection(conversation) },
+      );
+      observe(
+        `subagents:${target.sessionId}`,
+        subagents,
+        (client) => client.subagents.observe(target.sessionId),
+        (update: SubagentUpdate) => applySubagentUpdate(subagents, target.sessionId, update),
       );
       observe(
         `cake-chat-controls:${target.sessionId}`,
@@ -512,6 +519,7 @@ export const createModelObserver = (
           target,
           conversation: source.projection.cakeChatConversation(target.sessionId),
           controls: source.projection.controlsForCakeChat(target.sessionId),
+          subagents: source.projection.subagentCatalog(target.sessionId),
         })),
         discussionSessions: liveThreads.map((thread) => {
           const entry = {

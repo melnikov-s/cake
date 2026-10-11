@@ -380,6 +380,8 @@ const runtimeFingerprint = (options: CakeSessionRuntimeAcquireOptions): string =
     trusted: runtime.trusted,
     tools: runtime.tools ? [...runtime.tools].sort() : undefined,
     auxiliary: runtime.auxiliary ?? false,
+    ephemeral: runtime.ephemeral ?? false,
+    projectInvestigation: runtime.projectInvestigation ?? false,
     auxiliaryProjectResources: runtime.auxiliaryProjectResources ?? false,
     isolatedSystemPrompt: runtime.isolatedSystemPrompt,
     slashCommands: runtime.slashCommands,
@@ -415,7 +417,11 @@ const validateProfile = Effect.fn("CakeSessionRuntimes.validateProfile")(functio
       runtime.auxiliary === true &&
       runtime.globalControl === undefined &&
       runtime.sessionControl === undefined);
-  if (valid) return;
+  if (
+    valid &&
+    (!runtime.projectInvestigation || (profile === "SubagentSession" && runtime.ephemeral === true))
+  )
+    return;
   return yield* new PiSessionError({
     operation: "acquire",
     message: `Runtime options conflict with the ${profile} capability profile`,

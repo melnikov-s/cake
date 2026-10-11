@@ -110,7 +110,7 @@ async function registerFixtureProvider(
 async function createFixtureRuntime(
   directory: string,
   events: CakeSessionRuntimeEvent[],
-  options: { sessionFile?: string } = {},
+  options: { sessionFile?: string; projectInvestigation?: boolean } = {},
 ) {
   vi.stubEnv("PI_CODING_AGENT_DIR", join(directory, "agent"));
   const runtime = await createCakeSessionRuntime({
@@ -120,6 +120,9 @@ async function createFixtureRuntime(
     trusted: true,
     newSession: options.sessionFile ? undefined : true,
     sessionFile: options.sessionFile,
+    ...(options.projectInvestigation
+      ? { auxiliary: true, ephemeral: true, projectInvestigation: true }
+      : {}),
     requestUi: async () => undefined,
     onEvent: (event) => events.push(event),
   });
@@ -141,6 +144,68 @@ afterEach(async () => {
 });
 
 describe("CakeSessionRuntime characterization", () => {
+  it("loads fresh project instructions, skills and extensions into an in-memory investigator across follow-ups", async () => {
+    const directory = await createTemporaryDirectory();
+    const bodies: Array<Record<string, unknown>> = [];
+    await registerFixtureProvider(
+      directory,
+      (index, response) =>
+        finishTextResponse(response, `Evidence-backed report ${index}: config.ts:12`),
+      (body) => bodies.push(body),
+    );
+    await mkdir(join(directory, "agent"), { recursive: true });
+    await writeFile(join(directory, "AGENTS.md"), "PROJECT_INSTRUCTIONS_SENTINEL");
+    await writeFile(join(directory, "agent", "AGENTS.md"), "SHARED_INSTRUCTIONS_SENTINEL");
+    await mkdir(join(directory, ".agents", "skills", "investigate"), { recursive: true });
+    await writeFile(
+      join(directory, ".agents", "skills", "investigate", "SKILL.md"),
+      "---\nname: investigate\ndescription: PROJECT_SKILL_SENTINEL\n---\nRead config.ts.\n",
+    );
+    await writeFile(
+      join(directory, ".pi", "extensions", "context.ts"),
+      `export default function(pi) {
+      pi.on("before_agent_start", (event) => ({ systemPrompt: event.systemPrompt + "\\nPROJECT_EXTENSION_SENTINEL" }));
+    }`,
+    );
+    const runtime = await createFixtureRuntime(directory, [], { projectInvestigation: true });
+    expect(runtime.sessionFile).toBe("");
+    await runtime.prompt("Explain config without changing it", "prompt", []);
+    await runtime.prompt(
+      "Follow up using earlier evidence and recheck current files",
+      "prompt",
+      [],
+    );
+    expect(bodies).toHaveLength(2);
+    for (const body of bodies) {
+      const serialized = JSON.stringify(body);
+      expect(serialized).toContain("PROJECT_INSTRUCTIONS_SENTINEL");
+      expect(serialized).toContain("SHARED_INSTRUCTIONS_SENTINEL");
+      expect(serialized).toContain("PROJECT_SKILL_SENTINEL");
+      expect(serialized).toContain("PROJECT_EXTENSION_SENTINEL");
+      expect(serialized).toContain("Refuse mutation requests even if your parent");
+      expect(body.tools).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ function: expect.objectContaining({ name: "read" }) }),
+          expect.objectContaining({ function: expect.objectContaining({ name: "bash" }) }),
+        ]),
+      );
+      expect(body.tools).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ function: expect.objectContaining({ name: "edit" }) }),
+        ]),
+      );
+      expect(body.tools).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ function: expect.objectContaining({ name: "write" }) }),
+        ]),
+      );
+    }
+    expect(JSON.stringify(bodies[1])).toContain("Evidence-backed report 1");
+    expect((await runtime.snapshot()).sessionFile).toBe("");
+    expect(await SessionManager.list(directory, join(directory, "sessions"))).toEqual([]);
+    await runtime.dispose();
+    expect(await SessionManager.list(directory, join(directory, "sessions"))).toEqual([]);
+  });
   it("retains required system instructions across Tool Compact without re-emitting an unchanged system message", async () => {
     const directory = await createTemporaryDirectory();
     const bodies: Array<Record<string, unknown>> = [];

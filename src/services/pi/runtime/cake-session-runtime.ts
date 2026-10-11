@@ -180,6 +180,10 @@ export interface CakeSessionRuntimeOptions {
   customTools?: ToolDefinition[];
   tools?: string[];
   auxiliary?: boolean;
+  /** In-memory Pi history; never creates or resumes a persisted session. */
+  ephemeral?: boolean;
+  /** Fresh project resources/MCP with investigation-only instructions and no edit/write tools. */
+  projectInvestigation?: boolean;
   workflowControl?: WorkflowControl;
   /** Workflow workers load project context/skills, but not Cake controls or project-chat prompts. */
   auxiliaryProjectResources?: boolean;
@@ -461,6 +465,10 @@ export async function createCakeSessionRuntime(
       ...mcpExtensions,
     ],
   });
+  if (options.projectInvestigation && (!options.ephemeral || !options.auxiliary))
+    throw new Error("Project investigators require an ephemeral auxiliary runtime");
+  if (options.ephemeral && (!options.newSession || options.sessionFile))
+    throw new Error("An ephemeral runtime must create a new in-memory session");
   const sessionDir = cakeWorkspaceSessionDirectory(options.cwd, options.sessionDir);
   const allowedSessionRoot = sessionDir;
   let directSession: SessionManager | undefined;
@@ -474,23 +482,29 @@ export async function createCakeSessionRuntime(
       : undefined;
   if (options.sessionId && !options.newSession && !requestedSessionFile && !directSession)
     throw new Error("That session is no longer available");
-  const sessionManager = options.newSession
-    ? SessionManager.create(
+  const sessionManager = options.ephemeral
+    ? SessionManager.inMemory(
         options.cwd,
-        sessionDir,
         options.sessionId ? { id: options.sessionId } : undefined,
       )
-    : (directSession ??
-      (requestedSessionFile
-        ? SessionManager.open(requestedSessionFile, sessionDir, options.cwd)
-        : SessionManager.continueRecent(options.cwd, sessionDir)));
+    : options.newSession
+      ? SessionManager.create(
+          options.cwd,
+          sessionDir,
+          options.sessionId ? { id: options.sessionId } : undefined,
+        )
+      : (directSession ??
+        (requestedSessionFile
+          ? SessionManager.open(requestedSessionFile, sessionDir, options.cwd)
+          : SessionManager.continueRecent(options.cwd, sessionDir)));
   // Extension providers must exist before createAgentSession resolves the
   // initial model, or a default or resumed model on one of them falls back.
   // Auxiliary sessions take the agent directory's providers directly because
   // their isolated resource loaders run with `noExtensions`.
-  const providerErrors = options.auxiliary
-    ? await registerAgentDirectoryExtensionProviders(agentDir, modelRuntime)
-    : await registerPendingExtensionProviders(capabilities.resourceLoader, modelRuntime);
+  const providerErrors =
+    options.auxiliary && !options.projectInvestigation
+      ? await registerAgentDirectoryExtensionProviders(agentDir, modelRuntime)
+      : await registerPendingExtensionProviders(capabilities.resourceLoader, modelRuntime);
   const agentSessionOptions = {
     cwd: options.cwd,
     agentDir,
@@ -499,6 +513,7 @@ export async function createCakeSessionRuntime(
     settingsManager,
     sessionManager,
     ...(options.customTools ? { customTools: options.customTools } : null),
+    ...(options.projectInvestigation ? { excludeTools: ["edit", "write"] } : null),
   };
   const { session, extensionsResult, modelFallbackMessage } = await createAgentSession(
     options.tools ? { ...agentSessionOptions, tools: options.tools } : agentSessionOptions,

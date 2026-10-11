@@ -116,7 +116,8 @@ type CakeSession = ProjectSession | CakeChatSession | DiscussionSession | Subage
 
 Every materialized Cake Session has exactly one Conversation backed by exactly
 one Pi Session. Cake owns the kind-specific identity, metadata, relationships,
-and policy; Pi owns the durable Conversation transcript.
+and policy; Pi owns the Conversation transcript, durable by default or in-memory
+for an explicitly ephemeral private worker.
 
 ### Project Session
 
@@ -145,8 +146,10 @@ It creates and manages independent Project task sessions, but cannot execute
 shell/file/browser work itself. It is not a collection of global chats and has
 no resolve/delete/rename/split lifecycle. Its renderer Store does not use a
 Project Session-shaped snapshot and carries no Project, Working
-Directory, review, subagent, artifact, Session Family, or schedule state. It
-remains separate from Project Session catalogs.
+Directory, review, artifact, Session Family, or schedule state. Project-aware
+investigators use the existing focused Subagent activity authority and shared
+Chat interface, not a new visible Project Session or parallel worker UI. Cake
+Chat remains separate from Project Session catalogs.
 
 ### Discussion Session
 
@@ -161,7 +164,11 @@ uses **Discussion Session**.
 A private Cake Session **owned by a parent Cake Session**. Cake owns its stable
 parent-scoped handle, fixed tool boundary, concurrency, retention, and visibility
 policy. It is never a Project Session and does not expose its backing Pi Session
-identity to the renderer.
+identity to the renderer. Cake Chat project investigators are bound to an explicit
+registered project root, with normal project resources and investigation-only
+permissions. Their Pi history is in-memory; their parent retains only compact
+receipts/reports and usage. Ordinary Project Session subagents keep their existing
+private on-disk Pi history and explicit-delegation policy.
 
 ### Session Family
 

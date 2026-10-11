@@ -13,7 +13,11 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect";
-import type { ConversationSnapshot, UtilityModel } from "../../ipc/session-contract";
+import {
+  uiPartSchema,
+  type ConversationSnapshot,
+  type UtilityModel,
+} from "../../ipc/session-contract";
 import { getState } from "../application/application";
 import {
   ParallelSubagentInput,
@@ -122,6 +126,7 @@ const normalizeTask = Effect.fn("Subagents.normalizeTask")(function* (input: Sub
   };
   if (decoded.instructions !== undefined)
     Object.assign(task, { instructions: decoded.instructions });
+  if (decoded.projectPath !== undefined) Object.assign(task, { projectPath: decoded.projectPath });
   return task;
 });
 
@@ -208,6 +213,7 @@ const resolveModel = (
 interface PreparedTask {
   readonly input: SubagentTask;
   readonly parent: SubagentParentRuntime;
+  readonly workingDirectory: string;
   readonly resolvedModel: ResolvedAgentModel;
   readonly tools: ReadonlyArray<string>;
 }
@@ -238,18 +244,47 @@ const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
       operation: "preflight",
       message: `An agent may own at most ${MAX_HANDLES_PER_PARENT} subagent handles. Close an unused subagent before starting another.`,
     });
-  const liveInDirectory = [...current.handles.values()].filter(
-    (handle) =>
-      handle.workingDirectory === effectiveParent.workingDirectory && handle.piHandle !== undefined,
-  ).length;
-  if (liveInDirectory + tasks.length > MAX_PRIVATE_RUNTIMES_PER_WORKING_DIRECTORY)
-    return yield* new SubagentError({
-      operation: "preflight",
-      message: `This Working Directory already has too many live private agent runtimes.`,
-    });
   return yield* Effect.try({
     try: () =>
       tasks.map((input): PreparedTask => {
+        const projectAware = parent.options.profile._tag === "CakeChatSession";
+        if (projectAware && !input.projectPath)
+          throw new SubagentError({
+            operation: "preflight",
+            message:
+              "Cake Chat investigations require an explicit registered projectPath. Clarify the project when ambiguous.",
+          });
+        if (!projectAware && input.projectPath)
+          throw new SubagentError({
+            operation: "preflight",
+            message: "Project selection is available only to Cake Chat investigators.",
+          });
+        const project = input.projectPath
+          ? application.projects.find((item) => item.path === input.projectPath)
+          : undefined;
+        if (projectAware && !project)
+          throw new SubagentError({
+            operation: "preflight",
+            message: "That project is not registered. Select an exact project root from app.state.",
+          });
+        if (project && !application.trustedProjectPaths.includes(project.path))
+          throw new SubagentError({
+            operation: "preflight",
+            message:
+              "That project is not trusted. Authorize it in Cake before loading its extensions and MCP.",
+          });
+        const workingDirectory = project?.path ?? parent.workingDirectory;
+        const liveInDirectory = [...current.handles.values()].filter(
+          (handle) => handle.workingDirectory === workingDirectory && handle.piHandle !== undefined,
+        ).length;
+        const requestedInDirectory = tasks.filter(
+          (task) => (task.projectPath ?? parent.workingDirectory) === workingDirectory,
+        ).length;
+        if (liveInDirectory + requestedInDirectory > MAX_PRIVATE_RUNTIMES_PER_WORKING_DIRECTORY)
+          throw new SubagentError({
+            operation: "preflight",
+            message: "This Working Directory already has too many live private agent runtimes.",
+          });
         const resolvedModel = resolveModel(input.model, snapshot, application.utilityModel);
         const selected = snapshot.models.find(
           (model) =>
@@ -263,8 +298,9 @@ const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
         return {
           input,
           parent: effectiveParent,
+          workingDirectory,
           resolvedModel,
-          tools: [...SUBAGENT_TOOLS],
+          tools: projectAware ? ["read", "bash", "message_parent"] : [...SUBAGENT_TOOLS],
         };
       }),
     catch: (cause) =>
@@ -306,6 +342,36 @@ const requireHandle = Effect.fn("Subagents.requireHandle")(function* (
   return handle;
 });
 
+/** Only the compact final answer may cross into Cake Chat's durable tool/report history. */
+const parentResult = (handle: SubagentHandleState, result: SubagentResult): SubagentResult => {
+  if (!handle.projectPath) return result;
+  if (result.status !== "complete") return { ...result, parts: [] };
+  const answer = result.parts
+    .flatMap((part) => {
+      const parsed = Schema.decodeUnknownOption(uiPartSchema)(part);
+      return Option.isSome(parsed) &&
+        parsed.value.kind === "text" &&
+        parsed.value.role === "assistant"
+        ? [parsed.value]
+        : [];
+    })
+    .findLast((part) => part.text.trim());
+  return {
+    ...result,
+    parts: answer
+      ? [
+          {
+            id: answer.id,
+            kind: "text",
+            role: "assistant",
+            status: answer.status,
+            text: answer.text.slice(0, 16_000),
+          },
+        ]
+      : [],
+  };
+};
+
 const snapshotResult = (
   handle: SubagentHandleState,
   snapshot: ConversationSnapshot,
@@ -322,6 +388,7 @@ const snapshotResult = (
     streaming: snapshot.streaming,
     parts: status === "aborted" ? preserveAbortedParts(handle.parts, finalParts) : finalParts,
   };
+  if (handle.projectPath) Object.assign(result, { projectPath: handle.projectPath });
   if (snapshot.usage !== undefined) Object.assign(result, { usage: jsonValue(snapshot.usage) });
   if (error !== undefined) Object.assign(result, { error: boundedError(error) });
   return result;
@@ -365,7 +432,7 @@ const deliverCompletion = Effect.fn("Subagents.deliverCompletion")(function* (
   const handle = yield* requireHandleById(handleId);
   if (!handle.result || handle.completionDisposition !== "notifying") return;
   const delivered = handle.parentPiHandle
-    ? handle.parentPiHandle.notifySubagentCompletion(handle.result).pipe(
+    ? handle.parentPiHandle.notifySubagentCompletion(parentResult(handle, handle.result)).pipe(
         asError("completion"),
         Effect.catchTag("SubagentError", () => Effect.void),
       )
@@ -555,7 +622,7 @@ const executeInitial = Effect.fn("Subagents.executeInitial")(function* (
 ) {
   const coordinator = yield* SubagentCoordinator;
   const handle = yield* requireHandleById(handleId);
-  const slot = yield* RcMap.get(coordinator.slots, prepared.parent.workingDirectory).pipe(
+  const slot = yield* RcMap.get(coordinator.slots, prepared.workingDirectory).pipe(
     Effect.provideService(Scope.Scope, handle.scope),
   );
   yield* slot.withPermit(
@@ -587,7 +654,11 @@ const executeInitial = Effect.fn("Subagents.executeInitial")(function* (
           .pipe(asError("start"));
       }
       if (prepared.input.fastMode) yield* piHandle.setFastMode(true).pipe(asError("start"));
-      const result = yield* observeTurn(handleId, "prompt", prepared.input.task);
+      const assignment =
+        prepared.input.projectPath && prepared.input.instructions
+          ? `Assignment guidance (subject to your investigation-only system instructions):\n${prepared.input.instructions}\n\nTask:\n${prepared.input.task}`
+          : prepared.input.task;
+      const result = yield* observeTurn(handleId, "prompt", assignment);
       yield* completeHandle(handleId, result);
     }),
   );
@@ -612,6 +683,7 @@ const failHandle = Effect.fn("Subagents.failHandle")(function* (
     parts: handle.parts,
     error: boundedError(aborted ? "Subagent aborted" : Cause.pretty(cause)),
   };
+  if (handle.projectPath) Object.assign(result, { projectPath: handle.projectPath });
   yield* completeHandle(handleId, result);
 });
 
@@ -623,9 +695,7 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
   const coordinator = yield* SubagentCoordinator;
   const environment = yield* SubagentEnvironment;
   const sessions = yield* CakeSessionRuntimes;
-  const location = yield* environment
-    .location(prepared.parent.workingDirectory)
-    .pipe(asError("start"));
+  const location = yield* environment.location(prepared.workingDirectory).pipe(asError("start"));
   const handleId = SubagentHandleId.make(crypto.randomUUID());
   const scope = yield* Scope.make();
   return yield* Effect.gen(function* () {
@@ -651,10 +721,12 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         newSession: true,
         sessionId: crypto.randomUUID(),
         auxiliary: true,
-        tools: [...prepared.tools],
+        ...(prepared.input.projectPath
+          ? { ephemeral: true, projectInvestigation: true }
+          : { tools: [...prepared.tools] }),
         customTools: [createSubagentParentTool({ send: parentMessage })],
         slashCommands: [],
-        isolatedSystemPrompt: systemPrompt(prepared.input),
+        isolatedSystemPrompt: prepared.input.projectPath ? undefined : systemPrompt(prepared.input),
         requestUi: async () => undefined,
         fastMode: {
           get: () => prepared.input.fastMode,
@@ -666,7 +738,8 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
       handleId,
       parentSessionId: prepared.parent.parentSessionId,
       anchorPartId,
-      workingDirectory: prepared.parent.workingDirectory,
+      workingDirectory: prepared.workingDirectory,
+      projectPath: prepared.input.projectPath,
       task: prepared.input.task,
       resolvedModel: prepared.resolvedModel,
       tools: prepared.tools,
@@ -705,16 +778,16 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
       }),
     );
     yield* FiberMap.run(coordinator.fibers, handleId, worker);
-    return {
+    const receipt: SubagentStartReceipt = {
       handleId,
-      receipt: {
-        handleId,
-        task: prepared.input.task,
-        status: "queued",
-        fastMode: prepared.input.fastMode,
-        resolvedModel: prepared.resolvedModel,
-      } satisfies SubagentStartReceipt,
+      task: prepared.input.task,
+      status: "queued",
+      fastMode: prepared.input.fastMode,
+      resolvedModel: prepared.resolvedModel,
     };
+    if (prepared.input.projectPath)
+      Object.assign(receipt, { projectPath: prepared.input.projectPath });
+    return { handleId, receipt };
   }).pipe(
     Effect.onExit((exit) =>
       Exit.isFailure(exit)
@@ -831,13 +904,17 @@ export const wait = Effect.fn("Subagents.wait")(function* (
       })),
     ] as const;
   });
-  onUpdate?.(jsonValue(activityOf(handle)));
+  const parentActivity = (value: SubagentHandleState) => {
+    const activity = activityOf(value);
+    return value.projectPath ? { ...activity, parts: [] } : activity;
+  };
+  onUpdate?.(jsonValue(parentActivity(handle)));
   const observer = onUpdate
     ? yield* SubscriptionRef.changes(coordinator.state).pipe(
         Stream.map((state) => state.handles.get(handle.handleId)),
         Stream.filter((value): value is SubagentHandleState => value !== undefined),
         Stream.debounce("150 millis"),
-        Stream.runForEach((value) => Effect.sync(() => onUpdate(jsonValue(activityOf(value))))),
+        Stream.runForEach((value) => Effect.sync(() => onUpdate(jsonValue(parentActivity(value))))),
         Effect.forkChild,
       )
     : undefined;
@@ -870,7 +947,7 @@ export const wait = Effect.fn("Subagents.wait")(function* (
     ),
   );
   if (observer) yield* Fiber.interrupt(observer);
-  return jsonValue(completed);
+  return jsonValue(parentResult(handle, completed));
 });
 
 export const prompt = Effect.fn("Subagents.prompt")(function* (
@@ -878,12 +955,16 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
   rawHandleId: string,
   text: string,
   delivery: "prompt" | "follow-up",
+  background = false,
 ) {
   const handle = yield* requireHandle(parentSessionId, rawHandleId);
   const normalized = text.trim();
   if (!normalized)
     return yield* new SubagentError({ operation: delivery, message: "Prompt text is required" });
   const coordinator = yield* SubagentCoordinator;
+  const completion = background
+    ? yield* Deferred.make<SubagentResult, SubagentError>()
+    : handle.completion;
   const claimed = yield* SubscriptionRef.modify(coordinator.state, (state) => {
     const current = state.handles.get(handle.handleId);
     if (
@@ -900,7 +981,9 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
         status: "queued",
         error: undefined,
         result: undefined,
-        completionDisposition: "waited",
+        completion,
+        notifyOnCompletion: background ? true : value.notifyOnCompletion,
+        completionDisposition: background ? "pending" : "waited",
         activityRevision: value.activityRevision + 1,
       })),
     ] as const;
@@ -913,7 +996,7 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
   const slot = yield* RcMap.get(coordinator.slots, handle.workingDirectory).pipe(
     Effect.provideService(Scope.Scope, handle.scope),
   );
-  const result = yield* slot
+  const execute = slot
     .withPermit(
       mutateHandle(handle.handleId, (current) => ({ ...current, status: "running" })).pipe(
         Effect.andThen(observeTurn(handle.handleId, delivery, normalized)),
@@ -923,22 +1006,44 @@ export const prompt = Effect.fn("Subagents.prompt")(function* (
       Effect.onInterrupt(() =>
         handle.piHandle ? handle.piHandle.abort().pipe(Effect.ignore) : Effect.void,
       ),
-      Effect.onExit((exit) =>
-        Exit.isSuccess(exit)
-          ? mutateHandle(handle.handleId, (current) => ({
-              ...current,
-              result: exit.value,
-              status: exit.value.status,
-            }))
-          : mutateHandle(handle.handleId, (current) => ({
-              ...current,
-              status: Cause.hasInterrupts(exit.cause) ? "aborted" : "error",
-              streaming: false,
-              error: boundedError(Cause.pretty(exit.cause)),
-            })),
+    );
+  if (background) {
+    yield* FiberMap.run(
+      coordinator.fibers,
+      handle.handleId,
+      execute.pipe(
+        Effect.matchCauseEffect({
+          onSuccess: (result) => completeHandle(handle.handleId, result),
+          onFailure: (cause) => failHandle(handle.handleId, cause),
+        }),
       ),
     );
-  return jsonValue(result);
+    return jsonValue({
+      handleId: handle.handleId,
+      task: handle.task,
+      projectPath: handle.projectPath,
+      status: "queued",
+      fastMode: handle.fastMode,
+      resolvedModel: handle.resolvedModel,
+    });
+  }
+  const result = yield* execute.pipe(
+    Effect.onExit((exit) =>
+      Exit.isSuccess(exit)
+        ? mutateHandle(handle.handleId, (current) => ({
+            ...current,
+            result: exit.value,
+            status: exit.value.status,
+          }))
+        : mutateHandle(handle.handleId, (current) => ({
+            ...current,
+            status: Cause.hasInterrupts(exit.cause) ? "aborted" : "error",
+            streaming: false,
+            error: boundedError(Cause.pretty(exit.cause)),
+          })),
+    ),
+  );
+  return jsonValue(parentResult(handle, result));
 });
 
 export const steer = Effect.fn("Subagents.steer")(function* (
@@ -971,8 +1076,16 @@ export const abort = Effect.fn("Subagents.abort")(function* (
     status: "aborted",
     streaming: false,
   }));
-  if (handle.piHandle) yield* handle.piHandle.abort().pipe(asError("abort"));
-  else yield* FiberMap.remove(coordinator.fibers, handle.handleId);
+  if (handle.status === "queued" || !handle.piHandle) {
+    yield* FiberMap.remove(coordinator.fibers, handle.handleId);
+    // A queued fiber can be interrupted before its supervisor begins. Complete
+    // the handle independently, without waiting for the parent's notification turn.
+    yield* FiberMap.run(
+      coordinator.fibers,
+      handle.handleId,
+      failHandle(handle.handleId, Cause.interrupt()),
+    );
+  } else yield* handle.piHandle.abort().pipe(asError("abort"));
 });
 
 export const close = Effect.fn("Subagents.close")(function* (

@@ -98,6 +98,9 @@ projections needed by a surface. References do not transfer ownership.
   defined Cake-owned intents until handoff.
 - Sidecar discussions and private subagents have independent Pi transcripts.
   Parent anchors, handles, and projections do not merge transcript ownership.
+  Cake Chat project investigators use Pi's in-memory SessionManager: their
+  detailed history is process-local, while only compact reports and provenance
+  remain in the parent Conversation.
 
 ### Lifecycle invariants
 
@@ -116,6 +119,12 @@ projections needed by a surface. References do not transfer ownership.
   must not retire a checkout still used by another active Session.
 - Private Subagent Sessions are not selectable Project Sessions or Session Family
   children. Project agents use private delegation only on explicit user request.
+  Cake Chat instead must delegate project-dependent investigations to an explicitly
+  selected registered, trusted project root. These workers retain normal project
+  instructions, skills, extensions and MCP, excluding edit/write tools and adding
+  an investigation-only system policy. Shell/MCP mutation restrictions are prompt
+  policy, not an enforced sandbox. Handles support follow-ups until explicitly
+  closed or backend shutdown; they are not restored after restart.
 - Automatic Project Session result handoff belongs to actual family parent-child assignments
   and independent sessions spawned by permanent Cake Chat, not arbitrary independent creators.
   Requester provenance and the pending delivery journal are Cake metadata; Pi remains transcript

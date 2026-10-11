@@ -5,6 +5,7 @@ import type { Conversation } from "../models/Conversation";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { CakeChatControls } from "../models/CakeChatControls";
 import type { WorkflowCatalog } from "../models/WorkflowCatalog";
+import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { CakeChatPendingSessionsStore, CakeControlTool } from "./CakeChatPendingSessionsStore";
 import { CakeChatSessionStore } from "./CakeChatSessionStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -12,6 +13,7 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 export interface CakeChatRegistryStoreProps {
   sessionModel(sessionId: string): Conversation;
   controlsModel(sessionId: string): CakeChatControls;
+  subagentCatalog(sessionId: string): SubagentCatalog;
   workflowCatalog(sessionId: string): WorkflowCatalog;
   tools(): ReadonlyArray<CakeControlTool>;
   pendingSessions(): CakeChatPendingSessionsStore;
@@ -35,6 +37,7 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
         sessionId,
         model: this.props.sessionModel(sessionId),
         controls: this.props.controlsModel(sessionId),
+        subagentCatalog: this.props.subagentCatalog(sessionId),
         workflowCatalog: this.props.workflowCatalog,
         target: () => this.target(sessionId),
         pendingSessions: this.props.pendingSessions(),

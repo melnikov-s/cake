@@ -28,6 +28,7 @@ export interface SubagentHandleState {
   readonly parentSessionId: string;
   readonly anchorPartId: string;
   readonly workingDirectory: string;
+  readonly projectPath?: string;
   readonly task: string;
   readonly resolvedModel: ResolvedAgentModel;
   readonly tools: ReadonlyArray<string>;
@@ -102,12 +103,14 @@ export const activityOf = (handle: SubagentHandleState): SubagentActivity => {
     handleId: handle.handleId,
     revision: handle.activityRevision,
     task: handle.task,
+
     status: handle.status,
     resolvedModel: handle.resolvedModel,
     fastMode: handle.fastMode,
     streaming: handle.streaming,
     parts: handle.parts,
   };
+  if (handle.projectPath) Object.assign(activity, { projectPath: handle.projectPath });
   if (handle.usage !== undefined) Object.assign(activity, { usage: handle.usage });
   if (handle.error !== undefined) Object.assign(activity, { error: handle.error });
   return activity;
