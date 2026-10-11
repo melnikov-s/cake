@@ -51,6 +51,15 @@ non-root member receives its family and immediate-parent IDs; every member sees
 its fixed Working Directory policy. The parent-supplied initial prompt is the
 assignment; Cake stores no task copy.
 
+Acquisition-time context is not a live eligibility decision. The same runtime can
+outlive promotion from standalone to family root or the creation of more children.
+`session.info` reads current membership and direct-child order. Agent fork and
+resolution-deferral decisions also query live policy rather than captured
+membership; operation execution rechecks eligibility. Project capability
+registration remains fixed, so changing membership does not require recreating
+the runtime or refreshing its system prompt. Agent forks are refused for family
+members; ordinary user-created standalone forks remain available.
+
 Members sharing a Working Directory observe and modify the same files,
 uncommitted changes, and Git index. Cake permits concurrent editing and tells
 agents to coordinate it. Members in isolated Managed Worktrees use Cake's
@@ -128,7 +137,9 @@ own transcript location never determines whether it is resolved. Resolve and
 restore requests addressed to any member target the root authority. Resolution
 requires all members to be inactive and no family turn to have accepted delivery
 pending consumption. Main rechecks these conditions under the family admission
-lock; it never aborts work or queues a later resolve.
+lock; it never aborts work or queues a later resolve. A resolution deferred while
+the caller was standalone is guarded at settlement: promotion into a family
+rejects that intent rather than resolving the newly formed family.
 
 Resolving updates only the root's Cake-owned resolution metadata and publishes the
 authority change before attempting checkout cleanup. Every Pi transcript stays in

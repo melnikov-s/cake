@@ -1,13 +1,17 @@
 # Backend workflow refinement — review skeleton
 
-**Status: proposed implementation contract; awaiting user approval.** The three
-architectural principles are agreed. The concrete interfaces, scope, and tests in
-this diff are not yet approved. No implementation children have been launched.
+**Status: approved contract; implementation and integration in progress.** After
+clarifying the skeleton/delegation checkpoint, the user authorized both children
+to proceed. The original review baseline is `8bef318a61b12d3c7c647973b995b357781e9cf1`;
+its preceding investigation base is `b5047ae5`. Approval history, cross-worktree
+decisions, and verification evidence are recorded in the family-linked
+`backend-workflow-refinement` coordination artifact.
 
-Investigation base: `b5047ae5`. The skeleton commit will be recorded in the shared
-coordination artifact before delegation. Runtime callers still use the existing
-implementation. Unconnected stubs deliberately fail if invoked; `it.todo` cases
-are acceptance specifications, not passing verification of the proposed behavior.
+Both implementation children were launched in isolated Cake-managed worktrees.
+The sections below retain their approved assignments and acceptance criteria,
+not a claim that all implementation or verification is complete. At the original
+baseline, unconnected stubs deliberately failed if invoked and `it.todo` cases
+were acceptance specifications, not passing verification of proposed behavior.
 
 ## Agreed principles
 

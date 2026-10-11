@@ -105,9 +105,12 @@ projections needed by a surface. References do not transfer ownership.
   Git checkout existence is not Session identity or resolution state.
 - Resolution is Cake metadata, not transcript relocation. Family children inherit
   their root's resolution; they have no independent resolution authority.
-- A Project Session cannot be archived while its Pi turn is active. An agent's own
-  resolution request is deferred until the settled-turn boundary, after the final
-  transcript snapshot.
+- A Project Session cannot be archived while its Pi turn is active. A standalone
+  agent's own resolution request is deferred until the settled-turn boundary,
+  after the final transcript snapshot. Family lifecycle requests require every
+  member to be inactive and are never deferred. A deferred standalone request
+  cannot gain family-wide authority if the session becomes a family root before
+  settlement.
 - Git landing and Session resolution are separate actions. Sessions sharing a
   Working Directory share its lifecycle controls and terminals; resolving one
   must not retire a checkout still used by another active Session.

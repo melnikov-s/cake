@@ -96,6 +96,16 @@ export const create = Effect.fn("ManagedWorktrees.create")(function* (
 Domain modules are not Context services. Pure policies may live beside the
 Effect operations that use them.
 
+Substantial Cake workflows live in named backend operations. Runtime assembly,
+Pi callbacks, and RPC handlers connect callers to those operations, adapting
+inputs, caller context, cancellation, and results. Keep small adaptations inline;
+do not add forwarding Services or a generic workflow engine. An operation may
+compose the capabilities needed to enforce its policy without being divided
+merely because it involves several entity types. Family message routing, for
+example, keeps reply selection, correlation, admission, delivery, and receipt
+bookkeeping together in `sessionFamilyMessaging.route`, behind a thin runtime
+callback.
+
 This does not leave live workflow state ownerless. Existing process-scoped
 capabilities retain queues, operation state, and Fibers; domain operations supply
 Cake policy. For example, `worktreeLandings` owns landing semantics while its
@@ -458,6 +468,17 @@ can inspect history without constructing a live Harness. Available operations
 follow the kind's capabilities; shared handles do not grant Cake Chat Project
 Session fork, rename, or resolution behavior. Conflicting runtime-defining options
 never silently reconfigure an acquired runtime.
+
+Keep fixed runtime configuration distinct from live application policy. Session
+identity, Working Directory, and engine/capability profile belong to acquisition;
+mutable family membership and lifecycle eligibility do not become fixed merely
+because a runtime captures callbacks. Query those authorities when an operation
+executes. `projectSessionAgentPolicy.read` supplies current Project Session family
+information and agent fork/deferral policy; its snapshot is not an admission
+permit. Operations retain authoritative eligibility checks and existing admission
+locks where required. Do not recreate runtimes or refresh their system prompts
+merely to reflect membership changes. Deferred intents retain their original
+scope of authority rather than gaining broader rights as relationships change.
 
 Cake domains choose a semantic capability profile:
 
