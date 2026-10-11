@@ -61,6 +61,7 @@ export async function captureVisual(
     userData: join(temporaryRoot, "electron-user-data"),
   };
   let application: ElectronApplication | undefined;
+  let disposeScenario: void | (() => Promise<void>) = undefined;
 
   try {
     if (browserScenario) {
@@ -79,7 +80,7 @@ export async function captureVisual(
       };
     }
     if (!scenario) throw new Error("Missing Electron scenario");
-    await scenario.seed(paths, options.theme);
+    disposeScenario = await scenario.seed(paths, options.theme);
     application = await electron.launch({
       args: ["--force-device-scale-factor=1", repositoryRoot],
       cwd: repositoryRoot,
@@ -110,7 +111,7 @@ export async function captureVisual(
     );
     await scenario.prepare(page, options.state, application);
 
-    const target = options.capture === "window" ? page : scenario.region(page);
+    const target = options.capture === "window" ? page : scenario.region(page, options.state);
     await mkdir(dirname(outputPath), { recursive: true });
     const png =
       options.capture === "window"
@@ -179,6 +180,7 @@ export async function captureVisual(
     );
   } finally {
     if (application) await application.close().catch(() => undefined);
+    if (disposeScenario) await disposeScenario();
     await rm(temporaryRoot, { recursive: true, force: true });
   }
 }

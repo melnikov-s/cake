@@ -2,6 +2,8 @@ import { observer } from "r-state-tree/react";
 import { useMemo, useRef, useState } from "react";
 import type { RequestInspectorStore } from "../stores/RequestInspectorStore";
 import { Button } from "./ui/button";
+import { IconButton } from "./ui/icon-button";
+import { InspectIcon } from "./ui/icons";
 import { Input } from "./ui/input";
 import { Select } from "./ui/select";
 import { Callout } from "./ui/callout";
@@ -29,15 +31,9 @@ export const RequestInspector = observer(function RequestInspector({
   );
   return (
     <>
-      <Button
-        ref={trigger}
-        size="sm"
-        variant="ghost"
-        onClick={() => store.show()}
-        aria-label="Inspect context"
-      >
-        Inspect context
-      </Button>
+      <IconButton ref={trigger} tooltip="Inspect context" onClick={() => store.show()}>
+        <InspectIcon />
+      </IconButton>
       {store.open && (
         <DialogBackdrop
           onClose={close}
