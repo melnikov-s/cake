@@ -17,11 +17,26 @@ describe.each([
   ["Project Session", projectPrompt],
   ["Cake Chat", coordinatorSystemPrompt("")],
 ])("%s artifact guidance", (_, prompt) => {
-  it("defaults lasting task documents to artifacts without a user reminder", () => {
-    expect(prompt).toContain("Use Cake artifacts by default for lasting documents");
-    expect(prompt).toContain("specs, plans, proposed contracts, audits, investigations, handoffs");
-    expect(prompt).toContain("without waiting for the user to request an artifact");
+  it("keeps investigations and ordinary task communication in chat unless explicitly requested", () => {
+    expect(prompt).toContain(
+      "Keep investigations, explanations, ordinary implementation details, progress, and reports in chat by default",
+    );
+    expect(prompt).toContain(
+      "Create text/Markdown artifacts only when the user explicitly requests them",
+    );
     expect(prompt).toContain("Do not create repository Markdown files or duplicate artifacts");
+  });
+
+  it("allows only shared-reference specs without an explicit artifact request", () => {
+    expect(prompt).toContain(
+      "with one exception: a spec may become a text artifact without an explicit artifact request",
+    );
+    expect(prompt).toContain("when it serves as a shared, durable reference");
+    expect(prompt).toContain("this session can read after compaction");
+    expect(prompt).toContain("child sessions can read for coordinated implementation");
+    expect(prompt).toContain(
+      "Shared-reference usefulness—not length, formatting, or merely being an investigation—is the purpose of these artifacts",
+    );
   });
 
   it("shares readable revisions across sessions rather than assuming shared files or context", () => {
@@ -34,13 +49,21 @@ describe.each([
   });
 
   it("preserves ordinary chat, maintained project docs, and requested files", () => {
-    expect(prompt).toContain("Keep short answers and routine progress in chat");
+    expect(prompt).toContain(
+      "This text/Markdown policy does not restrict non-text visual artifacts or explicitly requested file deliverables",
+    );
     expect(prompt).toContain("maintained project documentation, executable code/tests");
     expect(prompt).toContain("an explicitly requested file deliverable");
   });
 });
 
-it("Project Sessions publish Markdown directly and include artifact references in child assignments", () => {
+it("Project Sessions publish qualifying Markdown directly and include references in child assignments", () => {
+  expect(projectPrompt).toContain(
+    "Use these inline for ordinary conversation regardless of length or formatting",
+  );
+  expect(projectPrompt).toContain(
+    "When the user explicitly requests a text artifact or a spec qualifies as a shared, durable reference under the guidance above",
+  );
   expect(projectPrompt).toContain("publish Markdown directly with `artifacts.create`");
   expect(projectPrompt).toContain("revise it with `artifacts.update`");
   expect(projectPrompt).toContain(

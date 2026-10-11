@@ -12,13 +12,20 @@ Markdown or carry compatibility behavior for superseded contracts.
 
 ## Product boundary and presentation
 
-An artifact is an explicitly created, substantial, reusable deliverable: content
-worth opening independently, revisiting later in the session, or exporting. The
-payload's format does not decide whether it is an artifact. In particular,
-ordinary Markdown conversation content stays inline, including Mermaid diagrams,
-small tables, code fences, and other rich blocks. The agent should create an
-artifact only when the deliverable, rather than its syntax, benefits from a durable
-independent surface.
+An artifact is an explicitly created, reusable deliverable: content worth opening
+independently, revisiting later in the session, or exporting. The payload's format
+and length do not decide whether it is an artifact. Ordinary Markdown conversation
+content stays inline, including Mermaid diagrams, small tables, code fences, and
+other rich blocks.
+
+Investigations, explanations, ordinary implementation details, progress, and reports
+remain in chat by default. Text/Markdown artifacts require an explicit user request,
+with one exception: a spec may become a text artifact when it serves as a shared,
+durable reference that the session can read after compaction or child sessions can
+read for coordinated implementation. Shared-reference usefulness—not length,
+formatting, or merely being an investigation—is the purpose of these artifacts.
+This policy does not restrict non-text visual artifacts or explicitly requested
+file deliverables. Maintained project documentation still belongs in the repository.
 
 Full artifacts are global lineages linked to a Cake Session or Session Family.
 The originating assistant publication renders one exact-revision artifact surface

@@ -321,7 +321,8 @@ export function createCakeArtifactOperations(
       summary:
         "Create a durable Markdown document or imported file artifact in the current session.",
       guidance: [
-        "Use a Markdown artifact for substantial reusable documents. Markdown is the readable content itself and does not need a separate fallback argument.",
+        "Keep investigations, explanations, ordinary implementation details, progress, and reports in chat by default. Create text/Markdown artifacts only when the user explicitly requests them, except for a spec serving as a shared, durable reference that this session can read after compaction or child sessions can read for coordinated implementation. Shared-reference usefulness, not length or formatting, is the purpose; merely being an investigation does not qualify.",
+        "Markdown is the readable content itself and does not need a separate fallback argument. This text/Markdown policy does not restrict non-text visual artifacts or explicitly requested file deliverables.",
         "Import a workspace file when the file itself is the reusable deliverable. Cake snapshots it; later workspace changes do not mutate the artifact.",
         "Choose a stable descriptive ID. Use artifacts.update, rather than creating a second ID, when revising the same deliverable.",
       ],
@@ -333,7 +334,7 @@ export function createCakeArtifactOperations(
               id: "design-plan",
               title: "Design plan",
               kind: "markdown",
-              markdown: "# Design plan\n\nImplementation details.",
+              markdown: "# Design plan\n\nShared implementation spec for child sessions.",
             },
           },
         },

@@ -37,6 +37,8 @@ Results go under Git-ignored `.performance-captures/session-switching/`.
 `summary.json` records revisions, scenario parameters, individual samples, median,
 p95, maximum and normalized persisted payload sizes. CPU profiles remain in trace files.
 
-Record comparisons and investigations in an artifact with the checked revisions,
-workload, motion preference and measurement limitations. Generated hidden-window
-measurements are not a replay of real user workloads or a cold-session latency guarantee.
+Report comparisons and investigations in chat by default, including the checked
+revisions, workload, motion preference and measurement limitations. Create a
+text/Markdown artifact for these reports only when explicitly requested by the user.
+Generated hidden-window measurements are not a replay of real user workloads or a
+cold-session latency guarantee.

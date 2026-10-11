@@ -88,6 +88,27 @@ function makeHarness(initial: CakeArtifactV1 = markdown(1, "one")) {
 }
 
 describe("Cake artifact management operations", () => {
+  it("keeps create help aligned with the chat-first text artifact policy", async () => {
+    const { registry } = makeHarness();
+    const help = await registry.invoke({ command: "artifacts.create.help" }, context());
+    expect(help.text).toContain(
+      "Keep investigations, explanations, ordinary implementation details, progress, and reports in chat by default",
+    );
+    expect(help.text).toContain(
+      "Create text/Markdown artifacts only when the user explicitly requests them, except for a spec serving as a shared, durable reference",
+    );
+    expect(help.text).toContain("this session can read after compaction");
+    expect(help.text).toContain("child sessions can read for coordinated implementation");
+    expect(help.text).toContain("Shared-reference usefulness, not length or formatting");
+    expect(help.text).toContain("merely being an investigation does not qualify");
+    expect(help.text).toContain(
+      "This text/Markdown policy does not restrict non-text visual artifacts or explicitly requested file deliverables",
+    );
+    expect(help.text).toContain(
+      "Import a workspace file when the file itself is the reusable deliverable",
+    );
+  });
+
   it("exposes bounded metadata operations without a payload-returning read command", async () => {
     const { registry } = makeHarness();
     expect(registry.definitions().map((item) => item.command)).not.toContain("artifacts.read");

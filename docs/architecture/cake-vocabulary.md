@@ -189,12 +189,16 @@ obligation.
 
 ### Artifact
 
-A substantial, reusable deliverable that the user benefits from opening, revisiting,
-or exporting outside the conversation flow. Artifact status is an explicit product
-choice, not something inferred from a content kind or syntax. A long-form document,
-interactive visualization, or exportable data set may be an Artifact; ordinary
-Markdown remains conversation content even when it contains Mermaid, a small table,
-or another richly rendered block.
+A reusable deliverable that the user benefits from opening, revisiting, or exporting
+outside the conversation flow. Artifact status is an explicit product choice, not
+something inferred from length, content kind, or syntax. An explicitly requested
+text document, interactive visualization, or exportable data set may be an Artifact;
+ordinary Markdown remains conversation content even when it contains Mermaid, a
+small table, or another richly rendered block. Text/Markdown artifacts require an
+explicit user request unless a spec serves as a shared, durable reference for the
+session after compaction or for child sessions coordinating implementation.
+Investigations, explanations, ordinary implementation details, progress, and reports
+stay in chat by default. See [artifact product policy](./s4-artifact-protocol.md#product-boundary-and-presentation).
 
 An Artifact is a global Cake-owned lineage of immutable full-snapshot revisions.
 A lineage is **linked to**, never owned by, either a Cake Session or a Session
