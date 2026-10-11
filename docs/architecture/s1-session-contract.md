@@ -100,6 +100,37 @@ Models. `ProjectSessionStore` owns renderer workflow and presentation
 around the focused projections; Stores invoke the Promise `Client` and do not
 import Effect, RPC contracts, main domain modules, or `CakeSessionRuntimes`.
 
+## Resolution outcomes
+
+Resolution commits Cake's authoritative lifecycle state before eligible checkout
+cleanup. Cleanup failure does not roll that transition back. The command contract
+distinguishes:
+
+- `ResolutionRejected`: a known policy refusal before commit, with affected session
+  IDs and an explanatory message. Arbitrary storage or transport failures are not
+  reclassified as policy refusals.
+- Ordinary success: single-session resolution still returns void.
+- `ResolutionCleanupFailed`: resolution committed, with authoritative
+  `resolvedSessionIds` and the observed `cleanupFailures`, each identifying its
+  Working Directory. Existing cleanup order and stop behavior remain unchanged;
+  the error does not assert that every other checkout was cleaned.
+
+RPC and the validated Promise Client preserve these tagged distinctions for
+application handling. Renderer retirement/navigation treats committed resolution
+as successful while presenting cleanup diagnostics, without inventing projection
+state or guessing from an error message. Generic operational errors and lost
+transport receipts remain potentially uncertain; callers do not automatically
+replay commands.
+
+Working Directory batch resolution keeps committed IDs in `resolvedSessionIds`,
+including IDs whose follow-up cleanup failed. It reports `cleanupFailures`
+separately from ordinary per-target `failures`; renderer workflows retire the
+committed IDs and present both failure lists. Restore behavior is unchanged.
+Merge-and-resolve consumes this same outcome contract; see
+[worktree ownership and partial completion](./effect-architecture.md#filesystem-git-worktrees-vs-code-and-terminals).
+The [implementation record](../proposals/backend-workflow-refinement.md) tracks
+cutover and verification of this accepted contract.
+
 ## Verification boundary
 
 Focused integration tests cover Pi JSONL reopen, complete active-branch

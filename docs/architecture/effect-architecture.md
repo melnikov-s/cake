@@ -408,6 +408,31 @@ handle once accepted and reports later progress through a Stream. Interrupting
 the short acceptance request is distinct from issuing the domain's explicit
 abort command.
 
+### Typed failures and committed transitions
+
+Expected failures use specific Effect error variants that retain the facts needed
+for application-level handling. A workflow that commits its primary transition
+before follow-up work must distinguish a known pre-commit refusal from failure
+after that commit. Do not collapse both into a generic exception or a boolean
+meaning “nothing changed.” Feature-specific tagged errors are sufficient; this
+does not require a universal result framework, rollback engine, or durable journal.
+
+Preserve those variants through the RPC error Schema and the renderer's Promise
+client. `ClientError.domainFailure` carries only explicitly allowlisted, validated
+domain outcomes; ordinary Stores remain Effect-free and do not inspect arbitrary
+transport objects or parse error strings. Once a domain outcome is received, a
+later aborted signal must not replace it with generic cancellation. Actual
+transport interruption or an operational failure can still leave the result
+uncertain; neither is proof of rollback or permission to replay a mutation.
+
+For Project Session resolution, `ResolutionRejected` denotes a known pre-commit
+policy refusal; `ResolutionCleanupFailed` confirms committed resolution and
+identifies the observed checkout-cleanup failures. Callers perform normal
+post-resolution presentation for the latter while reporting cleanup separately.
+See [resolution outcomes](./s1-session-contract.md#resolution-outcomes) for the
+focused contract and [the implementation record](../proposals/backend-workflow-refinement.md)
+for integration status.
+
 ## Pi services
 
 Cake exposes focused Pi capabilities, not one god service. `PiLive` supplies the
@@ -662,6 +687,12 @@ persisted pauses and merge-and-resolve intent, automation prompts, and partial
 cleanup results belong to the [worktree domain](../../src/domain/worktrees/).
 Queue progress is process-local; persisted pauses can be adopted after restart,
 and terminal-operation acknowledgement cannot discard durable resolve intent.
+
+A merge-and-resolve operation remains `landed` when Git landing and session
+resolution commit but checkout cleanup fails. Its optional `cleanupFailures`
+projection carries warnings, and the completed resolve intent is cleared as on
+ordinary success. Do not retry successful Git landing to repair checkout cleanup;
+see [resolution outcomes](./s1-session-contract.md#resolution-outcomes).
 
 `WorktreeStorage` is separate from `Git`:
 
