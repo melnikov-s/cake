@@ -91,6 +91,8 @@ test("permanent Cake Chat retains its input, history and settings across restart
   const firstReplyGate = new Promise<void>((resolve) => {
     releaseFirstReply = resolve;
   });
+  const summaryGate = Promise.withResolvers<void>();
+  let stalledSummaries = 0;
   const server = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
@@ -98,11 +100,14 @@ test("permanent Cake Chat retains its input, history and settings across restart
     const summary = JSON.stringify(parsed).includes("You write the memory of Cake Chat");
     if (!summary) {
       requests.push(parsed);
-      if (requests.length === 1) await firstReplyGate;
+      if (requests.length <= 2) await firstReplyGate;
+    } else if (requests.length >= 3) {
+      stalledSummaries += 1;
+      await summaryGate.promise;
     }
     const text = summary
       ? "talk: coordinated project work; user asked about priorities"
-      : `Coordinator reply. ${"Detailed task context. ".repeat(50)}`;
+      : `Coordinator reply. ${"Detailed task context. ".repeat(requests.length >= 3 ? 1000 : 50)}`;
     response.writeHead(200, { "content-type": "text/event-stream" });
     const chunk = (delta: object, finish_reason: string | null) =>
       `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
@@ -295,6 +300,19 @@ test("permanent Cake Chat retains its input, history and settings across restart
     expect(JSON.stringify(requests)).toContain("cake-task-input");
     const coordinator = page.locator('[data-slot="cake-chat-group"]');
     await expect(coordinator.getByRole("img", { name: "Running" })).toBeVisible();
+    // No headers or response output have arrived: Stop must interrupt the request,
+    // settle Churning, and leave the composer usable without releasing the server.
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+    await expect(page.getByLabel("Churning in progress")).toHaveCount(0);
+    await expect(coordinator.getByRole("img", { name: "Running" })).toHaveCount(0);
+    await input.click();
+    await expect(input).toBeFocused();
+    await input.pressSequentially("Discuss my priorities again");
+    await expect(input).toHaveValue("Discuss my priorities again");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => requests.length).toBe(2);
+    await expect(coordinator.getByRole("img", { name: "Running" })).toBeVisible();
     await interceptMenu(app);
     await coordinator.click({ button: "right" });
     await expect
@@ -438,14 +456,53 @@ test("permanent Cake Chat retains its input, history and settings across restart
     await expect(input).toHaveValue("A new independent question");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect.poll(() => requests.length).toBe(2);
-    expect(JSON.stringify(requests[1])).toContain("Always create a worktree for coding sessions.");
-    expect(JSON.stringify(requests[1])).not.toContain(
+    await expect.poll(() => requests.length).toBe(3);
+    expect(JSON.stringify(requests[2])).toContain("Always create a worktree for coding sessions.");
+    expect(JSON.stringify(requests[2])).not.toContain(
       "Detailed task context. Detailed task context.",
     );
     expect(await readFile(projectFile, "utf8")).toBe(projectHistory);
+
+    // The reply exceeds the memory budget, so background indexing starts a slow
+    // summary. The next turn stalls before its provider request, not in streaming.
+    await expect.poll(() => stalledSummaries).toBeGreaterThan(0);
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    await input.fill("Stop while waiting for memory");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect
+      .poll(async () => {
+        const storage = await openNodeSqliteStorage(database);
+        try {
+          const page = await storage.scanEntries(
+            { conversationId: ROOT_CONVERSATION_ID, kind: "pi.reset", order: "descending" },
+            1,
+            undefined,
+            BACKGROUND_CONTEXT,
+          );
+          return JSON.stringify(page.items[0]?.model);
+        } finally {
+          await storage.close(BACKGROUND_CONTEXT);
+        }
+      })
+      .toContain("Stop while waiting for memory");
+    expect(requests).toHaveLength(3);
+    await expect(page.getByLabel("Churning in progress")).toBeVisible();
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+    await expect(page.getByLabel("Churning in progress")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    expect(requests).toHaveLength(3);
+    summaryGate.resolve();
+    await input.click();
+    await expect(input).toBeFocused();
+    await input.pressSequentially("Retry after stopping memory wait");
+    await expect(input).toHaveValue("Retry after stopping memory wait");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => requests.length).toBe(4);
+    await expect(page.getByLabel("Churning in progress")).toHaveCount(0);
   } finally {
     releaseFirstReply?.();
+    summaryGate.resolve();
     await app.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(root, { recursive: true, force: true });

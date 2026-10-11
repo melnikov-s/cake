@@ -1,4 +1,8 @@
-import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
+import {
+  awaitWithContext,
+  BACKGROUND_CONTEXT,
+  withAbortSignal,
+} from "@earendil-works/chord/context";
 import {
   createAssistantMessageEventStream,
   type Models,
@@ -57,12 +61,18 @@ export async function openDurableChatEngine(options: {
   // cache nodes/originals or own model runs; the Harness owns those persisted tasks.
   let worker = Promise.resolve();
   const index = (signal: AbortSignal, cutoff?: EntryId) => {
-    const result = worker.then(() => memory.synchronize(signal, cutoff));
+    const result = worker.then(() => {
+      signal.throwIfAborted();
+      return memory.synchronize(signal, cutoff);
+    });
     worker = result.then(
       () => undefined,
       () => undefined,
     );
-    return result;
+    // Stop must release request preparation even if an earlier background summary
+    // still owns the worker. Keep indexing serialized, and skip cancelled work
+    // when it eventually reaches the front of the queue.
+    return awaitWithContext(result, withAbortSignal(signal, BACKGROUND_CONTEXT));
   };
   const models = durableModelFacade(options.models, {
     streamSimple(model, request, streamOptions) {

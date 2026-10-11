@@ -4,11 +4,14 @@ import {
   defineExtension,
   defineTool,
   MemoryStorage,
+  InboxDoc,
+  LiveDoc,
 } from "@earendil-works/pi-durable";
 import { Type } from "@earendil-works/pi-durable-ai";
 import { afterEach, expect, it, vi } from "vitest";
 import { openDurableChatEngine } from "../../../../src/services/pi-durable/durable-chat-engine";
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
+import { abortDurableActiveTurn } from "../../../../src/services/pi-durable/durable-chat-queue";
 import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
 
 const cleanup: Array<() => Promise<void>> = [];
@@ -137,6 +140,51 @@ it("keeps Cake Chat's canonical instructions across compaction and ordinary run 
   await f.send("After changing instructions", "third");
   expect(JSON.stringify(f.requests.at(-1))).toContain("Genuinely changed Cake Chat instructions");
   expect(await systemCount()).toBe(count + 2);
+});
+
+it("stops a turn waiting behind background memory indexing without withdrawing queued input", async () => {
+  const f = await fixture();
+  await f.send("Hello", "first");
+  const summary = Promise.withResolvers<string>();
+  f.summarize.mockImplementation(() => summary.promise);
+  let stop: Promise<void> | undefined;
+  try {
+    await f.send("LONG_DETAIL ".repeat(100), "long");
+    await vi.waitFor(() => expect(f.summarize).toHaveBeenCalled());
+    const active = await f.submit("Waiting for memory", "waiting");
+    // Request preparation has parked its fresh head but cannot reach the provider
+    // while the preceding background summary holds the serial indexing worker.
+    await vi.waitFor(async () => {
+      const context = await f.engine.root.context(BACKGROUND_CONTEXT);
+      expect(JSON.stringify(context.messages)).toContain("Waiting for memory");
+      expect(JSON.stringify(context.messages)).not.toContain("LONG_DETAIL");
+    });
+    const queued = await f.submit("Keep this queued", "queued");
+    let stopped = false;
+    stop = abortDurableActiveTurn(f.engine.harness, f.engine.root).then(() => {
+      stopped = true;
+    });
+    await vi.waitFor(() => expect(stopped).toBe(true));
+    await stop;
+    expect(await active.wait(BACKGROUND_CONTEXT)).toMatchObject({
+      status: "unanswered",
+      reason: "aborted",
+    });
+    expect(
+      (await f.engine.harness.snapshot(LiveDoc, f.engine.root.id, BACKGROUND_CONTEXT))?.run,
+    ).toBeUndefined();
+    expect(
+      (await f.engine.harness.snapshot(InboxDoc, f.engine.root.id, BACKGROUND_CONTEXT))?.items,
+    ).toMatchObject([{ id: queued.id }]);
+    expect(f.requests).toHaveLength(2);
+  } finally {
+    summary.resolve("user: original details remain available through zoom");
+    await stop;
+  }
+  await f.send("Try again after stopping", "retry");
+  expect(f.requests).toHaveLength(4);
+  expect(JSON.stringify(f.requests[2])).toContain("Keep this queued");
+  expect(JSON.stringify(f.requests[3])).toContain("Try again after stopping");
 });
 
 it("deduplicates committed input without starting another model run", async () => {
