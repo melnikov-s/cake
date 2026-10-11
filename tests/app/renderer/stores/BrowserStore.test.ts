@@ -1,12 +1,10 @@
-import { batch, createStore, observable } from "r-state-tree";
+import { batch, updateStore } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import { BrowserStore } from "../../../../src/renderer/stores/BrowserStore";
-import { mountWithClient } from "../mount-with-client";
-import { TerminalStore } from "../../../../src/renderer/stores/TerminalStore";
-import { WorkingDirectoryRetirementStore } from "../../../../src/renderer/stores/WorkingDirectoryRetirementStore";
-import { createTestClient } from "../test-client";
+import type { BrowserStateSnapshot, Client } from "../../../../src/renderer/client/Client";
+import { projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
+import { createRendererStoreFixture } from "../renderer-store-fixture";
 
-const ready = {
+const ready: BrowserStateSnapshot = {
   sessionId: "session-1",
   url: "http://localhost:3000/",
   title: "Local app",
@@ -16,75 +14,78 @@ const ready = {
   inspecting: false,
 };
 
-function harness(browserHost = false, terminalTopInset: () => number = () => 0) {
-  let mode: "normal" | "vscode" | "draw" | "browser" = "normal";
-  const selection = observable({ sessionId: "session-1" as string | undefined });
-  const onBrowserUnavailable = vi.fn();
+function harness(browserHost = false) {
   const browser = {
-    open: vi.fn(async () => ready),
-    state: vi.fn(async () => ready),
-    updateBounds: vi.fn(async () => ready),
-    navigate: vi.fn(async () => ({ ...ready, url: "http://localhost:5173/" })),
-    action: vi.fn(async () => ready),
-    inspect: vi.fn(async () => ({ ...ready, inspecting: true })),
+    open: vi.fn<Client["browser"]["open"]>(async () => ready),
+    state: vi.fn<Client["browser"]["state"]>(async () => ready),
+    updateBounds: vi.fn<Client["browser"]["updateBounds"]>(async () => ready),
+    navigate: vi.fn<Client["browser"]["navigate"]>(async () => ({
+      ...ready,
+      url: "http://localhost:5173/",
+    })),
   };
-  const { root, subject: store } = mountWithClient(
-    createStore(BrowserStore, {
-      sessionId: () => selection.sessionId,
-      browserHost,
-      onBrowserUnavailable,
-      presentationMode: () => mode,
-      setPresentationMode: (value) => {
-        mode = value;
+  const fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: "/tmp/project", name: "Project" })],
+    sessions: ["session-1", "session-2"].map((sessionId) =>
+      sessionSummary({ sessionId, projectPath: "/tmp/project" }),
+    ),
+    client: {
+      browser,
+      terminals: {
+        open: async () => ({ terminalId: "terminal-1", shell: "zsh" }),
+        close: async () => undefined,
       },
-      chatSidebarVisible: () => true,
-      chatSidebarWidth: () => 420,
-      setChatSidebarWidth: vi.fn(),
-      appendAttachment: () => undefined,
-      enterProjectSidebarMode: vi.fn(),
-      leaveProjectSidebarMode: vi.fn(),
-    }),
-    createTestClient({ browser }),
-    terminalTopInset,
-  );
-  return {
-    selection,
-    browser,
-    root,
-    store,
-    mode: () => mode,
-    onBrowserUnavailable,
-    setMode: (value: typeof mode) => {
-      mode = value;
     },
+  });
+  updateStore(fixture.root, { browserHost });
+  for (const sessionId of ["session-1", "session-2"])
+    fixture.root.sessionRegistry.load(sessionId, "/tmp/project");
+  fixture.root.navigationStore.showLoadedProjectSession("session-1");
+  return {
+    ...fixture,
+    browser,
+    store: fixture.root.projectWorkbenchStore.presentationStore.browserStore,
   };
 }
 
-// Browser-host rejection has no visible Browser Mode control, and positive native viewport
-// geometry is unavailable in jsdom. Retain these boundary contracts rather than inventing UI
-// or claiming layout verification. Browser opening/navigation is exercised in browser-workflow.
+// Native boundary backlog, not React workflow proof. The real Root supplies session
+// selection/presentation, sidebar policy, terminal inset and retirement collaborators;
+// only typed browser/terminal service boundaries are faked. Measurements enter through
+// the production measurement API and are not presented as native layout verification.
+// browser-workflow owns visible navigation/inspection/retry; terminal-workflow owns panel
+// actions. Electron browser.smoke proves real terminal clearance, docking and hidden-view
+// session switching, but not these exact batched-ownership and full-occlusion regressions.
+// Browser-host rejection is unwired from visible controls; integration/browser-mode-unavailable
+// proves control gating, not restored/agent-originated browser requests.
 describe("BrowserStore native presentation boundaries", () => {
   it("keeps browser-host opens and restored presentation out of native Browser Mode", async () => {
-    const { browser, root, store, mode, setMode, onBrowserUnavailable } = harness(true);
+    using fixture = harness(true);
+    const { browser, root, store } = fixture;
+    const session = root.sessionRegistry.findSession("session-1")!;
     await store.show();
-    expect(mode()).toBe("normal");
+    expect(session.presentationMode).toBe("normal");
     expect(store.visible).toBe(false);
-    expect(onBrowserUnavailable).toHaveBeenCalledOnce();
+    expect(root.toastStore.toasts).toEqual([
+      expect.objectContaining({
+        title: "Browser Mode is desktop-only",
+        message: "Open Cake desktop to use Browser Mode.",
+      }),
+    ]);
 
-    setMode("browser");
+    session.showPresentation("browser");
     await store.restore();
-    expect(mode()).toBe("normal");
+    expect(session.presentationMode).toBe("normal");
     expect(store.visible).toBe(false);
     store.showAgentBrowser();
-    expect(mode()).toBe("normal");
+    expect(session.presentationMode).toBe("normal");
     expect(browser.open).not.toHaveBeenCalled();
     expect(browser.state).not.toHaveBeenCalled();
     expect(browser.updateBounds).not.toHaveBeenCalled();
-    root[Symbol.dispose]();
   });
-  it("reports positive measured native bounds and hides them when suspended", async () => {
-    const { browser, root, store } = harness();
 
+  it("reports positive measured native bounds and hides them when suspended", async () => {
+    using fixture = harness();
+    const { browser, store } = fixture;
     await store.show();
     store.setMeasuredBounds({ x: 280, y: 40, width: 800, height: 600 });
 
@@ -105,21 +106,22 @@ describe("BrowserStore native presentation boundaries", () => {
       expect.objectContaining({ sessionId: "session-1", visible: false }),
       expect.any(Object),
     );
-    root[Symbol.dispose]();
   });
 
   it.each(["session-2", undefined])(
     "hides the opened view when batched navigation selects %s, then restores it",
     async (nextSessionId) => {
-      const { browser, root, store, selection } = harness();
+      using fixture = harness();
+      const { browser, root, store } = fixture;
       await store.show();
       store.setMeasuredBounds({ x: 280, y: 40, width: 800, height: 600 });
       browser.updateBounds.mockClear();
 
       // Hydrated-session navigation changes selection before suspending in one batch.
       batch(() => {
-        selection.sessionId = nextSessionId;
-        store.suspend();
+        if (nextSessionId) root.navigationStore.selectProjectSession(nextSessionId);
+        else root.appShellStore.showWorkbench();
+        root.projectWorkbenchStore.presentationStore.suspend();
         store.setMeasuredBounds(undefined);
       });
       expect(browser.updateBounds).toHaveBeenLastCalledWith(
@@ -128,87 +130,64 @@ describe("BrowserStore native presentation boundaries", () => {
       );
       expect(browser.updateBounds).toHaveBeenCalledOnce();
 
-      selection.sessionId = "session-1";
+      root.navigationStore.selectProjectSession("session-1");
       await store.restore();
       store.setMeasuredBounds({ x: 280, y: 40, width: 800, height: 600 });
       expect(browser.updateBounds).toHaveBeenLastCalledWith(
         expect.objectContaining({ sessionId: "session-1", visible: true }),
         expect.any(Object),
       );
-      root[Symbol.dispose]();
     },
   );
 
   it("does not hide the browser when its owning session remains selected", async () => {
-    const { browser, root, store, selection } = harness();
+    using fixture = harness();
+    const { browser, root, store } = fixture;
     await store.show();
     store.setMeasuredBounds({ x: 280, y: 40, width: 800, height: 600 });
     browser.updateBounds.mockClear();
-    selection.sessionId = "session-1";
+    root.navigationStore.selectProjectSession("session-1");
     expect(store.nativeViewBounds.visible).toBe(true);
     expect(browser.updateBounds).not.toHaveBeenCalled();
-    root[Symbol.dispose]();
   });
 
   it("clears the floating terminal region without reopening or navigating the browser", async () => {
-    const terminalClient = createTestClient({
-      terminals: {
-        open: vi.fn(async () => ({ terminalId: "terminal-1", shell: "zsh" })),
-        close: vi.fn(async () => undefined),
-      },
-    });
-    const retirement = mountWithClient(
-      createStore(WorkingDirectoryRetirementStore, { onRetired: () => undefined }),
-      terminalClient,
-    );
-    const terminal = mountWithClient(
-      createStore(TerminalStore, {
-        activeTarget: () => ({ workingDirectory: "/tmp/project", label: "project" }),
-        retirement: () => retirement.subject,
-        toggleAcceleratorHint: () => "Ctrl+`",
-        newTabHotkey: () => "Mod+T",
-      }),
-      terminalClient,
-    );
-    const { browser, root, store } = harness(false, () => terminal.subject.editorTopInset);
+    using fixture = harness();
+    const { browser, root, store } = fixture;
+    const terminal = root.terminalStore;
     const assertBounds = (y: number, height: number, visible = true) =>
       expect(browser.updateBounds).toHaveBeenLastCalledWith(
         { sessionId: "session-1", visible, x: 280, y, width: 800, height },
         expect.any(Object),
       );
-    try {
-      await store.show();
-      store.setMeasuredBounds({ x: 280, y: 40, width: 800, height: 600 });
-      terminal.subject.setMeasuredOverlayHeight(365);
-      assertBounds(40, 600); // Closed panels leave the browser unchanged.
-      terminal.subject.readyForEvents();
-      await terminal.subject.toggle();
-      assertBounds(365, 275);
-      terminal.subject.setMeasuredOverlayHeight(413);
-      assertBounds(413, 227);
-      terminal.subject.dock();
-      assertBounds(40, 600); // Docked layout supplies the measured viewport.
-      terminal.subject.moveToTop();
-      assertBounds(413, 227);
-      terminal.subject.hide();
-      assertBounds(40, 600);
-      await terminal.subject.toggle();
-      terminal.subject.setMeasuredOverlayHeight(0);
-      assertBounds(40, 600); // Unmounted panels clear transient geometry.
-      terminal.subject.setMeasuredOverlayHeight(30);
-      assertBounds(40, 600); // No adjustment when the viewport is already below it.
-      terminal.subject.setMeasuredOverlayHeight(900);
-      assertBounds(640, 0, false);
-      terminal.subject.hide();
-      assertBounds(40, 600);
-      expect(store.visible).toBe(true);
-      expect(store.url).toBe(ready.url);
-      expect(browser.open).toHaveBeenCalledTimes(1);
-      expect(browser.navigate).not.toHaveBeenCalled();
-    } finally {
-      root[Symbol.dispose]();
-      terminal.root[Symbol.dispose]();
-      retirement.root[Symbol.dispose]();
-    }
+
+    await store.show();
+    store.setMeasuredBounds({ x: 280, y: 40, width: 800, height: 600 });
+    terminal.setMeasuredOverlayHeight(365);
+    assertBounds(40, 600); // Closed panels leave the browser unchanged.
+    terminal.readyForEvents();
+    await terminal.toggle();
+    assertBounds(365, 275);
+    terminal.setMeasuredOverlayHeight(413);
+    assertBounds(413, 227);
+    terminal.dock();
+    assertBounds(40, 600); // Docked layout supplies the measured viewport.
+    terminal.moveToTop();
+    assertBounds(413, 227);
+    terminal.hide();
+    assertBounds(40, 600);
+    await terminal.toggle();
+    terminal.setMeasuredOverlayHeight(0);
+    assertBounds(40, 600); // Unmounted panels clear transient geometry.
+    terminal.setMeasuredOverlayHeight(30);
+    assertBounds(40, 600); // No adjustment when the viewport is already below it.
+    terminal.setMeasuredOverlayHeight(900);
+    assertBounds(640, 0, false);
+    terminal.hide();
+    assertBounds(40, 600);
+    expect(store.visible).toBe(true);
+    expect(store.url).toBe(ready.url);
+    expect(browser.open).toHaveBeenCalledTimes(1);
+    expect(browser.navigate).not.toHaveBeenCalled();
   });
 });
