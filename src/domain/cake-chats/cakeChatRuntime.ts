@@ -40,6 +40,7 @@ const CAKE_CHAT_OPERATIONS = [
   "sessions.open",
   "sessions.create",
   "sessions.send",
+  "sessions.send-batch",
   "sessions.reply",
   "sessions.thread",
   "sessions.close-thread",

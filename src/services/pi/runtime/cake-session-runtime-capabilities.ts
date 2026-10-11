@@ -44,6 +44,7 @@ import { createCakeBrowserOperations } from "./cake-browser-operations";
 import { createCakeDrawOperations } from "./cake-draw-operations";
 import { createCakeWorktreeOperations } from "./cake-worktree-operations";
 import { createCakeWorkflowOperations } from "./cake-workflow-operations";
+import { createSessionSendBatchOperation } from "./cake-session-batch-send-operation";
 import { createCakeSessionPluginOperations } from "./cake-session-plugin-operations";
 import {
   CakeOperationRegistry,
@@ -106,7 +107,7 @@ export function createGlobalControlOperations(
   const settings = createCakeSettingsOperations((command, input, signal) =>
     control.invoke({ name: command, arguments: input }, signal),
   );
-  return control.tools.map(
+  const operations: CakeOperationDefinition[] = control.tools.map(
     (tool) =>
       settings.find((operation) => operation.command === tool.command) ?? {
         command: tool.command,
@@ -134,6 +135,15 @@ export function createGlobalControlOperations(
         },
       },
   );
+  // Global/Durable Cake Chat uses the same separate batch tool, but each send
+  // still crosses its existing trusted control and task-input boundary.
+  if (control.tools.some((tool) => tool.command === "sessions.send"))
+    operations.push(
+      createSessionSendBatchOperation((input, signal) =>
+        control.invoke({ name: "sessions.send", arguments: input }, signal),
+      ),
+    );
+  return operations;
 }
 
 export function createAgentControlOperations(
@@ -984,6 +994,9 @@ export async function createCakeSessionRuntimeCapabilities(input: {
           "An informational correlated receipt with target identity, recipient context snapshot, queue facts when pending, and response expectation. No acknowledgment is needed.",
         execute: invokeAppControl("sessions.send"),
       },
+      createSessionSendBatchOperation((input, signal) =>
+        api().invokeAppControl("sessions.send", input, signal),
+      ),
       {
         command: "sessions.pending",
         topic: "sessions",

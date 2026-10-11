@@ -100,6 +100,40 @@ Models. `ProjectSessionStore` owns renderer workflow and presentation
 around the focused projections; Stores invoke the Promise `Client` and do not
 import Effect, RPC contracts, main domain modules, or `CakeSessionRuntimes`.
 
+## Batch session messaging
+
+`sessions.send` remains a single-recipient operation. The separate Cake operation
+`sessions.send-batch` accepts `sessionIds` (1–100 unique Project Session IDs), one
+shared `text`, and shared optional `delivery`, `expectsResponse` (default true),
+and `maxMessages`. It is registered in Project Session and global Cake Chat
+operation registries wherever single-send is available.
+
+The operation adapter invokes the existing single-send path sequentially in
+input order, preserving trusted routing, family response tracking, Pi admission,
+and per-recipient delivery receipts. Omitted delivery starts idle recipients or
+queues behind active work; explicit `steer` redirects active recipients. Each
+recipient starts an independent exchange; `maxMessages` applies to each exchange.
+Existing thread IDs, reply IDs, and task-input attachments are intentionally not
+batch options; use single-send for those cases.
+
+Schema-invalid arguments, empty recipient lists, or duplicate IDs reject the
+whole call before delivery. Unknown targets and delivery failures instead produce
+individual outcomes and do not stop later recipients. The result never echoes
+shared text and contains one ordered outcome per input ID, with correlation IDs,
+actual delivery/status on success, or a bounded error on failure. All outcomes
+remain present in both structured results and model-facing text. Top-level `ok`
+means processing completed; `status` is `complete`, `partial`, or `failed` according
+to recipient successes. Inspect every outcome rather than treating `ok` as
+all-recipient success.
+
+Batch processing has tool-call lifetime and no independent persistence or queue.
+Cancellation stops new attempts and marks remaining recipients `not-sent`, while
+retaining prior outcomes if the tool result can still be returned. Transport
+failure can leave an attempted delivery uncertain. Accepted deliveries are not
+rolled back; there are no automatic retries. Check uncertain recipients before
+retrying only selected failures, never replay the entire batch blindly. Receipts
+are informational and require no acknowledgment.
+
 ## Resolution outcomes
 
 Resolution commits Cake's authoritative lifecycle state before eligible checkout

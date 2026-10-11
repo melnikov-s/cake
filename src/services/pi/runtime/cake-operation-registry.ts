@@ -79,6 +79,8 @@ export interface CakeOperationDefinition<
    * The registry also validates JSON after decoding, allowing authoritative projection
    * schemas whose optional fields include undefined in TypeScript. */
   outputSchema?: Schema.ConstraintDecoder<unknown, never>;
+  /** Bounded multi-outcome operations must expose every outcome in model-facing text. */
+  truncateResultText?: boolean;
   examples: readonly CakeOperationExample[];
   result: string;
   limitations?: readonly string[];
@@ -364,7 +366,10 @@ export class CakeOperationRegistry {
             preview: formatCakeResult(result),
           }
         : result;
-    const text = formatCakeResult(result);
+    const text = formatCakeResult(
+      result,
+      operation.truncateResultText === false ? MAX_CAKE_OPERATION_RESULT_BYTES : undefined,
+    );
     return {
       text,
       content: [{ type: "text", text }, ...images],
