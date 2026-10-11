@@ -1547,8 +1547,9 @@ const cakeChatSidebarUnread: VisualCaptureScenario = {
 
 const cakeChatScenario: VisualCaptureScenario = {
   name: "cake-chat",
-  description: "Permanent coordinator with original conversation history and memory settings",
-  states: ["default", "settings"],
+  description:
+    "Permanent coordinator with original history, memory settings and outbound request inspection",
+  states: ["default", "settings", "inspector"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     const directory = join(paths.cakeHome, "pi", "global-chat");
@@ -1610,6 +1611,10 @@ const cakeChatScenario: VisualCaptureScenario = {
     await expect(
       page.getByText("Will I still see my original conversation history?", { exact: true }),
     ).toBeVisible();
+    if (state === "inspector") {
+      await page.getByRole("button", { name: "Inspect context", exact: true }).click();
+      await expect(page.getByText(/No captured requests yet/)).toBeVisible();
+    }
     if (state === "settings") {
       await page.getByRole("button", { name: "Open settings", exact: true }).click();
       await page

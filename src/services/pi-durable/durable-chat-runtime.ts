@@ -58,6 +58,7 @@ import {
   type CakeSessionRuntimeOptions,
 } from "../pi/runtime/cake-session-runtime";
 import { durableModels } from "./durable-models";
+import type { RequestInspection } from "./request-inspection";
 import { openDurableChatEngine } from "./durable-chat-engine";
 import { readDurableOriginalPage } from "./durable-chat-history";
 import { createCakeModelOperations } from "../pi/runtime/cake-model-operations";
@@ -115,6 +116,7 @@ const unsupported = async () => {
 /** The shared Cake conversation contract, backed solely by Pi Durable for the coordinator. */
 export async function createDurableCakeChatRuntime(
   options: CakeSessionRuntimeOptions,
+  inspection?: RequestInspection,
 ): Promise<CakeSessionRuntime> {
   if (
     !options.globalControl ||
@@ -137,7 +139,7 @@ export async function createDurableCakeChatRuntime(
     options.agentDir,
     catalogRuntime,
   );
-  const models = durableModels(catalogRuntime, () => fastMode);
+  const models = durableModels(catalogRuntime, () => fastMode, inspection);
   const available = await catalogRuntime.getAvailable();
   const presets = options.modelPresets?.();
   const preset = presets?.presets.find((entry) => entry.id === presets.defaultPresetId);
@@ -371,7 +373,14 @@ export async function createDurableCakeChatRuntime(
     },
     memory: {
       budget: () => preferences.preferences().memoryViewBytes,
-      summarize: preferences.summarize,
+      summarize: (input) =>
+        preferences.summarize({
+          ...input,
+          observeRequest: inspection
+            ? (model, settings) =>
+                inspection.begin(sessionId, model, settings, settings.fastMode, "memory-summary")
+            : undefined,
+        }),
     },
     onChanged: () => {
       publish();

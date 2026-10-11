@@ -46,6 +46,7 @@ import { RendererConnectionMiddleware } from "../protocol/RendererConnectionMidd
 import { terminalHandlers } from "./TerminalHandlers";
 import { vscodeHandlers, vscodeViewHandlers } from "./VsCodeHandlers";
 import { workspaceHandlers } from "./WorkspaceHandlers";
+import { CakeChatRpc } from "../protocol/CakeChatRpc";
 
 /**
  * One RPC endpoint over a host-supplied Protocol and already-acquired backend capabilities.
@@ -74,6 +75,14 @@ export const makeCakeRpcServerLive = (
     "projectSessions.resolveWorkingDirectory",
     "projectSessions.restore",
     "projectSessions.respondControl",
+    "cakeChats.requestInspection",
+    "cakeChats.observeCatalog",
+    "cakeChats.inspect",
+    "cakeChats.open",
+    "cakeChats.observeControls",
+    "cakeChats.start",
+    "cakeChats.setUnread",
+    "cakeChats.respondControl",
     "workflows.start",
     "workflows.list",
     "workflows.inspect",
@@ -99,7 +108,6 @@ export const makeCakeRpcServerLive = (
     ...attachmentUploadHandlers,
     ...browserHandlers,
     ...browserResponseHandlers,
-    ...makeCakeChatHandlers(cakeChatConfiguration),
     ...makeConversationHandlers(cakeChatConfiguration),
     ...discussionHandlers,
     ...drawHandlers,
@@ -139,6 +147,7 @@ export const makeCakeRpcServerLive = (
       Layer.mergeAll(
         handlers,
         ProjectSessionRpc.middleware(RendererConnectionMiddleware).toLayer(projectSessionHandlers),
+        CakeChatRpc.toLayer(makeCakeChatHandlers(cakeChatConfiguration)),
         DynamicWorkflowRpc.middleware(RendererConnectionMiddleware).toLayer(
           dynamicWorkflowHandlers,
         ),

@@ -15,6 +15,7 @@ import type { SubagentCatalog } from "../models/SubagentCatalog";
 import { SubagentActivityStore } from "./SubagentActivityStore";
 import { WorkflowRunStore } from "./WorkflowRunStore";
 import { workflowOwnerReferences } from "../../utils/workflow-references";
+import { RequestInspectorStore } from "./RequestInspectorStore";
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
@@ -61,6 +62,11 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       model: this.props.subagentCatalog,
       parts: () => this.model.uiParts,
     });
+  }
+
+  @child
+  get requestInspectorStore(): RequestInspectorStore {
+    return createStore(RequestInspectorStore, { sessionId: this.sessionId });
   }
 
   @child

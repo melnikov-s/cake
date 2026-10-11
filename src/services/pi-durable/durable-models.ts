@@ -10,23 +10,35 @@ import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { Schema } from "effect";
 import { applyFastModePayload, FastModePayload } from "../pi/fast-mode";
 import { durableModelFacade } from "./durable-model-facade";
+import type { RequestInspection } from "./request-inspection";
+import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
 
 /** Keep Cake's existing credential/custom-provider authority. Never ask the newer
  * collection to authenticate against a different default Pi home. The two SDKs
  * brand normalized contexts separately, so normalize at this request boundary. */
 export function durableModels(
-  runtime: ModelRuntime,
+  runtime: Pick<
+    ModelRuntime,
+    "streamSimple" | "stream" | "streamDeferred" | "cancelDeferred" | "getProviders"
+  >,
   fastMode: () => boolean = () => false,
+  inspection?: RequestInspection,
 ): Models & { synchronizeProviders(): void } {
   const catalog = createModels();
   const relay = (
     start: () => ReturnType<ModelRuntime["streamSimple"]>,
     model: Parameters<Models["streamSimple"]>[0],
+    capture?: ReturnType<RequestInspection["begin"]>,
   ): AssistantMessageEventStream => {
     const output = createAssistantMessageEventStream();
     void (async () => {
-      for await (const event of start()) output.push(event);
+      for await (const event of start()) {
+        if (event.type === "error") capture?.settle(true);
+        if (event.type === "done") capture?.settle(false);
+        output.push(event);
+      }
     })().catch((error: unknown) => {
+      capture?.settle(true);
       const message = {
         role: "assistant" as const,
         content: [],
@@ -49,35 +61,63 @@ export function durableModels(
     });
     return output;
   };
-  const streamSimple: Models["streamSimple"] = (model, context, options) =>
-    relay(
+  const streamSimple: Models["streamSimple"] = (model, context, options) => {
+    const capture = inspection?.begin(CAKE_CHAT_SESSION_ID, model, options, fastMode());
+    return relay(
       () =>
         runtime.streamSimple(model, normalizeContext({ messages: context.messages }), {
           ...options,
-          onPayload: async (payload, selected) =>
-            applyFastModePayload(
+          fetch: capture ? capture.fetch(options?.fetch) : options?.fetch,
+          onPayload: async (payload, selected) => {
+            const transformed = applyFastModePayload(
               Schema.decodeUnknownSync(FastModePayload)(
                 (await options?.onPayload?.(payload, selected)) ?? payload,
               ),
               selected,
               fastMode(),
-            ),
+            );
+            capture?.payload(transformed);
+            return transformed;
+          },
         }),
       model,
+      capture,
     );
-  const stream: Models["stream"] = (model, context, options) =>
-    relay(
+  };
+  const stream: Models["stream"] = (model, context, options) => {
+    const capture = inspection?.begin(CAKE_CHAT_SESSION_ID, model, options);
+    return relay(
       () =>
-        runtime.stream<Api>(
-          model,
-          normalizeContext({ messages: context.messages }),
-          // SAFETY: the same registered provider's expert options cross the versioned SDK boundary unchanged.
-          options as Parameters<ModelRuntime["stream"]>[2],
-        ),
+        runtime.stream<Api>(model, normalizeContext({ messages: context.messages }), {
+          ...options,
+          fetch: capture ? capture.fetch(options?.fetch) : options?.fetch,
+          onPayload: async (payload, selected) => {
+            const transformed = (await options?.onPayload?.(payload, selected)) ?? payload;
+            capture?.payload(transformed);
+            return transformed;
+          },
+        }),
       model,
+      capture,
     );
-  const streamDeferred: Models["streamDeferred"] = (model, handle, options) =>
-    relay(() => runtime.streamDeferred(model, handle, options), model);
+  };
+  const streamDeferred: Models["streamDeferred"] = (model, handle, options) => {
+    const capture = inspection?.begin(CAKE_CHAT_SESSION_ID, model, options);
+    return relay(
+      () =>
+        runtime.streamDeferred(model, handle, {
+          ...options,
+          fetch: capture ? capture.fetch(options?.fetch) : options?.fetch,
+          onPayload: async (payload, selected) => {
+            const transformed = (await options?.onPayload?.(payload, selected)) ?? payload;
+            capture?.payload(transformed);
+            return transformed;
+          },
+        }),
+      model,
+      capture,
+    );
+  };
   const synchronizeProviders = () => {
     catalog.clearProviders();
     for (const provider of runtime.getProviders())

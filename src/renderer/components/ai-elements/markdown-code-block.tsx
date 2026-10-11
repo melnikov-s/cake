@@ -23,8 +23,12 @@ export function MarkdownCodeBlock({ code, language, meta }: CustomRendererProps)
   const lineNumbers = !meta || !noLineNumbersPattern.test(meta);
   const markerLine = `${streamingCodeMarker}\n`;
   const changing = meta?.split(/\s+/).includes(streamingCodeMarker) ?? false;
+  // Diagnostic raw bodies opt into literal whitespace and never interpret a marker in data.
+  const preserveWhitespace = meta?.split(/\s+/).includes("preserveWhitespace") ?? false;
   const visibleCode =
-    changing && code.startsWith(markerLine) ? code.slice(markerLine.length) : code;
+    changing && !preserveWhitespace && code.startsWith(markerLine)
+      ? code.slice(markerLine.length)
+      : code;
 
   const copyButton = (source: string) => (
     <CodeBlockCopyButton
@@ -46,7 +50,7 @@ export function MarkdownCodeBlock({ code, language, meta }: CustomRendererProps)
       </div>
     );
 
-  const source = trimTrailingNewlines(visibleCode);
+  const source = preserveWhitespace ? visibleCode : trimTrailingNewlines(visibleCode);
   return (
     <CodeBlockContainer
       className="group/code relative my-4 gap-0 rounded-none border-0 bg-transparent p-0"

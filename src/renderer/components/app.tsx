@@ -43,6 +43,7 @@ import { UiHintMode } from "@/components/ui/ui-hint-mode";
 import { IdeWorkspace } from "@/components/ide-workspace";
 import { BrowserWorkspace } from "@/components/browser-workspace";
 import { SettingsPage } from "@/components/settings-page";
+import { RequestInspector } from "@/components/request-inspector";
 import { ToastHost } from "@/components/toast-host";
 import { WorktreePill } from "@/components/worktree-pill";
 import { SavedDraftRecovery } from "@/components/saved-draft-recovery";
@@ -366,6 +367,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
         )}
         {artifactCatalogMenu}
         <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
+        <RequestInspector store={paneSession.requestInspectorStore} />
         <IconButton
           data-cake-hint-key="t"
           tooltip="Terminal"

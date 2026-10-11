@@ -1,6 +1,7 @@
 import { Effect, Stream } from "effect";
 import * as cakeChatMetadata from "../../domain/cake-chats/cakeChatMetadata";
 import * as cakeChatOperations from "../../domain/cake-chats/cakeChatOperations";
+import * as requestInspection from "../../domain/cake-chats/requestInspection";
 import { CakeChatError } from "../cake-chat-data";
 import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeChatRuntime";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
@@ -22,6 +23,7 @@ const bindRenderer = (connectionId: number, sessionId: string) =>
 
 export const makeCakeChatHandlers = (configuration: CakeChatRuntimeConfiguration) =>
   CakeChatRpc.of({
+    "cakeChats.requestInspection": (input) => requestInspection.inspect(input),
     "cakeChats.observeCatalog": (query) =>
       Stream.unwrap(cakeChatMetadata.observeCatalog(query, configuration.location)),
     "cakeChats.inspect": ({ sessionId }) =>

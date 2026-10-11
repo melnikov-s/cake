@@ -27,6 +27,8 @@ See `AGENTS.md` for renderer implementation rules.
 Focusing it positions native forward Tab at the textarea without activating dictation;
 it does not add a tab stop or intercept normal Tab/Shift+Tab navigation.
 
+[`StructuredData`](../../src/renderer/components/ui/structured-data.tsx) provides lazy, lossless disclosure of JSON-like values, full-value search and embedded raster-image previews without fetching remote URLs. Use it for diagnostic structured payloads; syntax-highlighted source remains owned by AI Elements.
+
 ## Navigation and layout
 
 | Component                                                                                                                                    | Use for                                                                                   |

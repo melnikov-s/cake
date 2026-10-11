@@ -158,13 +158,16 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
               ),
             );
           return run(
-            models.complete({
-              selection: utilityModelSelection(model),
-              instructions: input.instructions,
-              context: input.context,
-              maximumOutputCharacters: 4_096,
-              timeoutMs: 120_000,
-            }),
+            models.complete(
+              {
+                selection: utilityModelSelection(model),
+                instructions: input.instructions,
+                context: input.context,
+                maximumOutputCharacters: 4_096,
+                timeoutMs: 120_000,
+              },
+              input.observeRequest,
+            ),
             { signal: input.signal },
           );
         },

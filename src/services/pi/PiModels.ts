@@ -17,6 +17,8 @@ import {
   type PiModelResolutionError,
 } from "../../contracts/pi/model-data";
 
+import type { ProviderRequestObservation } from "../../contracts/pi/request-observation";
+
 export interface PiProviderAuthInteraction {
   readonly request: (input: {
     readonly kind: "confirm" | "text" | "secret" | "select" | "manual_code";
@@ -48,7 +50,10 @@ export interface PiModelsAdapter {
     interaction: PiProviderAuthInteraction,
   ) => Effect.Effect<void, unknown>;
   readonly logout: (provider: string) => Effect.Effect<void, unknown>;
-  readonly complete: (input: BoundedCompletionInputValue) => Effect.Effect<string, unknown>;
+  readonly complete: (
+    input: BoundedCompletionInputValue,
+    observeRequest?: ProviderRequestObservation,
+  ) => Effect.Effect<string, unknown>;
 }
 
 export class PiModels extends Context.Service<
@@ -68,6 +73,7 @@ export class PiModels extends Context.Service<
     ) => Effect.Effect<ModelSelectionValue, PiModelCatalogError | PiModelResolutionError>;
     readonly complete: (
       input: BoundedCompletionInputValue,
+      observeRequest?: ProviderRequestObservation,
     ) => Effect.Effect<
       string,
       PiModelCatalogError | PiModelResolutionError | PiModelCompletionError
@@ -190,12 +196,15 @@ export const makePiModels = (adapter: PiModelsAdapter): PiModels["Service"] => {
     return decoded;
   });
 
-  const complete = Effect.fn("PiModels.complete")(function* (input: BoundedCompletionInputValue) {
+  const complete = Effect.fn("PiModels.complete")(function* (
+    input: BoundedCompletionInputValue,
+    observeRequest?: ProviderRequestObservation,
+  ) {
     const decoded = yield* Schema.decodeUnknownEffect(BoundedCompletionInput)(input).pipe(
       Effect.mapError((cause) => new PiModelCompletionError({ message: cause.message })),
     );
     yield* resolve(decoded.selection);
-    const text = yield* adapter.complete(decoded).pipe(
+    const text = yield* adapter.complete(decoded, observeRequest).pipe(
       Effect.mapError((cause) => new PiModelCompletionError({ message: messageOf(cause) })),
       Effect.timeout(decoded.timeoutMs),
       Effect.mapError((cause) =>

@@ -8,11 +8,21 @@ import {
   CakeChatTarget,
   CakeChatControlUpdate,
 } from "../cake-chat-data";
+import { RequestInspectionResult } from "../../contracts/conversations/request-inspection";
 import { CakeChatCatalogUpdate } from "../../contracts/application/catalog-data";
 import { TurnId } from "../conversation-data";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 
 export const CakeChatRpc = RpcGroup.make(
+  Rpc.make("cakeChats.requestInspection", {
+    payload: {
+      sessionId: CakeChatTarget.fields.sessionId,
+      action: Schema.Literals(["history", "payload", "clear"]),
+      id: Schema.optionalKey(Schema.String),
+    },
+    success: RequestInspectionResult,
+    error: CakeChatError,
+  }),
   Rpc.make("cakeChats.observeCatalog", {
     payload: CakeChatCatalogQuery,
     success: CakeChatCatalogUpdate,

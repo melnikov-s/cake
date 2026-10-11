@@ -1,3 +1,4 @@
+import { makeCakeChatDurableLive } from "../../../src/services/pi-durable/CakeChatDurable";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 import { WorkflowTestLive } from "../../app/helpers/workflowFixture";
 import { DiscussionSessionEnvironment } from "../../../src/services/discussion-sessions/DiscussionSessionEnvironment";
@@ -277,6 +278,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     coordinator,
     host,
     runtimes,
+    makeCakeChatDurableLive(),
     SessionCatalogChanges.layer,
     SubagentCoordinatorLive,
     AgentAvailability.layer,

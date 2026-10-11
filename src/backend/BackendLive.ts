@@ -113,7 +113,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
     makePiSettingsLive(paths.piAgent).pipe(Layer.provide(BootstrapLive)),
     makeMcpSettingsLayer(paths.piAgent),
     makePiAgentResourcesLive(paths.piAgent),
-    makeCakeSessionRuntimesLive().pipe(Layer.provide(makeCakeChatDurableLive())),
+    makeCakeSessionRuntimesLive().pipe(Layer.provideMerge(makeCakeChatDurableLive())),
     AgentAvailability.layer,
   );
 
