@@ -171,8 +171,20 @@ test("forks sessions across working directories", async () => {
     await expect(name).toBeVisible();
     await expect(name).toBeFocused();
     await expect(name).toHaveValue("plan-the-focused-fix");
-    await name.fill("focused-fix");
-    await expect(name).toHaveValue("focused-fix");
+    for (const invalidName of ["-leading-hyphen", "Uppercase", "under_score", "has space"]) {
+      await name.fill(invalidName);
+      await expect(name).toHaveValue(invalidName);
+      expect(await name.evaluate((input: HTMLInputElement) => input.validity.patternMismatch)).toBe(
+        true,
+      );
+      await dialog.getByRole("button", { name: "Fork conversation", exact: true }).click();
+      await expect(dialog).toBeVisible();
+    }
+    for (const validName of ["a", "0", "a".repeat(63), "focused-fix"]) {
+      await name.fill(validName);
+      await expect(name).toHaveValue(validName);
+      expect(await name.evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(true);
+    }
     await dialog
       .getByRole("switch", { name: "Resolve the parent conversation after forking" })
       .click();

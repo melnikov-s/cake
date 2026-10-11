@@ -182,7 +182,7 @@ export const SessionContinuationDialog = observer(function SessionContinuationDi
                   size="lg"
                   value={prompt.worktreeName}
                   onChange={(event) => store.setWorktreeName(event.target.value)}
-                  pattern="[a-z0-9][a-z0-9-]{0,62}"
+                  pattern={"[a-z0-9][a-z0-9\\-]{0,62}"}
                   maxLength={63}
                   required
                   autoFocus
