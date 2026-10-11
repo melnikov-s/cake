@@ -484,6 +484,13 @@ describe("Chat", () => {
 
     await act(async () => {
       container
+        .querySelector<HTMLButtonElement>(
+          '[data-slot="attachment-tile"] button[aria-haspopup="dialog"]',
+        )!
+        .click();
+    });
+    await act(async () => {
+      document
         .querySelector<HTMLButtonElement>('[aria-label="Open src/main.ts#L3-L4 in VS Code"]')!
         .click();
     });

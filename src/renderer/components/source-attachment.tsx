@@ -4,6 +4,8 @@ import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
 import { CloseIcon } from "./ui/icons";
+import { AttachmentTile } from "./ui/attachment-tile";
+import { Popover, PopoverContent } from "./ui/popover";
 
 /**
  * Composer context created from an embedded-VS-Code user selection. Implicit
@@ -14,10 +16,12 @@ export function SourceAttachment({
   attachment,
   onOpen,
   onRemove,
+  presentation = "context",
 }: {
   attachment: { name: string; location: SourceLocation; selectedText?: string; comment?: string };
   onOpen?(location: SourceLocation): void;
   onRemove?(): void;
+  presentation?: "context" | "attachment";
 }) {
   const start = attachment.location.range?.start;
   const end = attachment.location.range?.end;
@@ -42,6 +46,26 @@ export function SourceAttachment({
       ) : null}
     </>
   );
+  if (presentation === "attachment")
+    return (
+      <Popover>
+        <AttachmentTile name={label} popover onRemove={onRemove} />
+        <PopoverContent className="w-[min(36rem,90vw)]" data-cake-private-preview="true">
+          {content}
+          {onOpen && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              aria-label={`Open ${label} in VS Code`}
+              onClick={() => onOpen(attachment.location)}
+            >
+              Open in VS Code
+            </Button>
+          )}
+        </PopoverContent>
+      </Popover>
+    );
   const surface = "w-full rounded-lg border border-border bg-muted/40 px-3 py-2 text-left text-sm";
   return (
     <div className="relative w-full">

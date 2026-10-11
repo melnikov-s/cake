@@ -5,7 +5,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("opens attached images fullscreen from the entire thumbnail and from the transcript", async () => {
+test("opens attached images fullscreen from the uniform composer tile and from the transcript", async () => {
   test.setTimeout(60_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-chat-image-preview-"));
   const userData = join(temporaryRoot, "user-data");
@@ -83,10 +83,10 @@ test("opens attached images fullscreen from the entire thumbnail and from the tr
     await pasteImage();
     const preview = page.getByRole("button", { name: "View wide.png enlarged" });
     await expect(preview).toBeVisible();
-    const thumbnail = preview.locator("..");
-    const bounds = (await thumbnail.boundingBox())!;
-    expect(await preview.locator("img").boundingBox()).toEqual(await preview.boundingBox());
-    // Clicking the filename overlay must activate the image, not hit an inert label.
+    const tile = preview.locator("..");
+    const bounds = (await tile.boundingBox())!;
+    expect(bounds).toMatchObject({ width: 192, height: 80 });
+    // The whole label-first tile is the preview action, not just its text.
     await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height - 8);
     const fullscreen = page.getByRole("dialog", { name: "wide.png", exact: true });
     await expect(fullscreen).toBeVisible({ timeout: 3_000 });

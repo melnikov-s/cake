@@ -14,7 +14,7 @@ import { ScheduledPrompts } from "@/components/scheduled-prompts";
 import { RewordPromptDialog } from "@/components/reword-prompt-dialog";
 import { SourceAttachment } from "@/components/source-attachment";
 import { SubagentStatus } from "@/components/subagent-status";
-import { Chip } from "@/components/ui/chip";
+import { AttachmentTile } from "@/components/ui/attachment-tile";
 import { TextAttachment } from "./ui/text-attachment";
 import { ContentTransition } from "@/components/ui/content-transition";
 import { IconButton } from "@/components/ui/icon-button";
@@ -339,12 +339,13 @@ export const Chat = observer(function Chat({
           <p className="px-2 pb-1 text-xs text-muted-foreground">{store.attachmentNotice}</p>
         )}
         {!activatingDraft && store.attachments.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 px-1.5 pb-1.5 pt-0.5">
+          <div className="flex flex-wrap items-start gap-2 px-1.5 pb-1.5 pt-0.5">
             {store.attachments.map((attachment, index) =>
               attachment.kind === "annotation" ? null : attachment.kind === "source" ? (
                 <SourceAttachment
                   key={`${attachment.kind}-${attachment.name}-${index}`}
                   attachment={attachment}
+                  presentation="attachment"
                   onOpen={transcriptBehavior?.openSourceLocation}
                   onRemove={() => store.removeAttachment(index)}
                 />
@@ -356,36 +357,19 @@ export const Chat = observer(function Chat({
                   onRemove={() => store.removeAttachment(index)}
                 />
               ) : attachment.kind === "image" ? (
-                <div
-                  className="relative grid h-[82px] w-[112px] overflow-hidden rounded-[10px] border border-border bg-background"
+                <ImagePreview
                   key={`${attachment.kind}-${attachment.name}-${index}`}
-                >
-                  <ImagePreview
-                    src={`data:${attachment.mimeType};base64,${attachment.data}`}
-                    alt={attachment.name}
-                    className="h-full w-full rounded-none"
-                    imageClassName="h-full w-full object-cover"
-                  />
-                  <span className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between gap-1 overflow-hidden bg-gradient-to-t from-black/80 to-transparent px-1.5 pb-1 pt-3 font-sans text-xs text-white truncate">
-                    {attachment.name}
-                  </span>
-                  <IconButton
-                    className="absolute right-[3px] top-[3px] grid size-[18px] place-items-center rounded-full bg-black/70 p-0 text-[13px] leading-none text-white hover:bg-black/90 cursor-pointer"
-                    tooltip={`Remove ${attachment.name}`}
-                    onClick={() => store.removeAttachment(index)}
-                  >
-                    ×
-                  </IconButton>
-                </div>
+                  src={`data:${attachment.mimeType};base64,${attachment.data}`}
+                  alt={attachment.name}
+                  presentation="attachment"
+                  onRemove={() => store.removeAttachment(index)}
+                />
               ) : (
-                <Chip
+                <AttachmentTile
                   key={`${attachment.kind}-${attachment.name}-${index}`}
-                  onClick={() => store.removeAttachment(index)}
-                  className="font-mono text-xs"
-                  trailing={<span>×</span>}
-                >
-                  @ {attachment.name}
-                </Chip>
+                  name={attachment.name}
+                  onRemove={() => store.removeAttachment(index)}
+                />
               ),
             )}
           </div>

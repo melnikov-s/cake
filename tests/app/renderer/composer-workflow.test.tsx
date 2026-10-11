@@ -167,9 +167,9 @@ describe("Chat composer workflow", () => {
     await fixture.user.type(input(), "Compare these");
     await fixture.user.click(screen.getByRole("button", { name: "Attach files" }));
     await fixture.user.click(screen.getByRole("button", { name: "Attach files" }));
-    expect(screen.getAllByRole("button", { name: /@ notes\.txt/ })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Remove notes.txt" })).toHaveLength(2);
     expect(input().value).toBe("Compare these");
-    await fixture.user.click(screen.getAllByRole("button", { name: /@ notes\.txt/ })[0]!);
+    await fixture.user.click(screen.getAllByRole("button", { name: "Remove notes.txt" })[0]!);
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() =>
       expect(prompt).toHaveBeenCalledWith(
@@ -178,7 +178,7 @@ describe("Chat composer workflow", () => {
       ),
     );
     expect(input().value).toBe("");
-    expect(screen.queryByRole("button", { name: /@ notes\.txt/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Remove notes.txt" })).toBeNull();
   });
 
   it("restores consumed editor context on failure, then sends it once on retry", async () => {
@@ -284,6 +284,7 @@ describe("Chat composer workflow", () => {
     );
     using fixture = await renderComposer({ sessionChats: { prompt } }, { editor: true });
     fixture.annotateEditor("Rounding?");
+    await fixture.user.click(screen.getByRole("button", { name: /^src\/active\.ts/ }));
     expect(screen.getByText("Rounding?")).toBeDefined();
     expect(screen.getAllByRole("button", { name: /Remove.*active.ts/ })).toHaveLength(1);
     fixture.annotateEditor("Off by one?");

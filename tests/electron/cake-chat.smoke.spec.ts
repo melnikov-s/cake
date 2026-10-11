@@ -73,6 +73,8 @@ test("permanent Cake Chat retains its input, history and settings across restart
   const cakeHome = join(root, "cake-home");
   const userData = join(root, "user-data");
   const document = join(cakeHome, "state", "application.json");
+  const markdownFile = join(root, "requirements.md");
+  await writeFile(markdownFile, "# Task requirements\n\nInvestigate the build failure.\n");
   const activeDirectory = join(cakeHome, "pi", "global-chat", "sessions");
   const resolvedDirectory = join(cakeHome, "pi", "global-chat", "resolved-sessions");
   await Promise.all([
@@ -174,10 +176,18 @@ test("permanent Cake Chat retains its input, history and settings across restart
   let app = await launch();
   try {
     let page = await app.firstWindow();
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
     let input = page.getByRole("combobox", { name: "Message Cake Chat" });
     await input.click();
     await expect(input).toBeFocused();
+    await app.evaluate(({ dialog }, path) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
+    }, markdownFile);
+    await page.getByRole("button", { name: "Attach files", exact: true }).click();
+    await expect(
+      page.locator('[data-slot="attachment-tile"]').filter({ hasText: "requirements.md" }),
+    ).toBeVisible();
     const privateLog = "PRIVATE_SIDECAR_LOG\r\n" + "large log line\n".repeat(50);
     await input.evaluate((element, text) => {
       const clipboardData = new DataTransfer();
@@ -209,7 +219,46 @@ test("permanent Cake Chat retains its input, history and settings across restart
         new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
       );
     }, privateImage);
+    const imageTile = page.getByRole("button", { name: "View pixel.png enlarged", exact: true });
+    await expect(imageTile).toBeVisible();
+    const tiles = page.locator('.workbench-composer [data-slot="attachment-tile"]');
+    await expect(tiles).toHaveCount(3);
+    const geometry = await tiles.evaluateAll((elements) =>
+      elements.map((element) => {
+        const tile = element.getBoundingClientRect();
+        const remove = element.querySelector('[aria-label^="Remove "]')?.getBoundingClientRect();
+        const label = element
+          .querySelector('[data-slot="attachment-label"]')
+          ?.getBoundingClientRect();
+        return {
+          width: tile.width,
+          height: tile.height,
+          top: tile.top,
+          removeTop: remove ? remove.top - tile.top : null,
+          removeRight: remove ? tile.right - remove.right : null,
+          labelCenterX: label ? Math.round(label.left + label.width / 2 - tile.left) : null,
+          labelCenterY: label ? Math.round(label.top + label.height / 2 - tile.top) : null,
+        };
+      }),
+    );
+    expect(geometry).toEqual(Array.from({ length: 3 }, () => geometry[0]));
+    expect(geometry[0]).toMatchObject({
+      width: 192,
+      height: 80,
+      removeTop: 5,
+      removeRight: 5,
+      labelCenterX: 96,
+      labelCenterY: 40,
+    });
+    // The uniformly sized image tile still opens the original preview.
+    await imageTile.click();
     await expect(page.getByRole("img", { name: "pixel.png", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    // Removing one tile uses its corner control and leaves the others intact.
+    await page.getByRole("button", { name: "Remove requirements.md", exact: true }).click();
+    await expect(tiles).toHaveCount(2);
+    await expect(pastedChip).toBeVisible();
+    await expect(imageTile).toBeVisible();
     await input.click();
     await expect(input).toBeFocused();
     await input.pressSequentially("Discuss my priorities");

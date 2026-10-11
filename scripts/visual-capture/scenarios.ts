@@ -1512,7 +1512,7 @@ const taskInputAttachmentsScenario: VisualCaptureScenario = {
       );
     }, screenshot);
     await expect(
-      page.getByRole("img", { name: "build-screenshot.png", exact: true }),
+      page.getByRole("button", { name: "View build-screenshot.png enlarged", exact: true }),
     ).toBeVisible();
     const log = Array.from({ length: 72 }, (_, index) => {
       const time = `10:42:${String(index % 60).padStart(2, "0")}`;

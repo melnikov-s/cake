@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FullscreenSurface } from "@/components/fullscreen-surface";
 import { Button } from "@/components/ui/button";
+import { AttachmentTile } from "@/components/ui/attachment-tile";
 import { cn } from "@/lib/utils";
 
 /** Renders an image that opens in Cake's shared fullscreen surface. */
@@ -10,29 +11,42 @@ export function ImagePreview({
   caption,
   className,
   imageClassName,
+  presentation = "image",
+  onRemove,
 }: {
   src: string;
   alt: string;
   caption?: string;
   className?: string;
   imageClassName?: string;
+  presentation?: "image" | "attachment";
+  onRemove?(): void;
 }) {
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <Button
-        variant="ghost"
-        className={cn(
-          "inline-block h-auto max-w-full cursor-zoom-in overflow-hidden rounded-lg p-0 leading-none hover:bg-transparent",
-          className,
-        )}
-        aria-label={`View ${alt} enlarged`}
-        title="View enlarged"
-        onClick={() => setOpen(true)}
-      >
-        <img src={src} alt={alt} className={imageClassName} />
-      </Button>
+      {presentation === "attachment" ? (
+        <AttachmentTile
+          name={alt}
+          ariaLabel={`View ${alt} enlarged`}
+          onClick={() => setOpen(true)}
+          onRemove={onRemove}
+        />
+      ) : (
+        <Button
+          variant="ghost"
+          className={cn(
+            "inline-block h-auto max-w-full cursor-zoom-in overflow-hidden rounded-lg p-0 leading-none hover:bg-transparent",
+            className,
+          )}
+          aria-label={`View ${alt} enlarged`}
+          title="View enlarged"
+          onClick={() => setOpen(true)}
+        >
+          <img src={src} alt={alt} className={imageClassName} />
+        </Button>
+      )}
       {open ? (
         <FullscreenSurface
           eyebrow="Image preview"
