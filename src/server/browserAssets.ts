@@ -23,7 +23,8 @@ export interface BrowserAsset {
 }
 
 /** Immutable, bounded build inventory. Requests never read a caller-selected filesystem path.
- * Only the entry and emitted assets are public; source maps and arbitrary files are excluded.
+ * Only the entry, emitted assets and Excalidraw's fixed script/font routes are public;
+ * source maps and arbitrary files are excluded.
  */
 export const loadBrowserAssets = Effect.fn("BrowserAssets.load")(function* (directory: string) {
   return yield* Effect.tryPromise({
@@ -55,6 +56,26 @@ export const loadBrowserAssets = Effect.fn("BrowserAssets.load")(function* (dire
       for (const entry of await readdir(join(root, "assets"), { withFileTypes: true })) {
         if (!entry.isFile() || !/^[a-zA-Z0-9_.-]+$/.test(entry.name)) continue;
         await add(`/assets/${entry.name}`, join(root, "assets", entry.name));
+      }
+      const excalidrawRoot = join(root, "excalidraw");
+      const excalidraw = await readdir(excalidrawRoot, { withFileTypes: true }).catch(
+        (error: unknown) => {
+          if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
+          throw error;
+        },
+      );
+      for (const entry of excalidraw) {
+        if (entry.isFile() && entry.name === "configure-fonts.js")
+          await add("/excalidraw/configure-fonts.js", join(excalidrawRoot, entry.name));
+        if (!entry.isDirectory() || entry.name !== "fonts") continue;
+        const fontRoot = join(excalidrawRoot, "fonts");
+        for (const font of await readdir(fontRoot, { recursive: true, withFileTypes: true })) {
+          if (!font.isFile() || !font.name.endsWith(".woff2")) continue;
+          const fontPath = join(font.parentPath, font.name);
+          const route = relative(fontRoot, fontPath).replaceAll("\\", "/");
+          if (!route.split("/").every((part) => /^[a-zA-Z0-9_.-]+$/.test(part))) continue;
+          await add(`/excalidraw/fonts/${route}`, fontPath);
+        }
       }
       return assets;
     },
