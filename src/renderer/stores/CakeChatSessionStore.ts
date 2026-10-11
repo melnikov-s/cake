@@ -98,8 +98,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         inputLabel: () => "Message Cake Chat",
         addAttachments: () =>
           this.conversationSessionStore.composerStore.draftStore.addAttachments(),
-        attachmentNotice: () =>
-          "Attachments go to task sessions. Cake Chat doesn’t read their contents.",
         isDraftSession: () =>
           this.props.pendingSessions.conversation(this.sessionId)?.isDraft ?? false,
       },

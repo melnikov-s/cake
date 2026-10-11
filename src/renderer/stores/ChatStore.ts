@@ -86,7 +86,6 @@ export interface ChatStoreProps {
   addAttachments?(): Promise<void>;
   addPastedImages?(files: readonly File[]): Promise<void>;
   addPastedText?(text: string): void;
-  attachmentNotice?(): string;
   removeAttachment?(index: number): void;
   annotations?(): readonly Annotation[];
   addAnnotation?(annotation: Omit<Annotation, "id">): void;
@@ -250,9 +249,6 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
   get canPasteText() {
     return Boolean(this.props.addPastedText);
-  }
-  get attachmentNotice() {
-    return this.props.attachmentNotice?.();
   }
   addPastedText(text: string) {
     this.props.addPastedText?.(text);

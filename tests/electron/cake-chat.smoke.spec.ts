@@ -179,6 +179,17 @@ test("permanent Cake Chat retains its input, history and settings across restart
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
     let input = page.getByRole("combobox", { name: "Message Cake Chat" });
+    await expect(input).toBeVisible();
+    // An empty composer starts at the frame's normal inset, without a reserved header row.
+    const inputInset = await input.evaluate((element) => {
+      const frame = element.closest("form")!;
+      const style = getComputedStyle(frame);
+      return {
+        top: element.getBoundingClientRect().top - frame.getBoundingClientRect().top,
+        inset: parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop),
+      };
+    });
+    expect(inputInset.top).toBe(inputInset.inset);
     await input.click();
     await expect(input).toBeFocused();
     await app.evaluate(({ dialog }, path) => {

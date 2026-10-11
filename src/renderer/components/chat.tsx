@@ -335,9 +335,6 @@ export const Chat = observer(function Chat({
             onRemove={(id) => store.removeAnnotation(id)}
           />
         )}
-        {!activatingDraft && store.attachmentNotice && (
-          <p className="px-2 pb-1 text-xs text-muted-foreground">{store.attachmentNotice}</p>
-        )}
         {!activatingDraft && store.attachments.length > 0 && (
           <div className="flex flex-wrap items-start gap-2 px-1.5 pb-1.5 pt-0.5">
             {store.attachments.map((attachment, index) =>
