@@ -123,7 +123,7 @@ describe("Authority refresh workflow", () => {
 
     await fixture.user.click(screen.getByRole("button", { name: "New worktree" }));
     await fixture.user.click(screen.getByRole("button", { name: "Activate draft" }));
-    const merge = () => screen.getByRole("button", { name: "Merge", exact: true });
+    const merge = () => screen.getByRole("button", { name: "Merge" });
     await waitFor(() => expect(merge()).toHaveProperty("disabled", false));
     expect(screen.getByText("planned-work")).toBeDefined();
     expect(fixture.activate).toHaveBeenCalledWith(

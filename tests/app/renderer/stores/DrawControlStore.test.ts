@@ -149,7 +149,7 @@ describe("Draw control transport integration", () => {
     const started = deferred();
     const finishSave = deferred();
     let authorityBoard = board;
-    let persisted = document;
+    let persisted: DrawDocumentSnapshot = document;
     let requestedSave: Parameters<Client["draw"]["save"]>[0] | undefined;
     const save: Client["draw"]["save"] = async (input) => {
       requestedSave = input;

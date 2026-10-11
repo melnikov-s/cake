@@ -51,6 +51,6 @@ describe("SessionAssistantStore composer selection", () => {
       }),
       expect.any(Object),
     );
-    expect(prompt.mock.calls[0]?.[0].annotations).toBeUndefined();
+    expect(prompt.mock.calls[0]?.[0].attachments).toEqual([]);
   });
 });

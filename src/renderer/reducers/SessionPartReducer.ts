@@ -26,7 +26,13 @@ export function messageSnapshots(
     const identity = { id: projectionId(ownerId, part.id), partKey: part.id };
     if (part.kind === "text" || part.kind === "skill") {
       const { entryId, ...fields } = part;
-      return { ...fields, ...identity, piId: entryId };
+      return {
+        ...fields,
+        ...identity,
+        piId: entryId,
+        // Reused Models need an explicit reset when JSON omits the plain-text preference.
+        ...(part.kind === "text" ? { renderAs: part.renderAs } : null),
+      };
     }
     if (part.kind === "compaction") {
       const { firstKeptEntryId, ...fields } = part;

@@ -41,7 +41,13 @@ export function renderAppShellNavigation(client: TestClientOverrides = {}) {
       projectSessions: { open: async () => undefined, ...client.projectSessions },
       cakeChats: { open: async () => undefined, ...client.cakeChats },
       artifacts: {
-        catalog: async (request) => ({ ...request, items: [], total: 0 }),
+        catalog: async (request) => ({
+          offset: request.offset ?? 0,
+          limit: request.limit ?? 50,
+          items: [],
+          total: 0,
+          hasMore: false,
+        }),
         ...client.artifacts,
       },
       workspaces: {

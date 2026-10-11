@@ -29,16 +29,16 @@ afterEach(() => {
 
 const back = () => screen.getByRole("button", { name: "Go back in session history" });
 const forward = () => screen.getByRole("button", { name: "Go forward in session history" });
-const settings = () => screen.getAllByRole("button", { name: "Open settings", exact: true })[0]!;
+const settings = () => screen.getAllByRole("button", { name: "Open settings" })[0]!;
 const openLibrary = async (user: ReturnType<typeof renderAppShellNavigation>["user"]) => {
-  if (!screen.queryByRole("button", { name: "Browse all artifacts", exact: true })) {
+  if (!screen.queryByRole("button", { name: "Browse all artifacts" })) {
     await user.click(screen.getByRole("button", { name: /^(?:\d+ artifacts|Artifacts)$/ }));
   }
-  await user.click(screen.getByRole("button", { name: "Browse all artifacts", exact: true }));
+  await user.click(screen.getByRole("button", { name: "Browse all artifacts" }));
 };
 const sessionButton = (name: string) =>
   screen.getByRole("button", { name: new RegExp(`^${name} conversation `) });
-const cakeChatButton = () => screen.getByRole("button", { name: "Cake Chat", exact: true });
+const cakeChatButton = () => screen.getByRole("button", { name: "Cake Chat" });
 const expectProjectChat = async (name: string) => {
   expect(await screen.findByPlaceholderText(`Ask Cake to work in ${name}…`)).toBeDefined();
 };
@@ -123,9 +123,11 @@ describe("App shell navigation workflow", () => {
 
   it("returns from Settings and the artifact browser to the same project or Cake Chat and retains current-chat settings", async () => {
     const catalog = vi.fn<Client["artifacts"]["catalog"]>(async (request) => ({
-      ...request,
+      offset: request.offset ?? 0,
+      limit: request.limit ?? 50,
       items: [],
       total: 0,
+      hasMore: false,
     }));
     using fixture = renderAppShellNavigation({ artifacts: { catalog } });
     await fixture.user.click(sessionButton("alpha"));

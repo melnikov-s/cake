@@ -44,7 +44,6 @@ export function createComposerInputFixture(client: TestClientOverrides, parts: U
         applyConversationUpdate(session.model, {
           _tag: "Event",
           revision: ++revision,
-          sessionId: composerInputSessionId,
           event: { _tag: "PartUpdated", sessionId: composerInputSessionId, part },
         }),
       );

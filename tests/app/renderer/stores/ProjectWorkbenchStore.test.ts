@@ -345,6 +345,7 @@ describe("Draw document navigation integration", () => {
     const order: string[] = [];
     const open = vi.fn<Client["vscode"]["open"]>(async () => {
       order.push("editor-open");
+      return undefined;
     });
     const reveal = vi.fn<Client["vscode"]["reveal"]>(async () => {
       order.push("editor-reveal");

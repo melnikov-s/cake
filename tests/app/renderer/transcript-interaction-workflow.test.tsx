@@ -11,14 +11,14 @@ import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
 const sessionId = "transcript-interaction";
-const userMessage: Extract<UiPart, { kind: "text" }> = {
+const userMessage = {
   id: "saved-user",
   entryId: "user-entry",
   kind: "text",
   role: "user",
   text: "# Saved heading",
   status: "complete",
-};
+} satisfies Extract<UiPart, { kind: "text" }>;
 
 function renderTranscript(
   setUserMessageMarkdown: Client["sessionChats"]["setUserMessageMarkdown"],
@@ -64,7 +64,10 @@ function renderTranscript(
         applyConversationUpdate(session.model, {
           _tag: "Snapshot",
           revision: ++revision,
-          snapshot: { ...snapshot, parts: [{ ...userMessage, renderAs }] },
+          snapshot: {
+            ...snapshot,
+            parts: [{ ...userMessage, ...(renderAs ? { renderAs } : {}) }],
+          },
         });
       });
     },

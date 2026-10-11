@@ -1,8 +1,13 @@
 import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Schema } from "effect";
 import { StoreProvider } from "r-state-tree/react";
 import { vi } from "vitest";
 import type { JsonObject } from "../../../src/contracts/serialization/json-contract";
+import {
+  EditorSelectionOpenResult,
+  EditorSelectionState,
+} from "../../../src/contracts/editor/editor-selection";
 import type { Client } from "../../../src/renderer/client/Client";
 import { App } from "../../../src/renderer/components/app";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
@@ -75,8 +80,13 @@ export async function createSelectionCommandFixture(client: TestClientOverrides 
       },
     );
   try {
-    const entering = await invoke("vscode.enter");
-    if (!entering.ok) throw new Error("Could not enter editor presentation");
+    Schema.decodeUnknownSync(
+      Schema.Struct({
+        ok: Schema.Literal(true),
+        command: Schema.Literal("vscode.enter"),
+        entered: Schema.Literal(true),
+      }),
+    )(await invoke("vscode.enter"));
   } catch (error) {
     fixture[Symbol.dispose]();
     throw error;
@@ -87,15 +97,23 @@ export async function createSelectionCommandFixture(client: TestClientOverrides 
     highlights,
     invoke,
     async open(args: JsonObject = { path: "src/tour.ts", line: 2, endLine: 3 }) {
-      const result = await invoke("vscode.open", args);
-      if (!result.ok || result.command !== "vscode.open")
-        throw new Error("Could not open selection");
+      const result = Schema.decodeUnknownSync(
+        Schema.Struct({
+          ok: Schema.Literal(true),
+          command: Schema.Literal("vscode.open"),
+          selection: EditorSelectionOpenResult,
+        }),
+      )(await invoke("vscode.open", args));
       return result.selection;
     },
     async list() {
-      const result = await invoke("vscode.selections.list");
-      if (!result.ok || result.command !== "vscode.selections.list")
-        throw new Error("Could not list selections");
+      const result = Schema.decodeUnknownSync(
+        Schema.Struct({
+          ok: Schema.Literal(true),
+          command: Schema.Literal("vscode.selections.list"),
+          state: EditorSelectionState,
+        }),
+      )(await invoke("vscode.selections.list"));
       return result.state;
     },
   };
