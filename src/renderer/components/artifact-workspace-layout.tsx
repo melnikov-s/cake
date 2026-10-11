@@ -30,7 +30,7 @@ export const ArtifactWorkspaceLayout = observer(function ArtifactWorkspaceLayout
   session: ProjectSessionStore;
   inlineWidgets: InlineWidgetStore;
   onOpenSourceLocation?(location: SourceLocation): void;
-  onOpenLibrary(lineageId: string): void;
+  onOpenLibrary(lineageId?: string): void;
   showSelectionContextMenu?(input: {
     canChat: boolean;
     canAnnotate: boolean;
@@ -59,7 +59,7 @@ export const ArtifactWorkspaceLayout = observer(function ArtifactWorkspaceLayout
   return (
     <AccessoryPanelLayout
       dataSlot="artifact-workspace-layout"
-      open={workspace.open && workspace.records.length > 0}
+      open={workspace.open}
       width={workspace.width}
       resizeLabel="Resize artifact workspace"
       onWidthChange={(width) => workspace.setWidth(width)}
@@ -217,7 +217,7 @@ export const ArtifactWorkspaceLayout = observer(function ArtifactWorkspaceLayout
                         Unlink
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => onOpenLibrary(lineage.id)}>
-                        Open in Library
+                        Browse all artifacts
                       </Button>
                     </div>
                     {workspace.error && (
@@ -250,17 +250,29 @@ export const ArtifactWorkspaceLayout = observer(function ArtifactWorkspaceLayout
               </div>
             </div>
           ) : (
-            <nav className="h-full overflow-auto p-2" aria-label="Session artifacts">
-              {workspace.records.map((record) => (
-                <NavItem
-                  key={record.artifact.id}
-                  icon={<ArtifactIcon />}
-                  label={record.artifact.title ?? record.artifact.id}
-                  description={record.artifact.kind}
-                  onClick={() => workspace.openArtifact(record.artifact.id)}
-                />
-              ))}
-            </nav>
+            <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]">
+              <nav className="overflow-auto p-2" aria-label="Session artifacts">
+                {workspace.records.length === 0 && (
+                  <p className="p-4 text-center text-xs text-muted-foreground">
+                    No artifacts in this session yet.
+                  </p>
+                )}
+                {workspace.records.map((record) => (
+                  <NavItem
+                    key={record.artifact.id}
+                    icon={<ArtifactIcon />}
+                    label={record.artifact.title ?? record.artifact.id}
+                    description={record.artifact.kind}
+                    onClick={() => workspace.openArtifact(record.artifact.id)}
+                  />
+                ))}
+              </nav>
+              <div className="border-t border-border/65 p-3">
+                <Button variant="outline" className="w-full" onClick={() => onOpenLibrary()}>
+                  Browse all artifacts
+                </Button>
+              </div>
+            </div>
           )}
         </SidePanel>
       }

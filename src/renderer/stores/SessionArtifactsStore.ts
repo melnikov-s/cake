@@ -120,9 +120,7 @@ export class SessionArtifactsStore extends Store<{
 
   toggle() {
     if (this.open) this.close();
-    else if (this.records.length === 1) {
-      this.openArtifact(this.records[0]!.artifact.id);
-    } else {
+    else {
       this.showList();
       this.open = true;
     }

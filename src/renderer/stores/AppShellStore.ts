@@ -191,7 +191,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
   showArtifactLibrary() {
     this.markDepartingProjectSession();
     this.selection = { kind: "artifact-library" };
-    this.activeConversation = undefined;
+    // Like Settings, the artifact browser temporarily covers the current conversation.
   }
   showSettings() {
     this.markDepartingProjectSession();

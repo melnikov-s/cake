@@ -266,6 +266,17 @@ export class NavigationStore extends Store<{
       workbench.sessionContinuationStore.cancelPrompt();
       return;
     }
+    if (this.props.shell.surface === "artifact-library") {
+      this.returnToWorkbench();
+      return;
+    }
+    if (
+      this.props.shell.surface === "workbench" &&
+      workbench.activeSession?.sessionArtifactsStore.open
+    ) {
+      workbench.activeSession.sessionArtifactsStore.close();
+      return;
+    }
     if (workbench.presentationStore.embeddedEditorStore.visible) {
       workbench.presentationStore.backToAgent();
       return;

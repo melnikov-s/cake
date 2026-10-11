@@ -5,7 +5,6 @@ import { DisclosureTrigger } from "./ui/disclosure-trigger";
 import { NavigationHighlight } from "./ui/navigation-highlight";
 import { IconButton } from "./ui/icon-button";
 import {
-  ArtifactIcon,
   BackIcon,
   BellIcon,
   FolderPlusIcon,
@@ -40,7 +39,6 @@ export const Sidebar = observer(function Sidebar({
   projectSettings,
   appearance,
   onOpenSettings,
-  onOpenArtifactLibrary,
   onOpenCakeChat,
   onNewSession,
   onOpenSession,
@@ -61,7 +59,6 @@ export const Sidebar = observer(function Sidebar({
   projectSettings: ProjectSettingsStore;
   appearance: AppearanceSettingsStore;
   onOpenSettings: () => void;
-  onOpenArtifactLibrary?(): void;
   onOpenCakeChat(sessionId?: string): void;
   onNewSession(): void;
   onOpenSession(sessionId: string): void;
@@ -283,19 +280,6 @@ export const Sidebar = observer(function Sidebar({
       </div>
       {!focusMode && (
         <div className="min-h-[52px] border-t border-border/65 px-3 py-2 text-muted-foreground">
-          <Button
-            variant="ghost"
-            className={cn(
-              "h-9 w-full justify-start gap-2 px-2 text-[13px] font-medium text-muted-foreground hover:bg-sidebar-hover hover:text-foreground",
-              shell.selection.kind === "artifact-library" && "bg-sidebar-hover text-foreground",
-            )}
-            aria-label="Open Artifact Library"
-            aria-current={shell.selection.kind === "artifact-library" ? "page" : undefined}
-            onClick={() => onOpenArtifactLibrary?.()}
-          >
-            <ArtifactIcon />
-            <span>Artifact Library</span>
-          </Button>
           <Button
             variant="ghost"
             className={cn(

@@ -334,7 +334,17 @@ test("permanent Cake Chat retains its input, history and settings across restart
         .click();
       await expect(queue.getByRole("listitem")).toHaveCount(5 - index);
     }
-    await page.getByRole("button", { name: "Open Artifact Library", exact: true }).click();
+    await page.getByRole("button", { name: "Artifacts", exact: true }).click();
+    await page.getByRole("button", { name: "Browse all artifacts", exact: true }).click();
+    await expect(page.getByLabel("Search artifact library")).toBeVisible();
+    await page.getByRole("button", { name: "Close all artifacts", exact: true }).click();
+    await expect(page.locator('[data-slot="workspace"]')).toHaveAttribute(
+      "data-session-id",
+      CAKE_CHAT_SESSION_ID,
+    );
+    await expect(input).toBeVisible();
+    await page.getByRole("button", { name: "Artifacts", exact: true }).click();
+    await page.getByRole("button", { name: "Browse all artifacts", exact: true }).click();
     await expect(coordinator.getByRole("img", { name: "Running" })).toBeVisible();
     releaseFirstReply?.();
     await expect(coordinator.getByRole("img", { name: "Ready, unread" })).toBeVisible();

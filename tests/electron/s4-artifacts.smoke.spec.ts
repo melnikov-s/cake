@@ -59,7 +59,23 @@ test("opens the artifact workspace and isolates HTML", async () => {
     const page = await application.firstWindow();
     await page.setViewportSize({ width: 1_600, height: 1_000 });
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole("button", { name: "0 artifacts" })).not.toBeAttached();
+    const emptyArtifactControl = page.getByRole("button", { name: "0 artifacts" });
+    await expect(emptyArtifactControl).toBeVisible();
+    await emptyArtifactControl.click();
+    await expect(page.getByText("No artifacts in this session yet.")).toBeVisible();
+    await page.getByRole("button", { name: "Browse all artifacts" }).click();
+    await expect(page.getByLabel("Search artifact library")).toBeVisible();
+    await page.getByRole("button", { name: "Close all artifacts" }).click();
+    await expect(page.getByLabel("Message")).toBeVisible();
+    await page.getByRole("button", { name: "Browse all artifacts" }).click();
+    await page.getByLabel("Search artifact library").focus();
+    await page.keyboard.press("Escape");
+    await expect(page.getByLabel("Message")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator('[data-slot="artifact-workspace-layout"]')).toHaveAttribute(
+      "data-presentation",
+      "closed",
+    );
 
     await page.getByLabel("Message").fill("/cake-artifacts");
     await page.getByRole("button", { name: "Send" }).click();
@@ -70,7 +86,7 @@ test("opens the artifact workspace and isolates HTML", async () => {
     if ((await artifactWorkspace.getAttribute("data-presentation")) === "closed")
       await artifactControl.click();
     await expect(artifactWorkspace).toHaveAttribute("data-presentation", "side-by-side");
-    const allArtifacts = page.getByRole("button", { name: "All artifacts" });
+    const allArtifacts = page.getByRole("button", { name: "All artifacts", exact: true });
     if (await allArtifacts.isVisible()) await allArtifacts.click();
     await page.getByRole("button", { name: "S4 table" }).click();
     const showInfo = page.getByRole("button", { name: "Show artifact info" });
@@ -153,7 +169,7 @@ test("opens the artifact workspace and isolates HTML", async () => {
     await expect(draftInput).toHaveValue("Why is Alpha here?");
     await expect(sideChat.getByRole("button", { name: "Send" })).toBeEnabled();
 
-    await page.getByRole("button", { name: "All artifacts" }).click();
+    await allArtifacts.click();
     await page.getByRole("button", { name: "S4 widget" }).click();
     const widget = page.locator('[data-artifact-id="cake-s4-widget"]');
     await expect(widget.locator("iframe")).toBeVisible();
@@ -166,10 +182,10 @@ test("opens the artifact workspace and isolates HTML", async () => {
     await fullscreen.getByRole("button", { name: "Exit fullscreen S4 widget" }).click();
     await expect(fullscreen).not.toBeAttached();
 
-    await page.getByRole("button", { name: "All artifacts" }).click();
+    await allArtifacts.click();
     await page.getByRole("button", { name: "S4 diagram" }).click();
     await expect(page.locator('[data-artifact-id="cake-s4-diagram"] iframe')).toBeVisible();
-    await page.getByRole("button", { name: "All artifacts" }).click();
+    await allArtifacts.click();
     await page.getByRole("button", { name: "Sandboxed HTML" }).click();
     const html = page.locator('[data-artifact-id="cake-s4-html"] iframe');
     await expect(html).toHaveAttribute("sandbox", "");
@@ -234,8 +250,12 @@ test("opens the artifact workspace and isolates HTML", async () => {
     await expect(linkedArtifactControl).toBeVisible();
     if ((await artifactWorkspace.getAttribute("data-presentation")) === "closed")
       await linkedArtifactControl.click();
+    await expect(page.getByRole("navigation", { name: "Session artifacts" })).toBeVisible();
+    await page
+      .getByRole("navigation", { name: "Session artifacts" })
+      .getByRole("button", { name: "Sandboxed HTML" })
+      .click();
     await expect(page.locator('[data-artifact-id="cake-s4-html"] iframe')).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Session artifacts" })).not.toBeAttached();
     await page.getByRole("button", { name: "Show artifact info" }).click();
     const copyReadablePath = page.getByRole("button", { name: "Copy readable path" });
     await copyReadablePath.click();
@@ -244,8 +264,8 @@ test("opens the artifact workspace and isolates HTML", async () => {
       page.getByText("Could not materialize artifact", { exact: false }),
     ).not.toBeAttached();
 
-    await page.getByRole("button", { name: "Open in Library" }).click();
-    await expect(page.locator('[data-slot="workspace-header"]')).toContainText("Artifact Library");
+    await page.getByRole("button", { name: "Browse all artifacts" }).click();
+    await expect(page.locator('[data-slot="workspace-header"]')).toContainText("All artifacts");
     await expect(page.getByLabel("Search artifact library")).toBeVisible();
     await expect(page.locator('[data-artifact-id="cake-s4-html"] iframe')).toBeVisible();
 

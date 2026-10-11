@@ -26,6 +26,7 @@ import {
   BrowserIcon,
   ChangesIcon,
   ChatIcon,
+  CloseIcon,
   FolderIcon,
   SettingsIcon,
   SidebarIcon,
@@ -57,6 +58,7 @@ import { TreeNavigationDialog } from "@/components/tree-navigation-dialog";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
 import { ArtifactWorkspaceLayout } from "@/components/artifact-workspace-layout";
 import { ArtifactLibrary } from "@/components/artifact-library";
+import { ArtifactCatalogMenu } from "@/components/artifact-catalog-menu";
 import { BlockingInterviews } from "@/components/blocking-interviews";
 import { UiDialog } from "@/components/ui-dialog";
 import { CommandPane } from "@/components/command-pane";
@@ -175,7 +177,13 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     [sidebar.focusModeProjectPath, sidebarMax],
   );
   const openSettings = useCallback(() => root.navigationStore.showSettings(), [root]);
-  const openArtifactLibrary = useCallback(() => root.navigationStore.showArtifactLibrary(), [root]);
+  const openArtifactLibrary = useCallback(
+    (lineageId?: string) => root.navigationStore.showArtifactLibrary(undefined, lineageId),
+    [root],
+  );
+  const artifactCatalogMenu = (
+    <ArtifactCatalogMenu store={root.artifactLibraryStore} onOpenLibrary={openArtifactLibrary} />
+  );
   const openCakeChat = useCallback(
     (sessionId?: string) => {
       void root.navigationStore.openCakeChat(sessionId);
@@ -356,6 +364,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
             <SidebarIcon />
           </IconButton>
         )}
+        {artifactCatalogMenu}
         <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
         <IconButton
           data-cake-hint-key="t"
@@ -413,7 +422,6 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       appearance={root.settingsStore.appearance}
       onToggle={toggleSidebar}
       onOpenSettings={openSettings}
-      onOpenArtifactLibrary={openArtifactLibrary}
       onOpenCakeChat={openCakeChat}
       onNewSession={() => root.newSessionStore.show()}
       onOpenSession={openSession}
@@ -509,7 +517,6 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
   ) : undefined;
   const artifactControl = (paneSession: NonNullable<typeof session>, onOpen?: () => void) => {
     const workspace = paneSession.sessionArtifactsStore;
-    if (workspace.records.length === 0) return null;
     return (
       <Button
         variant="ghost"
@@ -1067,13 +1074,19 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
                 {surface === "settings"
                   ? "Settings"
                   : surface === "artifact-library"
-                    ? "Artifact Library"
+                    ? "All artifacts"
                     : surface === "cake-chat"
                       ? "Cake Chat"
                       : (extensionUi.title ?? (session ? store.sessionTitle : "Cake"))}
               </strong>
             </div>
             <div className="flex min-w-0 shrink-0 items-center gap-1.5 [app-region:no-drag]">
+              {surface !== "artifact-library" && artifactCatalogMenu}
+              {surface === "artifact-library" && (
+                <IconButton tooltip="Close all artifacts" onClick={returnToWorkbench}>
+                  <CloseIcon />
+                </IconButton>
+              )}
               {terminal.available && (
                 <IconButton
                   data-cake-hint-key="t"
