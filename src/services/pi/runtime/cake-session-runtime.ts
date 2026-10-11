@@ -155,11 +155,7 @@ export type CakeSessionRuntimeEvent =
   | { type: "usage-updated"; sessionId: string; usage: SessionUsage }
   | { type: "extension-ui"; sessionId: string; event: ExtensionUiEvent };
 
-/**
- * Proposed replacement for captured familyInfo/deferResolution options.
- * At approved cutover, currentSessionControl composes this contract and deletes
- * the old fields. Merely reading policy does not authorize a later mutation.
- */
+/** Live policy queries do not authorize a later mutation. */
 export interface ProjectSessionLivePolicyControl {
   readPolicy(): Promise<ProjectSessionAgentPolicy>;
   resolveDeferredStandalone(): Promise<void>;
@@ -239,11 +235,9 @@ export interface CakeSessionRuntimeOptions {
     signal?: AbortSignal;
   }): Promise<void>;
   sessionTitleChanged?(sessionId: string, title: string): Promise<void>;
-  currentSessionControl?: {
+  currentSessionControl?: ProjectSessionLivePolicyControl & {
     resolved(): boolean;
     canResolve?(): boolean;
-    familyInfo?(): JsonValue;
-    deferResolution?: boolean;
     setResolved(resolved: boolean): Promise<void>;
     createSession?(
       input: {
@@ -746,7 +740,7 @@ export async function createCakeSessionRuntime(
 
   capabilities.operationApi.current = {
     resolveModelSelection: configuration.resolveModelSelection,
-    info() {
+    async info() {
       const firstUserMessage = session.sessionManager
         .getBranch()
         .flatMap((entry) =>
@@ -772,7 +766,7 @@ export async function createCakeSessionRuntime(
           reasoning: session.thinkingLevel,
         },
       };
-      const family = options.currentSessionControl?.familyInfo?.();
+      const family = (await options.currentSessionControl?.readPolicy())?.family;
       return Schema.decodeUnknownSync(jsonValueSchema)(
         family === undefined ? info : { ...info, family },
       );

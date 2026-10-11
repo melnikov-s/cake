@@ -354,7 +354,7 @@ function reviewContextExtension(
 }
 
 interface RuntimeOperationApi {
-  info(): JsonValue;
+  info(): Promise<JsonValue>;
   usage(): JsonValue;
   contextStatus(): JsonValue;
   compact(instructions?: string): Promise<JsonValue>;

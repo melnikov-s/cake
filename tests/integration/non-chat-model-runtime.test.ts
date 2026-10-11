@@ -216,6 +216,8 @@ describe("Native non-chat model settings contract", () => {
       currentSessionControl: {
         resolved: () => false,
         setResolved: async () => {},
+        readPolicy: async () => ({ canFork: true, deferResolution: true }),
+        resolveDeferredStandalone: async () => {},
         invokeAppControl: async (command, input, signal) => {
           signal.throwIfAborted();
           const invocation = await Schema.decodeUnknownPromise(AgentSettingsInvocation)(
@@ -287,6 +289,8 @@ describe("Native non-chat model settings contract", () => {
       currentSessionControl: {
         resolved: () => false,
         setResolved: async () => {},
+        readPolicy: async () => ({ canFork: true, deferResolution: true }),
+        resolveDeferredStandalone: async () => {},
         invokeAppControl: async () => {
           throw new Error("Restricted settings must not dispatch");
         },

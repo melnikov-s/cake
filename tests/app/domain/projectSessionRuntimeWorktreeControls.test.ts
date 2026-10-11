@@ -103,6 +103,7 @@ describe("Project Session runtime worktree controls", () => {
             workingDirectory,
             resolvedSessionIds: [],
             failures: [],
+            cleanupFailures: [],
           }),
       }),
       familyStorageHarness().layer,

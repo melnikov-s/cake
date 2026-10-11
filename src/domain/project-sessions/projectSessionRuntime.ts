@@ -1,6 +1,7 @@
 import * as sessionFamilies from "../session-families/sessionFamilies";
 import { substantiveTurnResult } from "../../contracts/pi/turn-result-data";
-import { SessionTaskOutcome } from "../../contracts/project-sessions/session-reporting";
+import * as sessionFamilyMessaging from "../session-families/sessionFamilyMessaging";
+import * as projectSessionAgentPolicy from "./projectSessionAgentPolicy";
 import { resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import * as projectSessionLocations from "./projectSessionLocations";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
@@ -25,11 +26,6 @@ import {
   patchSessionPluginState,
   upsertSessionPlugin,
 } from "../application/application";
-import {
-  crossSessionContextSnapshot,
-  encodeCrossSessionMessage,
-  type CrossSessionContextSnapshot,
-} from "../../contracts/conversations/cross-session-message";
 import type { ProjectSessionLocation } from "../../ipc/project-session-data";
 import { makeSubagentControl } from "../subagents/subagentControl";
 import * as workflowControl from "../workflows/workflow-control";
@@ -58,11 +54,7 @@ import { ApplicationState } from "../../services/storage/ApplicationState";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { resolutionNamespace } from "./projectSessionResolution";
-import {
-  SessionFamilyStorage,
-  familyChildren,
-  familyMember,
-} from "../../services/storage/SessionFamilyStorage";
+import { SessionFamilyStorage, familyMember } from "../../services/storage/SessionFamilyStorage";
 import type { SubagentCoordinator } from "../../services/subagents/SubagentCoordinator";
 import type { SubagentEnvironment } from "../../services/subagents/SubagentEnvironment";
 import { VsCodeServer } from "../../services/vscode/VsCodeServer";
@@ -77,21 +69,6 @@ import {
   EditorSelectionState,
   EditorSelectionUpdate,
 } from "../../ipc/editor-selection";
-
-const FamilyMessageInput = Schema.Struct({
-  sessionId: Schema.optionalKey(
-    Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
-  ),
-  text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
-  delivery: Schema.optionalKey(Schema.Literals(["prompt", "queue", "steer"])),
-  threadId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
-  maxMessages: Schema.optionalKey(
-    Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
-  ),
-  expectsResponse: Schema.optionalKey(Schema.Boolean),
-  replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
-  outcome: Schema.optionalKey(SessionTaskOutcome),
-});
 
 class ProjectSessionRuntimeCompositionError extends Schema.TaggedError<ProjectSessionRuntimeCompositionError>()(
   "ProjectSessionRuntimeCompositionError",
@@ -113,7 +90,24 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   readonly location: ProjectSessionLocation;
   readonly sessionId: string;
   readonly newSession: boolean;
-}) {
+}): Effect.fn.Return<
+  CakeSessionRuntimeAcquireOptions,
+  ProjectSessionRuntimeCompositionError,
+  | ApplicationState
+  | PiModels
+  | CakeSessionRuntimes
+  | ProjectAccess
+  | ProjectSessionConfiguration
+  | ProjectSessionRuntimeHost
+  | SessionCatalogChanges
+  | SessionFamilyStorage
+  | SessionArchiveStorage
+  | SubagentCoordinator
+  | SubagentEnvironment
+  | ManagedWorktrees
+  | Terminal
+  | TaskInputStorage
+> {
   const access = yield* ProjectAccess;
   const application = yield* ApplicationState;
   const archive = yield* SessionArchiveStorage;
@@ -416,18 +410,14 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         // Family lifecycle always goes through the root authority below.
         resolved: () => false,
         canResolve: () => true,
-        familyInfo: family
-          ? () => {
-              const info = {
-                familyId: family.familyId,
-                parentSessionId: member?.parentSessionId ?? family.parentSessionId,
-                role: isChild ? "child" : "root",
-                childSessionIds: familyChildren(family, sessionId).map((child) => child.sessionId),
-              };
-              return toJsonValue(info);
-            }
-          : undefined,
-        deferResolution: family === undefined,
+        readPolicy: () => run(projectSessionAgentPolicy.read(sessionId)),
+        resolveDeferredStandalone: () =>
+          run(
+            projectSessionLifecycle.resolveDeferredStandalone({
+              sessionId,
+              workingDirectory: location.workingDirectory,
+            }),
+          ),
         setResolved: (resolved) =>
           run(
             (resolved ? projectSessionLifecycle.resolve : projectSessionLifecycle.restore)({
@@ -549,92 +539,88 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
               .catch(() => undefined);
           return toJsonValue(result);
         },
-        forkSession: family
-          ? undefined
-          : async (input) => {
-              const destinationWorkingDirectory =
-                input.destinationWorkingDirectory ?? location.workingDirectory;
-              if (Option.isNone(artifactStorage))
-                throw new Error("Artifact storage is unavailable");
-              const result = await run(
-                Effect.scoped(
-                  projectSessionContinuations
-                    .fork({
-                      target: { sessionId, workingDirectory: location.workingDirectory },
-                      entryId: input.entryId,
-                      destinationWorkingDirectory,
-                      resolveSource: input.resolveSource,
-                    })
-                    .pipe(Effect.provideService(ArtifactStorage, artifactStorage.value)),
-                ),
-              );
-              await run(
-                Effect.scoped(
-                  Effect.gen(function* () {
-                    const destination = (yield* projectSessionLocations.locations()).find(
-                      (candidate) =>
-                        candidate.workingDirectory === destinationWorkingDirectory &&
-                        candidate.projectPath === location.projectPath,
-                    );
-                    if (!destination)
-                      return yield* compositionError(
-                        "fork",
-                        "Destination Working Directory unavailable",
-                      );
-                    yield* projectSessionOperations.acquireTarget(
-                      destination,
-                      result.sessionId,
-                      false,
-                    );
+        forkSession: async (input) => {
+          const destinationWorkingDirectory =
+            input.destinationWorkingDirectory ?? location.workingDirectory;
+          if (Option.isNone(artifactStorage)) throw new Error("Artifact storage is unavailable");
+          const result = await run(
+            Effect.scoped(
+              projectSessionAgentPolicy.assertCanFork(sessionId).pipe(
+                Effect.andThen(
+                  projectSessionContinuations.fork({
+                    target: { sessionId, workingDirectory: location.workingDirectory },
+                    entryId: input.entryId,
+                    destinationWorkingDirectory,
+                    resolveSource: input.resolveSource,
                   }),
                 ),
-              );
-              if (input.title)
-                await run(
-                  Effect.scoped(
-                    projectSessionOperations.rename(
-                      {
-                        sessionId: result.sessionId,
-                        workingDirectory: destinationWorkingDirectory,
-                      },
-                      input.title,
-                    ),
-                  ),
+                Effect.provideService(ArtifactStorage, artifactStorage.value),
+              ),
+            ),
+          );
+          await run(
+            Effect.scoped(
+              Effect.gen(function* () {
+                const destination = (yield* projectSessionLocations.locations()).find(
+                  (candidate) =>
+                    candidate.workingDirectory === destinationWorkingDirectory &&
+                    candidate.projectPath === location.projectPath,
                 );
-              if (input.prompt)
-                await run(
-                  Effect.scoped(
-                    sessionChats.deliver(
-                      {
-                        sessionId: result.sessionId,
-                        text: input.prompt,
-                        attachments: [],
-                        renderUserMessageAsMarkdown: false,
-                      },
-                      "prompt",
-                    ),
-                  ),
-                );
-              if (input.placement !== "none")
-                void runtimeIntegrations
-                  .requestApplicationControl(
-                    {
-                      _tag: "PresentForkSession",
-                      sourceSessionId: sessionId,
-                      forkSessionId: result.sessionId,
-                      workingDirectory: destinationWorkingDirectory,
-                      placement: input.placement,
-                    },
-                    new AbortController().signal,
-                  )
-                  .catch(() => undefined);
-              return toJsonValue({
-                ok: true,
-                sessionId: result.sessionId,
-                placement: input.placement,
-                sourceResolved: input.resolveSource,
-              });
-            },
+                if (!destination)
+                  return yield* compositionError(
+                    "fork",
+                    "Destination Working Directory unavailable",
+                  );
+                yield* projectSessionOperations.acquireTarget(destination, result.sessionId, false);
+              }),
+            ),
+          );
+          if (input.title)
+            await run(
+              Effect.scoped(
+                projectSessionOperations.rename(
+                  {
+                    sessionId: result.sessionId,
+                    workingDirectory: destinationWorkingDirectory,
+                  },
+                  input.title,
+                ),
+              ),
+            );
+          if (input.prompt)
+            await run(
+              Effect.scoped(
+                sessionChats.deliver(
+                  {
+                    sessionId: result.sessionId,
+                    text: input.prompt,
+                    attachments: [],
+                    renderUserMessageAsMarkdown: false,
+                  },
+                  "prompt",
+                ),
+              ),
+            );
+          if (input.placement !== "none")
+            void runtimeIntegrations
+              .requestApplicationControl(
+                {
+                  _tag: "PresentForkSession",
+                  sourceSessionId: sessionId,
+                  forkSessionId: result.sessionId,
+                  workingDirectory: destinationWorkingDirectory,
+                  placement: input.placement,
+                },
+                new AbortController().signal,
+              )
+              .catch(() => undefined);
+          return toJsonValue({
+            ok: true,
+            sessionId: result.sessionId,
+            placement: input.placement,
+            sourceResolved: input.resolveSource,
+          });
+        },
         pendingMessages: (targetSessionId, signal) =>
           run(
             Effect.scoped(
@@ -723,225 +709,22 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
             keepBranch,
           });
         },
-        routeFamilyMessage: (
-          command,
-          untrustedInput,
-          signal,
-          senderContext?: CrossSessionContextSnapshot,
-        ) =>
+        routeFamilyMessage: (command, untrustedInput, signal, senderContext) =>
           run(
             Effect.scoped(
-              Effect.gen(function* () {
-                const input = yield* Schema.decodeUnknownEffect(FamilyMessageInput)(
-                  untrustedInput,
-                ).pipe(Effect.mapError((cause) => compositionError("familyMessage", cause)));
-                const family = yield* families
-                  .familyForMember(sessionId)
-                  .pipe(Effect.mapError((cause) => compositionError("familyMessage", cause)));
-                const spawnedResult = yield* sessionFamilies.routeCoordinatorMessage(
-                  sessionId,
-                  command,
-                  input,
-                  location,
-                  senderContext,
-                );
-                if (spawnedResult !== undefined) return spawnedResult;
-                if (!family) return undefined;
-                const executingTurnIds =
-                  command === "sessions.reply"
-                    ? yield* sessions.executingTurnIds({
-                        sessionId,
-                        workingDirectory: location.workingDirectory,
-                        sessionDirectory: location.sessionDirectory,
-                      })
-                    : [];
-                const pending =
-                  command === "sessions.reply"
-                    ? yield* families.pendingResponseRequest(
-                        sessionId,
-                        executingTurnIds,
-                        input.threadId,
-                        input.replyToMessageId,
-                      )
-                    : undefined;
-                if (command === "sessions.reply" && !pending) return undefined;
-                if (pending?.completionContract && pending.outcome === undefined && input.outcome) {
-                  if (!substantiveTurnResult({ stopReason: "stop", text: input.text }))
-                    return yield* compositionError(
-                      "familyMessage",
-                      "A terminal report must contain substantive findings, changes, or a blocker",
-                    );
-                  yield* families.recordReport(pending.turnId, {
-                    outcome: input.outcome,
-                    text: input.text,
-                  });
-                  return toJsonValue({
-                    ok: true,
+              Schema.decodeUnknownEffect(sessionFamilyMessaging.FamilyMessageInput)(
+                untrustedInput,
+              ).pipe(
+                Effect.mapError((cause) => compositionError("familyMessage", cause)),
+                Effect.flatMap((input) =>
+                  sessionFamilyMessaging.route(
+                    { sessionId, location },
                     command,
-                    status: "report-recorded",
-                    expectsResponse: false,
-                  });
-                }
-                const targetSessionId = pending?.senderSessionId ?? input.sessionId;
-                if (!targetSessionId)
-                  return yield* compositionError("familyMessage", "A target session is required");
-                const destinationMember = familyMember(family, targetSessionId);
-                if (!destinationMember) return undefined;
-                const destinationLocation = (yield* projectSessionLocations.locations({
-                  includeInactive: true,
-                })).find(
-                  (candidate) =>
-                    candidate.projectPath === family.projectPath &&
-                    candidate.workingDirectory === destinationMember.workingDirectory,
-                );
-                if (!destinationLocation)
-                  return yield* compositionError(
-                    "familyMessage",
-                    `Working Directory unavailable: ${destinationMember.workingDirectory}`,
-                  );
-                const namespace = yield* resolutionNamespace(targetSessionId, {
-                  cwd: destinationMember.workingDirectory,
-                  activeRoot: configuration.sessionDirectory,
-                  resolvedRoot: configuration.resolvedSessionDirectory,
-                }).pipe(Effect.mapError((cause) => compositionError("familyMessage", cause)));
-                if (namespace === "resolved")
-                  return yield* compositionError(
-                    "familyMessage",
-                    `Session Family ${family.familyId} is resolved; restore it explicitly before messaging`,
-                  );
-                if (!namespace)
-                  return yield* compositionError(
-                    "familyMessage",
-                    `Family member ${targetSessionId} could not be found`,
-                  );
-                const destination = yield* sessions.acquire(
-                  yield* acquireOptions({
-                    location: destinationLocation,
-                    sessionId: targetSessionId,
-                    newSession: false,
-                  }),
-                );
-                yield* inheritTaskInputProtection(sessionId, targetSessionId).pipe(
-                  Effect.mapError((error) => compositionError("familyMessage", error)),
-                );
-                const destinationSnapshot = yield* destination.snapshot();
-                const senderSummary = yield* sessions
-                  .catalogEntry(
-                    {
-                      workingDirectory: location.workingDirectory,
-                      sessionDirectory: location.sessionDirectory,
-                    },
-                    sessionId,
-                  )
-                  .pipe(Effect.catch(() => Effect.succeed(undefined)));
-                const messageId = crypto.randomUUID();
-                const threadId = pending?.threadId ?? input.threadId ?? crypto.randomUUID();
-                const replyToMessageId = pending?.requestMessageId ?? input.replyToMessageId;
-                const expectsResponse = input.expectsResponse ?? command === "sessions.send";
-                const messageMetadata = {
-                  version: 1 as const,
-                  messageId,
-                  threadId,
-                  sequence: 1,
-                  expectsResponse,
-                  ...(replyToMessageId ? { replyToMessageId } : null),
-                  ...(senderContext ? { context: senderContext } : null),
-                  sender: {
-                    sessionId,
-                    title: senderSummary?.title ?? `Project Session ${sessionId}`,
-                    kind: "project-session" as const,
-                    projectName: location.projectName,
-                    workingDirectory: location.workingDirectory,
-                  },
-                };
-                const encoded = encodeCrossSessionMessage(
-                  input.text,
-                  input.maxMessages === undefined
-                    ? messageMetadata
-                    : { ...messageMetadata, maxMessages: input.maxMessages },
-                );
-                if (
-                  replyToMessageId &&
-                  !(yield* families.prepareResponse(
-                    sessionId,
-                    targetSessionId,
-                    replyToMessageId,
-                    messageId,
-                    executingTurnIds,
-                  ))
-                )
-                  return yield* compositionError(
-                    "familyMessage",
-                    `Request ${replyToMessageId} is not awaiting a response from this session`,
-                  );
-                const preparedRequests = replyToMessageId
-                  ? (yield* families.state()).turns.filter((turn) =>
-                      turn.replyMessageIds?.includes(messageId),
-                    )
-                  : [];
-                if (substantiveTurnResult({ stopReason: "stop", text: input.text }))
-                  for (const request of preparedRequests)
-                    if (request.completionContract)
-                      yield* families.recordReport(request.turnId, {
-                        outcome: input.outcome ?? "result",
-                        text: input.text,
-                      });
-                // Ordinary family delivery starts an idle recipient or queues behind active
-                // work. An explicit steer deliberately interrupts and redirects the target.
-                const delivery =
-                  input.delivery ?? (destinationSnapshot.streaming ? "queue" : "prompt");
-                const turnId =
-                  delivery === "steer"
-                    ? yield* destination.steer(encoded, [], false)
-                    : delivery === "queue"
-                      ? yield* destination.followUp(encoded, [], false)
-                      : yield* destination.prompt(encoded, [], false);
-                // Acceptance/queueing is not a durable response receipt. The worker confirms it
-                // against the parent's transcript and retains the report if a restart loses the queue.
-                for (const request of preparedRequests)
-                  yield* families.markNoticeAttempt(request.turnId, turnId);
-                const pendingAfterSend =
-                  delivery === "queue"
-                    ? yield* destination
-                        .pendingMessages()
-                        .pipe(Effect.catch(() => Effect.succeed(undefined)))
-                    : undefined;
-                const queuedItem = pendingAfterSend?.items.find(
-                  (item) => item.crossSession?.messageId === messageId,
-                );
-                const queue =
-                  queuedItem && pendingAfterSend
-                    ? {
-                        itemId: queuedItem.itemId,
-                        lane: queuedItem.lane,
-                        position: queuedItem.position,
-                        length: pendingAfterSend.items.filter(
-                          (item) => item.lane === queuedItem.lane,
-                        ).length,
-                      }
-                    : undefined;
-                yield* catalogs.publish({
-                  _tag: "ProjectSessionChanged",
-                  sessionId: targetSessionId,
-                  projectPath: location.projectPath,
-                  workingDirectory: destinationLocation.workingDirectory,
-                  resolved: false,
-                });
-                return toJsonValue({
-                  ok: true,
-                  command,
-                  targetTitle: `Project Session ${targetSessionId}`,
-                  messageId,
-                  threadId,
-                  turnId,
-                  delivery,
-                  expectsResponse,
-                  ...(replyToMessageId ? { replyToMessageId } : null),
-                  status: delivery === "queue" ? "queued" : "accepted",
-                  recipientContext: crossSessionContextSnapshot(destinationSnapshot.usage?.context),
-                  ...(queue ? { queue } : null),
-                });
-              }),
+                    input,
+                    senderContext,
+                  ),
+                ),
+              ),
             ),
             { signal },
           ),

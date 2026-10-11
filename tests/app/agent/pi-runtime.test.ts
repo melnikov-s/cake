@@ -354,6 +354,8 @@ describe("Pi 1.0.0 foundation contract", () => {
         currentSessionControl: {
           resolved: () => false,
           setResolved: async () => undefined,
+          readPolicy: async () => ({ canFork: true, deferResolution: true }),
+          resolveDeferredStandalone: async () => undefined,
           createSession,
         },
         onEvent: () => undefined,
@@ -697,7 +699,7 @@ describe("Pi 1.0.0 foundation contract", () => {
         ],
       })}); }\n`,
     );
-    const setResolved = vi.fn(async () => undefined);
+    const setResolved = vi.fn<(resolved: boolean) => Promise<void>>(async () => undefined);
     let prompt: Promise<void> | undefined;
     try {
       const runtime = await createCakeSessionRuntime({
@@ -707,7 +709,12 @@ describe("Pi 1.0.0 foundation contract", () => {
         trusted: true,
         newSession: true,
         requestUi: async () => undefined,
-        currentSessionControl: { resolved: () => false, setResolved },
+        currentSessionControl: {
+          resolved: () => false,
+          setResolved,
+          readPolicy: async () => ({ canFork: true, deferResolution: true }),
+          resolveDeferredStandalone: () => setResolved(true),
+        },
         onEvent: () => undefined,
       });
       runtimes.push(runtime);
@@ -829,6 +836,8 @@ describe("Pi 1.0.0 foundation contract", () => {
         currentSessionControl: {
           resolved: () => false,
           setResolved: async () => undefined,
+          readPolicy: async () => ({ canFork: true, deferResolution: true }),
+          resolveDeferredStandalone: async () => undefined,
           forkSession,
         },
         onEvent: () => undefined,

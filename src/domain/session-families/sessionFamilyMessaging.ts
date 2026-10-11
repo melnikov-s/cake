@@ -1,11 +1,25 @@
 import { Effect, Schema, type Scope } from "effect";
-import type { CrossSessionContextSnapshot } from "../../contracts/conversations/cross-session-message";
+import {
+  crossSessionContextSnapshot,
+  encodeCrossSessionMessage,
+  type CrossSessionContextSnapshot,
+} from "../../contracts/conversations/cross-session-message";
+import { substantiveTurnResult } from "../../contracts/pi/turn-result-data";
 import { SessionTaskOutcome } from "../../contracts/project-sessions/session-reporting";
 import type { JsonValue } from "../../ipc/json-contract";
-import type { ProjectSessionError, ProjectSessionLocation } from "../../ipc/project-session-data";
-import type { acquireOptions } from "../project-sessions/projectSessionRuntime";
+import { ProjectSessionError, type ProjectSessionLocation } from "../../ipc/project-session-data";
+import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
+import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
+import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
+import { SessionFamilyStorage, familyMember } from "../../services/storage/SessionFamilyStorage";
+import { toJsonValue } from "../../utils/to-json-value";
+import { inheritTaskInputProtection } from "../conversations/taskInputs";
+import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
+import { resolutionNamespace } from "../project-sessions/projectSessionResolution";
+import { acquireOptions } from "../project-sessions/projectSessionRuntime";
+import * as sessionFamilies from "./sessionFamilies";
 
-/** Moves here from runtime assembly at cutover; decode once in the callback adapter. */
+/** Decode once in the runtime callback adapter. */
 export const FamilyMessageInput = Schema.Struct({
   sessionId: Schema.optionalKey(
     Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
@@ -27,10 +41,16 @@ export interface FamilyMessageCaller {
   readonly location: ProjectSessionLocation;
 }
 
+const routingError = (cause: unknown) =>
+  new ProjectSessionError({
+    operation: "familyMessage",
+    message: cause instanceof Error ? cause.message : String(cause),
+  });
+
 /**
- * Review skeleton: owns the existing complete routing/correlation/delivery workflow.
- * undefined retains the existing not-handled fallback; this is not a new message engine.
- * Runtime acquisition stays with the existing Project Session composition point.
+ * Complete family routing/correlation/delivery workflow, owned by the caller's Scope.
+ * undefined retains the existing not-handled fallback. Runtime acquisition stays
+ * with the Project Session composition point; Pi owns admission and its queue.
  */
 export const route: (
   caller: FamilyMessageCaller,
@@ -41,6 +61,199 @@ export const route: (
   JsonValue | undefined,
   ProjectSessionError,
   Effect.Services<ReturnType<typeof acquireOptions>> | Scope.Scope
-> = Effect.fn("SessionFamilyMessaging.route")(function* () {
-  return yield* Effect.die("Unimplemented review skeleton: SessionFamilyMessaging.route");
-});
+> = Effect.fn("SessionFamilyMessaging.route")(function* (
+  { sessionId, location },
+  command,
+  input,
+  senderContext,
+) {
+  const families = yield* SessionFamilyStorage;
+  const sessions = yield* CakeSessionRuntimes;
+  const configuration = yield* ProjectSessionConfiguration;
+  const catalogs = yield* SessionCatalogChanges;
+  const family = yield* families.familyForMember(sessionId);
+  const spawnedResult = yield* sessionFamilies.routeCoordinatorMessage(
+    sessionId,
+    command,
+    input,
+    location,
+    senderContext,
+  );
+  if (spawnedResult !== undefined) return spawnedResult;
+  if (!family) return undefined;
+  const executingTurnIds =
+    command === "sessions.reply"
+      ? yield* sessions.executingTurnIds({
+          sessionId,
+          workingDirectory: location.workingDirectory,
+          sessionDirectory: location.sessionDirectory,
+        })
+      : [];
+  const pending =
+    command === "sessions.reply"
+      ? yield* families.pendingResponseRequest(
+          sessionId,
+          executingTurnIds,
+          input.threadId,
+          input.replyToMessageId,
+        )
+      : undefined;
+  if (command === "sessions.reply" && !pending) return undefined;
+  if (pending?.completionContract && pending.outcome === undefined && input.outcome) {
+    if (!substantiveTurnResult({ stopReason: "stop", text: input.text }))
+      return yield* routingError(
+        "A terminal report must contain substantive findings, changes, or a blocker",
+      );
+    yield* families.recordReport(pending.turnId, {
+      outcome: input.outcome,
+      text: input.text,
+    });
+    return toJsonValue({
+      ok: true,
+      command,
+      status: "report-recorded",
+      expectsResponse: false,
+    });
+  }
+  const targetSessionId = pending?.senderSessionId ?? input.sessionId;
+  if (!targetSessionId) return yield* routingError("A target session is required");
+  const destinationMember = familyMember(family, targetSessionId);
+  if (!destinationMember) return undefined;
+  const destinationLocation = (yield* projectSessionLocations.locations({
+    includeInactive: true,
+  })).find(
+    (candidate) =>
+      candidate.projectPath === family.projectPath &&
+      candidate.workingDirectory === destinationMember.workingDirectory,
+  );
+  if (!destinationLocation)
+    return yield* routingError(
+      `Working Directory unavailable: ${destinationMember.workingDirectory}`,
+    );
+  const namespace = yield* resolutionNamespace(targetSessionId, {
+    cwd: destinationMember.workingDirectory,
+    activeRoot: configuration.sessionDirectory,
+    resolvedRoot: configuration.resolvedSessionDirectory,
+  });
+  if (namespace === "resolved")
+    return yield* routingError(
+      `Session Family ${family.familyId} is resolved; restore it explicitly before messaging`,
+    );
+  if (!namespace) return yield* routingError(`Family member ${targetSessionId} could not be found`);
+  const destination = yield* sessions.acquire(
+    yield* acquireOptions({
+      location: destinationLocation,
+      sessionId: targetSessionId,
+      newSession: false,
+    }),
+  );
+  yield* inheritTaskInputProtection(sessionId, targetSessionId);
+  const destinationSnapshot = yield* destination.snapshot();
+  const senderSummary = yield* sessions
+    .catalogEntry(
+      {
+        workingDirectory: location.workingDirectory,
+        sessionDirectory: location.sessionDirectory,
+      },
+      sessionId,
+    )
+    .pipe(Effect.catch(() => Effect.succeed(undefined)));
+  const messageId = crypto.randomUUID();
+  const threadId = pending?.threadId ?? input.threadId ?? crypto.randomUUID();
+  const replyToMessageId = pending?.requestMessageId ?? input.replyToMessageId;
+  const expectsResponse = input.expectsResponse ?? command === "sessions.send";
+  const messageMetadata = {
+    version: 1 as const,
+    messageId,
+    threadId,
+    sequence: 1,
+    expectsResponse,
+    ...(replyToMessageId ? { replyToMessageId } : null),
+    ...(senderContext ? { context: senderContext } : null),
+    sender: {
+      sessionId,
+      title: senderSummary?.title ?? `Project Session ${sessionId}`,
+      kind: "project-session" as const,
+      projectName: location.projectName,
+      workingDirectory: location.workingDirectory,
+    },
+  };
+  const encoded = encodeCrossSessionMessage(
+    input.text,
+    input.maxMessages === undefined
+      ? messageMetadata
+      : { ...messageMetadata, maxMessages: input.maxMessages },
+  );
+  if (
+    replyToMessageId &&
+    !(yield* families.prepareResponse(
+      sessionId,
+      targetSessionId,
+      replyToMessageId,
+      messageId,
+      executingTurnIds,
+    ))
+  )
+    return yield* routingError(
+      `Request ${replyToMessageId} is not awaiting a response from this session`,
+    );
+  const preparedRequests = replyToMessageId
+    ? (yield* families.state()).turns.filter((turn) => turn.replyMessageIds?.includes(messageId))
+    : [];
+  if (substantiveTurnResult({ stopReason: "stop", text: input.text }))
+    for (const request of preparedRequests)
+      if (request.completionContract)
+        yield* families.recordReport(request.turnId, {
+          outcome: input.outcome ?? "result",
+          text: input.text,
+        });
+  // Ordinary delivery starts an idle recipient or queues behind active work.
+  // An explicit steer deliberately interrupts and redirects the target.
+  const delivery = input.delivery ?? (destinationSnapshot.streaming ? "queue" : "prompt");
+  const turnId =
+    delivery === "steer"
+      ? yield* destination.steer(encoded, [], false)
+      : delivery === "queue"
+        ? yield* destination.followUp(encoded, [], false)
+        : yield* destination.prompt(encoded, [], false);
+  // Acceptance/queueing is not a durable response receipt. The worker confirms
+  // it against the parent's transcript, retaining reports lost from the queue.
+  for (const request of preparedRequests) yield* families.markNoticeAttempt(request.turnId, turnId);
+  const pendingAfterSend =
+    delivery === "queue"
+      ? yield* destination.pendingMessages().pipe(Effect.catch(() => Effect.succeed(undefined)))
+      : undefined;
+  const queuedItem = pendingAfterSend?.items.find(
+    (item) => item.crossSession?.messageId === messageId,
+  );
+  const queue =
+    queuedItem && pendingAfterSend
+      ? {
+          itemId: queuedItem.itemId,
+          lane: queuedItem.lane,
+          position: queuedItem.position,
+          length: pendingAfterSend.items.filter((item) => item.lane === queuedItem.lane).length,
+        }
+      : undefined;
+  yield* catalogs.publish({
+    _tag: "ProjectSessionChanged",
+    sessionId: targetSessionId,
+    projectPath: location.projectPath,
+    workingDirectory: destinationLocation.workingDirectory,
+    resolved: false,
+  });
+  return toJsonValue({
+    ok: true,
+    command,
+    targetTitle: `Project Session ${targetSessionId}`,
+    messageId,
+    threadId,
+    turnId,
+    delivery,
+    expectsResponse,
+    ...(replyToMessageId ? { replyToMessageId } : null),
+    status: delivery === "queue" ? "queued" : "accepted",
+    recipientContext: crossSessionContextSnapshot(destinationSnapshot.usage?.context),
+    ...(queue ? { queue } : null),
+  });
+}, Effect.mapError(routingError));

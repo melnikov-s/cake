@@ -1,5 +1,10 @@
 import { SessionManager, type AgentSession } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
+import { Schema } from "effect";
+import {
+  ResolutionCleanupFailed,
+  type ResolutionCleanupFailure,
+} from "../../../contracts/project-sessions/project-session-resolution";
 import type { ArtifactPointer } from "../../../ipc/artifact-contract";
 import type { JsonValue } from "../../../ipc/json-contract";
 import { SESSION_TITLE_MAX_LENGTH, type UtilityModel } from "../../../ipc/session-contract";
@@ -39,7 +44,7 @@ export interface CakeSessionRuntimeContinuations {
     artifactPointers: ReadonlyArray<ArtifactPointer>;
   }>;
   toolCompact(entryId: string): Promise<{ sessionId: string; sessionFile: string }>;
-  scheduleFork(input: PendingSessionFork): JsonValue;
+  scheduleFork(input: PendingSessionFork): Promise<JsonValue>;
   setResolved(resolved: boolean): Promise<JsonValue>;
   finishSettledTurn(): Promise<void>;
   dispose(): void;
@@ -212,9 +217,11 @@ export function createCakeSessionRuntimeContinuations(input: {
       await emitSnapshot();
       return { sessionId: result.sessionId, sessionFile: result.sessionFile };
     },
-    scheduleFork(pending) {
+    async scheduleFork(pending) {
       if (!options.currentSessionControl?.forkSession)
         throw new Error("This Project Session cannot be forked by its agent");
+      if (!(await options.currentSessionControl.readPolicy()).canFork)
+        throw new Error("Session Family members cannot be forked by their agent");
       forkOnSettle = pending;
       return { sessionId, forkOnSettle: true, resolveSource: pending.resolveSource };
     },
@@ -224,7 +231,7 @@ export function createCakeSessionRuntimeContinuations(input: {
       if (
         resolved &&
         session.isStreaming &&
-        options.currentSessionControl.deferResolution !== false
+        (await options.currentSessionControl.readPolicy()).deferResolution
       ) {
         resolveOnSettle = true;
         return {
@@ -234,9 +241,20 @@ export function createCakeSessionRuntimeContinuations(input: {
         };
       }
       resolveOnSettle = false;
-      await options.currentSessionControl.setResolved(resolved);
+      let cleanupFailures: ReadonlyArray<ResolutionCleanupFailure> | undefined;
+      try {
+        await options.currentSessionControl.setResolved(resolved);
+      } catch (error) {
+        if (!resolved || !Schema.is(ResolutionCleanupFailed)(error)) throw error;
+        cleanupFailures = error.cleanupFailures;
+      }
       await reportAgentAction(resolved ? "resolve" : "restore");
-      return { sessionId, resolved, resolveOnSettle: false };
+      return {
+        sessionId,
+        resolved,
+        resolveOnSettle: false,
+        ...(cleanupFailures ? { cleanupFailures } : null),
+      };
     },
     async finishSettledTurn() {
       if (forkOnSettle) {
@@ -266,17 +284,34 @@ export function createCakeSessionRuntimeContinuations(input: {
         if (session.isStreaming) return;
         resolveOnSettle = false;
         try {
-          await options.currentSessionControl?.setResolved(true);
+          await options.currentSessionControl?.resolveDeferredStandalone();
           await reportAgentAction("resolve");
         } catch (error) {
           if (isDisposed()) return;
-          emitNotice({
-            id: "session-resolution-failed",
-            kind: "notice",
-            tone: "error",
-            title: "Could not resolve session",
-            detail: error instanceof Error ? error.message : String(error),
-          });
+          if (Schema.is(ResolutionCleanupFailed)(error)) {
+            emitNotice({
+              id: "session-resolution-cleanup-failed",
+              kind: "notice",
+              tone: "error",
+              title: "Session resolved; Working Directory cleanup failed",
+              detail: [
+                `Resolved sessions: ${error.resolvedSessionIds.join(", ")}`,
+                error.message,
+                ...error.cleanupFailures.map(
+                  (failure) => `${failure.workingDirectory}: ${failure.message}`,
+                ),
+              ].join("\n"),
+            });
+            await reportAgentAction("resolve");
+          } else {
+            emitNotice({
+              id: "session-resolution-failed",
+              kind: "notice",
+              tone: "error",
+              title: "Could not resolve session",
+              detail: error instanceof Error ? error.message : String(error),
+            });
+          }
         }
         return;
       }
