@@ -79,6 +79,28 @@ describe("parseSourceLocation", () => {
     expect(parseSourceLocation(reference)).toEqual(expected);
   });
 
+  it.each([
+    "docs/architecture/s4-artifact-protocol.md#authority-and-durability",
+    "docs/architecture/s1-session-contract.md#conversation-observation",
+    "./README.markdown#overview",
+    "docs/guide.md#%C3%A9tapes",
+  ])("opens the document for a Markdown heading citation: %s", (reference) => {
+    expect(parseSourceLocation(reference)).toEqual({ path: reference.split("#")[0] });
+  });
+
+  it.each([
+    "src/main.ts#not-a-line",
+    "docs/guide.md#L0",
+    "docs/guide.md#L4-L2",
+    "docs/guide.md#L4-L6,8-L9",
+    "docs/guide.md#%E0%A4%A",
+    "https://example.com/guide.md#overview",
+    "javascript:guide.md#overview",
+    "file:///guide.md#overview",
+  ])("does not mistake unsafe links or invalid line ranges for headings: %s", (reference) => {
+    expect(parseSourceLocation(reference)).toBeUndefined();
+  });
+
   it("rejects web URLs and invalid positions", () => {
     expect(parseSourceLocation("https://example.com/main.ts:2")).toBeUndefined();
     expect(parseSourceLocation("src/main.ts:0")).toBeUndefined();

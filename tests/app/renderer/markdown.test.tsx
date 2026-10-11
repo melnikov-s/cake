@@ -366,6 +366,37 @@ describe("Markdown", () => {
     expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(`[Label](${target})`);
   });
 
+  it("routes Markdown heading citations through the safe workspace link target", () => {
+    const onOpenSourceLocation = vi.fn();
+    const reference = "docs/architecture/s4-artifact-protocol.md#authority-and-durability";
+    act(() =>
+      root.render(
+        <Markdown onOpenSourceLocation={onOpenSourceLocation}>
+          {`The [artifact protocol](${reference}) describes artifact updates.`}
+        </Markdown>,
+      ),
+    );
+    expect(vi.mocked(Streamdown).mock.calls.at(-1)![0].children).toBe(
+      `The [artifact protocol](/__cake_workspace__/${reference}) describes artifact updates.`,
+    );
+    const anchor = vi.mocked(Streamdown).mock.calls.at(-1)![0].components!.a!;
+    act(() =>
+      root.render(
+        createElement(anchor, {
+          href: `/__cake_workspace__/${reference}`,
+          children: "artifact protocol",
+        }),
+      ),
+    );
+    const link = container.querySelector("a")!;
+    expect(link.getAttribute("href")).toBe(reference);
+    expect(link.getAttribute("aria-description")).toBe(reference);
+    act(() => link.click());
+    expect(onOpenSourceLocation).toHaveBeenCalledWith({
+      path: "docs/architecture/s4-artifact-protocol.md",
+    });
+  });
+
   it("loads workspace-relative Markdown images through the authorized workspace boundary", async () => {
     const loadWorkspaceImage = vi.fn(async () => ({ data: "cG5n", mimeType: "image/png" }));
     act(() =>

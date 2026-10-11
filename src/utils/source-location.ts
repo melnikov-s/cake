@@ -71,8 +71,21 @@ export function parseSourceLocation(reference: string): SourceLocation | undefin
   const hashRanges = /^(.*?)#(.+)$/.exec(candidate);
   if (hashRanges) {
     const path = hashRanges[1] ?? "";
-    const ranges = parseLineRanges(hashRanges[2] ?? "");
-    if (!sourcePath.test(path) || !ranges) return undefined;
+    const fragment = hashRanges[2] ?? "";
+    if (!sourcePath.test(path)) return undefined;
+    const ranges = parseLineRanges(fragment);
+    if (!ranges) {
+      // Markdown heading citations still identify a workspace document. The
+      // editor opens the file; heading fragments are not editor line ranges.
+      // Reserve L<number> for line syntax so invalid ranges remain invalid.
+      const heading = safeDecode(fragment);
+      return /\.(?:md|markdown)$/i.test(path) &&
+        !/^L\d/.test(fragment) &&
+        heading &&
+        /^[\p{L}\p{N}_-]+$/u.test(heading)
+        ? { path }
+        : undefined;
+    }
     return ranges.length === 1 ? { path, range: ranges[0] } : { path, ranges };
   }
 
