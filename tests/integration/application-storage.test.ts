@@ -49,10 +49,28 @@ describe("ApplicationStorage filesystem integration", () => {
     assert.equal(loaded.source, "migrated");
     assert.ok(!("resolvedSessionIds" in loaded.state));
     const document = JSON.parse(await readFile(target, "utf8"));
-    assert.equal(document.version, 2);
-    assert.deepEqual(document.data, {
-      ...defaultApplicationState(),
-    });
+    assert.equal(document.version, 6);
+    // Migration retains the shipped v1 labels, rather than substituting today's
+    // fresh-install defaults or adding optional preferences that were never saved.
+    const migrated = {
+      projects: [],
+      globalSessionLabels: [
+        { id: "00000000-0000-4000-8000-000000000001", name: "Feature", color: "blue" },
+        { id: "00000000-0000-4000-8000-000000000002", name: "Bug", color: "rose" },
+        { id: "00000000-0000-4000-8000-000000000003", name: "Research", color: "violet" },
+        { id: "00000000-0000-4000-8000-000000000004", name: "Chore", color: "amber" },
+      ],
+      unreadSessionIds: [],
+      trustedProjectPaths: [],
+      fastModeSessionIds: [],
+      modelPresets: [],
+      cakePrompts: {},
+      globalCustomInstructions: "",
+      sessionPlugins: [],
+      sessionPluginSharedState: [],
+    };
+    assert.deepEqual(loaded.state, migrated);
+    assert.deepEqual(document.data, migrated);
     const fileInfo = await (await import("node:fs/promises")).stat(target);
     assert.equal(fileInfo.mode & 0o777, 0o600);
   });

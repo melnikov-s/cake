@@ -9,6 +9,7 @@ import { PiModels, makePiModels } from "../../src/services/pi/PiModels";
 import { SavedDraftStorage } from "../../src/services/storage/SavedDraftStorage";
 import { ApplicationState } from "../../src/services/storage/ApplicationState";
 import { connectClient } from "./fixtures/network-client";
+import { observeNetworkEvents as observe } from "./fixtures/network-events";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 
 const configuration = {
@@ -188,16 +189,6 @@ it.live(
       const url = `ws://127.0.0.1:${listener.address.port}${listener.path}`;
       const a = yield* connectClient(url);
       const b = yield* connectClient(url);
-      const observe = <E>(stream: Stream.Stream<CakeEvent, E>) =>
-        Effect.gen(function* () {
-          const queue = yield* Queue.unbounded<CakeEvent>();
-          yield* stream.pipe(
-            Stream.runForEach((event) => Queue.offer(queue, event)),
-            Effect.forkScoped,
-          );
-          expect((yield* Queue.take(queue)).type).toBe("renderer-events-ready");
-          return queue;
-        });
       const eventsA = yield* observe(a.client["application.observeEvents"]());
       const formsA = yield* observe(a.client["artifacts.observeEvents"]());
       const eventsB = yield* observe(b.client["application.observeEvents"]());
@@ -206,7 +197,7 @@ it.live(
         provider: "example",
         authType: "api_key",
       }).pipe(Effect.forkScoped);
-      expect(yield* Queue.take(eventsA)).toMatchObject({
+      expect(yield* eventsA.next()).toMatchObject({
         type: "provider-auth-notice",
         provider: "example",
         notice: {
@@ -215,11 +206,11 @@ it.live(
           userCode: "TEST-CODE",
         },
       });
-      const prompt = yield* Queue.take(formsA);
+      const prompt = yield* formsA.next();
       if (prompt.type !== "ui-request") throw new Error(`Expected auth form, got ${prompt.type}`);
       expect(prompt.kind).toBe("secret");
-      expect(Option.isNone(yield* Queue.poll(eventsB))).toBe(true);
-      expect(Option.isNone(yield* Queue.poll(formsB))).toBe(true);
+      expect(Option.isNone(yield* Queue.poll(eventsB.events))).toBe(true);
+      expect(Option.isNone(yield* Queue.poll(formsB.events))).toBe(true);
       const reply = {
         sessionId: prompt.sessionId,
         requestId: prompt.requestId,

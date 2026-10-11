@@ -17,7 +17,6 @@ import { ClientWorkspaces } from "../../src/services/clients/ClientWorkspaces";
 import { RewordingRequests } from "../../src/services/projects/RewordingRequests";
 import { ProjectAccess } from "../../src/services/projects/ProjectAccess";
 import { RendererRequestCoordinator } from "../../src/services/renderer-requests/RendererRequestCoordinator";
-import type { CakeEvent } from "../../src/contracts/application/cake-rpc-contract";
 import type { Attachment } from "../../src/contracts/conversations/session-contract";
 import { connectClient, rawClient } from "./fixtures/network-client";
 import { cakeBuildId } from "../../src/ipc/protocol/BackendConnectionRpc";
@@ -31,6 +30,7 @@ import {
 } from "../../src/services/widgets/inline-widget-document-registry";
 import { publishExtensionCompanionModule } from "../../src/services/pi/runtime/extension-companion-module-registry";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
+import { observeNetworkEvents as observe } from "./fixtures/network-events";
 
 const configuration = {
   homeDirectory: "/home/test",
@@ -54,17 +54,6 @@ const start = Effect.fn("NetworkTest.start")(function* (
   ).pipe(Effect.provideContext(backend.context));
   assert.equal(listener.address._tag, "TcpAddress");
   return { backend, listener, url: `ws://127.0.0.1:${listener.address.port}${listener.path}` };
-});
-const observe = Effect.fn("NetworkTest.observe")(function* (
-  stream: Stream.Stream<CakeEvent, unknown>,
-) {
-  const events = yield* Queue.unbounded<CakeEvent>();
-  const fiber = yield* stream.pipe(
-    Stream.runForEach((event) => Queue.offer(events, event)),
-    Effect.forkScoped,
-  );
-  expect((yield* Queue.take(events)).type).toBe("renderer-events-ready");
-  return { events, fiber };
 });
 
 it.live("network compiler publishes only live, capability-addressed rich content", () =>
@@ -718,7 +707,7 @@ it.live("forged_socket_metadata_cannot_complete_another_clients_pending_question
         message: "Answer",
       })
       .pipe(Effect.forkScoped);
-    const question = yield* Queue.take(events.events);
+    const question = yield* events.next();
     assert.equal(question.type, "ui-request");
     const payload = {
       sessionId: "question-session",
@@ -790,8 +779,8 @@ it.live("disconnect_cleans_only_its_owner_and_cancels_pending_interactions", () 
     const pendingB = yield* requests
       .requestUiForConnection(2, "b", { kind: "text", title: "B", message: "Answer B" })
       .pipe(Effect.forkScoped);
-    expect((yield* Queue.take(eventsA.events)).type).toBe("ui-request");
-    const questionB = yield* Queue.take(eventsB.events);
+    expect((yield* eventsA.next()).type).toBe("ui-request");
+    const questionB = yield* eventsB.next();
     assert.equal(questionB.type, "ui-request");
     yield* a.close();
     expect(yield* Queue.take(backend.cleaned)).toBe(1);

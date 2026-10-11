@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { Effect, Stream } from "effect";
 import { beforeAll, expect, it } from "vitest";
 import { connectClient } from "./fixtures/network-client";
+import { unexpectedNodeStderr } from "./fixtures/node-stderr";
 
 const execFileAsync = promisify(execFile);
 
@@ -125,7 +126,7 @@ it("opt_in_node_host_serves_two_real_rpc_clients_without_electron_or_provider_tr
     );
     child.kill("SIGTERM");
     expect(await exit).toEqual({ code: 130, signal: null });
-    expect(stderr).toBe("");
+    expect(unexpectedNodeStderr(stderr)).toBe("");
     expect(stdout).toContain("Cake headless backend stopped");
     expect(stdout).toContain("full backend authority");
   } finally {

@@ -159,8 +159,10 @@ it.skipIf(!existsSync("/opt/homebrew/bin/code-server"))(
         });
         await page.goto(origin);
         await page.locator(`[data-slot="sidebar"] [data-session-id="${sessionId}"]`).last().click();
-        await expect(page.getByTitle(/^Open qualification\.ts.*in VS Code$/)).toBeVisible();
-        await page.getByTitle(/^Open qualification\.ts.*in VS Code$/).click();
+        await expect(
+          page.getByRole("link", { name: "qualification.ts", exact: true }),
+        ).toBeVisible();
+        await page.getByRole("link", { name: "qualification.ts", exact: true }).click();
         const frame = page.locator('iframe[title="VS Code workspace"]');
         try {
           await expect(frame).toHaveAttribute("src", /\/editor\/\d+\/[a-f0-9]{64}\//, {
@@ -251,7 +253,20 @@ it.skipIf(!existsSync("/opt/homebrew/bin/code-server"))(
         await editor.locator("body").evaluate(() => location.reload());
         try {
           await expect(editor.locator(".monaco-workbench")).toBeVisible({ timeout: 30_000 });
-          await editor.getByRole("treeitem", { name: "qualification.ts" }).dblclick();
+          // Explicitly reopen through Quick Open; Explorer expansion and restored tabs
+          // are code-server UI preferences, not the saved-file contract under test.
+          await editor.locator(".monaco-workbench").click();
+          await page.keyboard.press("ControlOrMeta+p");
+          const quickOpen = editor.locator(".quick-input-widget input");
+          await expect(quickOpen).toBeVisible();
+          await quickOpen.fill("qualification.ts");
+          await expect(editor.locator(".quick-input-list")).toContainText("qualification.ts");
+          await page.keyboard.press("Enter");
+          await expect(editor.locator(".tab.active")).toContainText("qualification.ts", {
+            timeout: 20_000,
+          });
+          await editor.locator(".view-lines").first().click();
+          await page.keyboard.press("ControlOrMeta+End");
           await expect(editor.locator(".view-lines").first()).toContainText("savedInBrowser", {
             timeout: 20_000,
           });

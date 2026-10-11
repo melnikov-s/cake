@@ -270,7 +270,7 @@ it("real Chromium uses the shared sidebar, project chat and Cake Chat without re
           await browserExpect(
             second.getByText("Completed answer 1", { exact: true }),
           ).toBeVisible();
-          await page.getByRole("button", { name: "New Cake Chat", exact: true }).first().click();
+          await page.getByRole("button", { name: "Cake Chat", exact: true }).first().click();
           await browserExpect(
             page.getByRole("heading", { name: "What can I help you find or do?" }),
           ).toBeVisible();

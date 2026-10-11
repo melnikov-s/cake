@@ -1,15 +1,25 @@
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { chromium, expect as browserExpect } from "@playwright/test";
 import { Effect } from "effect";
-import { it } from "vitest";
+import { beforeAll, it } from "vitest";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { openNetworkListener } from "../../src/server/NetworkListener";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
 import { connectClient } from "./fixtures/network-client";
 
-/** Run after pnpm build:server and pnpm build:browser; only Pi/provider is controlled. */
+beforeAll(async () => {
+  await promisify(execFile)(
+    process.execPath,
+    ["node_modules/vite/bin/vite.js", "build", "--config", "vite.browser.config.ts"],
+    { maxBuffer: 4 * 1024 * 1024 },
+  );
+}, 60_000);
+
+/** Real shared browser shell; only the external Pi/provider boundary is controlled. */
 it("two real browser tabs see shared saved edits and one activation reaches the backend", async () => {
   await Effect.runPromise(
     Effect.gen(function* () {
@@ -58,33 +68,32 @@ it("two real browser tabs see shared saved edits and one activation reaches the 
           second.setDefaultTimeout(10_000);
           for (const page of [first, second]) {
             await page.goto(endpoint);
-            await browserExpect(page.getByText("Connected", { exact: true })).toBeVisible();
-            await page.getByLabel("Project", { exact: true }).selectOption("/project");
+            const row = page
+              .locator(`[data-slot="sidebar"] [data-session-id="${record.sessionId}"]`)
+              .first();
+            await browserExpect(row).toBeVisible();
+            await row.click();
             await browserExpect(
-              page
-                .getByLabel("Session", { exact: true })
-                .locator(`option[value="${record.sessionId}"]`),
-            ).toBeAttached();
-            await page.getByLabel("Session", { exact: true }).selectOption(record.sessionId);
+              page.getByText("Original saved request", { exact: true }),
+            ).toBeVisible();
           }
-          const edit = first.getByLabel("Saved Draft prompt");
+          await first.getByText("Original saved request", { exact: true }).hover();
+          await first.getByRole("button", { name: "Edit latest prompt" }).click();
+          const edit = first.getByLabel("Message", { exact: true });
+          await browserExpect(edit).toBeFocused();
           await browserExpect(edit).toHaveValue("Original saved request");
           await edit.fill("Updated in first tab");
-          await first.getByRole("button", { name: "Save Draft" }).click();
-          await browserExpect(second.getByLabel("Saved Draft prompt")).toHaveValue(
-            "Updated in first tab",
-          );
+          await first.getByRole("button", { name: "Save draft", exact: true }).click();
           await browserExpect(
             second.getByText("Updated in first tab", { exact: true }),
           ).toBeVisible();
           const activate = second.getByRole("button", { name: "Activate draft" });
           await activate.click();
+          await browserExpect(first.getByText("Draft", { exact: true })).toHaveCount(0);
+          await browserExpect.poll(() => controlled.stats.turns).toBe(1);
           await browserExpect(
-            first
-              .getByLabel("Session", { exact: true })
-              .locator(`option[value="${record.sessionId}"]`),
-          ).not.toContainText("saved Draft");
-          assert.equal(controlled.stats.turns, 1);
+            first.getByText("Streaming controlled answer", { exact: true }),
+          ).toBeVisible();
           const records = await Effect.runPromise(socket.client["savedDrafts.list"]({}));
           assert.equal(
             records.find((item) => item.sessionId === record.sessionId)?.status,

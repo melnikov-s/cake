@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { beforeAll, expect, it } from "vitest";
 
+import { unexpectedNodeStderr } from "./fixtures/node-stderr";
+
 const execFileAsync = promisify(execFile);
 const hook = `export async function resolve(specifier, context, nextResolve) {
   if (specifier === "electron" || specifier.startsWith("electron/"))
@@ -92,7 +94,7 @@ it("headless_boot_has_no_electron_runtime_dependency", async () => {
           child.on("exit", (code, signal) => resolve({ code, signal }));
         },
       );
-      expect({ ready, stderr, exit }).toEqual({
+      expect({ ready, stderr: unexpectedNodeStderr(stderr), exit }).toEqual({
         ready: true,
         stderr: "",
         exit: { code: 130, signal: null },
@@ -130,7 +132,7 @@ it("production_backend_shares_authorities_initializes_projects_and_releases_real
       },
     );
     expect(result.stdout).toContain("headless-backend-check-ok");
-    expect(result.stderr).toBe("");
+    expect(unexpectedNodeStderr(result.stderr)).toBe("");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -1,3 +1,5 @@
+import { SettingsManager } from "@earendil-works/pi-coding-agent";
+import { projectPiSettings } from "../../../src/services/pi/runtime/settings-translation";
 import { makeCakeChatDurableLive } from "../../../src/services/pi-durable/CakeChatDurable";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 import { WorkflowTestLive } from "../../app/helpers/workflowFixture";
@@ -272,7 +274,9 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       releaseConnection: () => Effect.void,
       ...options?.vscode,
     }),
-    Layer.mock(DiscussionSessionEnvironment, {}),
+    Layer.mock(DiscussionSessionEnvironment, {
+      list: () => Effect.succeed([]),
+    }),
     Layer.mock(WorktreeLandingAgent, {}),
     Layer.mock(WorktreeLandingCompletion, {}),
     WorktreeLandingCoordinatorLive,
@@ -308,6 +312,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
       resolvedSessionDirectory: "/resolved",
     }),
     Layer.mock(SessionFamilyStorage, {
+      state: () => Effect.succeed({ families: [], turns: [], spawnedSessions: [] }),
       list: () => Effect.succeed([]),
       familyForMember: () => Effect.succeed(undefined),
       settleTurn: () => Effect.void,
@@ -336,6 +341,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
         )
       : Layer.mock(DrawBoardStorage, {}),
     Layer.mock(ReviewStorage, {
+      changes: () => Stream.concat(Stream.succeed(0), Stream.never),
       agentSessionDirectory: () => {
         throw new Error("Unused reviews");
       },
@@ -346,8 +352,13 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
         throw new Error("Unused reviews");
       },
     }),
-    Layer.mock(PiModels, { list: () => Effect.succeed(options?.models ?? []) }),
-    Layer.mock(PiSettings, {}),
+    Layer.mock(PiModels, {
+      list: () => Effect.succeed(options?.models ?? []),
+      listNonChat: () => Effect.succeed([]),
+    }),
+    Layer.mock(PiSettings, {
+      load: () => Effect.succeed(projectPiSettings(SettingsManager.inMemory())),
+    }),
     Layer.mock(McpSettings, {}),
     Layer.mock(PiAgentResources, {}),
     Layer.mock(ScheduledMessages, {

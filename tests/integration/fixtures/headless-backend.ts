@@ -82,6 +82,7 @@ const backend = makeBackendLive({ paths, homeDirectory: home }, (foundation) =>
 );
 const runtime = ManagedRuntime.make(backend);
 const retainedScope = await Effect.runPromise(Scope.make());
+let releasesAfterDispose: number;
 try {
   await runtime.runPromise(
     Effect.gen(function* () {
@@ -115,7 +116,10 @@ try {
       yield* Effect.promise(async () => {
         const signal = new AbortController().signal;
         assert.ok(options.runtime.vscodeControl);
-        await assert.rejects(options.runtime.vscodeControl.enter(signal), /No renderer/);
+        await assert.rejects(
+          options.runtime.vscodeControl.enter(signal),
+          /No eligible desktop controls ProjectSession/,
+        );
         assert.deepEqual(await options.runtime.vscodeControl.runScript("return 1", {}, signal), {
           status: "mode-required",
         });
@@ -197,9 +201,11 @@ try {
   await runtime.dispose();
   // Closing the backend releases the real Pi runtime even while a client lease
   // remains. Closing that now-stale client Scope must not finalize it twice.
-  assert.equal(releases, 2);
+  releasesAfterDispose = releases;
   await Effect.runPromise(Scope.close(retainedScope, Exit.void));
 }
+// Do not let cleanup assertions conceal an earlier contract failure.
+assert.equal(releasesAfterDispose, 2);
 assert.equal(releases, 2);
 assert.equal(acquisitions, 1);
 assert.equal(finalizations, 1);

@@ -2,6 +2,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Effect } from "effect";
+import { CAKE_CHAT_SESSION_ID } from "../../src/ipc/cake-chat-data";
+import {
+  CakeChatDurable,
+  makeCakeChatDurableLive,
+} from "../../src/services/pi-durable/CakeChatDurable";
 import {
   createCakeSessionRuntime,
   type CakeSessionRuntime,
@@ -62,7 +68,7 @@ async function openRuntime(
   options: { auxiliary?: boolean; cakeChat?: boolean } = {},
 ) {
   vi.stubEnv("PI_CODING_AGENT_DIR", join(directory, "agent"));
-  const runtime = await createCakeSessionRuntime({
+  const runtimeOptions = {
     cwd: directory,
     agentDir: join(directory, "agent"),
     sessionDir: join(directory, "sessions"),
@@ -70,11 +76,26 @@ async function openRuntime(
     newSession: true,
     requestUi: async () => undefined,
     onEvent: () => undefined,
-    ...(options.auxiliary ? { auxiliary: true, tools: ["read"] } : {}),
-    ...(options.cakeChat
-      ? { globalControl: { tools: [], invoke: async () => ({ ok: true }) } }
-      : {}),
-  });
+  };
+  const runtime = options.cakeChat
+    ? await Effect.runPromise(
+        Effect.flatMap(CakeChatDurable, (durable) =>
+          durable.createRuntime({
+            ...runtimeOptions,
+            sessionId: CAKE_CHAT_SESSION_ID,
+            sessionDir: join(directory, "global-chat", "sessions"),
+            globalControl: { tools: [], invoke: async () => ({ ok: true }) },
+            cakeChatMemory: {
+              preferences: () => ({ memoryViewBytes: 4_000, instructions: "" }),
+              summarize: async () => "Unused: no turn is submitted",
+            },
+          }),
+        ).pipe(Effect.provide(makeCakeChatDurableLive())),
+      )
+    : await createCakeSessionRuntime({
+        ...runtimeOptions,
+        ...(options.auxiliary ? { auxiliary: true, tools: ["read"] } : {}),
+      });
   runtimes.push(runtime);
   return runtime;
 }
@@ -99,8 +120,8 @@ describe("extension provider model resolution", () => {
   });
 
   it("gives a Cake Chat session the agent directory's extension providers", async () => {
-    // Cake Chat binds no extension behavior (`noExtensions`), but a model from
-    // an extension-registered provider must still resolve there.
+    // The Durable coordinator registers agent-directory model providers without
+    // binding regular Project Session extension behavior.
     const directory = await createProject("agent-directory");
     process.env.OPENAI_API_KEY = "fallback-bait";
     try {

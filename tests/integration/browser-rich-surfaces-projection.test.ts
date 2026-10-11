@@ -122,9 +122,17 @@ it("selects published widget and HTML artifacts through the real library project
           );
           const widgetFrame = page.locator('iframe[title="Browser widget fixture"]');
           expect(await widgetFrame.getAttribute("sandbox")).toBe("allow-scripts");
-          expect(await widgetFrame.getAttribute("src")).toMatch(
+          const widgetUrl = new URL((await widgetFrame.getAttribute("src")) ?? "");
+          expect(`${widgetUrl.origin}${widgetUrl.pathname}`).toMatch(
             new RegExp(`^http://127\\.0\\.0\\.1:${port}/widget-assets/document/[0-9a-f-]{36}$`),
           );
+          expect(widgetUrl.hash).toMatch(/^#cake-widget=/);
+          expect(
+            JSON.parse(decodeURIComponent(widgetUrl.hash.slice("#cake-widget=".length))),
+          ).toMatchObject({
+            presentation: "workspace",
+            theme: { colorScheme: "light", tokens: { background: expect.any(String) } },
+          });
           await widget.getByRole("link", { name: "Navigate widget" }).click();
           await browserExpect
             .poll(() => page.frame({ url: /widget-assets\/document/ })?.url())

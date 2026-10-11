@@ -88,9 +88,9 @@ it("projects review-run status, saves a label, and gates browser-only native set
           await browserExpect(
             page.getByRole("button", { name: /start sharing|enable sharing/i }),
           ).toHaveCount(0);
-          await page.getByRole("button", { name: "Dictation" }).click();
+          await page.getByRole("button", { name: "Voice & Dictation" }).click();
           await browserExpect(
-            page.getByText("Native dictation and microphone controls are available only", {
+            page.getByText("Native voice and dictation controls are available only", {
               exact: false,
             }),
           ).toBeVisible();

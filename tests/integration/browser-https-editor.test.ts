@@ -315,7 +315,7 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
             await browserExpect
               .poll(async () => (await context.request.get(src)).status())
               .toBe(403);
-            await page.getByTitle(/^Open qualification\.ts.*in VS Code$/).click();
+            await page.getByRole("link", { name: "qualification.ts", exact: true }).click();
             await browserExpect(frame).toHaveAttribute(
               "src",
               new RegExp(`^${proxy.editor}/editor/`),
