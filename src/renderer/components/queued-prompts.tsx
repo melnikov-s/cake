@@ -81,7 +81,7 @@ export const QueuedPrompts = observer(function QueuedPrompts({ store }: { store:
                       </span>
                     </Button>
                     <div className="flex shrink-0 items-center gap-0.5">
-                      {store.canReorderQueuedPrompt && (
+                      {store.canReorderQueuedPrompt && entries.length > 1 && (
                         <ReorderControls
                           label={label}
                           position={index + 1}

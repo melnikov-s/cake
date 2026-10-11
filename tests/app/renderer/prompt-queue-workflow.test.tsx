@@ -170,10 +170,12 @@ afterEach(cleanup);
 describe("Prompt queue workflow", () => {
   it("projects commands in the shared queue with reordering and cancellation, without message-only edit or steering actions", async () => {
     using fixture = renderQueue({ followUp: ["Next task"], steering: [] });
+    expect(screen.queryByRole("button", { name: /^Move (up|down):/ })).toBeNull();
     await act(async () => {
       await fixture.controller.queueCommand("/toolcompact");
     });
     expect(queuedTexts()).toEqual(["Next task", "/toolcompact"]);
+    expect(screen.getAllByRole("button", { name: /^Move (up|down):/ })).toHaveLength(4);
     expect(screen.getByRole("button", { name: "Send now as steering: Next task" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Edit queued prompt: Next task" })).toBeDefined();
     expect(screen.queryByRole("button", { name: "Send now as steering: /toolcompact" })).toBeNull();
@@ -184,6 +186,7 @@ describe("Prompt queue workflow", () => {
       screen.getByRole("button", { name: "Cancel queued message: /toolcompact" }),
     );
     expect(queuedTexts()).toEqual(["Next task"]);
+    expect(screen.queryByRole("button", { name: /^Move (up|down):/ })).toBeNull();
     expect(fixture.pi.abort).not.toHaveBeenCalled();
   });
 
@@ -219,8 +222,12 @@ describe("Prompt queue workflow", () => {
       screen.getByRole("button", { name: "Send now as steering: Agent queued" }),
     );
     expect(queuedTexts()).toEqual(["Existing steer", "Agent queued", "User queued"]);
+    expect(screen.getAllByRole("button", { name: /^Move (up|down):/ })).toHaveLength(4);
+    expect(screen.queryByRole("button", { name: "Move up: User queued" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Move down: User queued" })).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Cancel steering: Agent queued" }));
     expect(queuedTexts()).toEqual(["Existing steer", "User queued"]);
+    expect(screen.queryByRole("button", { name: /^Move (up|down):/ })).toBeNull();
     await fixture.user.click(
       screen.getByRole("button", { name: "Cancel queued message: User queued" }),
     );
