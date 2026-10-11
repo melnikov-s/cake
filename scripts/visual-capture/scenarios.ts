@@ -1808,7 +1808,7 @@ const taskInputAttachmentsScenario: VisualCaptureScenario = {
 const newSessionScenario: VisualCaptureScenario = {
   name: "new-session",
   description: "Searchable Cake Chat and Project destination dialog",
-  states: ["default", "filtered", "empty"],
+  states: ["default", "hover", "selected-hover", "filtered", "empty"],
   async seed(paths, theme) {
     await cakePromptsSettingsScenario.seed(paths, theme);
     const timestamp = new Date(0).toISOString();
@@ -1842,9 +1842,17 @@ const newSessionScenario: VisualCaptureScenario = {
     await page.keyboard.press(process.platform === "darwin" ? "Meta+N" : "Control+N");
     const filter = page.getByRole("combobox", { name: "Filter projects" });
     await expect(filter).toBeFocused();
-    if (state !== "default") await filter.fill(state === "filtered" ? "web" : "missing");
+    if (state === "filtered" || state === "empty")
+      await filter.fill(state === "filtered" ? "web" : "missing");
     await page.waitForFunction(() => document.fonts.status === "loaded");
-    await page.mouse.move(1, 1);
+    if (state === "hover") {
+      await page.getByRole("option", { name: /^Research/ }).hover();
+    } else if (state === "selected-hover") {
+      await page.keyboard.press("ArrowDown");
+      await page.getByRole("option", { selected: true }).hover();
+    } else {
+      await page.mouse.move(1, 1);
+    }
   },
   region(page) {
     return page.getByRole("dialog", { name: "New session", exact: true }).locator(":scope > div");

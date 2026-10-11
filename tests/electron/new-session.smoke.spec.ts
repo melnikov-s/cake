@@ -2,8 +2,121 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
+
+for (const theme of ["dark", "light"] as const) {
+  test(`new session keeps hover separate from keyboard choice with readable rows (${theme})`, async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-new-session-hover-"));
+    const paths = {
+      cakeHome: join(root, "cake-home"),
+      project: join(root, "project"),
+      userData: join(root, "user-data"),
+    };
+    const scenario = findVisualCaptureScenario("new-session")!;
+    await scenario.seed(paths, theme);
+    const application = await electron.launch({
+      args: [repositoryRoot],
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        CAKE_ELECTRON_SMOKE: "1",
+        CAKE_ELECTRON_USER_DATA: paths.userData,
+        CAKE_HOME: paths.cakeHome,
+        PI_CODING_AGENT_DIR: join(paths.cakeHome, "pi"),
+        PI_CODING_AGENT_SESSION_DIR: "",
+      },
+    });
+    try {
+      const page = await application.firstWindow();
+      await page.emulateMedia({ colorScheme: theme });
+      await scenario.prepare(page, "default", application);
+      const dialog = page.getByRole("dialog", { name: "New session", exact: true });
+      const filter = dialog.getByRole("combobox", { name: "Filter projects" });
+      const selected = dialog.getByRole("option", { selected: true });
+      const cakeChat = dialog.getByRole("option", {
+        name: "Cake Chat Chat with Cake",
+        exact: true,
+      });
+      const cakeProject = dialog.getByRole("option").filter({ hasText: paths.project });
+      const research = dialog.getByRole("option", { name: /^Research/ });
+      await expect(selected).toContainText("Cake Chat");
+
+      // Sample actual rendered colors, including translucent backgrounds and hover overrides.
+      const assertReadable = async (row: typeof selected) => {
+        const contrasts = await row.evaluate((element) => {
+          const canvas = document.createElement("canvas");
+          canvas.width = canvas.height = 1;
+          const context = canvas.getContext("2d")!;
+          const card = element.closest('[role="dialog"]')!.firstElementChild!;
+          const luminance = () => {
+            const rgb = Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3);
+            const linear = rgb.map((channel) => {
+              const value = channel / 255;
+              return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            });
+            return linear[0]! * 0.2126 + linear[1]! * 0.7152 + linear[2]! * 0.0722;
+          };
+          return Array.from(element.querySelectorAll("span.truncate")).map((text) => {
+            context.fillStyle = getComputedStyle(card).backgroundColor;
+            context.fillRect(0, 0, 1, 1);
+            context.fillStyle = getComputedStyle(element).backgroundColor;
+            context.fillRect(0, 0, 1, 1);
+            const background = luminance();
+            context.fillStyle = getComputedStyle(text).color;
+            context.fillRect(0, 0, 1, 1);
+            const foreground = luminance();
+            return (
+              (Math.max(background, foreground) + 0.05) / (Math.min(background, foreground) + 0.05)
+            );
+          });
+        });
+        expect(contrasts).toHaveLength(2);
+        for (const contrast of contrasts) expect(contrast).toBeGreaterThanOrEqual(4.5);
+      };
+      await assertReadable(cakeChat);
+      await cakeChat.hover();
+      await assertReadable(cakeChat);
+      await research.hover();
+      await expect(selected).toContainText("Cake Chat");
+      await assertReadable(research);
+      await assertReadable(cakeChat);
+      await expect(filter).toBeFocused();
+      await page.keyboard.press("ArrowDown");
+      await expect(cakeProject).toHaveAttribute("aria-selected", "true");
+      await assertReadable(cakeProject);
+      await cakeProject.hover();
+      await assertReadable(cakeProject);
+      await research.hover();
+      await expect(cakeProject).toHaveAttribute("aria-selected", "true");
+      await page.keyboard.press("ArrowDown");
+      await expect(selected).toContainText("Website");
+      await page.keyboard.press("ArrowUp");
+      await expect(cakeProject).toHaveAttribute("aria-selected", "true");
+      await page.keyboard.press("Enter");
+      await expect(dialog).toBeHidden();
+      const message = page.getByRole("combobox", { name: "Message", exact: true });
+      await expect(message).toBeFocused();
+      await page.keyboard.type("Draft in the keyboard-selected project");
+      await expect(message).toHaveValue("Draft in the keyboard-selected project");
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+
+      await page.keyboard.press(process.platform === "darwin" ? "Meta+N" : "Control+N");
+      await expect(cakeProject).toHaveAttribute("aria-selected", "true");
+      await research.click();
+      await expect(dialog).toBeHidden();
+      await expect(message).toBeFocused();
+      await page.keyboard.press(process.platform === "darwin" ? "Meta+N" : "Control+N");
+      await expect(research).toHaveAttribute("aria-selected", "true");
+      await page.keyboard.press("Escape");
+      await expect(message).toBeFocused();
+    } finally {
+      await application.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
 
 test("new session dialog supports filtering, keyboard, mouse and cancellation", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-new-session-smoke-"));
@@ -69,6 +182,10 @@ test("new session dialog supports filtering, keyboard, mouse and cancellation", 
     await page.keyboard.press("ArrowDown");
     await expect(filter).toBeFocused();
     await expect(selected).toContainText("Alpha");
+    // Hover is feedback only; Enter must keep targeting the keyboard-active option.
+    await dialog.getByRole("option", { name: /Beta/ }).hover();
+    await expect(selected).toContainText("Alpha");
+    await expect(filter).toBeFocused();
     await page.keyboard.type("BETA");
     await expect(filter).toHaveValue("BETA");
     await expect(filter).toBeFocused();

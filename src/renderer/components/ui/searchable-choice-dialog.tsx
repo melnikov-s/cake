@@ -150,25 +150,17 @@ export function SearchableChoiceDialog({
               tabIndex={-1}
               variant="ghost"
               className={cn(
-                "h-auto w-full justify-start gap-3 px-3 py-2.5 text-left",
-                active?.id === choice.id && "bg-accent text-accent-foreground",
+                "h-auto w-full justify-start gap-3 border border-transparent px-3 py-2.5 text-left text-foreground",
+                active?.id === choice.id && "border-primary/40 bg-primary/10 hover:bg-primary/15",
               )}
-              onMouseMove={() => setActiveId(choice.id)}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => onSelect(choice.id)}
             >
-              {choice.icon}
+              {choice.icon && <span className="shrink-0 text-muted-foreground">{choice.icon}</span>}
               <span className="grid min-w-0 gap-0.5">
                 <span className="truncate">{choice.label}</span>
                 {choice.description && (
-                  <span
-                    className={cn(
-                      "truncate text-xs font-normal",
-                      active?.id === choice.id
-                        ? "text-accent-foreground/80"
-                        : "text-muted-foreground",
-                    )}
-                  >
+                  <span className="truncate text-xs font-normal text-foreground/75">
                     {choice.description}
                   </span>
                 )}
@@ -182,7 +174,7 @@ export function SearchableChoiceDialog({
           </p>
         )}
         <p className="px-2 pt-3 text-xs text-muted-foreground">
-          Arrow keys to choose · Enter to choose · Esc to cancel
+          Arrow keys to navigate · Enter or click to choose · Esc to cancel
         </p>
       </DialogContent>
     </DialogBackdrop>
