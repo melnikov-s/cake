@@ -1,9 +1,11 @@
 import { batch, createStore } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { defaultApplicationState } from "../../../../src/contracts/application/application-data";
 import type { EditorAnnotationSnapshot } from "../../../../src/ipc/editor-annotation";
 import { EmbeddedEditorStore } from "../../../../src/renderer/stores/EmbeddedEditorStore";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { mountWithClient } from "../mount-with-client";
+import { createTestClient } from "../test-client";
 import { TerminalStore } from "../../../../src/renderer/stores/TerminalStore";
 import { WorkingDirectoryRetirementStore } from "../../../../src/renderer/stores/WorkingDirectoryRetirementStore";
 
@@ -17,22 +19,11 @@ function createHarness(
   const client = {
     getState: vi.fn(async () => ({ status: "missing" as const })),
     install: vi.fn(async () => undefined),
-    setServerPath: vi.fn(async () => ({
-      projects: [],
-      unreadSessionIds: [],
-      trustedProjectPaths: [],
-    })),
-    open: vi.fn<
-      (
-        workingDirectory: string,
-        options?: object,
-      ) => Promise<{ id: string; endpoint: string } | undefined>
-    >(async () => undefined),
-    release: vi.fn<(id: string) => Promise<void>>(async () => undefined),
-    setTheme: vi.fn<(theme: "light" | "dark") => Promise<void>>(async () => undefined),
-    updateBounds: vi.fn<(input: object, options?: object) => Promise<undefined>>(
-      async () => undefined,
-    ),
+    setServerPath: vi.fn<Client["vscode"]["setServerPath"]>(async () => defaultApplicationState()),
+    open: vi.fn<Client["vscode"]["open"]>(async () => undefined),
+    release: vi.fn<Client["vscode"]["release"]>(async () => undefined),
+    setTheme: vi.fn<Client["vscode"]["setTheme"]>(async () => undefined),
+    updateBounds: vi.fn<Client["vscode"]["updateBounds"]>(async () => undefined),
     reveal: vi.fn(async () => ({ outcome: { view: "file" as const }, locations: [] })),
     updateSelectionHighlights: vi.fn(async () => undefined),
     openSourceControl: vi.fn(async () => undefined),
@@ -68,7 +59,7 @@ function createHarness(
       leaveProjectSidebarMode,
       projectSidebarWidth: () => 292,
     }),
-    { vscode: client } as unknown as Client,
+    createTestClient({ vscode: client }),
     terminalTopInset,
   );
   return {
@@ -94,107 +85,10 @@ describe("EmbeddedEditorStore", () => {
     vi.clearAllMocks();
   });
 
-  it("holds a network lease only while visible, reveals through the backend and requires explicit reconnect", async () => {
-    const { client, root, store } = createHarness();
-    const lease = {
-      id: "a".repeat(64),
-      endpoint: "http://localhost/editor/1/" + "a".repeat(64) + "/",
-    };
-    client.open.mockResolvedValue(lease);
-    store.applyState({ status: "ready" });
-    await store.show();
-    expect(store.browserEditorEndpoint).toBe(lease.endpoint);
-    expect(store.nativeViewReady).toBe(true);
-    await store.updateBrowserTheme("dark");
-    expect(client.setTheme).toHaveBeenCalledWith("dark", expect.any(Object));
-    client.setTheme.mockRejectedValueOnce(new Error("Theme RPC disconnected"));
-    await store.updateBrowserTheme("light");
-    expect(store.error).toBeUndefined();
-    expect(store.browserEditorEndpoint).toBe(lease.endpoint);
-    await store.reveal({ kind: "working-directory", path: "src/index.ts" });
-    expect(client.reveal).toHaveBeenCalledWith(
-      "/tmp/project",
-      { kind: "working-directory", path: "src/index.ts" },
-      expect.any(Object),
-    );
-    store.disconnected();
-    expect(store.browserEditorEndpoint).toBeUndefined();
-    expect(client.open).toHaveBeenCalledTimes(1);
-    await store.show();
-    expect(client.open).toHaveBeenCalledTimes(2);
-    store.hide();
-    expect(client.release).toHaveBeenCalledWith(lease.id);
-    root[Symbol.dispose]();
-  });
+  // Lease lifecycle, malformed endpoints, advisory sync failures and stale acquisition
+  // regressions now run through the real App in embedded-editor-workflow.test.tsx.
 
-  it("releases a malformed acquired endpoint without presenting it", async () => {
-    const { client, root, store } = createHarness();
-    const id = "b".repeat(64);
-    client.open.mockResolvedValue({
-      id,
-      endpoint: `http://localhost/editor/1/${id}/?redirect=elsewhere`,
-    });
-    await store.show();
-    expect(client.release).toHaveBeenCalledWith(id);
-    expect(store.browserEditorEndpoint).toBeUndefined();
-    expect(store.error).toContain("Invalid editor lease endpoint");
-    root[Symbol.dispose]();
-  });
-
-  it("releases a lease acquired after disconnect rather than displaying a stale frame", async () => {
-    const { client, root, store } = createHarness();
-    let resolve!: (lease: { id: string; endpoint: string }) => void;
-    client.open.mockImplementationOnce(
-      () =>
-        new Promise((done) => {
-          resolve = done;
-        }),
-    );
-    const opening = store.show();
-    store.disconnected();
-    const id = "c".repeat(64);
-    resolve({ id, endpoint: `http://localhost:4317/editor/1/${id}/` });
-    await opening;
-    expect(client.release).toHaveBeenCalledWith(id);
-    expect(store.browserEditorEndpoint).toBeUndefined();
-    expect(store.nativeViewReady).toBe(false);
-    root[Symbol.dispose]();
-  });
-
-  it("does not replace a reconnected editor with a stale rejected acquisition", async () => {
-    const { client, root, store } = createHarness();
-    let reject!: (error: Error) => void;
-    client.open.mockImplementationOnce(
-      () =>
-        new Promise((_resolve, fail) => {
-          reject = fail;
-        }),
-    );
-    const stale = store.show();
-    store.disconnected();
-    const id = "d".repeat(64);
-    client.open.mockResolvedValueOnce({ id, endpoint: `http://localhost:4317/editor/1/${id}/` });
-    await store.show();
-    expect(store.browserEditorEndpoint).toContain(id);
-    reject(new Error("stale transport rejection"));
-    await stale;
-    expect(store.error).toBeUndefined();
-    expect(store.nativeViewReady).toBe(true);
-    root[Symbol.dispose]();
-  });
-
-  it("does not blank an already open editor after annotation synchronization fails", async () => {
-    const { client, root, store } = createHarness({ sessionId: "session", annotations: [] });
-    const id = "e".repeat(64);
-    client.open.mockResolvedValue({ id, endpoint: `http://localhost:4317/editor/1/${id}/` });
-    client.updateAnnotations.mockRejectedValueOnce(new Error("annotation unavailable"));
-    await store.show();
-    expect(store.browserEditorEndpoint).toContain(id);
-    expect(store.nativeViewReady).toBe(true);
-    expect(store.error).toBeUndefined();
-    root[Symbol.dispose]();
-  });
-
+  // Retained: jsdom cannot establish native bounds or project-sidebar geometry.
   it("shows and hides the IDE while retaining the running editor", async () => {
     const { client, root, store, enterProjectSidebarMode, leaveProjectSidebarMode } =
       createHarness();
@@ -223,12 +117,12 @@ describe("EmbeddedEditorStore", () => {
   });
 
   it("fits the native editor below a floating terminal and restores it on dock, hide, and unmount", async () => {
-    const terminalClient = {
+    const terminalClient = createTestClient({
       terminals: {
         open: vi.fn(async () => ({ terminalId: "terminal-1", shell: "zsh" })),
         close: vi.fn(async () => undefined),
       },
-    } as unknown as Client;
+    });
     const retirement = mountWithClient(
       createStore(WorkingDirectoryRetirementStore, { onRetired: () => undefined }),
       terminalClient,
@@ -282,22 +176,16 @@ describe("EmbeddedEditorStore", () => {
     }
   });
 
-  it("invalidates disconnected presentation without replaying its open, then resends geometry and annotations on explicit reopen", async () => {
-    const { client, root, store } = createHarness({ sessionId: "session", annotations: [] });
+  // Retained native-only portion; the React workflow covers reconnect and annotation resend.
+  it("resends unchanged native geometry after a disconnected view explicitly reopens", async () => {
+    const { client, root, store } = createHarness();
     store.setMeasuredBounds(surfaceRect);
     await store.show();
-    expect(store.nativeViewReady).toBe(true);
-    expect(client.updateAnnotations).toHaveBeenCalledTimes(1);
     store.disconnected();
-    expect(store.nativeViewReady).toBe(false);
-    expect(store.error).toContain("Connection lost");
-    expect(client.open).toHaveBeenCalledTimes(1);
+    expect(client.updateBounds).toHaveBeenLastCalledWith(hiddenBounds, expect.any(Object));
+    client.updateBounds.mockClear();
     await store.show();
-    expect(store.error).toBeUndefined();
-    expect(store.nativeViewReady).toBe(true);
-    expect(client.open).toHaveBeenCalledTimes(2);
     expect(client.updateBounds).toHaveBeenLastCalledWith(shownBounds, expect.any(Object));
-    expect(client.updateAnnotations).toHaveBeenCalledTimes(2);
     root[Symbol.dispose]();
   });
 
@@ -358,6 +246,7 @@ describe("EmbeddedEditorStore", () => {
     root[Symbol.dispose]();
   });
 
+  // Retained: session restore/native reopen concurrency has no equivalent UI trigger here.
   it("shares one in-flight open between a user request and a session restore", async () => {
     const { client, root, store } = createHarness();
     let finishOpen!: () => void;
@@ -381,6 +270,8 @@ describe("EmbeddedEditorStore", () => {
     root[Symbol.dispose]();
   });
 
+  // Retained: companion source-context translation/clearing is not exercised by these
+  // lease workflows (the native editor itself is deliberately not mocked).
   it("tracks companion activity only for the active project", () => {
     const { root, store } = createHarness();
 
@@ -420,18 +311,14 @@ describe("EmbeddedEditorStore", () => {
     root[Symbol.dispose]();
   });
 
+  // Retained: the editor workflow does not exercise Settings' server-path operation race.
   it("keeps the state stream authoritative while changing the server path", async () => {
     const { client, root, store } = createHarness();
     let finish!: () => void;
     client.setServerPath.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
-          finish = () =>
-            resolve({
-              projects: [],
-              unreadSessionIds: [],
-              trustedProjectPaths: [],
-            });
+          finish = () => resolve(defaultApplicationState());
         }),
     );
     const request = store.useExistingInstallation("/usr/local/bin/code-server");
@@ -445,6 +332,7 @@ describe("EmbeddedEditorStore", () => {
     root[Symbol.dispose]();
   });
 
+  // Retained: direct source-navigation visibility guards are not covered by opening the IDE.
   it("reveals through the client only while the IDE is visible", async () => {
     const { client, root, store } = createHarness();
 
@@ -468,6 +356,7 @@ describe("EmbeddedEditorStore", () => {
     root[Symbol.dispose]();
   });
 
+  // Retained: nonempty review-thread annotation content is outside these lease workflows.
   it("syncs active-session discussion annotations after opening the IDE", async () => {
     const snapshot: EditorAnnotationSnapshot = {
       sessionId: "session-a",
@@ -496,6 +385,7 @@ describe("EmbeddedEditorStore", () => {
     root[Symbol.dispose]();
   });
 
+  // Retained: missing-installation Cake Chat setup and its failure are a separate workflow.
   it("asks Cake Chat to install on the actual backend with project context", async () => {
     const { root, store, startCakeChat } = createHarness();
 
@@ -520,6 +410,7 @@ describe("EmbeddedEditorStore", () => {
     root[Symbol.dispose]();
   });
 
+  // Retained: native geometry transport rejection cannot be proved by jsdom layout.
   it("swallows a failed bounds push without surfacing an editor error", async () => {
     const { client, root, store } = createHarness();
     client.updateBounds.mockRejectedValueOnce(new Error("stale"));
