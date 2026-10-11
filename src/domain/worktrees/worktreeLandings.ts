@@ -443,21 +443,22 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
             yield* performLanding(operation);
           })
         : Effect.gen(function* () {
-            const reason = operation.pauseReason ?? "conflict";
+            // Retry Git first so resolved conflicts resume landing and any remaining
+            // conflicts are prompted with the engine's current file list.
+            if (
+              operation.pauseReason !== "squash-message" ||
+              !landingBlocked(status, operation.strategy ?? "preserve")
+            )
+              return yield* performLanding(operation);
             yield* update(operation.workspacePath, operation.operationId, (item) => ({
               ...item,
-              phase: reason === "squash-message" ? "proposing" : "resolving",
+              phase: "proposing",
             }));
             yield* prompt(
               operation,
-              renderCakePrompt(
-                reason === "squash-message"
-                  ? configuredPrompts(application).worktreeSquashMessage
-                  : operation.strategy === "squash"
-                    ? configuredPrompts(application).worktreeSquashConflict
-                    : configuredPrompts(application).worktreePreserveConflict,
-                { target: status.targetBranch, files: [] },
-              ),
+              renderCakePrompt(configuredPrompts(application).worktreeSquashMessage, {
+                target: status.targetBranch,
+              }),
             );
             const refreshed = yield* requireStatus(operation.workspacePath);
             if (landingBlocked(refreshed, operation.strategy ?? "preserve")) {

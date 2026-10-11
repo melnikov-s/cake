@@ -275,6 +275,147 @@ describe("WorktreeLandings", () => {
     );
   });
 
+  it.effect.each(["preserve", "squash"] as const)(
+    "retries a resolved %s conflict without prompting and completes merge-and-resolve",
+    (strategy) => {
+      const events: string[] = [];
+      let status = baseStatus();
+      let attempts = 0;
+      const layer = services({
+        status: () => status,
+        events,
+        land: () => {
+          if (++attempts > 1) return { outcome: "landed" };
+          status = {
+            ...status,
+            dirtyCount: 1,
+            rebasing: strategy === "preserve",
+            merging: strategy === "squash",
+          };
+          return { outcome: "resolving", files: ["shared.ts"] };
+        },
+        resolve: (workingDirectory) =>
+          Effect.sync(() => {
+            events.push("resolve");
+            return {
+              projectPath: "/project",
+              workingDirectory,
+              resolvedSessionIds: ["session-1"],
+              failures: [],
+            };
+          }),
+      });
+      return Effect.scoped(
+        Effect.gen(function* () {
+          yield* worktreeLandings.start({
+            operationId: "landing-resolved-conflict",
+            workspacePath,
+            sessionId: "session-1",
+            strategy,
+            allowDirtyTarget: false,
+            commitBeforeLanding: false,
+            resolveAfterLanding: true,
+          });
+          yield* awaitPhase("stalled");
+          status = {
+            ...baseStatus(),
+            squashMessageReady: strategy === "squash",
+            record: { ...record, pendingStrategy: strategy },
+          };
+          yield* worktreeLandings.retry({ workspacePath, sessionId: "session-1" });
+          yield* awaitPhase("landed");
+          expect(events).toEqual([
+            "resolve-intent:true",
+            "prepare",
+            "land",
+            "prompt",
+            "land",
+            "resolve",
+            "resolve-intent:false",
+          ]);
+        }).pipe(Effect.provide(layer)),
+      );
+    },
+  );
+
+  it.effect.each([false, true])(
+    "retries a squash-message pause using current proposal readiness (%s)",
+    (ready) => {
+      const events: string[] = [];
+      let status = baseStatus();
+      let prompts = 0;
+      const layer = services({
+        status: () => status,
+        events,
+        land: () => (status.squashMessageReady ? { outcome: "landed" } : { outcome: "proposal" }),
+        prompt: () => {
+          if (++prompts === 2) status = { ...status, squashMessageReady: true };
+        },
+      });
+      return Effect.scoped(
+        Effect.gen(function* () {
+          yield* worktreeLandings.start({
+            operationId: "landing-squash-proposal",
+            workspacePath,
+            sessionId: "session-1",
+            strategy: "squash",
+            allowDirtyTarget: false,
+            commitBeforeLanding: false,
+          });
+          yield* awaitPhase("stalled");
+          status = { ...status, squashMessageReady: ready };
+          yield* worktreeLandings.retry({ workspacePath, sessionId: "session-1" });
+          yield* awaitPhase("landed");
+          expect(events).toEqual(
+            ready
+              ? ["prepare", "land", "prompt", "land"]
+              : ["prepare", "land", "prompt", "prompt", "land"],
+          );
+        }).pipe(Effect.provide(layer)),
+      );
+    },
+  );
+
+  it.effect("retries remaining conflicts with the current file list", () => {
+    const events: string[] = [];
+    const prompts: string[] = [];
+    let status = baseStatus();
+    let files = ["original.ts"];
+    const layer = services({
+      status: () => status,
+      events,
+      land: () => {
+        if (prompts.length === 2) return { outcome: "landed" };
+        status = { ...baseStatus(), dirtyCount: 1, rebasing: true };
+        return { outcome: "resolving", files };
+      },
+      prompt: (text) => {
+        prompts.push(text);
+        if (prompts.length === 2) status = baseStatus();
+      },
+    });
+    return Effect.scoped(
+      Effect.gen(function* () {
+        yield* worktreeLandings.start({
+          operationId: "landing-remaining-conflict",
+          workspacePath,
+          sessionId: "session-1",
+          strategy: "preserve",
+          allowDirtyTarget: false,
+          commitBeforeLanding: false,
+        });
+        yield* awaitPhase("stalled");
+        files = ["remaining.ts"];
+        yield* worktreeLandings.retry({ workspacePath, sessionId: "session-1" });
+        yield* awaitPhase("landed");
+        expect(events).toEqual(["prepare", "land", "prompt", "land", "prompt", "land"]);
+        expect(prompts[0]).toContain("original.ts");
+        expect(prompts[1]).toContain("remaining.ts");
+        expect(prompts[1]).not.toContain("original.ts");
+      }).pipe(Effect.provide(layer)),
+    );
+  });
+
   it.effect("adopts durable paused metadata and resumes ready work after process recovery", () => {
     const events: string[] = [];
     const layer = services({
@@ -323,8 +464,9 @@ describe("WorktreeLandings", () => {
         const events: string[] = [];
         const promptGate = yield* Deferred.make<void>();
         const layer = services({
-          status: baseStatus,
+          status: () => ({ ...baseStatus(), dirtyCount: 1, rebasing: true }),
           events,
+          land: () => ({ outcome: "resolving", files: ["shared.ts"] }),
           promptWait: Deferred.await(promptGate),
         });
         yield* Effect.gen(function* () {
