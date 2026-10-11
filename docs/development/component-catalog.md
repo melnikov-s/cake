@@ -43,6 +43,13 @@ it does not add a tab stop or intercept normal Tab/Shift+Tab navigation.
 | [SidePanel](../../src/renderer/components/ui/side-panel.tsx), [ResizeHandle](../../src/renderer/components/ui/resize-handle.tsx)             | Shared panel and resizing presentation.                                                   |
 | [WorkspacePanelToggle](../../src/renderer/components/ui/workspace-panel-toggle.tsx)                                                          | Workspace sidebar/chat visibility controls.                                               |
 
+[`SessionListItem`](../../src/renderer/components/ui/session-list-item.tsx) is the authoritative
+session row shared by the sidebar and screenshot destination picker: identity, labels,
+family depth, worktree context, relative time and activity. Callers own ordering and actions.
+[`FloatingToolbar`](../../src/renderer/components/ui/floating-toolbar.tsx) provides a
+content-sized, draggable toolbar with viewport-clamped transient geometry and keyboard movement.
+Only its actual footprint intercepts input on the underlying canvas.
+
 ### Workspace and chat shell
 
 [`WorkspaceChatLayout`](../../src/renderer/components/workspace-chat-layout.tsx)

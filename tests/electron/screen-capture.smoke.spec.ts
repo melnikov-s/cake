@@ -62,7 +62,13 @@ test("captures and annotates through the hidden native overlay into the existing
     // Fake only native capture/registration. Keep the real RPC, native window, editing UI,
     // compositor, destination Store, and Chat. Never capture this user's actual desktop.
     const original = await application.evaluate(
-      ({ desktopCapturer, nativeImage, screen, systemPreferences, globalShortcut }) => {
+      ({ desktopCapturer, nativeImage, screen, systemPreferences, globalShortcut, dialog }) => {
+        const failures: string[] = [];
+        const dialogs: string[] = [];
+        // Record regressions without opening a native error dialog on the user's desktop.
+        process.on("uncaughtException", (error) => failures.push(error.message));
+        dialog.showErrorBox = (title, content) => dialogs.push(`${title}: ${content}`);
+        Object.assign(globalThis, { captureFailures: failures, captureDialogs: dialogs });
         const bitmap = Buffer.alloc(2400 * 1200 * 4);
         for (let index = 0; index < bitmap.length; index += 4) {
           bitmap[index] = 90;
@@ -127,14 +133,65 @@ test("captures and annotates through the hidden native overlay into the existing
       return overlay;
     };
     let overlay = await begin();
-    const originalDestination = await overlay
-      .getByRole("combobox", { name: "Screenshot destination" })
-      .inputValue();
-    expect(originalDestination).not.toBe("new");
-    const destination = overlay.getByRole("combobox", { name: "Screenshot destination" });
-    await expect(destination.locator("option").first()).toHaveText("New session");
-    await destination.selectOption("new");
-    await overlay.getByRole("combobox", { name: "New session Project" }).selectOption(otherProject);
+    const toolbar = overlay.getByRole("toolbar", { name: "Screen capture tools" });
+    const toolbarBounds = (await toolbar.boundingBox())!;
+    expect(toolbarBounds.width).toBeLessThan(500);
+    expect(toolbarBounds.height).toBeLessThan(50);
+    // Empty space on BOTH sides at the toolbar's height reaches the capture canvas.
+    for (const x of [toolbarBounds.x - 20, toolbarBounds.x + toolbarBounds.width + 20]) {
+      expect(
+        await overlay.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName, {
+          x,
+          y: toolbarBounds.y + 20,
+        }),
+      ).toBe("CANVAS");
+    }
+    const grip = overlay.getByRole("button", { name: "Move capture toolbar" });
+    const gripBounds = (await grip.boundingBox())!;
+    await overlay.mouse.move(gripBounds.x + 15, gripBounds.y + 15);
+    await overlay.mouse.down();
+    await overlay.mouse.move(gripBounds.x + 95, gripBounds.y + 95);
+    await overlay.mouse.up();
+    const movedBounds = (await toolbar.boundingBox())!;
+    expect(movedBounds.x).toBeCloseTo(toolbarBounds.x + 80, 0);
+    expect(movedBounds.y).toBeCloseTo(toolbarBounds.y + 80, 0);
+    expect(
+      await overlay.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName, {
+        x: toolbarBounds.x + 20,
+        y: toolbarBounds.y + 20,
+      }),
+    ).toBe("CANVAS");
+    const destination = overlay.getByRole("button", { name: "Screenshot destination" });
+    await destination.click();
+    const popup = overlay.getByRole("dialog", { name: "Screenshot destination" });
+    await expect(popup.locator("button").first()).toHaveText("New chat");
+    const originalDestination = await popup
+      .locator('[data-navigation-active="true"][data-session-id]')
+      .getAttribute("data-session-id");
+    expect(originalDestination).toBeTruthy();
+    await overlay.keyboard.press("Escape");
+    await expect(popup).toHaveCount(0);
+    await expect(overlay.getByRole("toolbar")).toBeVisible();
+    await destination.click();
+    await popup.getByRole("button", { name: "New chat", exact: true }).click();
+    await popup.getByRole("button", { name: "New chat in Other Project", exact: true }).click();
+    await expect(destination).toHaveText("New chat · Other Project");
+    // Clamp a drag past the viewport edges; the destination popup flips above the strip.
+    const currentGrip = (await grip.boundingBox())!;
+    const viewport = await overlay.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    await overlay.mouse.move(currentGrip.x + 15, currentGrip.y + 15);
+    await overlay.mouse.down();
+    await overlay.mouse.move(viewport.width + 100, viewport.height + 100);
+    await overlay.mouse.up();
+    const edgeToolbar = (await toolbar.boundingBox())!;
+    expect(edgeToolbar.x + edgeToolbar.width).toBeLessThanOrEqual(viewport.width - 7);
+    expect(edgeToolbar.y + edgeToolbar.height).toBeLessThanOrEqual(viewport.height - 7);
+    await destination.click();
+    const popupBounds = (await popup.boundingBox())!;
+    expect(popupBounds.y + popupBounds.height).toBeLessThanOrEqual(edgeToolbar.y);
+    expect(popupBounds.x + popupBounds.width).toBeLessThanOrEqual(viewport.width - 7);
+    await overlay.keyboard.press("Escape");
+    await expect(popup).toHaveCount(0);
     await Promise.all([
       overlay.waitForEvent("close"),
       overlay.keyboard.press("Escape").catch((error: unknown) => {
@@ -149,6 +206,56 @@ test("captures and annotates through the hidden native overlay into the existing
     // Invoke the registered global callback with Cake on its Settings surface: last chat wins.
     await settings.click();
     await page.getByRole("button", { name: /^Screen Capture/ }).click();
+    // Reproduce launchers whose diagnostic readers have disconnected. Capture teardown can
+    // emit Node warnings; those writes must not become an uncaught EPIPE desktop dialog.
+    for (const channel of ["stdout", "stderr"] as const) {
+      const reader = application.process()[channel];
+      if (!reader) throw new Error(`Electron ${channel} is not piped`);
+      reader.destroy();
+    }
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const reopening = application.waitForEvent("window");
+      await application.evaluate(() => {
+        const callback = Reflect.get(globalThis, "captureShortcut");
+        if (typeof callback !== "function") throw new Error("Capture shortcut was not registered");
+        callback();
+      });
+      const cancelledOverlay = await reopening;
+      await expect(
+        cancelledOverlay.getByRole("toolbar", { name: "Screen capture tools" }),
+      ).toBeVisible();
+      await cancelledOverlay.getByRole("button", { name: "Annotate", exact: true }).click();
+      const bounds = (await cancelledOverlay.locator("canvas").boundingBox())!;
+      await cancelledOverlay.mouse.move(bounds.width * 0.2, bounds.height * 0.4);
+      await cancelledOverlay.mouse.down();
+      await cancelledOverlay.mouse.move(bounds.width * 0.5, bounds.height * 0.6);
+      await cancelledOverlay.mouse.up();
+      await expect(cancelledOverlay.getByRole("textbox", { name: "Arrow label" })).toBeFocused();
+      await cancelledOverlay.keyboard.type("Cancel draft arrow");
+      await cancelledOverlay.keyboard.press("Escape");
+      await expect(cancelledOverlay.getByRole("textbox", { name: "Arrow label" })).toHaveCount(0);
+      await expect(cancelledOverlay.getByRole("toolbar")).toBeVisible();
+      await Promise.all([
+        cancelledOverlay.waitForEvent("close"),
+        cancelledOverlay.keyboard.press("Escape").catch((error: unknown) => {
+          if (!cancelledOverlay.isClosed()) throw error;
+        }),
+      ]);
+      await expect.poll(() => application.windows().length).toBe(1);
+      await application.evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            process.emitWarning("Warning after screenshot capture cancellation");
+            setImmediate(resolve);
+          }),
+      );
+      expect(
+        await application.evaluate(() => ({
+          failures: Reflect.get(globalThis, "captureFailures"),
+          dialogs: Reflect.get(globalThis, "captureDialogs"),
+        })),
+      ).toEqual({ failures: [], dialogs: [] });
+    }
     const opened = application.waitForEvent("window");
     await application.evaluate(() => {
       const callback = Reflect.get(globalThis, "captureShortcut");
@@ -157,9 +264,12 @@ test("captures and annotates through the hidden native overlay into the existing
     });
     overlay = await opened;
     await expect(overlay.getByRole("button", { name: "Attach full display" })).toBeEnabled();
-    await expect(overlay.getByRole("combobox", { name: "Screenshot destination" })).toHaveValue(
-      originalDestination,
+    await overlay.getByRole("button", { name: "Screenshot destination" }).click();
+    await expect(overlay.locator(`[data-session-id="${originalDestination}"]`)).toHaveAttribute(
+      "data-navigation-active",
+      "true",
     );
+    await overlay.keyboard.press("Escape");
     await expect
       .poll(() =>
         overlay.locator("canvas").evaluate((canvas) => (canvas as HTMLCanvasElement).width),
@@ -182,7 +292,18 @@ test("captures and annotates through the hidden native overlay into the existing
     await expect(label).toHaveValue("Look here");
     await overlay.keyboard.press("Enter");
     await expect(label).toHaveCount(0);
-    // First Enter commits the label; the overlay is still present and can return to Crop.
+    // Escape while typing cancels only the second draft arrow, not the committed first one.
+    await overlay.mouse.move(start.x + 30, start.y + 30);
+    await overlay.mouse.down();
+    await overlay.mouse.move(end.x + 30, end.y + 30);
+    await overlay.mouse.up();
+    await expect(label).toBeFocused();
+    await overlay.keyboard.type("Discard me");
+    await expect(label).toHaveValue("Discard me");
+    await overlay.keyboard.press("Escape");
+    await expect(label).toHaveCount(0);
+    await expect(overlay.getByRole("toolbar")).toBeVisible();
+    // First Enter commits a label and first Escape discards a draft; neither closes capture.
     await overlay.getByRole("button", { name: "Crop", exact: true }).click();
     await expect(overlay.getByRole("button", { name: "Undo arrow" })).toBeEnabled();
     await overlay.keyboard.press("Enter");
@@ -241,6 +362,18 @@ test("captures and annotates through the hidden native overlay into the existing
     await overlay.keyboard.type("Crop this annotation");
     await overlay.keyboard.press("Enter");
     await overlay.getByRole("button", { name: "Crop", exact: true }).click();
+    // Move the strip into the crop area, then out of it; its former footprint stays selectable.
+    const cropGrip = overlay.getByRole("button", { name: "Move capture toolbar" });
+    const cropGripBounds = (await cropGrip.boundingBox())!;
+    await overlay.mouse.move(cropGripBounds.x + 15, cropGripBounds.y + 15);
+    await overlay.mouse.down();
+    await overlay.mouse.move(cropBounds.width * 0.15, cropBounds.height * 0.5);
+    await overlay.mouse.up();
+    const inAreaGrip = (await cropGrip.boundingBox())!;
+    await overlay.mouse.move(inAreaGrip.x + 15, inAreaGrip.y + 15);
+    await overlay.mouse.down();
+    await overlay.mouse.move(cropBounds.width * 0.5, cropBounds.height * 0.85);
+    await overlay.mouse.up();
     // Reverse drag includes the newly committed annotation and finishes immediately.
     await overlay.mouse.move(
       cropBounds.x + cropBounds.width * 0.35,
@@ -278,11 +411,12 @@ test("captures and annotates through the hidden native overlay into the existing
 
     await settings.click();
     overlay = await begin();
-    await overlay.getByRole("combobox", { name: "Screenshot destination" }).selectOption("new");
-    const projectPicker = overlay.getByRole("combobox", { name: "New session Project" });
-    await expect(projectPicker).toHaveValue(project);
-    await projectPicker.selectOption(otherProject);
-    await expect(projectPicker).toHaveValue(otherProject);
+    await overlay.getByRole("button", { name: "Screenshot destination" }).click();
+    await overlay.getByRole("button", { name: "New chat", exact: true }).click();
+    await overlay.getByRole("button", { name: "New chat in Other Project", exact: true }).click();
+    await expect(overlay.getByRole("button", { name: "Screenshot destination" })).toHaveText(
+      "New chat · Other Project",
+    );
     await overlay.getByRole("button", { name: "Attach full display" }).click();
     await expect.poll(() => application.windows().length).toBe(1);
     await expect(preview).toHaveCount(1);
@@ -294,10 +428,21 @@ test("captures and annotates through the hidden native overlay into the existing
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await settings.click();
     overlay = await begin();
-    const picker = overlay.getByRole("combobox", { name: "Screenshot destination" });
-    expect(await picker.inputValue()).not.toBe(originalDestination);
-    await expect(picker.locator('optgroup[label="Other Project"] option')).toHaveCount(1);
-    await picker.selectOption(originalDestination);
+    const picker = overlay.getByRole("button", { name: "Screenshot destination" });
+    await picker.click();
+    await expect(overlay.locator(`[data-session-id="${originalDestination}"]`)).toHaveAttribute(
+      "data-navigation-active",
+      "false",
+    );
+    await expect(
+      overlay
+        .getByRole("region", { name: "Other Project", exact: true })
+        .locator("[data-session-id]"),
+    ).toHaveCount(1);
+    await overlay
+      .locator(`[data-session-id="${originalDestination}"] .session-row button`)
+      .first()
+      .click();
     await overlay.getByRole("button", { name: "Attach full display" }).click();
     await expect.poll(() => application.windows().length).toBe(1);
     await expect(preview).toHaveCount(3);

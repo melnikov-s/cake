@@ -26,7 +26,6 @@ export class ScreenCaptureOverlayStore extends Store<{
   snapshot: ScreenCaptureSnapshot | undefined;
   mode: "crop" | "annotate" = "crop";
   destination: CaptureDestination | undefined;
-  newSessionProjectPath = "";
   readonly arrows: CaptureArrow[] = observable([]);
   dragStart: CapturePoint | undefined;
   dragEnd: CapturePoint | undefined;
@@ -43,17 +42,6 @@ export class ScreenCaptureOverlayStore extends Store<{
       if (!this.signal.aborted) {
         this.snapshot = snapshot;
         this.destination = snapshot.routing.defaultDestination;
-        const destination = this.destination;
-        this.newSessionProjectPath =
-          destination.kind === "new-session"
-            ? destination.projectPath
-            : (snapshot.routing.projects.find(
-                (project) =>
-                  destination.kind === "project-session" &&
-                  project.sessions.some((session) => session.sessionId === destination.sessionId),
-              )?.path ??
-              snapshot.routing.projects[0]?.path ??
-              "");
       }
     } catch (error) {
       if (!this.signal.aborted) this.reportError(error);
@@ -63,13 +51,6 @@ export class ScreenCaptureOverlayStore extends Store<{
   selectDestination(destination: CaptureDestination) {
     if (this.busy || this.cancelled) return;
     this.destination = destination;
-    if (destination.kind === "new-session") this.newSessionProjectPath = destination.projectPath;
-    else if (destination.kind === "project-session") {
-      this.newSessionProjectPath =
-        this.snapshot?.routing.projects.find((project) =>
-          project.sessions.some((session) => session.sessionId === destination.sessionId),
-        )?.path ?? this.newSessionProjectPath;
-    }
   }
 
   setMode(mode: "crop" | "annotate") {
@@ -120,6 +101,19 @@ export class ScreenCaptureOverlayStore extends Store<{
   abandonDrag() {
     this.dragStart = undefined;
     this.dragEnd = undefined;
+  }
+
+  /** Dismiss the unfinished gesture before dismissing the capture itself. */
+  escape() {
+    if (this.editingIndex !== undefined) {
+      this.arrows.splice(this.editingIndex, 1);
+      this.editingIndex = undefined;
+      this.label = "";
+    } else if (this.dragStart) {
+      this.abandonDrag();
+    } else {
+      void this.cancel();
+    }
   }
 
   commitLabel() {

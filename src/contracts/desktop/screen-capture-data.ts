@@ -1,4 +1,6 @@
 import { Schema } from "effect";
+import { SessionLabel } from "../application/application-data";
+import { WorktreeRecord } from "../worktrees/managed-worktree-data";
 
 export const DEFAULT_CAPTURE_SHORTCUT = "Mod+Shift+6";
 export const DEFAULT_CAPTURE_MAX_DIMENSION = 2048;
@@ -16,7 +18,30 @@ export const CaptureDestination = Schema.Union([
 ]);
 export type CaptureDestination = Schema.Schema.Type<typeof CaptureDestination>;
 
-const CaptureSessionOption = Schema.Struct({ sessionId: Schema.String, title: Schema.String });
+/** Frozen sidebar presentation facts; the overlay does not create another session catalog. */
+export const CaptureSessionOption = Schema.Struct({
+  sessionId: Schema.String,
+  title: Schema.String,
+  modifiedAt: Schema.String,
+  activityTime: Schema.String,
+  labels: Schema.Array(SessionLabel),
+  activity: Schema.optionalKey(Schema.Literals(["waiting", "running", "unread", "error"])),
+  draft: Schema.optionalKey(Schema.Boolean),
+  worktreeName: Schema.optionalKey(Schema.String),
+  familyParentSessionId: Schema.optionalKey(Schema.String),
+  familyChildSessionIds: Schema.optionalKey(Schema.Array(Schema.String)),
+  familyDepth: Schema.optionalKey(Schema.Int),
+  familyCollapsed: Schema.Boolean,
+  managedWorktree: Schema.optionalKey(
+    Schema.Struct({
+      branch: WorktreeRecord.fields.branch,
+      baseBranch: WorktreeRecord.fields.baseBranch,
+      parentWorktreePath: WorktreeRecord.fields.parentWorktreePath,
+      state: WorktreeRecord.fields.state,
+    }),
+  ),
+});
+export interface CaptureSessionOption extends Schema.Schema.Type<typeof CaptureSessionOption> {}
 export const CaptureRouting = Schema.Struct({
   projects: Schema.Array(
     Schema.Struct({
@@ -26,6 +51,11 @@ export const CaptureRouting = Schema.Struct({
     }),
   ),
   cakeChats: Schema.Array(CaptureSessionOption),
+  appearance: Schema.Struct({
+    theme: Schema.Literals(["system", "light", "dark"]),
+    sessionAvatarsEnabled: Schema.Boolean,
+    sidebarCharactersEnabled: Schema.Boolean,
+  }),
   defaultDestination: CaptureDestination,
 });
 export interface CaptureRouting extends Schema.Schema.Type<typeof CaptureRouting> {}

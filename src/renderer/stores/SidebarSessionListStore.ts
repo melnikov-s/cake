@@ -121,9 +121,9 @@ export class SidebarSessionListStore extends Store<{
       .sort((left, right) => right.modifiedAt.localeCompare(left.modifiedAt));
   }
 
-  projectSessions(projectPath: string, resolved = false) {
+  projectSessions(projectPath: string, resolved = false, includeCollapsed = false) {
     const { byId, roots } = this.orderedProjectSessionRoots(projectPath, resolved);
-    return this.flattenProjectSessionRoots(byId, roots);
+    return this.flattenProjectSessionRoots(byId, roots, includeCollapsed);
   }
 
   visibleProjectSessions(projectPath: string, resolved = false) {

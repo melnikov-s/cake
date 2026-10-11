@@ -104,6 +104,27 @@ export const BellIcon = () => (
     <path d="M10 21h4" />
   </Icon>
 );
+export const CropIcon = () => (
+  <Icon>
+    <path d="M6 3v15h15M3 6h15v15" />
+  </Icon>
+);
+export const CaptureArrowIcon = () => (
+  <Icon>
+    <path d="M5 19 19 5M9 5h10v10" />
+  </Icon>
+);
+export const UndoIcon = () => (
+  <Icon>
+    <path d="m8 4-5 5 5 5M3 9h11a6 6 0 0 1 0 12" />
+  </Icon>
+);
+export const CaptureDisplayIcon = () => (
+  <Icon>
+    <rect x="3" y="4" width="18" height="13" rx="2" />
+    <path d="M8 21h8M12 17v4m-4-11 3 3 5-5" />
+  </Icon>
+);
 export const GripIcon = () => (
   <Icon size={14}>
     <circle cx="8" cy="6" r="1" fill="currentColor" stroke="none" />

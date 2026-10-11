@@ -759,9 +759,8 @@ const screenCaptureSettingsScenario: VisualCaptureScenario = {
 const captureOverlayRegions = new WeakMap<Page, Locator>();
 const screenCaptureOverlayScenario: VisualCaptureScenario = {
   name: "screen-capture-overlay",
-  description:
-    "Native capture destination picker, per-Project new session, and target-first arrows",
-  states: ["default", "new-session", "annotate"],
+  description: "Compact movable capture strip, sidebar destination rows, and target-first arrows",
+  states: ["default", "destination", "new-session", "annotate"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     const otherProject = join(paths.project, "other-project");
@@ -836,11 +835,11 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
         overlay.locator("canvas").evaluate((canvas) => (canvas as HTMLCanvasElement).width),
       )
       .toBe(dimensions.width);
-    if (state === "new-session") {
-      await overlay.getByRole("combobox", { name: "Screenshot destination" }).selectOption("new");
-      await overlay
-        .getByRole("combobox", { name: "New session Project" })
-        .selectOption({ label: "Other Project" });
+    if (state === "destination" || state === "new-session") {
+      await overlay.getByRole("button", { name: "Screenshot destination" }).click();
+      if (state === "new-session") {
+        await overlay.getByRole("button", { name: "New chat", exact: true }).click();
+      }
     }
     if (state === "annotate") {
       await overlay.getByRole("button", { name: "Annotate", exact: true }).click();
@@ -856,7 +855,11 @@ const screenCaptureOverlayScenario: VisualCaptureScenario = {
     await overlay.mouse.move(1, 1);
     captureOverlayRegions.set(
       page,
-      state === "annotate" ? overlay.getByLabel("Screen capture", { exact: true }) : toolbar,
+      state === "default"
+        ? toolbar
+        : state === "annotate"
+          ? overlay.getByLabel("Screen capture", { exact: true })
+          : overlay.getByRole("dialog", { name: "Screenshot destination" }),
     );
   },
   region(page) {

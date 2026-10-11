@@ -192,6 +192,11 @@ describe("Client", () => {
           projects: [],
           cakeChats: [],
           defaultDestination: { kind: "cake-chat", sessionId: "session" },
+          appearance: {
+            theme: "dark",
+            sessionAvatarsEnabled: true,
+            sidebarCharactersEnabled: false,
+          },
         }),
       () => client.electron.configureScreenCapture({ shortcut: "Mod+Shift+6", maxDimension: 2048 }),
       () => client.electron.screenCaptureState(),

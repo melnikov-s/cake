@@ -1,5 +1,6 @@
 import { DictationStore } from "./DictationStore";
 import { ScreenCaptureAttachmentStore } from "./ScreenCaptureAttachmentStore";
+import type { CaptureSessionOption } from "../../contracts/desktop/screen-capture-data";
 import { microphone, type Microphone } from "../dictation/microphone";
 import { createSpeechPlayback, type SpeechPlayback } from "../speech/playback";
 import { ConversationModeStore, ConversationModeContext } from "./ConversationModeStore";
@@ -104,36 +105,94 @@ export class RootStore extends Store<{
       client: this.client.electron,
       currentTarget: () => this.appShellStore.activeConversation,
       destinations: () => ({
-        projects: this.projectCatalogStore.projects.map((project) => {
-          const catalog = this.sessionCatalogStore.projectSessions(project.path);
-          const catalogIds = new Set(catalog.map((session) => session.sessionId));
-          // Unsent chats live in the window's pending identities, not the Pi catalog.
-          const pending = this.sessionRegistry.sessions.filter(
-            (session) =>
-              this.sessionRegistry.pendingSessions.isTemporary(session.sessionId) &&
-              !catalogIds.has(session.sessionId) &&
-              (this.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
-                session.workspacePath) === project.path,
-          );
-          return {
-            path: project.path,
-            name: project.name,
-            sessions: [
-              ...catalog
-                .filter((session) => !session.resolved)
-                .map((session) => ({ sessionId: session.sessionId, title: session.title })),
-              ...pending.map((session) => ({
+        appearance: {
+          theme: this.settingsStore.appearance.theme,
+          sessionAvatarsEnabled: this.settingsStore.appearance.sessionAvatarsEnabled,
+          sidebarCharactersEnabled: this.settingsStore.appearance.sidebarCharactersEnabled,
+        },
+        projects: this.projectCatalogStore.orderedProjectPaths.map((path) => {
+          // Keep real sidebar rows in their exact order. Unsent pane identities that are
+          // intentionally absent from the sidebar remain valid destinations after those rows.
+          const listed = this.sidebarStore.sessionListStore.projectSessions(path, false, true);
+          const listedIds = new Set(listed.map((session) => session.sessionId));
+          const unsent = this.sessionRegistry.sessions
+            .filter(
+              (session) =>
+                this.sessionRegistry.pendingSessions.isTemporary(session.sessionId) &&
+                !listedIds.has(session.sessionId) &&
+                (this.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
+                  session.workspacePath) === path,
+            )
+            .map((session) => {
+              const conversation = this.sessionRegistry.pendingSessions.conversation(
+                session.sessionId,
+              )!;
+              return {
                 sessionId: session.sessionId,
-                title:
-                  this.sessionRegistry.pendingSessions.conversation(session.sessionId)?.title ||
-                  "New chat",
-              })),
-            ],
+                title: conversation.title || "New chat",
+                modifiedAt: conversation.modifiedAt,
+                workingDirectory: session.workspacePath,
+                draft: true,
+                familyParentSessionId: undefined,
+                familyChildSessionIds: undefined,
+                familyDepth: undefined,
+              };
+            });
+          return {
+            path,
+            name: this.projectCatalogStore.nameForPath(path),
+            // Include collapsed descendants so the picker can expand them independently.
+            sessions: [...listed, ...unsent].map((session) => {
+              const worktree = this.sidebarStore.managedWorktree(session.workingDirectory);
+              const activity =
+                this.sidebarStore.sessionListStore.sessionActivityForDisplay(session);
+              const worktreeName = "worktreeName" in session ? session.worktreeName : undefined;
+              const option: CaptureSessionOption = {
+                sessionId: session.sessionId,
+                title: session.title || "New chat",
+                modifiedAt: session.modifiedAt,
+                activityTime: this.sidebarStore.sessionActivityTime(session.modifiedAt),
+                labels: this.sessionMetadataStore.sessionLabels(session.sessionId),
+                draft: session.draft ?? false,
+                familyCollapsed: this.sidebarStore.sessionListStore.isFamilyCollapsed(
+                  session.sessionId,
+                ),
+              };
+              if (activity !== undefined) Object.assign(option, { activity });
+              if (worktreeName !== undefined) Object.assign(option, { worktreeName });
+              if (session.familyParentSessionId !== undefined)
+                Object.assign(option, { familyParentSessionId: session.familyParentSessionId });
+              if (session.familyChildSessionIds !== undefined)
+                Object.assign(option, { familyChildSessionIds: session.familyChildSessionIds });
+              if (session.familyDepth !== undefined)
+                Object.assign(option, { familyDepth: session.familyDepth });
+              if (worktree)
+                Object.assign(option, {
+                  managedWorktree: {
+                    branch: worktree.branch,
+                    baseBranch: worktree.baseBranch,
+                    parentWorktreePath: worktree.parentWorktreePath,
+                    state: worktree.state,
+                  },
+                });
+              return option;
+            }),
           };
         }),
-        cakeChats: this.cakeChatCollectionStore.summaries
-          .filter((session) => !session.resolved)
-          .map((session) => ({ sessionId: session.sessionId, title: session.title })),
+        cakeChats: this.sidebarStore.sessionListStore.cakeChatSessions().map((session) => {
+          const option: CaptureSessionOption = {
+            sessionId: session.sessionId,
+            title: session.title,
+            modifiedAt: session.modifiedAt,
+            activityTime: this.sidebarStore.sessionActivityTime(session.modifiedAt),
+            labels: [],
+            familyCollapsed: false,
+          };
+          if (this.cakeChatCollectionStore.registry.find(session.sessionId)?.streaming)
+            Object.assign(option, { activity: "running" });
+          else if (session.unread) Object.assign(option, { activity: "unread" });
+          return option;
+        }),
       }),
       prepareDestination: async (destination) => {
         if (destination.kind === "new-session") {

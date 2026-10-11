@@ -1,4 +1,4 @@
-import { useEffect, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, type CSSProperties } from "react";
 import { observer } from "r-state-tree/react";
 import type { ScreenCaptureOverlayStore } from "../stores/ScreenCaptureOverlayStore";
 import { CaptureCanvas } from "./ui/capture-canvas";
@@ -14,14 +14,15 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
 }) {
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      if (event.isComposing || event.repeat) return;
+      if (event.isComposing || event.repeat || event.defaultPrevented) return;
       if (event.key === "Escape") {
         event.preventDefault();
-        void store.cancel();
+        store.escape();
       } else if (
         event.key === "Enter" &&
         !(event.target instanceof HTMLInputElement) &&
-        !(event.target instanceof HTMLSelectElement)
+        !(event.target instanceof HTMLSelectElement) &&
+        (!(event.target instanceof HTMLButtonElement) || event.target.hasAttribute("aria-pressed"))
       ) {
         event.preventDefault();
         void store.capture();
@@ -32,6 +33,14 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
   }, [store]);
   const snapshot = store.snapshot;
   const labelPoint = store.labelPoint;
+  const theme = snapshot?.routing.appearance.theme;
+  useLayoutEffect(() => {
+    if (!theme) return;
+    document.documentElement.dataset.theme = theme;
+    return () => {
+      delete document.documentElement.dataset.theme;
+    };
+  }, [theme]);
   const labelPosition: CSSProperties | undefined =
     snapshot && labelPoint
       ? {
@@ -85,30 +94,31 @@ export const ScreenCaptureOverlay = observer(function ScreenCaptureOverlay({
           />
         </div>
       )}
-      <div className="absolute inset-x-4 top-4 z-20 flex flex-col items-center gap-2">
-        <CaptureToolbar
-          mode={store.mode}
-          busy={store.busy || !snapshot}
-          canUndo={store.arrows.length > 0}
-          destinationPicker={
-            snapshot &&
-            store.destination && (
-              <CaptureDestinationPicker
-                routing={snapshot.routing}
-                destination={store.destination}
-                newSessionProjectPath={store.newSessionProjectPath}
-                disabled={store.busy || store.cancelled}
-                onChange={(destination) => store.selectDestination(destination)}
-              />
-            )
-          }
-          onMode={(mode) => store.setMode(mode)}
-          onUndo={() => store.undo()}
-          onCapture={() => void store.capture()}
-          onCancel={() => void store.cancel()}
-        />
-        {store.error && <Callout variant="error">{store.error}</Callout>}
-      </div>
+      <CaptureToolbar
+        mode={store.mode}
+        busy={store.busy || !snapshot}
+        canUndo={store.arrows.length > 0}
+        destinationPicker={
+          snapshot &&
+          store.destination && (
+            <CaptureDestinationPicker
+              routing={snapshot.routing}
+              destination={store.destination}
+              disabled={store.busy || store.cancelled}
+              onChange={(destination) => store.selectDestination(destination)}
+            />
+          )
+        }
+        onMode={(mode) => store.setMode(mode)}
+        onUndo={() => store.undo()}
+        onCapture={() => void store.capture()}
+        onCancel={() => void store.cancel()}
+      />
+      {store.error && (
+        <div className="absolute bottom-4 left-1/2 z-20 max-w-[calc(100vw-32px)] -translate-x-1/2">
+          <Callout variant="error">{store.error}</Callout>
+        </div>
+      )}
     </div>
   );
 });

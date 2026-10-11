@@ -1,0 +1,314 @@
+import { useRef, type MouseEventHandler, type ReactNode } from "react";
+import { observer } from "r-state-tree/react";
+import type { ProjectIcon, SessionLabel } from "../../../contracts/application/application-data";
+import type { WorktreeRecord } from "../../../contracts/worktrees/managed-worktree-data";
+import type { SessionActivity } from "../../lib/session-activity";
+import { cn } from "../../lib/utils";
+import { SessionActivityIndicator } from "../session-activity-indicator";
+import { WorktreeStatusIcon } from "../worktree-status-icon";
+import { Avatar } from "./avatar";
+import { AvatarLabelPicker } from "./avatar-label-picker";
+import { Badge } from "./badge";
+import { DepthRails } from "./depth-rails";
+import { IconButton } from "./icon-button";
+import { CakeIcon, ChevronIcon, ResolveIcon, RestoreIcon } from "./icons";
+import { LabelSwatch } from "./label-swatch";
+import { NavItem } from "./nav-item";
+
+export interface SessionListItemProps {
+  session: {
+    sessionId: string;
+    title: string;
+    modifiedAt: string;
+    draft?: boolean;
+    worktreeName?: string;
+    familyParentSessionId?: string;
+    familyChildSessionIds?: readonly string[];
+    familyDepth?: number;
+  };
+  managedWorktree?: Pick<WorktreeRecord, "branch" | "baseBranch" | "parentWorktreePath" | "state">;
+  selected: boolean;
+  paneNumber?: number;
+  resolved: boolean;
+  activity?: SessionActivity;
+  activityTime: string;
+  labels: readonly SessionLabel[];
+  avatarSeed: string;
+  avatarsEnabled: boolean;
+  charactersEnabled?: boolean;
+  source?:
+    | {
+        kind: "project";
+        name: string;
+        avatarSeed: string;
+        customIcon?: ProjectIcon;
+        showAvatar: boolean;
+      }
+    | { kind: "cake-chat"; name: string };
+  focusMode?: boolean;
+  familyCollapsed?: boolean;
+  labelIds?: readonly string[];
+  availableLabels?: readonly SessionLabel[];
+  renameInput?: ReactNode;
+  onOpen(sessionId: string): void;
+  onToggleFamily?(sessionId: string): void;
+  onSetLabels?(sessionId: string, labelIds: readonly string[]): void;
+  onResolve?(sessionId: string, resolved: boolean): void;
+  onContextMenu?: MouseEventHandler<HTMLDivElement>;
+}
+
+/** Authoritative session-row presentation, shared by navigation and destination pickers. */
+export const SessionListItem = observer(function SessionListItem({
+  session,
+  managedWorktree,
+  selected,
+  paneNumber,
+  resolved,
+  activity,
+  activityTime,
+  labels,
+  avatarSeed,
+  avatarsEnabled,
+  charactersEnabled = false,
+  source,
+  focusMode = false,
+  familyCollapsed,
+  labelIds = [],
+  availableLabels = [],
+  renameInput,
+  onOpen,
+  onToggleFamily,
+  onSetLabels,
+  onResolve,
+  onContextMenu,
+}: SessionListItemProps) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const navigationRef = useRef<HTMLDivElement>(null);
+  const avatarVariant = charactersEnabled ? "artwork" : "square";
+  const avatarInteraction = charactersEnabled
+    ? { target: rowRef, activationTarget: navigationRef }
+    : undefined;
+  const isFamilyParent = Boolean(session.familyChildSessionIds?.length);
+  const isFamilyChild =
+    Boolean(session.familyParentSessionId) && session.familyParentSessionId !== session.sessionId;
+  const canResolve = !activity && !isFamilyChild && Boolean(onResolve);
+  const canSetLabels = !session.draft && !resolved && Boolean(onSetLabels);
+  const branch = session.draft
+    ? undefined
+    : (session.worktreeName ?? managedWorktree?.branch.replace(/^agent\//, ""));
+  const baseBranch = managedWorktree?.baseBranch.replace(/^agent\//, "");
+  const showBaseBranch = baseBranch !== undefined && baseBranch !== "main";
+  return (
+    <div
+      ref={rowRef}
+      data-animated-list-key={session.sessionId}
+      data-session-id={session.sessionId}
+      data-navigation-item=""
+      data-navigation-active={selected}
+      data-family-role={isFamilyChild ? "child" : isFamilyParent ? "parent" : "root"}
+      className={cn(
+        "session-item group relative grid min-h-11 w-full items-center rounded-md text-[13px] select-none transition-colors duration-200 ease-out motion-reduce:transition-none",
+        focusMode && "min-h-14 text-sm [&_svg]:size-5",
+        focusMode && charactersEnabled && "[&_[data-slot=avatar]]:size-7",
+        avatarsEnabled
+          ? isFamilyChild
+            ? focusMode
+              ? "grid-cols-[3rem_minmax(0,1fr)]"
+              : "grid-cols-[2.5rem_minmax(0,1fr)]"
+            : focusMode
+              ? "grid-cols-[2rem_minmax(0,1fr)]"
+              : "grid-cols-[1.5rem_minmax(0,1fr)]"
+          : "grid-cols-[1.25rem_minmax(0,1fr)]",
+        selected
+          ? "active text-primary font-semibold"
+          : "text-muted-foreground hover:text-foreground",
+        canResolve && "can-resolve",
+        selected && canResolve && "has-session-action",
+      )}
+    >
+      {!renameInput && (
+        <div
+          data-slot="session-leading"
+          className="relative flex h-full items-center justify-center"
+        >
+          <DepthRails
+            depth={session.familyDepth ?? 0}
+            className="pointer-events-none absolute inset-y-0 left-0 w-2 flex-none"
+          />
+          {isFamilyParent && onToggleFamily && (
+            <IconButton
+              className={cn(
+                "size-5 shrink-0 text-muted-foreground transition-transform",
+                avatarsEnabled && "absolute right-full",
+                familyCollapsed && "-rotate-90",
+              )}
+              tooltip={familyCollapsed ? "Expand child sessions" : "Collapse child sessions"}
+              ariaLabel={`${familyCollapsed ? "Expand" : "Collapse"} children of ${session.title}`}
+              aria-expanded={!familyCollapsed}
+              data-cake-hint="off"
+              onClick={() => onToggleFamily(session.sessionId)}
+            >
+              <ChevronIcon />
+            </IconButton>
+          )}
+          {avatarsEnabled ? (
+            canSetLabels ? (
+              <AvatarLabelPicker
+                variant={avatarVariant}
+                interaction={avatarInteraction}
+                seed={avatarSeed}
+                labels={availableLabels}
+                value={labelIds}
+                className="size-6"
+                onChange={(next) => onSetLabels?.(session.sessionId, next)}
+              />
+            ) : (
+              <Avatar
+                variant={avatarVariant}
+                interaction={avatarInteraction}
+                kind="session"
+                resolved={resolved}
+                seed={avatarSeed}
+                labelColors={labels.map((label) => label.color)}
+                title={
+                  resolved
+                    ? "Resolved session"
+                    : labels.map((label) => label.name).join(", ") || "No labels"
+                }
+                role="img"
+                aria-label={
+                  resolved
+                    ? "Resolved session"
+                    : labels.length
+                      ? `Labels: ${labels.map((label) => label.name).join(", ")}`
+                      : "No labels"
+                }
+              />
+            )
+          ) : (
+            labels[0] && (
+              <LabelSwatch
+                color={labels[0].color}
+                className={isFamilyParent ? "absolute -left-2" : undefined}
+                title={labels.map((label) => label.name).join(", ")}
+                role="img"
+                aria-label={`Labels: ${labels.map((label) => label.name).join(", ")}`}
+              />
+            )
+          )}
+        </div>
+      )}
+      {renameInput ?? (
+        <NavItem
+          ref={navigationRef}
+          motionFeedback
+          className={cn(
+            "session-row col-start-2 h-full bg-transparent py-0 hover:bg-transparent [&>button]:h-full",
+            focusMode && "text-sm",
+          )}
+          active={selected}
+          onClick={() => onOpen(session.sessionId)}
+          onContextMenu={onContextMenu}
+          label={<span className="session-title min-w-0 truncate">{session.title}</span>}
+          badge={
+            (session.draft || paneNumber !== undefined) && (
+              <span className="flex items-center gap-1">
+                {session.draft && (
+                  <Badge variant="outline" size="xs" className="text-muted-foreground">
+                    Draft
+                  </Badge>
+                )}
+                {paneNumber !== undefined && (
+                  <Badge variant={selected ? "default" : "outline"} size="xs">
+                    {paneNumber}
+                  </Badge>
+                )}
+              </span>
+            )
+          }
+          description={
+            <span
+              data-slot="session-description"
+              className={cn(
+                "flex w-full min-w-0 items-center gap-1.5 text-[11px] font-normal leading-none",
+                focusMode && "text-xs leading-tight",
+                selected ? "text-primary/80" : "text-muted-foreground/80",
+              )}
+            >
+              {source && (
+                <>
+                  <span className="flex min-w-0 items-center gap-1" title={source.name}>
+                    {source.kind === "cake-chat" ? (
+                      <CakeIcon />
+                    ) : source.showAvatar ? (
+                      <Avatar
+                        kind="project"
+                        seed={source.avatarSeed}
+                        customIcon={source.customIcon}
+                        className="size-3.5"
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    <span className="truncate">{source.name}</span>
+                  </span>
+                  <span aria-hidden="true">·</span>
+                </>
+              )}
+              {branch && (
+                <>
+                  {managedWorktree && (
+                    <WorktreeStatusIcon state={managedWorktree.state} className="shrink-0" />
+                  )}
+                  <span className="truncate">{branch}</span>
+                  {showBaseBranch && (
+                    <>
+                      <span aria-hidden="true">→</span>
+                      <span className="truncate">{baseBranch}</span>
+                    </>
+                  )}
+                  <span aria-hidden="true">·</span>
+                </>
+              )}
+              <time
+                className={cn(
+                  "session-time shrink-0 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground",
+                  focusMode && "text-xs",
+                )}
+                dateTime={session.modifiedAt}
+                title={new Date(session.modifiedAt).toLocaleString()}
+              >
+                {activityTime}
+              </time>
+            </span>
+          }
+          trailing={
+            <div className="session-meta relative flex h-full w-8 shrink-0 items-center justify-center">
+              {activity ? (
+                <SessionActivityIndicator activity={activity} selected={selected} />
+              ) : (
+                canResolve && (
+                  <IconButton
+                    className={cn(
+                      "session-resolve-action size-6 flex items-center justify-center rounded transition-opacity",
+                      selected
+                        ? "text-primary/80 opacity-100 hover:bg-primary/10 hover:text-primary"
+                        : "absolute inset-0 m-auto text-muted-foreground opacity-0 hover:bg-sidebar-hover hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100",
+                    )}
+                    tooltip={resolved ? "Restore" : "Resolve"}
+                    ariaLabel={`${resolved ? "Restore" : "Resolve"} ${session.title}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onResolve?.(session.sessionId, !resolved);
+                    }}
+                  >
+                    {resolved ? <RestoreIcon /> : <ResolveIcon />}
+                  </IconButton>
+                )
+              )}
+            </div>
+          }
+        />
+      )}
+    </div>
+  );
+});

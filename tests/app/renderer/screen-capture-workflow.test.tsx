@@ -3,7 +3,11 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CaptureResult } from "../../../src/contracts/desktop/screen-capture-data";
+import { Schema } from "effect";
+import {
+  CaptureRouting,
+  type CaptureResult,
+} from "../../../src/contracts/desktop/screen-capture-data";
 import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { App } from "../../../src/renderer/components/app";
@@ -145,10 +149,10 @@ const captured: CaptureResult = {
 };
 describe("Screen capture attachment workflow", () => {
   it("includes an unsent chat outside the Pi catalog and defaults to its existing draft", async () => {
-    const start = vi.fn<Client["electron"]["startScreenCapture"]>(async (routing) => ({
-      data: png,
-      destination: routing.defaultDestination,
-    }));
+    const start = vi.fn<Client["electron"]["startScreenCapture"]>(async (routing) => {
+      Schema.decodeUnknownSync(CaptureRouting)(routing);
+      return { data: png, destination: routing.defaultDestination };
+    });
     using fixture = renderCapture(start, true);
     await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
     expect(start).toHaveBeenCalledWith(
@@ -157,9 +161,44 @@ describe("Screen capture attachment workflow", () => {
       }),
       expect.anything(),
     );
+    expect(() => Schema.decodeUnknownSync(CaptureRouting)(start.mock.calls[0]?.[0])).not.toThrow();
     expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
     expectExistingDraft();
   });
+  it("uses sidebar Project order and session order with the same identity presentation facts", async () => {
+    const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => undefined);
+    using fixture = renderCapture(start);
+    act(() => {
+      fixture.root.projectCatalogStore.move("/other", "/project", "before");
+      fixture.root.settingsStore.appearance.setSessionAvatarsEnabled(false);
+      fixture.root.settingsStore.appearance.setSidebarCharactersEnabled(true);
+      // A label sort and selected-row pin are owned by the sidebar, not reimplemented here.
+      fixture.root.sidebarStore.sessionListStore.setProjectSessionSort("/project", "label");
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
+    const routing = start.mock.calls[0]![0];
+    expect(() => Schema.decodeUnknownSync(CaptureRouting)(routing)).not.toThrow();
+    expect(routing.projects.map((project) => project.path)).toEqual(["/other", "/project"]);
+    expect(routing.appearance).toEqual({
+      theme: fixture.root.settingsStore.appearance.theme,
+      sessionAvatarsEnabled: false,
+      sidebarCharactersEnabled: true,
+    });
+    const projectRows = routing.projects[1]!.sessions;
+    expect(projectRows.map((session) => session.sessionId)).toEqual(
+      fixture.root.sidebarStore.sessionListStore
+        .projectSessions("/project")
+        .map((session) => session.sessionId),
+    );
+    expect(projectRows[0]).toEqual(
+      expect.objectContaining({
+        modifiedAt: fixture.root.sessionCatalogStore.find(projectRows[0]!.sessionId)!.modifiedAt,
+        labels: fixture.root.sessionMetadataStore.sessionLabels(projectRows[0]!.sessionId),
+        activityTime: fixture.root.sidebarStore.sessionActivityTime(projectRows[0]!.modifiedAt),
+      }),
+    );
+  });
+
   it("offers catalog sessions, defaults to the last chat, and routes to a different chosen session", async () => {
     const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => ({
       data: png,
@@ -175,8 +214,8 @@ describe("Screen capture attachment workflow", () => {
             expect.objectContaining({
               path: "/project",
               sessions: expect.arrayContaining([
-                { sessionId: "alpha", title: "Session A" },
-                { sessionId: "beta", title: "Session B" },
+                expect.objectContaining({ sessionId: "alpha", title: "Session A" }),
+                expect.objectContaining({ sessionId: "beta", title: "Session B" }),
               ]),
             }),
           ]),

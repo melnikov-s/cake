@@ -62,8 +62,9 @@ export const SettingsScreenCaptureSection = observer(function SettingsScreenCapt
       <div className="grid gap-2">
         <p className="text-xs leading-relaxed text-muted-foreground">
           Drag a rectangle and release to attach it. Switch to Annotate to add arrows and labels,
-          then return to Crop or press Enter for the full annotated display. Escape cancels
-          everything.
+          then return to Crop or press Enter for the full annotated display. Move the toolbar with
+          its drag grip. Escape discards the unfinished arrow or gesture; press it again to close
+          capture.
         </p>
         <p className="text-xs leading-relaxed text-muted-foreground">
           On macOS, allow Cake in Privacy & Security → Screen & System Audio Recording.
