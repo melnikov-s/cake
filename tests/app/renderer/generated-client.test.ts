@@ -71,24 +71,33 @@ describe("generated renderer command adaptation", () => {
   ])(
     "preserves $_tag identities and details through encoded RPC and the real Client",
     async (failure) => {
-      const test = harness((message, respond) =>
-        respond({
-          _tag: "Exit",
-          requestId: message.id,
-          exit: { _tag: "Failure", cause: [{ _tag: "Fail", error: failure }] },
-        }),
-      );
-      try {
-        await expect(
-          test.client.projectSessions.resolve({ sessionId: "root" }),
-        ).rejects.toMatchObject({
-          kind: "rejected",
-          operation: "projectSessions.resolve",
-          domainFailure: failure,
-        });
-        expect(requests(test.messages)).toHaveLength(1);
-      } finally {
-        await test.runtime.dispose();
+      // Fork's existing resolveSource path invokes the same lifecycle operation.
+      for (const action of ["resolve", "fork"] as const) {
+        const test = harness((message, respond) =>
+          respond({
+            _tag: "Exit",
+            requestId: message.id,
+            exit: { _tag: "Failure", cause: [{ _tag: "Fail", error: failure }] },
+          }),
+        );
+        try {
+          const result =
+            action === "resolve"
+              ? test.client.projectSessions.resolve({ sessionId: "root" })
+              : test.client.projectSessions.fork({
+                  sessionId: "root",
+                  entryId: "entry",
+                  resolveSource: true,
+                });
+          await expect(result).rejects.toMatchObject({
+            kind: "rejected",
+            operation: `projectSessions.${action}`,
+            domainFailure: failure,
+          });
+          expect(requests(test.messages)).toHaveLength(1);
+        } finally {
+          await test.runtime.dispose();
+        }
       }
     },
   );

@@ -107,6 +107,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   | ManagedWorktrees
   | Terminal
   | TaskInputStorage
+  | Effect.Services<ReturnType<typeof workflowControl.invoke>>
 > {
   const access = yield* ProjectAccess;
   const application = yield* ApplicationState;

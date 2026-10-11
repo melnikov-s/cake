@@ -1,17 +1,19 @@
-# Backend workflow refinement — review skeleton
+# Backend workflow refinement — implementation record
 
-**Status: approved contract; implementation and integration in progress.** After
-clarifying the skeleton/delegation checkpoint, the user authorized both children
-to proceed. The original review baseline is `8bef318a61b12d3c7c647973b995b357781e9cf1`;
+**Status: implemented and verified in the architecture-review worktree; not landed
+on main.** After clarifying the skeleton/delegation checkpoint, the user authorized
+both children to proceed. The original review baseline is `8bef318a61b12d3c7c647973b995b357781e9cf1`;
 its preceding investigation base is `b5047ae5`. Approval history, cross-worktree
 decisions, and verification evidence are recorded in the family-linked
 `backend-workflow-refinement` coordination artifact.
 
-Both implementation children were launched in isolated Cake-managed worktrees.
-The sections below retain their approved assignments and acceptance criteria,
-not a claim that all implementation or verification is complete. At the original
-baseline, unconnected stubs deliberately failed if invoked and `it.todo` cases
-were acceptance specifications, not passing verification of proposed behavior.
+Both implementation children completed in isolated Cake-managed worktrees and
+were landed through Cake into the parent review worktree. The assignment sections
+below preserve the approved plan; [integrated verification](#integrated-verification)
+records the completed cutover. At the original baseline, unconnected stubs
+deliberately failed if invoked and `it.todo` cases were specifications, not passing
+verification. All 28 named cases are now implemented or incorporated into
+corresponding existing tests; no review stubs remain in the assigned scope.
 
 ## Agreed principles
 
@@ -202,9 +204,9 @@ known resolution outcomes with tagged handling.
 tests. No compatibility aliases. Every accepted `it.todo` becomes a real test;
 merge it into an existing equivalent case rather than duplicate coverage.
 
-Use two isolated child worktrees from the approved skeleton commit. They can
-implement in parallel against the frozen interfaces; the parent lands and checks
-the combined implementation. No implementation or child launch before approval.
+The approved delegation used two isolated child worktrees from the skeleton
+commit. They implemented in parallel against the frozen interfaces; the parent
+landed and checked the combined implementation after approval.
 
 Verification includes the named test cases in this diff, existing family
 creation/delivery/reporting and runtime-control suites, lifecycle/landing suites,
@@ -217,3 +219,68 @@ implementation. Run targeted Electron verification after building if affected
 sidebar/worktree interactions depend on native input or DOM behavior; do not run
 the full e2e suite by default. Skeleton checks establish only that the proposed
 contracts compile and existing behavior is unchanged, not that TODO behavior works.
+
+## Integrated verification
+
+This is historical evidence for the completed refinement, not a claim that these
+commands have run against every subsequent repository revision.
+
+- Child A: `f1847d687f2fd1839c2a1422954c49e6d54ea8bc` — workflow extraction and live
+  policy, preserved by Cake landing.
+- Child B: `7c783916e74d7e8e6623e27a44532b8c4ced4ea1` — typed lifecycle outcomes,
+  replayed by Cake landing as `f1cfe8ef` on top of A and the documentation commits.
+- Parent additions in this record's commit: real lifecycle → runtime callback →
+  continuation tests for successful resolution, immediate/deferred cleanup
+  failures, and promotion rejection; real `session.info` queries after policy
+  changes; encoded fork RPC coverage for its existing source-resolution step.
+  The info test consumes the public family-info schema at the actual JSON boundary;
+  no shared interface was removed or lint suppression added to satisfy Knip.
+
+Mechanical integration retained the agreed contracts. Runtime fixtures acquired
+live-policy callbacks; batch fixtures gained empty cleanup lists. Landing Models
+project error data as plain snapshots rather than Error instances. The existing
+fork RPC error union was updated to carry lifecycle errors from `resolveSource`,
+without adding a new operation or changing fork success behavior. Renderer
+retirement uses an internal completion callback so navigation completes before
+cleanup diagnostics are displayed. Root composition only forwards the added
+landing projection field. Full file ownership and child reports remain in the
+coordination artifact.
+
+Parent-run checks on the combined implementation:
+
+| Check                                                                                      | Result                                           |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| Focused domain/runtime/client/renderer suites                                              | 232 tests passed across 18 files                 |
+| Targeted real-Pi adapter cases                                                             | 12 passed; 52 unrelated cases excluded by filter |
+| `pnpm typecheck`                                                                           | Passed                                           |
+| `pnpm lint`                                                                                | Oxlint, ESLint, and Knip passed                  |
+| `pnpm format:check` and `git diff --check`                                                 | Passed                                           |
+| `pnpm build`                                                                               | Electron and browser builds passed               |
+| Hidden Electron sidebar selected/non-selected resolution and worktree land/resolve/restore | 3 passed after the final source build            |
+
+The focused suite set comprises `projectSessions`, `worktreeLandings`,
+`sessionFamilyMessaging`, `projectSessionAgentPolicy`, `sessionFamilyReplySelection`,
+`projectSessionRuntimeWorktreeControls`, `projectSessionRuntimeChildActivity`,
+`sessionFamilyRootSettlement`, `spawnedSessionReporting`,
+`cake-session-runtime-continuations`, `Client`, `generated-client`,
+`session-management-workflow`, `working-directory-retirement-workflow`,
+`worktree-workflow`, `stores/RootStore`, `terminal-workflow`, and `workbench-workflow`.
+
+The Pi filter was `returns current family information|forwards a Project Session-local|resolution|settled|fork`
+in `tests/app/agent/pi-runtime.test.ts`. Hidden Electron verification ran
+`sidebar-session-order.smoke.spec.ts` and `worktree-pill.smoke.spec.ts` with
+`keeps session date order|lands new commits from an already-landed worktree`.
+No full e2e suite, foreground-window tests, or billed provider calls were run.
+
+The first parent build exceeded a 180-second command timeout during native audio
+compilation. The parent stopped the remaining compiler processes from that run
+and reran the complete build with a longer limit; it passed. Large-bundle warnings
+remain build warnings, not suppressed errors.
+
+Child B also reported two broader Electron probes that failed before their
+resolution actions: `sidebar-resolved` expected a missing “Collapse Cake Chat”
+control, and `session-history` expected Forward enabled after back navigation.
+Those probes were not changed or established as baseline failures. The parent
+verified the targeted alternatives above; the two broader probe failures remain
+an explicitly uninvestigated verification limitation, not a claim of a passing
+full Electron suite.

@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-/** Proposed contract; not wired until the backend workflow review is approved. */
+/** Current family relationship data returned by Project Session policy and info queries. */
 export const ProjectSessionFamilyInfo = Schema.Struct({
   familyId: Schema.String,
   parentSessionId: Schema.String,

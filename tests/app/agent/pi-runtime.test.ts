@@ -1,4 +1,8 @@
 import { Effect, Schema, Stream } from "effect";
+import {
+  ProjectSessionFamilyInfo,
+  type ProjectSessionAgentPolicy,
+} from "../../../src/contracts/project-sessions/project-session-agent-policy";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -107,6 +111,48 @@ describe("Pi 1.0.0 foundation contract", () => {
     if (!runtime.getReviewParentContext) throw new Error("Expected a project runtime");
     const { activeTools } = runtime.getReviewParentContext();
     expect(activeTools).toContain("cake");
+  });
+
+  it("returns current family information from session.info without recreating the runtime", async () => {
+    const directory = await createTemporaryDirectory();
+    let policy: ProjectSessionAgentPolicy = { canFork: true, deferResolution: true };
+    const runtime = await createCakeSessionRuntime({
+      cwd: directory,
+      agentDir: join(directory, "agent"),
+      sessionDir: join(directory, "sessions"),
+      trusted: false,
+      newSession: true,
+      requestUi: async () => undefined,
+      currentSessionControl: {
+        resolved: () => false,
+        setResolved: async () => undefined,
+        readPolicy: async () => policy,
+        resolveDeferredStandalone: async () => undefined,
+      },
+      onEvent: () => undefined,
+    });
+    runtimes.push(runtime);
+    const call = runtime.callCakeOperation;
+    if (!call) throw new Error("Expected Project Session controls");
+    const decodeInfo = Schema.decodeUnknownSync(
+      Schema.Struct({
+        sessionId: Schema.String,
+        family: Schema.optionalKey(ProjectSessionFamilyInfo),
+      }),
+    );
+    const info = async () =>
+      decodeInfo(await call("session.info", {}, new AbortController().signal));
+    expect(await info()).toEqual({ sessionId: runtime.sessionId });
+    const family = {
+      familyId: "family",
+      parentSessionId: runtime.sessionId,
+      role: "root" as const,
+      childSessionIds: ["first-child"],
+    };
+    policy = { family, canFork: false, deferResolution: false };
+    expect(await info()).toEqual({ sessionId: runtime.sessionId, family });
+    policy = { ...policy, family: { ...family, childSessionIds: ["first-child", "second-child"] } };
+    expect((await info()).family?.childSessionIds).toEqual(["first-child", "second-child"]);
   });
 
   it("keeps artifact and review discovery in system guidance without persistent context messages", async () => {

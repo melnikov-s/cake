@@ -14,6 +14,7 @@ import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamil
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { fakeRuntime } from "../helpers/piRuntimeFixture";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 
@@ -44,6 +45,7 @@ const addChild = Effect.fn("Test.addChild")(function* (
 
 const environment = (forked: string[] = []) =>
   Layer.mergeAll(
+    WorkflowTestLive,
     familyStorageHarness().layer,
     makeProjectSessionRuntimeMechanismTestLayer(),
     SessionCatalogChanges.layer,

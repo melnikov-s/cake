@@ -134,7 +134,8 @@ that never materialized a Pi transcript.
 Only the family root owns resolution. Every child inherits its immediate parent's
 resolution recursively, so every descendant derives the root's state. A child's
 own transcript location never determines whether it is resolved. Resolve and
-restore requests addressed to any member target the root authority. Resolution
+restore requests must address the root authority; requests addressed to a child
+are rejected rather than silently redirected. Resolution
 requires all members to be inactive and no family turn to have accepted delivery
 pending consumption. Main rechecks these conditions under the family admission
 lock; it never aborts work or queues a later resolve. A resolution deferred while

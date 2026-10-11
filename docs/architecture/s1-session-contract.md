@@ -116,7 +116,10 @@ distinguishes:
   the error does not assert that every other checkout was cleaned.
 
 RPC and the validated Promise Client preserve these tagged distinctions for
-application handling. Renderer retirement/navigation treats committed resolution
+application handling. A fork's existing `resolveSource` step preserves the same
+lifecycle errors: they describe source resolution, not whether the preceding
+fork creation occurred. They do not authorize automatic replay of the fork.
+Renderer retirement/navigation treats committed resolution
 as successful while presenting cleanup diagnostics, without inventing projection
 state or guessing from an error message. Generic operational errors and lost
 transport receipts remain potentially uncertain; callers do not automatically

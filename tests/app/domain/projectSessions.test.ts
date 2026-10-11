@@ -16,6 +16,9 @@ import * as projectSessionMetadata from "../../../src/domain/project-sessions/pr
 import * as projectSessionOperations from "../../../src/domain/project-sessions/projectSessionOperations";
 import * as projectSessionContinuations from "../../../src/domain/project-sessions/projectSessionContinuations";
 import * as projectSessionLifecycle from "../../../src/domain/project-sessions/projectSessionLifecycle";
+import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
+import { createCakeSessionRuntimeContinuations } from "../../../src/services/pi/runtime/cake-session-runtime-continuations";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
   ResolutionRejected,
   ResolutionCleanupFailed,
@@ -953,6 +956,120 @@ describe("Project Sessions domain", () => {
         true,
       );
     }).pipe(Effect.provide(makeLayer())),
+  );
+
+  it.effect.each([
+    { deferred: true, cleanupFailure: false, promoted: false },
+    { deferred: true, cleanupFailure: true, promoted: false },
+    { deferred: false, cleanupFailure: true, promoted: false },
+    { deferred: true, cleanupFailure: false, promoted: true },
+  ])(
+    "preserves real lifecycle outcomes through runtime callbacks and continuations (%j)",
+    (scenario) => {
+      const archived: string[] = [];
+      return Effect.gen(function* () {
+        const families = yield* SessionFamilyStorage;
+        let promoted = false;
+        const options = yield* acquireOptions({
+          sessionId: "parent",
+          newSession: false,
+          location: {
+            projectPath: "/project",
+            projectName: "Project",
+            workingDirectory: "/tree",
+            sessionDirectory: "/sessions",
+            resolvedSessionDirectory: "/resolved-sessions",
+          },
+        }).pipe(
+          Effect.provideService(SessionFamilyStorage, {
+            ...families,
+            familyForMember: (id) =>
+              promoted ? families.familyForMember(id) : Effect.succeed(undefined),
+          }),
+        );
+        let streaming = scenario.deferred;
+        const notices: Array<{ title: string; detail: string }> = [];
+        const actions: string[] = [];
+        const manager = SessionManager.inMemory("/tree");
+        const continuation = createCakeSessionRuntimeContinuations({
+          options: {
+            ...options.runtime,
+            cwd: "/tree",
+            agentDir: "/agent",
+            sessionDir: "/sessions",
+            requestUi: async () => undefined,
+            onEvent: () => undefined,
+          },
+          session: {
+            sessionManager: manager,
+            setSessionName: (name) => manager.appendSessionInfo(name),
+            sessionFile: undefined,
+            get isStreaming() {
+              return streaming;
+            },
+            navigateTree: async () => ({ cancelled: false }),
+            model: undefined,
+            thinkingLevel: "off",
+          },
+          sessionId: "parent",
+          isDisposed: () => false,
+          emitSnapshot: async () => undefined,
+          emitNotice: (notice) => {
+            notices.push(notice);
+          },
+          drainReloads: () => undefined,
+          handleSettledTurn: async () => undefined,
+          reportAgentAction: async (action) => {
+            actions.push(action);
+          },
+        });
+        const receipt = yield* Effect.promise(() => continuation.setResolved(true));
+        if (scenario.deferred) {
+          assert.deepEqual(archived, []);
+          promoted = scenario.promoted;
+          streaming = false;
+          yield* Effect.promise(() => continuation.finishSettledTurn());
+        }
+        assert.deepEqual(archived, scenario.promoted ? [] : ["parent"]);
+        assert.deepEqual(actions, scenario.promoted ? [] : ["resolve"]);
+        if (scenario.promoted) {
+          assert.equal(notices[0]?.title, "Could not resolve session");
+          assert.match(notices[0]?.detail ?? "", /family member/);
+        } else if (scenario.cleanupFailure && scenario.deferred) {
+          assert.equal(notices[0]?.title, "Session resolved; Working Directory cleanup failed");
+          assert.match(notices[0]?.detail ?? "", /Resolved sessions: parent/);
+          assert.match(notices[0]?.detail ?? "", /\/tree: Checkout cleanup failed/);
+        } else {
+          assert.deepEqual(notices, []);
+          if (scenario.cleanupFailure)
+            assert.deepEqual(receipt, {
+              sessionId: "parent",
+              resolved: true,
+              resolveOnSettle: false,
+              cleanupFailures: [{ workingDirectory: "/tree", message: "Checkout cleanup failed" }],
+            });
+        }
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            family: scenario.promoted ? { ...nestedFamily, workingDirectory: "/tree" } : undefined,
+            catalog: () => Stream.make(sessionSummary("parent")),
+            cleanupFailure: scenario.cleanupFailure,
+            onArchive: (id) => archived.push(id),
+            worktreeRecords: [
+              {
+                projectPath: "/project",
+                worktreePath: "/tree",
+                branch: "agent/test",
+                baseBranch: "main",
+                state: "landed",
+                createdAt: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          }),
+        ),
+      );
+    },
   );
 
   it.effect(

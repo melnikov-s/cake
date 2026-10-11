@@ -367,6 +367,7 @@ describe("Client", () => {
       "cakeChats",
       "discussionSessions",
       "subagents",
+      "workflows",
       "electron",
       "filesystem",
       "workspaces",

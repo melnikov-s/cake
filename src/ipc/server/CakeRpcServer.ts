@@ -34,6 +34,7 @@ import { modelHandlers } from "./ModelHandlers";
 import { mcpSettingsHandlers } from "./McpSettingsHandlers";
 import { piSettingsHandlers } from "./PiSettingsHandlers";
 import { projectSessionHandlers } from "./ProjectSessionHandlers";
+import { ProjectSessionRpc } from "../protocol/ProjectSessionRpc";
 import { projectWorkflowHandlers } from "./ProjectWorkflowHandlers";
 import { scheduledMessageHandlers } from "./ScheduledMessageHandlers";
 import { savedDraftHandlers } from "./SavedDraftHandlers";
@@ -56,7 +57,23 @@ export const makeCakeRpcServerLive = (
   homeDirectory: string,
   cakeChatConfiguration: CakeChatRuntimeConfiguration,
 ) => {
+  // Register the existing groups separately to bound TypeScript's handler inference.
   const handlers = CakeRpc.omit(
+    "projectSessions.observeCatalog",
+    "projectSessions.inspect",
+    "projectSessions.start",
+    "projectSessions.open",
+    "projectSessions.getChangelog",
+    "projectSessions.navigate",
+    "projectSessions.dispatchExtensionCompanionAction",
+    "projectSessions.callCakeOperation",
+    "projectSessions.toolCompact",
+    "projectSessions.rename",
+    "projectSessions.fork",
+    "projectSessions.resolve",
+    "projectSessions.resolveWorkingDirectory",
+    "projectSessions.restore",
+    "projectSessions.respondControl",
     "workflows.start",
     "workflows.list",
     "workflows.inspect",
@@ -101,7 +118,6 @@ export const makeCakeRpcServerLive = (
     ...modelHandlers,
     ...piSettingsHandlers,
     ...mcpSettingsHandlers,
-    ...projectSessionHandlers,
     ...projectWorkflowHandlers,
     ...scheduledMessageHandlers,
     ...savedDraftHandlers,
@@ -122,6 +138,7 @@ export const makeCakeRpcServerLive = (
     Layer.provide(
       Layer.mergeAll(
         handlers,
+        ProjectSessionRpc.middleware(RendererConnectionMiddleware).toLayer(projectSessionHandlers),
         DynamicWorkflowRpc.middleware(RendererConnectionMiddleware).toLayer(
           dynamicWorkflowHandlers,
         ),

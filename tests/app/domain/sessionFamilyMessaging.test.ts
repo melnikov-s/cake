@@ -21,6 +21,7 @@ import { SessionArchiveStorage } from "../../../src/services/storage/SessionArch
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
+import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { fakeRuntime, snapshot } from "../helpers/piRuntimeFixture";
 import { makeProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
 
@@ -54,6 +55,7 @@ const environment = (
   namespace: "active" | "resolved" = "active",
 ) =>
   Layer.mergeAll(
+    WorkflowTestLive,
     familyStorageHarness().layer,
     makeProjectSessionRuntimeMechanismTestLayer(),
     Layer.mock(SessionCatalogChanges, {

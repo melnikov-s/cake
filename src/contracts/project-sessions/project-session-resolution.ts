@@ -44,8 +44,7 @@ export type ProjectSessionResolutionDomainFailure =
   typeof ProjectSessionResolutionDomainFailure.Type;
 
 /**
- * Review destination for the existing IPC batch result. At cutover remove the old
- * definitions and update all imports, rather than retaining forwarding aliases.
+ * Per-target batch failures that do not confirm committed resolution.
  * General operational failures remain summaries, not claims that nothing changed.
  */
 export const WorkingDirectoryResolutionFailure = Schema.Struct({
