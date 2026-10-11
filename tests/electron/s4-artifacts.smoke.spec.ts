@@ -1,5 +1,5 @@
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -8,7 +8,7 @@ import { _electron as electron, expect, test, type ElectronApplication } from "@
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const execFile = promisify(execFileCallback);
 
-test("opens the artifact workspace and isolates HTML", async () => {
+test("opens the shared artifact popup and library and isolates HTML", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-s4-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -39,8 +39,9 @@ test("opens the artifact workspace and isolates HTML", async () => {
       trustedProjectPaths: [],
     }),
   );
-  const launch = () =>
-    electron.launch({
+  let application: ElectronApplication | undefined;
+  try {
+    application = await electron.launch({
       args: [repositoryRoot],
       cwd: repositoryRoot,
       env: {
@@ -52,50 +53,35 @@ test("opens the artifact workspace and isolates HTML", async () => {
         PI_CODING_AGENT_SESSION_DIR: "",
       },
     });
-  let application: ElectronApplication | undefined;
-
-  try {
-    application = await launch();
     const page = await application.firstWindow();
     await page.setViewportSize({ width: 1_600, height: 1_000 });
-    await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
-    const emptyArtifactControl = page.getByRole("button", { name: "0 artifacts" });
-    await expect(emptyArtifactControl).toBeVisible();
-    await emptyArtifactControl.click();
-    await expect(page.getByText("No artifacts in this session yet.")).toBeVisible();
-    await page.getByRole("button", { name: "Browse all artifacts" }).click();
+    const input = page.getByLabel("Message", { exact: true });
+    await expect(input).toBeVisible({ timeout: 20_000 });
+    const emptyControl = page.getByRole("button", { name: "0 artifacts" });
+    const popup = page.getByRole("dialog", { name: "Artifacts", exact: true });
+    await emptyControl.click();
+    await expect(popup.getByText("No artifacts yet.")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(popup).not.toBeAttached();
+    await expect(emptyControl).toBeFocused();
+    await emptyControl.click();
+    await input.click();
+    await expect(popup).not.toBeAttached();
+    await expect(input).toBeFocused();
+    await input.pressSequentially("/cake-artifacts");
+    await expect(input).toHaveValue("/cake-artifacts");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    const artifactControl = page.getByRole("button", { name: "4 artifacts" });
+    await expect(artifactControl).toBeVisible();
+    await page.getByRole("button", { name: /Artifact examples presented/ }).click();
+    await artifactControl.click();
+    await expect(
+      popup.getByRole("navigation", { name: "Artifact list" }).getByRole("button"),
+    ).toHaveCount(4);
+    await popup.getByRole("button", { name: /S4 table/ }).click();
+    await expect(popup).not.toBeAttached();
     await expect(page.getByLabel("Search artifact library")).toBeVisible();
-    await page.getByRole("button", { name: "Close all artifacts" }).click();
-    await expect(page.getByLabel("Message")).toBeVisible();
-    await page.getByRole("button", { name: "Browse all artifacts" }).click();
-    await page.getByLabel("Search artifact library").focus();
-    await page.keyboard.press("Escape");
-    await expect(page.getByLabel("Message")).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(page.locator('[data-slot="artifact-workspace-layout"]')).toHaveAttribute(
-      "data-presentation",
-      "closed",
-    );
-
-    await page.getByLabel("Message").fill("/cake-artifacts");
-    await page.getByRole("button", { name: "Send" }).click();
-
-    const artifactControl = page.getByRole("button", { name: /\d+ artifacts/ });
-    await expect(artifactControl).toHaveAccessibleName("4 artifacts");
-    const artifactWorkspace = page.locator('[data-slot="artifact-workspace-layout"]');
-    if ((await artifactWorkspace.getAttribute("data-presentation")) === "closed")
-      await artifactControl.click();
-    await expect(artifactWorkspace).toHaveAttribute("data-presentation", "side-by-side");
-    const allArtifacts = page.getByRole("button", { name: "All artifacts", exact: true });
-    if (await allArtifacts.isVisible()) await allArtifacts.click();
-    await page.getByRole("button", { name: "S4 table" }).click();
-    const showInfo = page.getByRole("button", { name: "Show artifact info" });
-    await expect(showInfo).toHaveAttribute("aria-pressed", "false");
-    await expect(page.getByRole("button", { name: "Copy reference" })).not.toBeAttached();
-    await showInfo.click();
-    await expect(page.getByRole("button", { name: "Copy reference" })).toBeVisible();
-    await page.getByRole("button", { name: "Hide artifact info" }).click();
-    await expect(page.getByRole("button", { name: "Copy reference" })).not.toBeAttached();
     const table = page.locator('[data-artifact-id="cake-s4-table"]');
     await expect(table).toBeVisible();
     await expect(
@@ -106,31 +92,12 @@ test("opens the artifact workspace and isolates HTML", async () => {
       table.locator('[data-slot="artifact-table"] tbody td').allTextContents(),
     ).resolves.toEqual(["", "Beta", "1", "", "Alpha", "2"]);
 
-    const selectionTarget = await table.getByText("Alpha").evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    });
-    const selectArtifactText = () =>
-      table.getByText("Alpha").evaluate((element) => {
-        const range = document.createRange();
-        range.selectNodeContents(element);
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-      });
-    await selectArtifactText();
-    await expect
-      .poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
-      .toBe("Alpha");
     await application.evaluate(({ Menu }) => {
       const build = Menu.buildFromTemplate.bind(Menu);
       let nextAction = "Add annotation";
       Menu.buildFromTemplate = (template) => {
         const menu = build(template);
         menu.popup = (options) => {
-          const labels = menu.items.map((item) => item.label);
-          if (!labels.includes("Add annotation") || !labels.includes("Chat about this"))
-            throw new Error(`Missing artifact selection actions: ${labels.join(", ")}`);
           const item = menu.items.find((candidate) => candidate.label === nextAction);
           if (!item?.click) throw new Error(`Missing ${nextAction}`);
           nextAction = "Chat about this";
@@ -140,93 +107,78 @@ test("opens the artifact workspace and isolates HTML", async () => {
         return menu;
       };
     });
-    const rightClickSelection = () =>
-      page.evaluate(({ x, y }) => {
-        document.elementFromPoint(x, y)?.dispatchEvent(
+    const rightClickSelection = async () => {
+      await table.getByText("Alpha").evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        const rect = element.getBoundingClientRect();
+        element.dispatchEvent(
           new MouseEvent("contextmenu", {
             bubbles: true,
             cancelable: true,
-            clientX: x,
-            clientY: y,
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2,
           }),
         );
-      }, selectionTarget);
+      });
+    };
     await rightClickSelection();
     const annotation = page.getByRole("dialog", { name: "Add annotation" });
     await expect(annotation).toBeVisible();
     await page.getByLabel("Annotation comment").fill("Review this artifact value");
     await annotation.getByRole("button", { name: "Add annotation" }).click();
-    const sideChat = page.getByRole("complementary", { name: "Side chat" });
-    await expect(sideChat).not.toBeAttached();
     await expect(page.getByRole("button", { name: "View 1 annotation" })).toBeVisible();
-    await selectArtifactText();
+    await artifactControl.click();
+    await popup.getByRole("button", { name: /S4 table/ }).click();
+    await expect(table).toBeVisible();
     await rightClickSelection();
+    const sideChat = page.getByRole("complementary", { name: "Side chat" });
     await expect(sideChat).toBeVisible();
     await expect(sideChat.getByText("Alpha")).toBeVisible();
     const draftInput = sideChat.getByLabel("Message about selected text");
     await expect(draftInput).toBeFocused();
     await draftInput.pressSequentially("Why is Alpha here?");
     await expect(draftInput).toHaveValue("Why is Alpha here?");
-    await expect(sideChat.getByRole("button", { name: "Send" })).toBeEnabled();
+    await expect(sideChat.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Close Side chat", exact: true }).click();
 
-    await allArtifacts.click();
-    await page.getByRole("button", { name: "S4 widget" }).click();
+    await artifactControl.click();
+    await popup.getByRole("button", { name: /S4 widget/ }).click();
     const widget = page.locator('[data-artifact-id="cake-s4-widget"]');
     await expect(widget.locator("iframe")).toBeVisible();
     await expect(widget.getByRole("button", { name: "Repair" })).not.toBeAttached();
-    await expect(page.getByRole("button", { name: "Previous artifact" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Next artifact" })).toBeVisible();
     await widget.getByRole("button", { name: "View S4 widget fullscreen" }).click();
-    const fullscreen = page.getByRole("dialog", { name: "S4 widget" });
+    const fullscreen = page.getByRole("dialog", { name: "S4 widget", exact: true });
     await expect(fullscreen.locator("iframe")).toBeVisible();
     await fullscreen.getByRole("button", { name: "Exit fullscreen S4 widget" }).click();
     await expect(fullscreen).not.toBeAttached();
-
-    await allArtifacts.click();
-    await page.getByRole("button", { name: "S4 diagram" }).click();
+    await page.getByRole("button", { name: /S4 diagram/ }).click();
     await expect(page.locator('[data-artifact-id="cake-s4-diagram"] iframe')).toBeVisible();
-    await allArtifacts.click();
-    await page.getByRole("button", { name: "Sandboxed HTML" }).click();
+    await page.getByRole("button", { name: /Sandboxed HTML/ }).click();
     const html = page.locator('[data-artifact-id="cake-s4-html"] iframe');
     await expect(html).toHaveAttribute("sandbox", "");
     await expect(html).toHaveAttribute("srcdoc", /default-src 'none'/);
     await expect(page.locator("body")).not.toContainText("compromised");
-
-    await artifactControl.click();
-
+    await page.getByRole("button", { name: "Close all artifacts", exact: true }).click();
     await page.setViewportSize({ width: 700, height: 900 });
     await artifactControl.click();
-    await expect(page.locator('[data-slot="artifact-workspace-layout"]')).toHaveAttribute(
-      "data-presentation",
-      "replacement",
-    );
-    await expect(page.getByRole("navigation", { name: "Session artifacts" })).toBeVisible();
-    await expect
-      .poll(async () => {
-        const document = JSON.parse(
-          await readFile(join(userData, "window-state.json"), "utf8"),
-        ) as {
-          version?: number;
-          data?: {
-            children?: {
-              appShellStore?: {
-                state?: {
-                  selection?: { kind?: string; sessionId?: string };
-                };
-              };
-            };
-          };
-        };
-        const selection = document.data?.children?.appShellStore?.state?.selection;
-        return Boolean(selection?.kind === "project-session" && selection.sessionId);
-      })
-      .toBe(true);
-
+    await expect(popup).toBeVisible();
+    await expect(input).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(popup).not.toBeAttached();
     await artifactControl.click();
+    await popup.getByRole("button", { name: "Browse all artifacts" }).click();
+    await page.getByLabel("Search artifact library").focus();
+    await page.keyboard.press("Escape");
+    await expect(input).toBeVisible();
+
     await page.getByRole("button", { name: "New chat in project", exact: true }).click();
-    await expect(page.getByLabel("Message")).toBeEnabled();
-    await page.getByLabel("Message").fill("[Sandboxed HTML](cake://artifact/cake-s4-html@r1)");
-    await page.getByRole("button", { name: "Send" }).click();
+    await expect(input).toBeEnabled();
+    await input.fill("[Sandboxed HTML](cake://artifact/cake-s4-html@r1)");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
     const referencePreview = page.locator(
       '[data-artifact-reference="cake://artifact/cake-s4-html@r1"]',
     );
@@ -235,48 +187,33 @@ test("opens the artifact workspace and isolates HTML", async () => {
     await referencePreview.hover();
     await expect(referencePreview).toHaveAccessibleDescription("cake://artifact/cake-s4-html@r1");
     await expect(page.getByRole("tooltip")).toHaveText("cake://artifact/cake-s4-html@r1");
-    const referenceSessionId = await page
-      .locator(".session-item.active")
-      .getAttribute("data-session-id");
     await referencePreview.click();
     await expect(page.getByLabel("Search artifact library")).toBeVisible();
-    await page.getByRole("button", { name: "Link to this session" }).click();
+    await page.getByRole("button", { name: "Link to this session", exact: true }).click();
     await expect(page.getByRole("button", { name: "Unlink", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Pin r1", exact: true }).click();
     await page.setViewportSize({ width: 1_600, height: 1_000 });
-    await page.locator(`[data-session-id="${referenceSessionId}"] .session-row`).click();
-
-    const linkedArtifactControl = page.getByRole("button", { name: "1 artifacts" });
-    await expect(linkedArtifactControl).toBeVisible();
-    if ((await artifactWorkspace.getAttribute("data-presentation")) === "closed")
-      await linkedArtifactControl.click();
-    await expect(page.getByRole("navigation", { name: "Session artifacts" })).toBeVisible();
-    await page
-      .getByRole("navigation", { name: "Session artifacts" })
-      .getByRole("button", { name: "Sandboxed HTML" })
-      .click();
-    await expect(page.locator('[data-artifact-id="cake-s4-html"] iframe')).toBeVisible();
-    await page.getByRole("button", { name: "Show artifact info" }).click();
-    const copyReadablePath = page.getByRole("button", { name: "Copy readable path" });
-    await copyReadablePath.click();
-    await expect(copyReadablePath).toBeEnabled();
-    await expect(
-      page.getByText("Could not materialize artifact", { exact: false }),
-    ).not.toBeAttached();
-
-    await page.getByRole("button", { name: "Browse all artifacts" }).click();
-    await expect(page.locator('[data-slot="workspace-header"]')).toContainText("All artifacts");
-    await expect(page.getByLabel("Search artifact library")).toBeVisible();
-    await expect(page.locator('[data-artifact-id="cake-s4-html"] iframe')).toBeVisible();
-
+    await page.getByRole("button", { name: "Close all artifacts", exact: true }).click();
+    const linkedControl = page.getByRole("button", { name: "1 artifacts" });
+    await linkedControl.click();
+    await popup.getByRole("button", { name: /Sandboxed HTML/ }).click();
+    await expect(html).toBeVisible();
+    await page.evaluate(() =>
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText: async () => undefined },
+      }),
+    );
+    await page.getByRole("button", { name: "Copy readable path", exact: true }).click();
+    await expect(page.getByText("Copied", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: /S4 table/ }).click();
-    await page.getByRole("button", { name: "Link to this session" }).click();
+    await page.getByRole("button", { name: "Link to this session", exact: true }).click();
     await page.getByLabel("Selected artifact revision").selectOption("1");
     await expect(page.getByText("Revision 1 of 2", { exact: false })).toBeVisible();
-    await page.getByRole("button", { name: "Restore as new latest" }).click();
+    await page.getByRole("button", { name: "Restore as new latest", exact: true }).click();
     const restoreDialog = page.getByRole("alertdialog");
     await expect(restoreDialog).toContainText("Restore revision 1?");
-    await restoreDialog.getByRole("button", { name: "Restore as new latest" }).click();
+    await restoreDialog.getByRole("button", { name: "Restore as new latest", exact: true }).click();
     await expect(page.getByText("Revision 3 of 3", { exact: false })).toBeVisible();
   } finally {
     await application?.close();

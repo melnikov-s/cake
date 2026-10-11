@@ -1122,7 +1122,7 @@ async function seedArtifactScenario(
 const inlineArtifactScenario: VisualCaptureScenario = {
   name: "inline-artifact",
   description: "One saved visualization, expanded inline by default with collapse and fullscreen",
-  states: ["default", "collapsed", "fullscreen"],
+  states: ["default", "collapsed", "fullscreen", "popup"],
   async seed(paths, theme) {
     await seedArtifactScenario(
       paths,
@@ -1157,7 +1157,7 @@ export default function Visual() {
 }`,
         },
         fallback: {
-          markdown: "One durable artifact can appear in the conversation and in its panel.",
+          markdown: "One durable artifact can appear in the conversation and in the library.",
         },
         interaction: { mode: "present" },
       },
@@ -1173,6 +1173,14 @@ export default function Visual() {
         .contentFrame()
         .getByRole("heading", { name: "One artifact, two views" }),
     ).toBeVisible();
+    if (state === "popup") {
+      await page.getByRole("button", { name: "1 artifacts" }).click();
+      await expect(
+        page
+          .getByRole("dialog", { name: "Artifacts", exact: true })
+          .getByRole("button", { name: /Inline visualization/ }),
+      ).toBeVisible();
+    }
     if (state === "collapsed")
       await disclosure.getByRole("button", { name: "Inline visualization Collapse" }).click();
     if (state === "fullscreen")
@@ -1181,11 +1189,10 @@ export default function Visual() {
         .click();
     await page.mouse.move(1, 1);
   },
-  region(page) {
-    return page
-      .getByRole("dialog")
-      .or(page.locator('[data-slot="artifact-disclosure"]').first())
-      .last();
+  region(page, state) {
+    return state === "popup" || state === "fullscreen"
+      ? page.getByRole("dialog")
+      : page.locator('[data-slot="artifact-disclosure"]').first();
   },
 };
 

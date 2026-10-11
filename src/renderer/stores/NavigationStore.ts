@@ -270,13 +270,6 @@ export class NavigationStore extends Store<{
       this.returnToWorkbench();
       return;
     }
-    if (
-      this.props.shell.surface === "workbench" &&
-      workbench.activeSession?.sessionArtifactsStore.open
-    ) {
-      workbench.activeSession.sessionArtifactsStore.close();
-      return;
-    }
     if (workbench.presentationStore.embeddedEditorStore.visible) {
       workbench.presentationStore.backToAgent();
       return;

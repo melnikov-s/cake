@@ -19,7 +19,6 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   projectChat,
   sideChat,
   headerActions,
-  conversationAccessory,
   projectComposerHeader,
   projectComposerContent,
   projectComposerLeadingAccessory,
@@ -37,7 +36,6 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
   projectChat: ChatStore;
   sideChat: SideChatStore;
   headerActions?: ReactNode;
-  conversationAccessory?(children: ReactNode): ReactNode;
   projectComposerHeader?: ReactNode;
   projectComposerContent?: ReactNode;
   projectComposerLeadingAccessory?: ComponentProps<typeof Chat>["composerLeadingAccessory"];
@@ -180,9 +178,7 @@ export const BrowserWorkspace = observer(function BrowserWorkspace({
               {headerActions}
             </div>
           </header>
-          <div className="min-h-0 flex-1">
-            {conversationAccessory ? conversationAccessory(conversation) : conversation}
-          </div>
+          <div className="min-h-0 flex-1">{conversation}</div>
         </>
       }
     />

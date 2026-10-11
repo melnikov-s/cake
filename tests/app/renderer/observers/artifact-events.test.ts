@@ -165,9 +165,6 @@ describe("observeArtifactEvents", () => {
     });
 
     // New family links refresh the catalog without opening session panels.
-    expect(parent.subject.open).toBe(false);
-    expect(child.subject.open).toBe(false);
-    expect(unrelated.subject.open).toBe(false);
 
     linked = false;
     Queue.offerUnsafe(events, { type: "artifact-catalog-invalidated", lineageId: "shared" });

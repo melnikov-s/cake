@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { observer, StoreProvider, useStore } from "r-state-tree/react";
 import {
   Confirmation,
@@ -21,7 +14,6 @@ import { Callout } from "@/components/ui/callout";
 import { DialogBackdrop } from "@/components/ui/dialog";
 import { IconButton } from "@/components/ui/icon-button";
 import {
-  ArtifactIcon,
   BackIcon,
   BrowserIcon,
   ChangesIcon,
@@ -57,7 +49,7 @@ import { SessionPluginSlot } from "@/components/session-plugin-slot";
 import { SessionContinuationDialog } from "@/components/session-continuation-dialog";
 import { TreeNavigationDialog } from "@/components/tree-navigation-dialog";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
-import { ArtifactWorkspaceLayout } from "@/components/artifact-workspace-layout";
+import { ArtifactSelectionSurface } from "@/components/artifact-selection-surface";
 import { ArtifactLibrary } from "@/components/artifact-library";
 import { ArtifactCatalogMenu } from "@/components/artifact-catalog-menu";
 import { BlockingInterviews } from "@/components/blocking-interviews";
@@ -518,26 +510,22 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       />
     </>
   ) : undefined;
-  const artifactControl = (paneSession: NonNullable<typeof session>, onOpen?: () => void) => {
-    const workspace = paneSession.sessionArtifactsStore;
-    return (
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-8 gap-1.5 px-2 text-muted-foreground"
-        data-cake-hint-key="a"
-        aria-label={`${workspace.records.length} artifacts`}
-        aria-pressed={workspace.open}
-        onClick={() => {
-          onOpen?.();
-          workspace.toggle();
-        }}
-      >
-        <ArtifactIcon />
-        <span className="font-mono text-[11px] tabular-nums">{workspace.records.length}</span>
-      </Button>
-    );
-  };
+  const artifactControl = (paneSession: NonNullable<typeof session>, onOpen?: () => void) => (
+    <ArtifactCatalogMenu
+      store={root.artifactLibraryStore}
+      sessionArtifacts={paneSession.sessionArtifactsStore}
+      onOpen={onOpen}
+      onOpenLibrary={(lineageId) =>
+        root.navigationStore.showArtifactLibrary(
+          paneSession.sessionId,
+          lineageId,
+          paneSession.sessionArtifactsStore.associations.find(
+            (association) => association.lineage?.id === lineageId,
+          )?.selectedRevision,
+        )
+      }
+    />
+  );
   const renderProjectPaneHeader = (
     pane: SessionPaneNode,
     paneSession: NonNullable<typeof session>,
@@ -667,25 +655,28 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     paneSession: NonNullable<typeof session>,
     mode: Exclude<NonNullable<typeof session>["presentationMode"], "normal">,
   ) => (
-    <WorkspaceModeControls
-      mode={mode}
-      chat={paneSession.conversationSessionStore.chatStore}
-      treeOpen={store.commandPaneStore.pane === "tree"}
-      terminalAvailable={terminal.available}
-      terminalOpen={terminal.open}
-      browserHost={browserMode}
-      onToggleTree={() => {
-        void store.presentationStore.backToAgent().then(() => {
-          if (store.activeSession?.presentationMode === "normal")
-            store.commandPaneStore.toggle("tree");
-        });
-      }}
-      onBackToAgent={() => void store.presentationStore.backToAgent()}
-      onOpenDraw={() => void store.presentationStore.openDraw()}
-      onOpenBrowser={() => void store.presentationStore.openBrowser()}
-      onOpenIde={() => void store.presentationStore.openIde()}
-      onToggleTerminal={() => void terminal.toggle()}
-    />
+    <>
+      {artifactControl(paneSession)}
+      <WorkspaceModeControls
+        mode={mode}
+        chat={paneSession.conversationSessionStore.chatStore}
+        treeOpen={store.commandPaneStore.pane === "tree"}
+        terminalAvailable={terminal.available}
+        terminalOpen={terminal.open}
+        browserHost={browserMode}
+        onToggleTree={() => {
+          void store.presentationStore.backToAgent().then(() => {
+            if (store.activeSession?.presentationMode === "normal")
+              store.commandPaneStore.toggle("tree");
+          });
+        }}
+        onBackToAgent={() => void store.presentationStore.backToAgent()}
+        onOpenDraw={() => void store.presentationStore.openDraw()}
+        onOpenBrowser={() => void store.presentationStore.openBrowser()}
+        onOpenIde={() => void store.presentationStore.openIde()}
+        onToggleTerminal={() => void terminal.toggle()}
+      />
+    </>
   );
   const projectComposerLeadingAccessory = (paneSession: NonNullable<typeof session>) => {
     const summary = root.sessionCatalogStore.find(paneSession.sessionId);
@@ -806,28 +797,19 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     };
   };
 
-  const workspaceConversationAccessory =
-    session && projectTranscriptBehavior
-      ? (children: ReactNode) => (
-          <ArtifactWorkspaceLayout
-            session={session}
-            inlineWidgets={root.inlineWidgetStore}
-            onOpenSourceLocation={projectTranscriptBehavior.openSourceLocation}
-            showSelectionContextMenu={projectTranscriptBehavior.showSelectionContextMenu}
-            onOpenLibrary={(lineageId) =>
-              root.navigationStore.showArtifactLibrary(session.sessionId, lineageId)
-            }
-          >
-            {children}
-          </ArtifactWorkspaceLayout>
-        )
-      : undefined;
+  const artifactLibrarySession = root.artifactLibraryStore.activeSessionId
+    ? root.sessionRegistry.findSession(root.artifactLibraryStore.activeSessionId)
+    : undefined;
+  const artifactLibraryBehavior = artifactLibrarySession
+    ? projectTranscriptBehaviorFor(artifactLibrarySession)
+    : undefined;
   const workspaceComposerContent =
     session && projectTranscriptBehavior ? (
       <BlockingInterviews session={session} inlineWidgets={root.inlineWidgetStore} />
     ) : undefined;
 
   if (
+    surface === "workbench" &&
     session?.presentationMode === "draw" &&
     !store.activeSessionResolved &&
     projectTranscriptBehavior
@@ -850,7 +832,6 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
             projectSidebarWidth={displayedSidebarWidth}
             onProjectSidebarWidthChange={setSidebarWidth}
             headerActions={workspaceModeControls(session, "draw")}
-            conversationAccessory={workspaceConversationAccessory}
             projectComposerHeader={projectComposerHeader}
             projectComposerContent={workspaceComposerContent}
             projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
@@ -877,6 +858,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     );
 
   if (
+    surface === "workbench" &&
     session?.presentationMode === "browser" &&
     !store.activeSessionResolved &&
     store.presentationStore.browserStore.visible &&
@@ -896,7 +878,6 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
             projectChat={session.conversationSessionStore.chatStore}
             sideChat={session.conversationSessionStore.sideChatStore}
             headerActions={workspaceModeControls(session, "browser")}
-            conversationAccessory={workspaceConversationAccessory}
             projectComposerHeader={projectComposerHeader}
             projectComposerContent={workspaceComposerContent}
             projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
@@ -919,6 +900,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     );
 
   if (
+    surface === "workbench" &&
     session?.presentationMode === "vscode" &&
     !store.activeSessionResolved &&
     store.presentationStore.embeddedEditorStore.visible &&
@@ -938,7 +920,6 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
             projectChat={session.conversationSessionStore.chatStore}
             sideChat={session.conversationSessionStore.sideChatStore}
             headerActions={workspaceModeControls(session, "vscode")}
-            conversationAccessory={workspaceConversationAccessory}
             projectComposerHeader={projectComposerHeader}
             projectComposerContent={workspaceComposerContent}
             projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
@@ -1114,6 +1095,22 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
             referencePreviews={root.artifactReferencePreviewStore}
             sessions={root.sessionCatalogStore}
             inlineWidgets={root.inlineWidgetStore}
+            onOpenSourceLocation={artifactLibraryBehavior?.openSourceLocation}
+            wrapArtifact={
+              artifactLibrarySession && artifactLibraryBehavior?.showSelectionContextMenu
+                ? (artifactId, children) => (
+                    <ArtifactSelectionSurface
+                      key={artifactId}
+                      session={artifactLibrarySession}
+                      artifactId={artifactId}
+                      showContextMenu={artifactLibraryBehavior.showSelectionContextMenu!}
+                      onReturnToChat={() => root.navigationStore.returnToWorkbench()}
+                    >
+                      {children}
+                    </ArtifactSelectionSurface>
+                  )
+                : undefined
+            }
           />
         ) : cakeChatCollection ? (
           cakeChatSession ? (
@@ -1232,21 +1229,6 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
                 : undefined
             }
             renderHeader={renderProjectPaneHeader}
-            wrapPane={(paneSession, _pane, children) => (
-              <ArtifactWorkspaceLayout
-                session={paneSession}
-                inlineWidgets={root.inlineWidgetStore}
-                onOpenSourceLocation={projectTranscriptBehaviorFor(paneSession).openSourceLocation}
-                showSelectionContextMenu={
-                  projectTranscriptBehaviorFor(paneSession).showSelectionContextMenu
-                }
-                onOpenLibrary={(lineageId) =>
-                  root.navigationStore.showArtifactLibrary(paneSession.sessionId, lineageId)
-                }
-              >
-                {children}
-              </ArtifactWorkspaceLayout>
-            )}
             onFocus={(paneId) => root.navigationStore.focusSessionPane(paneId)}
             onSplit={(axis) => root.navigationStore.splitFocusedSession(axis)}
             onClose={(paneId) => root.navigationStore.closeSessionPane(paneId)}

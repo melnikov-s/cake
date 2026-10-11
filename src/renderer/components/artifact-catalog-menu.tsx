@@ -3,19 +3,41 @@ import { observer } from "r-state-tree/react";
 import { Button } from "@/components/ui/button";
 import { ArtifactIcon } from "@/components/ui/icons";
 import { NavItem } from "@/components/ui/nav-item";
-import { Popover, PopoverContent, PopoverIconTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverIconTrigger,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { LoadingState } from "@/components/ui/loading-state";
 import type { ArtifactLibraryStore } from "../stores/ArtifactLibraryStore";
+import type { SessionArtifactsStore } from "../stores/SessionArtifactsStore";
 
-/** Artifact access when no Project Session panel is available. */
+/** Shared artifact access for Cake Chat and Project Sessions. */
 export const ArtifactCatalogMenu = observer(function ArtifactCatalogMenu({
   store,
+  sessionArtifacts,
+  onOpen,
   onOpenLibrary,
 }: {
   store: ArtifactLibraryStore;
+  sessionArtifacts?: SessionArtifactsStore;
+  onOpen?(): void;
   onOpenLibrary(lineageId?: string): void;
 }) {
   const [open, setOpen] = useState(false);
+  const source = sessionArtifacts ?? store;
+  const items = sessionArtifacts
+    ? sessionArtifacts.records.map(({ artifact }) => ({
+        id: artifact.id,
+        title: artifact.title,
+        kind: artifact.kind,
+      }))
+    : store.lineages.map((lineage) => ({
+        id: lineage.id,
+        title: lineage.title,
+        kind: lineage.latest?.kind,
+      }));
   const browse = (lineageId?: string) => {
     setOpen(false);
     onOpenLibrary(lineageId);
@@ -25,28 +47,45 @@ export const ArtifactCatalogMenu = observer(function ArtifactCatalogMenu({
       open={open}
       onOpenChange={(value) => {
         setOpen(value);
-        if (value) void store.load();
+        if (value) {
+          onOpen?.();
+          if (sessionArtifacts) void sessionArtifacts.refresh();
+          else void store.load();
+        }
       }}
     >
-      <PopoverIconTrigger tooltip="Artifacts" data-cake-hint-key="a">
-        <ArtifactIcon />
-      </PopoverIconTrigger>
+      {sessionArtifacts ? (
+        <PopoverTrigger
+          variant="ghost"
+          size="sm"
+          className="h-8 gap-1.5 px-2 text-muted-foreground"
+          data-cake-hint-key="a"
+          aria-label={`${items.length} artifacts`}
+        >
+          <ArtifactIcon />
+          <span className="font-mono text-[11px] tabular-nums">{items.length}</span>
+        </PopoverTrigger>
+      ) : (
+        <PopoverIconTrigger tooltip="Artifacts" data-cake-hint-key="a">
+          <ArtifactIcon />
+        </PopoverIconTrigger>
+      )}
       <PopoverContent align="end" className="w-80 p-0" aria-label="Artifacts">
         <nav className="max-h-80 overflow-auto p-2" aria-label="Artifact list">
-          {store.loading ? (
+          {source.loading ? (
             <LoadingState label="Loading artifacts" />
-          ) : store.error ? (
-            <p className="p-4 text-xs text-destructive">{store.error}</p>
-          ) : store.lineages.length === 0 ? (
+          ) : source.error ? (
+            <p className="p-4 text-xs text-destructive">{source.error}</p>
+          ) : items.length === 0 ? (
             <p className="p-4 text-center text-xs text-muted-foreground">No artifacts yet.</p>
           ) : (
-            store.lineages.map((lineage) => (
+            items.map((item) => (
               <NavItem
-                key={lineage.id}
+                key={item.id}
                 icon={<ArtifactIcon />}
-                label={lineage.title ?? lineage.id}
-                description={lineage.latest?.kind}
-                onClick={() => browse(lineage.id)}
+                label={item.title ?? item.id}
+                description={item.kind}
+                onClick={() => browse(item.id)}
               />
             ))
           )}

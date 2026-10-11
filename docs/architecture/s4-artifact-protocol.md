@@ -31,30 +31,31 @@ Full artifacts are global lineages linked to a Cake Session or Session Family.
 The originating assistant publication renders one exact-revision artifact surface
 inline, expanded by default, with a Collapse/Expand control and no separate
 `Open artifact` action. All artifact kinds use their existing `ArtifactHost` renderer.
-Creating or updating an artifact refreshes the catalog without opening or selecting
-an accessory panel. The session header and Artifact Library remain explicit browsing
-and management entry points; they never open automatically on publication.
+Creating or updating an artifact refreshes the catalog without opening a browsing
+surface. Cake Chat and Project Session headers use the same `ArtifactCatalogMenu`
+popover and shared Artifact Library. Project headers show their linked-artifact count
+and effective session/family list; Cake Chat offers the global catalog. Selecting a
+list item closes the popover and opens the library (at the linked revision for a
+Project Session). Browsing never opens automatically on publication.
 Ordinary Markdown artifact links remain prose links. A standalone
 `![Title](cake://artifact/<id>@rN)` paragraph renders an expanded inline artifact
 when that exact revision has no publication surface in the conversation. If the
 publication already renders that exact revision, the redundant embed is omitted;
-other revisions remain distinct. The selected-artifact surface uses one quiet navigation row
-for the collection, previous/next traversal, fullscreen, and close actions; the
-artifact content is not wrapped in repeated titles, status headers, or source
-controls. The durable pointer records the originating assistant entry
+other revisions remain distinct. The shared library owns artifact selection,
+revision history, references, link management, and fullscreen presentation. The durable pointer records the originating assistant entry
 and tool call, so the reference appears only while that assistant message is on the
 active Pi branch. Readable fallbacks remain in Cake's artifact repository and
 exact-revision projection; they are not copied into the pointer or automatically
 injected into Pi context.
 
-The panel is session-scoped rather than branch-scoped. Selecting another Pi
+The header's linked-artifact list is session-scoped rather than branch-scoped. Selecting another Pi
 session-tree branch, restoring an earlier branch, or running tool compaction does
 not move, clone, or re-create artifacts. These operations may change which transcript pointers are visible, but effective
 session/family links and stable lineage identities remain unchanged.
 
 Interviews stay inline at their originating tool-call position because the
 conversation waits for submission or cancellation. They never become reusable
-artifacts or enter the accessory panel. They share only presentation primitives
+artifacts or enter the artifact catalog. They share only presentation primitives
 and widget compilation/sandbox infrastructure with artifacts.
 
 ## Authority and durability
@@ -272,14 +273,14 @@ Inline disclosures mount a live renderer only while expanded. A focused window-o
 `InlineArtifactPreviewStore` owns per-mount expansion and read status; exact payloads
 stay in the shared Artifact Catalog Model. Metadata resolution freezes stable embed
 references to an exact revision for that mount. Reads deduplicate while active, ignore
-stale/disposed results, and expose retry; collapse never changes artifact links or panel
-selection. Separate inline, panel, and fullscreen mounts have independent ephemeral
+stale/disposed results, and expose retry; collapse never changes artifact links or library
+selection. Separate inline, library, and fullscreen mounts have independent ephemeral
 React interaction state. Compiler/runtime failures retain the readable fallback.
 
 Every widget receives the host's semantic color/font tokens before first paint through
 a URL fragment, and live theme changes through a source- and token-bound message.
 Changing themes does not change `src` or reset interaction state. Inline presentation
-removes outer padding/background; the artifact workspace retains its framing. Content
+removes outer padding/background; the artifact library retains its framing. Content
 height reports track both expansion and shrinkage (not the iframe viewport minimum),
 including responsive reflow, and the host bounds them to 120–1200 CSS pixels. Generated
 pages must not use viewport-dependent root heights. Review hosts without app tokens

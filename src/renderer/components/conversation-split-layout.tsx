@@ -35,7 +35,6 @@ interface ConversationSplitLayoutProps<T extends PrimarySessionStore> {
   loadingLabel: string;
   headerClassName?(pane: SessionPaneNode): string | undefined;
   renderHeader(pane: SessionPaneNode, session: T): ReactNode;
-  wrapPane?(session: T, pane: SessionPaneNode, children: ReactNode): ReactNode;
   onFocus(paneId: string): void;
   onSplit?(axis: SessionSplitAxis): void;
   onClose(paneId: string): void;
@@ -50,7 +49,6 @@ export function ConversationSplitLayout<T extends PrimarySessionStore>({
   loadingLabel,
   headerClassName,
   renderHeader,
-  wrapPane,
   onFocus,
   onSplit,
   onClose,
@@ -122,7 +120,7 @@ export function ConversationSplitLayout<T extends PrimarySessionStore>({
         );
         return (
           <StoreProvider key={pane.paneId} store={session}>
-            {wrapPane ? wrapPane(session, pane, conversation) : conversation}
+            {conversation}
           </StoreProvider>
         );
       }}

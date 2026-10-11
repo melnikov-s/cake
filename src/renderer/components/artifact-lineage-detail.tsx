@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import type { SourceLocation } from "../../ipc/source-location";
 import { observer } from "r-state-tree/react";
 import { ArtifactHost } from "@/components/artifact-host";
 import { Button } from "@/components/ui/button";
@@ -36,12 +37,16 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
   activeSessionId,
   sessions,
   inlineWidgets,
+  onOpenSourceLocation,
+  wrapArtifact,
 }: {
   store: ArtifactDetailStore;
   referencePreviews: ArtifactReferencePreviewStore;
   activeSessionId?: string;
   sessions: SessionCatalogStore;
   inlineWidgets: InlineWidgetStore;
+  onOpenSourceLocation?(location: SourceLocation): void;
+  wrapArtifact?(artifactId: string, children: ReactNode): ReactNode;
 }) {
   const [copied, setCopied] = useState<string>();
   const lineage = store.selectedLineage;
@@ -85,6 +90,13 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
   const pendingRestoreRevision = store.pendingRestoreRevision;
   const referenceOperationError = referencePreviews.operationErrorFor(lineageId);
   const exactRef = `${lineage.stableRef}@r${selectedNumber}`;
+  const content = record ? (
+    <ArtifactHost
+      record={record}
+      inlineWidgets={inlineWidgets}
+      onOpenSourceLocation={onOpenSourceLocation}
+    />
+  ) : undefined;
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
       <header className="border-b border-border/65 px-6 py-4">
@@ -112,6 +124,19 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
             <Button variant="outline" size="sm" onClick={() => copy("exact", exactRef)}>
               <CopyIcon /> {copied === "exact" ? "Copied" : "Copy exact revision reference"}
             </Button>
+            {activeSessionId && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  void referencePreviews
+                    .materialize(activeSessionId, lineageId, selectedRevision)
+                    .then((projection) => projection && copy("path", projection.exactPath))
+                }
+              >
+                <CopyIcon /> {copied === "path" ? "Copied" : "Copy readable path"}
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => copy("id", lineage.id)}>
               <CopyIcon /> {copied === "id" ? "Copied" : "Copy ID"}
             </Button>
@@ -125,8 +150,12 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
       </header>
       <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_17rem] max-[900px]:grid-cols-1 max-[900px]:overflow-auto">
         <main className="min-h-0 overflow-auto p-6">
-          {record ? (
-            <ArtifactHost record={record} inlineWidgets={inlineWidgets} />
+          {content ? (
+            wrapArtifact ? (
+              wrapArtifact(lineage.id, content)
+            ) : (
+              content
+            )
           ) : (
             <LoadingState label={`Loading revision ${selectedNumber}`} />
           )}

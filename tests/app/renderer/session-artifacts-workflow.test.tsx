@@ -51,6 +51,15 @@ const effective = (
     exactRef: `cake://artifact/${id}@r${revision}`,
   });
 
+const reportSummary = () => ({
+  id: effective().revision.lineageId,
+  title: "Family report",
+  createdAt: effective(1).revision.metadata.publishedAt,
+  latestRevision: effective().latestRevision,
+  latest: effective().revision.metadata,
+  stableRef: effective().stableRef,
+});
+
 function gate<Value>() {
   let resolve!: (value: Value) => void;
   const promise = new Promise<Value>((complete) => {
@@ -82,8 +91,26 @@ function renderSessionArtifacts(
       projectSessions: { open: async () => undefined },
       workspaces: { loadStagedSlashCommands: async () => [] },
       inlineWidgets,
+      draw: {
+        list: async () => [],
+        create: async () => {
+          throw new Error("Board unavailable in fixture");
+        },
+      },
       artifacts: {
         effective: async () => [effective()],
+        catalog: async () => ({
+          items: [reportSummary()],
+          offset: 0,
+          limit: 50,
+          total: 1,
+          hasMore: false,
+        }),
+        detail: async () => ({
+          lineage: reportSummary(),
+          links: [effective().link],
+          stableRef: effective().stableRef,
+        }),
         history: async () => ({
           items: [effective(2).revision.metadata, effective(1).revision.metadata],
           offset: 0,
@@ -249,8 +276,8 @@ describe("Session artifact workflows", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Visual explanation Expand" }));
     expect(await screen.findByText("Explanation r1")).toBeDefined();
     expect(readExact).toHaveBeenCalledTimes(2);
-    // Publication and collapse/expand never select or open the accessory panel.
-    expect(screen.queryByRole("button", { name: "Close Visual explanation" })).toBeNull();
+    // Inline expansion is independent of toolbar navigation.
+    expect(screen.queryByRole("dialog", { name: "Artifacts" })).toBeNull();
   });
 
   it("renders document publications inline using their existing artifact renderer", async () => {
@@ -364,212 +391,129 @@ describe("Session artifact workflows", () => {
     expect(screen.getByRole("button", { name: "Visual explanation Expand" })).toBeDefined();
     expect(screen.queryByText("Explanation r1")).toBeNull();
   });
-  it("opens a sole artifact directly, closes it, and reopens its content", async () => {
+  it("lists even a sole artifact in the shared popup and opens the shared library", async () => {
     using fixture = renderSessionArtifacts();
     await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
+    const popup = await screen.findByRole("dialog", { name: "Artifacts" });
+    const list = within(popup).getByRole("navigation", { name: "Artifact list" });
+    expect(within(list).getAllByRole("button")).toHaveLength(1);
+    await fixture.user.click(within(list).getByRole("button", { name: /Family report/ }));
     expect(await screen.findByText("Family report content r2")).toBeDefined();
-    expect(screen.queryByRole("navigation", { name: "Session artifacts" })).toBeNull();
-    await fixture.user.click(screen.getByRole("button", { name: "Close Family report" }));
-    expect(screen.queryByText("Family report content r2")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Search artifact library" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Close all artifacts" }));
     await fixture.user.click(screen.getByRole("button", { name: "1 artifacts" }));
-    expect(await screen.findByText("Family report content r2")).toBeDefined();
+    expect(await screen.findByRole("dialog", { name: "Artifacts" })).toBeDefined();
   });
 
-  it("shows the shared artifact once in each family session while keeping panel selection session-local", async () => {
-    using fixture = renderSessionArtifacts();
-    await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
-    expect(screen.getByText("Family report content r2")).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: /^Child session/ }));
-    expect(screen.queryByText("Family report content r2")).toBeNull();
-    await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
-    expect(screen.getByText("Family report content r2")).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "All artifacts" }));
-    expect(
-      within(screen.getByRole("navigation", { name: "Session artifacts" })).getAllByRole("button"),
-    ).toHaveLength(1);
-    await fixture.user.click(screen.getByRole("button", { name: /^Parent session/ }));
-    expect(screen.getByText("Family report content r2")).toBeDefined();
-  });
-
-  it("lists multiple artifacts and navigates between their content without losing the list", async () => {
+  it("shows only the active session's linked artifacts, including shared family links", async () => {
     using fixture = renderSessionArtifacts({
-      effective: async () => [effective(), effective(1, "appendix", "Appendix")],
+      effective: async (id) =>
+        id === "session-1" ? [effective(), effective(1, "appendix", "Appendix")] : [effective()],
     });
     await fixture.user.click(await screen.findByRole("button", { name: "2 artifacts" }));
-    const list = screen.getByRole("navigation", { name: "Session artifacts" });
-    expect(within(list).getAllByRole("button")).toHaveLength(2);
-    await fixture.user.click(within(list).getByRole("button", { name: /Family report/ }));
-    expect(screen.getByText("Family report content r2")).toBeDefined();
-    expect(screen.getByRole("button", { name: "Previous artifact" })).toHaveProperty(
-      "disabled",
-      true,
-    );
-    await fixture.user.click(screen.getByRole("button", { name: "Next artifact" }));
-    expect(screen.getByText("Appendix content r1")).toBeDefined();
-    expect(screen.getByRole("button", { name: "Next artifact" })).toHaveProperty("disabled", true);
-    await fixture.user.click(screen.getByRole("button", { name: "Previous artifact" }));
-    expect(screen.getByText("Family report content r2")).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "All artifacts" }));
-    expect(screen.getByRole("navigation", { name: "Session artifacts" })).toBeDefined();
+    let popup = await screen.findByRole("dialog", { name: "Artifacts" });
+    expect(within(popup).getAllByRole("button")).toHaveLength(3);
+    await fixture.user.click(screen.getByRole("button", { name: /^Child session/ }));
+    await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
+    popup = await screen.findByRole("dialog", { name: "Artifacts" });
+    expect(within(popup).getAllByRole("button")).toHaveLength(2);
+    expect(within(popup).getByRole("button", { name: /Family report/ })).toBeDefined();
   });
 
-  it("shows family provenance, copies stable/exact/readable references and pins then follows the session link", async () => {
-    let projection = effective();
-    const setSelection = vi.fn<Client["artifacts"]["setSelection"]>(async (input) => {
-      projection = { ...projection, link: { ...projection.link, selection: input.selection } };
-      return projection.link;
+  it("opens the shared library from the Draw workspace's artifact popup", async () => {
+    using fixture = renderSessionArtifacts();
+    await fixture.user.click(await screen.findByRole("button", { name: "Open Cake Draw" }));
+    await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
+    await fixture.user.click(await screen.findByRole("button", { name: /Family report/ }));
+    expect(await screen.findByText("Family report content r2")).toBeDefined();
+    expect(screen.getByRole("textbox", { name: "Search artifact library" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Close all artifacts" }));
+    expect(screen.getByRole("region", { name: "Cake Draw whiteboard" })).toBeDefined();
+  });
+
+  it("opens the session's pinned revision in the shared library", async () => {
+    const pinned = {
+      ...effective(1),
+      latestRevision: effective(2).latestRevision,
+      link: {
+        ...effective(1).link,
+        selection: { mode: "pinned" as const, revision: effective(1).revision.metadata.revision },
+      },
+    };
+    using fixture = renderSessionArtifacts({
+      effective: async () => [pinned],
+      detail: async () => ({
+        lineage: reportSummary(),
+        links: [pinned.link],
+        stableRef: pinned.stableRef,
+      }),
     });
+    await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
+    await fixture.user.click(await screen.findByRole("button", { name: /Family report/ }));
+    expect(await screen.findByText("Family report content r1")).toBeDefined();
+    expect(screen.getByRole("combobox", { name: "Selected artifact revision" })).toHaveProperty(
+      "value",
+      "1",
+    );
+  });
+
+  it("copies a readable path for the selected revision through the shared library", async () => {
     const materialize = vi.fn<Client["artifacts"]["materialize"]>(async () => ({
       lineageId: "shared",
       title: "Family report",
       kind: "markdown",
       selectedRevision: 2,
       latestRevision: 2,
-      digest: projection.revision.metadata.digest,
+      digest: effective().revision.metadata.digest,
       linkMode: "follow-latest",
-      stableRef: projection.stableRef,
-      exactRef: projection.exactRef,
+      stableRef: effective().stableRef,
+      exactRef: effective().exactRef,
       exactPath: "/cache/shared/revision-2.md",
       files: [],
     }));
-    using fixture = renderSessionArtifacts({
-      effective: async () => [projection],
-      setSelection,
-      materialize,
-    });
+    using fixture = renderSessionArtifacts({ materialize });
     await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Show artifact info" }));
-    expect(screen.getByText("Shared with family")).toBeDefined();
-    expect(screen.getByText("Following latest")).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Copy reference" }));
-    expect(await navigator.clipboard.readText()).toBe("cake://artifact/shared");
-    await fixture.user.click(screen.getByRole("button", { name: "Copy exact revision reference" }));
-    expect(await navigator.clipboard.readText()).toBe("cake://artifact/shared@r2");
-    await fixture.user.click(screen.getByRole("button", { name: "Copy readable path" }));
+    await fixture.user.click(await screen.findByRole("button", { name: /Family report/ }));
+    await fixture.user.click(await screen.findByRole("button", { name: "Copy readable path" }));
     await waitFor(async () =>
       expect(await navigator.clipboard.readText()).toBe("/cache/shared/revision-2.md"),
     );
-    expect(materialize).toHaveBeenCalledWith(
-      "session-1",
-      "shared",
-      2,
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
-    await fixture.user.click(screen.getByRole("button", { name: "Pin r2" }));
-    expect(await screen.findByText("Pinned r2")).toBeDefined();
-    expect(setSelection).toHaveBeenCalledWith(
-      {
-        sessionId: "session-1",
-        lineageId: "shared",
-        target: { type: "family", familyId: "family-1" },
-        selection: { mode: "pinned", revision: 2 },
-      },
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
-    await fixture.user.click(screen.getByRole("button", { name: "Follow latest" }));
-    expect(await screen.findByText("Following latest")).toBeDefined();
-    expect(setSelection).toHaveBeenLastCalledWith(
-      expect.objectContaining({ selection: { mode: "follow-latest" } }),
-      expect.anything(),
-    );
+    expect(materialize).toHaveBeenCalledWith("session-1", "shared", 2, expect.anything());
   });
 
-  it("preserves visible content when refreshing the authoritative session projection fails", async () => {
-    let projection = effective();
+  it("offers the library from an empty popup", async () => {
+    using fixture = renderSessionArtifacts({ effective: async () => [] });
+    await fixture.user.click(await screen.findByRole("button", { name: "0 artifacts" }));
+    expect(await screen.findByText("No artifacts yet.")).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Browse all artifacts" }));
+    expect(await screen.findByRole("textbox", { name: "Search artifact library" })).toBeDefined();
+  });
+
+  it("retries a failed session query on reopening the popup", async () => {
     const load = vi
       .fn<Client["artifacts"]["effective"]>()
-      .mockResolvedValueOnce([projection])
-      .mockRejectedValueOnce(new Error("Artifact catalog unavailable"))
-      .mockImplementation(async () => [projection]);
-    const setSelection = vi.fn<Client["artifacts"]["setSelection"]>(async (input) => {
-      projection = { ...projection, link: { ...projection.link, selection: input.selection } };
-      return projection.link;
-    });
-    using fixture = renderSessionArtifacts({ effective: load, setSelection });
-    await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Show artifact info" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Pin r2" }));
-    expect(await screen.findByText("Artifact catalog unavailable")).toBeDefined();
-    expect(screen.getByText("Family report content r2")).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Pin r2" }));
-    expect(await screen.findByText("Pinned r2")).toBeDefined();
-    expect(screen.queryByText("Artifact catalog unavailable")).toBeNull();
-    expect(screen.getByText("Family report content r2")).toBeDefined();
+      .mockRejectedValueOnce(new Error("Catalog unavailable"))
+      .mockRejectedValueOnce(new Error("Catalog unavailable"))
+      .mockResolvedValue([effective()]);
+    using fixture = renderSessionArtifacts({ effective: load });
+    await fixture.user.click(await screen.findByRole("button", { name: "0 artifacts" }));
+    expect(await screen.findByText("Catalog unavailable")).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "0 artifacts" }));
+    await fixture.user.click(screen.getByRole("button", { name: "0 artifacts" }));
+    expect(await screen.findByRole("button", { name: /Family report/ })).toBeDefined();
   });
 
-  it("does not let an older initial load overwrite the projection fetched after pinning", async () => {
+  it("ignores an older initial query after the popup refresh completes", async () => {
     const stale = gate<EffectiveArtifactProjection[]>();
-    const initial = effective();
-    const pinned = {
-      ...initial,
-      link: {
-        ...initial.link,
-        selection: { mode: "pinned" as const, revision: initial.revision.metadata.revision },
-      },
-    };
     const load = vi
       .fn<Client["artifacts"]["effective"]>()
       .mockReturnValueOnce(stale.promise)
-      .mockResolvedValue([pinned]);
-    using fixture = renderSessionArtifacts(
-      { effective: load, setSelection: async () => pinned.link },
-      [initial],
-    );
+      .mockResolvedValue([effective()]);
+    using fixture = renderSessionArtifacts({ effective: load }, [effective()]);
     await fixture.user.click(screen.getByRole("button", { name: "1 artifacts" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Show artifact info" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Pin r2" }));
-    expect(await screen.findByText("Pinned r2")).toBeDefined();
+    expect(await screen.findByRole("button", { name: /Family report/ })).toBeDefined();
     await act(async () => stale.resolve([effective(1, "shared", "Outdated title")]));
-    expect(screen.getByText("Pinned r2")).toBeDefined();
-    expect(screen.getByText("Family report content r2")).toBeDefined();
-    expect(screen.queryByText("Outdated title content r1")).toBeNull();
-  });
-
-  it("retries older session history and previews historical content without renaming the artifact list", async () => {
-    const latest = effective(52);
-    let attempts = 0;
-    const history = vi.fn<Client["artifacts"]["history"]>(async ({ offset }) => {
-      if (offset === 0)
-        return {
-          items: Array.from({ length: 50 }, (_, index) => effective(52 - index).revision.metadata),
-          offset: 0,
-          limit: 50,
-          total: 52,
-          hasMore: true,
-        };
-      if (++attempts === 1) throw new Error("History unavailable");
-      return {
-        items: [3, 2, 1].map((value) => effective(value).revision.metadata),
-        offset: 50,
-        limit: 50,
-        total: 52,
-        hasMore: false,
-      };
-    });
-    using fixture = renderSessionArtifacts({
-      effective: async () => [latest],
-      history,
-      readExact: async (_id, revision) =>
-        effective(revision, "shared", "Historical draft").revision,
-    });
-    await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Show artifact info" }));
-    const revisions = screen.getByRole("combobox", { name: "View artifact revision" });
-    expect(within(revisions).getAllByRole("option")).toHaveLength(50);
-    await fixture.user.click(screen.getByRole("button", { name: "Load older revisions" }));
-    expect(await screen.findByText("History unavailable")).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Retry revision history" }));
-    await waitFor(() => expect(within(revisions).getAllByRole("option")).toHaveLength(52));
-    expect(screen.queryByText("History unavailable")).toBeNull();
-    await fixture.user.selectOptions(revisions, "1");
-    expect(await screen.findByText("Historical draft content r1")).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Copy exact revision reference" }));
-    expect(await navigator.clipboard.readText()).toBe("cake://artifact/shared@r1");
-    await fixture.user.click(screen.getByRole("button", { name: "All artifacts" }));
-    expect(
-      within(screen.getByRole("navigation", { name: "Session artifacts" })).getByRole("button", {
-        name: /Family report/,
-      }),
-    ).toBeDefined();
+    expect(screen.getByRole("button", { name: /Family report/ })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Outdated title/ })).toBeNull();
   });
 });

@@ -295,12 +295,6 @@ export const MarkdownIcon = () => (
     <path d="M1 3.25A1.25 1.25 0 0 1 2.25 2h13.5A1.25 1.25 0 0 1 17 3.25v9.5A1.25 1.25 0 0 1 15.75 14H2.25A1.25 1.25 0 0 1 1 12.75zm2 2v5.5h1.5V7.5L6 9.35 7.5 7.5v3.25H9v-5.5H7.5L6 7.2 4.5 5.25zm8 0v3h-1.5L12.75 11l3.25-2.75h-1.5v-3z" />
   </svg>
 );
-export const InfoIcon = () => (
-  <Icon size={16}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 11v5M12 8h.01" />
-  </Icon>
-);
 export const ArtifactIcon = () => (
   <Icon size={15}>
     <path d="M7 3.5h7l4 4V20H7z" />

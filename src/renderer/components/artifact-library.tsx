@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import type { SourceLocation } from "../../ipc/source-location";
 import { observer } from "r-state-tree/react";
 import { ActionCard } from "@/components/ui/action-card";
 import { ArtifactIcon, SearchIcon } from "@/components/ui/icons";
@@ -20,11 +22,15 @@ export const ArtifactLibrary = observer(function ArtifactLibrary({
   referencePreviews,
   sessions,
   inlineWidgets,
+  onOpenSourceLocation,
+  wrapArtifact,
 }: {
   store: ArtifactLibraryStore;
   referencePreviews: ArtifactReferencePreviewStore;
   sessions: SessionCatalogStore;
   inlineWidgets: InlineWidgetStore;
+  onOpenSourceLocation?(location: SourceLocation): void;
+  wrapArtifact?(artifactId: string, children: ReactNode): ReactNode;
 }) {
   return (
     <div className="grid h-full min-h-0 grid-cols-[20rem_minmax(0,1fr)] max-[720px]:grid-cols-1">
@@ -104,6 +110,8 @@ export const ArtifactLibrary = observer(function ArtifactLibrary({
           activeSessionId={store.activeSessionId}
           sessions={sessions}
           inlineWidgets={inlineWidgets}
+          onOpenSourceLocation={onOpenSourceLocation}
+          wrapArtifact={wrapArtifact}
         />
       </section>
     </div>

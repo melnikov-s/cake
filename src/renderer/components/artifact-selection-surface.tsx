@@ -9,11 +9,12 @@ type Capture = {
   rect: { top: number; right: number; bottom: number; left: number };
 };
 
-/** Selection actions for content in the session artifact accessory panel. */
+/** Selection actions for library content opened from a Project Session. */
 export function ArtifactSelectionSurface({
   session,
   artifactId,
   showContextMenu,
+  onReturnToChat,
   children,
 }: {
   session: ProjectSessionStore;
@@ -22,6 +23,7 @@ export function ArtifactSelectionSurface({
     canChat: boolean;
     canAnnotate: boolean;
   }): Promise<"chat-about-selection" | "add-annotation" | undefined>;
+  onReturnToChat(): void;
   children: ReactNode;
 }) {
   const surface = useRef<HTMLDivElement>(null);
@@ -37,6 +39,7 @@ export function ArtifactSelectionSurface({
       eyebrow: () => "Artifact selection",
       chatStore: comments.draftChatStore,
     });
+    onReturnToChat();
   };
   return (
     <div
@@ -90,6 +93,7 @@ export function ArtifactSelectionSurface({
               annotation,
             );
             setAnnotationDraft(undefined);
+            onReturnToChat();
           }}
           onClose={() => setAnnotationDraft(undefined)}
         />
