@@ -6,6 +6,7 @@ import { crossSessionContextSnapshot } from "../../contracts/conversations/cross
 import { substantiveTurnResult } from "../../contracts/pi/turn-result-data";
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
+import * as workflowLifecycle from "../workflows/workflow-lifecycle";
 import { DateTime, Effect, Exit, Schedule } from "effect";
 import type { ChatConfiguration } from "../../ipc/session-contract";
 import { PiModels } from "../../services/pi/PiModels";
@@ -383,7 +384,12 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
   const family =
     (yield* storage.familyForMember(turn.sessionId)) ??
     (yield* storage.familyForMember(turn.senderSessionId));
-  if (!turn.outcome || turn.reported) return;
+  if (
+    !turn.outcome ||
+    turn.reported ||
+    (yield* workflowLifecycle.holdsCompletion(turn.sessionId, turn.turnId))
+  )
+    return;
   const spawn = (yield* storage.state()).spawnedSessions.find(
     (item) => item.sessionId === turn.sessionId,
   );

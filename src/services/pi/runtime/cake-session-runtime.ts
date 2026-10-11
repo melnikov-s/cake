@@ -61,6 +61,7 @@ import type { ResolvedAgentArtifact } from "./cake-artifact-operations";
 import type { VscodeControl } from "./cake-vscode-operations";
 import type { BrowserControl } from "./cake-browser-operations";
 import type { WorktreeLandingControl } from "./cake-worktree-operations";
+import type { WorkflowControl } from "./cake-workflow-operations";
 import type { SessionPluginControl } from "./cake-session-plugin-operations";
 import type { CakeDrawControl } from "./cake-draw-operations";
 import type { ProjectSessionPresentationMode } from "../../../ipc/project-session-presentation";
@@ -172,6 +173,9 @@ export interface CakeSessionRuntimeOptions {
   customTools?: ToolDefinition[];
   tools?: string[];
   auxiliary?: boolean;
+  workflowControl?: WorkflowControl;
+  /** Workflow workers load project context/skills, but not Cake controls or project-chat prompts. */
+  auxiliaryProjectResources?: boolean;
   /** Subset of builtin slash command names to advertise; defaults to all of them. */
   slashCommands?: readonly string[];
   requestUi(request: RuntimeUiRequest): Promise<string | undefined>;

@@ -445,6 +445,7 @@ export class RootStore extends Store<{
         this.props.projection.projectConversation(sessionId, workingDirectory),
       discussionCatalog: (sessionId) => this.props.projection.discussionCatalog(sessionId),
       subagentCatalog: (sessionId) => this.props.projection.subagentCatalog(sessionId),
+      workflowCatalog: (sessionId) => this.props.projection.workflowCatalog(sessionId),
       scheduledMessageCatalog: (sessionId) =>
         this.props.projection.scheduledMessageCatalog(sessionId),
       artifactModel: this.props.projection.artifacts,
@@ -714,6 +715,7 @@ export class RootStore extends Store<{
   get settingsStore(): SettingsStore {
     return createStore(SettingsStore, {
       dictation: this.dictationStore,
+      experimentalFeatures: this.props.projection.experimentalFeatures,
       speech: this.speechSettingsStore,
       speechInput: this.speechInputSettingsStore,
       screenCapture: this.screenCaptureStore,
@@ -735,6 +737,7 @@ export class RootStore extends Store<{
   @child
   get extensionUiStore(): ExtensionUiStore {
     return createStore(ExtensionUiStore, {
+      experimentalFeatures: this.props.projection.experimentalFeatures,
       activeSessionModel: () => this.projectWorkbenchStore.activeSession?.model,
       sessionContext: () => this.projectWorkbenchStore.sessionContext(),
       setDraft: (value) => {
@@ -798,6 +801,7 @@ export class RootStore extends Store<{
       isSelected: () => this.appShellStore.selection.kind === "cake-chat",
       sessionModel: (sessionId) => this.props.projection.cakeChatConversation(sessionId),
       controlsModel: (sessionId) => this.props.projection.controlsForCakeChat(sessionId),
+      workflowCatalog: (sessionId) => this.props.projection.workflowCatalog(sessionId),
       tools: () => this.applicationControlStore.tools(),
       modelPresets: () => this.settingsStore.modelPresets.presets,
       defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,

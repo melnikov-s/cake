@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Queue, Stream } from "effect";
 import { deliver } from "../../../src/domain/session-families/sessionFamilies";
@@ -68,6 +69,7 @@ const initializeFamily = Effect.gen(function* () {
 
 const environment = () =>
   Layer.mergeAll(
+    WorkflowTestLive,
     familyStorageHarness().layer,
     makeProjectSessionRuntimeMechanismTestLayer(),
     SessionCatalogChanges.layer,

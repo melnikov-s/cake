@@ -12,10 +12,14 @@ import type {
 } from "../stores/SessionLayoutStore";
 import { SessionSplitLayout } from "./session-split-layout";
 import { SideChatLayout } from "./side-chat-layout";
+import { WorkflowConversationLayout } from "./workflow-conversation-layout";
+import { WorkflowProgress } from "./workflow-progress";
+import type { WorkflowRunStore } from "../stores/WorkflowRunStore";
 
 type ConversationChatProps = Omit<ComponentProps<typeof Chat>, "store">;
 
 type PrimarySessionStore = Store & {
+  readonly workflowRunStores?: readonly WorkflowRunStore[];
   readonly conversationSessionStore: {
     readonly chatStore: ChatStore;
     readonly sideChatStore: SideChatStore;
@@ -77,25 +81,44 @@ export function ConversationSplitLayout<T extends PrimarySessionStore>({
                 workspacePath: props.transcriptBehavior.workspacePath,
               }
             : undefined;
+        const workflows = session.workflowRunStores ?? [];
         const conversation = (
-          <SideChatLayout
-            store={session.conversationSessionStore.sideChatStore}
-            renderChat={(sideChatStore) => (
+          <WorkflowConversationLayout stores={workflows}>
+            <SideChatLayout
+              store={session.conversationSessionStore.sideChatStore}
+              renderChat={(sideChatStore) => (
+                <Chat
+                  store={sideChatStore}
+                  embedded
+                  compact
+                  composerFocusEnabled={store.focusedPaneId === pane.paneId}
+                  transcriptBehavior={nestedTranscriptBehavior}
+                />
+              )}
+            >
               <Chat
-                store={sideChatStore}
-                embedded
-                compact
+                store={session.conversationSessionStore.chatStore}
                 composerFocusEnabled={store.focusedPaneId === pane.paneId}
-                transcriptBehavior={nestedTranscriptBehavior}
+                {...props}
+                footer={
+                  <>
+                    {props.footer}
+                    {workflows.map((workflow) => (
+                      <WorkflowProgress
+                        key={workflow.sessionId}
+                        store={workflow}
+                        onDetails={() =>
+                          workflows.forEach((other) => {
+                            if (other !== workflow) other.close();
+                          })
+                        }
+                      />
+                    ))}
+                  </>
+                }
               />
-            )}
-          >
-            <Chat
-              store={session.conversationSessionStore.chatStore}
-              composerFocusEnabled={store.focusedPaneId === pane.paneId}
-              {...props}
-            />
-          </SideChatLayout>
+            </SideChatLayout>
+          </WorkflowConversationLayout>
         );
         return (
           <StoreProvider key={pane.paneId} store={session}>

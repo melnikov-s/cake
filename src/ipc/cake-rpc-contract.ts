@@ -9,6 +9,7 @@ import {
 } from "../contracts/desktop/screen-capture-data";
 import { artifactRecordSchema } from "./artifact-contract";
 import { InterviewRecord } from "../contracts/interviews/interview";
+import { WorkflowProposal } from "../contracts/workflows/workflow-data";
 import { ipcProjectionArray, ipcProjectionString } from "./projection";
 import { editorLocationSchema } from "./editor-location";
 import { editorAnnotationSnapshotSchema } from "./editor-annotation";
@@ -107,7 +108,16 @@ const cakeEventSchemas = {
     requestId: uuid,
     uiRequestId: uuid,
     sessionId: stringMax(256),
-    kind: Schema.Literals(["confirm", "text", "secret", "select", "manual_code", "editor"]),
+    kind: Schema.Literals([
+      "confirm",
+      "text",
+      "secret",
+      "select",
+      "manual_code",
+      "editor",
+      "workflow-choice",
+    ]),
+    workflow: Schema.optionalKey(WorkflowProposal),
     title: ipcProjectionString(512),
     message: ipcProjectionString(4_096),
     placeholder: Schema.optional(ipcProjectionString(512)),
@@ -119,6 +129,17 @@ const cakeEventSchemas = {
         100,
       ),
     ),
+  }).check(
+    Schema.makeFilter((request) =>
+      (request.kind === "workflow-choice") === (request.workflow !== undefined)
+        ? undefined
+        : "Workflow choice requests require a frozen workflow proposal",
+    ),
+  ),
+  "ui-request-settled": Schema.Struct({
+    type: Schema.Literal("ui-request-settled"),
+    uiRequestId: uuid,
+    sessionId: stringMax(256),
   }),
   complete: Schema.Struct({ type: Schema.Literal("complete"), requestId: uuid }),
   fatal: Schema.Struct({
@@ -293,6 +314,7 @@ export const artifactEventSchema = Schema.Union([
   cakeEventSchemas["artifact-updated"],
   cakeEventSchemas["artifact-catalog-invalidated"],
   cakeEventSchemas["ui-request"],
+  cakeEventSchemas["ui-request-settled"],
 ]);
 
 export const terminalEventSchema = Schema.Union([
@@ -330,6 +352,7 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["artifact-catalog-invalidated"],
   cakeEventSchemas["interview-requested"],
   cakeEventSchemas["ui-request"],
+  cakeEventSchemas["ui-request-settled"],
   cakeEventSchemas["complete"],
   cakeEventSchemas["fatal"],
   cakeEventSchemas["notification"],

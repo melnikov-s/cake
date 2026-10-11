@@ -6,9 +6,14 @@ import {
   setSessionPluginSharedState,
   setSessionPluginState,
   setSessionPluginHidden,
+  setExperimentalFeatures,
 } from "../../domain/application/application";
 import { AgentAvailability } from "../../services/pi/AgentAvailability";
-import { ApplicationRpc, SessionPluginMutationError } from "../protocol/ApplicationRpc";
+import {
+  ApplicationRpc,
+  SessionPluginMutationError,
+  ApplicationSettingsMutationError,
+} from "../protocol/ApplicationRpc";
 
 const pluginMutationError = Effect.mapError(
   (cause: unknown) =>
@@ -18,6 +23,10 @@ const pluginMutationError = Effect.mapError(
 );
 
 export const applicationStateHandlers = ApplicationRpc.of({
+  "application.setExperimentalFeatures": ({ features }) =>
+    setExperimentalFeatures(features).pipe(
+      Effect.mapError((cause) => new ApplicationSettingsMutationError({ message: cause.message })),
+    ),
   "application.getState": () => getState(),
   "application.observeState": () => Stream.unwrap(observeState()),
   "application.observeAgentAvailability": () =>

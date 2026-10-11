@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { describe } from "vitest";
@@ -91,6 +92,7 @@ describe("Project Session runtime worktree controls", () => {
       },
     };
     const environment = Layer.mergeAll(
+      WorkflowTestLive,
       makeProjectSessionRuntimeMechanismTestLayer(integrations),
       WorktreeLandingCoordinatorLive,
       Layer.mock(WorktreeLandingAgent, { promptAndWait: () => Effect.void }),

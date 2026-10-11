@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Stream } from "effect";
 import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
@@ -53,6 +54,7 @@ const message = (expectsResponse: boolean) =>
 
 const environment = (disposed: Deferred.Deferred<void>) =>
   Layer.mergeAll(
+    WorkflowTestLive,
     familyStorageHarness().layer,
     makeProjectSessionRuntimeMechanismTestLayer(),
     SessionCatalogChanges.layer,

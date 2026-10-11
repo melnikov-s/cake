@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { describe } from "vitest";
@@ -36,6 +37,7 @@ describe("Session model policy composition", () => {
           ],
         };
         const environment = Layer.mergeAll(
+          WorkflowTestLive,
           makeProjectSessionRuntimeTestLayer(),
           Layer.mock(CakeSessionRuntimes, {}),
           Layer.mock(RendererRequestCoordinator, {}),

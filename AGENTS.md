@@ -285,11 +285,19 @@ that could actually be affected by the change (same components, stores, or
 features). Leave full-suite runs to CI or an explicitly requested verification
 pass.
 
+### Build modes and native speech cost
+
+- **Use `pnpm build:slim` for ordinary agent work**: renderer/backend changes unrelated to native speech, hidden Electron tests, screenshots, and development previews. Use `pnpm build:start:slim` when launching that build. If unsure whether Swift is required, use slim.
+- Slim builds do not invoke Swift, probe its toolchain, download speech assets, or retain native helpers from a previous full build. Local Swift speech/dictation engines are unavailable in that output; there is no automatic fallback compilation.
+- **Do not run a full/native build unless it is required** by changes to Swift/native speech, native packaging/cache behavior, a real native speech integration test, or an explicitly requested full/distribution build. Normal `pnpm build` remains the full-feature build; `pnpm build:dictation`, `pnpm build:speech`, and Swift tests are explicit native work.
+- `pnpm test:electron` and Electron visual captures default to slim builds. Prefer targeted `pnpm exec playwright test ...` after `pnpm build:slim`; do not run the whole Electron suite just to obtain a build. For a capture that genuinely needs bundled native engines, explicitly use `CAKE_BUILD_MODE=full pnpm visual:capture ...`.
+- Full builds share content-addressed native bundles and Swift scratch under Cake's `cache/native-builds/v1`, not in each worktree. Do not symlink mutable Swift `.build` trees between different source revisions. `CAKE_NATIVE_REBUILD=1` is an explicit bypass for native verification, not a routine step.
+
 ### Electron UI verification
 
 - Cake is an Electron application. Do not use a localhost browser page to verify Cake UI unless the task explicitly targets a separately identified web surface.
 - Renderer behavior that depends on focus, text selection, portals, keyboard input, or native DOM events must be verified through an isolated Playwright Electron test.
-- Electron smoke tests run the compiled `out/` application. Run `pnpm build` after the final source change and before interpreting smoke-test results.
+- Electron smoke tests run the compiled `out/` application. Run `pnpm build:slim` after the final source change and before interpreting smoke-test results; use the full `pnpm build` only when native speech verification requires it.
 - Ordinary Electron tests must keep windows hidden and must not steal OS focus. DOM input focus and fake-device microphone tests do not require showing/focusing a native window. Keep native OS focus/blur checks separate and opt-in (`CAKE_ELECTRON_FOREGROUND_TESTS=1`, `@foreground`); ask the user before running them on their active desktop. Never show/focus windows in shared test setup. See `docs/development/electron-testing.md`.
 - Do not treat jsdom or a browser-only render as proof of focus, controlled-input, text-selection, or portal behavior.
 - A chat-composer test must verify focus, actual typing, retained value, and enabled submission, not merely that a textarea rendered.

@@ -124,6 +124,7 @@ function baseClient(overrides: object = {}) {
     conversations: { observe: () => Stream.never },
     discussionSessions: { observeCatalog: () => Stream.never, observe: () => Stream.never },
     subagents: { observe: () => Stream.never },
+    workflows: { observe: () => Stream.never },
     scheduledMessages: { observe: () => Stream.never },
     ...overrides,
   } as unknown as CakeIpcClientService;
@@ -363,7 +364,8 @@ describe("focused projection lifetimes", () => {
       // idle peer while selected/running projections stay authoritative.
       root.sessionLayoutStore.showSession("idle-4");
       expect(conversations).toHaveBeenCalledTimes(7);
-      expect(cancellations.filter((cancel) => cancel.mock.calls.length > 0)).toHaveLength(4);
+      // Conversation, discussions, schedules, subagents and compact workflows.
+      expect(cancellations.filter((cancel) => cancel.mock.calls.length > 0)).toHaveLength(5);
       expect(projection.findProjectConversation("idle-1")?.parts).toEqual([]);
       expect(projection.findProjectConversation("visible")?.observedSnapshotRevision).toBe(1);
       expect(projection.findProjectConversation("running")?.streaming).toBe(true);

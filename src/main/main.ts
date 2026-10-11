@@ -6,6 +6,8 @@ import { app, nativeTheme } from "electron";
 import { cakeEventSchema, type CakeEvent } from "../ipc/cake-rpc-contract";
 import type { JsonValue } from "../ipc/json-contract";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
+import { WorkflowSandbox } from "../services/pi/WorkflowSandbox";
+import { WorkflowProgram } from "../contracts/workflows/workflow-data";
 import { DrawControlInvocation } from "../ipc/draw-control";
 import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import { ClientEvents } from "../services/clients/ClientEvents";
@@ -128,6 +130,22 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
     console.error(`[cake.smoke] ${operation} failed`, defect);
   };
   Object.assign(globalThis, {
+    cakeSmokeWorkflowSandbox(program: WorkflowProgram) {
+      return mainRuntime.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const decoded = yield* Schema.decodeUnknownEffect(WorkflowProgram)(program);
+            const sandbox = yield* Effect.serviceOption(WorkflowSandbox);
+            if (sandbox._tag === "None") return yield* Effect.die("Local-only smoke hook");
+            return yield* sandbox.value.execute(decoded, {
+              agent: (input) => Effect.succeed(input.prompt),
+              phase: () => Effect.void,
+              log: () => Effect.void,
+            });
+          }),
+        ),
+      );
+    },
     cakeSmokeDrawControl(sessionId: string, invocation: DrawControlInvocation) {
       return mainRuntime.runPromise(
         Effect.gen(function* () {

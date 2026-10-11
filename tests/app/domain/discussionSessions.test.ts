@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
@@ -209,6 +210,7 @@ const makeLayer = (options: { readonly assistant?: boolean } = {}) => {
   const projectRuntime = makeProjectSessionRuntimeTestLayer();
   return {
     layer: Layer.mergeAll(
+      WorkflowTestLive,
       makeCakeSessionRuntimesLayer(adapter),
       discussions,
       projectRuntime,

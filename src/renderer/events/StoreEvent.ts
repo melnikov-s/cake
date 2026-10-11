@@ -1,11 +1,13 @@
 import type { AgentAvailabilityEntry } from "../../contracts/pi/agent-availability-data";
 import type { InterviewRecord } from "../../contracts/interviews/interview";
 import type { CakeEvent } from "../../ipc/cake-rpc-contract";
+import type { WorkflowProposal } from "../../contracts/workflows/workflow-data";
 
 type NativePassthroughEvent = Extract<
   CakeEvent,
   {
     type:
+      | "ui-request-settled"
       | "extension-ui-intent"
       | "project-session-control-requested"
       | "embedded-editor-annotation-requested"
@@ -38,7 +40,8 @@ export type StoreEvent =
       operationId: string;
       uiRequestId: string;
       sessionId: string;
-      kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
+      kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor" | "workflow-choice";
+      workflow?: WorkflowProposal;
       title: string;
       message: string;
       placeholder?: string;
@@ -119,6 +122,7 @@ export function toStoreEvent(event: CakeEvent): StoreEvent | undefined {
       uiRequestId: event.uiRequestId,
       sessionId: event.sessionId,
       kind: event.kind,
+      workflow: event.workflow,
       title: event.title,
       message: event.message,
       placeholder: event.placeholder,
@@ -142,7 +146,11 @@ export function toStoreEvent(event: CakeEvent): StoreEvent | undefined {
     event.type === "terminal-toggle-requested"
   )
     return event;
-  if (event.type === "extension-ui-intent" || event.type === "project-session-control-requested")
+  if (
+    event.type === "ui-request-settled" ||
+    event.type === "extension-ui-intent" ||
+    event.type === "project-session-control-requested"
+  )
     return event;
   if (
     event.type === "embedded-editor-toggle-mode-requested" ||

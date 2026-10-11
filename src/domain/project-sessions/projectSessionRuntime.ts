@@ -32,6 +32,9 @@ import {
 } from "../../contracts/conversations/cross-session-message";
 import type { ProjectSessionLocation } from "../../ipc/project-session-data";
 import { makeSubagentControl } from "../subagents/subagentControl";
+import * as workflowControl from "../workflows/workflow-control";
+import { WorkflowSupervisor } from "../../services/workflows/WorkflowSupervisor";
+import * as workflowLifecycle from "../workflows/workflow-lifecycle";
 import {
   generateSessionTitle,
   selectInitialSessionLabels,
@@ -122,6 +125,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const configuration = yield* ProjectSessionConfiguration;
   const runtimeHost = yield* ProjectSessionRuntimeHost;
   const sessions = yield* CakeSessionRuntimes;
+  const workflowSupervisor = yield* WorkflowSupervisor;
   const families = yield* SessionFamilyStorage;
   const catalogs = yield* SessionCatalogChanges;
   const browser = yield* Effect.serviceOption(Browser);
@@ -142,6 +146,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     | ManagedWorktrees
     | Terminal
     | TaskInputStorage
+    | Effect.Services<ReturnType<typeof workflowControl.invoke>>
   >();
   const run = makePiCallbackExecutor(context);
   const agentControl = makeSubagentControl({
@@ -302,25 +307,44 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           Effect.provideService(SessionFamilyStorage, families),
           Effect.provideService(SessionArchiveStorage, archive),
         ),
-    onTurnSettled: (event) => {
-      const text = substantiveTurnResult(event.result);
-      const failed = event.outcome === "failed" || event.result?.stopReason === "error";
-      const outcome = event.outcome === "aborted" ? "aborted" : failed ? "failed" : "complete";
-      const diagnostic = (event.message ?? event.result?.errorMessage)?.trim().slice(0, 100_000);
-      const report =
-        failed && diagnostic
-          ? { outcome: "failed" as const, text: diagnostic }
-          : text
-            ? { outcome: "result" as const, text }
-            : undefined;
-      return families.settleTurn(event.turnId, outcome, report).pipe(
-        Effect.tapError((error) => Effect.logError("Retrying durable session settlement", error)),
-        Effect.retry(Schedule.spaced("1 second")),
-      );
-    },
+    onTurnSettled: (event) =>
+      Effect.gen(function* () {
+        const workflowOwnsCompletion = yield* workflowLifecycle
+          .holdsTurnCompletion(sessionId, event.turnId)
+          .pipe(Effect.provideService(WorkflowSupervisor, workflowSupervisor));
+        if (
+          workflowOwnsCompletion &&
+          (yield* families.state()).turns.some(
+            (turn) => turn.turnId === event.turnId && turn.completionContract,
+          )
+        )
+          return;
+        const text = substantiveTurnResult(event.result);
+        const failed = event.outcome === "failed" || event.result?.stopReason === "error";
+        const outcome = event.outcome === "aborted" ? "aborted" : failed ? "failed" : "complete";
+        const diagnostic = (event.message ?? event.result?.errorMessage)?.trim().slice(0, 100_000);
+        const report =
+          failed && diagnostic
+            ? { outcome: "failed" as const, text: diagnostic }
+            : text
+              ? { outcome: "result" as const, text }
+              : undefined;
+        yield* families.settleTurn(event.turnId, outcome, report).pipe(
+          Effect.tapError((error) => Effect.logError("Retrying durable session settlement", error)),
+          Effect.retry(Schedule.spaced("1 second")),
+        );
+      }),
     runtime: {
       ...runtimeIntegrations,
       agentControl: agentControl(getRuntimeOptions, location.workingDirectory),
+      workflowControl: {
+        isEnabled: () => application.snapshot().experimentalFeatures?.dynamicWorkflows === true,
+        invoke: (command, input, signal) =>
+          run(
+            workflowControl.invoke(command, input, { _tag: "ProjectSession", sessionId }, signal),
+            { signal },
+          ),
+      },
       cwd: location.workingDirectory,
       trusted: application.snapshot().trustedProjectPaths.includes(location.workingDirectory),
       agentDir: configuration.agentDirectory,

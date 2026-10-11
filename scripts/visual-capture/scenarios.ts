@@ -1,7 +1,9 @@
+import { defaultApplicationState } from "../../src/contracts/application/application-data.ts";
 import { drawMermaidArchitecture } from "../../tests/fixtures/draw-mermaid-architecture.ts";
 import { addResponseModeReminder } from "../../src/contracts/conversations/response-mode-reminders.ts";
 import { addPresentationModeReminder } from "../../src/contracts/conversations/presentation-mode-reminders.ts";
 import { nestedAssistant, nestedEntries } from "../../tests/fixtures/nested-tool-activity.ts";
+import { seedWorkflowCheckpoint } from "../../tests/fixtures/workflow-checkpoint.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -209,6 +211,143 @@ const assistantMarkdownCode: VisualCaptureScenario = {
       .filter({ has: page.locator('[data-streamdown="code-block-body"]') })
       .locator('[data-slot="message-content"]');
     return dialog.or(message).last();
+  },
+};
+
+const workflowProgressScenario: VisualCaptureScenario = {
+  ...assistantMarkdownCode,
+  name: "workflow-progress",
+  description: "Project-owned workflow card with optional frozen-source detail beside shared Chat",
+  states: ["default", "details"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    await seedWorkflowCheckpoint(paths.cakeHome, "visual-assistant-markdown-code", paths.project);
+  },
+  async prepare(page, state) {
+    const card = page.locator('[data-slot="workflow-progress"]');
+    await expect(card.getByText("audit-auth", { exact: true })).toBeVisible();
+    if (state === "details") {
+      await card.getByRole("button", { name: "Details" }).click();
+      await expect(
+        page.getByRole("region", { name: "Frozen workflow source" }).locator("code"),
+      ).toBeVisible();
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page
+      .locator('[data-slot="session-pane"]')
+      .filter({ has: page.locator('[data-slot="workflow-progress"]') });
+  },
+};
+
+const workflowChoiceSource = [
+  "export const meta = {",
+  '  name: "audit-auth",',
+  '  description: "Review authentication and verify findings.",',
+  '  phases: ["Review routes", "Verify findings", "Report"],',
+  "};",
+  'await phase("Review routes");',
+  "const reviews = await pipeline(args.groups, group =>",
+  "  agent(`Review authentication in ${group}.`, { label: group }));",
+  'await phase("Verify findings");',
+  "const verified = await pipeline(reviews, review =>",
+  "  review === null ? null : agent(`Verify ${JSON.stringify(review)}`));",
+  'await phase("Report");',
+  "return { reviews, verified };",
+].join("\n");
+
+const workflowChoiceScenario: VisualCaptureScenario = {
+  ...assistantMarkdownCode,
+  name: "workflow-choice",
+  description: "Pre-launch dynamic workflow execution choice with inspectable frozen source",
+  states: ["default", "script"],
+  async seed(paths, theme) {
+    await assistantMarkdownCode.seed(paths, theme);
+    const applicationFile = join(paths.cakeHome, "state", "application.json");
+    const seeded = JSON.parse(await readFile(applicationFile, "utf8"));
+    await writeFile(
+      applicationFile,
+      JSON.stringify({
+        version: 6,
+        data: {
+          ...defaultApplicationState(),
+          projects: seeded.projects,
+          experimentalFeatures: { dynamicWorkflows: true },
+        },
+      }),
+    );
+    const file = join(
+      workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
+      "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl",
+    );
+    const entries = (await readFile(file, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    for (const entry of entries) {
+      if (entry.message?.role === "user")
+        entry.message.content = [
+          { type: "text", text: "Audit authentication across our API routes." },
+        ];
+      if (entry.message?.role === "assistant")
+        entry.message.content = [
+          {
+            type: "text",
+            text: "These route reviews are independent. A background workflow can review them in parallel, verify the findings, and return one consolidated report. You can choose workflow execution or continue normally below.",
+          },
+        ];
+    }
+    await writeFile(file, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  },
+  async prepare(page, state, application) {
+    if (!application) throw new Error("The workflow choice capture requires Electron");
+    await page.getByRole("combobox", { name: "Message", exact: true }).waitFor({ timeout: 20_000 });
+    // Wait for the owner's authoritative transcript, not just its staged composer.
+    await page
+      .getByText(
+        "These route reviews are independent. A background workflow can review them in parallel, verify the findings, and return one consolidated report. You can choose workflow execution or continue normally below.",
+        { exact: true },
+      )
+      .waitFor({ timeout: 20_000 });
+    await emitRendererEvent(application, {
+      type: "ui-request",
+      requestId: "af8396cb-8901-4ef7-bd6b-9f63104344ce",
+      uiRequestId: "de0f4bcf-cba6-4963-92b0-62a0bc67b0fa",
+      sessionId: "visual-assistant-markdown-code",
+      kind: "workflow-choice",
+      title: "audit-auth",
+      message: "Review authentication and verify findings.",
+      workflow: {
+        ownerSessionId: "visual-assistant-markdown-code",
+        program: {
+          meta: {
+            name: "audit-auth",
+            description: "Review authentication and verify findings.",
+            phases: ["Review routes", "Verify findings", "Report"],
+          },
+          source: workflowChoiceSource,
+          sourcePath: ".cake/workflows/audit-auth.js",
+          args: { groups: ["src/routes/auth", "src/routes/api"] },
+        },
+      },
+    });
+    const choice = page.getByRole("alertdialog", { name: "audit-auth" });
+    await expect(choice).toBeVisible();
+    await expect(choice.getByRole("button", { name: "Continue normally" })).toBeFocused();
+    if (state === "script") {
+      await choice.getByRole("button", { name: "View script" }).click();
+      const source = choice.getByRole("region", { name: "Proposed workflow script" });
+      await expect
+        .poll(() => source.locator("code").first().locator(":scope > span").allTextContents())
+        .toEqual(workflowChoiceSource.split("\n"));
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page.getByRole("alertdialog", { name: "audit-auth" });
   },
 };
 
@@ -570,6 +709,27 @@ const speechOutputSettingsScenario: VisualCaptureScenario = {
   region(page) {
     return page.locator("#settings-content-scroll");
   },
+};
+
+const experimentalSettingsScenario: VisualCaptureScenario = {
+  name: "experimental-settings",
+  description: "Experimental Settings with the default-off dynamic workflow toggle",
+  states: ["default", "enabled"],
+  seed: assistantMarkdownCode.seed,
+  async prepare(page, _state, application) {
+    await assistantMarkdownCode.prepare(page, "default", application);
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /^Experimental/ }).click();
+    const toggle = page.getByRole("switch", { name: "Dynamic workflows" });
+    await expect(toggle).not.toBeChecked();
+    if (_state === "enabled") {
+      await toggle.click();
+      await expect(toggle).toBeChecked();
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator("#settings-content-scroll"),
 };
 
 const screenCaptureSettingsScenario: VisualCaptureScenario = {
@@ -2182,6 +2342,8 @@ const nestedToolActivityScenario: VisualCaptureScenario = {
 };
 
 export const visualCaptureScenarios = [
+  workflowChoiceScenario,
+  workflowProgressScenario,
   nestedToolActivityScenario,
   vscodeTerminalScenario,
   sourceSelectionScenario,
@@ -2192,6 +2354,7 @@ export const visualCaptureScenarios = [
   conversationCountdownScenario,
   speechOutputSettingsScenario,
   screenCaptureSettingsScenario,
+  experimentalSettingsScenario,
   screenCaptureOverlayScenario,
   inlineLinks,
   requestExplanationScenario,

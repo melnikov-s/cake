@@ -11,6 +11,7 @@ import {
   renameProject,
   setProjectSettings,
   setGlobalCustomInstructions,
+  setExperimentalFeatures,
   setProjectSessionLabels,
   setProjectSessionLabelsIfUnlabelled,
   setSessionFastMode,
@@ -62,6 +63,41 @@ const run = <A, E>(effect: Effect.Effect<A, E, ApplicationState>) => {
 };
 
 describe("Application domain", () => {
+  it.effect(
+    "keeps experiments off by default and persists the user's choice across owner restarts",
+    () =>
+      Effect.gen(function* () {
+        const f = makeLayer();
+        assert.equal(f.persisted().experimentalFeatures?.dynamicWorkflows, false);
+        yield* setExperimentalFeatures({ dynamicWorkflows: true }).pipe(
+          Effect.provide(f.layer, { local: true }),
+        );
+        assert.equal(f.persisted().experimentalFeatures?.dynamicWorkflows, true);
+        const restored = yield* Effect.gen(function* () {
+          const owner = yield* ApplicationState;
+          yield* owner.initialize();
+          return yield* owner.current();
+        }).pipe(Effect.provide(f.layer, { local: true }));
+        assert.equal(restored.experimentalFeatures?.dynamicWorkflows, true);
+        yield* setExperimentalFeatures({ dynamicWorkflows: false }).pipe(
+          Effect.provide(f.layer, { local: true }),
+        );
+        assert.equal(f.persisted().experimentalFeatures?.dynamicWorkflows, false);
+        assert.deepEqual(f.persisted().projects, []);
+      }),
+  );
+  it.effect("does not enable an experiment when persistence fails", () => {
+    const f = makeLayer({ failSave: true });
+    return Effect.gen(function* () {
+      const result = yield* Effect.result(setExperimentalFeatures({ dynamicWorkflows: true }));
+      assert.equal(result._tag, "Failure");
+      assert.equal(
+        (yield* (yield* ApplicationState).current()).experimentalFeatures?.dynamicWorkflows,
+        false,
+      );
+      assert.equal(f.persisted().experimentalFeatures?.dynamicWorkflows, false);
+    }).pipe(Effect.provide(f.layer));
+  });
   it.effect("persists global personal instructions without changing project settings", () =>
     run(
       Effect.gen(function* () {

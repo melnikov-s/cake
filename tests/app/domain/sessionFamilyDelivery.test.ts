@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
@@ -48,6 +49,7 @@ const outcome = {
   outcome: "complete" as const,
 };
 const environment = Layer.mergeAll(
+  WorkflowTestLive,
   makeProjectSessionRuntimeMechanismTestLayer(),
   Layer.mock(ApplicationState, {
     snapshot: () => ({

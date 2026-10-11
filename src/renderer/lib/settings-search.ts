@@ -273,6 +273,20 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
         ],
       },
       {
+        page: "experimental",
+        label: "Experimental",
+        description: "Opt-in features",
+        introduction:
+          "Try experimental Cake features. They are disabled unless you enable them here.",
+        settings: [
+          {
+            label: "Dynamic workflows",
+            targetId: "setting-dynamic-workflows",
+            keywords: "experimental orchestration scripts background agents opt in",
+          },
+        ],
+      },
+      {
         page: "appearance",
         label: "Appearance",
         settings: [

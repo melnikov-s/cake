@@ -5,9 +5,7 @@ import { WorktreeStorage, WorktreeStorageError } from "./WorktreeStorage";
 
 const StoredWorktrees = Schema.Struct({
   schemaVersion: Schema.Literal(1).pipe(Schema.withDecodingDefaultKey(Effect.succeed(1 as const))),
-  records: Schema.Array(WorktreeRecord)
-    .check(Schema.isMaxLength(500))
-    .pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+  records: Schema.Array(WorktreeRecord).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 });
 
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));

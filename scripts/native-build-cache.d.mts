@@ -1,11 +1,11 @@
 export function swiftBuildIdentity(): Promise<string>;
 
 export function buildNativeBundle(options: {
-  packagePath: string;
   product: string;
   output: string;
   inputs: readonly string[];
   buildIdentity: string;
-  build(bundleDirectory: string): Promise<void>;
+  build(bundleDirectory: string, scratchDirectory: string): Promise<void>;
   force?: boolean;
+  cacheRoot?: string;
 }): Promise<void>;

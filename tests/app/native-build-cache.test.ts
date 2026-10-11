@@ -1,5 +1,6 @@
 import {
   chmod,
+  cp,
   mkdir,
   mkdtemp,
   readFile,
@@ -34,15 +35,16 @@ async function fixture() {
   for (const path of [source, manifest, pins, script, assets]) await writeFile(path, path);
   // Fake only Swift compilation/packaging. Keep real source hashing, artifact
   // verification, failed-build policy and restoration into disposable output.
-  const build = vi.fn(async (directory: string) => {
+  const build = vi.fn<(directory: string, scratch: string) => Promise<void>>(async (directory) => {
     await writeFile(join(directory, "cake-helper"), "compiled binary");
     await chmod(join(directory, "cake-helper"), 0o755);
     await mkdir(join(directory, "Models.bundle"));
     await writeFile(join(directory, "Models.bundle", "model.bin"), "bundled model");
     await writeFile(join(directory, "LICENSE"), "bundled license");
   });
+  const cacheRoot = join(root, "shared-cache");
   const options = {
-    packagePath,
+    cacheRoot,
     output,
     product: "cake-helper",
     inputs: [sources, manifest, pins, script, assets],
@@ -60,11 +62,53 @@ async function fixture() {
     output,
     build,
     options,
-    cache: join(packagePath, ".build", "cake-bundle-cake-helper"),
+    cache: join(cacheRoot, "cake-helper", "bundles"),
   };
 }
 
 describe("native bundle build cache", () => {
+  it("shares bundles and Swift scratch across identical worktree inputs without a local .build", async () => {
+    const f = await fixture();
+    const second = await fixture();
+    for (let index = 0; index < f.options.inputs.length; index++) {
+      await rm(second.options.inputs[index]!, { recursive: true, force: true });
+      await cp(f.options.inputs[index]!, second.options.inputs[index]!, { recursive: true });
+    }
+    await buildNativeBundle(f.options);
+    await buildNativeBundle({ ...second.options, cacheRoot: f.options.cacheRoot });
+    expect(f.build).toHaveBeenCalledTimes(1);
+    expect(second.build).not.toHaveBeenCalled();
+    expect(await readFile(join(second.output, "cake-helper"), "utf8")).toBe("compiled binary");
+    const scratch = f.build.mock.calls[0]?.[1];
+    expect(scratch).toContain(join(f.options.cacheRoot, "cake-helper", "scratch"));
+    expect(await readdir(join(f.root, "native"))).not.toContain(".build");
+    expect(await readdir(join(second.root, "native"))).not.toContain(".build");
+  });
+  it("serializes concurrent identical builds and restages both outputs from one compilation", async () => {
+    const f = await fixture();
+    await Promise.all([
+      buildNativeBundle(f.options),
+      buildNativeBundle({ ...f.options, output: join(f.root, "second-output") }),
+    ]);
+    expect(f.build).toHaveBeenCalledTimes(1);
+    expect(await readFile(join(f.root, "second-output", "cake-helper"), "utf8")).toBe(
+      "compiled binary",
+    );
+    expect(await readdir(join(f.options.cacheRoot, "cake-helper", "locks"))).toEqual([]);
+  });
+  it("isolates changed native inputs from an existing shared entry", async () => {
+    const f = await fixture();
+    await buildNativeBundle(f.options);
+    const original = await readFile(f.source);
+    const originalScratch = f.build.mock.calls[0]?.[1];
+    await writeFile(f.source, "different native source");
+    await buildNativeBundle(f.options);
+    expect(f.build.mock.calls[1]?.[1]).not.toBe(originalScratch);
+    expect(await readdir(f.cache)).toHaveLength(2);
+    await writeFile(f.source, original);
+    await buildNativeBundle(f.options);
+    expect(f.build).toHaveBeenCalledTimes(2);
+  });
   it("reuses unchanged native inputs and restores all artifacts after out/ is deleted", async () => {
     const f = await fixture();
     await buildNativeBundle(f.options);
@@ -118,18 +162,21 @@ describe("native bundle build cache", () => {
     await rm(added);
     await buildNativeBundle(f.options);
     await buildNativeBundle({ ...f.options, buildIdentity: "new compiler or SDK" });
-    expect(f.build).toHaveBeenCalledTimes(4);
+    // Returning to a previously built content key reuses that entry.
+    expect(f.build).toHaveBeenCalledTimes(3);
   });
   it.each(["missing", "corrupt", "permissions", "manifest"])(
     "rebuilds an invalid cached artifact (%s)",
     async (damage) => {
       const f = await fixture();
       await buildNativeBundle(f.options);
-      const binary = join(f.cache, "bundle", "cake-helper");
+      const [key] = await readdir(f.cache);
+      const entry = join(f.cache, key!);
+      const binary = join(entry, "bundle", "cake-helper");
       if (damage === "missing") await rm(binary);
       if (damage === "corrupt") await writeFile(binary, "broken binary");
       if (damage === "permissions") await chmod(binary, 0o644);
-      if (damage === "manifest") await writeFile(join(f.cache, "manifest.json"), "invalid JSON");
+      if (damage === "manifest") await writeFile(join(entry, "manifest.json"), "invalid JSON");
       await buildNativeBundle(f.options);
       expect(f.build).toHaveBeenCalledTimes(2);
       expect(await readFile(join(f.output, "cake-helper"), "utf8")).toBe("compiled binary");
@@ -152,11 +199,7 @@ describe("native bundle build cache", () => {
       throw new Error("compiler failed");
     });
     await expect(buildNativeBundle(f.options)).rejects.toThrow("compiler failed");
-    expect(
-      (await readdir(join(f.options.packagePath, ".build"))).some((path) =>
-        path.startsWith(".cake-bundle-"),
-      ),
-    ).toBe(false);
+    expect((await readdir(f.cache)).some((path) => path.startsWith(".staged-"))).toBe(false);
     await writeFile(f.source, original);
     await buildNativeBundle(f.options);
     expect(f.build).toHaveBeenCalledTimes(2);
@@ -164,10 +207,23 @@ describe("native bundle build cache", () => {
     await buildNativeBundle(f.options);
     expect(f.build).toHaveBeenCalledTimes(3);
   });
+  it("keeps a successful shared entry when a forced rebuild fails and releases its lock", async () => {
+    const f = await fixture();
+    await buildNativeBundle(f.options);
+    f.build.mockRejectedValueOnce(new Error("forced compiler failure"));
+    await expect(buildNativeBundle({ ...f.options, force: true })).rejects.toThrow(
+      "forced compiler failure",
+    );
+    await rm(f.output, { recursive: true });
+    await buildNativeBundle(f.options);
+    expect(f.build).toHaveBeenCalledTimes(2);
+    expect(await readFile(join(f.output, "cake-helper"), "utf8")).toBe("compiled binary");
+    expect(await readdir(join(f.options.cacheRoot, "cake-helper", "locks"))).toEqual([]);
+  });
   it("refuses to cache output built while its inputs were changing", async () => {
     const f = await fixture();
-    const build = async (directory: string) => {
-      await f.build(directory);
+    const build = async (directory: string, scratch: string) => {
+      await f.build(directory, scratch);
       await writeFile(f.source, "edited during compilation");
     };
     await expect(buildNativeBundle({ ...f.options, build })).rejects.toThrow(

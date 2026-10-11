@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Schema, Stream } from "effect";
 import { describe } from "vitest";
@@ -67,6 +68,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   const queue: string[] = [];
   const harness = familyStorageHarness();
   const environment = Layer.mergeAll(
+    WorkflowTestLive,
     makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
     harness.layer,
     Layer.mock(ApplicationState, {

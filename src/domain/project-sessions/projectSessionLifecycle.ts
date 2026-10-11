@@ -6,6 +6,7 @@ import * as projectSessionLocations from "./projectSessionLocations";
 import { resolutionNamespace } from "./projectSessionResolution";
 import * as reviews from "../reviews/reviews";
 import * as subagents from "../subagents/subagents";
+import * as workflowLifecycle from "../workflows/workflow-lifecycle";
 import {
   forgetProjectSessions,
   getState,
@@ -68,7 +69,7 @@ const assertResolvable = Effect.fn("ProjectSessions.assertResolvable")(function*
   const status = yield* (yield* CakeSessionRuntimes)
     .currentStatus({ sessionId, workingDirectory, sessionDirectory })
     .pipe(asError(operation));
-  if (status?.streaming || status?.pending)
+  if ((yield* workflowLifecycle.hasActive({ sessionId })) || status?.streaming || status?.pending)
     return yield* error(
       operation,
       "Cake cannot resolve a Project Session while its turn is active or input is pending",

@@ -102,6 +102,7 @@ export const ClientEventsLive = Layer.effect(
           "artifact-updated",
           "artifact-catalog-invalidated",
           "ui-request",
+          "ui-request-settled",
         ),
       terminals: (connectionId) => focused(connectionId, "terminals", "terminal-toggle-requested"),
       vscode: (connectionId) =>

@@ -552,6 +552,7 @@ export interface Client {
   readonly draw: CommandGroup<CakeIpcClientService["draw"]>;
   readonly drawControl: CommandGroup<CakeIpcClientService["drawControl"]>;
   readonly subagents: CommandGroup<CakeIpcClientService["subagents"]>;
+  readonly workflows: CommandGroup<CakeIpcClientService["workflows"]>;
   readonly electron: ElectronCommands;
   readonly desktopSharing: CommandGroup<CakeIpcClientService["desktopSharing"]>;
   readonly filesystem: FilesystemCommands;

@@ -27,6 +27,8 @@ import { CakeChatSettingsStore } from "./CakeChatSettingsStore";
 import { CakePromptSettingsStore } from "./CakePromptSettingsStore";
 import { GlobalInstructionsStore } from "./GlobalInstructionsStore";
 import { NonChatModelSettingsStore } from "./NonChatModelSettingsStore";
+import { ExperimentalSettingsStore } from "./ExperimentalSettingsStore";
+import type { ExperimentalFeatures } from "../models/ExperimentalFeatures";
 
 export type SettingsPageId =
   | "cake-chat"
@@ -44,10 +46,12 @@ export type SettingsPageId =
   | "hotkeys"
   | "editor"
   | "voice"
-  | "screen-capture";
+  | "screen-capture"
+  | "experimental";
 
 export interface SettingsStoreProps {
   dictation: DictationStore;
+  experimentalFeatures: ExperimentalFeatures;
   speech: SpeechSettingsStore;
   speechInput: SpeechInputSettingsStore;
   screenCapture: ScreenCaptureAttachmentStore;
@@ -74,6 +78,9 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
   @child get appearance(): AppearanceSettingsStore {
     return createStore(AppearanceSettingsStore);
+  }
+  @child get experimental(): ExperimentalSettingsStore {
+    return createStore(ExperimentalSettingsStore, { model: this.props.experimentalFeatures });
   }
   @child get nonChatModels(): NonChatModelSettingsStore {
     return createStore(NonChatModelSettingsStore);
@@ -144,6 +151,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
 
   get error() {
     return (
+      this.experimental.error ??
       this.cakeChat.error ??
       this.providers.error ??
       this.nonChatModels.error ??
@@ -157,6 +165,7 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
   get errorDetails() {
     return (
+      this.experimental.errorDetails ??
       this.cakeChat.errorDetails ??
       this.providers.errorDetails ??
       this.utilityModel.errorDetails ??

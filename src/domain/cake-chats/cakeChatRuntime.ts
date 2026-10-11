@@ -13,6 +13,7 @@ import { utilityModelSelection } from "../utility-work/utilityWork";
 import type { CakeChatTarget } from "../../ipc/cake-chat-data";
 import type { CakeChatLocation } from "./cakeChatLocations";
 import { makeSubagentControl } from "../subagents/subagentControl";
+import * as workflowControl from "../workflows/workflow-control";
 import { jsonObjectSchema } from "../../ipc/json-contract";
 import type { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import type { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
@@ -61,6 +62,20 @@ const CAKE_CHAT_OPERATIONS = [
   "subagents.abort",
   "subagents.close",
   "notifications.send",
+  "workflows.start",
+  "workflows.propose",
+  "workflows.list",
+  "workflows.inspect",
+  "workflows.pause",
+  "workflows.resume",
+  "workflows.stop",
+  "workflows.relaunch",
+  "workflows.stopWorker",
+  "workflows.restartWorker",
+  "workflows.inspectWorker",
+  "workflows.saved",
+  "workflows.save",
+  "workflows.authoring",
 ] as const;
 
 export interface CakeChatRuntimeConfiguration {
@@ -93,6 +108,7 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     | SubagentEnvironment
     | Effect.Services<ReturnType<typeof projectSessionCreation.createPrompted>>
     | TaskInputStorage
+    | Effect.Services<ReturnType<typeof workflowControl.invoke>>
   >();
   const run = makePiCallbackExecutor(context);
   const agentControl = makeSubagentControl({
@@ -171,6 +187,19 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           }),
         ),
       agentControl: agentControl(getRuntimeOptions, configuration.location.workingDirectory),
+      workflowControl: {
+        isEnabled: () => application.snapshot().experimentalFeatures?.dynamicWorkflows === true,
+        invoke: (command, input, signal) =>
+          run(
+            workflowControl.invoke(
+              command,
+              input,
+              { _tag: "CakeChatSession", sessionId: target.sessionId },
+              signal,
+            ),
+            { signal },
+          ),
+      },
       globalControl: {
         tools: target.tools.map((tool) => ({
           ...tool,

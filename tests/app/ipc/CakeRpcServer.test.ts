@@ -1,4 +1,5 @@
 import { it } from "@effect/vitest";
+import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { Context, Deferred, Effect, Exit, Layer, Option, Queue, Scope, Stream } from "effect";
 import { RpcServer } from "effect/unstable/rpc";
 import type { FromClientEncoded, FromServerEncoded } from "effect/unstable/rpc/RpcMessage";
@@ -67,6 +68,7 @@ const makeBackend = Effect.fn("RpcEndpoint.test.makeBackend")(function* (failHom
   const backendScope = yield* Scope.fork(yield* Effect.scope);
   const context = yield* Layer.buildWithScope(
     Layer.mergeAll(
+      WorkflowTestLive,
       ApplicationState.layer.pipe(Layer.provide(storage)),
       observedClientEvents,
       ClientWorkspacesLive,

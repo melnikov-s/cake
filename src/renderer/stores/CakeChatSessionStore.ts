@@ -10,11 +10,15 @@ import type { CakeChatPendingSessionsStore } from "./CakeChatPendingSessionsStor
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { CakeChatTarget } from "../../ipc/cake-chat-data";
 import type { CakeChatControls } from "../models/CakeChatControls";
+import type { WorkflowCatalog } from "../models/WorkflowCatalog";
+import { WorkflowRunStore } from "./WorkflowRunStore";
+import { workflowOwnerReferences } from "../../utils/workflow-references";
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
   model: Conversation;
   controls: CakeChatControls;
+  workflowCatalog(sessionId: string): WorkflowCatalog;
   target(): CakeChatTarget;
   pendingSessions: CakeChatPendingSessionsStore;
   operations: SessionOperationCoordinatorStore;
@@ -37,6 +41,16 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
   get streaming() {
     return this.model.streaming;
   }
+  @child
+  get workflowRunStores(): WorkflowRunStore[] {
+    return workflowOwnerReferences(this.model.uiParts).map((sessionId) =>
+      createStore(WorkflowRunStore, {
+        key: sessionId,
+        model: this.props.workflowCatalog(sessionId),
+      }),
+    );
+  }
+
   @child
   get history(): ConversationHistoryStore {
     return createStore(ConversationHistoryStore, { model: this.model });

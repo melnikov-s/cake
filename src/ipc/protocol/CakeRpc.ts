@@ -32,6 +32,7 @@ import { ScheduledMessageRpc } from "./ScheduledMessageRpc";
 import { SavedDraftRpc } from "./SavedDraftRpc";
 import { SessionChatRpc } from "./SessionChatRpc";
 import { SubagentRpc } from "./SubagentRpc";
+import { DynamicWorkflowRpc } from "./DynamicWorkflowRpc";
 import { TerminalRpc } from "./TerminalRpc";
 import { VsCodeRpc, VsCodeViewRpc } from "./VsCodeRpc";
 import { WorkspaceRpc } from "./WorkspaceRpc";
@@ -73,6 +74,7 @@ export const CakeRpc = ApplicationRpc.merge(
   SavedDraftRpc,
   SessionChatRpc,
   SubagentRpc,
+  DynamicWorkflowRpc,
   TerminalRpc,
   VsCodeRpc,
   VsCodeViewRpc,

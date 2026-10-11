@@ -39,6 +39,9 @@ import { scheduledMessageHandlers } from "./ScheduledMessageHandlers";
 import { savedDraftHandlers } from "./SavedDraftHandlers";
 import { sessionChatHandlers } from "./SessionChatHandlers";
 import { subagentHandlers } from "./SubagentHandlers";
+import { dynamicWorkflowHandlers } from "./DynamicWorkflowHandlers";
+import { DynamicWorkflowRpc } from "../protocol/DynamicWorkflowRpc";
+import { RendererConnectionMiddleware } from "../protocol/RendererConnectionMiddleware";
 import { terminalHandlers } from "./TerminalHandlers";
 import { vscodeHandlers, vscodeViewHandlers } from "./VsCodeHandlers";
 import { workspaceHandlers } from "./WorkspaceHandlers";
@@ -53,7 +56,22 @@ export const makeCakeRpcServerLive = (
   homeDirectory: string,
   cakeChatConfiguration: CakeChatRuntimeConfiguration,
 ) => {
-  const handlers = CakeRpc.toLayer({
+  const handlers = CakeRpc.omit(
+    "workflows.start",
+    "workflows.list",
+    "workflows.inspect",
+    "workflows.observe",
+    "workflows.observeRun",
+    "workflows.pause",
+    "workflows.resume",
+    "workflows.stop",
+    "workflows.relaunch",
+    "workflows.stopWorker",
+    "workflows.restartWorker",
+    "workflows.inspectWorker",
+    "workflows.saved",
+    "workflows.save",
+  ).toLayer({
     ...dictationHandlers,
     ...speechOutputHandlers,
     ...desktopHostHandlers,
@@ -100,5 +118,15 @@ export const makeCakeRpcServerLive = (
     // A defect in one request must remain correlated with that request. Sending
     // it as a connection-wide fatal defect tears down every renderer Stream.
     disableFatalDefects: true,
-  }).pipe(Layer.provide(Layer.merge(handlers, RendererConnectionMiddlewareLive)));
+  }).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        handlers,
+        DynamicWorkflowRpc.middleware(RendererConnectionMiddleware).toLayer(
+          dynamicWorkflowHandlers,
+        ),
+        RendererConnectionMiddlewareLive,
+      ),
+    ),
+  );
 };

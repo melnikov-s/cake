@@ -98,27 +98,41 @@ Tools is sufficient). This is a build-machine requirement, not an installed-app 
 The Electron Vite main build calls `scripts/build-dictation.mjs`. It builds the release helper
 with pinned dependency resolution (`--force-resolved-versions`) and consistent diagnostic flags,
 and copies the executable, SwiftPM resource bundle, bundled detector, and license notices into
-`out/main/native/`. The build fetches and verifies detector data when it is not in the worktree's
-ignored `.build/cake-vad/` cache; installed-app startup and recognition never download it.
+`out/main/native/`. The full build fetches and verifies detector data when it is not in the shared
+native scratch cache; installed-app startup and recognition never download it.
 FluidAudio is linked into the helper; the only dynamic runtime dependencies are Apple system
 frameworks/libraries. The optional NeMo text-processing trait is disabled. SwiftPM may fetch
 its declared binary artifact while resolving the package, but it is not linked or shipped.
 
-Both native build scripts use `scripts/native-build-cache.mjs` to retain complete bundles under
-`native/<package>/.build/cake-bundle-<product>/`, separately from Vite's disposable `out/`.
-Content hashes cover native sources, `Package.swift`, `Package.resolved`, packaging scripts,
+Both native build scripts use `scripts/native-build-cache.mjs` to share complete bundles and
+Swift scratch under `$CAKE_HOME/cache/native-builds/v1` (default `~/.cake/cache/native-builds/v1`).
+`CAKE_NATIVE_CACHE` explicitly overrides that cache directory. Entries are keyed by product,
+native source contents/layout, `Package.swift`, `Package.resolved`, packaging scripts,
 asset manifests/licenses, and the selected compiler, SDK, architecture, OS and build environment.
-Unchanged inputs log **Reusing cached** and do not invoke `swift build`, strip executables or
-fetch detector data; deleting `out/` only restages the cached bundle. Cache validation checks
-artifact contents and permissions. Failed builds do not replace the last successful cache.
-Changes to TypeScript/UI code or source timestamps alone do not rebuild Swift.
+The checkout's absolute path is not part of the key: identical inputs in different worktrees
+reuse the same entry. Different inputs get separate scratch directories; mutable Swift `.build`
+trees are never shared across different revisions. Per-key process locks serialize identical
+builds and cover restaging; failed builds do not replace successful bundles. An abandoned lock
+is reported with its path; stop remaining native builds before manually removing that lock.
 
-Use `CAKE_NATIVE_REBUILD=1 pnpm build` to bypass Cake's bundle cache and rerun native build steps
-(SwiftPM still uses its own incremental compilation). This is also necessary after manually
-editing downloaded dependency checkouts, which are normally treated as immutable pinned inputs.
-Deleting a product's `cake-bundle-*` directory also invalidates that entry; there is no need to
-delete the entire Swift `.build/` tree or its downloaded detector cache. Native compilation is a
-source-build operation, not part of restarting an already-built Cake.
+Unchanged inputs log **Reusing shared cached** and do not invoke `swift build`, strip executables
+or fetch detector data; deleting `out/` only restages the cached bundle. Cache validation checks
+artifact contents and permissions. Changes to TypeScript/UI code or source timestamps alone do
+not rebuild Swift. Earlier successful content keys can be reused after reverting native changes.
+
+`pnpm build` is the full-feature build. **Use `pnpm build:slim` for non-native agent work**, UI
+verification and screenshots; when unsure, choose slim. It never invokes native builders or
+probes the Swift toolchain, never downloads speech assets, and removes native output left by a
+preceding full build. Local Swift engines are unavailable in slim output; startup does not
+compile them. `pnpm build:start:slim` launches the slim build. Ordinary Electron tests and visual
+captures default to slim; full builds are only for required native verification or distribution.
+
+Use `CAKE_NATIVE_REBUILD=1 pnpm build` only when native verification requires bypassing Cake's
+bundle cache (SwiftPM still uses its keyed shared incremental scratch). This is also necessary
+after manually editing downloaded dependency checkouts, normally treated as immutable pinned
+inputs. Existing worktree-local `.build` directories are not automatically deleted by this
+change; cleanup is separate from changing the build policy. Native compilation is a source-build
+operation, not part of restarting an already-built Cake.
 
 Main locates the helper relative to its compiled module, so `pnpm start` snapshots carry the
 helper and resources with the rest of `out/`. Other platforms can build Cake without a Swift

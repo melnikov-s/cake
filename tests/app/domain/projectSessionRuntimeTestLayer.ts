@@ -13,6 +13,7 @@ import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnv
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { Terminal } from "../../../src/services/terminal/Terminal";
+import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 
 const defaultIntegrations: ProjectSessionRuntimeIntegrations = {
   requestUi: async () => undefined,
@@ -50,6 +51,7 @@ export const makeHeadlessProjectSessionRuntimeMechanismTestLayer = (
       releaseSession: () => Effect.void,
     }),
     Layer.mock(PiModels, {}),
+    Layer.mock(RendererRequestCoordinator, {}),
     Layer.mock(Terminal, {
       closeWorkingDirectory: () => Effect.void,
     }),

@@ -58,6 +58,11 @@ import { WorktreeLandingCoordinatorLive } from "../services/worktrees/WorktreeLa
 import { loadReviewSessionProjection } from "../services/pi/runtime/sidecar-runtime";
 import { BootstrapLive } from "../main/BootstrapLive";
 import { initializeBackend } from "./initializeBackend";
+import { WorkflowSandboxLive } from "../services/pi/live/WorkflowSandboxLive";
+import { makeWorkflowScriptsLive } from "../services/pi/live/WorkflowScriptsLive";
+import { WorkflowWorkersLive } from "../services/pi/live/WorkflowWorkersLive";
+import { makeWorkflowRunStorageLive } from "../services/storage/WorkflowRunStorageLive";
+import { WorkflowSupervisorLive } from "../services/workflows/WorkflowSupervisorLive";
 
 export interface BackendLiveOptions {
   readonly paths: CakePaths;
@@ -96,6 +101,10 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
       Effect.tryPromise(() => loadReviewSessionProjection(record, paths.piReviewSessions)),
     ),
     makeWorktreeStorageLive(paths.worktrees),
+    makeWorkflowRunStorageLive(join(paths.state, "workflows")),
+    makeWorkflowScriptsLive(join(paths.home, "workflows")),
+    WorkflowSandboxLive,
+    WorkflowSupervisorLive,
     SessionCatalogChanges.layer,
   ).pipe(Layer.provide(BootstrapLive));
 
@@ -168,6 +177,11 @@ export const makeBackendLive = <HostServices, HostError>(
   const RendererRequestsLive = RendererRequestCoordinatorLive.pipe(
     Layer.provide(ApplicationCapabilitiesLive),
   );
+  const SubagentEnvironmentLive = makeSubagentEnvironmentLive({
+    homeDirectory,
+    agentDirectory: paths.piAgent,
+    sessionDirectory: paths.piSubagentSessions,
+  });
   const SessionCoreLive = Layer.mergeAll(
     RewordingRequestsLive,
     SubagentCoordinatorLive,
@@ -191,11 +205,10 @@ export const makeBackendLive = <HostServices, HostError>(
         ]
       : []),
     makeInlineWidgetsLive({ publish: publishInlineWidget }),
-    makeSubagentEnvironmentLive({
-      homeDirectory,
-      agentDirectory: paths.piAgent,
-      sessionDirectory: paths.piSubagentSessions,
-    }),
+    SubagentEnvironmentLive,
+    WorkflowWorkersLive.pipe(
+      Layer.provide(Layer.merge(ApplicationCapabilitiesLive, SubagentEnvironmentLive)),
+    ),
     ArtifactGarbageCollectorLive,
   ).pipe(Layer.provide(ApplicationCapabilitiesLive));
 

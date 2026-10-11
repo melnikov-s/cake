@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { forwardSwiftBuildDiagnostics } from "./swift-build-diagnostics.mjs";
 import { buildNativeBundle, swiftBuildIdentity } from "./native-build-cache.mjs";
+import { nativeBuildMode } from "./native-build-mode.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = resolve(process.argv[2] ?? join(root, "out", "main", "native"));
@@ -21,9 +22,11 @@ const run = (command, args) =>
     );
   });
 
-if (process.platform === "darwin" && process.arch === "arm64") {
+if (nativeBuildMode() === "slim") {
+  await rm(output, { recursive: true, force: true });
+  console.log("[cake] Slim build: skipping native speech");
+} else if (process.platform === "darwin" && process.arch === "arm64") {
   await buildNativeBundle({
-    packagePath,
     product: "cake-speech",
     output,
     inputs: [
@@ -37,12 +40,14 @@ if (process.platform === "darwin" && process.arch === "arm64") {
     ],
     buildIdentity: await swiftBuildIdentity(),
     force: process.env.CAKE_NATIVE_REBUILD === "1",
-    build: async (output) => {
+    build: async (output, scratch) => {
       await run("xcrun", [
         "swift",
         "build",
         "--package-path",
         packagePath,
+        "--scratch-path",
+        scratch,
         "-c",
         "release",
         "--product",
@@ -50,7 +55,7 @@ if (process.platform === "darwin" && process.arch === "arm64") {
         "--force-resolved-versions",
         "--no-color-diagnostics",
       ]);
-      const release = join(packagePath, ".build", "release");
+      const release = join(scratch, "release");
       await mkdir(output, { recursive: true });
       await cp(join(release, "cake-speech"), join(output, "cake-speech"));
       await run("/usr/bin/strip", ["-x", join(output, "cake-speech")]);
@@ -62,7 +67,7 @@ if (process.platform === "darwin" && process.arch === "arm64") {
         join(root, "src", "services", "speech", "pocket-tts-manifest.json"),
         join(output, "pocket-tts-manifest.json"),
       );
-      const fluid = join(packagePath, ".build", "checkouts", "FluidAudio");
+      const fluid = join(scratch, "checkouts", "FluidAudio");
       const notices = join(output, "SpeechThirdPartyLicenses");
       await rm(notices, { recursive: true, force: true });
       await mkdir(notices, { recursive: true });

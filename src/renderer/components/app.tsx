@@ -317,7 +317,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       waitingForUser:
         !resolved &&
         paneSession.sessionId === root.sessionLayoutStore.focusedSessionId &&
-        Boolean(extensionUi.request || paneSession.waitingForInterview),
+        Boolean(extensionUi.visibleRequest || paneSession.waitingForInterview),
       interviews: paneSession.interviews,
       messageComments: resolved ? undefined : paneSession.messageCommentsStore,
       subagents: paneSession.subagentActivityStore,
@@ -1285,13 +1285,21 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       )}
       <SessionContinuationDialog store={store.sessionContinuationStore} />
       <TreeNavigationDialog store={store.commandPaneStore} />
-      {extensionUi.request && (
-        <DialogBackdrop>
+      {extensionUi.visibleRequest && (
+        <DialogBackdrop
+          onClose={
+            extensionUi.visibleRequest.kind === "workflow-choice"
+              ? () => void extensionUi.respond(undefined, true)
+              : undefined
+          }
+        >
           <UiDialog
-            key={extensionUi.request.uiRequestId}
-            request={extensionUi.request}
+            key={extensionUi.visibleRequest.uiRequestId}
+            request={extensionUi.visibleRequest}
             extensionUi={extensionUi}
-            authNotice={root.settingsStore.providers.authNoticeForRequest(extensionUi.request)}
+            authNotice={root.settingsStore.providers.authNoticeForRequest(
+              extensionUi.visibleRequest,
+            )}
             openAuthUrl={(url) => void root.settingsStore.providers.openAuthUrl(url)}
           />
         </DialogBackdrop>

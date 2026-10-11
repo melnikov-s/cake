@@ -1,4 +1,5 @@
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
+import { WorkflowTestLive } from "../../app/helpers/workflowFixture";
 import { DiscussionSessionEnvironment } from "../../../src/services/discussion-sessions/DiscussionSessionEnvironment";
 import { WorktreeLandingAgent } from "../../../src/services/worktrees/WorktreeLandingAgent";
 import { WorktreeLandingCompletion } from "../../../src/services/worktrees/WorktreeLandingCompletion";
@@ -260,6 +261,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     }),
   ).pipe(Layer.provide(coordinator));
   const layer = Layer.mergeAll(
+    WorkflowTestLive,
     Layer.mock(VsCodeServer, {
       leaseFor: () => undefined,
       releaseConnection: () => Effect.void,

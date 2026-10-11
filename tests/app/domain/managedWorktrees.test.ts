@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
@@ -73,6 +74,7 @@ const makeLayer = (options: {
   };
   const catalogChecks = new Map<string, number>();
   return Layer.mergeAll(
+    WorkflowTestLive,
     Layer.mock(ApplicationState, {
       current: () => Effect.succeed(applicationState),
       snapshot: () => applicationState,

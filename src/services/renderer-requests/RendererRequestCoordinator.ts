@@ -23,9 +23,18 @@ import { ClientEvents } from "../clients/ClientEvents";
 import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 import { type RenderedWidgetCaptureResult } from "../widgets/RenderedWidgetCapture";
 import type { CompiledInlineWidget } from "../../ipc/inline-widget-contract";
+import type { WorkflowProposal } from "../../contracts/workflows/workflow-data";
 
 interface RendererUiRequest {
-  readonly kind: "confirm" | "text" | "secret" | "select" | "manual_code" | "editor";
+  readonly kind:
+    | "confirm"
+    | "text"
+    | "secret"
+    | "select"
+    | "manual_code"
+    | "editor"
+    | "workflow-choice";
+  readonly workflow?: WorkflowProposal;
   readonly title: string;
   readonly message: string;
   readonly placeholder?: string;
@@ -45,6 +54,9 @@ type SessionTarget =
 type PendingRequest =
   | {
       readonly _tag: "Ui";
+      readonly targetKind?: SessionTarget["_tag"];
+      readonly workflowChoice: boolean;
+      readonly signal?: AbortSignal;
       readonly sessionId: string;
       readonly connectionId: number;
       readonly operationId: string;
@@ -110,6 +122,10 @@ export interface RendererRequestCoordinatorService {
   ) => Effect.Effect<void, RendererRequestCoordinatorError>;
   readonly requestUi: (
     sessionId: string,
+    request: RendererUiRequest,
+  ) => Effect.Effect<string | undefined, RendererRequestCoordinatorError>;
+  readonly requestUiForTarget: (
+    target: SessionTarget,
     request: RendererUiRequest,
   ) => Effect.Effect<string | undefined, RendererRequestCoordinatorError>;
   readonly requestUiForConnection: (
@@ -334,6 +350,12 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
         const request = pending.get(requestId);
         if (!request) return undefined;
         pending.delete(requestId);
+        if (request._tag === "Ui")
+          clientEvents.sendTo(request.connectionId, {
+            type: "ui-request-settled",
+            uiRequestId: requestId,
+            sessionId: request.sessionId,
+          });
         if (request._tag === "CakeChatControl")
           yield* SubscriptionRef.update(cakeChatRequests, (requests) =>
             requests.filter((candidate) => candidate.controlRequestId !== requestId),
@@ -675,13 +697,21 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
     );
 
     const requestUiForConnection = Effect.fn("RendererRequestCoordinator.requestUiForConnection")(
-      function* (connectionId: number, requestScopeId: string, request: RendererUiRequest) {
+      function* (
+        connectionId: number,
+        requestScopeId: string,
+        request: RendererUiRequest,
+        targetKind?: SessionTarget["_tag"],
+      ) {
         if (request.signal?.aborted) return undefined;
         const operationId = crypto.randomUUID();
         const uiRequestId = crypto.randomUUID();
         const completion = yield* Deferred.make<JsonValue | undefined>();
         const entry: PendingRequest = {
           _tag: "Ui",
+          targetKind,
+          workflowChoice: request.kind === "workflow-choice",
+          signal: request.signal,
           sessionId: requestScopeId,
           connectionId,
           operationId,
@@ -694,6 +724,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
           uiRequestId,
           sessionId: requestScopeId,
           kind: request.kind,
+          workflow: request.workflow,
           title: request.title,
           message: request.message,
           placeholder: request.placeholder,
@@ -708,19 +739,22 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       },
     );
 
-    const requestUi = Effect.fn("RendererRequestCoordinator.requestUi")(function* (
-      sessionId: string,
-      request: RendererUiRequest,
-    ) {
-      const connectionId = yield* Effect.try({
-        try: () => requireBinding({ _tag: "ProjectSession", sessionId }),
-        catch: (cause) =>
-          cause instanceof RendererRequestCoordinatorError
-            ? cause
-            : coordinatorError("requestUi", String(cause)),
-      });
-      return yield* requestUiForConnection(connectionId, sessionId, request);
-    });
+    const requestUiForTarget = Effect.fn("RendererRequestCoordinator.requestUiForTarget")(
+      function* (target: SessionTarget, request: RendererUiRequest) {
+        const connectionId = yield* Effect.try({
+          try: () => requireBinding(target),
+          catch: (cause) =>
+            cause instanceof RendererRequestCoordinatorError
+              ? cause
+              : coordinatorError("requestUi", String(cause)),
+        });
+        return yield* requestUiForConnection(connectionId, target.sessionId, request, target._tag);
+      },
+    );
+    const requestUi = Effect.fn("RendererRequestCoordinator.requestUi")(
+      (sessionId: string, request: RendererUiRequest) =>
+        requestUiForTarget({ _tag: "ProjectSession", sessionId }, request),
+    );
 
     const requestInterview = Effect.fn("RendererRequestCoordinator.requestInterview")(function* (
       sessionId: string,
@@ -936,8 +970,21 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       });
       if (request?._tag === "Ui" && request.operationId !== response.requestId)
         return yield* coordinatorError("respondUi", "The response correlation ID does not match");
+      if (
+        request?._tag === "Ui" &&
+        request.workflowChoice &&
+        !response.cancelled &&
+        response.value !== "workflow" &&
+        response.value !== "normal"
+      )
+        return yield* coordinatorError("respondUi", "Invalid workflow execution choice");
       if (request)
-        yield* complete(response.uiRequestId, response.cancelled ? undefined : response.value);
+        yield* complete(
+          response.uiRequestId,
+          response.cancelled || (request._tag === "Ui" && request.signal?.aborted)
+            ? undefined
+            : response.value,
+        );
     });
 
     const respondInterview = Effect.fn("RendererRequestCoordinator.respondInterview")(function* (
@@ -1074,7 +1121,9 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
                 // not the parent's runtime release, owns that tool response.
                 !(request._tag === "ProjectControl" && request.origin === "discussion-session") &&
                 ((target._tag === "ProjectSession" && request._tag !== "CakeChatControl") ||
-                  (target._tag === "CakeChatSession" && request._tag === "CakeChatControl")),
+                  (target._tag === "CakeChatSession" &&
+                    (request._tag === "CakeChatControl" ||
+                      (request._tag === "Ui" && request.targetKind === "CakeChatSession")))),
               true,
             );
           }),
@@ -1131,6 +1180,7 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
       registerProjectSession,
       bind,
       requestUi,
+      requestUiForTarget,
       requestUiForConnection,
       requestInterview,
       requestProjectControl,

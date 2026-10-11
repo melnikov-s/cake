@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
+import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { FileSystem, Path } from "effect";
 import { makeSessionArchiveStorageLive } from "../../../src/services/storage/SessionArchiveStorageLive";
@@ -62,6 +63,7 @@ import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamil
 import { SessionFamilyStorageError } from "../../../src/contracts/storage/session-family-storage-errors";
 import { SubagentCoordinatorLive } from "../../../src/services/subagents/SubagentCoordinator";
 import { Terminal } from "../../../src/services/terminal/Terminal";
+import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { ManagedWorktreeError } from "../../../src/contracts/worktrees/managed-worktrees-errors";
 import {
@@ -411,6 +413,7 @@ const makeLayer = (
       resolve: (_sessionId, attachments) => Effect.succeed(attachments),
       isRecipient: () => Effect.succeed(false),
     }),
+    WorkflowTestLive,
     application,
     catalogChanges,
     Layer.succeed(SessionFamilyStorage, {
@@ -453,6 +456,7 @@ const makeLayer = (
     }),
     makeCakeSessionRuntimesLayer(adapter),
     SubagentCoordinatorLive,
+    Layer.mock(RendererRequestCoordinator, {}),
     Layer.succeed(ProjectSessionConfiguration, {
       agentDirectory: "/agent",
       sessionDirectory: "/sessions",

@@ -5,6 +5,7 @@ import { browserResponseHandlers } from "./BrowserResponseHandlers";
 import { makeInlineWidgetsLive } from "../../services/widgets/InlineWidgetsLive";
 import { publishInlineWidget } from "../../services/widgets/inline-widget-document-registry";
 import { subagentHandlers } from "./SubagentHandlers";
+import { dynamicWorkflowHandlers } from "./DynamicWorkflowHandlers";
 import { discussionHandlers } from "./DiscussionHandlers";
 import { managedWorktreeHandlers } from "./ManagedWorktreeHandlers";
 import { terminalHandlers } from "./TerminalHandlers";
@@ -53,6 +54,7 @@ export const makeBackendRpcServerLive = (
     ...managedWorktreeHandlers,
     ...discussionHandlers,
     ...subagentHandlers,
+    ...dynamicWorkflowHandlers,
 
     ...applicationStateHandlers,
     ...artifactHandlers,

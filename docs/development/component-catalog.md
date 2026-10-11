@@ -20,6 +20,20 @@ artwork and row interactions; the preference is persisted in the window snapshot
 Project icons (generated or custom) are unchanged, including in the activity feed.
 The project/session avatar visibility switches remain independent.
 
+## Execution choice
+
+`ExecutionChoice` composes the shared confirmation and Button primitives for a
+one-shot workflow suggestion: name, description, Project owner, declared phases,
+inspectable frozen script, Run workflow, Continue normally, and cancellation.
+It owns only script disclosure DOM state. The existing renderer-request coordinator
+owns correlation, one response, cancellation and lifetime; `ExtensionUiStore`
+presents it through the existing application UI request dialog. It is not a mode
+or a permission system. Continue normally is the initial keyboard focus; Escape
+and backdrop dismissal cancel, never accept. Workflow execution choices are shown
+only when **Settings → Experimental → Dynamic workflows** is enabled (off by default);
+the authoritative feature projection hides disabled choices and the backend cancels
+pending requests when the setting turns off.
+
 ## Searchable choice dialog
 
 `SearchableChoiceDialog` composes the shared Dialog, Input, Button, and IconButton

@@ -39,7 +39,11 @@ export interface ClientEventsService {
     connectionId: number,
   ) => Stream.Stream<
     FocusedCakeEvent<
-      "artifact-updated" | "artifact-catalog-invalidated" | "ui-request" | "renderer-events-ready"
+      | "artifact-updated"
+      | "artifact-catalog-invalidated"
+      | "ui-request"
+      | "ui-request-settled"
+      | "renderer-events-ready"
     >
   >;
   readonly terminals: (

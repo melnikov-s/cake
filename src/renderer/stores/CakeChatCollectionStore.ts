@@ -7,6 +7,7 @@ import { describeError } from "../lib/error-details";
 import type { CakeChatCatalog } from "../models/CakeChatCatalog";
 import type { Conversation } from "../models/Conversation";
 import type { CakeChatControls } from "../models/CakeChatControls";
+import type { WorkflowCatalog } from "../models/WorkflowCatalog";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import {
   CakeChatPendingSessionsStore,
@@ -22,6 +23,7 @@ export interface CakeChatCollectionStoreProps {
   catalog: CakeChatCatalog;
   sessionModel(sessionId: string): Conversation;
   controlsModel(sessionId: string): CakeChatControls;
+  workflowCatalog(sessionId: string): WorkflowCatalog;
   tools(): ReadonlyArray<CakeControlTool>;
   modelPresets?(): readonly ModelPreset[];
   defaultConfiguration?(): ChatConfiguration | undefined;
@@ -66,6 +68,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
     return createStore(CakeChatRegistryStore, {
       sessionModel: this.props.sessionModel,
       controlsModel: this.props.controlsModel,
+      workflowCatalog: this.props.workflowCatalog,
       tools: this.props.tools,
       pendingSessions: () => this.pendingSessions,
       operations: this.operations,

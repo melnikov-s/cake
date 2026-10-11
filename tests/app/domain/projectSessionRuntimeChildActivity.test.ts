@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { expect, vi } from "vitest";
@@ -26,6 +27,7 @@ it.effect.each([
     return { ok: true };
   });
   const dependencies = Layer.mergeAll(
+    WorkflowTestLive,
     makeHeadlessProjectSessionRuntimeMechanismTestLayer({
       requestUi: async () => undefined,
       requestApplicationControl,

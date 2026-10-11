@@ -47,6 +47,7 @@ export const WorktreeLandingAgentLive = Layer.effect(
       | SubagentEnvironment
       | Terminal
       | TaskInputStorage
+      | Effect.Services<ReturnType<typeof projectSessionOperations.sendAutomatically>>
     >();
     const dependencies = Context.omit(Scope.Scope)(context);
     return WorktreeLandingAgent.of({

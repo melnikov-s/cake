@@ -1,4 +1,4 @@
-import { Schema, type Stream } from "effect";
+import { Schema, Stream } from "effect";
 import { effect as reactiveEffect, reaction, type Model } from "r-state-tree";
 import type {
   CakeChatCatalogQuery,
@@ -58,6 +58,13 @@ import {
 import { applyDiscussionCatalogUpdate } from "../reducers/DiscussionReducer";
 import { applyCakeChatControlUpdate } from "../reducers/CakeChatControlReducer";
 import { applySubagentUpdate } from "../reducers/SubagentReducer";
+import type { WorkflowRunStore } from "../stores/WorkflowRunStore";
+import {
+  applyWorkflowCatalogUpdate,
+  applyWorkflowRunUpdate,
+  applyWorkflowWorkerActivity,
+  unloadWorkflowRun,
+} from "../reducers/WorkflowReducer";
 import { applyScheduledMessageUpdate } from "../reducers/ScheduledMessageReducer";
 import { applyManagedWorktreeCatalogUpdate } from "../reducers/WorktreeCatalogReducer";
 import { applyWorktreeOperationCatalogUpdate } from "../reducers/WorktreeOperationReducer";
@@ -69,6 +76,7 @@ type ObservedProjectSessionTarget = ProjectSessionTarget & {
 };
 
 interface ModelSource {
+  readonly workflowStores?: () => readonly WorkflowRunStore[];
   readonly projection: RootProjection;
   readonly projectSessionCatalogQueries: () => ReadonlyArray<ProjectSessionCatalogQuery>;
   readonly onProjectSessionTitleChanged?: (sessionId: string, title: string) => void;
@@ -99,6 +107,7 @@ interface ModelObservation {
 type ModelObservationOptions = Omit<ModelObservation, "model" | "stop">;
 
 type ModelInput = {
+  readonly workflowStores?: readonly WorkflowRunStore[];
   readonly projects: ProjectCatalog;
   readonly sessionCatalog: SessionCatalog;
   readonly worktrees?: WorktreeCatalog;
@@ -319,6 +328,40 @@ export const createModelObserver = (
       );
     }
 
+    for (const store of input.workflowStores ?? []) {
+      observe(
+        `workflows:${store.sessionId}`,
+        store.model,
+        (client) => client.workflows.observe({ sessionId: store.sessionId }),
+        (update) => applyWorkflowCatalogUpdate(store.model, update),
+      );
+      const target = store.target;
+      const detail = store.detail;
+      if (target && detail) {
+        observe(
+          `workflow-detail:${target.runId}`,
+          detail,
+          (client) => client.workflows.observeRun(target),
+          (update) => applyWorkflowRunUpdate(detail, update),
+          { clear: () => unloadWorkflowRun(detail) },
+        );
+        const worker = store.workerTarget;
+        const attempt = store.step?.attempt;
+        if (worker)
+          observe(
+            `workflow-worker:${worker.runId}:${worker.stepId}:${worker.execution}:${attempt}`,
+            detail,
+            (client) => Stream.fromEffect(client.workflows.inspectWorker(worker)),
+            (activity) => {
+              // Inspection started before streaming may resolve after a newer live
+              // event. It is a baseline only, never a replacement for live activity.
+              const step = detail.steps.find((candidate) => candidate.id === activity.stepId);
+              if (!step?.activity) applyWorkflowWorkerActivity(detail, activity);
+            },
+          );
+      }
+    }
+
     for (const { target, model } of input.discussionCatalogs ?? [])
       observeDiscussionCatalog(target, model);
 
@@ -454,6 +497,7 @@ export const createModelObserver = (
         ...discussionCatalogs.map(({ model }) => model),
       ].flatMap(({ threads }) => threads.filter(hasSidecarConversation));
       sync({
+        workflowStores: source.workflowStores?.(),
         projects: source.projection.projects,
         sessionCatalog: source.projection.sessionCatalog,
         worktrees: source.projection.worktrees,
@@ -552,6 +596,16 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
         workingDirectory: workspacePath,
       })),
     loadedCakeChatIds: () => root.cakeChatCollectionStore.registry.targets,
+    workflowStores: () => [
+      ...root.projectSessionObservationTargets.flatMap(({ sessionId }) => {
+        const session = root.sessionRegistry.findSession(sessionId);
+        return session ? [session.workflowRunStore] : [];
+      }),
+      ...root.cakeChatCollectionStore.registry.observationTargets.flatMap(
+        ({ sessionId }) =>
+          root.cakeChatCollectionStore.registry.find(sessionId)?.workflowRunStores ?? [],
+      ),
+    ],
     projectSessionTargets: () => root.projectSessionObservationTargets,
     stagedProjectSessionTargets: () => root.stagedProjectSessionTargets,
     cakeChatTargets: () => root.cakeChatCollectionStore.registry.observationTargets,

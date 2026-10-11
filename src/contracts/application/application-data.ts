@@ -211,6 +211,9 @@ export const ProjectRecord = Schema.Struct({
   workflow: Schema.optionalKey(ProjectWorkflow),
 });
 
+export const ExperimentalFeatures = Schema.Struct({ dynamicWorkflows: Schema.Boolean });
+export interface ExperimentalFeatures extends Schema.Schema.Type<typeof ExperimentalFeatures> {}
+
 const SessionIds = boundedArray(boundedString(256), 10_000).check(Schema.isUnique());
 
 const RendererApplicationFields = {
@@ -226,6 +229,7 @@ const RendererApplicationFields = {
   defaultModelPresetId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
   cakePrompts: CakePromptOverrides,
   cakeChatPreferences: Schema.optionalKey(CakeChatPreferences),
+  experimentalFeatures: Schema.optionalKey(ExperimentalFeatures),
   globalCustomInstructions: boundedString(16_384).pipe(
     Schema.withDecodingDefaultKey(Effect.succeed("")),
   ),
@@ -294,6 +298,7 @@ export interface UtilityModel extends Schema.Schema.Type<typeof UtilityModel> {}
 export interface ModelPreset extends Schema.Schema.Type<typeof ModelPreset> {}
 
 export const defaultApplicationState = (): ApplicationState => ({
+  experimentalFeatures: { dynamicWorkflows: false },
   projects: [],
   globalSessionLabels: [...defaultGlobalSessionLabels()],
   unreadSessionIds: [],

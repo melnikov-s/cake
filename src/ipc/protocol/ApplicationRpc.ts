@@ -3,6 +3,7 @@ import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import {
   RendererApplicationProjection,
   RendererApplicationState,
+  ExperimentalFeatures,
 } from "../../contracts/application/application-data";
 import { AgentAvailabilitySnapshot } from "../../contracts/pi/agent-availability-data";
 
@@ -11,7 +12,17 @@ export class SessionPluginMutationError extends Schema.TaggedError<SessionPlugin
   { message: Schema.String },
 ) {}
 
+export class ApplicationSettingsMutationError extends Schema.TaggedError<ApplicationSettingsMutationError>()(
+  "ApplicationSettingsMutationError",
+  { message: Schema.String },
+) {}
+
 export const ApplicationRpc = RpcGroup.make(
+  Rpc.make("application.setExperimentalFeatures", {
+    payload: { features: ExperimentalFeatures },
+    success: RendererApplicationState,
+    error: ApplicationSettingsMutationError,
+  }),
   Rpc.make("application.getState", { success: RendererApplicationState }),
   Rpc.make("application.observeState", {
     success: RendererApplicationProjection,

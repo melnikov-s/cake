@@ -13,7 +13,7 @@ const MAX_CAKE_OPERATION_IMAGES = 4;
 const MAX_CAKE_OPERATION_IMAGE_BASE64_LENGTH = Math.ceil(MAX_CAKE_OPERATION_IMAGE_BYTES / 3) * 4;
 
 export const cakeToolDescription =
-  'Cake capabilities are part of the response and are progressively disclosed by topic: app, sessions, context, models, settings, interview, artifacts, widgets, plugins, vscode, browser, draw, subagents, notifications, and worktrees. Before defaulting to prose, consider whether the request may imply a Cake interaction. If a topic seems potentially relevant—even when unsure—request it to discover its current operations, exact schemas, and examples, then use it when it better fulfills the request. Users do not need to name the tool explicitly. Call with {} for the topic index; request a topic with {"command":"<topic>"}, not in input. Request one exact operation schema with {"command":"<operation>.help"}. Artifacts are durable linked records; use artifacts.list or artifacts.search to discover them and artifacts.resolve-reference for an exact readable path. Artifact content is not automatically in context.';
+  'Cake capabilities are part of the response and are progressively disclosed by topic: app, sessions, context, models, settings, interview, artifacts, widgets, plugins, vscode, browser, draw, subagents, notifications, and worktrees. The help index reflects currently enabled capabilities; experimental features are unavailable unless enabled in Settings. Before defaulting to prose, consider whether the request may imply a Cake interaction. If a topic seems potentially relevant—even when unsure—request it to discover its current operations, exact schemas, and examples, then use it when it better fulfills the request. Users do not need to name the tool explicitly. Call with {} for the topic index; request a topic with {"command":"<topic>"}, not in input. Request one exact operation schema with {"command":"<operation>.help"}. Artifacts are durable linked records; use artifacts.list or artifacts.search to discover them and artifacts.resolve-reference for an exact readable path. Artifact content is not automatically in context.';
 
 const commandSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({
   description: "Exact topic or operation command. Omit for the help index.",
@@ -82,6 +82,7 @@ export interface CakeOperationDefinition<
   examples: readonly CakeOperationExample[];
   result: string;
   limitations?: readonly string[];
+  available?(): boolean;
   execute(input: Input, context: CakeOperationExecutionContext): Promise<Output>;
 }
 
@@ -136,6 +137,11 @@ const cakeTopics = [
     summary: "Open, inspect, render, and explicitly edit a session's Cake Draw board.",
   },
   { name: "subagents", summary: "Delegate explicitly requested work." },
+  {
+    name: "workflows",
+    summary:
+      "Offer an interactive execution choice, or run explicitly requested Project-owned script orchestration.",
+  },
   { name: "notifications", summary: "Notify the user." },
   { name: "worktrees", summary: "Complete an active worktree landing workflow." },
 ] as const satisfies readonly CakeTopicDefinition[];
@@ -203,7 +209,7 @@ export class CakeOperationRegistry {
   }
 
   definitions() {
-    return [...this.operations.values()];
+    return [...this.operations.values()].filter((operation) => operation.available?.() !== false);
   }
 
   availableTopics() {
@@ -243,7 +249,7 @@ export class CakeOperationRegistry {
 
   operationHelp(command: string) {
     const operation = this.operations.get(command);
-    if (!operation) return undefined;
+    if (!operation || operation.available?.() === false) return undefined;
     return [
       `${operation.command} — ${operation.summary}`,
       ...(operation.guidance ?? []).map((line) => `Guidance: ${line}`),
@@ -295,12 +301,14 @@ export class CakeOperationRegistry {
   }
 
   unknown(command: string) {
-    const candidates = [...this.availableTopics(), ...this.operations.keys(), "help"].sort(
-      (left, right) => {
-        const distance = levenshtein(command, left) - levenshtein(command, right);
-        return distance || left.localeCompare(right);
-      },
-    );
+    const candidates = [
+      ...this.availableTopics(),
+      ...this.definitions().map((operation) => operation.command),
+      "help",
+    ].sort((left, right) => {
+      const distance = levenshtein(command, left) - levenshtein(command, right);
+      return distance || left.localeCompare(right);
+    });
     return `Unknown Cake command: ${command}\nNearest matches: ${candidates.slice(0, 3).join(", ")}\n\n${this.help()}`;
   }
 
@@ -323,7 +331,8 @@ export class CakeOperationRegistry {
       if (help) return helpResult(command, help);
     }
     const operation = this.operations.get(command);
-    if (!operation) return helpResult(command, this.unknown(command));
+    if (!operation || operation.available?.() === false)
+      return helpResult(command, this.unknown(command));
     const input = Schema.decodeUnknownSync(operation.inputSchema, { onExcessProperty: "error" })(
       envelope.input ?? {},
     );

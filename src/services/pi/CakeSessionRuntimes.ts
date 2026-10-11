@@ -380,6 +380,7 @@ const runtimeFingerprint = (options: CakeSessionRuntimeAcquireOptions): string =
     trusted: runtime.trusted,
     tools: runtime.tools ? [...runtime.tools].sort() : undefined,
     auxiliary: runtime.auxiliary ?? false,
+    auxiliaryProjectResources: runtime.auxiliaryProjectResources ?? false,
     isolatedSystemPrompt: runtime.isolatedSystemPrompt,
     slashCommands: runtime.slashCommands,
     // Relationship context is regenerated on acquisition and may change when a

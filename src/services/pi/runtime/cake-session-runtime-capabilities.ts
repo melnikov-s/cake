@@ -43,6 +43,7 @@ import { createCakeVscodeOperations } from "./cake-vscode-operations";
 import { createCakeBrowserOperations } from "./cake-browser-operations";
 import { createCakeDrawOperations } from "./cake-draw-operations";
 import { createCakeWorktreeOperations } from "./cake-worktree-operations";
+import { createCakeWorkflowOperations } from "./cake-workflow-operations";
 import { createCakeSessionPluginOperations } from "./cake-session-plugin-operations";
 import {
   CakeOperationRegistry,
@@ -491,6 +492,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
         return api().invokeAppControl(command, input as JsonObject, context.signal);
       };
     const operations: CakeOperationDefinition[] = [
+      ...(options.workflowControl ? createCakeWorkflowOperations(options.workflowControl) : []),
       ...(!options.auxiliary &&
       options.tools === undefined &&
       options.currentSessionControl?.invokeAppControl
@@ -1562,7 +1564,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
             ? []
             : [
                 ...base,
-                cakeProjectSystemPrompt,
+                ...(options.auxiliaryProjectResources ? [] : [cakeProjectSystemPrompt]),
                 ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : []),
                 ...(detectedWorktreePrompt ? [detectedWorktreePrompt] : []),
               ],
@@ -1570,74 +1572,85 @@ export async function createCakeSessionRuntimeCapabilities(input: {
         additionalPromptTemplatePaths: [],
         additionalExtensionPaths: [],
         noExtensions: options.auxiliary,
-        noSkills: options.auxiliary,
+        noSkills: options.auxiliary && !options.auxiliaryProjectResources,
         noPromptTemplates: options.auxiliary,
         noThemes: options.auxiliary,
         noContextFiles: options.isolatedSystemPrompt !== undefined,
-        extensionFactories: [
-          ...requestExtensions,
-          createCakeGatewayExtension(
-            (pi) => [
-              ...filterRuntimeOperations([
-                ...localOperations(),
-                ...(!options.auxiliary &&
-                options.tools === undefined &&
-                options.nonChatModelPreferences
-                  ? createCakeNonChatModelOperations(
-                      options.nonChatModelPreferences,
-                      input.modelRuntime,
-                    )
-                  : []),
-                ...(options.modelPresets ? createCakeModelOperations(options.modelPresets) : []),
-                ...(options.sessionPluginControl && options.generateInlineWidget
-                  ? createCakeSessionPluginOperations({
-                      ...options.sessionPluginControl,
-                      generate: options.generateInlineWidget,
-                    })
-                  : []),
-                ...createCakeArtifactOperations(pi, {
-                  persistArtifact,
-                  generateInlineWidget: options.generateInlineWidget,
-                  reviseInlineWidget: options.reviseInlineWidget,
-                  resolveArtifact: options.resolveArtifact,
-                  hasLinkedArtifacts: options.hasLinkedArtifacts,
-                  listArtifactMetadata: options.listArtifactMetadata,
-                  historyArtifact: options.historyArtifact,
-                  restoreArtifact: options.restoreArtifact,
-                  linkArtifact: options.linkArtifact,
-                  unlinkArtifact: options.unlinkArtifact,
-                  importArtifactFile: options.importArtifactFile,
-                }),
-                ...createCakeInterviewOperations(pi, { requestInterview }),
-                ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
-                ...(options.browserControl
-                  ? createCakeBrowserOperations(options.browserControl)
-                  : []),
-                ...(drawControl ? createCakeDrawOperations(drawControl) : []),
-                ...(options.worktreeLandingControl
-                  ? createCakeWorktreeOperations(options.worktreeLandingControl)
-                  : []),
-                ...(options.agentControl
-                  ? createAgentControlOperations(
-                      options.agentControl,
+        extensionFactories: options.auxiliaryProjectResources
+          ? [...requestExtensions]
+          : [
+              ...requestExtensions,
+              createCakeGatewayExtension(
+                (pi) => [
+                  ...filterRuntimeOperations([
+                    ...localOperations(),
+                    ...(!options.auxiliary &&
+                    options.tools === undefined &&
+                    options.nonChatModelPreferences
+                      ? createCakeNonChatModelOperations(
+                          options.nonChatModelPreferences,
+                          input.modelRuntime,
+                        )
+                      : []),
+                    ...(options.modelPresets
+                      ? createCakeModelOperations(options.modelPresets)
+                      : []),
+                    ...(options.sessionPluginControl && options.generateInlineWidget
+                      ? createCakeSessionPluginOperations({
+                          ...options.sessionPluginControl,
+                          generate: options.generateInlineWidget,
+                        })
+                      : []),
+                    ...createCakeArtifactOperations(pi, {
+                      persistArtifact,
+                      generateInlineWidget: options.generateInlineWidget,
+                      reviseInlineWidget: options.reviseInlineWidget,
+                      resolveArtifact: options.resolveArtifact,
+                      hasLinkedArtifacts: options.hasLinkedArtifacts,
+                      listArtifactMetadata: options.listArtifactMetadata,
+                      historyArtifact: options.historyArtifact,
+                      restoreArtifact: options.restoreArtifact,
+                      linkArtifact: options.linkArtifact,
+                      unlinkArtifact: options.unlinkArtifact,
+                      importArtifactFile: options.importArtifactFile,
+                    }),
+                    ...createCakeInterviewOperations(pi, { requestInterview }),
+                    ...(options.vscodeControl
+                      ? createCakeVscodeOperations(options.vscodeControl)
+                      : []),
+                    ...(options.browserControl
+                      ? createCakeBrowserOperations(options.browserControl)
+                      : []),
+                    ...(drawControl ? createCakeDrawOperations(drawControl) : []),
+                    ...(options.worktreeLandingControl
+                      ? createCakeWorktreeOperations(options.worktreeLandingControl)
+                      : []),
+                    ...(options.agentControl
+                      ? createAgentControlOperations(
+                          options.agentControl,
+                          () => runtimeIdentity.sessionId,
+                          resolveApiModel,
+                        )
+                      : []),
+                  ]),
+                  // An explicitly granted control gateway is not subject to the
+                  // read-only auxiliary trimming above.
+                  ...(options.sessionControl
+                    ? createGlobalControlOperations(options.sessionControl, resolveApiModel)
+                    : []),
+                ],
+                captureOperationRegistry,
+              ),
+              createCakeArtifactExtension({ persistArtifact }),
+              ...(options.reviewContextPath
+                ? [
+                    reviewContextExtension(
+                      options.reviewContextPath,
                       () => runtimeIdentity.sessionId,
-                      resolveApiModel,
-                    )
-                  : []),
-              ]),
-              // An explicitly granted control gateway is not subject to the
-              // read-only auxiliary trimming above.
-              ...(options.sessionControl
-                ? createGlobalControlOperations(options.sessionControl, resolveApiModel)
+                    ),
+                  ]
                 : []),
             ],
-            captureOperationRegistry,
-          ),
-          createCakeArtifactExtension({ persistArtifact }),
-          ...(options.reviewContextPath
-            ? [reviewContextExtension(options.reviewContextPath, () => runtimeIdentity.sessionId)]
-            : []),
-        ],
       }),
   });
   return {

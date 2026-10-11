@@ -10,6 +10,7 @@ import { TerminalRpc } from "./TerminalRpc";
 import { ManagedWorktreeRpc } from "./ManagedWorktreeRpc";
 import { DiscussionRpc } from "./DiscussionRpc";
 import { SubagentRpc } from "./SubagentRpc";
+import { DynamicWorkflowRpc } from "./DynamicWorkflowRpc";
 import { ApplicationRpc } from "./ApplicationRpc";
 import { ArtifactRpc } from "./ArtifactRpc";
 import { InterviewRpc } from "./InterviewRpc";
@@ -43,6 +44,7 @@ export const BackendRpc = ApplicationRpc.merge(
   ManagedWorktreeRpc,
   DiscussionRpc,
   SubagentRpc,
+  DynamicWorkflowRpc,
 
   ArtifactRpc,
   InterviewRpc,

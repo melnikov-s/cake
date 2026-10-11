@@ -6,15 +6,18 @@ import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promi
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildNativeBundle, swiftBuildIdentity } from "./native-build-cache.mjs";
+import { nativeBuildMode } from "./native-build-mode.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = resolve(process.argv[2] ?? join(root, "out", "main", "native"));
 const packagePath = join(root, "native", "dictation");
 
 // Other platforms can still build Cake; Dictation reports its platform requirement.
-if (process.platform === "darwin" && process.arch === "arm64") {
+if (nativeBuildMode() === "slim") {
+  await rm(output, { recursive: true, force: true });
+  console.log("[cake] Slim build: skipping native dictation");
+} else if (process.platform === "darwin" && process.arch === "arm64") {
   await buildNativeBundle({
-    packagePath,
     product: "cake-dictation",
     output,
     inputs: [
@@ -28,7 +31,7 @@ if (process.platform === "darwin" && process.arch === "arm64") {
     ],
     buildIdentity: await swiftBuildIdentity(),
     force: process.env.CAKE_NATIVE_REBUILD === "1",
-    build: async (output) => {
+    build: async (output, scratch) => {
       await new Promise((resolveBuild, reject) => {
         const child = spawn(
           "xcrun",
@@ -37,6 +40,8 @@ if (process.platform === "darwin" && process.arch === "arm64") {
             "build",
             "--package-path",
             packagePath,
+            "--scratch-path",
+            scratch,
             "-c",
             "release",
             "--product",
@@ -57,7 +62,7 @@ if (process.platform === "darwin" && process.arch === "arm64") {
               ),
         );
       });
-      const release = join(packagePath, ".build", "release");
+      const release = join(scratch, "release");
       const binary = join(release, "cake-dictation");
       await stat(binary);
       await mkdir(output, { recursive: true });
@@ -66,14 +71,14 @@ if (process.platform === "darwin" && process.arch === "arm64") {
         if (entry.endsWith(".bundle"))
           await cp(join(release, entry), join(output, entry), { recursive: true });
       }
-      const fluid = join(packagePath, ".build", "checkouts", "FluidAudio");
+      const fluid = join(scratch, "checkouts", "FluidAudio");
       await cp(join(fluid, "LICENSE"), join(output, "FluidAudio-LICENSE.txt"));
       await cp(join(fluid, "ThirdPartyLicenses"), join(output, "ThirdPartyLicenses"), {
         recursive: true,
       });
       // Ship the small detector with Cake. Enabling dictation must never fetch model data.
       const vad = JSON.parse(await readFile(join(packagePath, "vad-manifest.json"), "utf8"));
-      const cache = join(packagePath, ".build", "cake-vad");
+      const cache = join(scratch, "cake-vad");
       for (const file of vad.files) {
         const cached = join(cache, file.path);
         let bytes;

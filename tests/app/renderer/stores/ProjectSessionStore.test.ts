@@ -36,6 +36,7 @@ describe("ProjectSessionStore", () => {
       createStore(ProjectSessionStore, {
         workspacePath: "/project",
         sessionId: "resolved-session",
+        workflowCatalog: models.workflowCatalog(model.sessionId),
         openEditorLocation: async () => ({ outcome: { view: "file" }, locations: [] }),
         refreshEditorHighlights: async () => undefined,
         model,
@@ -163,6 +164,7 @@ describe("ProjectSessionStore", () => {
         onResolveWorktree: () => undefined,
         openEditorLocation: async () => ({ outcome: { view: "file" }, locations: [] }),
         refreshEditorHighlights: async () => undefined,
+        workflowCatalog: models.workflowCatalog(model.sessionId),
       }),
       {} as Client,
     );
@@ -280,6 +282,7 @@ describe("ProjectSessionStore", () => {
         onResolveWorktree: () => undefined,
         openEditorLocation: async () => ({ outcome: { view: "file" }, locations: [] }),
         refreshEditorHighlights: async () => undefined,
+        workflowCatalog: models.workflowCatalog(model.sessionId),
       }),
       {} as Client,
     );

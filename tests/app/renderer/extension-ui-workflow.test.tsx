@@ -10,12 +10,19 @@ import { toStoreEvent } from "../../../src/renderer/events/StoreEvent";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
+import { checkpoint } from "../helpers/workflowFixture";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { applyExperimentalFeaturesProjection } from "../../../src/renderer/reducers/ExperimentalFeaturesReducer";
 
 const requestId = "00000000-0000-4000-8000-000000000001";
 const uiRequestId = "00000000-0000-4000-8000-000000000002";
 type UiRequest = Extract<CakeEvent, { type: "ui-request" }>;
 
-function renderExtensionUi(respondToUi: Client["artifacts"]["respondToUi"], withSession = false) {
+function renderExtensionUi(
+  respondToUi: Client["artifacts"]["respondToUi"],
+  withSession = false,
+  dynamicWorkflows = false,
+) {
   const fixture = createRendererStoreFixture({
     projects: withSession ? [projectRecord({ path: "/project", name: "Project" })] : [],
     sessions: withSession
@@ -27,6 +34,13 @@ function renderExtensionUi(respondToUi: Client["artifacts"]["respondToUi"], with
       artifacts: { respondToUi, effective: async () => [] },
     },
   });
+  let revision = 0;
+  const setExperiments = (enabled: boolean) =>
+    applyExperimentalFeaturesProjection(fixture.models.experimentalFeatures, {
+      revision: ++revision,
+      state: { ...defaultApplicationState(), experimentalFeatures: { dynamicWorkflows: enabled } },
+    });
+  setExperiments(dynamicWorkflows);
   if (withSession) {
     fixture.root.sessionRegistry.load("session-1", "/project");
     applyConversationUpdate(fixture.models.projectConversation("session-1", "/project"), {
@@ -65,6 +79,9 @@ function renderExtensionUi(respondToUi: Client["artifacts"]["respondToUi"], with
   }
   return {
     user: userEvent.setup(),
+    async setExperiments(enabled: boolean) {
+      await act(async () => setExperiments(enabled));
+    },
     publish,
     request(overrides: Partial<UiRequest> = {}) {
       return publish({
@@ -116,6 +133,98 @@ const response = (value: string | undefined, cancelled = false) => ({
 });
 
 describe("Extension UI workflow", () => {
+  it("never displays a workflow dialog when disabled, while ordinary extension dialogs still work", async () => {
+    const respond = vi.fn<Client["artifacts"]["respondToUi"]>(async () => undefined);
+    using fixture = renderExtensionUi(respond, true);
+    await fixture.request({
+      kind: "workflow-choice",
+      workflow: { ownerSessionId: "session-1", program: checkpoint().run.program },
+    });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Run workflow" })).toBeNull();
+    expect(respond).not.toHaveBeenCalled();
+    await fixture.request();
+    expect(screen.getByRole("alertdialog", { name: "Provider authentication" })).toBeDefined();
+  });
+  it("hides an already displayed execution choice as soon as the authoritative feature projection turns off", async () => {
+    const respond = vi.fn<Client["artifacts"]["respondToUi"]>(async () => undefined);
+    using fixture = renderExtensionUi(respond, true, true);
+    await fixture.request({
+      kind: "workflow-choice",
+      workflow: { ownerSessionId: "session-1", program: checkpoint().run.program },
+    });
+    expect(screen.getByRole("button", { name: "Run workflow" })).toBeDefined();
+    await fixture.setExperiments(false);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    await fixture.publish({
+      type: "ui-request-settled",
+      uiRequestId,
+      sessionId: "provider-settings:1",
+    });
+    await fixture.setExperiments(true);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(respond).not.toHaveBeenCalled();
+  });
+  for (const [label, value, cancelled] of [
+    ["Run workflow", "workflow", false],
+    ["Continue normally", "normal", false],
+    ["Cancel", undefined, true],
+  ] as const) {
+    it(`shows frozen workflow source and phases, then returns ${label} exactly once`, async () => {
+      const respond = vi.fn<Client["artifacts"]["respondToUi"]>(async () => undefined);
+      using fixture = renderExtensionUi(respond, true, true);
+      const program = {
+        ...checkpoint().run.program,
+        meta: {
+          name: "audit-auth",
+          description: "Audit the route authentication",
+          phases: ["Inspect", "Report"],
+        },
+        args: { task: "audit" },
+      };
+      await fixture.request({
+        kind: "workflow-choice",
+        workflow: { ownerSessionId: "session-1", program },
+      });
+      expect(screen.getByRole("alertdialog", { name: "audit-auth" })).toBeDefined();
+      expect(screen.getByText("Audit the route authentication")).toBeDefined();
+      expect(screen.getByRole("list", { name: "Proposed phases" }).textContent).toBe(
+        "InspectReport",
+      );
+      expect(respond).not.toHaveBeenCalled();
+      await fixture.user.click(screen.getByRole("button", { name: "View script" }));
+      for (const line of program.source.split("\n"))
+        expect(
+          screen.getByRole("region", { name: "Proposed workflow script" }).textContent,
+        ).toContain(line);
+      expect(respond).not.toHaveBeenCalled();
+      await fixture.user.click(screen.getByRole("button", { name: label }));
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      expect(respond).toHaveBeenCalledExactlyOnceWith(response(value, cancelled));
+    });
+  }
+  it("removes a cancelled workflow request from authority, but ignores settlement for a different request", async () => {
+    const respond = vi.fn<Client["artifacts"]["respondToUi"]>(async () => undefined);
+    using fixture = renderExtensionUi(respond, true, true);
+    await fixture.request({
+      kind: "workflow-choice",
+      workflow: { ownerSessionId: "session-1", program: checkpoint().run.program },
+    });
+    await fixture.publish({
+      type: "ui-request-settled",
+      uiRequestId: requestId,
+      sessionId: "provider-settings:1",
+    });
+    expect(screen.getByRole("button", { name: "Run workflow" })).toBeDefined();
+    await fixture.publish({
+      type: "ui-request-settled",
+      uiRequestId,
+      sessionId: "provider-settings:1",
+    });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(respond).not.toHaveBeenCalled();
+    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
+  });
   it("submits session-less provider credentials and dismisses the request", async () => {
     const respond = vi.fn<Client["artifacts"]["respondToUi"]>(async () => undefined);
     using fixture = renderExtensionUi(respond);

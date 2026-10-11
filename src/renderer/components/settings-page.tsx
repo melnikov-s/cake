@@ -52,6 +52,7 @@ import type { SettingsStore } from "../stores/SettingsStore";
 import { LabelSettings } from "./label-settings";
 import { SettingsNonChatModelsSection } from "./settings-non-chat-models-section";
 import { SettingsNativeToolsSection } from "./settings-native-tools-section";
+import { SettingsExperimentalSection } from "./settings-experimental-section";
 
 export const SettingsPage = observer(function SettingsPage({
   settings,
@@ -936,6 +937,9 @@ export const SettingsPage = observer(function SettingsPage({
                 <SettingsSpeechInputSection store={settings.speechInput} />
               </>
             ))}
+          {activePage === "experimental" && (
+            <SettingsExperimentalSection experimental={settings.experimental} />
+          )}
           {activePage === "appearance" && <SettingsAppearanceSection appearance={appearance} />}
           {activePage === "screen-capture" &&
             (browserMode ? (

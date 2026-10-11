@@ -21,7 +21,8 @@ type Dependencies =
   | Terminal
   | ProjectSessionConfiguration
   | SessionFamilyStorage
-  | ManagedWorktrees;
+  | ManagedWorktrees
+  | Effect.Services<ReturnType<typeof projectSessionLifecycle.resolveWorkingDirectory>>;
 
 export const WorktreeLandingCompletionLive = Layer.effect(
   WorktreeLandingCompletion,

@@ -5,6 +5,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 
 import { buildIdentity } from "./scripts/build-identity.mjs";
+import { buildNativeAssets } from "./scripts/native-build-mode.mjs";
 import { excalidrawFonts } from "./scripts/excalidraw-fonts";
 const buildDefine = { __CAKE_BUILD_ID__: JSON.stringify(buildIdentity()) };
 
@@ -18,24 +19,24 @@ export default defineConfig({
       {
         name: "cake-native-speech",
         async writeBundle() {
-          for (const script of ["build-dictation.mjs", "build-speech.mjs"]) {
-            console.log(`[cake] Running ${script}`);
-            await new Promise<void>((resolveBuild, reject) => {
-              const child = spawn(
-                process.execPath,
-                [
-                  resolve(import.meta.dirname, "scripts", script),
-                  resolve(import.meta.dirname, "out/main/native"),
-                ],
-                { stdio: "inherit" },
-              );
-              child.once("error", reject);
-              child.once("close", (code, signal) => {
-                if (code === 0) resolveBuild();
-                else reject(new Error(`${script} failed (${signal ?? code})`));
+          await buildNativeAssets(
+            resolve(import.meta.dirname, "out/main/native"),
+            async (script, output) => {
+              console.log(`[cake] Running ${script}`);
+              await new Promise<void>((resolveBuild, reject) => {
+                const child = spawn(
+                  process.execPath,
+                  [resolve(import.meta.dirname, "scripts", script), output],
+                  { stdio: "inherit" },
+                );
+                child.once("error", reject);
+                child.once("close", (code, signal) => {
+                  if (code === 0) resolveBuild();
+                  else reject(new Error(`${script} failed (${signal ?? code})`));
+                });
               });
-            });
-          }
+            },
+          );
         },
       },
     ],

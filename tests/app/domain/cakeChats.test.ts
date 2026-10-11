@@ -1,4 +1,5 @@
 import { it } from "@effect/vitest";
+import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { Effect, Layer, Stream } from "effect";
 import { describe, expect } from "vitest";
 import * as metadata from "../../../src/domain/cake-chats/cakeChatMetadata";
@@ -46,6 +47,7 @@ function fixture() {
     firstMessage: "Hello",
   });
   const layer = Layer.mergeAll(
+    WorkflowTestLive,
     makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
     Layer.mock(ManagedWorktrees, {}),
     Layer.mock(SessionFamilyStorage, {}),
@@ -144,6 +146,8 @@ describe("permanent Cake Chat", () => {
         });
         expect(options.runtime.tools).toEqual(["cake", "zoom", "date"]);
         expect(options.runtime.allowedCakeOperations).toContain("sessions.create");
+        expect(options.runtime.allowedCakeOperations).toContain("workflows.propose");
+        expect(options.runtime.allowedCakeOperations).toContain("workflows.start");
         expect(options.runtime.allowedCakeOperations).not.toContain("sessions.create-child");
         expect(options.runtime.cakeChatMemory?.preferences()).toEqual(defaultCakeChatPreferences());
         f.setState({

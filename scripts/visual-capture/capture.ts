@@ -268,6 +268,7 @@ function buildCompiledApplication(repositoryRoot: string) {
     const executable = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
     const child = spawn(executable, ["exec", "electron-vite", "build", "--logLevel", "warn"], {
       cwd: repositoryRoot,
+      env: { ...process.env, CAKE_BUILD_MODE: process.env.CAKE_BUILD_MODE ?? "slim" },
       stdio: "inherit",
     });
     child.once("error", (cause) =>

@@ -6,6 +6,7 @@ import type { Conversation } from "../models/Conversation";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
+import type { WorkflowCatalog } from "../models/WorkflowCatalog";
 import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import { ProjectPendingSessionsStore, type SavedDraftClient } from "./ProjectPendingSessionsStore";
@@ -28,6 +29,7 @@ export interface SessionRegistryStoreProps {
   sessionModel(sessionId: string, workingDirectory: string): Conversation;
   discussionCatalog(sessionId: string): DiscussionCatalog;
   subagentCatalog(sessionId: string): SubagentCatalog;
+  workflowCatalog(sessionId: string): WorkflowCatalog;
   scheduledMessageCatalog(sessionId: string): ScheduledMessageCatalog;
   artifactModel: ArtifactCatalog;
   operations: SessionOperationCoordinatorStore;
@@ -111,6 +113,7 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         model: this.props.sessionModel(target.sessionId, target.workspacePath),
         discussionCatalog: this.props.discussionCatalog(target.sessionId),
         subagentCatalog: this.props.subagentCatalog(target.sessionId),
+        workflowCatalog: this.props.workflowCatalog(target.sessionId),
         scheduledMessageCatalog: this.props.scheduledMessageCatalog(target.sessionId),
         artifactModel: this.props.artifactModel,
         pendingSessions: this.pendingSessions,
