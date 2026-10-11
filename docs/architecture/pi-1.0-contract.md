@@ -1,9 +1,13 @@
 # Pi 1.0.0 Service contract
 
-Cake pins `@earendil-works/pi-coding-agent` 1.0.0. All ordinary application
-imports of Pi packages live beneath `src/services/pi`. `PiLive` provides
-`CakeSessionRuntimes`, `PiModels`, and `PiAgentResources`; Cake domain operations and RPC
-never expose raw Pi objects.
+This is the regular coding-agent contract: Cake pins
+`@earendil-works/pi-coding-agent` 1.0.0 and keeps its ordinary application imports
+beneath `src/services/pi`. `PiLive` provides `CakeSessionRuntimes`, `PiModels`, and
+`PiAgentResources`; Cake domain operations and RPC never expose raw Pi objects.
+The permanent coordinator intentionally uses the separate
+[Pi Durable storage contract](./cake-storage.md#permanent-cake-chat) through
+`src/services/pi-durable`. JSONL and `AgentSession` guarantees here do not describe
+that coordinator's SQLite storage or recovery.
 
 The deterministic adapter contract exercises these public APIs directly:
 
@@ -42,17 +46,19 @@ The initial compatibility-only upgrade did not register MCP, codemode, or
 tool-search factories, or add virtual-model, image-generation, or classifier UI.
 Native MCP was added separately as described below.
 
-### Verification
+### Recorded upgrade verification
 
-The minimal upgrade passes typecheck, format check, full lint, desktop/browser
+These results were recorded for the minimal upgrade, not later checkouts.
+
+The minimal upgrade passed typecheck, format check, full lint, desktop/browser
 builds, standalone server bundling, 263 focused Pi/adapter unit tests, 19 runtime
 integration tests, and four Electron smoke tests (local/remote authentication,
 extension UI, durable session/reset and composer typing).
 
-The full unit run still fails the settings-search label assertion (`Cake prompts`
+That full unit run failed the settings-search label assertion (`Cake prompts`
 versus `Instructions & prompts`). The slash-command and rate-limit-stop Electron
-smokes also fail their existing UI expectations. All three failures were reproduced
-with the previous Pi 0.85.1 dependencies; they are not fixed by this upgrade.
+smokes also failed their existing UI expectations. All three failures were reproduced
+with the previous Pi 0.85.1 dependencies and were not fixed by that upgrade.
 No live-provider compatibility sweep was performed.
 
 ## Native MCP integration

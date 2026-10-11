@@ -11,7 +11,9 @@ and behavior live in [`src/server/`](../../src/server/) and their tests.
 client has full backend authority, including agent code execution. Host/Origin checks
 prevent unintended browser-origin access; native clients can forge those headers.
 Keep listeners private. Use an authenticated tunnel/reverse proxy and TLS for remote
-access, protecting both the application and editor endpoints.
+access, protecting both the application and editor endpoints. This is one trusted
+user's multi-view environment, not restricted sharing or a multi-user security model;
+capability discovery and hidden UI actions do not establish access controls.
 
 Do not run separate Electron and Node backend processes against the same data directory.
 For an isolated standalone host, set both:
@@ -85,9 +87,11 @@ queries, fragments and other paths are refused. TLS is never downgraded. Confirm
 relaunch only after local work finishes: quitting stops local turns and sharing.
 Remote accepted turns remain on their server.
 
-A failed connection offers Retry and **Return to local**, also available in Settings.
-Remote navigation/drafts are device-local under `userData/remote-hosts/<endpoint-hash>/`,
-not the backend's desktop window snapshot. Native menus, notifications, file picking
+Remote startup acquires the native window/menu/IPC host, not a local shadow backend,
+Pi registry, project storage or workers. A failed connection offers Retry and
+**Return to local**, also available in Settings. Remote navigation and unsent composer
+drafts are device-local under `userData/remote-hosts/<endpoint-hash>/`, not the backend's
+desktop window snapshot. Native menus, notifications, file picking
 and external HTTP(S) links operate on the viewing device; project paths and terminals
 refer to the backend.
 
@@ -228,7 +232,9 @@ paths do not. The editor listener serves only active editor leases, not app asse
 ## Disconnects and recovery
 
 - Accepted turns continue after clients disconnect or sharing is disabled. **Stop**
-  is separate; backend shutdown ends turns, which do not survive process restart.
+  is separate. Regular-Pi Project turns and queues do not survive backend restart as
+  live work. Permanent Cake Chat instead has Pi Durable-owned checkpoints and inbox
+  recovery; reconnecting the transport supplies neither engine's execution recovery.
 - Reconnect refreshes authoritative state without replaying mutations. If a send
   receipt is lost, inspect refreshed history before deliberately keeping or discarding
   the draft for resend. An uncertain receipt is not proof the prompt was rejected.

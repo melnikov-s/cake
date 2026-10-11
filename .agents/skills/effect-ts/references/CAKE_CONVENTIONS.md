@@ -9,9 +9,9 @@ Cake's architecture decides what is a Service, domain operation, RPC operation,
 or renderer Store:
 
 ```text
-renderer Store → RendererClient Promise adapter → CakeIpcClient → Effect RPC
-renderer projection synchronizer → CakeIpcClient Stream → r-state-tree Model
-CakeIpcServer → free Cake domain Effects → outside-world Services
+renderer Store → Client Promise adapter → CakeIpcClient → Effect RPC
+CakeIpcClient Stream → Model observer → r-state-tree Model
+CakeRpcServer → free Cake domain Effects → outside-world Services
 ```
 
 - Services represent outside-world, native, persistence, process, or transport
@@ -19,15 +19,17 @@ CakeIpcServer → free Cake domain Effects → outside-world Services
 - Cake business policy belongs in cohesive free domain `Effect.fn` operations.
   Domain modules are not Context Services.
 - RPC handlers delegate. They do not implement Cake business policy.
-- Ordinary renderer Stores consume the Promise-based `RendererClient` and never
+- Ordinary renderer Stores consume the Promise-based `Client` and never
   import Effect, `CakeIpcClient`, RPC contracts, main Services, or domain
   implementations. Projection synchronizers are the renderer Effect/Stream
   boundary: they apply authoritative snapshots with `applySnapshot` and reduce
   ordered Events transactionally, using direct, batched r-state-tree Model
   mutations for incremental entity changes.
-- Pi packages stop beneath `src/services/pi`. Raw Pi values do not cross RPC.
-- Pi remains transcript authority. Effect Streams and renderer Models are
-  projections, not new durable authorities.
+- Regular-Pi packages stop beneath `src/services/pi`; permanent Cake Chat's
+  Durable SDK stops beneath `src/services/pi-durable`. Raw SDK values do not cross RPC.
+- Pi remains transcript authority: regular sessions use Pi session files, while
+  the permanent coordinator uses Pi Durable's SQLite adapter. Effect Streams and
+  renderer Models are projections, not new durable authorities.
 
 ## Services and operations
 
@@ -58,7 +60,7 @@ compose naturally in test Services.
 Promise APIs are permitted only at an external or framework adapter boundary.
 Wrap them with `Effect.tryPromise`, pass the supplied `AbortSignal`, map expected
 failures to `Schema.TaggedError`, and expose Effect from a main-side Service. In
-the renderer, the permanent typed `RendererClient` deliberately executes the
+the renderer, the permanent typed `Client` deliberately executes the
 authoritative Effect client as Promises for r-state-tree Stores. It must
 propagate cancellation and must not define another protocol or domain
 abstraction.

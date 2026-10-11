@@ -4,7 +4,11 @@ A **Cake Session** is the abstract Cake domain entity for one conversational
 session. Its concrete kinds are Project Session, Cake Chat Session, Discussion
 Session, and Subagent Session. Every materialized Cake Session has exactly one
 **Conversation** backed by exactly one Pi Session; Pi remains the durable
-transcript authority.
+transcript authority. This common ownership does not imply one storage engine:
+Project and regular-Pi auxiliary sessions use coding-agent session files, while
+the permanent coordinator uses [Pi Durable](./cake-storage.md#permanent-cake-chat).
+The JSONL, branching, queue, and lifecycle details below describe Project Sessions,
+not a replacement contract for that coordinator.
 
 A **Project Session** is the top-level Project-associated aggregate root users
 open from the sidebar. It has one primary Conversation and coordinates or
@@ -37,17 +41,17 @@ target, preview, error, and persistence concepts remain `PiSession*` values.
 
 ## Authority and lifecycle
 
-| State                                                                      | Authority                        | Owner, lifetime, persistence, and concurrency                                                          |
-| -------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Conversation transcript, tool results, model history, branches, compaction | Pi                               | Pi Session JSONL; serialized by Pi; Cake projects only purpose-built snapshots and events              |
-| Pi provider credentials and resources                                      | Pi                               | Pi storage/runtime; secrets never enter Cake projections                                               |
-| Active turn and transient Pi queues                                        | Pi Session Runtime               | Runtime lifetime; turn admission follows Pi/Cake per-session serialization policy                      |
-| Cake Session kind, Project and Working Directory references, lifecycle     | Cake domain/storage              | Durable where declared by focused storage; lifecycle transitions serialize per authority               |
-| Discussion anchors and review-thread metadata                              | Cake review/discussion authority | Durable focused records; Discussion Session transcripts remain in their own Pi Sessions                |
-| Subagent ownership and activity                                            | Cake subagent coordinator        | Parent Cake Session-owned; process/runtime lifetime and bounded concurrency                            |
-| Artifact lineage and payload                                               | Cake artifact repository         | Globally durable; Project Sessions and Session Families hold links, never ownership or copied payloads |
-| Session Family membership                                                  | Cake Session Family storage      | Durable relation among independent Project Sessions; root owns family lifecycle                        |
-| Renderer Models and Stores                                                 | Renderer window                  | Focused validated projections plus UI/workflow state; Models/Stores do not define the aggregate        |
+| State                                                                              | Authority                        | Owner, lifetime, persistence, and concurrency                                                          |
+| ---------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Project Conversation transcript, tool results, model history, branches, compaction | Pi                               | Pi Session JSONL; serialized by Pi; Cake projects only purpose-built snapshots and events              |
+| Pi provider credentials and resources                                              | Pi                               | Pi storage/runtime; secrets never enter Cake projections                                               |
+| Project active turn and transient Pi queues                                        | Pi Session Runtime               | Runtime lifetime; turn admission follows Pi/Cake per-session serialization policy                      |
+| Cake Session kind, Project and Working Directory references, lifecycle             | Cake domain/storage              | Durable where declared by focused storage; lifecycle transitions serialize per authority               |
+| Discussion anchors and review-thread metadata                                      | Cake review/discussion authority | Durable focused records; Discussion Session transcripts remain in their own Pi Sessions                |
+| Subagent ownership and activity                                                    | Cake subagent coordinator        | Parent Cake Session-owned; process/runtime lifetime and bounded concurrency                            |
+| Artifact lineage and payload                                                       | Cake artifact repository         | Globally durable; Project Sessions and Session Families hold links, never ownership or copied payloads |
+| Session Family membership                                                          | Cake Session Family storage      | Durable relation among independent Project Sessions; root owns family lifecycle                        |
+| Renderer Models and Stores                                                         | Renderer window                  | Focused validated projections plus UI/workflow state; Models/Stores do not define the aggregate        |
 
 ## Conversation observation
 

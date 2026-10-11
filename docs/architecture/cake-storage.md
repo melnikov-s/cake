@@ -1,8 +1,10 @@
 # Cake storage ownership
 
 Cake stores Cake-owned facts in versioned documents through focused Effect
-Services. Pi separately owns Pi Session files and credentials. Storage format,
-location, and migration never change authority.
+Services. Regular Pi owns its session files and credentials; permanent Cake Chat
+uses Pi Durable's SDK-owned SQLite storage. Storage format, location, and migration
+never change authority. These engines intentionally have different persistence
+and recovery contracts, not two stores for the same transcript.
 
 ## Storage roots
 
@@ -33,11 +35,16 @@ filtering for shared custom directories. Tests must explicitly isolate both home
 │   ├── widget-sessions/
 │   ├── subagent-sessions/
 │   └── global-chat/
-│       ├── sessions/
-│       └── resolved-sessions/      # former storage; migration input only
+│       └── coordinator.sqlite     # Pi Durable; old global histories are not imported
 └── cache/
     └── artifact-projections/
 ```
+
+This is an ownership-oriented root map, not an exhaustive file inventory. The
+permanent coordinator's former `global-chat/sessions` and `resolved-sessions`
+directories are deleted without import by its documented clean-start cutover;
+that is separate from the preserving Project Session migration below. See
+[Permanent Cake Chat](#permanent-cake-chat).
 
 `cache/artifact-projections` contains disposable, read-only, digest-verified
 exact-revision files derived from the authoritative artifact repository. Cache
@@ -109,7 +116,8 @@ than those helpers.
 
 ## Versioning and migration
 
-Every standalone stored document has an explicit envelope:
+Every standalone Cake-owned stored document has an explicit envelope. This does
+not redefine Pi's JSONL or the Durable SDK's SQLite format:
 
 ```ts
 interface StoredDocument {
@@ -145,7 +153,39 @@ explicit recovery policy; they are never silently reinterpreted.
 
 Versioned files are the default. Introduce a database only when a concrete
 capability needs cross-record queries, multi-entity transactions, indexing,
-high write concurrency, or scale that files cannot support.
+high write concurrency, or scale that files cannot support. Using Pi Durable's
+supplied SQLite adapter for Cake Chat does not change this Cake-owned storage default.
+
+## Workflow recovery boundaries
+
+One backend process owns Cake's storage and live coordinators. Desktop IPC and
+network endpoints may share that acquired backend; separate Electron and Node
+backends must not concurrently use the same data directory. This is the
+[documented deployment assumption](../development/headless-backend.md#security-and-data-isolation),
+not a claim that all storage supplies cross-process locking. Pi Durable explicitly
+provides no database ownership lock across backend processes.
+
+Atomic file replacement protects one document. It does not atomically combine
+Cake metadata, a Git checkout, and a Pi transcript. A database transaction over
+Cake records would not make those external systems part of the same transaction
+either. Domain workflows own semantic completion and recovery; scoped capabilities
+own live operation state, and storage Services own durable records.
+
+The following summarizes existing contracts rather than adding a generic recovery
+framework or an exactly-once guarantee:
+
+| Workflow and owner                                                       | Acceptance or commit boundary                                                                                                           | Recovery and retry boundary                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Family child creation — `sessionFamilies`                                | Child identity and request correlation persist before the initial Pi prompt; creation completes at turn acceptance, not task completion | The same request returns the child identity; a failed launch retains a materialized child, while a reservation without a transcript is removed. See [family membership](./session-family-contract.md#membership-invariants).                                          |
+| Worktree landing — `worktreeLandings` and its process-scoped coordinator | Accepted work owns a repository queue slot independently of renderer lifetime                                                           | Queue position/progress are process-local; persisted conflict/squash-message pauses can be adopted, and merge-and-resolve intent remains durable until completion. See [worktree ownership](./effect-architecture.md#filesystem-git-worktrees-vs-code-and-terminals). |
+| Result reporting — response journal and delivery worker                  | Recipient transcript receipt, not queue insertion, confirms handoff                                                                     | Durable outbox intents retry using correlation and receipt checks; interrupted Project work is reported, not rerun.                                                                                                                                                   |
+| Scheduled Project messages — scheduled delivery workflow/storage         | The durable intent remains cancellable until delivery; normal Pi admission is the handoff                                               | Pending schedules persist; after handoff, Project runtime queues retain their ordinary lifetime. This is not a general idempotent command bus.                                                                                                                        |
+| Permanent Cake Chat — Pi Durable                                         | SDK-owned admission, inbox, tasks, and checkpoints                                                                                      | Process-crash recovery follows the SDK contract; replay-unsafe Cake mutations require inspecting live state rather than blind repetition. See [Durable ownership](#permanent-cake-chat).                                                                              |
+
+Surviving a client disconnect is not the same as surviving a backend restart.
+A lost acceptance receipt is uncertainty, not proof that an operation failed;
+network reconnection restores observations without automatically replaying mutations.
+The focused contracts own the detailed recovery policies and limitations.
 
 ## Renderer snapshots
 
@@ -163,9 +203,13 @@ Typical persisted values include:
 
 - selected Project and Cake Session references;
 - sidebar, panel, and workbench state;
-- staged unsent chat and explicit drafts;
+- staged unsent chat;
 - composer drafts and selected settings;
 - loaded-session references where needed for restoration.
+
+Explicitly saved Draft records are shared backend data, distinct from client-owned
+[unsent composer input](./README.md#saved-drafts-and-unsent-input). They are not
+window snapshots; this distinction does not prescribe a new storage migration.
 
 Do not persist:
 
@@ -197,10 +241,12 @@ snapshot.
 
 ## Pi-owned storage
 
-Pi Session history remains authoritative in Pi JSONL. Every Pi Service call
-receives its roots and Working Directory explicitly. Cake accesses transcripts
-only through Pi APIs; it does not tail, parse as an application model, or write
-Pi JSONL directly.
+### Regular Pi sessions
+
+Regular-Pi Session history remains authoritative in Pi JSONL. Its Service calls
+receive the applicable roots and Working Directory explicitly. Cake accesses
+transcripts only through Pi APIs; it does not tail, parse as an application model,
+or write Pi JSONL directly.
 
 Project Sessions create, continue, inspect, and fork beneath Cake's configured
 Pi session roots. Resolving a settled session disposes its live runtime and
@@ -209,7 +255,8 @@ clears that metadata before Pi opens it. Neither operation moves or modifies
 the Pi transcript. Pi remains the transcript-format and session engine authority.
 
 `state/resolved-project-metadata/resolution.json` is a versioned index of resolved
-IDs keyed by their normal session directory, including direct Cake Chat roots.
+IDs keyed by their normal session directory. Earlier global-chat roots also used
+this index; the permanent Durable coordinator has no resolve/archive lifecycle.
 Backend updates are serialized and atomically replace the metadata document.
 Catalogs read the IDs once per listing and exclude resolved sessions before
 opening Pi transcripts to derive titles; no LSM, transcript scan, or second
@@ -217,7 +264,7 @@ transcript database is needed. Project routing records retain the original
 Project, Working Directory, and worktree name, but are not a second resolution
 authority.
 
-Former archive roots are migration input only. Storage records each archived
+Former Project Session archive roots are migration input only. Storage records each archived
 session as resolved before moving its original file back to the normal root;
 retries preserve status and reject destination collisions instead of overwriting
 files. Project archive migration v2 also uses retained routing records for
@@ -234,8 +281,8 @@ deadline. Once Cake submits one through the normal Project Session prompt or
 follow-up operation, it removes the intent and Pi owns the resulting user
 message and turn.
 
-Discussion Sessions and Cake Chat Sessions use their narrower Pi roots. Cake
-stores review/message anchors and sidecar references, while sidecar replies
+Discussion and other regular-Pi sidecar sessions use their narrower Pi roots.
+Cake stores review/message anchors and sidecar references, while sidecar replies
 remain only in their Pi Session files.
 
 Window state stores stable Cake/Pi identifiers and Working Directories, never
@@ -245,6 +292,20 @@ configured root.
 Pi owns provider credentials and Pi resource settings. Cake storage may hold a
 Model Preset or Utility Model Preference referencing provider/model IDs, but it
 never stores provider secrets or utility-completion transcripts.
+
+### Permanent Cake Chat
+
+The coordinator's sole transcript authority is Pi Durable's supplied SQLite
+adapter at `<CAKE_HOME>/pi/global-chat/coordinator.sqlite`. It owns originals,
+inbox, execution checkpoints, and recovery. Cake does not implement a second SQL
+store, mirror JSONL, or archive the coordinator through Project Session storage.
+Its summary nodes and memory checkpoints live through the same SDK storage API.
+Application storage separately owns memory preferences and dedicated instructions.
+
+The Pi Durable SDK supplies process-crash recovery, not a newest-commit power-loss
+guarantee. Replay-unsafe Cake mutations require inspecting live state rather than
+blind repetition. The clean-start deletion of old global histories is a documented
+cutover decision, not the default migration policy for other persisted data.
 
 ## Artifact and review storage
 

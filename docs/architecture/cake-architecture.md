@@ -5,7 +5,8 @@ feature catalog or roadmap. Read feature behavior only when the task touches it;
 [focused references](#focused-references) route to those contracts and tests.
 [The vocabulary](./cake-vocabulary.md) defines canonical terms;
 [Effect architecture](./effect-architecture.md) defines runtime implementation
-rules.
+rules. The [documentation map](./README.md) explains maintained-guide and task-artifact
+responsibilities.
 
 ## Product identity
 
@@ -26,6 +27,21 @@ The conversation remains primary. Files, reviews, Draw boards, and artifacts
 support the work rather than turning Cake into a general-purpose IDE. Embedded
 VS Code owns source browsing, editing, Source Control, and native Git diffs.
 
+## Pi backends
+
+The two Pi backends are an intentional product distinction, not competing
+transcript authorities:
+
+| Conversation                                       | Engine and persistence                                         | Focused contract                                         |
+| -------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------- |
+| Project Sessions and regular-Pi auxiliary sessions | Pi coding agent; Pi session files and `SessionManager`         | [Pi contract](./pi-1.0-contract.md)                      |
+| Permanent Cake Chat coordinator                    | Pi Durable; SDK-owned SQLite originals, inbox, and checkpoints | [Durable storage](./cake-storage.md#permanent-cake-chat) |
+
+Shared Conversation values and `Chat` presentation do not imply identical engine
+APIs, queue durability, or restart behavior. Cake Chat's bounded summary memory
+uses the same Durable SDK storage authority; regular Project Session execution
+remains with the coding agent.
+
 ## Sources of truth
 
 Every durable fact has exactly one authority. Identity, runtime lifetime, and
@@ -33,7 +49,8 @@ projection lifetime are distinct.
 
 | Concern                                                                  | Authority                                   | Cake's boundary                                                                   |
 | ------------------------------------------------------------------------ | ------------------------------------------- | --------------------------------------------------------------------------------- |
-| Conversation messages, tool history, branches, compaction, session names | Pi Session files and `SessionManager`       | Project validated Conversation values; never persist a second transcript          |
+| Regular-Pi conversation history, branches, compaction, session names     | Pi Session files and `SessionManager`       | Project validated Conversation values; never persist a second transcript          |
+| Permanent Cake Chat history, inbox, execution checkpoints                | Pi Durable's SQLite adapter                 | Project original history and live state through shared Conversation contracts     |
 | Models, providers, authentication, Pi settings and resources             | Pi                                          | Expose controls through the Pi adapter                                            |
 | Model presets and utility/non-chat preferences                           | Cake application storage                    | Resolve explicit selections through Pi; never silently substitute a model         |
 | Projects, workflow statuses, routing, Managed Worktree policy            | Cake                                        | Store metadata, not copies of Git or Pi state                                     |
@@ -45,8 +62,11 @@ projection lifetime are distinct.
 | Draw boards                                                              | Cake main-owned board storage               | Excalidraw owns the editable document; no second graph or transcript              |
 | Artifacts                                                                | Cake global lineage repository              | Immutable revisions with explicit session/family links; caches are disposable     |
 | Session Plugins                                                          | Cake application metadata and JSON state    | Session-bound controls with user-owned visibility                                 |
-| Window selection, layout, drafts, workflow presentation                  | Cake renderer/window storage                | Presentation state is separate from domain facts                                  |
+| Window selection, layout, unsent composer input, workflow presentation   | Cake renderer/window storage                | Presentation state is separate from domain facts                                  |
 | Interviews                                                               | Active Pi tool call and interview contracts | One validated response or cancellation; session-owned form state, not an artifact |
+
+Explicitly saved Draft records are shared backend data, distinct from client-owned
+[unsent composer input](./README.md#saved-drafts-and-unsent-input).
 
 Do not mutate Pi JSONL with ad hoc file operations, reconstruct Pi state into a
 competing domain model, or make a Project Session-shaped shadow payload. Main
@@ -57,20 +77,25 @@ projections needed by a surface. References do not transfer ownership.
 
 - Every materialized Cake Session has exactly one Conversation backed by exactly
   one Pi Session. Releasing a runtime or observation does not delete it.
-- Display history is the complete active branch from `SessionManager.getBranch()`,
-  not compacted model input from `buildContextEntries()`.
+- Regular-Pi display history is the complete active branch from
+  `SessionManager.getBranch()`, not compacted model input from
+  `buildContextEntries()`. Permanent Cake Chat presents original-history pages
+  and a live projection, not its derived summary nodes or context resets.
 - Model-facing reminders and custom messages remain inspectable, regardless of
   Pi's `display` flag; expose the live system prompt too. Presentation does not
   create another transcript authority.
-- Tool Compact replays only user-authored input and assistant text as dialogue.
+- Project Session Tool Compact replays only user-authored input and assistant text as dialogue.
   Preserve Pi's canonical system prompt/tool baseline as a folded checkpoint, not
   a new instruction injection. Strip injected reminders (including embedded ones),
   reasoning, tools, custom messages, and cross-session coordination. Keep
   orientation/provenance in non-context Pi metadata and the original transcript
   tree inspectable. The checkpoint does not add a new context pill; genuine later
   instruction changes do.
-- Waiting user and cross-session inputs share Pi's runtime queue. Cake projects
-  transient queue metadata; it does not persist a competing message queue.
+- Waiting user and cross-session inputs use the owning Pi backend's admission
+  and queue mechanism. Regular-Pi queue metadata is transient; permanent Cake
+  Chat's inbox is Pi Durable-owned. Cake does not persist a competing runtime
+  queue. Scheduled delivery and report outboxes retain only their separately
+  defined Cake-owned intents until handoff.
 - Sidecar discussions and private subagents have independent Pi transcripts.
   Parent anchors, handles, and projections do not merge transcript ownership.
 
@@ -80,7 +105,7 @@ projections needed by a surface. References do not transfer ownership.
   Git checkout existence is not Session identity or resolution state.
 - Resolution is Cake metadata, not transcript relocation. Family children inherit
   their root's resolution; they have no independent resolution authority.
-- A session cannot be archived while its Pi turn is active. An agent's own
+- A Project Session cannot be archived while its Pi turn is active. An agent's own
   resolution request is deferred until the settled-turn boundary, after the final
   transcript snapshot.
 - Git landing and Session resolution are separate actions. Sessions sharing a
@@ -106,13 +131,16 @@ The backend owns Pi runtime lifecycle, filesystem access, application persistenc
 privileged Services, and domain operations. Electron adds native windows and device
 capabilities. Remote Electron acquires native capabilities, not a shadow backend.
 A missing native capability fails explicitly; accepted backend work survives client
-disconnection.
+disconnection. This does not give every operation process-restart durability;
+that guarantee belongs to its engine or focused workflow contract.
 
-`src/services/pi` is the Pi integration boundary. `CakeSessionRuntimes`, `PiModels`,
-and `PiAgentResources` expose focused Cake capabilities. Each Cake Session Runtime
-wraps exactly one Pi Session Runtime and returns a scoped Handle. Raw Pi objects
-and events stop at this boundary. Legacy focused adapters may remain in `src/agent`
-during migration, but no new Pi integration belongs there.
+`src/services/pi` is the regular-Pi integration boundary. `CakeSessionRuntimes`,
+`PiModels`, and `PiAgentResources` expose focused Cake capabilities. Permanent Cake
+Chat's Durable SDK adapter lives in `src/services/pi-durable`, with runtime leases
+still owned by `CakeSessionRuntimes`. Each Cake Session Runtime wraps one Pi-owned
+runtime and returns a scoped Handle. Raw SDK objects and events stop at their
+adapter boundary. Legacy focused adapters may remain in `src/agent` during
+migration, but no new Pi integration belongs there.
 
 ### Preload and transport
 
@@ -151,7 +179,10 @@ only the observations and persistence appropriate to their host.
 ## Renderer state ownership
 
 Before adding state, identify its authority, cohesive owner, lifetime, persistence
-boundary, and concurrency policy.
+boundary, and concurrency policy. Stores compose as stateful behavioral components,
+just as views compose presentation components. A complex application can require
+many Stores; count and tree depth are not quality metrics. Judge encapsulation,
+cohesive responsibility, and ownership rather than seeking fewer Stores.
 
 - **Models** are validated reactive projections, not durable authorities. The
   window-owned Model observer applies authoritative snapshots with `applySnapshot`
@@ -184,6 +215,11 @@ outside Model/Store directories.
 ## Trust and extensibility
 
 Model-presented content is data, never privileged application code.
+
+Remote access currently assumes one trusted user with multiple views. Its access
+controls are incomplete; accepted clients have full backend authority. Host/Origin
+validation is not authentication. Further restrictions are future work, not
+existing guarantees; see [the host guide](../development/headless-backend.md#scope-and-security-status).
 
 - Artifacts and blocking requests cross bounded, validated protocols. Generated
   HTML/React executes in an opaque-origin sandbox with restrictive CSP and explicit,

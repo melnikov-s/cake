@@ -1,13 +1,17 @@
 # Cake Effect architecture
 
 This document is the normative technical architecture of Cake. See
-[`cake-vocabulary.md`](./cake-vocabulary.md) for canonical terminology.
+[`cake-vocabulary.md`](./cake-vocabulary.md) for canonical terminology and the
+[documentation map](./README.md) for document responsibilities. Feature behavior
+and operational evidence belong in the linked focused guides.
 
 ## Architectural model
 
-Cake is one logical application split across Electron's process boundary. Main
-and each renderer window have separate JavaScript heaps and therefore separate
-Effect runtimes. They form one logical capability graph through Effect RPC.
+Cake is one logical application with a shared backend and privilege-separated
+hosts. The diagram shows local Electron: main and each renderer window have
+separate JavaScript heaps and Effect runtimes, joined through Effect RPC. The
+standalone Node host reuses the backend graph; browser and remote Electron
+clients use the same contracts over the network rather than the local preload.
 
 ```mermaid
 flowchart LR
@@ -92,6 +96,15 @@ export const create = Effect.fn("ManagedWorktrees.create")(function* (
 Domain modules are not Context services. Pure policies may live beside the
 Effect operations that use them.
 
+This does not leave live workflow state ownerless. Existing process-scoped
+capabilities retain queues, operation state, and Fibers; domain operations supply
+Cake policy. For example, `worktreeLandings` owns landing semantics while its
+coordinator owns the repository queue and accepted operation lifetime. Storage
+Services own persisted records, and renderer Stores own local presentation.
+`src/layers/` composes domain callbacks with capabilities without reversing
+Service dependencies. These are existing ownership roles, not a requirement to
+add a new abstraction or one coordinator per operation.
+
 Representative modules are:
 
 ```text
@@ -112,7 +125,9 @@ workingDirectoryTerminals
 
 Shared conversation functions live in `conversations`; Project Sessions, Cake
 Chat Sessions, Discussion Sessions, and Subagent Sessions do not implement
-parallel conversation engines. Kind-specific modules own creation (`start`),
+parallel Cake-owned conversation engines. Regular Pi and Pi Durable are distinct
+external backends behind these shared operations; their persistence and recovery
+guarantees remain different. Kind-specific modules own creation (`start`),
 lifecycle, catalog metadata, and the acquire options that attach Cake policy to
 the shared conversation hooks (`admitTurn`, `onSessionChanged`,
 `onTurnSettled`). Once a Project, Cake Chat, or Discussion Session exists, the
@@ -139,10 +154,11 @@ loaded by that renderer independently of Store and React lifetimes. It owns cano
 LLM identities and resource identities once; sessions select LLMs through model references.
 Session-owned model options and resource usages reference those shared identities while
 retaining runtime-specific authentication, capabilities, discovery, and activation data.
-Session Stores receive these Models as dependencies. Loaded Project Session identity is independent from observation
-lifetime: the selected and currently running sessions are pinned, while a process-local
-four-session idle LRU bounds warm observations. Evicted projections release transcript data,
-and persisted loaded identities do not demand subscriptions at startup. Window teardown first stops native events and Model
+Session Stores receive these Models as dependencies. Loaded Project Session identity
+is independent from observation lifetime: pins and bounded warm observations follow
+the renderer's session-retention policy.
+Evicted projections release transcript data, and persisted loaded identities do not
+demand subscriptions at startup. Window teardown first stops native events and Model
 synchronization, then disposes the Store tree, and finally disposes the Models.
 
 Renderer Stores read those Models, invoke `Client`, and own window-local
@@ -384,8 +400,13 @@ abort command.
 
 ## Pi services
 
-Pi is one external subsystem provided by `PiLive`, but it is not one god
-service. Cake exposes only the Pi capabilities it actually uses.
+Cake exposes focused Pi capabilities, not one god service. `PiLive` supplies the
+regular coding-agent integration; `BackendLive` also provides `CakeChatDurable`
+for the permanent coordinator. Raw SDK types stop in `services/pi` or
+`services/pi-durable`, respectively. The latter uses Pi Durable's SQLite adapter,
+not a JSONL mirror or a Cake-owned SQL transcript store. See
+[Pi backends](./cake-architecture.md#pi-backends) and the
+[Durable storage contract](./cake-storage.md#permanent-cake-chat).
 
 ### `CakeSessionRuntimes`
 
@@ -411,7 +432,7 @@ interface CakeSessionRuntimes {
 }
 ```
 
-The IDs-only stream discovers session identities from filenames without statting or parsing
+The regular-Pi IDs-only stream discovers session identities from filenames without statting or parsing
 transcripts; lifecycle workflows use it when they do not need display metadata. The catalog stream
 discovers sessions from filename and filesystem metadata, then opens each Pi JSONL transcript to
 derive its bounded title from the latest session-name entry or first user message. Pi is the sole
@@ -431,8 +452,12 @@ exposes a purpose-built Conversation observation Stream and operations such as
 prompt, steer, follow-up, abort, execute command, set model, compact, fork, and
 reload. The Handle is not the Cake Session's identity or persistence record. Runtime acquisition is keyed and scoped: concurrent consumers of one
 session share one process-local runtime, and the final release disposes it.
-Conflicting runtime-defining options never silently reconfigure an acquired
-runtime.
+The permanent coordinator retains an application-scoped lease after assembly;
+closing its pane does not release its final lease. Its document-kernel readers
+can inspect history without constructing a live Harness. Available operations
+follow the kind's capabilities; shared handles do not grant Cake Chat Project
+Session fork, rename, or resolution behavior. Conflicting runtime-defining options
+never silently reconfigure an acquired runtime.
 
 Cake domains choose a semantic capability profile:
 
@@ -479,9 +504,10 @@ Pi Session Runtime loads them, so they are exposed through the session handle.
 
 ### Pi projection boundary
 
-Raw Pi objects and events stop inside `services/pi`. Pure translation modules
-map Pi snapshots, events, resources, errors, and transient queue state to
-Cake-owned conversation values. Ordinary Pi forks preserve reconstructed
+Raw regular-Pi objects and events stop inside `services/pi`; Durable SDK objects
+stop inside `services/pi-durable`. Pure translation modules map each backend's
+supported history, events, resources, errors, and queue/inbox state to Cake-owned
+conversation values. Ordinary Pi forks preserve reconstructed
 compacted work logs through a schema-validated hidden Pi custom provenance
 entry that only the display projection consumes; it does not enter Pi's model
 context. Pi Service contracts never depend on a Project-Session projection or
@@ -489,16 +515,19 @@ RPC payload type. No other Cake module imports Pi packages directly.
 
 ## Session observation and Streams
 
-Pi remains the durable transcript authority. Conceptually, a session
-observation combines:
+Pi remains the durable transcript authority. A regular-Pi session observation
+conceptually combines:
 
 ```text
 Pi session history reconstructed through Pi from JSONL
 + live events from the active Pi Session Runtime
 ```
 
-Cake never tails or writes Pi JSONL directly. It never persists a second
-transcript or a duplicate durable event log.
+Permanent Cake Chat instead reads SDK-owned originals plus live/inbox state;
+its summary nodes and resets are not GUI history. Original-history pagination
+and recovery follow the [Durable storage contract](./cake-storage.md#permanent-cake-chat).
+Neither adapter persists a second Cake transcript or duplicate durable event
+log, and Cake never tails or writes Pi JSONL directly.
 
 A Conversation observation begins with one coherent snapshot and continues with
 ordered typed events without a subscription gap:
@@ -605,35 +634,13 @@ reduces that Stream into its window-lifetime `WorktreeCatalog`; `SessionSummary`
 mutable lifecycle copy and joins by Working Directory. A pending creation fact exists only
 until the authoritative entity arrives.
 
-Managed Worktree landing uses one process-local FIFO per Repository. The
-`worktreeLandings` domain module owns the semantic operation and exact Project
-Session prompts; its process-scoped coordinator owns operation state and Fibers,
-so accepted work continues across renderer reload or disconnection. A landing
-reserves its slot before any agent-assisted commit or conflict-resolution turn,
-retains it while that workflow is paused, and releases it when the landing
-completes, fails, or is explicitly dismissed. Later landings remain visibly
-queued and begin automatically in acceptance order; unrelated Repositories
-remain concurrent. Managed Worktree metadata persists the engine's paused
-strategy, allowing a later process to adopt conflict and squash-message pauses;
-queue position and active operation progress remain process-lifetime facts. The accepted merge-and-resolve intent is a
-persisted Managed Worktree fact until the main-owned completion policy resolves the Working
-Directory, so renderer remount, missing terminal operation projection, or failed terminal
-acknowledgement cannot lose it. Acknowledgement only retires terminal operation presentation.
-
-Worktree automation prompt settings persist only custom overrides in Application storage.
-Missing overrides resolve to the current source defaults when the domain sends a prompt;
-Settings shows those defaults as placeholders, not saved text. Clearing or resetting a
-field removes its override. `CakePromptSettingsStore` owns window-lifetime editing and
-serializes saves; the main Application domain owns normalization and durable authority.
-
-Bulk cleanup selection is also main-owned policy. The Managed Worktree domain previews and
-then authoritatively rediscovers landed Project worktrees that have effectively resolved sessions
-and no active sessions, including children whose root is archived while their own transcripts
-remain in active storage; the renderer uses the preview only for terminal-program confirmation. Cleanup
-runs sequentially and returns successful paths plus per-worktree failures, so partial progress is
-visible and retryable. Resolving a whole Working Directory likewise discovers its active Pi
-Sessions in main, collapses Session Family members to the parent lifecycle operation, and returns
-resolved IDs plus per-target failures for renderer navigation and error presentation.
+Landing, cleanup, and resolution policy are backend-owned. The process-scoped
+landing coordinator retains accepted operations independently of renderer lifetime;
+renderer Stores start, retry, dismiss, and present that work. Repository queueing,
+persisted pauses and merge-and-resolve intent, automation prompts, and partial
+cleanup results belong to the [worktree domain](../../src/domain/worktrees/).
+Queue progress is process-local; persisted pauses can be adopted after restart,
+and terminal-operation acknowledgement cannot discard durable resolve intent.
 
 `WorktreeStorage` is separate from `Git`:
 
@@ -653,23 +660,13 @@ installation, per-working-directory process lifecycle, ports, health, VS Code
 URLs, Source Control commands, source navigation, and Cake review annotations.
 Cake does not hide it behind a generic editor abstraction.
 
-`Terminal` owns PTY creation, input, resize, output Stream, exit, and cleanup.
-The `workingDirectoryTerminals` domain module associates one or more Terminal handles
-with a canonical Working Directory inside their renderer-window resource Scope. Project
-Sessions using the same Working Directory therefore share one terminal-tab collection,
-while sessions in different Managed Worktrees see independent collections. The visible
-collection follows the focused conversation pane. Resolving one Project Session does not
-terminate a PTY. Retiring or discarding its Working Directory closes every associated PTY
-before the checkout is removed; renderer disconnection closes that renderer's remaining
-PTYs. Retirement confirmation counts running terminal programs across every window,
-matching the collection that cleanup closes. Inspection failures abort retirement rather
-than assuming an idle shell. Main retains the canonical identity captured at open so
-cleanup does not require a still-existing checkout; closing a directory invalidates
-already-started opens. The renderer likewise rejects late open results for removed tabs
-and prevents new local tabs during retirement. These identities and operation generations
-are process/window-lifetime resource bookkeeping, never persisted state.
-Quake-style visibility is renderer Store state, and hiding the surface does not
-terminate the PTY.
+`Terminal` owns PTY resources; `workingDirectoryTerminals` associates their handles
+with canonical Working Directories in renderer-connection Scopes. Shared-directory
+tabs, disconnect cleanup, retirement checks, and late-open handling belong to that
+domain workflow. Retirement inspects and closes terminals across all connected
+windows before removing the checkout; canonical identities survive checkout removal
+and late opens cannot revive retired resources. Visibility is renderer state,
+not PTY lifetime.
 
 `Electron` owns concrete native capabilities such as windows, dialogs, external
 URLs, filesystem reveal, and application lifecycle. A renderer Store may call
@@ -701,18 +698,11 @@ Its operations expose immutable exact reads, revision publication with a typed
 latest or pin a revision. A single Service-owned semaphore serializes atomic
 catalog replacements. Request records are not artifact-storage entities.
 
-The default persistence format is versioned files:
-
-```ts
-interface StoredDocument {
-  readonly version: number;
-  readonly data: unknown;
-}
-```
-
-Loading is `read → parse envelope → migrate version-by-version → decode current
-Effect Schema`. Saving is `encode current value → add version → temporary write
-→ atomic rename`.
+Cake-owned documents default to versioned files; the envelope, migration order,
+and atomic-write contract are defined in [storage ownership](./cake-storage.md#versioning-and-migration).
+Pi's JSONL and Durable SQLite stores retain their own formats. An atomic document
+write is not a transaction spanning Cake metadata, Git, and Pi; see the
+[workflow recovery boundaries](./cake-storage.md#workflow-recovery-boundaries).
 
 r-state-tree snapshots are the serialization boundary for renderer-owned state:
 
@@ -739,7 +729,13 @@ entity state, identity, owned entity children, references, synchronous
 invariants, and pure queries. They contain no Services, Streams, Fibers, or
 persistence policy.
 
-Renderer Stores live in `src/renderer/stores`. They own:
+Renderer Stores live in `src/renderer/stores`. They compose as stateful behavioral
+components according to application ownership and lifetime, not as a fixed number
+of global containers. Many isolated Stores are appropriate when the application
+has many responsibilities. Evaluate encapsulation and cohesion, not Store count
+or tree depth; do not consolidate independent owners merely to reduce files.
+
+They own:
 
 - renderer application state and application/UI logic;
 - loading, success, and renderer-facing failure state;
@@ -814,8 +810,9 @@ React mounts the root Store outside render, finds it through r-state-tree's
 is lookup, not Store lifetime. React keeps only DOM-local behavior and isolated
 component state.
 
-`RootStore` remains the window composition and event-routing boundary. It
-does not own event subscriptions or every workflow. `NavigationStore` coordinates
+`RootStore` remains the window composition boundary. Bootstrap attaches focused
+observers for event routing; Root does not subscribe to authoritative streams or
+own every workflow. `NavigationStore` coordinates
 session, pane, history, and surface navigation; a stateless typed command registry
 dispatches application hotkeys to focused owners. Named product surfaces
 retain focused Stores. Every chat surface uses the authoritative shared `Chat`
@@ -830,7 +827,8 @@ require a monorepo split.
 src/
 ├── contracts/                # Feature-named shared schemas, errors, values, and pure codecs
 ├── services/                 # Outside-world capabilities and Live implementations
-│   ├── pi/
+│   ├── pi/                   # Regular coding-agent adapter and shared runtime leases
+│   ├── pi-durable/           # Permanent Cake Chat's Durable SDK adapter
 │   ├── git/
 │   ├── storage/
 │   ├── vscode/
@@ -860,8 +858,10 @@ src/
 │   ├── client/               # CakeIpcClient and renderer transport Layer
 │   ├── server/               # CakeRpcServer endpoint and shared handlers
 │   └── transport/            # Electron RPC protocol adapters
+├── backend/                  # Shared backend composition and initialization
+├── server/                   # Standalone Node host and network endpoint
 ├── main/
-│   ├── main.ts              # Electron process entry point and sole production runtime
+│   ├── main.ts              # Electron host entry point and process runtime
 │   ├── MainLive.ts          # Named production Layer capability/feature composition
 │   ├── MainApplication.ts   # Effect-native Electron application program
 │   └── BootstrapLive.ts     # Immutable platform bootstrap capabilities
@@ -992,18 +992,23 @@ that imports backend composition.
 ## Security and extensibility
 
 The renderer remains sandboxed with no Node globals, raw Electron IPC, raw Pi,
-filesystem, or credentials. Main validates trust, paths, and permissions even
-when renderer input has already decoded. Model-presented artifacts remain data
-and use validated or sandboxed protocols.
+filesystem, or credentials. The backend validates trust, paths, and permissions
+even when renderer input has already decoded. Model-presented artifacts remain
+data and use validated or sandboxed protocols. The unfinished remote-access
+feature currently assumes fully trusted clients; transport validation is not
+client authentication or restricted sharing. See
+[remote scope and security status](../development/headless-backend.md#scope-and-security-status).
 
 ## Testing and observability
 
 Domain tests execute real domain Effects with test Service Layers. Service
 integration tests exercise real external boundaries where practical. Renderer
-Store tests inject a controlled Promise `Client`; observer tests use controlled
-current-first Streams and assert identity, ordering, retry, and disposal; reducer
-tests assert focused Model updates and preserved child identity. Focused Electron tests prove the complete
-renderer/preload/RPC/main path.
+workflow tests start at the real feature UI with real Models and Stores and a
+controlled Promise `Client`; follow the [renderer testing guide](../development/renderer-store-testing.md)
+rather than duplicating those workflows in direct Store suites. Observer tests
+use controlled current-first Streams and assert identity, ordering, retry, and
+disposal; reducer tests assert focused Model updates and preserved child identity.
+Focused Electron tests exercise the complete renderer/preload/RPC/main path.
 
 Domain operations and service calls use named Effects and tracing annotations
 such as Project ID, Cake Session kind, Pi Session ID, Managed Worktree ID,

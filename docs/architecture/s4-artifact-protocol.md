@@ -63,7 +63,7 @@ and widget compilation/sandbox infrastructure with artifacts.
   session-tree authority. Artifact revisions are immutable values; advancing an
   artifact writes a new revision and never mutates the bytes or digest of an old
   one.
-- Electron main stores payloads under `$CAKE_HOME/state/artifacts` (defaulting
+- The backend stores payloads under `$CAKE_HOME/state/artifacts` (defaulting
   to `~/.cake/state/artifacts`) as SHA-256-addressed JSON blobs. One atomically
   replaced, versioned catalog manifest indexes global lineages, all revisions,
   and session/family links. Lineage IDs are global; revisions begin at one and
@@ -76,11 +76,19 @@ and widget compilation/sandbox infrastructure with artifacts.
   display correlation, and reachability. Pi never receives a second Cake-owned
   transcript.
 - Renderer `Artifact` instances are disposable projections of validated
-  repository records. Session snapshots hydrate current records; a focused
-  artifact observer applies live repository updates from the existing native
-  event stream directly to loaded renderer Conversation Models. Library operations
-  remain in the renderer artifact workflow Store and the main artifact domain
-  operations above `CakeSessionRuntimes`.
+  repository records. The declared [Conversation contract](./s1-session-contract.md#conversation-observation)
+  keeps artifact snapshots and updates in focused artifact projections, not
+  Conversation Models. Exact payloads belong to the shared Artifact Catalog Model;
+  transcript pointers identify inline publication surfaces without transferring
+  payload ownership. Library operations remain in the renderer artifact workflow
+  Store and backend artifact domain operations.
+
+  Documentation clarification: this paragraph formerly described session snapshots
+  and artifact events populating Conversation Models, contrary to that contract
+  and this guide's Artifact Catalog ownership below. The wording is aligned to the
+  declared contract; this documentation-only pass does not verify or claim an
+  implementation migration.
+
 - The catalog records explicit links to a Cake Session or Session Family. A link
   either follows the lineage's latest revision or pins one exact revision. Family
   creation workflows automatically create a family link; standalone fork policy

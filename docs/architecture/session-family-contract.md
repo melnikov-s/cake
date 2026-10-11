@@ -103,10 +103,13 @@ queue insertion alone never triggers a stopped-child notice. Explicit abort uses
 the same outcome callback once, even if the original prompt subsequently
 returns. Only consumed input IDs count when correlating a child's reply.
 
-Family storage version 5 persists recursive parentage, per-child Working
+Family storage version 5 established recursive parentage, per-child Working
 Directory bindings, sender/recipient request and reply correlation, response
-expectations, and notice attempts. It has no per-child resolution state or
-lifecycle synchronization journals. Version 4 journals are discarded on decode;
+expectations, and notice attempts. Version 6 extends the same journal to
+coordinator-spawned independent sessions; the current substantive-result outbox
+and receipt rules are defined in [spawned-session reporting](../development/spawned-session-reporting.md).
+Queue acceptance alone does not confirm result delivery. The journal has no
+per-child resolution state or lifecycle synchronization journals. Version 4 journals are discarded on decode;
 the root's Cake-owned resolution metadata determines the entire family's state. Version 1 and 2 documents
 migrate their flat children into direct children of the root with the family's
 shared Working Directory; version 3 recursive documents migrate legacy turns as

@@ -1,13 +1,16 @@
 # Foundation process boundaries
 
-This document is the compact process-safety contract. The complete runtime
-design is in [`effect-architecture.md`](./effect-architecture.md).
+This document is the compact process-safety contract for local Electron hosting.
+The shared backend also runs in Node; remote Electron supplies native capabilities
+without acquiring a local shadow backend. See
+[`effect-architecture.md`](./effect-architecture.md) for host composition and the
+[documentation map](./README.md) for focused contracts.
 
-| Process  | Owns                                                                                                                                        | May import                                                                                                     | Must not expose                                                                                       |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Renderer | React, one window-local r-state-tree, one infrastructure Effect runtime, `Client`, one Model observer, renderer application state and logic | Renderer Models/Stores/components, renderer infrastructure, shared Effect RPC protocol, sandbox-safe libraries | Node globals, raw Electron IPC, raw Pi/Git/filesystem objects, main domain or Service implementations |
-| Preload  | Frozen Electron transport for Effect RPC                                                                                                    | Electron IPC and shared transport Schemas                                                                      | `ipcRenderer`, arbitrary channels, business logic, privileged objects                                 |
-| Main     | `MainLive`, Electron lifecycle, Effect RPC server, Cake domain operations, outside-world Services, persistence, scoped resources            | Electron, Effect Platform, shared RPC protocol, Pi packages only through `src/services/pi`                     | Privileged or raw external objects crossing into preload/renderer                                     |
+| Process  | Owns                                                                                                                                        | May import                                                                                                              | Must not expose                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Renderer | React, one window-local r-state-tree, one infrastructure Effect runtime, `Client`, one Model observer, renderer application state and logic | Renderer Models/Stores/components, renderer infrastructure, shared Effect RPC protocol, sandbox-safe libraries          | Node globals, raw Electron IPC, raw Pi/Git/filesystem objects, main domain or Service implementations |
+| Preload  | Frozen Electron transport for Effect RPC                                                                                                    | Electron IPC and shared transport Schemas                                                                               | `ipcRenderer`, arbitrary channels, business logic, privileged objects                                 |
+| Main     | `MainLive`, Electron lifecycle, Effect RPC server, Cake domain operations, outside-world Services, persistence, scoped resources            | Electron, Effect Platform, shared RPC protocol, Pi packages only through `src/services/pi` or `src/services/pi-durable` | Privileged or raw external objects crossing into preload/renderer                                     |
 
 Cake is one logical application but not one in-memory Effect runtime. Main and
 each renderer window have separate heaps, runtimes, Layers, Scopes, and Fibers.
@@ -36,7 +39,8 @@ operations and contain no Cake business logic.
 
 State and lifetime ownership:
 
-- `RootStore` is the window composition and application-intent boundary, not an
+- `RootStore` is the window composition boundary. `NavigationStore` coordinates
+  cross-Store navigation intents; focused observers route events. Root is not an
   authoritative subscription or broad event-routing owner.
 - Focused Stores own renderer workflows, local operations, and concurrency
   policy. Renderer bootstrap attaches focused window-owned observers and
@@ -45,7 +49,8 @@ State and lifetime ownership:
 - Effect Scope owns main resources, renderer connections, renderer-infrastructure
   subscriptions, and RPC cancellation. r-state-tree Store disposal owns local
   workflow cleanup and supplies abort signals to the client adapter.
-- Pi owns Pi Session transcripts and runtime facts. Cake only projects them.
+- Pi owns transcripts and runtime facts. Regular Pi uses session files; permanent
+  Cake Chat uses Pi Durable's SQLite storage and recovery. Cake only projects them.
 - Main persists Cake-owned facts through focused typed storage Services.
 - Closing a renderer connection interrupts its RPC requests and subscriptions;
   it does not automatically destroy independently retained domain work.

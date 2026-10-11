@@ -77,15 +77,20 @@ duplication, and loss; they are not global application versions.
 
 ### Pi Session
 
-A Pi-owned durable transcript identified by `PiSessionId` and represented by
-Pi's session files. Pi owns its messages, tool history, branches, compaction,
-and transcript format.
+The Pi-owned conversation backing a materialized Cake Session. For regular Pi,
+this is the transcript identified by `PiSessionId` and represented by Pi's session
+files, with Pi-owned messages, tool history, branches, compaction, and format.
+Permanent Cake Chat instead uses Pi Durable's SDK-owned SQLite originals and
+checkpoints. The shared ownership term does not imply that Durable uses JSONL or
+`SessionManager`; see [Pi backends](./cake-architecture.md#pi-backends).
 
 ### Pi Session Runtime
 
 A live, scoped Pi resource operating on a Pi Session. It accepts prompts and
 other runtime operations and emits live events. Releasing it does not delete
-the Pi Session.
+the Pi Session. Regular-Pi turns and queues have runtime lifetime; permanent Cake
+Chat's persisted inbox and execution recovery follow the
+[Durable storage contract](./cake-storage.md#permanent-cake-chat), not the regular-Pi lifetime.
 
 ### Conversation
 
@@ -93,8 +98,9 @@ The transcript-bearing concept presented by Cake. Every materialized Cake
 Session has exactly one Conversation. Pi remains the durable authority for that
 Conversation's messages, tool history, branches, compaction, and transcript
 format. Cake projects purpose-built `ConversationSnapshot` and
-`ConversationEvent` values; raw Pi trees and messages never leave
-`src/services/pi`.
+`ConversationEvent` values; raw SDK objects stay inside `src/services/pi` or
+`src/services/pi-durable`, according to the backend. Shared presentation does not
+require identical history-loading or recovery mechanics.
 
 A Conversation is not a Cake Session: it does not own Project routing,
 lifecycle, relationships, review threads, or artifact links. A staged, unsent
@@ -132,11 +138,13 @@ define Project Session ownership.
 ### Cake Chat Session
 
 The one permanent application-level coordinator, with one independently observed Conversation,
-a bounded OptChat summary view and a curated coordination-control projection. It creates and
-manages independent Project task sessions, but cannot execute shell/file/browser work itself.
-It is not a collection of global chats and has no resolve/delete/rename/split lifecycle.
-Its renderer Store does
-not use a Project Session-shaped snapshot and carries no Project, Working
+a bounded OptChat summary view and a curated coordination-control projection.
+Pi Durable owns its originals, persisted inbox, checkpoints, and recovery through
+its SQLite adapter; this is intentionally different from regular Project Sessions.
+It creates and manages independent Project task sessions, but cannot execute
+shell/file/browser work itself. It is not a collection of global chats and has
+no resolve/delete/rename/split lifecycle. Its renderer Store does not use a
+Project Session-shaped snapshot and carries no Project, Working
 Directory, review, subagent, artifact, Session Family, or schedule state. It
 remains separate from Project Session catalogs.
 
@@ -227,7 +235,9 @@ coordinator owns correlation and settlement, not each workflow's product state.
 
 Cake's scoped adapter around **exactly one Pi Session Runtime for exactly one
 Cake Session**. It attaches the Cake Session kind's capabilities, hooks, and
-projection policy without replacing Pi's execution machinery.
+projection policy without replacing Pi's execution machinery. The backing engine
+is regular Pi or Pi Durable according to the Cake Session kind; this does not
+create a second Cake-owned engine or transcript.
 
 ### Cake Session Handle
 
@@ -340,8 +350,8 @@ A named, free Effect function exported by a domain module, usually created with
 ### RPC protocol
 
 The shared Effect RPC group and Effect Schemas defining commands, queries,
-subscriptions, successes, typed failures, and middleware across the Electron
-process boundary.
+subscriptions, successes, typed failures, and middleware across Electron IPC or
+the network transport. Transport choice does not change domain authority.
 
 ### Query
 
@@ -398,7 +408,11 @@ An r-state-tree behavioral component owning window-local renderer application
 state, application/UI logic, workflow operations, cancellation, and concurrency
 policy. Stores read Models and invoke `Client`; they do not
 consume Effect directly or contain Cake business rules or privileged
-implementations.
+implementations. Stores compose as stateful components: parents coordinate children
+according to behavioral ownership and lifetime. Many small, isolated Stores can be
+the appropriate model of a complex application. Count and depth are not quality
+metrics; duplicated authority, leaked internals, and unrelated responsibilities are
+the concerns. Composition does not require parents to forward each child's API.
 
 ### Model
 

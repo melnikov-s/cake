@@ -23,7 +23,9 @@ The conversation remains primary. Rich surfaces should appear because they help
 the current work, not because Cake is trying to become a general-purpose IDE.
 
 See `docs/architecture/cake-architecture.md` for the process, authority, trust,
-state, and development boundaries behind these principles.
+state, and development boundaries behind these principles. The documentation map
+in `docs/architecture/README.md` distinguishes maintained contracts from task-specific
+artifacts and explains their documentation responsibilities.
 
 ## Architecture and library guidance
 
@@ -49,20 +51,25 @@ code change.
 
 ## Core ownership rules
 
-- Pi owns agent sessions, transcript history, model/provider state, tool loops,
-  compaction, branching, and the Pi JSONL format.
+- Pi owns agent sessions, transcript history, model/provider state, and execution.
+  Regular Project Sessions use Pi's coding agent and JSONL history, branching,
+  and compaction. Permanent Cake Chat intentionally uses Pi Durable's SDK-owned
+  SQLite originals, inbox, checkpoints, and recovery; shared presentation does
+  not imply identical engine or persistence mechanics.
 - Cake owns the desktop application model, project/session navigation, renderer
   projections, window and workflow state, artifacts, reviews, and other
   GUI-specific persistence. Never create a second Cake-owned copy of
   a Pi transcript.
-- `src/services/pi` is the target Pi Service boundary. During migration,
-  focused legacy adapters may remain in `src/agent`, but no new Pi integration
-  belongs there. Other Cake modules use Cake-owned values and domain operations
-  rather than raw Pi objects.
-- Electron main owns Pi runtimes, filesystem access, persistence, and native
-  services. Preload exposes one narrow validated bridge. The sandboxed renderer
-  owns React presentation and window-scoped Stores; it has no Node globals or
-  raw Electron IPC.
+- `src/services/pi` is the regular-Pi Service boundary; `src/services/pi-durable`
+  contains the permanent coordinator's Durable adapter. During migration, focused
+  legacy adapters may remain in `src/agent`, but no new Pi integration belongs
+  there. Other Cake modules use Cake-owned values and domain operations rather
+  than raw SDK objects.
+- The shared backend owns Pi runtimes, filesystem access, and persistence.
+  Electron main hosts it locally and adds native capabilities; remote Electron
+  does not acquire a shadow backend. Preload exposes one narrow validated bridge.
+  The sandboxed renderer owns React presentation and window-scoped Stores; it has
+  no Node globals or raw Electron IPC.
 - Services never import Cake domain, composition, or renderer modules, even for types.
   Backend and renderer implementations never import one another. Shared schemas,
   errors, values, and pure codecs consumed across layers belong in feature-named
@@ -176,8 +183,8 @@ Before implementing renderer UI:
 
 ## Renderer state architecture
 
-- Treat each Store as a stateful behavioral component with one cohesive product or workflow responsibility.
-- `RootStore` is the renderer composition root and event-routing boundary. A window-scoped lifetime does not make `RootStore`, a shell Store, or a generically named window-scoped Store the owner of every workflow in that window.
+- Treat each Store as a stateful behavioral component with one cohesive product or workflow responsibility. Many well-isolated Stores can accurately reflect a complex application; count and tree depth are not quality metrics or reasons to consolidate independent owners.
+- `RootStore` is the renderer composition root. Bootstrap attaches focused event-routing observers; `NavigationStore` coordinates cross-Store navigation intents. A window-scoped lifetime does not make Root or a shell Store the owner of every workflow in that window.
 - Give named product surfaces named Stores: navigation/sidebar, project selection, active session/chat, changes, reviews, browse, settings, and similar independently evolving workflows.
 - Compose Stores according to ownership and lifetime. Put a shared Store near the root; nest it only when its lifetime and behavior are truly owned by one parent surface.
 - Parent Stores coordinate cross-Store work. They must not duplicate child state or expose one-for-one forwarding facades for a child's API.
