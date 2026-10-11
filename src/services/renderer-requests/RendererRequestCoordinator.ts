@@ -721,20 +721,23 @@ export const RendererRequestCoordinatorLive: Layer.Layer<
           completion,
         };
         pending.set(uiRequestId, entry);
-        yield* publishProjectEvent(connectionId, {
+        let event: Extract<CakeEvent, { type: "ui-request" }> = {
           type: "ui-request",
           requestId: operationId,
           uiRequestId,
           sessionId: requestScopeId,
           kind: request.kind,
-          workflow: request.workflow,
           title: request.title,
           message: request.message,
           placeholder: request.placeholder,
           initialValue: request.initialValue,
           multiline: request.multiline,
           options: request.options,
-        }).pipe(Effect.tapError(() => Effect.sync(() => pending.delete(uiRequestId))));
+        };
+        if (request.workflow !== undefined) event = { ...event, workflow: request.workflow };
+        yield* publishProjectEvent(connectionId, event).pipe(
+          Effect.tapError(() => Effect.sync(() => pending.delete(uiRequestId))),
+        );
         const result = yield* awaitPending(uiRequestId, entry, request.signal, request.timeout);
         return yield* Schema.decodeUnknownEffect(Schema.UndefinedOr(Schema.String))(result).pipe(
           Effect.mapError((cause) => coordinatorError("requestUiForConnection", String(cause))),

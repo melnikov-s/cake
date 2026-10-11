@@ -4,10 +4,13 @@ import {
 } from "../../../../src/services/clients/ClientConnections";
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Context, Effect, Exit, Fiber, Layer, Queue, References, Stream } from "effect";
+import { Context, Effect, Exit, Fiber, Layer, Queue, References, Schema, Stream } from "effect";
 import { describe, expect } from "vitest";
 import { observeControls } from "../../../../src/domain/cake-chats/cakeChatOperations";
-import type { CakeEvent } from "../../../../src/contracts/application/cake-rpc-contract";
+import {
+  artifactEventSchema,
+  type CakeEvent,
+} from "../../../../src/contracts/application/cake-rpc-contract";
 import {
   RendererRequestCoordinator,
   RendererRequestCoordinatorLive,
@@ -55,6 +58,67 @@ const createDraft = {
 };
 
 describe("RendererRequestCoordinator", () => {
+  it.effect("publishes and settles ordinary UI requests without a workflow key", () =>
+    Effect.gen(function* () {
+      const { coordinator, events } = yield* makeFixture;
+      yield* coordinator.registerProjectSession("session", "/projects/cake");
+      yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "session" }, 11);
+      const pending = yield* coordinator
+        .requestUi("session", { kind: "text", title: "Answer", message: "Provide a value" })
+        .pipe(Effect.forkChild);
+      const event = yield* Queue.take(events);
+      assert.equal(event.type, "ui-request");
+      yield* Schema.decodeUnknownEffect(artifactEventSchema)(event);
+      expect(event).not.toHaveProperty("workflow");
+      yield* coordinator.respondUi(11, "session", {
+        sessionId: "session",
+        requestId: event.requestId,
+        uiRequestId: event.uiRequestId,
+        cancelled: false,
+        value: "accepted",
+      });
+      expect(yield* Fiber.join(pending)).toBe("accepted");
+    }),
+  );
+
+  it.effect("publishes and settles workflow choices with their frozen proposal", () =>
+    Effect.gen(function* () {
+      const { coordinator, events } = yield* makeFixture;
+      yield* coordinator.registerProjectSession("session", "/projects/cake");
+      yield* coordinator.bind({ _tag: "ProjectSession", sessionId: "session" }, 11);
+      const workflow = {
+        ownerSessionId: "session",
+        program: {
+          meta: { name: "focused-workflow", description: "Focused request", phases: ["Verify"] },
+          source: "export default async function () {}",
+          sourcePath: "/projects/cake/verify.ts",
+          args: { verify: true },
+        },
+      };
+      const pending = yield* coordinator
+        .requestUi("session", {
+          kind: "workflow-choice",
+          title: "Run workflow?",
+          message: "Choose execution",
+          workflow,
+        })
+        .pipe(Effect.forkChild);
+      const event = yield* Queue.take(events);
+      assert.equal(event.type, "ui-request");
+      yield* Schema.decodeUnknownEffect(artifactEventSchema)(event);
+      expect(event.kind).toBe("workflow-choice");
+      expect(event.workflow).toEqual(workflow);
+      yield* coordinator.respondUi(11, "session", {
+        sessionId: "session",
+        requestId: event.requestId,
+        uiRequestId: event.uiRequestId,
+        cancelled: false,
+        value: "workflow",
+      });
+      expect(yield* Fiber.join(pending)).toBe("workflow");
+    }),
+  );
+
   it.effect(
     "validates an interview answer before settling and rejects foreign or duplicate responses",
     () =>
