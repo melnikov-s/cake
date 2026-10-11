@@ -83,29 +83,6 @@ export class ComposerDraftStore extends Store<ComposerDraftStoreProps> {
     this.requestFocus();
   }
 
-  async addAttachments() {
-    this.clearError();
-    try {
-      const selected = await this.client.filesystem.chooseAttachments({ signal: this.signal });
-      if (this.signal.aborted) return;
-      this.attachments.push(
-        ...selected.filter(
-          (item) =>
-            "name" in item &&
-            !this.attachments.some(
-              (current) =>
-                current.kind === item.kind &&
-                "name" in current &&
-                current.name === item.name &&
-                (current.kind !== "file" || (item.kind === "file" && current.path === item.path)),
-            ),
-        ),
-      );
-    } catch (error) {
-      if (!this.signal.aborted) this.reportError(error);
-    }
-  }
-
   addPastedText(text: string) {
     this.clearError();
     if (

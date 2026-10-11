@@ -1735,22 +1735,14 @@ const sessionMessagesScenario: VisualCaptureScenario = {
   region: (page) => page.locator(".transcript"),
 };
 
-let taskAttachmentDocumentPath = "";
-
 const taskInputAttachmentsScenario: VisualCaptureScenario = {
   name: "task-input-attachments",
-  description:
-    "Shared screenshot, Markdown and large-paste attachments with a private text preview",
+  description: "Shared screenshot and large-paste attachments with a private text preview",
   states: ["default", "preview", "project"],
   async seed(paths, theme) {
     await cakeChatScenario.seed(paths, theme);
-    taskAttachmentDocumentPath = join(paths.project, "requirements.md");
-    await writeFile(
-      taskAttachmentDocumentPath,
-      "# Build investigation\n\nFind the failing step, explain the cause, and recommend a focused fix.\n",
-    );
   },
-  async prepare(page, state, application) {
+  async prepare(page, state) {
     await assistantMarkdownCode.prepare(page, "default");
     // A screenshot of this isolated fixture, never the user's actual desktop.
     const screenshot = (await page.screenshot({ animations: "disabled", type: "png" })).toString(
@@ -1760,13 +1752,6 @@ const taskInputAttachmentsScenario: VisualCaptureScenario = {
       await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
       await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
     }
-    if (!application) throw new Error("Attachment captures require Electron");
-    // Replace only the native file-picker boundary; retain the real upload/composer workflow.
-    await application.evaluate(({ dialog }, path) => {
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-    }, taskAttachmentDocumentPath);
-    await page.getByRole("button", { name: "Attach files", exact: true }).click();
-    await expect(page.locator(".workbench-composer")).toContainText("requirements.md");
     const input = page.getByRole("combobox", {
       name: state === "project" ? "Message" : "Message Cake Chat",
       exact: true,
@@ -1883,7 +1868,7 @@ const projectCustomInstructionsScenario: VisualCaptureScenario = {
 
 const dictationInputScenario: VisualCaptureScenario = {
   name: "dictation-input",
-  description: "Real Chat composer with toolbar dictation and conversation mode beside Send",
+  description: "Real Chat composer with dictation and conversation mode in the leading toolbar",
   states: ["default", "preparing", "error", "speaking", "wrapped", "muted"],
   environment: conversationCountdownScenario.environment,
   seed: conversationCountdownScenario.seed,

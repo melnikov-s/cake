@@ -58,6 +58,7 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
       },
     }),
   );
+  await writeFile(join(project, "notes.txt"), "Fixture notes.\n");
   await writeFile(
     join(skillDirectory, "SKILL.md"),
     "---\nname: desktop-fixture\ndescription: Desktop fixture skill\n---\nFixture.\n",
@@ -121,6 +122,13 @@ test("selects and runs slash commands from the composer with the keyboard", asyn
     await expect(composer).toBeFocused();
     await composer.pressSequentially("hello");
     await expect(composer).toHaveValue("hello");
+    await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+
+    await composer.fill("Explain @no");
+    await expect(page.getByRole("option", { name: /notes\.txt/ })).toBeVisible();
+    await composer.press("Tab");
+    await expect(composer).toHaveValue("Explain @notes.txt ");
+    await expect(composer).toBeFocused();
     await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 
     await composer.fill(Array.from({ length: 30 }, (_, index) => `Line ${index + 1}`).join("\n"));

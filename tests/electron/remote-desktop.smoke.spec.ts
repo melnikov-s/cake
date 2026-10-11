@@ -39,8 +39,8 @@ test("remote Electron uses the full shell and only the server owns agent state",
       mkdir(path, { recursive: true }),
     ),
   );
-  const selectedLaptopFile = join(directory, "selected-on-desktop.txt");
-  await writeFile(selectedLaptopFile, "DESKTOP_FILE_BYTES_ONLY");
+  const mentionedFile = join(project, "server-note.txt");
+  await writeFile(mentionedFile, "SERVER_FILE_BYTES_ONLY");
   await writeFile(
     join(home, "pi", "models.json"),
     JSON.stringify({
@@ -411,48 +411,26 @@ test("remote Electron uses the full shell and only the server owns agent state",
       );
       await expect(input).toHaveValue("Remote rewrite");
       await expect(input).toBeFocused();
-      // The native chooser grants only this device's selected bytes; the backend
-      // receives an upload token, then materializes an accepted, server-owned path.
-      await application.evaluate(({ dialog }, filePath) => {
-        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [filePath] });
-      }, selectedLaptopFile);
-      await input.fill("Read selected file");
-      await page.getByRole("button", { name: "Attach files" }).click();
-      await expect(page.getByText("@ selected-on-desktop.txt")).toBeVisible();
-      await expect(input).toHaveValue("Read selected file");
+      // @ completion resolves files in the server's working directory, not this device.
+      await input.fill("Read @server-no");
+      await expect(page.getByRole("option", { name: /server-note\.txt/ })).toBeVisible();
+      await input.press("Tab");
+      await expect(input).toHaveValue("Read @server-note.txt ");
+      await expect(input).toBeFocused();
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
       await page.getByRole("button", { name: "Send", exact: true }).click();
       await expect.poll(() => responses.length).toBeGreaterThanOrEqual(6);
-      await expect
-        .poll(() => readdir(join(home, "state", "attachments", "accepted")))
-        .toHaveLength(1);
-      const [materialized] = await readdir(join(home, "state", "attachments", "accepted"));
-      expect(
-        await readFile(
-          join(home, "state", "attachments", "accepted", materialized!, "selected-on-desktop.txt"),
-          "utf8",
-        ),
-      ).toBe("DESKTOP_FILE_BYTES_ONLY");
       await expect.poll(() => providerRequests.length).toBeGreaterThanOrEqual(6);
-      expect(providerRequests[5]).toContain(materialized!);
-      // Pi's file attachment contract is an @server-path mention, not inline
-      // bytes. Drive the real Pi read tool and prove provider receives the bytes.
-      const serverAttachmentPath = join(
-        home,
-        "state",
-        "attachments",
-        "accepted",
-        materialized!,
-        "selected-on-desktop.txt",
-      );
+      expect(providerRequests[5]).toContain("@server-note.txt");
+      // Drive the real Pi read tool and prove the provider receives server file bytes.
       responses[5]!.write(
-        `data: ${JSON.stringify({ id: "read-file", object: "chat.completion.chunk", created: 0, model: "fixture-model", choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "call-read-file", type: "function", function: { name: "read", arguments: JSON.stringify({ path: serverAttachmentPath }) } }] }, finish_reason: null }] })}\n\n`,
+        `data: ${JSON.stringify({ id: "read-file", object: "chat.completion.chunk", created: 0, model: "fixture-model", choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "call-read-file", type: "function", function: { name: "read", arguments: JSON.stringify({ path: mentionedFile }) } }] }, finish_reason: null }] })}\n\n`,
       );
       responses[5]!.end(
         `data: ${JSON.stringify({ id: "read-file", object: "chat.completion.chunk", created: 0, model: "fixture-model", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] })}\n\ndata: [DONE]\n\n`,
       );
       await expect
-        .poll(() => providerRequests.some((body) => body.includes("DESKTOP_FILE_BYTES_ONLY")))
+        .poll(() => providerRequests.some((body) => body.includes("SERVER_FILE_BYTES_ONLY")))
         .toBe(true);
       await page.getByRole("button", { name: "Stop", exact: true }).click();
       // A pasted image larger than the default 1MiB socket request cap transfers

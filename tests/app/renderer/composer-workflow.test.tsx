@@ -16,12 +16,16 @@ const source = {
   name: "active.ts",
   location: { path: "src/active.ts", range: { start: { line: 1 }, end: { line: 2 } } },
 };
-const image = (name: string) => ({
-  kind: "image" as const,
-  name,
-  mimeType: "image/png",
-  data: "aW1hZ2U=",
+const pastedText = (label: string) => `${label}\n${"attachment details\n".repeat(50)}`;
+const textAttachment = (label: string) => ({
+  kind: "text" as const,
+  name: "Pasted text · 52 lines",
+  text: pastedText(label),
 });
+async function pasteAttachment(user: ReturnType<typeof userEvent.setup>, label: string) {
+  await user.click(input());
+  await user.paste(pastedText(label));
+}
 
 async function renderComposer(
   client: TestClientOverrides = {},
@@ -150,37 +154,6 @@ describe("Chat composer workflow", () => {
     expect(input().value).toBe("Please research this");
     expect(screen.queryByRole("button", { name: /^Pasted text/ })).toBeNull();
   });
-  it("keeps same-named local files distinct and sends only the attachment the user kept", async () => {
-    const first = { kind: "file" as const, name: "notes.txt", path: "/one/notes.txt" };
-    const second = { ...first, path: "/two/notes.txt" };
-    const chooseAttachments = vi
-      .fn<Client["filesystem"]["chooseAttachments"]>()
-      .mockResolvedValueOnce([first])
-      .mockResolvedValueOnce([second]);
-    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
-      TurnId.make("10000000-0000-4000-8000-000000000001"),
-    );
-    using fixture = await renderComposer({
-      filesystem: { chooseAttachments },
-      sessionChats: { prompt },
-    });
-    await fixture.user.type(input(), "Compare these");
-    await fixture.user.click(screen.getByRole("button", { name: "Attach files" }));
-    await fixture.user.click(screen.getByRole("button", { name: "Attach files" }));
-    expect(screen.getAllByRole("button", { name: "Remove notes.txt" })).toHaveLength(2);
-    expect(input().value).toBe("Compare these");
-    await fixture.user.click(screen.getAllByRole("button", { name: "Remove notes.txt" })[0]!);
-    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() =>
-      expect(prompt).toHaveBeenCalledWith(
-        expect.objectContaining({ text: "Compare these", attachments: [second] }),
-        expect.any(Object),
-      ),
-    );
-    expect(input().value).toBe("");
-    expect(screen.queryByRole("button", { name: "Remove notes.txt" })).toBeNull();
-  });
-
   it("restores consumed editor context on failure, then sends it once on retry", async () => {
     const prompt = vi
       .fn<Client["sessionChats"]["prompt"]>()
@@ -213,18 +186,11 @@ describe("Chat composer workflow", () => {
       .fn<Client["sessionChats"]["prompt"]>()
       .mockReturnValueOnce(pending)
       .mockResolvedValue(TurnId.make("10000000-0000-4000-8000-000000000002"));
-    const chooseAttachments = vi
-      .fn<Client["filesystem"]["chooseAttachments"]>()
-      .mockResolvedValueOnce([image("sent.png")])
-      .mockResolvedValueOnce([image("next.png")]);
-    using fixture = await renderComposer(
-      { sessionChats: { prompt }, filesystem: { chooseAttachments } },
-      { editor: true },
-    );
-    await fixture.user.click(screen.getByRole("button", { name: "Attach files" }));
+    using fixture = await renderComposer({ sessionChats: { prompt } }, { editor: true });
+    await pasteAttachment(fixture.user, "sent");
     await typeAndSend(fixture.user, "First message");
     await fixture.user.type(input(), "Next message");
-    await fixture.user.click(screen.getByRole("button", { name: "Attach files" }));
+    await pasteAttachment(fixture.user, "next");
     fixture.selectEditor("src/next.ts");
     await act(async () => {
       reject(new Error("Send failed"));
@@ -232,16 +198,15 @@ describe("Chat composer workflow", () => {
     });
     expect(await screen.findByText("Send failed")).toBeDefined();
     expect(input().value).toBe("Next message");
-    expect(screen.getByRole("button", { name: "Remove next.png" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Remove sent.png" })).toBeDefined();
+    expect(screen.getAllByRole("button", { name: /^Remove Pasted text/ })).toHaveLength(2);
     expect(screen.getByRole("button", { name: /Remove.*next.ts/ })).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(prompt).toHaveBeenCalledTimes(2));
     expect(prompt.mock.calls[1]?.[0]).toMatchObject({
       text: "Next message",
       attachments: expect.arrayContaining([
-        image("next.png"),
-        image("sent.png"),
+        textAttachment("next"),
+        textAttachment("sent"),
         expect.objectContaining({
           kind: "source",
           location: expect.objectContaining({ path: "src/next.ts" }),
@@ -257,11 +222,10 @@ describe("Chat composer workflow", () => {
     using fixture = await renderComposer(
       {
         projectSessions: { toolCompact },
-        filesystem: { chooseAttachments: async () => [image("reference.png")] },
       },
       { editor: true },
     );
-    await fixture.user.click(screen.getByRole("button", { name: "Attach files" }));
+    await pasteAttachment(fixture.user, "reference");
     await typeAndSend(fixture.user, "/toolcompact Continue cleanly");
     await waitFor(() =>
       expect(toolCompact).toHaveBeenCalledWith(
@@ -275,7 +239,7 @@ describe("Chat composer workflow", () => {
       ),
     );
     expect(input().value).toBe("");
-    expect(screen.getByRole("button", { name: "Remove reference.png" })).toBeDefined();
+    expect(screen.getByRole("button", { name: /^Remove Pasted text/ })).toBeDefined();
   });
 
   it("replaces implicit editor context with an explicit note at the same range and reveals context when removed", async () => {

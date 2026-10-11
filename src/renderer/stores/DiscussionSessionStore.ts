@@ -104,8 +104,6 @@ export class DiscussionSessionStore extends Store<DiscussionSessionStoreProps> {
                 ? "Reply to side chat"
                 : "Reply to code chat",
         leadingParts: () => this.anchorParts,
-        addAttachments: () =>
-          this.conversationSessionStore.composerStore.draftStore.addAttachments(),
         suggestFiles: (prefix) =>
           this.conversationSessionStore.composerStore.draftStore.suggestFiles(prefix),
         rewordWorkingDirectory: () => this.thread.workingDirectory,

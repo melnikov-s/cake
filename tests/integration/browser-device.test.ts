@@ -21,7 +21,7 @@ beforeAll(async () => {
   );
 }, 60_000);
 
-it("browser menu actions and picked file bytes reach backend staging without a browser path", async () => {
+it("browser menu actions and pasted image bytes reach backend staging without a browser path", async () => {
   await Effect.runPromise(
     Effect.gen(function* () {
       const projectPath = yield* Effect.acquireRelease(
@@ -31,7 +31,7 @@ it("browser menu actions and picked file bytes reach backend staging without a b
       const controlled = browserBackendAdapter(projectPath);
       const backend = yield* makeNetworkTestBackend({
         adapter: controlled.adapter,
-        models: [browserTestModel],
+        models: [{ ...browserTestModel, input: ["text", "image"] }],
         projectPath,
       });
       const listener = yield* openNetworkListener(
@@ -92,37 +92,30 @@ it("browser menu actions and picked file bytes reach backend staging without a b
           await browserExpect(page.getByRole("dialog", { name: "Session actions" })).toHaveCount(0);
           await browserExpect(page.getByRole("textbox", { name: "Session name" })).toBeVisible();
           await page.getByRole("textbox", { name: "Session name" }).press("Escape");
-          await page.getByRole("button", { name: /Start new chat in/ }).click();
-          await browserExpect(page.getByRole("button", { name: "Attach files" })).toBeVisible();
-          const fileChooser = page.waitForEvent("filechooser");
-          await page.getByRole("button", { name: "Attach files" }).click();
-          await (
-            await fileChooser
-          ).setFiles([
-            {
-              name: "device-note.txt",
-              mimeType: "text/plain",
-              buffer: Buffer.from("real browser bytes 123"),
-            },
-            {
-              name: "small.png",
-              mimeType: "image/png",
-              buffer: Buffer.from(
-                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+XlXcAAAAASUVORK5CYII=",
-                "base64",
+          await row.click();
+          const input = page.locator('[data-slot="workspace"] textarea').first();
+          const imageData =
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+XlXcAAAAASUVORK5CYII=";
+          await input.evaluate((element, data) => {
+            const clipboardData = new DataTransfer();
+            clipboardData.items.add(
+              new File(
+                [Uint8Array.from(atob(data), (character) => character.charCodeAt(0))],
+                "small.png",
+                { type: "image/png" },
               ),
-            },
-          ]);
-          // Simulate picker focus returning before the asynchronous image read completes.
-          await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-          await browserExpect(page.getByText("device-note.txt")).toBeVisible();
-          await browserExpect(page.getByText("small.png")).toBeVisible();
-          await page.locator('[data-slot="workspace"] textarea').first().fill("Read selected note");
+            );
+            element.dispatchEvent(
+              new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+            );
+          }, imageData);
+          await browserExpect(
+            page.getByRole("img", { name: "small.png", exact: true }),
+          ).toBeVisible();
+          await input.fill("Inspect pasted image");
           await page.getByRole("button", { name: "Send", exact: true }).click();
           await browserExpect.poll(() => controlled.stats.turns).toBe(1);
-          expect(uploads.join(" ")).toContain(
-            Buffer.from("real browser bytes 123").toString("base64"),
-          );
+          expect(uploads.join(" ")).toContain(imageData);
           expect(prompts.join(" ")).toContain("cake-upload:");
           expect(prompts.join(" ")).not.toContain("browser-file:");
         } finally {

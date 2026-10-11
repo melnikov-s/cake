@@ -422,8 +422,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
         sessionCreationChoice: this.props.sessionCreationChoice,
         draftActivationCandidates: this.props.draftActivationCandidates,
         isDraftSession: () => this.props.pendingSessions.isDraft(this.sessionId),
-        addAttachments: () =>
-          this.conversationSessionStore.composerStore.draftStore.addAttachments(),
         suggestFiles: (prefix) =>
           this.conversationSessionStore.composerStore.draftStore.suggestFiles(prefix),
         rewordWorkingDirectory: () => this.workspacePath,

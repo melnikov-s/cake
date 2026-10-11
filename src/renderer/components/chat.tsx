@@ -17,8 +17,6 @@ import { SubagentStatus } from "@/components/subagent-status";
 import { AttachmentTile } from "@/components/ui/attachment-tile";
 import { TextAttachment } from "./ui/text-attachment";
 import { ContentTransition } from "@/components/ui/content-transition";
-import { IconButton } from "@/components/ui/icon-button";
-import { PaperclipIcon } from "@/components/ui/icons";
 import { TooltipBubble, useTooltip } from "@/components/ui/tooltip";
 import type { ChatTranscriptHandle } from "./chat-transcript";
 import type { ChatStore } from "../stores/ChatStore";
@@ -296,12 +294,13 @@ export const Chat = observer(function Chat({
         toolbarLeading={
           !activatingDraft && (
             <>
-              {store.canAttach && (
-                <IconButton tooltip="Attach files" onClick={() => void store.addAttachments()}>
-                  <PaperclipIcon />
-                </IconButton>
+              {store.conversationMode && (
+                <ChatConversationControls
+                  conversation={store.conversationMode.workflow}
+                  target={store.conversationMode.target}
+                />
               )}
-              {store.canAttach && composerConfiguration && (
+              {store.conversationMode?.workflow.enabled && composerConfiguration && (
                 <div className="mx-0.5 h-4 w-px bg-border/60" aria-hidden="true" />
               )}
             </>
@@ -311,12 +310,6 @@ export const Chat = observer(function Chat({
           <>
             {showContextUsage && !activatingDraft && <Usage store={store} />}
             {!activatingDraft && pluginActions}
-            {!activatingDraft && store.conversationMode && (
-              <ChatConversationControls
-                conversation={store.conversationMode.workflow}
-                target={store.conversationMode.target}
-              />
-            )}
             <ChatSubmitAction store={store} />
           </>
         }

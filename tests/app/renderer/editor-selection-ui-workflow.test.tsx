@@ -56,14 +56,12 @@ describe("Editor selection pills workflow", () => {
     );
     using fixture = await renderSelectionUi({
       sessionChats: { prompt },
-      filesystem: {
-        chooseAttachments: async () => [{ kind: "file", name: "notes.txt", path: "/notes.txt" }],
-      },
     });
     expect(revealTour()).toBeDefined();
     expect(revealNext()).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Attach files" }));
-    await fixture.user.click(await screen.findByRole("button", { name: "Remove notes.txt" }));
+    await fixture.user.click(screen.getByRole("combobox", { name: "Message" }));
+    await fixture.user.paste("notes\n".repeat(50));
+    await fixture.user.click(await screen.findByRole("button", { name: /^Remove Pasted text/ }));
     expect(revealTour()).toBeDefined();
     expect(revealNext()).toBeDefined();
     await fixture.user.type(screen.getByRole("combobox", { name: "Message" }), "Continue the tour");

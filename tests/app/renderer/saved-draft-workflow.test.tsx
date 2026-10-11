@@ -21,12 +21,11 @@ import type { TestClientOverrides } from "./test-client";
 
 const projectPath = "/project";
 const sessionId = "10000000-0000-4000-8000-000000000001";
-const attachment: Attachment = {
-  kind: "image",
-  name: "plan.png",
-  mimeType: "image/png",
-  data: "aW1hZ2U=",
-};
+const attachment = {
+  kind: "text",
+  name: "Pasted text · 51 lines",
+  text: "plan details\n".repeat(50),
+} satisfies Attachment;
 function savedDraft(overrides: Partial<SavedDraft> = {}): SavedDraft {
   return {
     sessionId,
@@ -210,11 +209,11 @@ describe("Saved Draft workflows", () => {
       using fixture = await renderDrafts(drafts, {
         savedDrafts: { create, activate },
         projectSessions: { start },
-        filesystem: { chooseAttachments: async () => [attachment] },
       });
       await fixture.user.click(screen.getByRole("button", { name: "Draft" }));
-      await fixture.user.click(screen.getByRole("button", { name: "Attach files" }));
-      expect(await screen.findByRole("img", { name: "plan.png" })).toBeDefined();
+      await fixture.user.click(input());
+      await fixture.user.paste(attachment.text);
+      expect(await screen.findByRole("button", { name: /^Pasted text/ })).toBeDefined();
       await fixture.user.click(screen.getByRole("button", { name: "Create draft" }));
       await screen.findByRole("button", { name: "Activate draft" });
       expect(sidebar().getByText("Draft", { exact: true })).toBeDefined();
@@ -225,7 +224,7 @@ describe("Saved Draft workflows", () => {
       expect(start).not.toHaveBeenCalled();
     }
     using restored = await renderDrafts(drafts, { savedDrafts: { activate } });
-    expect(await screen.findByRole("img", { name: "plan.png" })).toBeDefined();
+    expect(await screen.findByText(attachment.name, { exact: false })).toBeDefined();
     expect(screen.queryByRole("combobox", { name: "Message" })).toBeNull();
     await restored.user.click(screen.getByRole("button", { name: "Activate draft" }));
     await waitFor(() =>

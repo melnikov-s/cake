@@ -83,7 +83,6 @@ export interface ChatStoreProps {
   editingMessage?(): boolean;
   abort?(): Promise<void>;
   attachments?(): Attachment[];
-  addAttachments?(): Promise<void>;
   addPastedImages?(files: readonly File[]): Promise<void>;
   addPastedText?(text: string): void;
   removeAttachment?(index: number): void;
@@ -243,9 +242,6 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
   get canStop() {
     return this.canAbort && (this.loading || (this.props.stoppable?.() ?? false));
-  }
-  get canAttach() {
-    return Boolean(this.props.addAttachments);
   }
   get canPasteText() {
     return Boolean(this.props.addPastedText);
@@ -411,9 +407,6 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
   abort() {
     return this.props.abort?.() ?? Promise.resolve();
-  }
-  addAttachments() {
-    return this.props.addAttachments?.() ?? Promise.resolve();
   }
   addPastedImages(files: readonly File[]) {
     return this.props.addPastedImages?.(files) ?? Promise.resolve();

@@ -108,8 +108,6 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
         commands: () => this.model.commands.filter((command) => command.name !== "sidechat"),
         placeholder: () => "Ask Cake to find or control a task…",
         inputLabel: () => "Message Cake Chat",
-        addAttachments: () =>
-          this.conversationSessionStore.composerStore.draftStore.addAttachments(),
         isDraftSession: () =>
           this.props.pendingSessions.conversation(this.sessionId)?.isDraft ?? false,
       },

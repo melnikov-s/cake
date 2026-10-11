@@ -6,7 +6,7 @@ import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenario
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("dictation leads the toolbar and conversation mode sits beside Send at every width", async () => {
+test("dictation and conversation mode lead the toolbar at every width", async () => {
   test.setTimeout(60_000);
   const root = await mkdtemp(join(tmpdir(), "cake-composer-voice-layout-"));
   const paths = {
@@ -25,6 +25,8 @@ test("dictation leads the toolbar and conversation mode sits beside Send at ever
       CAKE_ELECTRON_SMOKE: "1",
       CAKE_ELECTRON_USER_DATA: paths.userData,
       CAKE_HOME: paths.cakeHome,
+      PI_CODING_AGENT_DIR: join(paths.cakeHome, "pi"),
+      PI_CODING_AGENT_SESSION_DIR: "",
     },
   });
   try {
@@ -55,9 +57,14 @@ test("dictation leads the toolbar and conversation mode sits beside Send at ever
         const field = element.getBoundingClientRect();
         return {
           dictationFirst: buttons[0] === dictation,
-          conversationBeforeSend: buttons.at(-2) === conversation,
+          conversationAfterDictation: buttons[1] === conversation,
+          conversationBeforeConfiguration:
+            conversation.compareDocumentPosition(
+              toolbar.querySelector('[aria-label="Model configuration"]')!,
+            ) === Node.DOCUMENT_POSITION_FOLLOWING,
           toolbarAligned: Math.abs(voice.top + voice.height / 2 - entry.top - entry.height / 2) < 1,
-          besideSend: entry.right <= submit.left && submit.left - entry.right < 12,
+          besideDictation: voice.right <= entry.left && entry.left - voice.right < 12,
+          beforeSend: entry.right < submit.left,
           belowInput: voice.top >= field.bottom,
           indent: parseFloat(getComputedStyle(element).textIndent),
           height: field.height,
@@ -73,8 +80,10 @@ test("dictation leads the toolbar and conversation mode sits beside Send at ever
       const empty = await layout();
       expect(empty).toMatchObject({
         dictationFirst: true,
-        conversationBeforeSend: true,
-        besideSend: true,
+        conversationAfterDictation: true,
+        conversationBeforeConfiguration: true,
+        besideDictation: true,
+        beforeSend: true,
         belowInput: true,
         indent: 0,
       });

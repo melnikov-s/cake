@@ -186,19 +186,15 @@ describe("Chat", () => {
         inputLabel: () => "Message session assistant",
         canSubmit: (draft) => Boolean(draft.trim()),
         submit: async () => true,
-        addAttachments: async () => undefined,
         modelPickerVisible: () => modelPickerVisible,
       }),
     );
 
     act(() => root.render(<Chat store={store!} />));
 
-    // The configuration Store stays attached, but the toolbar offers no picker
-    // and no divider between attach and the (absent) picker.
+    // The configuration Store stays attached, but the toolbar offers no picker.
     expect(store.configuration).toBe(configuration);
     expect(container.querySelector('[aria-label="Model configuration"]')).toBeNull();
-    expect(container.querySelector('[aria-label="Attach files"]')).not.toBeNull();
-    expect(container.querySelector('[data-slot="composer-toolbar"] .w-px')).toBeNull();
 
     // A surface that allows choosing the model shows the same picker as any other chat.
     modelPickerVisible = true;
@@ -206,7 +202,6 @@ describe("Chat", () => {
     expect(container.querySelector('[aria-label="Model configuration"]')?.textContent).toContain(
       "GPT",
     );
-    expect(container.querySelector('[data-slot="composer-toolbar"] .w-px')).not.toBeNull();
   });
 
   it("presents sender and schedule provenance alongside per-item queue controls", async () => {

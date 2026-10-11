@@ -73,8 +73,6 @@ test("permanent Cake Chat retains its input, history and settings across restart
   const cakeHome = join(root, "cake-home");
   const userData = join(root, "user-data");
   const document = join(cakeHome, "state", "application.json");
-  const markdownFile = join(root, "requirements.md");
-  await writeFile(markdownFile, "# Task requirements\n\nInvestigate the build failure.\n");
   const activeDirectory = join(cakeHome, "pi", "global-chat", "sessions");
   const resolvedDirectory = join(cakeHome, "pi", "global-chat", "resolved-sessions");
   await Promise.all([
@@ -197,13 +195,6 @@ test("permanent Cake Chat retains its input, history and settings across restart
     expect(inputInset.top).toBe(inputInset.inset);
     await input.click();
     await expect(input).toBeFocused();
-    await app.evaluate(({ dialog }, path) => {
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
-    }, markdownFile);
-    await page.getByRole("button", { name: "Attach files", exact: true }).click();
-    await expect(
-      page.locator('[data-slot="attachment-tile"]').filter({ hasText: "requirements.md" }),
-    ).toBeVisible();
     const privateLog = "PRIVATE_SIDECAR_LOG\r\n" + "large log line\n".repeat(50);
     await input.evaluate((element, text) => {
       const clipboardData = new DataTransfer();
@@ -244,7 +235,7 @@ test("permanent Cake Chat retains its input, history and settings across restart
       .poll(() => thumbnail.evaluate((image: HTMLImageElement) => image.naturalWidth))
       .toBe(1);
     const tiles = page.locator('.workbench-composer [data-slot="attachment-tile"]');
-    await expect(tiles).toHaveCount(3);
+    await expect(tiles).toHaveCount(2);
     const geometry = await tiles.evaluateAll((elements) =>
       elements.map((element) => {
         const tile = element.getBoundingClientRect();
@@ -258,19 +249,14 @@ test("permanent Cake Chat retains its input, history and settings across restart
         };
       }),
     );
-    expect(geometry).toEqual(Array.from({ length: 3 }, () => geometry[0]));
+    expect(geometry).toEqual(Array.from({ length: 2 }, () => geometry[0]));
     expect(geometry[0]).toMatchObject({
       width: 192,
       height: 80,
       removeTop: 5,
       removeRight: 5,
     });
-    // Non-image files keep their labels; image tiles render the actual pixels instead.
-    const documentTile = tiles.filter({ hasText: "requirements.md" });
-    await expect(documentTile.locator('[data-slot="attachment-label"]')).toHaveText(
-      "requirements.md",
-    );
-    await expect(documentTile.locator("img")).toHaveCount(0);
+    // Pasted text keeps its label; image tiles render the actual pixels instead.
     await expect(pastedChip.locator('[data-slot="attachment-label"]')).toContainText("Pasted text");
     // The thumbnail still opens the original preview without changing model access.
     await imageTile.click();
@@ -280,11 +266,6 @@ test("permanent Cake Chat retains its input, history and settings across restart
       `data:image/png;base64,${privateImage}`,
     );
     await page.keyboard.press("Escape");
-    // Removing one tile uses its corner control and leaves the others intact.
-    await page.getByRole("button", { name: "Remove requirements.md", exact: true }).click();
-    await expect(tiles).toHaveCount(2);
-    await expect(pastedChip).toBeVisible();
-    await expect(imageTile).toBeVisible();
     await input.click();
     await expect(input).toBeFocused();
     await input.pressSequentially("Discuss my priorities");
