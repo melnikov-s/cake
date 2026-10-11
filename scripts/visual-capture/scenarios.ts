@@ -392,7 +392,8 @@ const contextPillsScenario: VisualCaptureScenario = {
         timestamp,
         customType: "Cake reminder",
         display: false,
-        content: "Cake injected this context. Pi's display flag must not hide it from the user.",
+        content:
+          "## Session guidance\n\nCake injected this **model-facing context**.\n\n- Keep instructions inspectable.\n- Preserve the original transcript.",
       },
       {
         type: "custom_message",
@@ -416,12 +417,14 @@ const contextPillsScenario: VisualCaptureScenario = {
     const systemPrompt = page.getByRole("button", { name: "System prompt", exact: true });
     await expect(systemPrompt).toBeVisible();
     await systemPrompt.click();
-    await expect(page.locator('[data-part-id="runtime-system-prompt"] pre')).toContainText(
+    await expect(page.locator('[data-part-id="runtime-system-prompt"]')).toContainText(
       "coding assistant",
     );
     await systemPrompt.click();
-    if (state === "expanded")
-      await page.getByRole("button", { name: "Cake · response mode", exact: true }).click();
+    if (state === "expanded") {
+      await page.getByRole("button", { name: "Cake reminder", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Session guidance" })).toBeVisible();
+    }
     await page.waitForFunction(() => document.fonts.status === "loaded");
   },
   region(page) {

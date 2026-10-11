@@ -248,7 +248,12 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   }
   if (part.kind === "context")
     return (
-      <ContextPill title={part.title} text={part.text} compacted={part.origin === "compacted"} />
+      <ContextPill
+        title={part.title}
+        text={part.text}
+        compacted={part.origin === "compacted"}
+        onOpenSourceLocation={behavior.openSourceLocation}
+      />
     );
   if (part.kind === "source") return <Source title={part.title} url={part.url} />;
   if (part.kind === "attachment")

@@ -1,21 +1,25 @@
 import { useId, useState } from "react";
 import { Chip } from "./chip";
+import { Markdown } from "../ai-elements/markdown";
+import type { SourceLocation } from "../../../ipc/source-location";
 
 /** Exact model-facing context, collapsed without hiding its existence. */
 export function ContextPill({
   title,
   text,
   compacted = false,
+  onOpenSourceLocation,
 }: {
   title: string;
   text: string;
   compacted?: boolean;
+  onOpenSourceLocation?(location: SourceLocation): void;
 }) {
   const [open, setOpen] = useState(false);
   const contentId = useId();
   return (
     <section
-      className="min-w-0 max-w-full"
+      className="contents"
       data-slot="context-pill"
       data-origin={compacted ? "compacted" : "current"}
     >
@@ -28,12 +32,12 @@ export function ContextPill({
         {compacted && <span>· removed from context</span>}
       </Chip>
       {open && (
-        <pre
+        <div
           id={contentId}
-          className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-card p-3 font-mono text-xs text-muted-foreground"
+          className="order-1 mt-2 max-h-96 w-full min-w-0 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-card p-3 font-mono text-xs text-muted-foreground"
         >
-          {text}
-        </pre>
+          <Markdown onOpenSourceLocation={onOpenSourceLocation}>{text}</Markdown>
+        </div>
       )}
     </section>
   );

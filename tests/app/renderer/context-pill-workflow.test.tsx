@@ -37,7 +37,7 @@ describe("Context visibility through the authoritative projection and shared Cha
     pi.appendMessage({
       role: "user",
       timestamp: 1.5,
-      content: encodeCrossSessionMessage("A session report", {
+      content: encodeCrossSessionMessage("## Session assignment\n\nA session report", {
         version: 1,
         messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
         threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
@@ -46,7 +46,11 @@ describe("Context visibility through the authoritative projection and shared Cha
         sender: { kind: "project-session", sessionId: "source", title: "API review" },
       }),
     });
-    pi.appendCustomMessageEntry("cake.context", "Exact hidden context", false);
+    pi.appendCustomMessageEntry(
+      "cake.context",
+      "## Hidden instructions\n\nExact **hidden** context",
+      false,
+    );
     pi.appendCustomMessageEntry("extension.context", "Exact extension context", true);
     const leaf = pi.appendMessage({
       role: "assistant",
@@ -95,15 +99,19 @@ describe("Context visibility through the authoritative projection and shared Cha
     try {
       expect(screen.getByText("Question", { exact: true })).toBeTruthy();
       const pills = Array.from(view.container.querySelectorAll('[data-slot="context-pill"]'));
-      expect(pills).toHaveLength(5);
-      await userEvent.setup().click(screen.getByRole("button", { name: "Session · API review" }));
-      expect(screen.getByText(/A session report/)).toBeTruthy();
+      expect(pills).toHaveLength(4);
+      expect(screen.getByText("API review · session message · 1")).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Session assignment" })).toBeTruthy();
+      expect(screen.getByText("A session report")).toBeTruthy();
       expect(pills.every((pill) => Boolean(pill.closest('[data-slot="context-group"]')))).toBe(
         true,
       );
       const user = userEvent.setup();
       await user.click(screen.getByRole("button", { name: "cake.context" }));
-      expect(screen.getByText("Exact hidden context")).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Hidden instructions" })).toBeTruthy();
+      expect(screen.getByText("hidden", { exact: true }).getAttribute("data-streamdown")).toBe(
+        "strong",
+      );
       await user.click(screen.getByRole("button", { name: "Cake · response mode" }));
       expect(screen.getByText(/Cake response mode: text/)).toBeTruthy();
       act(() => {
@@ -112,8 +120,10 @@ describe("Context visibility through the authoritative projection and shared Cha
       });
       expect(
         view.container.querySelectorAll('[data-slot="context-pill"][data-origin="compacted"]'),
-      ).toHaveLength(5);
-      expect(screen.getAllByText("· removed from context")).toHaveLength(5);
+      ).toHaveLength(4);
+      expect(screen.getAllByText("· removed from context")).toHaveLength(4);
+      expect(screen.getByText("API review · session message · 1")).toBeTruthy();
+      expect(screen.getByText("A session report")).toBeTruthy();
       expect(JSON.stringify(pi.buildSessionContext().messages)).not.toContain("A session report");
       expect(screen.getByText("Answer", { exact: true })).toBeTruthy();
       await user.click(

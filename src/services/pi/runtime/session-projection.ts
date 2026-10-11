@@ -16,6 +16,7 @@ import { parseCrossSessionMessage } from "../../../contracts/conversations/cross
 import { parseScheduledMessage } from "../../../contracts/conversations/scheduled-message-envelope";
 import { shouldRenderMarkdown } from "../../../utils/markdown";
 import { splitContextReminders } from "./session-context-reminders";
+import { projectSystemContext, withoutRuntimeSystemPrompt } from "./system-context-projection";
 import {
   attachmentSchema,
   toolOutputContentArraySchema,
@@ -352,17 +353,6 @@ function partsFromMessage(
       title: reminder.title,
       text: reminder.text,
     }));
-    if (envelope.crossSession)
-      return [
-        {
-          id: `${baseId}-context`,
-          kind: "context",
-          title: `Session · ${envelope.crossSession.sender.title}`.slice(0, 512),
-          text: context.text,
-          crossSession: envelope.crossSession,
-        },
-        ...reminderParts,
-      ];
     const parsedContext = parseContextAttachmentBlocks(envelope.text);
     const text = parsedContext.text;
     const renderAsMarkdown =
@@ -645,14 +635,14 @@ function partsFromMessage(
     ];
   }
 
-  if (role === "custom" || role === "system") {
+  if (role === "system") return projectSystemContext(message, baseId, textFromContent(content));
+  if (role === "custom") {
     return [
       {
         id: `${baseId}-custom`,
         kind: "context",
         title: String(Reflect.get(message, "customType") ?? "System message"),
-        // Pi system messages also carry section changes and tool declarations.
-        text: role === "system" ? formatUnknown(message, 262_144) : textFromContent(content),
+        text: textFromContent(content),
       },
     ];
   }
@@ -663,6 +653,7 @@ export function createLiveMessageProjector(
   options: {
     deferProviderErrors?: boolean;
     suppressAbort?(): boolean;
+    currentSystemPrompt?(): string;
     renderUserMessageAsMarkdown?(message: unknown): boolean;
   } = {},
 ) {
@@ -687,7 +678,10 @@ export function createLiveMessageProjector(
       event.type === "message_start" &&
       (event.message.role === "custom" || event.message.role === "system")
     ) {
-      return partsFromMessage(event.message, `live-context-${++userIndex}`);
+      const parts = partsFromMessage(event.message, `live-context-${++userIndex}`);
+      return event.message.role === "system" && options.currentSystemPrompt
+        ? withoutRuntimeSystemPrompt(parts, options.currentSystemPrompt())
+        : parts;
     }
     if (event.type === "message_start" && event.message.role === "assistant") {
       activeStreamId = nextStreamId();

@@ -94,6 +94,7 @@ export function createCakeSessionRuntimeEventProjection(input: {
   const projectLiveMessage = createLiveMessageProjector({
     deferProviderErrors: true,
     suppressAbort: input.suppressAbort,
+    currentSystemPrompt: () => session.systemPrompt,
     renderUserMessageAsMarkdown: (message) => {
       if (typeof message !== "object" || message === null) return false;
       const content = textFromContent(Reflect.get(message, "content"));

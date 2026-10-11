@@ -7,6 +7,7 @@ import { projectConversationDisplay } from "../../src/services/pi/runtime/conver
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { addResponseModeReminder } from "../../src/contracts/conversations/response-mode-reminders";
 import { addPresentationModeReminder } from "../../src/contracts/conversations/presentation-mode-reminders";
+import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const timestamp = new Date(0).toISOString();
@@ -204,7 +205,8 @@ test("shows compacted historical work in place, muted and expandable", async () 
       timestamp,
       message: {
         ...canonicalSystem,
-        sections: { rules: "Genuinely changed instructions" },
+        sections: { rules: "## Genuinely changed instructions\n\nUse **Markdown** for context." },
+        toolsAdded: [{ name: "read", description: "Read a file", parameters: { type: "object" } }],
         timestamp: 3,
       },
     },
@@ -215,7 +217,27 @@ test("shows compacted historical work in place, muted and expandable", async () 
       timestamp,
       message: {
         role: "user",
-        content: addResponseModeReminder("Check again", "text"),
+        content: [
+          {
+            type: "text",
+            text: addResponseModeReminder(
+              encodeCrossSessionMessage("Check again", {
+                version: 1,
+                messageId: "00000000-0000-4000-8000-000000000001",
+                threadId: "00000000-0000-4000-8000-000000000002",
+                sequence: 1,
+                expectsResponse: true,
+                sender: { kind: "cake-chat", sessionId: "coordinator", title: "Cake Chat" },
+              }),
+              "text",
+            ),
+          },
+          {
+            type: "image",
+            mimeType: "image/png",
+            data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7X8AAAAASUVORK5CYII=",
+          },
+        ],
         timestamp: 3,
       },
     },
@@ -260,7 +282,7 @@ test("shows compacted historical work in place, muted and expandable", async () 
     SessionManager.open(join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`)),
   );
   expect(
-    fixtureParts.filter((part) => part.kind === "context" && part.title === "System message"),
+    fixtureParts.filter((part) => part.kind === "context" && part.title === "System prompt"),
   ).toEqual([
     expect.objectContaining({ origin: "compacted" }),
     expect.objectContaining({ text: expect.stringContaining("Genuinely changed instructions") }),
@@ -283,6 +305,9 @@ test("shows compacted historical work in place, muted and expandable", async () 
     const page = await application.firstWindow();
     const groups = page.locator('[data-slot="activity-group"]');
     await expect(groups).toHaveCount(2, { timeout: 20_000 });
+    await expect(page.getByText("Check again", { exact: true })).toBeVisible();
+    await expect(page.getByText("Cake Chat · session message · 1", { exact: true })).toBeVisible();
+    await expect(page.getByRole("img", { name: "Image 2", exact: true })).toBeVisible();
     const compacted = page.locator('[data-slot="activity-group"][data-origin="compacted"]');
     await expect(compacted).toHaveCount(1);
     await expect(compacted.locator(":scope > summary")).toContainText("Compacted work log");
@@ -298,6 +323,7 @@ test("shows compacted historical work in place, muted and expandable", async () 
     await expect(compacted).toContainText("Historical reasoning remains readable.");
     await compacted.getByRole("button", { name: /read/i }).first().click();
     await expect(compacted).toContainText("Historical tool output");
+    await compacted.locator(":scope > summary").click();
     const cakePill = page.getByRole("button", {
       name: "Cake reminder · removed from context",
       exact: true,
@@ -312,6 +338,23 @@ test("shows compacted historical work in place, muted and expandable", async () 
     await expect(
       page.getByText("Hidden Cake context sent to the model.", { exact: true }),
     ).toBeVisible();
+    const expandedLayout = await cakePill.evaluate((trigger) => {
+      const panel = document.getElementById(trigger.getAttribute("aria-controls") ?? "");
+      const group = trigger.closest('[data-slot="context-group"]');
+      if (!panel || !group) throw new Error("Missing context disclosure");
+      return {
+        panelWidth: panel.getBoundingClientRect().width,
+        groupWidth: group.getBoundingClientRect().width,
+        panelTop: panel.getBoundingClientRect().top,
+        triggerBottom: trigger.getBoundingClientRect().bottom,
+      };
+    });
+    expect(Math.abs(expandedLayout.panelWidth - expandedLayout.groupWidth)).toBeLessThan(2);
+    expect(expandedLayout.panelTop).toBeGreaterThan(expandedLayout.triggerBottom);
+    const openBoxes = await Promise.all([cakePill.boundingBox(), extensionPill.boundingBox()]);
+    expect(openBoxes[0]).not.toBeNull();
+    expect(openBoxes[1]).not.toBeNull();
+    expect(Math.abs(openBoxes[0]!.y - openBoxes[1]!.y)).toBeLessThan(2);
     await cakePill.click();
     const boxes = await Promise.all([cakePill.boundingBox(), extensionPill.boundingBox()]);
     expect(boxes[0]).not.toBeNull();
@@ -322,20 +365,31 @@ test("shows compacted historical work in place, muted and expandable", async () 
     await expect(
       page.getByText("Extension context sent to the model.", { exact: true }),
     ).toBeVisible();
-    // This passive preview must expose only the genuine current instruction change,
-    // not the carried baseline as another current injection.
-    const systemChange = page.getByRole("button", { name: "System message", exact: true });
+    // The genuine instruction change stays inspectable even if the runtime
+    // materializes its current prompt while this initially passive preview is open.
+    const systemChange = page
+      .locator('[data-part-id="entry-changed-system-system-prompt"]')
+      .getByRole("button", { name: "System prompt", exact: true });
     await expect(systemChange).toHaveCount(1);
     await systemChange.click();
-    await expect(page.getByText(/Genuinely changed instructions/)).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Genuinely changed instructions" }),
+    ).toBeVisible();
+    await expect(page.locator('[data-slot="context-pill"] [data-streamdown="strong"]')).toHaveText(
+      "Markdown",
+    );
     await systemChange.click();
+    await page.getByRole("button", { name: "Tool · read", exact: true }).click();
+    await expect(page.locator('[data-slot="context-pill"] pre')).toContainText('"name": "read"');
     // This unopened-runtime preview shows the original event and genuine change,
     // but does not mistake the carried checkpoint for another injection.
     const currentReminder = page.getByRole("button", { name: "Cake · response mode", exact: true });
     await expect(currentReminder).toBeVisible();
     await currentReminder.click();
     await expect(
-      page.locator('[data-slot="context-pill"][data-origin="current"] pre'),
+      page
+        .locator('[data-slot="context-pill"][data-origin="current"]')
+        .filter({ has: currentReminder }),
     ).toContainText("Cake response mode: text");
     await expect(page.getByText("Original answer.", { exact: true })).toBeVisible();
     await expect(page.getByText("Current answer.", { exact: true })).toBeVisible();

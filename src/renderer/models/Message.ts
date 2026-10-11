@@ -85,7 +85,6 @@ export class Message extends Model {
         this.title = part.title;
         this.text = part.text;
         this.origin = part.origin;
-        this.crossSession = part.crossSession;
         return true;
       case "text":
         this.role = part.role;
@@ -190,7 +189,6 @@ export class Message extends Model {
           title: this.title!,
           text: this.text!,
           origin: this.origin,
-          crossSession: this.crossSession,
         };
       case "text":
         // SAFETY: snapshots and update() keep status aligned with the part discriminant.

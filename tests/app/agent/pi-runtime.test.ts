@@ -1609,19 +1609,43 @@ describe("Pi 1.0.0 foundation contract", () => {
     const message = {
       role: "system" as const,
       content: "",
-      sections: { workflow: "Exact system section" },
+      sections: { workflow: "## Exact system section", obsolete: null },
+      toolsAdded: [{ name: "write", description: "Write a file", parameters: { type: "object" } }],
       toolsRemoved: [{ name: "read" }],
       timestamp: 1,
     };
-    const expected = expect.objectContaining({
-      kind: "context",
-      title: "System message",
-      text: JSON.stringify(message, null, 2),
-    });
-    expect(createLiveMessageProjector()({ type: "message_start", message })).toEqual([expected]);
+    const expected = [
+      expect.objectContaining({
+        kind: "context",
+        title: "System prompt",
+        text: "## Exact system section",
+      }),
+      expect.objectContaining({ kind: "context", title: "System section removed · obsolete" }),
+      expect.objectContaining({
+        kind: "context",
+        title: "Tool · write",
+        text: `\`\`\`json\n${JSON.stringify(message.toolsAdded[0], null, 2)}\n\`\`\``,
+      }),
+      expect.objectContaining({ kind: "context", title: "Tool removed · read" }),
+    ];
+    expect(createLiveMessageProjector()({ type: "message_start", message })).toEqual(expected);
     const session = SessionManager.inMemory("/project");
     session.appendMessage(message);
-    expect(projectSessionEntries(session.getBranch())).toEqual([expected]);
+    expect(projectSessionEntries(session.getBranch())).toEqual(expected);
+    const live = createLiveMessageProjector({
+      currentSystemPrompt: () => "## Exact system section",
+    });
+    expect(live({ type: "message_start", message })).toEqual(expected.slice(1));
+    expect(
+      live({ type: "message_start", message: { ...message, content: "New instructions" } }),
+    ).toEqual([
+      expect.objectContaining({
+        kind: "context",
+        title: "System prompt",
+        text: "New instructions\n\n## Exact system section",
+      }),
+      ...expected.slice(1),
+    ]);
   });
 
   it("discloses hidden custom context in both live events and settled branches", () => {
@@ -2785,6 +2809,59 @@ describe("S1 Pi runtime", () => {
       ]),
     );
     expect(snapshot.tree.filter((entry) => entry.messageRole === "user")).toHaveLength(2);
+  });
+
+  it("shows one live prompt alongside individually disclosed tools after restoring its stored baseline", async () => {
+    const directory = await createTemporaryDirectory();
+    const options = {
+      cwd: directory,
+      agentDir: join(directory, "agent"),
+      sessionDir: join(directory, "sessions"),
+      trusted: false,
+      requestUi: async () => undefined,
+      onEvent: () => undefined,
+    };
+    const first = await createCakeSessionRuntime(options);
+    runtimes.push(first);
+    const prompt = (await first.snapshot()).parts.find(
+      (part) => part.kind === "context" && part.title === "System prompt",
+    );
+    if (prompt?.kind !== "context") throw new Error("Missing live prompt");
+    first.dispose();
+    runtimes.splice(runtimes.indexOf(first), 1);
+    const stored = SessionManager.create(
+      directory,
+      cakeWorkspaceSessionDirectory(directory, options.sessionDir),
+    );
+    stored.appendMessage({
+      role: "system",
+      content: prompt.text,
+      toolsAdded: [{ name: "read", description: "Read a file", parameters: { type: "object" } }],
+      timestamp: 0,
+    });
+    stored.appendMessage({ role: "user", content: "Inspect", timestamp: 1 });
+    stored.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "Done" }],
+      api: "openai-responses",
+      provider: "openai",
+      model: "fixture",
+      usage: zeroUsage,
+      stopReason: "stop",
+      timestamp: 2,
+    });
+    const reopened = await createCakeSessionRuntime({
+      ...options,
+      sessionId: stored.getSessionId(),
+    });
+    runtimes.push(reopened);
+    const parts = (await reopened.snapshot()).parts;
+    expect(
+      parts.filter((part) => part.kind === "context" && part.title === "System prompt"),
+    ).toEqual([expect.objectContaining({ id: "runtime-system-prompt", text: prompt.text })]);
+    expect(parts).toContainEqual(
+      expect.objectContaining({ kind: "context", title: "Tool · read" }),
+    );
   });
 
   it("creates and reopens an authoritative persistent Pi session", async () => {

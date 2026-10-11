@@ -177,7 +177,8 @@ describe("CakeSessionRuntime characterization", () => {
         (event) =>
           event.type === "part-updated" &&
           event.part.kind === "context" &&
-          event.part.title === "System message",
+          event.part.title === "System prompt" &&
+          event.part.id !== "runtime-system-prompt",
       );
     const requestSystems = (body: Record<string, unknown>) =>
       (body.messages as Array<{ role: string; content: string }>).filter(
@@ -193,8 +194,19 @@ describe("CakeSessionRuntime characterization", () => {
     events.length = 0;
     await runtime.toolCompact(selectedId);
     const compacted = await runtime.snapshot();
-    expect(compacted.parts.filter((part) => part.kind === "context")).toHaveLength(
-      before.parts.filter((part) => part.kind === "context").length,
+    expect(
+      before.parts.filter((part) => part.kind === "context" && part.title === "System prompt"),
+    ).toHaveLength(1);
+    expect(
+      compacted.parts.filter((part) => part.kind === "context" && part.origin !== "compacted"),
+    ).toEqual([expect.objectContaining({ id: "runtime-system-prompt", title: "System prompt" })]);
+    expect(compacted.parts).toContainEqual(
+      expect.objectContaining({
+        kind: "context",
+        title: "System prompt",
+        origin: "compacted",
+        text: expect.stringContaining("REQUIRED_CANONICAL_INSTRUCTION"),
+      }),
     );
     expect(injections()).toHaveLength(0);
     expect(systemEntries()).toHaveLength(1);
@@ -240,7 +252,7 @@ describe("CakeSessionRuntime characterization", () => {
     expect(settled.parts).toContainEqual(
       expect.objectContaining({
         kind: "context",
-        title: "System message",
+        title: "System prompt",
         text: expect.stringContaining("CHANGED_CANONICAL_INSTRUCTION"),
       }),
     );

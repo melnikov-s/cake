@@ -238,7 +238,7 @@ describe("loadWorkspacePiSessionPreview", () => {
     );
     expect(
       projectConversationDisplay(replayedAnswerSession).filter(
-        (part) => part.kind === "context" && part.title === "System message",
+        (part) => part.kind === "context" && part.title === "System prompt",
       ),
     ).toHaveLength(0);
 

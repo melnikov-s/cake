@@ -23,8 +23,11 @@ import {
   imageContent,
   promptText,
   parseContextAttachmentBlocks,
+  projectSessionEntries,
+  createLiveMessageProjector,
 } from "../../../../src/services/pi/runtime/session-projection";
 import type { Attachment } from "../../../../src/ipc/session-contract";
+import { encodeCrossSessionMessage } from "../../../../src/contracts/conversations/cross-session-message";
 
 const owner = "00000000-0000-4000-8000-000000000001";
 const target = "00000000-0000-4000-8000-000000000002";
@@ -149,6 +152,60 @@ describe("task-input isolation", () => {
           expect(imageContent([...recipient])).toEqual([
             { type: "image", data: image.data, mimeType: image.mimeType },
           ]);
+          // Resolved forwards use the same live and durable attachment presentation
+          // as direct user inputs, including inside a Cake Chat assignment envelope.
+          const sender = {
+            version: 1 as const,
+            messageId: other,
+            threadId: owner,
+            sequence: 1,
+            expectsResponse: true,
+            sender: { kind: "cake-chat" as const, sessionId: owner, title: "Cake Chat" },
+          };
+          const recipientText = promptText("Inspect", [...recipient]);
+          const projectInput = (text: string) => {
+            const message = {
+              role: "user" as const,
+              content: [{ type: "text" as const, text }, ...imageContent([...recipient])],
+              timestamp: 1,
+            };
+            return {
+              live: createLiveMessageProjector()({ type: "message_start", message }),
+              settled: projectSessionEntries([
+                {
+                  type: "message",
+                  id: "assignment",
+                  parentId: null,
+                  timestamp: new Date(0).toISOString(),
+                  message,
+                },
+              ]),
+            };
+          };
+          const direct = projectInput(recipientText);
+          const forwardedInput = projectInput(encodeCrossSessionMessage(recipientText, sender));
+          for (const phase of ["live", "settled"] as const) {
+            expect(forwardedInput[phase][0]).toMatchObject({
+              kind: "text",
+              role: "user",
+              text: "Inspect",
+              crossSession: sender,
+            });
+            expect(forwardedInput[phase].filter((part) => part.kind === "attachment")).toEqual(
+              direct[phase].filter((part) => part.kind === "attachment"),
+            );
+            expect(forwardedInput[phase]).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  kind: "attachment",
+                  attachmentKind: "image",
+                  data: image.data,
+                }),
+                expect.objectContaining({ kind: "attachment", name: "requirements.md" }),
+                expect.objectContaining({ kind: "attachment", name: "Pasted text" }),
+              ]),
+            );
+          }
           expect(yield* storage.isRecipient(target)).toBe(true);
           const projection = yield* safeCoordinatorProjection({
             sessions: [

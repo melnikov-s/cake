@@ -127,7 +127,9 @@ export const ChatTextMessage = forwardRef<
           className={cn(
             assistant
               ? "bg-card text-foreground"
-              : "border-user-message-foreground/20 bg-user-message text-user-message-foreground",
+              : part.crossSession
+                ? "border-dashed border-border bg-muted text-foreground"
+                : "border-user-message-foreground/20 bg-user-message text-user-message-foreground",
             !assistant && part.renderAs !== "markdown" && "whitespace-pre-wrap",
           )}
         >

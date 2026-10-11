@@ -290,7 +290,6 @@ export const uiPartSchema = Schema.Union([
     kind: Schema.Literal("context"),
     title: ipcProjectionString(512),
     text: boundedText,
-    crossSession: Schema.optionalKey(CrossSessionMessageMetadata),
     /** Historical context retained for inspection, no longer sent to the model. */
     ...workLogOrigin,
   }),
