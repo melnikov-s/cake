@@ -3,9 +3,16 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
+import {
+  TurnId,
+  type ConversationEvent,
+  type ConversationSnapshot,
+} from "../../../src/ipc/conversation-data";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
-import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";
+import {
+  applyConversationSnapshot,
+  applyConversationUpdate,
+} from "../../../src/renderer/reducers/ConversationReducer";
 import {
   projectRecord,
   sessionSummary,
@@ -81,8 +88,18 @@ function renderOrdering() {
       onOpenSettings={(path) => root.projectSettingsStore.open(path)}
     />,
   );
+  let eventRevision = 0;
   return {
     user: userEvent.setup(),
+    publishEvent(event: Exclude<ConversationEvent, { _tag: "SnapshotUpdated" }>) {
+      act(() =>
+        applyConversationUpdate(models.projectConversation(event.sessionId, projectPath), {
+          _tag: "Event",
+          revision: ++eventRevision,
+          event,
+        }),
+      );
+    },
     resolve,
     finishResolve() {
       act(() => completeResolve());
@@ -111,6 +128,37 @@ afterEach(cleanup);
 
 for (const kind of ["project-session"] as const) {
   describe(`${kind} sidebar order`, () => {
+    it.each(["complete", "failed", "aborted"] as const)(
+      "shows accepted work before streaming and clears running only after %s settlement",
+      async (outcome) => {
+        using fixture = renderOrdering();
+        const sessionId = "previous";
+        const turnId = TurnId.make("20000000-0000-4000-8000-000000000001");
+        const running = () => screen.queryByRole("img", { name: "Running" });
+        await fixture.user.click(screen.getByRole("button", { name: /^previous / }));
+        expect(running()).toBeNull();
+        // A queued follow-up is not work that Pi has begun processing.
+        fixture.publishEvent({
+          _tag: "TurnAccepted",
+          sessionId,
+          turnId: TurnId.make("20000000-0000-4000-8000-000000000002"),
+          delivery: "follow-up",
+        });
+        expect(running()).toBeNull();
+        fixture.publishEvent({ _tag: "TurnAccepted", sessionId, turnId, delivery: "prompt" });
+        expect(running()).not.toBeNull();
+        await fixture.user.click(screen.getByRole("button", { name: /^older / }));
+        expect(running()).not.toBeNull();
+        fixture.publishEvent({ _tag: "StreamingChanged", sessionId, streaming: true });
+        expect(running()).not.toBeNull();
+        fixture.publishEvent({ _tag: "StreamingChanged", sessionId, streaming: false });
+        // Streaming ends before settlement; the accepted turn still owns active work.
+        expect(running()).not.toBeNull();
+        fixture.publishEvent({ _tag: "TurnSettled", sessionId, turnId, outcome });
+        expect(running()).toBeNull();
+      },
+    );
+
     const timings = ["before", "after"] as const;
     it.each(timings)(
       "keeps the previous session in date order when resolution projects %s fallback navigation",

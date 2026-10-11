@@ -237,7 +237,8 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   @computed
   get activity(): SessionActivity | undefined {
     if (this.interviewRequests.size > 0) return "waiting";
-    if (this.isStreaming) return "running";
+    // Accepted turns include preparation before Pi emits its first streaming event.
+    if (this.isStreaming || this.model.activeTurnIds.length > 0) return "running";
     if (this.props.isActive() || this.model.settledTurnRevision <= this.readSettledTurnRevision)
       return undefined;
     return this.latestTurnErrored ? "error" : "unread";
