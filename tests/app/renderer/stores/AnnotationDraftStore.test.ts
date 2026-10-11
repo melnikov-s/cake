@@ -11,28 +11,13 @@ const annotation = (index: number) => ({
   contextAfter: "after",
 });
 
-describe("AnnotationDraftStore", () => {
-  it("adds, updates, removes, and clears draft annotations", () => {
-    const draft = mount(createStore(AnnotationDraftStore));
-
-    expect(draft.add({ ...annotation(1), entryId: "entry-1", comment: "Original" })).toBe(true);
-    const id = draft.annotations[0]!.id;
-    draft.update(id, { comment: "Updated", entryId: undefined });
-
-    expect(draft.annotations).toEqual([
-      expect.objectContaining({ id, comment: "Updated", messageId: "message-1" }),
-    ]);
-    expect(draft.annotations[0]).not.toHaveProperty("entryId");
-
-    draft.remove(id);
-    expect(draft.annotations).toEqual([]);
-
-    draft.append([{ id: "existing", ...annotation(2) }]);
-    draft.clear();
-    expect(draft.annotations).toEqual([]);
-    draft[Symbol.dispose]();
-  });
-
+// Retain only the admission cap: adding the 101st annotation requires native
+// text-selection initiation, which has no honest jsdom workflow path. Do not
+// fabricate selection callbacks or transcript geometry to exercise that action.
+// annotation-comment-workflow.test.tsx owns visible removal, annotation-only
+// submission/clearing and failure/retry; utils/annotations.test.ts covers the
+// optional-field update codec. Native edit/selection behavior lives in Electron.
+describe("AnnotationDraftStore selection-admission regression", () => {
   it("enforces the shared annotation limit", () => {
     const onLimitReached = vi.fn();
     const draft = mount(createStore(AnnotationDraftStore, { onLimitReached }));
