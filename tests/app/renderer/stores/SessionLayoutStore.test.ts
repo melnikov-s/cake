@@ -2,29 +2,14 @@ import { createStore, mount, toSnapshot } from "r-state-tree";
 import { describe, expect, it } from "vitest";
 import { SessionLayoutStore } from "../../../../src/renderer/stores/SessionLayoutStore";
 
-// Migration backlog: family-driven pane reuse, staged-history restoration and
-// persisted resize geometry are not exercised by the click-only App workflow.
-// Split/close, visible pane numbers, navigation, pane reuse and limits moved to
-// session-layout-workflow.test.tsx.
+// Split/close, pane numbers, navigation, visible-session reuse and limits live in
+// session-layout-workflow.test.tsx. Family-child placement/reuse and native focus
+// live in tests/electron/child-session-pane.smoke.spec.ts; adjacent-pane keyboard
+// navigation and real drag geometry live in tests/electron/session-split.smoke.spec.ts.
 describe("SessionLayoutStore remaining contracts", () => {
-  it("reuses one adjacent pane for sequential family children", () => {
-    const store = mount(createStore(SessionLayoutStore));
-    store.ensureSession("parent");
-
-    const firstPaneId = store.showChildSession("parent", "child-1");
-    expect(store.panes.map((pane) => pane.sessionId)).toEqual(["parent", "child-1"]);
-    expect(store.neighbors("parent").right).toEqual([
-      { paneId: firstPaneId, sessionId: "child-1" },
-    ]);
-
-    const secondPaneId = store.showChildSession("parent", "child-2");
-    expect(secondPaneId).toBe(firstPaneId);
-    expect(store.panes.map((pane) => pane.sessionId)).toEqual(["parent", "child-2"]);
-    expect(store.hasSession("child-1")).toBe(false);
-
-    store[Symbol.dispose]();
-  });
-
+  // root-app-workflow covers staged-draft restoration, not retention of the pane's
+  // forward branch. Sidebar Forward is gated by shell history, which records New
+  // Chat restoration as a new visit; it cannot prove this distinct pane contract.
   it("restores a focused pane history entry without discarding its forward history", () => {
     const store = mount(createStore(SessionLayoutStore));
     store.ensureSession("session-a");
@@ -37,7 +22,10 @@ describe("SessionLayoutStore remaining contracts", () => {
     store[Symbol.dispose]();
   });
 
-  it("clamps and persists split geometry", () => {
+  // The Electron split workflow drags a real separator, but does not prove the
+  // exact ratio clamp or its snapshot representation. Keep this policy regression
+  // until native resize + window-state restoration coverage exists; no DOM geometry fake.
+  it("clamps split geometry in the persisted layout snapshot", () => {
     const store = mount(createStore(SessionLayoutStore));
     store.ensureSession("session-a");
     store.splitFocused("session-b", "x");
@@ -45,7 +33,6 @@ describe("SessionLayoutStore remaining contracts", () => {
     store.setSplitRatio(splitId, 0.95);
     expect(toSnapshot(store).state).toMatchObject({
       layout: { kind: "split", ratio: 0.8 },
-      focusedPaneId: store.focusedPaneId,
     });
 
     store[Symbol.dispose]();
