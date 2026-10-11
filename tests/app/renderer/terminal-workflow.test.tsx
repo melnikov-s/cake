@@ -73,6 +73,7 @@ function renderTerminal({
             workingDirectory,
             resolvedSessionIds: ["other"],
             failures: [],
+            cleanupFailures: [],
           })),
       },
       workspaces: { loadStagedSlashCommands: async () => [] },
@@ -314,6 +315,7 @@ describe("Terminal workflow", () => {
           workingDirectory: "/worktree",
           resolvedSessionIds: ["other"],
           failures: [],
+          cleanupFailures: [],
         }),
       );
       expect(await screen.findByRole("tab", { name: "zsh" })).toBeDefined();
@@ -395,6 +397,7 @@ describe("Terminal workflow", () => {
         workingDirectory: "/worktree",
         resolvedSessionIds: ["other"],
         failures: [],
+        cleanupFailures: [],
       }),
     );
     await screen.findByRole("tab", { name: "zsh" });

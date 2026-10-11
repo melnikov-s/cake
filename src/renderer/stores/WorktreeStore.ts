@@ -11,7 +11,7 @@ export interface WorktreeStoreProps {
   sessionId(): string | undefined;
   enabled(): boolean;
   isStreaming(): boolean;
-  operation(): WorktreeLandingOperation | undefined;
+  operation(): typeof WorktreeLandingOperation.Encoded | undefined;
   onLanded(record: WorktreeRecord, result: { resolved: boolean }): Promise<void> | void;
   onDiscarded(record: WorktreeRecord): Promise<void> | void;
   retirement: WorkingDirectoryRetirementWorkflow;
@@ -117,6 +117,10 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       // Merge-and-resolve retires the worktree before publishing its terminal operation.
       // Retain the last status long enough to present that successful completion.
       if (snapshot.status || operation?.phase !== "landed") this.status = snapshot.status;
+      else if (this.status)
+        // A retired checkout has no new commits to land. Keep its identity for the
+        // completion notice, not the pre-landing ahead count or another merge action.
+        this.status = { ...this.status, aheadCount: 0 };
       if (operation) await this.applyOperation(operation, workspacePath);
     } catch {
       // Transient Git or transport failures surface through the next projected operation or intent.
@@ -298,7 +302,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   }
 
   private async applyOperation(
-    operation: WorktreeLandingOperation | undefined,
+    operation: typeof WorktreeLandingOperation.Encoded | undefined,
     workspacePath: string,
   ) {
     if (!operation) {
@@ -347,7 +351,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     }
   }
 
-  private applyOperationPresentation(operation: WorktreeLandingOperation) {
+  private applyOperationPresentation(operation: typeof WorktreeLandingOperation.Encoded) {
     this.operationId = operation.operationId;
     this.stalled = operation.phase === "stalled";
     if (operation.phase === "failed") {
@@ -376,6 +380,15 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       return;
     }
     if (operation.phase === "landed" || operation.phase === "complete") {
+      if (operation.cleanupFailures?.length)
+        this.error = operation.cleanupFailures
+          .flatMap((failure) =>
+            failure.cleanupFailures.map(
+              (cleanup) =>
+                `Sessions resolved; cleanup failed for ${cleanup.workingDirectory}: ${cleanup.message}`,
+            ),
+          )
+          .join("\n");
       this.phase = "idle";
       return;
     }

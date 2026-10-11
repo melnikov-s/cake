@@ -21,6 +21,7 @@ const normalizeOperation = (operation: WorktreeLandingOperation): WorktreeLandin
   if (normalized.resolveAfterLanding === undefined) delete normalized.resolveAfterLanding;
   if (normalized.pauseReason === undefined) delete normalized.pauseReason;
   if (normalized.error === undefined) delete normalized.error;
+  if (normalized.cleanupFailures === undefined) delete normalized.cleanupFailures;
   return normalized;
 };
 
@@ -114,10 +115,16 @@ const performLanding: (
       const result = yield* (yield* WorktreeLandingCompletion).resolveWorkingDirectory(
         operation.workspacePath,
       );
+      yield* update(operation.workspacePath, operation.operationId, (current) => ({
+        ...current,
+        cleanupFailures: result.cleanupFailures.length > 0 ? result.cleanupFailures : undefined,
+      }));
       if (result.failures.length > 0)
         return yield* new WorktreeLandingError({
           operation: "resolveWorkingDirectory",
-          message: result.failures.map((failure) => failure.message).join("\n"),
+          message: [...result.failures, ...result.cleanupFailures]
+            .map((failure) => failure.message)
+            .join("\n"),
         });
       yield* worktrees
         .setResolveAfterLanding(operation.workspacePath, false)
@@ -541,11 +548,29 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
     if (result.failures.length > 0)
       return yield* new WorktreeLandingError({
         operation: "resolveWorkingDirectory",
-        message: result.failures.map((failure) => failure.message).join("\n"),
+        message: [...result.failures, ...result.cleanupFailures]
+          .map((failure) => failure.message)
+          .join("\n"),
       });
     yield* worktrees
       .setResolveAfterLanding(input.workspacePath, false)
       .pipe(asError("resolveWorkingDirectory"));
+    // Recovery of a landed resolve intent completes resolution only, never Git landing.
+    const current = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
+      input.workspacePath,
+    );
+    const completed = normalizeOperation({
+      operationId: current?.operationId ?? crypto.randomUUID(),
+      workspacePath: input.workspacePath,
+      sessionId: current?.sessionId ?? input.sessionId,
+      kind: "landing",
+      phase: "landed",
+      allowDirtyTarget: current?.allowDirtyTarget ?? false,
+      resolveAfterLanding: true,
+      cleanupFailures: result.cleanupFailures.length > 0 ? result.cleanupFailures : undefined,
+    });
+    if (current) yield* update(input.workspacePath, current.operationId, () => completed);
+    else if (result.cleanupFailures.length > 0) yield* insert(completed);
   }
   const status = yield* worktrees.status(input.workspacePath).pipe(asError("inspect"));
   let operation = (yield* SubscriptionRef.get(coordinator.state)).operations.get(

@@ -14,8 +14,19 @@ export function applyWorktreeOperationCatalogUpdate(
         model.operations.splice(index, 1);
     for (const operation of update.operations) {
       const existing = model.find(operation.workspacePath);
-      if (existing) applySnapshot(existing, operation);
-      else model.operations.push(WorktreeOperation.create(operation));
+      // Error instances are not Model snapshot values. Project only their validated data.
+      const snapshot = {
+        ...operation,
+        cleanupFailures: operation.cleanupFailures?.map((failure) => ({
+          _tag: failure._tag,
+          operation: failure.operation,
+          resolvedSessionIds: failure.resolvedSessionIds,
+          cleanupFailures: failure.cleanupFailures,
+          message: failure.message,
+        })),
+      };
+      if (existing) applySnapshot(existing, snapshot);
+      else model.operations.push(WorktreeOperation.create(snapshot));
     }
   });
 }

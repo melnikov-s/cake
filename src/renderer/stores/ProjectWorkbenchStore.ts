@@ -374,11 +374,18 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       // still focused; a sibling selected while resolution was in flight must stay put.
       if (this.props.activeSessionId() === options.initiatingSessionId)
         await this.props.onWorktreeSessionsResolved(result.resolvedSessionIds, result.projectPath);
-      if (result.failures.length > 0)
-        this.setError(
-          new Error(result.failures.map((failure) => failure.message).join("\n")),
-          "Resolving Working Directory",
-        );
+      if (this.signal.aborted) return;
+      const messages = [
+        ...result.failures.map((failure) => failure.message),
+        ...result.cleanupFailures.flatMap((failure) =>
+          failure.cleanupFailures.map(
+            (cleanup) =>
+              `Sessions resolved; cleanup failed for ${cleanup.workingDirectory}: ${cleanup.message}`,
+          ),
+        ),
+      ];
+      if (messages.length > 0)
+        this.setError(new Error(messages.join("\n")), "Resolving Working Directory");
     } catch (error) {
       if (!this.signal.aborted) this.setError(error, "Resolving Working Directory");
     }

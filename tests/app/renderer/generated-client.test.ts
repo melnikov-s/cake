@@ -54,9 +54,73 @@ const requests = (messages: FromClientEncoded[]) =>
 const presetId = "00000000-0000-4000-8000-000000000001";
 
 describe("generated renderer command adaptation", () => {
-  // Review stubs: use the existing encoded RPC harness, not a raw mocked rejection.
-  it.todo("preserves ResolutionRejected through RPC and ClientError.domainFailure");
-  it.todo("preserves ResolutionCleanupFailed identities and cleanup details through RPC");
+  it.each([
+    {
+      _tag: "ResolutionRejected",
+      operation: "resolve",
+      sessionIds: ["child"],
+      message: "Resolve the root instead",
+    },
+    {
+      _tag: "ResolutionCleanupFailed",
+      operation: "resolve",
+      resolvedSessionIds: ["root", "child"],
+      cleanupFailures: [{ workingDirectory: "/child-tree", message: "Checkout busy" }],
+      message: "Resolution committed; cleanup failed",
+    },
+  ])(
+    "preserves $_tag identities and details through encoded RPC and the real Client",
+    async (failure) => {
+      const test = harness((message, respond) =>
+        respond({
+          _tag: "Exit",
+          requestId: message.id,
+          exit: { _tag: "Failure", cause: [{ _tag: "Fail", error: failure }] },
+        }),
+      );
+      try {
+        await expect(
+          test.client.projectSessions.resolve({ sessionId: "root" }),
+        ).rejects.toMatchObject({
+          kind: "rejected",
+          operation: "projectSessions.resolve",
+          domainFailure: failure,
+        });
+        expect(requests(test.messages)).toHaveLength(1);
+      } finally {
+        await test.runtime.dispose();
+      }
+    },
+  );
+
+  it("decodes committed IDs and both batch failure lists", async () => {
+    const result = {
+      projectPath: "/project",
+      workingDirectory: "/tree",
+      resolvedSessionIds: ["done"],
+      failures: [{ sessionIds: ["busy"], message: "Turn active" }],
+      cleanupFailures: [
+        {
+          _tag: "ResolutionCleanupFailed",
+          operation: "resolveWorkingDirectory",
+          resolvedSessionIds: ["done"],
+          cleanupFailures: [{ workingDirectory: "/tree", message: "Busy" }],
+          message: "Resolved with cleanup failure",
+        },
+      ],
+    };
+    const test = harness((message, respond) =>
+      respond({ _tag: "Exit", requestId: message.id, exit: { _tag: "Success", value: result } }),
+    );
+    try {
+      expect(
+        await test.client.projectSessions.resolveWorkingDirectory({ workingDirectory: "/tree" }),
+      ).toMatchObject(result);
+      expect(requests(test.messages)).toHaveLength(1);
+    } finally {
+      await test.runtime.dispose();
+    }
+  });
 
   it("derives every transport method, including Streams, from the shared protocol", async () => {
     const test = harness(() => {

@@ -1,5 +1,10 @@
 import { Effect, Stream } from "effect";
-import type { ProjectSessionResolutionDomainFailure } from "../../contracts/project-sessions/project-session-resolution";
+import {
+  ResolutionRejected,
+  ResolutionCleanupFailed,
+  type ProjectSessionResolutionDomainFailure,
+  type WorkingDirectoryResolutionFailure,
+} from "../../contracts/project-sessions/project-session-resolution";
 import * as artifacts from "../artifacts/artifacts";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
 import * as drawBoards from "../draw/drawBoards";
@@ -21,7 +26,6 @@ import {
   ProjectSessionError,
   type ProjectSessionLocation,
   type ProjectSessionTarget,
-  type WorkingDirectoryResolutionFailure,
 } from "../../ipc/project-session-data";
 import {
   archiveLocation,
@@ -48,6 +52,39 @@ const error = (operation: string, message: string) =>
 
 const familyMembers = familyMemberIds;
 
+const rejected = (operation: string, sessionIds: readonly string[], message: string) =>
+  new ResolutionRejected({ operation, sessionIds, message });
+
+// Lock/storage adapters must not erase a known resolution outcome.
+const asLifecycleError = (operation: string) =>
+  Effect.mapError((cause: unknown) =>
+    cause instanceof ResolutionRejected || cause instanceof ResolutionCleanupFailed
+      ? cause
+      : error(operation, cause instanceof Error ? cause.message : String(cause)),
+  );
+
+const cleanupResolved = Effect.fn("ProjectSessions.cleanupResolved")(function* (
+  location: ProjectSessionLocation,
+  resolvedSessionIds: readonly string[],
+  operation: string,
+) {
+  yield* managedWorktrees
+    .cleanupResolved(location.workingDirectory, location.sessionDirectory)
+    .pipe(
+      Effect.mapError(
+        (cause) =>
+          new ResolutionCleanupFailed({
+            operation,
+            resolvedSessionIds,
+            cleanupFailures: [
+              { workingDirectory: location.workingDirectory, message: cause.message },
+            ],
+            message: `Sessions resolved, but Working Directory cleanup failed: ${location.workingDirectory}: ${cause.message}`,
+          }),
+      ),
+    );
+});
+
 const familyMemberLocation = Effect.fn("ProjectSessions.familyMemberLocation")(function* (
   family: SessionFamily,
   sessionId: string,
@@ -71,12 +108,13 @@ const assertResolvable = Effect.fn("ProjectSessions.assertResolvable")(function*
     .currentStatus({ sessionId, workingDirectory, sessionDirectory })
     .pipe(asError(operation));
   if ((yield* workflowLifecycle.hasActive({ sessionId })) || status?.streaming || status?.pending)
-    return yield* error(
+    return yield* rejected(
       operation,
+      [sessionId],
       "Cake cannot resolve a Project Session while its turn is active or input is pending",
     );
   if (status && !status.persisted)
-    return yield* error(operation, "Cake cannot resolve an empty Project Session");
+    return yield* rejected(operation, [sessionId], "Cake cannot resolve an empty Project Session");
 });
 
 const archiveAuthority = Effect.fn("ProjectSessions.archiveAuthority")(function* (
@@ -84,17 +122,24 @@ const archiveAuthority = Effect.fn("ProjectSessions.archiveAuthority")(function*
   location: ProjectSessionLocation,
   operation: string,
   publish = true,
+  afterCommit?: Effect.Effect<void, ProjectSessionError>,
 ) {
   const archive = yield* SessionArchiveStorage;
   const namespace = yield* archive
     .locate(sessionId, archiveLocation(location))
     .pipe(asError(operation));
-  if (!namespace) return yield* error(operation, "Activate a Draft before resolving it");
+  if (!namespace)
+    return yield* rejected(operation, [sessionId], "Activate a Draft before resolving it");
   yield* subagents.releaseParent(sessionId).pipe(asError(operation));
-  if (namespace === "active")
-    yield* projectSessionLocations.archive(sessionId, location).pipe(asError(operation));
-  yield* setSessionUnread(sessionId, false).pipe(asError(operation));
-  if (publish) yield* publishCatalogStatus(sessionId, location, true).pipe(asError(operation));
+  // Finish the short authority/publication sequence even if the caller leaves.
+  // Checkout cleanup remains interruptible and is not part of this commit.
+  yield* Effect.gen(function* () {
+    if (namespace === "active")
+      yield* projectSessionLocations.archive(sessionId, location).pipe(asError(operation));
+    yield* setSessionUnread(sessionId, false).pipe(asError(operation));
+    if (publish) yield* publishCatalogStatus(sessionId, location, true).pipe(asError(operation));
+    if (afterCommit) yield* afterCommit;
+  }).pipe(Effect.uninterruptible);
 });
 
 const restoreAuthority = Effect.fn("ProjectSessions.restoreAuthority")(function* (
@@ -148,7 +193,11 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
             );
           const memberIds = new Set(members.map(({ sessionId }) => sessionId));
           if (state.turns.some((turn) => memberIds.has(turn.sessionId) && !turn.reported))
-            return yield* error(operation, "The Session Family has an undelivered child outcome");
+            return yield* rejected(
+              operation,
+              [...memberIds],
+              "The Session Family has an undelivered child outcome",
+            );
         }
         const rootLocation = yield* familyMemberLocation(
           current,
@@ -173,8 +222,13 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
           }
           // One durable authority change resolves the whole tree. Children stay
           // in place; no member-by-member lifecycle synchronization is needed.
-          yield* archiveAuthority(current.parentSessionId, rootLocation, operation, false);
-          yield* publishResolution;
+          yield* archiveAuthority(
+            current.parentSessionId,
+            rootLocation,
+            operation,
+            false,
+            publishResolution,
+          );
           for (const location of [...members]
             .reverse()
             .filter(
@@ -184,9 +238,11 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
                 ) === index,
             )
             .map(({ location }) => location))
-            yield* managedWorktrees
-              .cleanupResolved(location.workingDirectory, location.sessionDirectory)
-              .pipe(asError(operation));
+            yield* cleanupResolved(
+              location,
+              members.map(({ sessionId }) => sessionId),
+              operation,
+            );
         } else {
           const restoredDirectories = new Set<string>();
           for (const { sessionId, location } of members) {
@@ -208,7 +264,7 @@ const transitionFamily = Effect.fn("ProjectSessions.transitionFamily")(function*
         }
       }),
     )
-    .pipe(asError(operation));
+    .pipe(asLifecycleError(operation));
 });
 
 const transitionStandalone = Effect.fn("ProjectSessions.transitionStandalone")(function* (
@@ -222,11 +278,13 @@ const transitionStandalone = Effect.fn("ProjectSessions.transitionStandalone")(f
     .withMemberLock(
       target.sessionId,
       Effect.gen(function* () {
-        if (yield* storage.familyForMember(target.sessionId))
-          return yield* error(
-            operation,
-            "The session became a family parent; retry the family operation",
-          );
+        if (yield* storage.familyForMember(target.sessionId)) {
+          const message =
+            "The session became a family member; standalone resolution is no longer allowed";
+          return yield* resolved
+            ? rejected(operation, [target.sessionId], message)
+            : error(operation, "The session became a family parent; retry the family operation");
+        }
         const location = yield* findLocation(target, { includeInactive: true }).pipe(
           asError(operation),
         );
@@ -235,7 +293,12 @@ const transitionStandalone = Effect.fn("ProjectSessions.transitionStandalone")(f
           .locate(target.sessionId, archiveLocation(location))
           .pipe(asError(operation));
         if (resolved) {
-          if (!namespace) return yield* error(operation, "Activate a Draft before resolving it");
+          if (!namespace)
+            return yield* rejected(
+              operation,
+              [target.sessionId],
+              "Activate a Draft before resolving it",
+            );
           if (namespace === "active")
             yield* assertResolvable(
               target.sessionId,
@@ -244,9 +307,7 @@ const transitionStandalone = Effect.fn("ProjectSessions.transitionStandalone")(f
               operation,
             );
           yield* archiveAuthority(target.sessionId, location, operation, publish);
-          yield* managedWorktrees
-            .cleanupResolved(location.workingDirectory, location.sessionDirectory)
-            .pipe(asError(operation));
+          yield* cleanupResolved(location, [target.sessionId], operation);
         } else {
           if (!namespace)
             return yield* error(operation, "Only a resolved Project Session can be restored");
@@ -258,7 +319,7 @@ const transitionStandalone = Effect.fn("ProjectSessions.transitionStandalone")(f
         }
       }),
     )
-    .pipe(asError(operation));
+    .pipe(asLifecycleError(operation));
 });
 
 const transition = Effect.fn("ProjectSessions.transitionLifecycle")(function* (
@@ -270,23 +331,21 @@ const transition = Effect.fn("ProjectSessions.transitionLifecycle")(function* (
   const storage = yield* SessionFamilyStorage;
   const family = yield* storage.familyForMember(target.sessionId).pipe(asError(operation));
   if (!family) return yield* transitionStandalone(target, resolved, operation, publish);
-  if (target.sessionId !== family.parentSessionId)
-    return yield* error(
-      operation,
-      `Only Session Family parent ${family.parentSessionId} can be ${resolved ? "resolved" : "restored"}`,
-    );
+  if (target.sessionId !== family.parentSessionId) {
+    const message = `Only Session Family parent ${family.parentSessionId} can be ${resolved ? "resolved" : "restored"}`;
+    return yield* resolved
+      ? rejected(operation, [target.sessionId], message)
+      : error(operation, message);
+  }
   const location = yield* familyMemberLocation(family, family.parentSessionId, operation);
   const archive = yield* SessionArchiveStorage;
   const namespace = yield* archive
     .locate(family.parentSessionId, archiveLocation(location))
     .pipe(asError(operation));
   if (!namespace)
-    return yield* error(
-      operation,
-      resolved
-        ? "Activate a Draft before resolving it"
-        : "Only a resolved Project Session can be restored",
-    );
+    return yield* resolved
+      ? rejected(operation, familyMembers(family), "Activate a Draft before resolving it")
+      : error(operation, "Only a resolved Project Session can be restored");
   yield* transitionFamily(family, resolved, operation);
 });
 
@@ -295,25 +354,19 @@ export const resolve = Effect.fn("ProjectSessions.resolve")((target: ProjectSess
 );
 
 export const restore = Effect.fn("ProjectSessions.restore")((target: ProjectSessionTarget) =>
-  transition(target, false, "restore"),
+  transition(target, false, "restore").pipe(asError("restore")),
 );
 
-/**
- * Review skeleton: a deferred standalone request must not gain family-wide authority.
- * Check standalone membership and commit under the existing admission lock. Do not
- * call the public locking resolve operation while already holding that lock.
- */
+/** Recheck standalone admission under the same lock as the shared transition. */
 export const resolveDeferredStandalone: (
   target: ProjectSessionTarget,
 ) => Effect.Effect<
   void,
   ProjectSessionError | ProjectSessionResolutionDomainFailure,
   Effect.Services<ReturnType<typeof resolve>>
-> = Effect.fn("ProjectSessions.resolveDeferredStandalone")(function* () {
-  return yield* Effect.die(
-    "Unimplemented review skeleton: ProjectSessions.resolveDeferredStandalone",
-  );
-});
+> = Effect.fn("ProjectSessions.resolveDeferredStandalone")((target: ProjectSessionTarget) =>
+  transitionStandalone(target, true, "resolveDeferredStandalone"),
+);
 
 /** Discovers and resolves every active Project Session in one Working Directory sequentially. */
 export const resolveWorkingDirectory = Effect.fn("ProjectSessions.resolveWorkingDirectory")(
@@ -384,6 +437,7 @@ export const resolveWorkingDirectory = Effect.fn("ProjectSessions.resolveWorking
     const resolvedSessionIds: string[] = [];
     const standaloneResolvedIds: string[] = [];
     const failures: WorkingDirectoryResolutionFailure[] = [];
+    const cleanupFailures: ResolutionCleanupFailed[] = [];
     for (const target of targets) {
       const outcome = yield* transition(
         { sessionId: target.sessionId, workingDirectory: target.workingDirectory },
@@ -391,10 +445,13 @@ export const resolveWorkingDirectory = Effect.fn("ProjectSessions.resolveWorking
         "resolveWorkingDirectory",
         false,
       ).pipe(Effect.result);
-      if (outcome._tag === "Failure")
+      if (outcome._tag === "Failure" && outcome.failure._tag !== "ResolutionCleanupFailed") {
         failures.push({ sessionIds: target.sessionIds, message: outcome.failure.message });
-      else {
-        resolvedSessionIds.push(...target.sessionIds);
+      } else {
+        if (outcome._tag === "Failure" && outcome.failure._tag === "ResolutionCleanupFailed") {
+          cleanupFailures.push(outcome.failure);
+          resolvedSessionIds.push(...outcome.failure.resolvedSessionIds);
+        } else resolvedSessionIds.push(...target.sessionIds);
         if (!target.family) standaloneResolvedIds.push(target.sessionId);
       }
     }
@@ -407,7 +464,13 @@ export const resolveWorkingDirectory = Effect.fn("ProjectSessions.resolveWorking
           resolved: true,
         })
         .pipe(asError("resolveWorkingDirectory"));
-    return { projectPath: location.projectPath, workingDirectory, resolvedSessionIds, failures };
+    return {
+      projectPath: location.projectPath,
+      workingDirectory,
+      resolvedSessionIds,
+      failures,
+      cleanupFailures,
+    };
   },
 );
 

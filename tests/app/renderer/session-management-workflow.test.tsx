@@ -6,7 +6,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProjectWorkflow } from "../../../src/contracts/application/application-data";
 import type { SavedDraft } from "../../../src/contracts/project-sessions/saved-draft-data";
 import { TurnId } from "../../../src/ipc/conversation-data";
-import type { Client } from "../../../src/renderer/client/Client";
+import { ClientError, type Client } from "../../../src/renderer/client/Client";
+import {
+  ResolutionRejected,
+  ResolutionCleanupFailed,
+} from "../../../src/contracts/project-sessions/project-session-resolution";
+import { WorkbenchErrorNotice } from "./workbench-error-notice";
+import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
 import {
@@ -43,6 +49,7 @@ async function renderManagement(
     client?: TestClientOverrides;
     sessions?: SessionSummaryFixture[];
     pendingSessionId?: string;
+    history?: string[];
     flushWindowState?: () => Promise<void>;
   } = {},
 ) {
@@ -50,6 +57,7 @@ async function renderManagement(
     ...options,
     client: {
       ...options.client,
+      projectSessions: { open: async () => undefined, ...options.client?.projectSessions },
       workspaces: { generateSessionTitle: async () => undefined, ...options.client?.workspaces },
     },
     projects: [projectRecord({ path: projectPath, name: "Cake", workflow })],
@@ -60,6 +68,30 @@ async function renderManagement(
     ? root.sessionRegistry.pendingSessions.prepare(projectPath, options.pendingSessionId)
     : undefined;
   if (pending) root.appShellStore.selectProjectSession(pending.sessionId);
+  for (const id of options.history ?? []) {
+    root.sessionRegistry.load(id, projectPath);
+    applyConversationUpdate(fixture.models.projectConversation(id, projectPath), {
+      _tag: "Snapshot",
+      revision: 1,
+      snapshot: {
+        sessionId: id,
+        sessionFile: `/sessions/${id}.jsonl`,
+        parts: [],
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      },
+    });
+    root.appShellStore.selectProjectSession(id);
+    root.projectWorkbenchStore.showLoadedSession(id);
+    root.sessionLayoutStore.ensureSession(id);
+  }
   const view = render(
     <>
       {[false, true].map((resolved) => (
@@ -88,6 +120,7 @@ async function renderManagement(
         </section>
       ))}
       {pending && <Chat store={pending.conversationSessionStore.chatStore} />}
+      <WorkbenchErrorNotice store={root.projectWorkbenchStore} />
     </>,
   );
   return {
@@ -121,12 +154,116 @@ function region(resolved = false) {
 afterEach(cleanup);
 
 describe("Session management workflow", () => {
-  // Review stubs: real UI/Root/Models/Stores; fake only Client and authority updates.
-  it.todo(
-    "retires the resolved session and shows cleanup failure even when its projection arrives later",
+  it("retires authoritative family IDs and shows cleanup details before the projection arrives", async () => {
+    const pending = deferred<void>();
+    const resolve = vi.fn<Client["projectSessions"]["resolve"]>(() => pending.promise);
+    const sessions = [projectSession("other"), projectSession("parent"), projectSession("child")];
+    using fixture = await renderManagement({
+      client: { projectSessions: { resolve } },
+      sessions,
+      history: ["other", "child"],
+    });
+    await fixture.user.click(region().getByRole("button", { name: "Resolve parent" }));
+    const failure = new ResolutionCleanupFailed({
+      operation: "resolve",
+      resolvedSessionIds: ["parent", "child"],
+      cleanupFailures: [{ workingDirectory: "/child-tree", message: "Checkout busy" }],
+      message: "Resolution committed",
+    });
+    await act(async () =>
+      pending.reject(
+        new ClientError("rejected", "projectSessions.resolve", failure.message, failure.message, {
+          domainFailure: failure,
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        region()
+          .getByText("other")
+          .closest("[data-session-id]")
+          ?.getAttribute("data-navigation-active"),
+      ).toBe("true"),
+    );
+    expect(
+      await screen.findByText("Sessions resolved; cleanup failed for /child-tree: Checkout busy", {
+        selector: "span",
+      }),
+    ).toBeDefined();
+    // The delayed catalog is still authoritative: retirement must not forge its resolution state.
+    expect(region().getByText("parent")).toBeDefined();
+    expect(region().getByText("child")).toBeDefined();
+    await fixture.publishSessions(
+      sessions.map((session) => ({ ...session, resolved: session.sessionId !== "other" })),
+    );
+    expect(region(true).getByText("child")).toBeDefined();
+    expect(resolve).toHaveBeenCalledOnce();
+  });
+
+  it.each(["rejected", "transport"] as const)(
+    "keeps the session open on %s resolution failure",
+    async (kind) => {
+      const refusal = new ResolutionRejected({
+        operation: "resolve",
+        sessionIds: ["current"],
+        message: "Turn still active",
+      });
+      const failure =
+        kind === "rejected"
+          ? new ClientError(kind, "projectSessions.resolve", refusal.message, refusal.message, {
+              domainFailure: refusal,
+            })
+          : new ClientError(
+              kind,
+              "projectSessions.resolve",
+              "Connection lost; outcome unknown",
+              "Disconnected",
+            );
+      const resolve = vi.fn<Client["projectSessions"]["resolve"]>(async () => {
+        throw failure;
+      });
+      using fixture = await renderManagement({
+        client: { projectSessions: { resolve } },
+        sessions: [projectSession("other"), projectSession("current")],
+        history: ["other", "current"],
+      });
+      await fixture.user.click(region().getByRole("button", { name: "Resolve current" }));
+      expect(await screen.findByText(failure.message)).toBeDefined();
+      expect(
+        region()
+          .getByText("current")
+          .closest("[data-session-id]")
+          ?.getAttribute("data-navigation-active"),
+      ).toBe("true");
+      expect(resolve).toHaveBeenCalledOnce();
+    },
   );
-  it.todo("keeps the session open when resolution is explicitly rejected");
-  it.todo("does not retire a session on an uncertain transport failure");
+
+  it("does not navigate after a disposed workflow receives committed cleanup failure", async () => {
+    const pending = deferred<void>();
+    const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
+    const fixture = await renderManagement({
+      client: { projectSessions: { resolve: () => pending.promise, open } },
+      sessions: [projectSession("other"), projectSession("current")],
+      history: ["other", "current"],
+    });
+    await fixture.user.click(region().getByRole("button", { name: "Resolve current" }));
+    fixture[Symbol.dispose]();
+    const failure = new ResolutionCleanupFailed({
+      operation: "resolve",
+      resolvedSessionIds: ["current"],
+      cleanupFailures: [{ workingDirectory: projectPath, message: "Checkout busy" }],
+      message: "Resolution committed",
+    });
+    await act(async () =>
+      pending.reject(
+        new ClientError("rejected", "projectSessions.resolve", failure.message, failure.message, {
+          domainFailure: failure,
+        }),
+      ),
+    );
+    expect(open).not.toHaveBeenCalled();
+  });
 
   it("deletes a resolved saved draft through its native menu without deleting a Project Session", async () => {
     const savedDrafts = fakeSavedDrafts();

@@ -5,6 +5,10 @@ import { BrowserMenuStore } from "../../../src/renderer/stores/BrowserMenuStore"
 import { makeClient } from "../../../src/renderer/client/ClientLive";
 import { ClientError } from "../../../src/renderer/client/Client";
 import type { Runtime } from "../../../src/renderer/runtime";
+import {
+  ResolutionRejected,
+  ResolutionCleanupFailed,
+} from "../../../src/contracts/project-sessions/project-session-resolution";
 import type { EditorLease } from "../../../src/contracts/vscode/editor-endpoint";
 
 function controlledRuntime(execute: Runtime["execute"]): Pick<Runtime, "execute"> {
@@ -20,14 +24,75 @@ const browserDevices = () => ({
 });
 
 describe("Client", () => {
-  // Review stubs: domain metadata is allowlisted; arbitrary rejection objects stay private.
-  it.todo(
-    "retains validated resolution failures without classifying them as uncertain transport delivery",
+  const cleanupFailure = new ResolutionCleanupFailed({
+    operation: "resolve",
+    resolvedSessionIds: ["session"],
+    cleanupFailures: [{ workingDirectory: "/worktree", message: "Checkout busy" }],
+    message: "Resolved; cleanup failed",
+  });
+  it.each([
+    new ResolutionRejected({
+      operation: "resolve",
+      sessionIds: ["session"],
+      message: "Turn active",
+    }),
+    cleanupFailure,
+  ])("retains validated $_tag resolution failures without uncertain delivery", async (failure) => {
+    const uncertain = vi.fn();
+    const client = makeClient(
+      controlledRuntime(async () => {
+        throw failure;
+      }),
+      {
+        kind: "remote",
+        connected: () => true,
+        blocked: () => false,
+        uncertain,
+      },
+    );
+    await expect(client.projectSessions.resolve({ sessionId: "session" })).rejects.toMatchObject({
+      kind: "rejected",
+      domainFailure: failure,
+    });
+    expect(uncertain).not.toHaveBeenCalled();
+  });
+  it.each([
+    {
+      _tag: "ResolutionCleanupFailed",
+      resolvedSessionIds: [],
+      cleanupFailures: [],
+      message: "Invalid",
+    },
+    { _tag: "ResolutionRejected", sessionIds: [42], message: "Invalid" },
+    { _tag: "OtherFailure", sessionIds: ["session"], message: "Unrelated" },
+  ])(
+    "does not attach malformed or unrelated tagged values as domainFailure: $_tag",
+    async (failure) => {
+      const client = makeClient(
+        controlledRuntime(async () => {
+          throw failure;
+        }),
+      );
+      await expect(client.projectSessions.resolve({ sessionId: "session" })).rejects.toMatchObject({
+        domainFailure: undefined,
+      });
+    },
   );
-  it.todo("does not attach malformed or unrelated tagged values as ClientError.domainFailure");
-  it.todo(
-    "does not erase an already received committed outcome when the caller signal later aborts",
-  );
+  it("does not erase an already received committed outcome when the caller signal later aborts", async () => {
+    const controller = new AbortController();
+    const uncertain = vi.fn();
+    const client = makeClient(
+      controlledRuntime(async () => {
+        controller.abort();
+        throw cleanupFailure;
+      }),
+      { kind: "remote", connected: () => true, blocked: () => false, uncertain },
+    );
+    await expect(
+      client.projectSessions.resolve({ sessionId: "session" }, { signal: controller.signal }),
+    ).rejects.toMatchObject({ kind: "rejected", domainFailure: cleanupFailure });
+    expect(uncertain).not.toHaveBeenCalled();
+  });
 
   it("cancelled optional cleanup does not block remote commands as uncertain delivery", async () => {
     const controller = new AbortController();

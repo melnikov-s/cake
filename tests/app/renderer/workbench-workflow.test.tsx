@@ -176,6 +176,7 @@ describe("Workbench workflow", () => {
         workingDirectory: "/worktree",
         resolvedSessionIds: ["one", "two"],
         failures: [],
+        cleanupFailures: [],
       }),
     );
     using fixture = renderWorkbench({ projectSessions: { resolveWorkingDirectory } });
@@ -208,6 +209,7 @@ describe("Workbench workflow", () => {
         workingDirectory: "/worktree",
         resolvedSessionIds: ["one", "two"],
         failures: [],
+        cleanupFailures: [],
       }),
     );
     expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();

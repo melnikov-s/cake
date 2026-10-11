@@ -37,7 +37,7 @@ export interface SessionRegistryStoreProps {
   canSubmit(sessionId: string): boolean;
   isActive(sessionId: string): boolean;
   isVisible?(sessionId: string): boolean;
-  worktreeOperation(workspacePath: string): WorktreeLandingOperation | undefined;
+  worktreeOperation(workspacePath: string): typeof WorktreeLandingOperation.Encoded | undefined;
   openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   persistNow(): Promise<void>;
   renameSession(sessionId: string, name: string): Promise<void>;

@@ -23,15 +23,15 @@ export interface SessionRetirementStoreProps {
 export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
   async setProjectSessionResolved(sessionId: string, resolved: boolean) {
     const rendererDraft = this.props.registry.pendingSessions.isDraft(sessionId);
-    const changed = await this.props.projectSessions.resolveSession(sessionId, resolved);
-    if (resolved && changed && !rendererDraft) await this.forgetProjectSessions([sessionId]);
-    return changed;
+    return this.props.projectSessions.resolveSession(sessionId, resolved, async (ids) => {
+      if (!this.signal.aborted && !rendererDraft) await this.forgetProjectSessions(ids);
+    });
   }
 
   async setProjectSessionsResolved(sessionIds: readonly string[], resolved: boolean) {
-    const count = await this.props.projectSessions.resolveSessionsById(sessionIds, resolved);
-    if (resolved && count === sessionIds.length) await this.forgetProjectSessions(sessionIds);
-    return count;
+    return this.props.projectSessions.resolveSessionsById(sessionIds, resolved, async (ids) => {
+      if (!this.signal.aborted) await this.forgetProjectSessions(ids);
+    });
   }
 
   async deleteProjectSession(sessionId: string) {
@@ -44,6 +44,7 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
 
   /** Drops sessions from navigation history and returns to the previous conversation. */
   async forgetSessions(sessionIds: readonly string[], fallbackProjectPath?: string) {
+    if (this.signal.aborted) return;
     const activeSessionId = this.props.shell.activeConversation?.sessionId;
     const activeConversationRemoved =
       activeSessionId !== undefined && sessionIds.includes(activeSessionId);
@@ -58,6 +59,7 @@ export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
 
   /** Releases live Project Session ownership before navigating away from archived transcripts. */
   async forgetProjectSessions(sessionIds: readonly string[], fallbackProjectPath?: string) {
+    if (this.signal.aborted) return;
     const active = this.props.shell.activeConversation;
     const activeSessionId =
       active?.kind === "project-session" && sessionIds.includes(active.sessionId)

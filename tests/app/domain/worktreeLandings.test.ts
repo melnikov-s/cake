@@ -1,4 +1,8 @@
 import { it } from "@effect/vitest";
+import {
+  ResolutionCleanupFailed,
+  type WorkingDirectoryResolutionResult,
+} from "../../../src/contracts/project-sessions/project-session-resolution";
 import { Deferred, Effect, Layer, Schema, Stream, SubscriptionRef } from "effect";
 import { describe, expect } from "vitest";
 import {
@@ -62,15 +66,9 @@ function services(options: {
   prompts?: Partial<CakePrompts>;
   prepare?: Effect.Effect<void, ManagedWorktreeError>;
   cancel?: (onlyIfQueued: boolean | undefined) => Effect.Effect<void, ManagedWorktreeError>;
-  resolve?: (workingDirectory: string) => Effect.Effect<
-    {
-      projectPath: string;
-      workingDirectory: string;
-      resolvedSessionIds: string[];
-      failures: Array<{ sessionIds: string[]; message: string }>;
-    },
-    WorktreeLandingError
-  >;
+  resolve?: (
+    workingDirectory: string,
+  ) => Effect.Effect<WorkingDirectoryResolutionResult, WorktreeLandingError>;
 }) {
   const managed = ManagedWorktrees.of({
     records: () => Effect.succeed(options.records?.() ?? [record]),
@@ -138,6 +136,7 @@ function services(options: {
             workingDirectory,
             resolvedSessionIds: [],
             failures: [],
+            cleanupFailures: [],
           }),
       }),
     ),
@@ -155,8 +154,66 @@ const awaitPhase = (phase: WorktreeLandingPhase) =>
   });
 
 describe("WorktreeLandings", () => {
-  // Review stub: a completed Git landing must not be repeated to repair checkout cleanup.
-  it.todo("retains landed status and exposes cleanup failures after resolution committed");
+  it.effect("retains landed status and exposes cleanup failures after resolution committed", () => {
+    const events: string[] = [];
+    const cleanupFailure = new ResolutionCleanupFailed({
+      operation: "resolveWorkingDirectory",
+      resolvedSessionIds: ["session-1"],
+      cleanupFailures: [{ workingDirectory: workspacePath, message: "Checkout busy" }],
+      message: "Resolved; checkout busy",
+    });
+    let landed = false;
+    const layer = services({
+      status: () => ({
+        ...baseStatus(),
+        aheadCount: landed ? 0 : 1,
+        record: { ...record, state: landed ? "landed" : "active" },
+      }),
+      events,
+      land: () => {
+        landed = true;
+        return { outcome: "landed" };
+      },
+      resolve: (workingDirectory) =>
+        Effect.sync(() => {
+          events.push("resolve");
+          return {
+            projectPath: "/project",
+            workingDirectory,
+            resolvedSessionIds: ["session-1"],
+            failures: [],
+            cleanupFailures: [cleanupFailure],
+          };
+        }),
+    });
+    return Effect.scoped(
+      Effect.gen(function* () {
+        yield* worktreeLandings.start({
+          operationId: "landing-cleanup",
+          workspacePath,
+          sessionId: "session-1",
+          strategy: "preserve",
+          allowDirtyTarget: false,
+          commitBeforeLanding: false,
+          resolveAfterLanding: true,
+        });
+        yield* awaitPhase("landed");
+        const snapshot = yield* worktreeLandings.inspect({ workspacePath, sessionId: "session-1" });
+        expect(snapshot.operation?.phase).toBe("landed");
+        expect(snapshot.operation?.cleanupFailures).toEqual([cleanupFailure]);
+        expect(events).toEqual([
+          "resolve-intent:true",
+          "prepare",
+          "land",
+          "resolve",
+          "resolve-intent:false",
+        ]);
+        yield* worktreeLandings.inspect({ workspacePath, sessionId: "session-1" });
+        expect(events.filter((event) => event === "land")).toHaveLength(1);
+        expect(events.filter((event) => event === "resolve")).toHaveLength(1);
+      }).pipe(Effect.provide(layer)),
+    );
+  });
 
   it.effect("reserves, asks the Project Session to commit, then lands", () => {
     const events: string[] = [];
@@ -305,6 +362,7 @@ describe("WorktreeLandings", () => {
               workingDirectory,
               resolvedSessionIds: ["session-1"],
               failures: [],
+              cleanupFailures: [],
             };
           }),
       });
@@ -601,6 +659,7 @@ describe("WorktreeLandings", () => {
                 workingDirectory,
                 resolvedSessionIds: ["session-1"],
                 failures: [],
+                cleanupFailures: [],
               }),
             ),
         });
@@ -640,28 +699,43 @@ describe("WorktreeLandings", () => {
     ),
   );
 
-  it.effect("recovers a landed resolve intent when the terminal operation is absent", () =>
-    Effect.gen(function* () {
-      const events: string[] = [];
-      const landed: WorktreeRecord = { ...record, state: "landed", resolveAfterLanding: true };
-      const layer = services({
-        status: () => undefined,
-        records: () => [landed],
-        events,
-        resolve: (workingDirectory) =>
-          Effect.succeed({
-            projectPath: "/project",
-            workingDirectory,
-            resolvedSessionIds: ["session-1"],
-            failures: [],
-          }),
-      });
-      const snapshot = yield* worktreeLandings
-        .inspect({ workspacePath, sessionId: "session-1" })
-        .pipe(Effect.provide(layer));
-      expect(snapshot.operation).toBeUndefined();
-      expect(snapshot.status).toBeUndefined();
-      expect(events).toEqual(["resolve-intent:false"]);
-    }),
+  it.effect.each([false, true])(
+    "recovers a landed resolve intent without redoing Git (cleanup failure: %s)",
+    (cleanupFailed) =>
+      Effect.gen(function* () {
+        const events: string[] = [];
+        const cleanupFailure = new ResolutionCleanupFailed({
+          operation: "resolveWorkingDirectory",
+          resolvedSessionIds: ["session-1"],
+          cleanupFailures: [{ workingDirectory: workspacePath, message: "Checkout busy" }],
+          message: "Resolved; checkout busy",
+        });
+        const landed: WorktreeRecord = { ...record, state: "landed", resolveAfterLanding: true };
+        const layer = services({
+          status: () => undefined,
+          records: () => [landed],
+          events,
+          resolve: (workingDirectory) =>
+            Effect.succeed({
+              projectPath: "/project",
+              workingDirectory,
+              resolvedSessionIds: ["session-1"],
+              failures: [],
+              cleanupFailures: cleanupFailed ? [cleanupFailure] : [],
+            }),
+        });
+        const snapshot = yield* worktreeLandings
+          .inspect({ workspacePath, sessionId: "session-1" })
+          .pipe(Effect.provide(layer));
+        if (cleanupFailed)
+          expect(snapshot.operation).toMatchObject({
+            phase: "landed",
+            resolveAfterLanding: true,
+            cleanupFailures: [cleanupFailure],
+          });
+        else expect(snapshot.operation).toBeUndefined();
+        expect(snapshot.status).toBeUndefined();
+        expect(events).toEqual(["resolve-intent:false"]);
+      }),
   );
 });

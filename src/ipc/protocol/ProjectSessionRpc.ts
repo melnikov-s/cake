@@ -3,13 +3,16 @@ import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { SessionCatalogUpdate } from "../../contracts/application/catalog-data";
 import { TurnId } from "../conversation-data";
 import {
+  ProjectSessionResolutionDomainFailure,
+  WorkingDirectoryResolutionResult,
+} from "../../contracts/project-sessions/project-session-resolution";
+import {
   ProjectSessionError,
   ProjectSessionCatalogQuery,
   ProjectSessionCompanionActionInput,
   ProjectSessionPreview,
   ProjectSessionStartInput,
   ProjectSessionTarget,
-  WorkingDirectoryResolutionResult,
 } from "../project-session-data";
 import { jsonObjectSchema, jsonValueSchema } from "../json-contract";
 import { SESSION_TITLE_MAX_LENGTH } from "../session-contract";
@@ -90,11 +93,11 @@ export const ProjectSessionRpc = RpcGroup.make(
       resolveSource: Schema.optional(Schema.Boolean),
     },
     success: Schema.Struct({ sessionId: Schema.String }),
-    error: ProjectSessionError,
+    error: Schema.Union([ProjectSessionError, ProjectSessionResolutionDomainFailure]),
   }),
   Rpc.make("projectSessions.resolve", {
     payload: ProjectSessionTarget,
-    error: ProjectSessionError,
+    error: Schema.Union([ProjectSessionError, ProjectSessionResolutionDomainFailure]),
   }),
   Rpc.make("projectSessions.resolveWorkingDirectory", {
     payload: { workingDirectory: Schema.String },

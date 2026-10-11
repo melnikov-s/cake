@@ -2,6 +2,10 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ResolutionCleanupFailed } from "../../../src/contracts/project-sessions/project-session-resolution";
+import { WorkbenchErrorNotice } from "./workbench-error-notice";
+import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
+import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { QuakeTerminal } from "../../../src/renderer/components/quake-terminal";
@@ -19,26 +23,30 @@ function renderRetirement(
   workingDirectoryStatus: Client["terminals"]["workingDirectoryStatus"] = async () => ({
     runningProgramCount: 1,
   }),
+  resolveWorkingDirectory?: Client["projectSessions"]["resolveWorkingDirectory"],
 ) {
   const inspect = vi.fn(workingDirectoryStatus);
   const close = vi.fn<Client["terminals"]["closeWorkingDirectory"]>(async () => undefined);
   const resolve = vi.fn<Client["projectSessions"]["resolveWorkingDirectory"]>(
-    async ({ workingDirectory }) => ({
-      projectPath: "/project",
-      workingDirectory,
-      resolvedSessionIds: [workingDirectory === "/one" ? "session-one" : "session-two"],
-      failures: [],
-    }),
+    resolveWorkingDirectory ??
+      (async ({ workingDirectory }) => ({
+        projectPath: "/project",
+        workingDirectory,
+        resolvedSessionIds: [workingDirectory === "/one" ? "session-one" : "session-two"],
+        failures: [],
+        cleanupFailures: [],
+      })),
   );
   const fixture = createRendererStoreFixture({
     client: {
       terminals: { workingDirectoryStatus: inspect, closeWorkingDirectory: close },
-      projectSessions: { resolveWorkingDirectory: resolve },
+      projectSessions: { resolveWorkingDirectory: resolve, open: async () => undefined },
     },
     projects: [projectRecord({ path: "/project", name: "Project" })],
     sessions: ["one", "two"].map((name) =>
       sessionSummary({
         sessionId: `session-${name}`,
+        title: `Session ${name}`,
         projectPath: "/project",
         projectName: "Project",
         workingDirectory: `/${name}`,
@@ -57,8 +65,52 @@ function renderRetirement(
     };
     return { name, session, record };
   });
+  for (const name of ["two", "one"]) {
+    const id = `session-${name}`;
+    applyConversationUpdate(fixture.models.projectConversation(id, `/${name}`), {
+      _tag: "Snapshot",
+      revision: 1,
+      snapshot: {
+        sessionId: id,
+        sessionFile: `/sessions/${id}.jsonl`,
+        parts: [],
+        models: [],
+        thinkingLevel: "off",
+        availableThinkingLevels: ["off"],
+        streaming: false,
+        diagnostics: [],
+        commands: [],
+        compatibility: { resources: [], diagnostics: [] },
+        extensionUi: { statuses: [] },
+        tree: [],
+      },
+    });
+    fixture.root.appShellStore.selectProjectSession(id);
+    fixture.root.projectWorkbenchStore.showLoadedSession(id);
+    fixture.root.sessionLayoutStore.ensureSession(id);
+  }
+  const { root } = fixture;
   const view = render(
     <>
+      <SidebarProjectGroup
+        store={root.sidebarStore}
+        sessionList={root.sidebarStore.sessionListStore}
+        sessionMetadata={root.sessionMetadataStore}
+        projects={root.projectCatalogStore}
+        chat={root.projectWorkbenchStore}
+        shell={root.appShellStore}
+        appearance={root.settingsStore.appearance}
+        path="/project"
+        resolved={false}
+        flattenSessions
+        onCreateSession={(path) => void root.navigationStore.createSession(path)}
+        onOpenSession={(id) => void root.navigationStore.openSession(id)}
+        onRemoveProject={(path, deleteSessions) =>
+          root.projectRemovalStore.remove(path, deleteSessions)
+        }
+        onOpenSettings={(path) => root.projectSettingsStore.open(path)}
+      />
+      <WorkbenchErrorNotice store={root.projectWorkbenchStore} />
       {sessions.map(({ name, session, record }) => (
         <section key={name} aria-label={`Worktree ${name}`}>
           <WorktreePill
@@ -98,10 +150,41 @@ function resolveButton(name = "one") {
 afterEach(cleanup);
 
 describe("Working Directory retirement workflow", () => {
-  // Review stub: navigation follows committed IDs, not the absence of cleanup warnings.
-  it.todo(
-    "retires committed sessions in a mixed batch while presenting rejection and cleanup details",
-  );
+  it("retires committed sessions in a mixed batch while presenting rejection and cleanup details", async () => {
+    using fixture = renderRetirement(
+      async () => ({ runningProgramCount: 0 }),
+      async ({ workingDirectory }) => ({
+        projectPath: "/project",
+        workingDirectory,
+        resolvedSessionIds: ["session-one"],
+        failures: [{ sessionIds: ["session-two"], message: "Session two is still active" }],
+        cleanupFailures: [
+          new ResolutionCleanupFailed({
+            operation: "resolveWorkingDirectory",
+            resolvedSessionIds: ["session-one"],
+            cleanupFailures: [{ workingDirectory: "/one", message: "Checkout busy" }],
+            message: "Resolved with cleanup failure",
+          }),
+        ],
+      }),
+    );
+    await fixture.user.click(resolveButton());
+    expect(
+      await screen.findByText(/Session two is still active/, { selector: "span" }),
+    ).toHaveProperty(
+      "textContent",
+      expect.stringContaining("cleanup failed for /one: Checkout busy"),
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByText("Session two")
+          .closest("[data-session-id]")
+          ?.getAttribute("data-navigation-active"),
+      ).toBe("true"),
+    );
+    expect(fixture.resolve).toHaveBeenCalledOnce();
+  });
 
   it("closes idle terminals before resolving the worktree without a confirmation", async () => {
     using fixture = renderRetirement(async () => ({ runningProgramCount: 0 }));

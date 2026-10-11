@@ -1,6 +1,7 @@
 import { Store, observable } from "r-state-tree";
 import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
 import { ClientContext } from "./context/ClientContext";
+import { ClientError } from "../client/Client";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
@@ -50,7 +51,11 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     }
   }
 
-  async resolveSession(sessionId: string, resolved: boolean) {
+  async resolveSession(
+    sessionId: string,
+    resolved: boolean,
+    onResolved?: (sessionIds: readonly string[]) => Promise<void> | void,
+  ) {
     const session = this.props.catalog.find(sessionId);
     if (!session || this.signal.aborted) return false;
     if (this.props.registry.pendingSessions.savedRecord(sessionId)?.status === "activating")
@@ -58,22 +63,32 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     if (this.props.registry.pendingSessions.isDraft(sessionId)) {
       try {
         await this.props.registry.pendingSessions.updateSavedMetadata(sessionId, { resolved });
+        if (this.signal.aborted) return false;
+        if (resolved) await onResolved?.([sessionId]);
         return !this.signal.aborted;
       } catch (error) {
         if (!this.signal.aborted) this.props.reportError(error);
         return false;
       }
     }
-    if (this.props.registry.pendingSessions.conversation(sessionId)?.setDraftResolved(resolved))
-      return true;
+    if (this.props.registry.pendingSessions.conversation(sessionId)?.setDraftResolved(resolved)) {
+      if (resolved) await onResolved?.([sessionId]);
+      return !this.signal.aborted;
+    }
     if (resolved && this.props.registry.pendingSessions.isTemporary(sessionId)) {
       this.props.registry.removeSession(sessionId);
-      return true;
+      await onResolved?.([sessionId]);
+      return !this.signal.aborted;
     }
     if (session.familyParentSessionId && session.familyParentSessionId !== sessionId) return false;
     const transitionSessionId = session.sessionId;
     if (this.transitioningSessionIds.has(transitionSessionId)) return false;
     this.transitioningSessionIds.add(transitionSessionId);
+    const resolutionSessionIds = session.familyId
+      ? this.props.catalog.sessions
+          .filter((member) => member.familyId === session.familyId)
+          .map((member) => member.sessionId)
+      : [sessionId];
     try {
       if (this.signal.aborted) return false;
       const target = {
@@ -82,9 +97,28 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
       };
       if (resolved) await this.client.projectSessions.resolve(target, { signal: this.signal });
       else await this.client.projectSessions.restore(target, { signal: this.signal });
+      if (this.signal.aborted) return false;
+      if (resolved) await onResolved?.(resolutionSessionIds);
       return !this.signal.aborted;
     } catch (error) {
-      if (!this.signal.aborted) this.props.reportError(error);
+      if (this.signal.aborted) return false;
+      const failure = error instanceof ClientError ? error.domainFailure : undefined;
+      if (resolved && failure?._tag === "ResolutionCleanupFailed") {
+        await onResolved?.(failure.resolvedSessionIds);
+        if (this.signal.aborted) return false;
+        this.props.reportError(
+          new Error(
+            failure.cleanupFailures
+              .map(
+                (cleanup) =>
+                  `Sessions resolved; cleanup failed for ${cleanup.workingDirectory}: ${cleanup.message}`,
+              )
+              .join("\n"),
+          ),
+        );
+        return true;
+      }
+      this.props.reportError(error);
       return false;
     } finally {
       this.transitioningSessionIds.delete(transitionSessionId);
@@ -167,7 +201,11 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     }
   }
 
-  async resolveSessionsById(sessionIds: readonly string[], resolved: boolean) {
+  async resolveSessionsById(
+    sessionIds: readonly string[],
+    resolved: boolean,
+    onResolved?: (sessionIds: readonly string[]) => Promise<void> | void,
+  ) {
     if (this.signal.aborted) return 0;
     const requestedIds = new Set(sessionIds);
     const plans = new Map<string, number>();
@@ -182,7 +220,8 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     }
     let resolvedCount = 0;
     for (const [sessionId, requestedCount] of plans) {
-      if (await this.resolveSession(sessionId, resolved)) resolvedCount += requestedCount;
+      if (await this.resolveSession(sessionId, resolved, onResolved))
+        resolvedCount += requestedCount;
     }
     return resolvedCount;
   }

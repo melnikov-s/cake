@@ -1,4 +1,5 @@
-import { Effect, Predicate, Stream } from "effect";
+import { Effect, Predicate, Schema, Stream } from "effect";
+import { ProjectSessionResolutionDomainFailure } from "../../contracts/project-sessions/project-session-resolution";
 import { CakeIpcClient, type CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
 import { makeClientCapabilities } from "./ClientCapabilities";
 import { makeCommandGroup } from "./command-group";
@@ -83,6 +84,17 @@ const errorDetails = (error: unknown): string => {
 
 const clientError = (operation: string, error: unknown, signal?: AbortSignal): ClientError => {
   if (error instanceof ClientError) return error;
+  const domainFailure = Schema.decodeUnknownResult(ProjectSessionResolutionDomainFailure)(error);
+  if (domainFailure._tag === "Success")
+    return new ClientError(
+      "rejected",
+      operation,
+      domainFailure.success.message,
+      errorDetails(error),
+      {
+        domainFailure: domainFailure.success,
+      },
+    );
   if (signal?.aborted)
     return new ClientError(
       "interrupted",

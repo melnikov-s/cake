@@ -16,6 +16,10 @@ import * as projectSessionMetadata from "../../../src/domain/project-sessions/pr
 import * as projectSessionOperations from "../../../src/domain/project-sessions/projectSessionOperations";
 import * as projectSessionContinuations from "../../../src/domain/project-sessions/projectSessionContinuations";
 import * as projectSessionLifecycle from "../../../src/domain/project-sessions/projectSessionLifecycle";
+import {
+  ResolutionRejected,
+  ResolutionCleanupFailed,
+} from "../../../src/contracts/project-sessions/project-session-resolution";
 import * as projectSessionLocations from "../../../src/domain/project-sessions/projectSessionLocations";
 import { SessionCatalog } from "../../../src/renderer/models/SessionCatalog";
 import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
@@ -812,16 +816,257 @@ const sessionSummary = (id: string): PiSessionSummary => ({
 });
 
 describe("Project Sessions domain", () => {
-  // Review stubs: extend/consolidate the existing lifecycle cases at implementation.
-  it.todo(
-    "rejects active, pending, or non-root resolution with ResolutionRejected before committing",
+  it.effect(
+    "includes committed IDs and typed cleanup failures in a mixed Working Directory result",
+    () => {
+      const changes: SessionCatalogChange[] = [];
+      return Effect.gen(function* () {
+        const sessions = yield* CakeSessionRuntimes;
+        const result = yield* projectSessionLifecycle.resolveWorkingDirectory("/project").pipe(
+          Effect.provideService(CakeSessionRuntimes, {
+            ...sessions,
+            currentStatus: ({ sessionId }) =>
+              Effect.succeed(
+                sessionId === "busy"
+                  ? { streaming: true, pending: false, persisted: true }
+                  : undefined,
+              ),
+          }),
+        );
+        assert.deepEqual(result.resolvedSessionIds, nestedFamilyIds);
+        assert.deepEqual(
+          result.failures.map((failure) => failure.sessionIds),
+          [["busy"], ["io-failure"]],
+        );
+        assert.equal(result.cleanupFailures.length, 1);
+        assert.deepEqual(result.cleanupFailures[0]?.resolvedSessionIds, nestedFamilyIds);
+        assert.deepEqual(result.cleanupFailures[0]?.cleanupFailures, [
+          { workingDirectory: "/grandchild-tree", message: "Checkout cleanup failed" },
+        ]);
+        assert.deepEqual(changes, [
+          {
+            _tag: "ProjectSessionsTransitioned",
+            sessions: [{ sessionId: "parent", workingDirectory: "/project" }],
+            projectPath: "/project",
+            resolved: true,
+          },
+        ]);
+        const failure = yield* projectSessionLifecycle
+          .resolve({ sessionId: "io-failure" })
+          .pipe(Effect.flip);
+        assert.equal(failure._tag, "ProjectSessionError");
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            family: nestedFamily,
+            sessionIds: (cwd) =>
+              cwd === "/project" ? Stream.make("busy", "parent", "io-failure") : Stream.empty,
+            worktreeRecords: [
+              {
+                projectPath: "/project",
+                worktreePath: "/grandchild-tree",
+                branch: "agent/grandchild",
+                baseBranch: "main",
+                state: "landed",
+                createdAt: "2026-01-01",
+              },
+            ],
+            cleanupFailure: true,
+            archiveErrorSessionId: "io-failure",
+            catalog: (cwd) =>
+              Stream.make(sessionSummary(cwd === "/grandchild-tree" ? "grandchild" : "parent")),
+            onCatalogChange: (change) => changes.push(change),
+          }),
+        ),
+      );
+    },
   );
-  it.todo(
-    "reports ResolutionCleanupFailed with all committed family IDs while keeping them resolved",
+
+  it.effect(
+    "rejects deferred standalone resolution under the admission lock after family promotion",
+    () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        const entered = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        let promoted = false;
+        let locked = false;
+        const fiber = yield* projectSessionLifecycle
+          .resolveDeferredStandalone({ sessionId: "parent" })
+          .pipe(
+            Effect.provideService(SessionFamilyStorage, {
+              ...storage,
+              withMemberLock: (_id, effect) =>
+                Effect.gen(function* () {
+                  yield* Deferred.succeed(entered, undefined);
+                  yield* Deferred.await(release);
+                  locked = true;
+                  return yield* effect;
+                }),
+              familyForMember: (id) => {
+                assert.equal(locked, true, "membership is checked inside admission");
+                return promoted ? storage.familyForMember(id) : Effect.succeed(undefined);
+              },
+            }),
+            Effect.result,
+            Effect.forkChild,
+          );
+        yield* Deferred.await(entered);
+        promoted = true;
+        yield* Deferred.succeed(release, undefined);
+        const result = yield* Fiber.join(fiber);
+        assert.equal(result._tag, "Failure");
+        if (result._tag === "Failure") {
+          assert.ok(result.failure instanceof ResolutionRejected);
+          assert.deepEqual(result.failure.sessionIds, ["parent"]);
+        }
+        for (const id of nestedFamilyIds)
+          assert.equal((yield* projectSessionMetadata.inspect({ sessionId: id })).resolved, false);
+      }).pipe(Effect.provide(makeLayer(undefined, { family: nestedFamily }))),
   );
-  it.todo("includes committed IDs and typed cleanup failures in a mixed Working Directory result");
-  it.todo("rejects deferred standalone resolution under the admission lock after family promotion");
-  it.todo("resolves a still-standalone deferred request after its turn settles");
+
+  it.effect("resolves a still-standalone deferred request after its turn settles", () =>
+    Effect.gen(function* () {
+      const sessions = yield* CakeSessionRuntimes;
+      for (const status of [
+        { streaming: true, pending: false, persisted: true },
+        { streaming: false, pending: true, persisted: true },
+        { streaming: false, pending: false, persisted: false },
+      ]) {
+        const failure = yield* projectSessionLifecycle
+          .resolveDeferredStandalone({ sessionId: "session-1" })
+          .pipe(
+            Effect.provideService(CakeSessionRuntimes, {
+              ...sessions,
+              currentStatus: () => Effect.succeed(status),
+            }),
+            Effect.flip,
+          );
+        assert.ok(failure instanceof ResolutionRejected);
+      }
+      assert.equal(
+        yield* projectSessionLifecycle.resolveDeferredStandalone({ sessionId: "session-1" }),
+        undefined,
+      );
+      assert.equal(
+        (yield* projectSessionMetadata.inspect({ sessionId: "session-1" })).resolved,
+        true,
+      );
+    }).pipe(Effect.provide(makeLayer())),
+  );
+
+  it.effect(
+    "publishes a committed resolution despite caller interruption during finalization",
+    () => {
+      const changes: SessionCatalogChange[] = [];
+      return Effect.gen(function* () {
+        const archive = yield* SessionArchiveStorage;
+        const committed = yield* Deferred.make<void>();
+        const finish = yield* Deferred.make<void>();
+        const fiber = yield* projectSessionLifecycle.resolve({ sessionId: "session-1" }).pipe(
+          Effect.provideService(SessionArchiveStorage, {
+            ...archive,
+            resolveProject: (...args) =>
+              archive.resolveProject(...args).pipe(
+                Effect.tap(() => Deferred.succeed(committed, undefined)),
+                Effect.tap(() => Deferred.await(finish)),
+              ),
+          }),
+          Effect.forkChild,
+        );
+        yield* Deferred.await(committed);
+        fiber.interruptUnsafe();
+        yield* Deferred.succeed(finish, undefined);
+        const exit = yield* Fiber.await(fiber);
+        assert.equal(exit._tag, "Failure");
+        assert.ok(
+          changes.some(
+            (change) => change._tag === "ProjectSessionStatusChanged" && change.resolved,
+          ),
+        );
+        assert.equal(
+          (yield* projectSessionMetadata.inspect({ sessionId: "session-1" })).resolved,
+          true,
+        );
+      }).pipe(
+        Effect.provide(makeLayer(undefined, { onCatalogChange: (change) => changes.push(change) })),
+      );
+    },
+  );
+
+  it.effect(
+    "keeps long checkout cleanup interruptible without rolling back committed resolution",
+    () =>
+      Effect.gen(function* () {
+        const worktrees = yield* ManagedWorktrees;
+        const cleaning = yield* Deferred.make<void>();
+        const fiber = yield* projectSessionLifecycle.resolve({ sessionId: "parent" }).pipe(
+          Effect.provideService(ManagedWorktrees, {
+            ...worktrees,
+            cleanupResolved: () =>
+              Deferred.succeed(cleaning, undefined).pipe(Effect.andThen(Effect.never)),
+          }),
+          Effect.forkChild,
+        );
+        yield* Deferred.await(cleaning);
+        yield* Fiber.interrupt(fiber);
+        assert.equal((yield* Fiber.await(fiber))._tag, "Failure");
+        for (const id of nestedFamilyIds)
+          assert.equal((yield* projectSessionMetadata.inspect({ sessionId: id })).resolved, true);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            family: nestedFamily,
+            catalog: (cwd) =>
+              Stream.make(sessionSummary(cwd === "/grandchild-tree" ? "grandchild" : "parent")),
+            worktreeRecords: [
+              {
+                projectPath: "/project",
+                worktreePath: "/grandchild-tree",
+                branch: "agent/grandchild",
+                baseBranch: "main",
+                state: "landed",
+                createdAt: "2026-01-01",
+              },
+            ],
+          }),
+        ),
+      ),
+  );
+
+  it.effect("refuses an undelivered family outcome before committing", () =>
+    Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      const state = yield* storage.state();
+      const failure = yield* projectSessionLifecycle.resolve({ sessionId: "parent" }).pipe(
+        Effect.provideService(SessionFamilyStorage, {
+          ...storage,
+          state: () =>
+            Effect.succeed({
+              ...state,
+              turns: [
+                {
+                  sessionId: "child",
+                  senderSessionId: "parent",
+                  turnId: "turn",
+                  threadId: "nested-family",
+                  requestMessageId: "request",
+                  expectsResponse: true,
+                  reported: false,
+                },
+              ],
+            }),
+        }),
+        Effect.flip,
+      );
+      assert.ok(failure instanceof ResolutionRejected);
+      assert.deepEqual(failure.sessionIds, nestedFamilyIds);
+      assert.equal(
+        (yield* projectSessionMetadata.inspect({ sessionId: "parent" })).resolved,
+        false,
+      );
+    }).pipe(Effect.provide(makeLayer(undefined, { family: nestedFamily }))),
+  );
 
   it.effect(
     "projects metadata-only resolution into both catalog lanes while Pi files stay discoverable",
@@ -1080,6 +1325,10 @@ describe("Project Sessions domain", () => {
       for (const action of [projectSessionLifecycle.resolve, projectSessionLifecycle.restore]) {
         const failure = yield* action({ sessionId: "child" }).pipe(Effect.flip);
         assert.match(failure.message, /only session family parent parent/i);
+        assert.equal(
+          failure._tag,
+          action === projectSessionLifecycle.resolve ? "ResolutionRejected" : "ProjectSessionError",
+        );
       }
     }).pipe(Effect.provide(makeLayer(undefined, { family: nestedFamily }))),
   );
@@ -1099,6 +1348,8 @@ describe("Project Sessions domain", () => {
           }),
           Effect.flip,
         );
+        assert.ok(failure instanceof ResolutionRejected);
+        assert.deepEqual(failure.sessionIds, ["grandchild"]);
         assert.match(failure.message, /turn is active or input is pending/);
         for (const id of nestedFamilyIds)
           assert.equal((yield* projectSessionMetadata.inspect({ sessionId: id })).resolved, false);
@@ -1110,10 +1361,25 @@ describe("Project Sessions domain", () => {
     "keeps the entire family resolved and publishes its authority even when checkout cleanup fails",
     () => {
       const changes: SessionCatalogChange[] = [];
+      const cleanupAttempts: string[] = [];
       return Effect.gen(function* () {
-        const failure = yield* projectSessionLifecycle
-          .resolve({ sessionId: "parent" })
-          .pipe(Effect.flip);
+        const worktrees = yield* ManagedWorktrees;
+        const failure = yield* projectSessionLifecycle.resolve({ sessionId: "parent" }).pipe(
+          Effect.provideService(ManagedWorktrees, {
+            ...worktrees,
+            cleanupResolved: (cwd) =>
+              Effect.sync(() => cleanupAttempts.push(cwd)).pipe(
+                Effect.andThen(worktrees.cleanupResolved(cwd)),
+              ),
+          }),
+          Effect.flip,
+        );
+        assert.deepEqual(cleanupAttempts, ["/grandchild-tree"]);
+        assert.ok(failure instanceof ResolutionCleanupFailed);
+        assert.deepEqual(failure.resolvedSessionIds, nestedFamilyIds);
+        assert.deepEqual(failure.cleanupFailures, [
+          { workingDirectory: "/grandchild-tree", message: "Checkout cleanup failed" },
+        ]);
         assert.match(failure.message, /Checkout cleanup failed/);
         assert.deepEqual(changes, [
           {
@@ -2041,6 +2307,59 @@ describe("Project Sessions domain", () => {
             onCatalog: () => catalogScans++,
             onCatalogChange: (change) => changes.push(change),
             onArchive: (sessionId) => archived.push(sessionId),
+          }),
+        ),
+      );
+    },
+  );
+
+  it.effect(
+    "publishes standalone batch committed IDs even when the last checkout cleanup fails",
+    () => {
+      const changes: SessionCatalogChange[] = [];
+      return Effect.gen(function* () {
+        const result = yield* projectSessionLifecycle.resolveWorkingDirectory("/worktree");
+        assert.deepEqual(result.resolvedSessionIds, ["first", "second"]);
+        assert.deepEqual(result.failures, []);
+        assert.equal(result.cleanupFailures.length, 1);
+        assert.deepEqual(result.cleanupFailures[0]?.resolvedSessionIds, ["second"]);
+        assert.deepEqual(changes, [
+          {
+            _tag: "ProjectSessionsTransitioned",
+            projectPath: "/project",
+            sessions: [
+              { sessionId: "first", workingDirectory: "/worktree" },
+              { sessionId: "second", workingDirectory: "/worktree" },
+            ],
+            resolved: true,
+          },
+        ]);
+      }).pipe(
+        Effect.provide(
+          makeLayer(undefined, {
+            locations: [
+              {
+                projectPath: "/project",
+                projectName: "Project",
+                workingDirectory: "/worktree",
+                sessionDirectory: "/sessions",
+                resolvedSessionDirectory: "/resolved-sessions",
+              },
+            ],
+            worktreeRecords: [
+              {
+                projectPath: "/project",
+                worktreePath: "/worktree",
+                branch: "agent/work",
+                baseBranch: "main",
+                state: "landed",
+                createdAt: "2026-01-01",
+              },
+            ],
+            sessionIds: () => Stream.make("first", "second"),
+            catalog: () => Stream.make(sessionSummary("first"), sessionSummary("second")),
+            cleanupFailure: true,
+            onCatalogChange: (change) => changes.push(change),
           }),
         ),
       );

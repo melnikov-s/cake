@@ -3,6 +3,8 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ResolutionCleanupFailed } from "../../../src/contracts/project-sessions/project-session-resolution";
+import { applyWorktreeOperationCatalogUpdate } from "../../../src/renderer/reducers/WorktreeOperationReducer";
 import type { WorktreeLandingOperation } from "../../../src/contracts/worktrees/worktree-landing-data";
 import type { WorktreeStatus } from "../../../src/ipc/worktree-contract";
 import type { Client } from "../../../src/renderer/client/Client";
@@ -87,7 +89,7 @@ function renderWorktree(
     },
   });
   applySnapshot(fixture.models.worktrees, { worktrees: [currentStatus.record] });
-  applySnapshot(fixture.models.worktreeOperations, {
+  applyWorktreeOperationCatalogUpdate(fixture.models.worktreeOperations, {
     operations: options.operation ? [options.operation] : [],
   });
   const session = fixture.root.sessionRegistry.load("session-1", "/worktree");
@@ -142,7 +144,9 @@ function renderWorktree(
     ) {
       await act(async () => {
         currentStatus = nextStatus ?? undefined;
-        applySnapshot(fixture.models.worktreeOperations, { operations: next ? [next] : [] });
+        applyWorktreeOperationCatalogUpdate(fixture.models.worktreeOperations, {
+          operations: next ? [next] : [],
+        });
       });
     },
     async finishTurn(nextStatus: WorktreeStatus) {
@@ -160,10 +164,43 @@ function renderWorktree(
 afterEach(cleanup);
 
 describe("Worktree operation workflows", () => {
-  // Review stub: use the real operation projection and its existing UI owner.
-  it.todo(
-    "presents a landed and resolved operation with cleanup warnings without offering another merge",
-  );
+  it("presents a landed and resolved operation with cleanup warnings without offering another merge", async () => {
+    const startLanding = vi.fn<Client["managedWorktrees"]["startLanding"]>(async () =>
+      operation("waiting", { resolveAfterLanding: true }),
+    );
+    const cancelLanding = vi.fn<Client["managedWorktrees"]["cancelLanding"]>(async () => undefined);
+    using fixture = renderWorktree({
+      client: { managedWorktrees: { startLanding, cancelLanding } },
+    });
+    await fixture.user.click(await screen.findByRole("button", { name: "Merge & resolve" }));
+    await fixture.publish(
+      operation("landed", {
+        resolveAfterLanding: true,
+        cleanupFailures: [
+          new ResolutionCleanupFailed({
+            operation: "resolveWorkingDirectory",
+            resolvedSessionIds: ["session-1"],
+            cleanupFailures: [{ workingDirectory: "/worktree", message: "Checkout busy" }],
+            message: "Resolved; cleanup failed",
+          }),
+        ],
+      }),
+      null,
+    );
+    expect(await screen.findByText("Session merged and resolved")).toBeDefined();
+    expect(
+      await screen.findByText(/Sessions resolved; cleanup failed for \/worktree: Checkout busy/),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Merge" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Land new commit/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(startLanding).toHaveBeenCalledOnce();
+    expect(cancelLanding).toHaveBeenCalledWith({
+      operationId: "landing-operation",
+      workspacePath: "/worktree",
+      intent: "acknowledge",
+    });
+  });
 
   it("refreshes status when a turn ends and submits commit-and-merge with explicit dirty-target confirmation", async () => {
     const startLanding = vi.fn<Client["managedWorktrees"]["startLanding"]>(async () =>

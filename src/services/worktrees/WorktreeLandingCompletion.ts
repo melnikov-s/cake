@@ -1,5 +1,5 @@
 import { Context, type Effect } from "effect";
-import type { WorkingDirectoryResolutionResult } from "../../ipc/project-session-data";
+import type { WorkingDirectoryResolutionResult } from "../../contracts/project-sessions/project-session-resolution";
 import type { WorktreeLandingError } from "../../contracts/worktrees/worktree-landing-data";
 
 /** Authoritative completion policy invoked by the process-lifetime landing workflow. */
