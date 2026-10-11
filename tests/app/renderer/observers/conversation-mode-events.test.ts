@@ -26,7 +26,7 @@ import { createRendererStoreFixture } from "../renderer-store-fixture";
 
 /** Only the transport and audio/provider boundaries are replaced. Event routing,
  * application observer, shared Chat and the entire Root/Model/Store tree are real. */
-async function workflow(events: ClientEvents["Service"]) {
+async function workflow(events: ClientEvents["Service"], initialDraft = "") {
   const consumed = Effect.runSync(Queue.unbounded<unknown>());
   const released = Effect.runSync(Queue.unbounded<void>());
   const recognitionStarted = Effect.runSync(Queue.unbounded<AbortSignal | undefined>());
@@ -95,6 +95,7 @@ async function workflow(events: ClientEvents["Service"]) {
     voices: [],
   });
   const session = root.sessionRegistry.load("one", "/project");
+  session.conversationSessionStore.composerStore.draftStore.setText(initialDraft);
   root.appShellStore.selectProjectSession("one");
   root.projectWorkbenchStore.showLoadedSession("one");
   let revision = 0;
@@ -233,12 +234,12 @@ afterEach(cleanup);
 
 describe("conversation-mode native application events", () => {
   it.effect(
-    "native_window_blur_releases_capture_recognition_synthesis_and_playback_without_cancelling_pi",
+    "native_window_blur_stops_audio_discards_draining_recognition_and_releases_resources_without_cancelling_pi",
     () =>
       Effect.gen(function* () {
         const events = yield* ClientEvents;
         yield* Effect.promise(async () => {
-          using f = await workflow(events);
+          using f = await workflow(events, "Unsubmitted draft");
           await f.enter();
           await f.frames(0.1, 8);
           const recognition = await Effect.runPromise(Queue.take(f.recognitionStarted));
@@ -271,12 +272,24 @@ describe("conversation-mode native application events", () => {
           expect(f.root.conversationModeStore.phase).toBe("off");
           expect(f.stopCapture).toHaveBeenCalledTimes(1);
           expect(f.playback.stop).toHaveBeenCalledTimes(stops + 1);
-          expect(recognition?.aborted).toBe(true);
+          // In-flight inference drains on the Store lifetime signal so exiting
+          // voice mode does not kill the shared warm recognizer. Its stale words
+          // must still be discarded after the capture generation changes.
+          expect(recognition?.aborted).toBe(false);
           expect(synthesis?.aborted).toBe(true);
+          expect(screen.getByRole("combobox", { name: "Message" })).toHaveProperty(
+            "value",
+            "Unsubmitted draft",
+          );
           await Effect.runPromise(Queue.take(f.released));
           expect(f.release).toHaveBeenCalledTimes(1);
           await f.settleLate();
           await f.frames(0.1, 12);
+          expect(screen.getByRole("combobox", { name: "Message" })).toHaveProperty(
+            "value",
+            "Unsubmitted draft",
+          );
+          expect(f.root.conversationModeStore.transcript).toBe("");
           expect(f.transcribe).toHaveBeenCalledTimes(1);
           expect(f.playback.enqueue).toHaveBeenCalledTimes(1);
           expect(f.prompt).not.toHaveBeenCalled();
