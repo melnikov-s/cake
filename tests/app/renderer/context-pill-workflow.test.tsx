@@ -100,7 +100,8 @@ describe("Context visibility through the authoritative projection and shared Cha
       expect(screen.getByText("Question", { exact: true })).toBeTruthy();
       const pills = Array.from(view.container.querySelectorAll('[data-slot="context-pill"]'));
       expect(pills).toHaveLength(4);
-      expect(screen.getByText("API review · session message · 1")).toBeTruthy();
+      expect(screen.getByText("API review", { exact: true })).toBeTruthy();
+      expect(screen.getByRole("region", { name: "Message from another session" })).toBeTruthy();
       expect(screen.getByRole("heading", { name: "Session assignment" })).toBeTruthy();
       expect(screen.getByText("A session report")).toBeTruthy();
       expect(pills.every((pill) => Boolean(pill.closest('[data-slot="context-group"]')))).toBe(
@@ -122,7 +123,7 @@ describe("Context visibility through the authoritative projection and shared Cha
         view.container.querySelectorAll('[data-slot="context-pill"][data-origin="compacted"]'),
       ).toHaveLength(4);
       expect(screen.getAllByText("· removed from context")).toHaveLength(4);
-      expect(screen.getByText("API review · session message · 1")).toBeTruthy();
+      expect(screen.getByText("API review", { exact: true })).toBeTruthy();
       expect(screen.getByText("A session report")).toBeTruthy();
       expect(JSON.stringify(pi.buildSessionContext().messages)).not.toContain("A session report");
       expect(screen.getByText("Answer", { exact: true })).toBeTruthy();

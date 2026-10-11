@@ -51,6 +51,7 @@ type ImageProps = ComponentProps<"img"> & { node?: unknown };
 type MarkdownLinkActions = {
   openExternalUrl(url: string): void;
   openSession(sessionId: string): void;
+  sessionTitle?(sessionId: string): string | undefined;
   loadWorkspaceImage?(
     path: string,
     signal: AbortSignal,
@@ -60,6 +61,11 @@ type MarkdownLinkActions = {
 };
 
 const MarkdownLinkContext = createContext<MarkdownLinkActions | undefined>(undefined);
+
+/** Reuse the conversation's navigation for structured source attribution. */
+export function useMarkdownLinkActions() {
+  return useContext(MarkdownLinkContext);
+}
 
 export function MarkdownLinkProvider({
   actions,

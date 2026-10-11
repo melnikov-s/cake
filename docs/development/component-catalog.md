@@ -47,6 +47,12 @@ and [`ChatStore`](../../src/renderer/stores/ChatStore.ts).
 
 ## Conversation and media
 
+[`SessionMessage`](../../src/renderer/components/ui/session-message.tsx) presents
+incoming session communication as an expanded card with an explicit attribution
+header and a source-session link. Use recorded provenance; do not infer the sender
+from message text. Missing source identity/title is disclosed, not invented.
+System/reminder context remains `ContextPill`.
+
 | Component                                                                                                                                                                                                                                 | Use for                                                                                   |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | [AttachmentTile](../../src/renderer/components/ui/attachment-tile.tsx), [TextAttachment](../../src/renderer/components/ui/text-attachment.tsx)                                                                                            | Shared attachment labels, image thumbnails, removal and inspectable text previews.        |

@@ -17,6 +17,7 @@ import { rangeAtOffsets, useMessageHighlights } from "@/lib/message-highlights";
 import { Message, MessageContent, MessageLabel } from "@/components/ai-elements/message";
 import { FullscreenMessage } from "@/components/fullscreen-message";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
+import { SessionMessage } from "@/components/ui/session-message";
 import { IconButton } from "@/components/ui/icon-button";
 import {
   ChatIcon,
@@ -88,31 +89,53 @@ export const ChatTextMessage = forwardRef<
   ref,
 ) {
   const assistant = part.role === "assistant";
-  const senderLabel = part.crossSession
-    ? `${part.crossSession.sender.title} · session message · ${part.crossSession.sequence}${part.crossSession.maxMessages ? `/${part.crossSession.maxMessages}` : ""}`
-    : undefined;
   const scheduled = part.scheduled ? describeScheduledOrigin(part.scheduled) : undefined;
-  const userLabel =
-    senderLabel ??
-    (scheduled
-      ? `You · ${scheduled.summary}`
-      : part.deliveryState === "sending"
-        ? "You · sending"
-        : part.draft
-          ? "You · draft"
-          : "You");
+  const userLabel = scheduled
+    ? `You · ${scheduled.summary}`
+    : part.deliveryState === "sending"
+      ? "You · sending"
+      : part.draft
+        ? "You · draft"
+        : "You";
+  const content = part.text ? (
+    <MessageContent
+      ref={contentRef}
+      className={cn(
+        part.crossSession
+          ? "rounded-none border-0 bg-transparent px-4 py-3 shadow-none"
+          : assistant
+            ? "bg-card text-foreground"
+            : "border-user-message-foreground/20 bg-user-message text-user-message-foreground",
+        !assistant && part.renderAs !== "markdown" && "whitespace-pre-wrap",
+      )}
+    >
+      {assistant || part.renderAs === "markdown" ? (
+        <Markdown
+          streaming={part.status === "streaming"}
+          normalizeLatexDelimiters={part.status !== "streaming"}
+          onOpenSourceLocation={onOpenSourceLocation}
+          omitArtifactEmbeds={omitArtifactEmbeds}
+        >
+          {part.text}
+        </Markdown>
+      ) : (
+        part.text
+      )}
+    </MessageContent>
+  ) : null;
   return (
     <Message
       ref={ref}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       className={cn(
-        assistant
+        assistant || part.crossSession
           ? "group/msg relative mr-auto w-full"
           : "group/msg relative ml-auto w-[min(88%,42rem)]",
       )}
     >
       {!assistant &&
+        !part.crossSession &&
         (scheduled ? (
           <MessageLabel className="flex items-center gap-1" title={scheduled.detail}>
             <ClockIcon />
@@ -121,32 +144,16 @@ export const ChatTextMessage = forwardRef<
         ) : (
           <MessageLabel>{userLabel}</MessageLabel>
         ))}
-      {part.text ? (
-        <MessageContent
-          ref={contentRef}
-          className={cn(
-            assistant
-              ? "bg-card text-foreground"
-              : part.crossSession
-                ? "border-dashed border-border bg-muted text-foreground"
-                : "border-user-message-foreground/20 bg-user-message text-user-message-foreground",
-            !assistant && part.renderAs !== "markdown" && "whitespace-pre-wrap",
-          )}
+      {part.crossSession ? (
+        <SessionMessage
+          source={part.crossSession.sender}
+          notice={part.crossSession.generatedNotice}
         >
-          {assistant || part.renderAs === "markdown" ? (
-            <Markdown
-              streaming={part.status === "streaming"}
-              normalizeLatexDelimiters={part.status !== "streaming"}
-              onOpenSourceLocation={onOpenSourceLocation}
-              omitArtifactEmbeds={omitArtifactEmbeds}
-            >
-              {part.text}
-            </Markdown>
-          ) : (
-            part.text
-          )}
-        </MessageContent>
-      ) : null}
+          {content}
+        </SessionMessage>
+      ) : (
+        content
+      )}
       {children}
     </Message>
   );

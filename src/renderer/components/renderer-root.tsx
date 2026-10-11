@@ -43,6 +43,11 @@ export const RendererRoot = observer(function RendererRoot({
                 actions={{
                   openExternalUrl,
                   openSession,
+                  sessionTitle: (sessionId) =>
+                    rootStore.sessionCatalogStore.find(sessionId)?.title ??
+                    rootStore.cakeChatCollectionStore.summaries.find(
+                      (session) => session.sessionId === sessionId,
+                    )?.title,
                   loadWorkspaceImage: (path, signal) => {
                     if (!activeWorkingDirectory)
                       return Promise.reject(new Error("No active project Working Directory"));

@@ -1,6 +1,7 @@
 import { defaultApplicationState } from "../../src/contracts/application/application-data.ts";
 import { drawMermaidArchitecture } from "../../tests/fixtures/draw-mermaid-architecture.ts";
 import { addResponseModeReminder } from "../../src/contracts/conversations/response-mode-reminders.ts";
+import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message.ts";
 import { addPresentationModeReminder } from "../../src/contracts/conversations/presentation-mode-reminders.ts";
 import { nestedAssistant, nestedEntries } from "../../tests/fixtures/nested-tool-activity.ts";
 import { seedWorkflowCheckpoint } from "../../tests/fixtures/workflow-checkpoint.ts";
@@ -1625,6 +1626,115 @@ const cakeChatScenario: VisualCaptureScenario = {
   region: (page) => page.locator("body"),
 };
 
+const sessionMessagesScenario: VisualCaptureScenario = {
+  name: "session-messages",
+  description: "Attributed incoming session report beside genuine system context in both chats",
+  states: ["default", "project"],
+  async seed(paths, theme) {
+    await cakeChatScenario.seed(paths, theme);
+    const timestamp = new Date(0).toISOString();
+    const sessionDirectory = workspaceSessionDirectory(
+      paths.project,
+      join(paths.cakeHome, "pi", "sessions"),
+    );
+    const sourceId = "visual-report-source";
+    const sourceTitle = "Add and globally install manual post-mortem skill";
+    await writeFile(
+      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sourceId}.jsonl`),
+      [
+        { type: "session", version: 3, id: sourceId, timestamp, cwd: paths.project },
+        { type: "session_info", id: "source-title", parentId: null, timestamp, name: sourceTitle },
+        {
+          type: "message",
+          id: "source-input",
+          parentId: "source-title",
+          timestamp,
+          message: { role: "user", content: "Install the skill.", timestamp: 0 },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+    const report = encodeCrossSessionMessage(
+      "## Completed\n\nInstalled the **manual post-mortem skill** and verified it is available globally.\n\n- Preserved the existing skills.\n- Focused verification passed.\n\nNo repository merge was performed.",
+      {
+        version: 1,
+        messageId: "f6debbbd-ced1-4a12-b0f7-fb60c292c623",
+        threadId: "8358c2b7-bd3c-42ee-9fec-fcb726b66c18",
+        sequence: 1,
+        expectsResponse: false,
+        sender: {
+          sessionId: sourceId,
+          // Real completion reports can carry an ID-only title when backend catalog lookup fails.
+          title: `Session ${sourceId}`,
+          kind: "project-session",
+          projectName: "Cake",
+        },
+      },
+    );
+    const messages = [
+      {
+        role: "user" as const,
+        timestamp: 10,
+        content: addResponseModeReminder("Report received below.", "text"),
+      },
+      { role: "user" as const, timestamp: 11, content: report },
+    ];
+    const file = join(
+      sessionDirectory,
+      "1970-01-01T00-00-00-000Z_visual-assistant-markdown-code.jsonl",
+    );
+    await writeFile(
+      file,
+      `${await readFile(file, "utf8")}${messages
+        .map((message, index) =>
+          JSON.stringify({
+            type: "message",
+            id: `incoming-${index}`,
+            parentId: index === 0 ? "assistant-1" : "incoming-0",
+            timestamp,
+            message,
+          }),
+        )
+        .join("\n")}\n`,
+    );
+    const storage = await openNodeSqliteStorage(
+      join(paths.cakeHome, "pi", "global-chat", "coordinator.sqlite"),
+    );
+    const harness = await Harness.open(
+      storage,
+      { models: createModels(), registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    );
+    try {
+      const root = await harness.root(BACKGROUND_CONTEXT);
+      await root.commit(async (tx) => {
+        for (const message of messages)
+          await tx.appendEntry(UserEntry, root.id, { model: [message] });
+      }, BACKGROUND_CONTEXT);
+    } finally {
+      await harness.close(BACKGROUND_CONTEXT);
+      await storage.close(BACKGROUND_CONTEXT);
+    }
+  },
+  async prepare(page, state) {
+    await assistantMarkdownCode.prepare(page, "default");
+    if (state !== "project") {
+      await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+      await expect(page.locator('[data-slot="workspace-header"] strong')).toHaveText("Cake Chat");
+    }
+    await expect(
+      page.getByRole("region", { name: "Message from another session" }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Cake · response mode", exact: true }),
+    ).toBeVisible();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator(".transcript"),
+};
+
 let taskAttachmentDocumentPath = "";
 
 const taskInputAttachmentsScenario: VisualCaptureScenario = {
@@ -2353,6 +2463,7 @@ export const visualCaptureScenarios = [
   sessionPluginsScenario,
   assistantMarkdownCode,
   contextPillsScenario,
+  sessionMessagesScenario,
   conversationEntryScenario,
   conversationCountdownScenario,
   speechOutputSettingsScenario,
