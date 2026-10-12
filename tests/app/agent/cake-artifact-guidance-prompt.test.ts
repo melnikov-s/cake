@@ -1,20 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { coordinatorSystemPrompt } from "../../../src/services/pi-durable/coordinator-system-prompt";
-import { renderPromptTemplate } from "../../../src/services/pi/runtime/prompt-template";
-import commonTemplate from "../../../src/services/pi/runtime/prompts/common.md?raw";
-import projectTemplate from "../../../src/services/pi/runtime/prompts/project.md?raw";
-import interactionTemplate from "../../../src/services/pi/runtime/prompts/project-interaction.md?raw";
-import interviewTemplate from "../../../src/services/pi/runtime/prompts/interview.md?raw";
+import artifactDocumentation from "../../../docs/agent/artifacts.md?raw";
+import presentationDocumentation from "../../../docs/agent/presentation.md?raw";
 
-const projectPrompt = renderPromptTemplate(projectTemplate, {
-  commonPrompt: renderPromptTemplate(commonTemplate),
-  projectInteractionPrompt: renderPromptTemplate(interactionTemplate, {
-    interviewPrompt: renderPromptTemplate(interviewTemplate),
-  }),
-});
+const projectGuidance = `${artifactDocumentation}\n\n${presentationDocumentation}`;
 
 describe.each([
-  ["Project Session", projectPrompt],
+  ["Project Session documentation", projectGuidance],
   ["Cake Chat", coordinatorSystemPrompt("")],
 ])("%s artifact guidance", (_, prompt) => {
   it("keeps investigations and ordinary task communication in chat unless explicitly requested", () => {
@@ -72,20 +64,22 @@ describe.each([
   });
 });
 
-it("Project Sessions publish qualifying Markdown directly and include references in child assignments", () => {
-  expect(projectPrompt).toContain(
+it("Project Session documentation preserves publication and child-assignment guidance", () => {
+  expect(projectGuidance).toContain(
     "Use these inline for ordinary conversation regardless of length or formatting",
   );
-  expect(projectPrompt).toContain(
+  expect(projectGuidance).toContain(
     "When the user explicitly requests a text artifact or a spec qualifies as a shared, durable reference under the guidance above",
   );
-  expect(projectPrompt).toContain("publish Markdown directly with `artifacts.create`");
-  expect(projectPrompt).toContain("revise it with `artifacts.update` for targeted Markdown edits");
-  expect(projectPrompt).toContain("Use `artifacts.replace` for full Markdown rewrites");
-  expect(projectPrompt).toContain("Both require `expectedRevision`");
-  expect(projectPrompt).toContain(
+  expect(projectGuidance).toContain("publish Markdown directly with `artifacts.create`");
+  expect(projectGuidance).toContain(
+    "revise it with `artifacts.update` for targeted Markdown edits",
+  );
+  expect(projectGuidance).toContain("Use `artifacts.replace` for full Markdown rewrites");
+  expect(projectGuidance).toContain("Both require `expectedRevision`");
+  expect(projectGuidance).toContain(
     "artifact reference and relevant revision in child-session assignments",
   );
-  expect(projectPrompt).toContain("ask recipients to read it before implementing the spec");
-  expect(projectPrompt).toContain("For explicitly requested file-format deliverables");
+  expect(projectGuidance).toContain("ask recipients to read it before implementing the spec");
+  expect(projectGuidance).toContain("For explicitly requested file-format deliverables");
 });

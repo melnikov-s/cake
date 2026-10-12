@@ -69,9 +69,8 @@ import {
 } from "./cake-operation-registry";
 import { loadCakeSessionRuntimeResourceLoader } from "./cake-session-runtime-resources";
 import { detectGitWorktree, worktreeSystemPrompt } from "./worktree-system-prompt";
-import commonPromptTemplate from "./prompts/common.md?raw";
-import interviewPromptTemplate from "./prompts/interview.md?raw";
-import projectInteractionPromptTemplate from "./prompts/project-interaction.md?raw";
+import { cakeAgentDocumentationDirectory } from "./cake-agent-documentation";
+import { createCakeSystemPromptExtension } from "./cake-system-prompt-extension";
 import projectPromptTemplate from "./prompts/project.md?raw";
 import projectInvestigationPrompt from "./prompts/project-investigation.md?raw";
 import { renderPromptTemplate } from "./prompt-template";
@@ -83,16 +82,6 @@ import {
 import { formatUnknown } from "./session-projection";
 import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
 import { PiPendingMessageReorder, type PiPendingMessages } from "../conversation-data";
-
-const commonPrompt = renderPromptTemplate(commonPromptTemplate);
-const interviewPrompt = renderPromptTemplate(interviewPromptTemplate);
-const projectInteractionPrompt = renderPromptTemplate(projectInteractionPromptTemplate, {
-  interviewPrompt,
-});
-const cakeProjectSystemPrompt = renderPromptTemplate(projectPromptTemplate, {
-  commonPrompt,
-  projectInteractionPrompt,
-});
 
 export const projectSessionCreateInputSchema = Schema.Struct({
   name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(500))),
@@ -1587,6 +1576,12 @@ export async function createCakeSessionRuntimeCapabilities(input: {
           !(options.currentSessionControl?.resolved() ?? false),
       }
     : undefined;
+  const cakeProjectSystemPrompt =
+    options.isolatedSystemPrompt || options.auxiliaryProjectResources
+      ? undefined
+      : renderPromptTemplate(projectPromptTemplate, {
+          cakeDocsDirectory: await cakeAgentDocumentationDirectory(agentDir),
+        });
   const detectedWorktree = await detectGitWorktree(options.cwd);
   const detectedWorktreePrompt = detectedWorktree
     ? worktreeSystemPrompt(detectedWorktree)
@@ -1636,6 +1631,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
             ? [...requestExtensions]
             : [
                 ...requestExtensions,
+                createCakeSystemPromptExtension(),
                 createCakeGatewayExtension(
                   (pi) => [
                     ...filterRuntimeOperations([

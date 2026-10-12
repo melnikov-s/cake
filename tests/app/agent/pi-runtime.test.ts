@@ -110,8 +110,23 @@ describe("Pi 1.0.0 foundation contract", () => {
     runtimes.push(runtime);
 
     if (!runtime.getReviewParentContext) throw new Error("Expected a project runtime");
-    const { activeTools } = runtime.getReviewParentContext();
+    const { activeTools, systemPrompt } = runtime.getReviewParentContext();
     expect(activeTools).toContain("cake");
+    expect(systemPrompt).toContain("You are an expert coding assistant operating inside pi");
+    expect(systemPrompt).toContain("<rules>");
+    expect(systemPrompt).toContain("Use read to examine files instead of cat or sed");
+    expect(systemPrompt).toContain("<cake_system_prompt>");
+    const docsDirectory = systemPrompt?.match(/Documentation directory: (.+)/)?.[1];
+    if (!docsDirectory) throw new Error("Expected readable Cake documentation references");
+    const modelDocs = await readFile(join(docsDirectory, "models.md"), "utf8");
+    expect(modelDocs).toContain("models.generateImages");
+    expect(modelDocs).toContain("Never regenerate a billed image silently merely to save it");
+    expect(systemPrompt).not.toContain(
+      "Never regenerate a billed image silently merely to save it",
+    );
+    const sessionDocs = await readFile(join(docsDirectory, "sessions.md"), "utf8");
+    expect(sessionDocs).toContain('"command":"sessions.create-child"');
+    expect(sessionDocs).toContain("never send acknowledgment-only or duplicate messages");
   });
 
   it("returns current family information from session.info without recreating the runtime", async () => {
@@ -253,6 +268,17 @@ describe("Pi 1.0.0 foundation contract", () => {
 
       expect(requestBodies).toHaveLength(4);
       const requestText = requestBodies.map((body) => JSON.stringify(body));
+      for (const text of requestText) {
+        expect(text).toContain("You are an expert coding assistant operating inside pi");
+        expect(text).toContain("Use read to examine files instead of cat or sed");
+        expect(text).toContain("Documentation directory:");
+        expect(text).toContain("docs/extensions.md");
+        expect(text).toContain("docs/codemode.md");
+        expect(text).not.toContain("docs/tui.md");
+        expect(text).not.toContain("docs/themes.md");
+        expect(text).not.toContain("docs/keybindings.md");
+        expect(text).not.toContain("Never regenerate a billed image silently merely to save it");
+      }
       const linkedGuidance =
         "This session has linked artifacts. Use artifacts.list to inspect them when relevant.";
       expect(requestText[0]).not.toContain(linkedGuidance);
