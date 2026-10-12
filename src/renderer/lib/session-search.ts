@@ -58,15 +58,20 @@ function rank(title: string, query: string): readonly [number, number] | undefin
   return [fuzzy ? 4 : 3, penalty];
 }
 
+/** Rebuilt only when catalog/search scope changes, not on every keystroke. */
+export function createSessionSearchIndex<T extends SearchableSession>(sessions: readonly T[]) {
+  return sessions.map((session) => ({ session, title: normalize(session.title) }));
+}
+
 /** Pure deterministic title search; equal matches and empty queries use recency. */
 export function searchSessions<T extends SearchableSession>(
-  sessions: readonly T[],
+  index: readonly { session: T; title: string }[],
   query: string,
 ): T[] {
   const normalizedQuery = normalize(query);
-  return sessions
-    .flatMap((session) => {
-      const score = rank(normalize(session.title), normalizedQuery);
+  return index
+    .flatMap(({ session, title }) => {
+      const score = rank(title, normalizedQuery);
       return score ? [{ session, score }] : [];
     })
     .sort(

@@ -52,7 +52,7 @@ const labels = () =>
     .map((option) => option.textContent);
 
 describe("Session search workflow", () => {
-  it("searches collapsed families and resolved sessions, ranks titles, and opens the selected conversation", async () => {
+  it("defaults to unresolved, includes resolved on request, ranks collapsed families, and opens the selected conversation", async () => {
     const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
     using fixture = renderSidebarNavigation({
       projects,
@@ -75,15 +75,26 @@ describe("Session search workflow", () => {
       },
     });
     await fixture.user.click(searchButton());
-    expect(labels()).toHaveLength(4);
+    expect(labels()).toHaveLength(3);
+    expect(
+      dialog().getByRole("switch", { name: "Include resolved" }).getAttribute("aria-checked"),
+    ).toBe("false");
     await fixture.user.type(dialog().getByRole("combobox"), "session search");
-    expect(labels()[0]).toContain("Session searchcake");
+    await waitFor(() => expect(labels()[0]).toContain("Session searchcake"));
     await fixture.user.clear(dialog().getByRole("combobox"));
     await fixture.user.type(dialog().getByRole("combobox"), "resolved");
+    await waitFor(() =>
+      expect(dialog().getByRole("status").textContent).toBe("No matching sessions."),
+    );
+    await fixture.user.click(dialog().getByRole("switch", { name: "Include resolved" }));
     expect(dialog().getByRole("img", { name: "Resolved session" })).toBeDefined();
+    await fixture.user.click(dialog().getByRole("switch", { name: "Include resolved" }));
+    expect(dialog().getByRole("status").textContent).toBe("No matching sessions.");
     await fixture.user.clear(dialog().getByRole("combobox"));
     await fixture.user.type(dialog().getByRole("combobox"), "srch dlg");
-    await fixture.user.click(dialog().getByRole("option", { name: /Search dialog keyboard/ }));
+    await fixture.user.click(
+      await dialog().findByRole("option", { name: /Search dialog keyboard/ }),
+    );
     await waitFor(() =>
       expect(open).toHaveBeenCalledWith(
         { sessionId: "child", workingDirectory: "/cake" },
@@ -91,6 +102,27 @@ describe("Session search workflow", () => {
       ),
     );
     expect(screen.queryByRole("dialog", { name: "Search sessions" })).toBeNull();
+  });
+
+  it("keeps a thousand-session catalog bounded without losing matches outside the initial page", async () => {
+    const catalog = Array.from({ length: 1250 }, (_, index) =>
+      sidebarSummary(`session-${index}`, 1, {
+        title: index === 0 ? "Needle in catalog" : `Task ${index}`,
+        modifiedAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+      }),
+    );
+    using fixture = renderSidebarNavigation({ projects: [projects[0]!], sessions: catalog });
+    await fixture.user.click(searchButton());
+    expect(labels()).toHaveLength(25);
+    expect(dialog().getByText("1–25 of 1250")).toBeDefined();
+    await fixture.user.click(dialog().getByRole("button", { name: "Next results" }));
+    expect(labels()).toHaveLength(25);
+    expect(dialog().getByText("26–50 of 1250")).toBeDefined();
+    await fixture.user.type(dialog().getByRole("combobox"), "needle in catalog");
+    await waitFor(() => {
+      expect(labels()).toHaveLength(1);
+      expect(labels()[0]).toContain("Needle in catalog");
+    });
   });
 
   it.each([
@@ -177,10 +209,13 @@ describe("Session search workflow", () => {
     using fixture = renderSidebarNavigation({ projects, sessions });
     await fixture.user.click(screen.getByRole("button", { name: "Focus on cake" }));
     await fixture.user.click(searchButton());
-    expect(dialog().getByText("Search sessions in cake by title.")).toBeDefined();
+    expect(labels()).toHaveLength(2);
+    await fixture.user.click(dialog().getByRole("switch", { name: "Include resolved" }));
     expect(labels()).toHaveLength(3);
     await fixture.user.type(dialog().getByRole("combobox"), "elsewhere");
-    expect(dialog().getByRole("status").textContent).toBe("No matching sessions.");
+    await waitFor(() =>
+      expect(dialog().getByRole("status").textContent).toBe("No matching sessions."),
+    );
     await fixture.user.keyboard("{Enter}");
     expect(dialog().getByRole("combobox")).toBeDefined();
     await fixture.user.click(dialog().getByRole("button", { name: "Close" }));
@@ -188,13 +223,18 @@ describe("Session search workflow", () => {
     await fixture.user.click(screen.getByRole("button", { name: "Show activity" }));
     await fixture.user.click(searchButton());
     expect((dialog().getByRole("combobox") as HTMLInputElement).value).toBe("");
-    expect(labels()).toHaveLength(4);
+    expect(labels()).toHaveLength(3);
+    expect(
+      dialog().getByRole("switch", { name: "Include resolved" }).getAttribute("aria-checked"),
+    ).toBe("false");
     await fixture.publishSessions(
       sessions.map((session) =>
         session.sessionId === "other" ? { ...session, title: "Renamed conversation" } : session,
       ),
     );
     await fixture.user.type(dialog().getByRole("combobox"), "renamed");
-    expect(dialog().getByRole("option").textContent).toContain("Renamed conversation");
+    await waitFor(() =>
+      expect(dialog().getByRole("option").textContent).toContain("Renamed conversation"),
+    );
   });
 });

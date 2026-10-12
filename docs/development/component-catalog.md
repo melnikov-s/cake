@@ -23,6 +23,11 @@ See `AGENTS.md` for renderer implementation rules.
 | [Link](../../src/renderer/components/ui/link.tsx)                                                                                                                       | Shared anchors, source references and Cake links with destination tooltips.                                           |
 | [LoadingState](../../src/renderer/components/ui/loading-state.tsx)                                                                                                      | Shared loading treatments.                                                                                            |
 
+`SearchableChoiceDialog` composes [`SearchableChoiceInput`](../../src/renderer/components/ui/searchable-choice-input.tsx)
+for local draft text and transition-scheduled filtering. Its choice callback must not
+write reactive state. Results are paged in batches of 25; arrow-key navigation crosses
+pages and all matches remain reachable. The optional `filters` slot composes shared controls.
+
 `Textarea.focusAnchorRef` exposes a non-editable, programmatically focusable wrapper.
 Focusing it positions native forward Tab at the textarea without activating dictation;
 it does not add a tab stop or intercept normal Tab/Shift+Tab navigation.

@@ -4,7 +4,8 @@ import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
 import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
 import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore";
 import { SearchableChoiceDialog } from "./ui/searchable-choice-dialog";
-import { SessionListItem } from "./ui/session-list-item";
+import { SessionSearchResult } from "./session-search-result";
+import { Switch } from "./ui/switch";
 
 export const SessionSearchDialog = observer(function SessionSearchDialog({
   sidebar,
@@ -24,39 +25,30 @@ export const SessionSearchDialog = observer(function SessionSearchDialog({
   return (
     <SearchableChoiceDialog
       title="Search sessions"
-      description={store.description}
       searchLabel="Search session titles"
       choicesLabel="Sessions"
       emptyMessage="No matching sessions."
-      query={store.query}
-      choices={store.choices}
-      renderChoice={({ session, label }, optionProps, onSelect) => {
-        const projectName = projects.nameForPath(session.projectPath);
-        return (
-          <SessionListItem
-            session={{ ...session, title: label }}
-            selected={optionProps["aria-selected"]}
-            actionProps={optionProps}
-            resolved={session.resolved}
-            managedWorktree={sidebar.managedWorktree(session.workingDirectory)}
-            activity={sidebar.sessionListStore.sessionActivityForDisplay(session)}
-            activityTime={sidebar.sessionActivityTime(session.modifiedAt)}
-            labels={sessionMetadata.sessionLabels(session.sessionId)}
-            avatarSeed={session.sessionId}
-            avatarsEnabled={appearance.sessionAvatarsEnabled}
-            charactersEnabled={appearance.sidebarCharactersEnabled}
-            source={{
-              kind: "project",
-              name: projectName,
-              avatarSeed: projectName,
-              customIcon: projects.find(session.projectPath)?.settings.icon,
-              showAvatar: appearance.projectAvatarsEnabled,
-            }}
-            onOpen={onSelect}
+      choices={store.search}
+      filters={
+        <label className="flex items-center gap-2 px-2 pt-3 text-xs text-muted-foreground">
+          <Switch
+            checked={store.includeResolved}
+            onCheckedChange={(value) => store.setIncludeResolved(value)}
           />
-        );
-      }}
-      onQueryChange={(query) => store.setQuery(query)}
+          Include resolved
+        </label>
+      }
+      renderChoice={(choice, optionProps, onSelect) => (
+        <SessionSearchResult
+          choice={choice}
+          optionProps={optionProps}
+          sidebar={sidebar}
+          sessionMetadata={sessionMetadata}
+          projects={projects}
+          appearance={appearance}
+          onSelect={onSelect}
+        />
+      )}
       onSelect={(id) => {
         if (store.select(id)) onOpenSession(id);
       }}

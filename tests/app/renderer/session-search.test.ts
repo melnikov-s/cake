@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { searchSessions } from "../../../src/renderer/lib/session-search";
+import { createSessionSearchIndex, searchSessions } from "../../../src/renderer/lib/session-search";
 
 const session = (sessionId: string, title: string, day = 1) => ({
   sessionId,
@@ -7,7 +7,7 @@ const session = (sessionId: string, title: string, day = 1) => ({
   modifiedAt: `2026-01-${String(day).padStart(2, "0")}T00:00:00Z`,
 });
 const ids = (query: string, sessions: ReturnType<typeof session>[]) =>
-  searchSessions(sessions, query).map((item) => item.sessionId);
+  searchSessions(createSessionSearchIndex(sessions), query).map((item) => item.sessionId);
 
 describe("deterministic session title ranking", () => {
   it("ranks exact, prefix, phrase, reordered lexical tokens, then fuzzy abbreviations", () => {

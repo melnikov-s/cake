@@ -8,7 +8,6 @@ export class NewSessionStore extends Store<{
   createProjectSession(path: string): void;
 }> {
   open = false;
-  query = "";
   @snapshot lastProjectPath: string | undefined;
 
   private get projects() {
@@ -26,7 +25,6 @@ export class NewSessionStore extends Store<{
   }
 
   get choices() {
-    const query = this.query.trim().toLocaleLowerCase();
     return [
       { id: "cake-chat", label: "Cake Chat", description: "Chat with Cake" },
       ...this.projects.orderedProjectPaths.map((path) => ({
@@ -34,22 +32,15 @@ export class NewSessionStore extends Store<{
         label: this.projects.nameForPath(path),
         description: path,
       })),
-    ].filter((choice) =>
-      `${choice.label} ${choice.description}`.toLocaleLowerCase().includes(query),
-    );
+    ];
   }
 
   show() {
-    this.query = "";
     this.open = true;
   }
 
   close() {
     this.open = false;
-  }
-
-  setQuery(query: string) {
-    this.query = query;
   }
 
   select(id: string) {

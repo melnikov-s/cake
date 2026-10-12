@@ -1,6 +1,7 @@
 import {
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEventHandler,
@@ -9,9 +10,11 @@ import {
 import { cn } from "@/lib/utils";
 import { DialogBackdrop, DialogContent, DialogDescription, DialogTitle } from "./dialog";
 import { Button } from "./button";
-import { Input } from "./input";
+import { SearchableChoiceInput } from "./searchable-choice-input";
 import { IconButton } from "./icon-button";
-import { CloseIcon, SearchIcon } from "./icons";
+import { CloseIcon } from "./icons";
+
+const RESULT_BATCH_SIZE = 25;
 
 export interface SearchableChoice {
   id: string;
@@ -36,21 +39,21 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
   searchLabel,
   choicesLabel = "Session destination",
   emptyMessage = "No matching destinations.",
-  query,
-  choices,
+  choices: getChoices,
+  filters,
   renderChoice,
   initialActiveId,
-  onQueryChange,
   onSelect,
   onClose,
 }: {
   title: string;
-  description: string;
+  description?: string;
   searchLabel: string;
   choicesLabel?: string;
   emptyMessage?: string;
-  query: string;
-  choices: readonly Choice[];
+  /** Called during the deferred results render, never from the input event. */
+  choices(query: string): readonly Choice[];
+  filters?: ReactNode;
   /** Compose an authoritative row instead of the default destination button. */
   renderChoice?(
     choice: Choice,
@@ -59,10 +62,11 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
   ): ReactNode;
   /** Preferred option when the dialog mounts; missing choices fall back to the first. */
   initialActiveId?: string;
-  onQueryChange(query: string): void;
   onSelect(id: string): void;
   onClose(): void;
 }) {
+  const [query, setQuery] = useState("");
+  const choices = useMemo(() => getChoices(query), [getChoices, query]);
   const id = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -72,6 +76,8 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
     choices.findIndex((choice) => choice.id === activeId),
   );
   const active = choices[activeIndex];
+  const pageStart = Math.floor(activeIndex / RESULT_BATCH_SIZE) * RESULT_BATCH_SIZE;
+  const pageEnd = Math.min(pageStart + RESULT_BATCH_SIZE, choices.length);
   const optionId = (index: number) => `${id}-option-${index}`;
 
   useLayoutEffect(() => {
@@ -96,7 +102,7 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
   return (
     <DialogBackdrop
       aria-labelledby={`${id}-title`}
-      aria-describedby={`${id}-description`}
+      aria-describedby={description ? `${id}-description` : undefined}
       onClose={onClose}
       onKeyDown={(event) => {
         if (event.nativeEvent.isComposing) return;
@@ -106,7 +112,7 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
           onClose();
         } else if (event.key === "Tab") {
           const controls = contentRef.current?.querySelectorAll<HTMLElement>(
-            'input, button:not([tabindex="-1"])',
+            'input:not(:disabled), button:not(:disabled):not([tabindex="-1"])',
           );
           const first = controls?.[0];
           const last = controls?.[controls.length - 1];
@@ -124,51 +130,52 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
         <div className="flex items-start justify-between gap-3 px-2 pb-3 pt-1">
           <div className="grid gap-2">
             <DialogTitle id={`${id}-title`}>{title}</DialogTitle>
-            <DialogDescription id={`${id}-description`}>{description}</DialogDescription>
+            {description && (
+              <DialogDescription id={`${id}-description`}>{description}</DialogDescription>
+            )}
           </div>
           <IconButton tooltip="Close" onClick={onClose}>
             <CloseIcon />
           </IconButton>
         </div>
-        <div className="relative">
-          <SearchIcon className="pointer-events-none absolute left-3 top-3 text-muted-foreground" />
-          <Input
-            ref={inputRef}
-            role="combobox"
-            aria-label={searchLabel}
-            aria-autocomplete="list"
-            aria-expanded="true"
-            aria-controls={`${id}-choices`}
-            aria-activedescendant={active ? optionId(activeIndex) : undefined}
-            placeholder="Type to filter…"
-            className="pl-9"
-            value={query}
-            onChange={(event) => {
-              setActiveId(undefined);
-              onQueryChange(event.target.value);
-            }}
-            onKeyDown={(event) => {
-              if (event.nativeEvent.isComposing) return;
-              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                event.preventDefault();
-                const delta = event.key === "ArrowDown" ? 1 : -1;
-                const next = choices[(activeIndex + delta + choices.length) % choices.length];
-                setActiveId(next?.id);
-              } else if (event.key === "Enter") {
-                event.preventDefault();
-                if (active) onSelect(active.id);
-              }
-            }}
-          />
-        </div>
+        <SearchableChoiceInput
+          inputRef={inputRef}
+          query={query}
+          role="combobox"
+          aria-label={searchLabel}
+          aria-autocomplete="list"
+          aria-expanded="true"
+          aria-controls={`${id}-choices`}
+          aria-activedescendant={active ? optionId(activeIndex) : undefined}
+          placeholder="Type to filter…"
+          onQueryChange={(value) => {
+            setActiveId(undefined);
+            setQuery(value);
+          }}
+          onConfirm={() => {
+            if (active) onSelect(active.id);
+          }}
+          onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              const delta = event.key === "ArrowDown" ? 1 : -1;
+              const nextIndex = (activeIndex + delta + choices.length) % choices.length;
+              const next = choices[nextIndex];
+              setActiveId(next?.id);
+            }
+          }}
+        />
+        {filters}
         <div
           id={`${id}-choices`}
           role="listbox"
           aria-label={choicesLabel}
           className="mt-2 max-h-72 overflow-y-auto"
         >
-          {choices.map((choice, index) =>
-            renderChoice ? (
+          {choices.slice(pageStart, pageEnd).map((choice, offset) => {
+            const index = pageStart + offset;
+            return renderChoice ? (
               <div key={choice.id}>
                 {renderChoice(
                   choice,
@@ -209,17 +216,37 @@ export function SearchableChoiceDialog<Choice extends SearchableChoice>({
                   )}
                 </span>
               </Button>
-            ),
-          )}
+            );
+          })}
         </div>
+        {choices.length > RESULT_BATCH_SIZE && (
+          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={pageStart === 0}
+              onClick={() => setActiveId(choices[pageStart - RESULT_BATCH_SIZE]?.id)}
+            >
+              Previous results
+            </Button>
+            <span>
+              {pageStart + 1}–{pageEnd} of {choices.length}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={pageEnd === choices.length}
+              onClick={() => setActiveId(choices[pageEnd]?.id)}
+            >
+              Next results
+            </Button>
+          </div>
+        )}
         {choices.length === 0 && (
           <p role="status" className="px-3 py-6 text-center text-sm text-muted-foreground">
             {emptyMessage}
           </p>
         )}
-        <p className="px-2 pt-3 text-xs text-muted-foreground">
-          Arrow keys to navigate · Enter or click to choose · Esc to cancel
-        </p>
       </DialogContent>
     </DialogBackdrop>
   );

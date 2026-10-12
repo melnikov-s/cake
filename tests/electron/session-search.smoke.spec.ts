@@ -48,6 +48,8 @@ for (const theme of ["light", "dark"] as const) {
         "Search dialog keyboard",
       );
       await page.keyboard.press("Tab");
+      await expect(dialog.getByRole("switch", { name: "Include resolved" })).toBeFocused();
+      await page.keyboard.press("Tab");
       await expect(dialog.getByRole("button", { name: "Close", exact: true })).toBeFocused();
       await page.keyboard.press("Tab");
       await expect(filter).toBeFocused();
@@ -66,6 +68,9 @@ for (const theme of ["light", "dark"] as const) {
       await selectedRow.locator(".session-resolve-action").click();
       await trigger.click();
       await page.keyboard.type("search dialog");
+      await expect(filter).toHaveValue("search dialog");
+      await expect(dialog.getByRole("option")).toHaveCount(0);
+      await dialog.getByRole("switch", { name: "Include resolved" }).click();
       await expect(dialog.getByRole("option")).toHaveCount(1);
       await expect(dialog.getByRole("img", { name: "Resolved session" })).toBeVisible();
       await dialog.getByRole("option").click();
@@ -75,9 +80,9 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: "Focus on project", exact: true }).click();
       await expect(trigger).toBeVisible();
       await trigger.click();
-      await expect(dialog).toContainText("Search sessions in Cake by title.");
       await expect(filter).toHaveValue("");
-      await expect(dialog.getByRole("option")).toHaveCount(3);
+      await expect(dialog.getByRole("switch", { name: "Include resolved" })).not.toBeChecked();
+      await expect(dialog.getByRole("option")).toHaveCount(2);
       await page.keyboard.type("website");
       await expect(dialog.getByRole("status")).toHaveText("No matching sessions.");
       await page.keyboard.press("Enter");
@@ -89,8 +94,12 @@ for (const theme of ["light", "dark"] as const) {
       await trigger.click();
       await expect(filter).toHaveValue("");
       await page.keyboard.type("website");
+      await expect(filter).toHaveValue("website");
+      await expect(dialog.getByRole("option")).toHaveCount(1);
       await expect(dialog.getByRole("option")).toContainText("Website search");
       await filter.fill("");
+      await expect(dialog.getByRole("option")).toHaveCount(3);
+      await expect(filter).toHaveAttribute("aria-busy", "false");
       await page.keyboard.press("ArrowDown");
       await expect(filter).toBeFocused();
       const activeOption = dialog.getByRole("option", { selected: true });
@@ -99,7 +108,7 @@ for (const theme of ["light", "dark"] as const) {
       await dialog.getByRole("option").first().hover();
       await expect(filter).toHaveAttribute("aria-activedescendant", activeId!);
       await expect(activeOption).toHaveAttribute("id", activeId!);
-      await expect(dialog.locator(".session-item")).toHaveCount(4);
+      await expect(dialog.locator(".session-item")).toHaveCount(3);
       await expect(dialog.locator(".session-item").first().locator("time")).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(dialog).toBeHidden();

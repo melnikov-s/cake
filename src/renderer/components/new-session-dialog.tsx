@@ -9,18 +9,23 @@ export const NewSessionDialog = observer(function NewSessionDialog({
   store: NewSessionStore;
 }) {
   if (!store.open) return null;
+  const choices = store.choices.map((choice) => ({
+    ...choice,
+    icon: choice.id === "cake-chat" ? <CakeIcon /> : <FolderIcon />,
+  }));
   return (
     <SearchableChoiceDialog
       title="New session"
       description="Choose Cake Chat or a project."
       searchLabel="Filter projects"
-      query={store.query}
       initialActiveId={store.initialChoiceId}
-      choices={store.choices.map((choice) => ({
-        ...choice,
-        icon: choice.id === "cake-chat" ? <CakeIcon /> : <FolderIcon />,
-      }))}
-      onQueryChange={(query) => store.setQuery(query)}
+      choices={(query) =>
+        choices.filter((choice) =>
+          `${choice.label} ${choice.description}`
+            .toLocaleLowerCase()
+            .includes(query.trim().toLocaleLowerCase()),
+        )
+      }
       onSelect={(id) => store.select(id)}
       onClose={() => store.close()}
     />
