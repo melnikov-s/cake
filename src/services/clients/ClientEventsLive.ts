@@ -101,6 +101,7 @@ export const ClientEventsLive = Layer.effect(
           "artifacts",
           "artifact-updated",
           "artifact-catalog-invalidated",
+          "message-board-invalidated",
           "ui-request",
           "ui-request-settled",
         ),

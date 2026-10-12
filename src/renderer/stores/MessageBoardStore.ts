@@ -19,52 +19,86 @@ export class MessageBoardStore extends Store<{ boardId?: ArtifactLineageId }> {
   after = 0;
   error: string | undefined;
   private request = 0;
+  private pending = false;
+  private controller: AbortController | undefined;
+  private receiptRequests: Record<number, number> = {};
 
   constructor(props: MessageBoardStore["props"]) {
     super(props);
     this.effect(() => {
       const boardId = this.props.boardId;
-      untracked(() => {
-        if (boardId) void this.refresh();
+      return untracked(() => {
+        this.request += 1;
+        this.controller = new AbortController();
+        const controller = this.controller;
+        this.loading = false;
+        this.pending = false;
+        this.entries = [];
+        this.bodies = {};
+        this.receipts = {};
+        this.expanded = [];
+        this.showingReceipts = [];
+        this.receiptRequests = {};
+        this.after = 0;
+        this.hasMore = false;
+        this.error = undefined;
+        if (boardId) void this.loadMore();
+        return () => controller.abort();
       });
     });
   }
   get client() {
     return ClientContext.consume(this)!;
   }
-  async refresh() {
-    this.request += 1;
-    this.loading = false;
-    this.entries = [];
-    this.bodies = {};
-    this.receipts = {};
-    this.expanded = [];
-    this.showingReceipts = [];
-    this.after = 0;
-    this.hasMore = false;
-    this.error = undefined;
-    await this.loadMore();
+  private isCurrent(request: number, boardId: ArtifactLineageId) {
+    return !this.signal.aborted && request === this.request && boardId === this.props.boardId;
   }
-  async loadMore() {
+  private get operationSignal() {
+    return AbortSignal.any([this.signal, ...(this.controller ? [this.controller.signal] : [])]);
+  }
+
+  /** Coalesce ordered invalidations; an event during a query always gets a follow-up query. */
+  receive() {
+    if (!this.props.boardId || this.signal.aborted) return;
+    this.pending = true;
+    if (!this.loading) void this.loadMore(true);
+  }
+
+  async loadMore(catchUp = false) {
     const boardId = this.props.boardId;
-    if (!boardId || this.loading) return;
+    if (!boardId || this.loading || this.signal.aborted) return;
     const request = this.request;
+    const signal = this.operationSignal;
     this.loading = true;
     this.error = undefined;
     try {
-      const page = await this.client.artifacts.boardEntries(
-        { lineageId: boardId, after: this.after, limit: 20 },
-        { signal: this.signal },
-      );
-      if (this.signal.aborted || request !== this.request || boardId !== this.props.boardId) return;
-      this.entries = [...this.entries, ...page.entries];
-      this.after = page.nextAfter;
-      this.hasMore = page.hasMore;
+      do {
+        this.pending = false;
+        // Entries are immutable and ordered: append after the loaded cursor, never replace
+        // existing rows or clear their bodies/expansions (including during background updates).
+        do {
+          const page = await this.client.artifacts.boardEntries(
+            { lineageId: boardId, after: this.after, limit: 20 },
+            { signal },
+          );
+          if (!this.isCurrent(request, boardId)) return;
+          this.entries = [...this.entries, ...page.entries];
+          this.after = page.nextAfter;
+          this.hasMore = page.hasMore;
+        } while (catchUp && this.hasMore);
+        if (catchUp)
+          await Promise.all(this.showingReceipts.map((sequence) => this.loadReceipts(sequence)));
+        if (!this.isCurrent(request, boardId)) return;
+        catchUp = true;
+      } while (this.pending);
     } catch (error) {
-      if (!this.signal.aborted && request === this.request)
+      if (this.isCurrent(request, boardId))
         this.error = error instanceof Error ? error.message : String(error);
     } finally {
-      if (request === this.request) this.loading = false;
+      if (this.isCurrent(request, boardId)) {
+        this.loading = false;
+        if (this.pending) this.receive();
+      }
     }
   }
   async toggleBody(sequence: number) {
@@ -79,12 +113,11 @@ export class MessageBoardStore extends Store<{ boardId?: ArtifactLineageId }> {
     try {
       const body = await this.client.artifacts.boardBody(
         { lineageId: boardId, sequence },
-        { signal: this.signal },
+        { signal: this.operationSignal },
       );
-      if (!this.signal.aborted && request === this.request && boardId === this.props.boardId)
-        this.bodies = { ...this.bodies, [sequence]: body };
+      if (this.isCurrent(request, boardId)) this.bodies = { ...this.bodies, [sequence]: body };
     } catch (error) {
-      if (!this.signal.aborted && request === this.request) {
+      if (this.isCurrent(request, boardId)) {
         this.error = error instanceof Error ? error.message : String(error);
         this.expanded = this.expanded.filter((value) => value !== sequence);
       }
@@ -96,21 +129,24 @@ export class MessageBoardStore extends Store<{ boardId?: ArtifactLineageId }> {
       return;
     }
     this.showingReceipts = [...this.showingReceipts, sequence];
+    await this.loadReceipts(sequence);
+  }
+  private async loadReceipts(sequence: number) {
     const boardId = this.props.boardId;
     if (!boardId) return;
     const request = this.request;
+    const receiptRequest = (this.receiptRequests[sequence] ?? 0) + 1;
+    this.receiptRequests = { ...this.receiptRequests, [sequence]: receiptRequest };
     try {
       const receipts = await this.client.artifacts.boardReceipts(
         { lineageId: boardId, sequence },
-        { signal: this.signal },
+        { signal: this.operationSignal },
       );
-      if (!this.signal.aborted && request === this.request && boardId === this.props.boardId)
+      if (this.isCurrent(request, boardId) && this.receiptRequests[sequence] === receiptRequest)
         this.receipts = { ...this.receipts, [sequence]: receipts };
     } catch (error) {
-      if (!this.signal.aborted && request === this.request) {
+      if (this.isCurrent(request, boardId) && this.receiptRequests[sequence] === receiptRequest)
         this.error = error instanceof Error ? error.message : String(error);
-        this.showingReceipts = this.showingReceipts.filter((value) => value !== sequence);
-      }
     }
   }
 }

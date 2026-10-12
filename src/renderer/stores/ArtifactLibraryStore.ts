@@ -1,5 +1,8 @@
 import { Store, child, createStore, untracked } from "r-state-tree";
-import type { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
+import {
+  decodeArtifactLineageId,
+  type ArtifactLineageId,
+} from "../../contracts/artifacts/artifact-lineage";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { ArtifactDetailStore } from "./ArtifactDetailStore";
 import { ClientContext } from "./context/ClientContext";
@@ -20,6 +23,7 @@ export class ArtifactLibraryStore extends Store<{
   boardPreviews: Record<string, string> = {};
   private visibleLineageIds: ReadonlyArray<string> = [];
   private request = 0;
+  private previewRequests: Record<string, number> = {};
   private controller: AbortController | undefined;
 
   constructor(props: ArtifactLibraryStore["props"]) {
@@ -65,17 +69,39 @@ export class ArtifactLibraryStore extends Store<{
     this.kind = kind;
   }
 
+  receiveBoardChange(lineageId?: string) {
+    const detail = this.detailStore;
+    if (detail.selectedLineageId && (!lineageId || detail.selectedLineageId === lineageId))
+      detail.messageBoardStore.receive();
+    for (const lineage of this.lineages) {
+      if (lineage.latest?.kind === "message-board" && (!lineageId || lineage.id === lineageId))
+        void this.loadBoardPreview(
+          decodeArtifactLineageId(lineage.id),
+          this.request,
+          this.controller?.signal ?? this.signal,
+        );
+    }
+  }
+
   private async loadBoardPreview(
     lineageId: ArtifactLineageId,
     request: number,
     signal: AbortSignal,
   ) {
+    const previewRequest = (this.previewRequests[lineageId] ?? 0) + 1;
+    this.previewRequests = { ...this.previewRequests, [lineageId]: previewRequest };
     try {
       const preview = await this.client.artifacts.boardEntries(
         { lineageId, recent: true, limit: 3 },
         { signal: AbortSignal.any([this.signal, signal]) },
       );
-      if (request !== this.request || signal.aborted || this.signal.aborted) return;
+      if (
+        request !== this.request ||
+        this.previewRequests[lineageId] !== previewRequest ||
+        signal.aborted ||
+        this.signal.aborted
+      )
+        return;
       this.boardPreviews = {
         ...this.boardPreviews,
         [lineageId]:

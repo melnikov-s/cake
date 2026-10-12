@@ -17,16 +17,20 @@ export const MessageBoardArtifact = observer(function MessageBoardArtifact({
         <p className="min-w-0 text-xs text-muted-foreground">
           Shared coordination entries. Browsing does not mark an agent as read.
         </p>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={store.loading}
-          onClick={() => void store.refresh()}
-        >
-          Refresh
-        </Button>
       </header>
-      {store.error && <Callout variant="error">{store.error}</Callout>}
+      {store.error && (
+        <Callout variant="error">
+          {store.error}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={store.loading}
+            onClick={() => store.receive()}
+          >
+            Retry board update
+          </Button>
+        </Callout>
+      )}
       {!store.loading && !store.entries.length && (
         <p className="py-6 text-sm text-muted-foreground">No coordination entries yet.</p>
       )}

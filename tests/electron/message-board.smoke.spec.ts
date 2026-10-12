@@ -6,6 +6,23 @@ import { _electron as electron, expect, test, type ElectronApplication } from "@
 import { seedMessageBoardFixture, MESSAGE_BOARD_FIXTURE_ID } from "../fixtures/message-board";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
+const appendLiveEntries = (application: ElectronApplication, start: number, count: number) =>
+  application.evaluate(
+    async (_electron, range) => {
+      const append = (
+        globalThis as typeof globalThis & {
+          cakeSmokeAppendBoard?: (sessionId: string, input: unknown) => Promise<unknown>;
+        }
+      ).cakeSmokeAppendBoard;
+      if (!append) throw new Error("Workboard smoke append hook unavailable");
+      for (let sequence = range.start; sequence < range.start + range.count; sequence += 1)
+        await append("visual-workboard-member-2", {
+          description: `Live finding ${sequence}`,
+          body: `Additional coordination evidence ${sequence}`,
+        });
+    },
+    { start, count },
+  );
 test("message board opens through artifacts and human expansion does not stamp agent read receipts", async () => {
   const root = await mkdtemp(join(tmpdir(), "cake-message-board-smoke-"));
   const paths = {
@@ -84,9 +101,41 @@ test("message board opens through artifacts and human expansion does not stamp a
     await expect(fullscreen.getByText("Finding:", { exact: true })).toBeVisible();
     await fullscreen.getByRole("button", { name: "Exit fullscreen Editor isolation" }).click();
     await expect(fullscreen).not.toBeAttached();
-    await board.getByRole("button", { name: "Refresh", exact: true }).click();
-    await expect(finding).toHaveAttribute("aria-expanded", "false");
+    await appendLiveEntries(application, 4, 1);
+    await expect(
+      board.getByRole("button", { name: "#4 · Live finding 4", exact: true }),
+    ).toBeVisible();
+    await expect(finding).toHaveAttribute("aria-expanded", "true");
+    await expect(board.getByText("Finding:", { exact: true })).toBeVisible();
+    await expect(board.getByText(/Notified: .*Read: Not recorded/)).toBeVisible();
     expect(await readFile(receiptPath, "utf8")).toBe(before);
+    await application.evaluate(async () => {
+      const read = (
+        globalThis as typeof globalThis & {
+          cakeSmokeReadBoard?: (sessionId: string, sequence: number) => Promise<void>;
+        }
+      ).cakeSmokeReadBoard;
+      if (!read) throw new Error("Workboard smoke read hook unavailable");
+      await read("visual-workboard-member-1", 1);
+    });
+    await expect(board.getByText(/Notified: .*Read:/)).not.toContainText("Read: Not recorded");
+    await expect(finding).toHaveAttribute("aria-expanded", "true");
+    await appendLiveEntries(application, 5, 24);
+    await expect(
+      board.getByRole("button", { name: "#28 · Live finding 28", exact: true }),
+    ).toHaveCount(1);
+    const scrollTop = await board.evaluate((element) => {
+      const main = element.closest("main")!;
+      main.scrollTop = 250;
+      return main.scrollTop;
+    });
+    expect(scrollTop).toBeGreaterThan(0);
+    await appendLiveEntries(application, 29, 1);
+    await expect(
+      board.getByRole("button", { name: "#29 · Live finding 29", exact: true }),
+    ).toHaveCount(1);
+    expect(await board.evaluate((element) => element.closest("main")!.scrollTop)).toBe(scrollTop);
+    await expect(finding).toHaveAttribute("aria-expanded", "true");
   } finally {
     await application?.close();
     await rm(root, { recursive: true, force: true });

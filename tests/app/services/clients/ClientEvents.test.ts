@@ -6,6 +6,7 @@ import {
   cakeEventSchema,
   type CakeEvent,
 } from "../../../../src/contracts/application/cake-rpc-contract";
+import { ArtifactLineageId } from "../../../../src/contracts/artifacts/artifact-lineage";
 import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
 import { ClientEventsLive } from "../../../../src/services/clients/ClientEventsLive";
 
@@ -213,6 +214,11 @@ describe("ClientEvents", () => {
       events.sendTo(1, { type: "fullscreen-surface-close-requested", surfaceId: "surface-1" });
       expect(yield* Queue.take(application.received)).toEqual(draw);
       expect((yield* Queue.take(artifacts.received)).type).toBe("artifact-catalog-invalidated");
+      events.broadcast({
+        type: "message-board-invalidated",
+        lineageId: Schema.decodeUnknownSync(ArtifactLineageId)("family-board-test"),
+      });
+      expect((yield* Queue.take(artifacts.received)).type).toBe("message-board-invalidated");
       expect((yield* Queue.take(terminals.received)).type).toBe("terminal-toggle-requested");
       expect((yield* Queue.take(vscode.received)).type).toBe(
         "embedded-editor-toggle-mode-requested",

@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Effect, Layer, ManagedRuntime } from "effect";
@@ -11,6 +11,7 @@ import { ArtifactLibrary } from "../../../src/renderer/components/artifact-libra
 import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { sessionSummary } from "./fixtures/catalog-fixtures";
+import { messageBoardEvents } from "./message-board-event-fixture";
 
 const family = {
   familyId: "family",
@@ -34,9 +35,10 @@ describe("message-board artifact workflow", () => {
   it.each(["parent", "unrelated"])(
     "opens a full-width Workboard from session %s, pages entries and expands bodies/receipts without changing agent readership",
     async (activeSessionId) => {
+      const events = messageBoardEvents();
       const backend = ManagedRuntime.make(
         Layer.merge(
-          messageBoardHarness().layer,
+          Layer.merge(messageBoardHarness().layer, events.layer),
           Layer.mock(SessionFamilyStorage, {
             familyForMember: () => Effect.succeed(family),
             list: () => Effect.succeed([family]),
@@ -80,6 +82,7 @@ describe("message-board artifact workflow", () => {
             },
           },
         });
+        const stopEvents = events.observe(fixture.root);
         fixture.root.artifactLibraryStore.open(activeSessionId);
         const view = render(
           <ArtifactLibrary
@@ -137,18 +140,27 @@ describe("message-board artifact workflow", () => {
               body: "Additional evidence",
             }),
           );
-          await user.click(screen.getByRole("button", { name: /^Refresh$/ }));
-          await waitFor(() =>
-            expect(screen.getByRole("button", { name: "Load more entries" })).toBeDefined(),
+          await screen.findByRole("button", { name: /^#22 · Integration unblocked/ });
+          expect(screen.getByText("Evidence body 1")).toBeDefined();
+          expect(
+            screen.getByRole("button", { name: /#1 · Finding 1/ }).getAttribute("aria-expanded"),
+          ).toBe("true");
+          await act(() =>
+            backend.runPromise(boards.recordIntake("child", board.lineageId, [1], "readAt")),
           );
-          await user.click(screen.getByRole("button", { name: "Load more entries" }));
+          await waitFor(() => expect(screen.queryByText(/Read: Not recorded/)).toBeNull());
+          expect(screen.getByText(/Notified: .*Read:/)).toBeDefined();
+          expect(screen.getByText("Evidence body 1")).toBeDefined();
+          events.reconnect();
           await screen.findByRole("button", { name: /^#22 · Integration unblocked/ });
         } finally {
+          stopEvents();
           view.unmount();
           fixture[Symbol.dispose]();
         }
       } finally {
         await backend.dispose();
+        await events.dispose();
       }
     },
   );

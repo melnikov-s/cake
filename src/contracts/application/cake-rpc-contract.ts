@@ -8,6 +8,7 @@ import {
   ScreenCaptureSnapshot,
 } from "../desktop/screen-capture-data";
 import { artifactRecordSchema } from "../artifacts/artifact-contract";
+import { ArtifactLineageId } from "../artifacts/artifact-lineage";
 import { InterviewRecord } from "../interviews/interview";
 import { WorkflowProposal } from "../workflows/workflow-data";
 import { ipcProjectionArray, ipcProjectionString } from "../serialization/projection";
@@ -92,6 +93,10 @@ const cakeEventSchemas = {
   "artifact-updated": Schema.Struct({
     type: Schema.Literal("artifact-updated"),
     record: artifactRecordSchema,
+  }),
+  "message-board-invalidated": Schema.Struct({
+    type: Schema.Literal("message-board-invalidated"),
+    lineageId: ArtifactLineageId,
   }),
   "artifact-catalog-invalidated": Schema.Struct({
     type: Schema.Literal("artifact-catalog-invalidated"),
@@ -311,6 +316,7 @@ export const applicationEventSchema = Schema.Union([
 
 export const artifactEventSchema = Schema.Union([
   cakeEventSchemas["renderer-events-ready"],
+  cakeEventSchemas["message-board-invalidated"],
   cakeEventSchemas["artifact-updated"],
   cakeEventSchemas["artifact-catalog-invalidated"],
   cakeEventSchemas["ui-request"],
@@ -348,6 +354,7 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["fullscreen-surface-close-requested"],
   cakeEventSchemas["changelog-snapshot"],
+  cakeEventSchemas["message-board-invalidated"],
   cakeEventSchemas["artifact-updated"],
   cakeEventSchemas["artifact-catalog-invalidated"],
   cakeEventSchemas["interview-requested"],

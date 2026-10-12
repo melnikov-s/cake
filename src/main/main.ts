@@ -1,9 +1,11 @@
 import { join } from "node:path";
 import { loadDesktopHost, installDesktopSocketOrigin } from "../services/electron/DesktopHostLive";
 import { makeRemoteMainLive } from "./RemoteMainLive";
-import { Cause, Effect, Exit, ManagedRuntime, Schema } from "effect";
+import { Cause, Context, Effect, Exit, ManagedRuntime, Schema } from "effect";
 import { app, nativeTheme } from "electron";
 import { cakeEventSchema, type CakeEvent } from "../contracts/application/cake-rpc-contract";
+import { BoardAppendInput } from "../contracts/artifacts/message-board";
+import * as messageBoards from "../domain/artifacts/messageBoards";
 import type { JsonValue } from "../contracts/serialization/json-contract";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
@@ -23,6 +25,8 @@ import { InlineWidgets } from "../services/widgets/InlineWidgets";
 import { RenderedWidgetCapture } from "../services/widgets/RenderedWidgetCapture";
 import { ArtifactLineageId } from "../contracts/artifacts/artifact-lineage";
 import { ArtifactStorage } from "../services/storage/ArtifactStorage";
+import { MessageBoardStorage } from "../services/storage/MessageBoardStorage";
+import { SessionFamilyStorage } from "../services/storage/SessionFamilyStorage";
 import { ArtifactProjection } from "../services/artifacts/ArtifactProjection";
 import {
   registerExtensionCompanionScheme,
@@ -133,6 +137,17 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "remote") {
 }
 
 if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
+  const boardServices = Effect.fn("Smoke.boardServices")(function* () {
+    const artifacts = yield* Effect.serviceOption(ArtifactStorage);
+    const boards = yield* Effect.serviceOption(MessageBoardStorage);
+    const families = yield* Effect.serviceOption(SessionFamilyStorage);
+    if (artifacts._tag === "None" || boards._tag === "None" || families._tag === "None")
+      return yield* Effect.die("Local-only Workboard smoke hook");
+    return Context.make(ArtifactStorage, artifacts.value).pipe(
+      Context.add(MessageBoardStorage, boards.value),
+      Context.add(SessionFamilyStorage, families.value),
+    );
+  });
   const reportSmokeFailure = (operation: string, defect: Error) => {
     console.error(`[cake.smoke] ${operation} failed`, defect);
   };
@@ -169,6 +184,28 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
             request,
             new AbortController().signal,
           );
+        }),
+      );
+    },
+    cakeSmokeAppendBoard(sessionId: string, input: BoardAppendInput) {
+      return mainRuntime.runPromise(
+        Effect.gen(function* () {
+          const services = yield* boardServices();
+          const entry = yield* Schema.decodeUnknownEffect(BoardAppendInput)(input);
+          return yield* messageBoards.append(sessionId, entry).pipe(Effect.provide(services));
+        }),
+      );
+    },
+    cakeSmokeReadBoard(sessionId: string, sequence: number) {
+      return mainRuntime.runPromise(
+        Effect.gen(function* () {
+          const services = yield* boardServices();
+          const supplied = yield* messageBoards
+            .read(sessionId, [sequence])
+            .pipe(Effect.provide(services));
+          yield* messageBoards
+            .recordIntake(sessionId, supplied.boardId, [sequence], "readAt")
+            .pipe(Effect.provide(services));
         }),
       );
     },

@@ -85,6 +85,8 @@ describe("observeArtifactEvents", () => {
             Stream.make(
               { type: "artifact-updated" as const, record },
               { type: "artifact-catalog-invalidated" as const, lineageId: "shared" },
+              { type: "message-board-invalidated" as const, lineageId: "shared" },
+              { type: "renderer-events-ready" as const, channel: "artifacts" as const },
             ),
             Stream.never,
           ),
@@ -94,7 +96,7 @@ describe("observeArtifactEvents", () => {
     const refresh = vi.fn();
     const root = {
       sessionRegistry: { sessions: [{ sessionArtifactsStore: { receive: refresh } }] },
-      artifactLibraryStore: { load: vi.fn(async () => undefined) },
+      artifactLibraryStore: { load: vi.fn(async () => undefined), receiveBoardChange: vi.fn() },
       projectWorkbenchStore: { setError: vi.fn() },
     } as unknown as RootStore;
     const cancel = observeArtifactEvents(runtimeFor(client), root);
@@ -102,6 +104,12 @@ describe("observeArtifactEvents", () => {
     await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
     expect(refresh).toHaveBeenNthCalledWith(1);
     expect(refresh).toHaveBeenNthCalledWith(2);
+    await vi.waitFor(() =>
+      expect(root.artifactLibraryStore.receiveBoardChange).toHaveBeenCalledTimes(4),
+    );
+    expect(root.artifactLibraryStore.receiveBoardChange).toHaveBeenNthCalledWith(3, "shared");
+    expect(root.artifactLibraryStore.receiveBoardChange).toHaveBeenNthCalledWith(4);
+    expect(root.artifactLibraryStore.load).toHaveBeenCalledTimes(2);
     cancel();
     projection[Symbol.dispose]();
   });
@@ -151,7 +159,7 @@ describe("observeArtifactEvents", () => {
           { sessionArtifactsStore: unrelated.subject },
         ],
       },
-      artifactLibraryStore: { load: vi.fn(async () => undefined) },
+      artifactLibraryStore: { load: vi.fn(async () => undefined), receiveBoardChange: vi.fn() },
       projectWorkbenchStore: { setError: vi.fn() },
     } as unknown as RootStore;
     const cancel = observeArtifactEvents(runtimeFor(client), root);

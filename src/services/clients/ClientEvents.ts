@@ -41,6 +41,7 @@ export interface ClientEventsService {
     FocusedCakeEvent<
       | "artifact-updated"
       | "artifact-catalog-invalidated"
+      | "message-board-invalidated"
       | "ui-request"
       | "ui-request-settled"
       | "renderer-events-ready"

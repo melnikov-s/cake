@@ -23,6 +23,14 @@ const failure = (operation: string, message: string) =>
 const boardIdFor = (familyId: string) =>
   Schema.decodeUnknownSync(ArtifactLineageId)(`family-board-${familyId}`);
 
+const publishInvalidation = Effect.fn("MessageBoards.publishInvalidation")(function* (
+  lineageId: ArtifactLineageId,
+) {
+  const events = yield* Effect.serviceOption(ClientEvents);
+  if (Option.isSome(events))
+    events.value.broadcast({ type: "message-board-invalidated", lineageId });
+});
+
 /** Called under the existing family creation lock; deterministic identity survives retries. */
 export const ensureBoard = Effect.fn("MessageBoards.ensureBoard")(function* (
   family: SessionFamily,
@@ -97,6 +105,7 @@ export const append = Effect.fn("MessageBoards.append")(function* (
   )
     return yield* failure("append", "Audience must contain only members of this workgroup");
   const entry = yield* (yield* MessageBoardStorage).append(id, sessionId, input);
+  yield* publishInvalidation(id);
   return { boardId: id, entry: boardDescription(entry) };
 });
 
@@ -171,6 +180,7 @@ export const recordIntake = Effect.fn("MessageBoards.recordIntake")(function* (
   if (id !== boardId)
     return yield* failure("record", "Workboard does not belong to the caller's workgroup");
   yield* (yield* MessageBoardStorage).record(id, sessionId, sequences, kind);
+  yield* publishInvalidation(id);
 });
 
 export const entryReceipts = Effect.fn("MessageBoards.entryReceipts")(function* (
