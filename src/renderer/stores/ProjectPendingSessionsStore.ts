@@ -1,4 +1,4 @@
-import { Store, batch, child, createStore, observable, snapshot, untracked } from "r-state-tree";
+import { Store, batch, child, createStore, observable, snapshot } from "r-state-tree";
 import {
   SESSION_TITLE_MAX_LENGTH,
   type Attachment,
@@ -392,10 +392,8 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
       () => this.props.catalog?.authoritativeSessionIds ?? [],
       (sessionIds) => {
         this.reconcileAuthoritativeSessions(sessionIds);
-        untracked(() => void this.refreshSavedDrafts());
       },
     );
-    this.effect(() => untracked(() => void this.refreshSavedDrafts()));
   }
 }
 
