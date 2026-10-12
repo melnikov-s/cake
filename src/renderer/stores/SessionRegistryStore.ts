@@ -16,9 +16,7 @@ import { SessionObservationRetentionStore } from "./SessionObservationRetentionS
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { WorktreeStoreProps } from "./WorktreeStore";
 import type { WorktreeLandingOperation } from "../../contracts/worktrees/worktree-landing-data";
-import type { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
-import { ToastContext } from "./context/ToastContext";
 
 export interface SessionRegistryStoreProps {
   catalog?: SessionCatalogStore;
@@ -31,8 +29,6 @@ export interface SessionRegistryStoreProps {
   artifactModel: ArtifactCatalog;
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
-  /** Lazy because the workbench also coordinates this registry. */
-  workbench(): ProjectWorkbenchStore;
   isActive(sessionId: string): boolean;
   isVisible?(sessionId: string): boolean;
   worktreeOperation(workspacePath: string): typeof WorktreeLandingOperation.Encoded | undefined;
@@ -49,16 +45,8 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   @snapshot readonly targets: SessionTarget[] = observable([]);
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
 
-  private get workbench() {
-    return this.props.workbench();
-  }
-
   private get projects() {
     return ProjectCatalogContext.consume(this)!;
-  }
-
-  private get toast() {
-    return ToastContext.consume(this)!;
   }
 
   @child
@@ -100,67 +88,19 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         workflowCatalog: this.props.workflowCatalog(target.sessionId),
         scheduledMessageCatalog: this.props.scheduledMessageCatalog(target.sessionId),
         artifactModel: this.props.artifactModel,
-        pendingSessions: this.pendingSessions,
         operations: this.props.operations,
         reviews: this.props.reviews,
-        canSubmit: () => this.workbench.canSubmitSession(target.sessionId),
         isActive: () => this.props.isActive(target.sessionId),
         worktreeOperation: () => this.props.worktreeOperation(target.workspacePath),
-        openCommandPane: (pane) => this.workbench.commandPaneStore.open(pane),
         projectName: () => this.projects.nameForPath(target.workspacePath),
         familyId: () =>
           this.props.catalog?.find(target.sessionId)?.familyId ??
           this.pendingSessions.familyId(target.sessionId),
-        renameSession: (name) =>
-          this.workbench.sessionManagementStore.renameSession(target.sessionId, name),
-        toolCompactSession: (entryId, prompt) =>
-          this.workbench.sessionContinuationStore.toolCompactAt(entryId, prompt),
         modelPresets: () => this.props.modelPresets?.() ?? [],
         assistantTools: () => this.props.assistantTools?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
-        newSessionConfiguration: () =>
-          this.workbench.sessionCreationStore.request(target.sessionId)?.configuration,
-        startNewSession: (input) =>
-          this.workbench.sessionCreationStore.start(target.sessionId, input),
-        activateSavedDraft: (choice) =>
-          this.workbench.sessionCreationStore.activateSavedDraft(target.sessionId, choice),
-        ensureSessionActive: () =>
-          this.props.catalog?.find(target.sessionId)?.resolved === true
-            ? this.workbench.sessionManagementStore.resolveSession(target.sessionId, false)
-            : true,
-        configureDraftActivation: (choice) =>
-          this.workbench.sessionCreationStore.configureDraftActivation(target.sessionId, choice),
-        sessionCreationChoice: () => this.workbench.sessionCreationStore.choice(target.sessionId),
-        draftActivationCandidates: () =>
-          this.workbench.sessionCreationStore.candidates(target.sessionId),
-        onWorktreeLanded: (_record, result) => {
-          this.toast.show(
-            result.resolved
-              ? {
-                  tone: "info",
-                  title: "Session merged and resolved",
-                  message: "This session was merged into the project and resolved.",
-                }
-              : {
-                  tone: "info",
-                  title: "Worktree merged",
-                  message: "Your work was merged back into the project.",
-                },
-          );
-        },
-        onWorktreeDiscarded: () => undefined,
         retirement: this.props.retirement,
-        onResolveWorktree: (workspacePath, options) =>
-          this.workbench.resolveWorktreeWorkspace(workspacePath, options),
         settings: () => this.props.settings?.(),
-        openEditorLocation: (location, signal) =>
-          this.workbench.presentationStore.openSelectionLocation(
-            target.sessionId,
-            location,
-            signal,
-          ),
-        refreshEditorHighlights: () =>
-          this.workbench.presentationStore.embeddedEditorStore.syncSelectionHighlights(),
       }),
     );
   }

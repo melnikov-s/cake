@@ -90,7 +90,7 @@ async function renderCreation(
                 error={error}
                 composerHeader={
                   <WorktreePill
-                    creation={fixture.root.projectWorkbenchStore.sessionCreationStore.worktrees}
+                    creation={fixture.root.projectSessionCreationStore.worktrees}
                     actions={session.worktreeStore}
                     sessionId={id}
                     projectPath="/project"

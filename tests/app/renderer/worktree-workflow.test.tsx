@@ -120,7 +120,7 @@ function renderWorktree(
   const view = render(
     <>
       <WorktreePill
-        creation={fixture.root.projectWorkbenchStore.sessionCreationStore.worktrees}
+        creation={fixture.root.projectSessionCreationStore.worktrees}
         actions={session.worktreeStore}
         sessionId="session-1"
         projectPath="/project"

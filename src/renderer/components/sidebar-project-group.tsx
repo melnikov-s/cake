@@ -268,9 +268,7 @@ export const SidebarProjectGroup = observer(function SidebarProjectGroup({
               onOpen={onOpenSession}
               onToggleFamily={(sessionId) => sessionList.toggleFamilyCollapsed(sessionId)}
               familyCollapsed={sessionList.isFamilyCollapsed(session.sessionId)}
-              onRename={(sessionId, name) =>
-                void chat.sessionManagementStore.renameSession(sessionId, name)
-              }
+              onRename={(sessionId, name) => void store.renameSession(sessionId, name)}
               onResolve={(sessionId, nextResolved) =>
                 void store.setSessionResolved(sessionId, nextResolved)
               }

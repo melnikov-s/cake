@@ -1,5 +1,4 @@
 import { Store, batch, child, createStore, effect as reactiveEffect } from "r-state-tree";
-import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
 import type { StoreEvent } from "../events/StoreEvent";
 import type {
   AgentAvailabilitySnapshot,
@@ -7,28 +6,22 @@ import type {
 } from "../../contracts/pi/agent-availability-data";
 import type { ReviewsStore } from "./ReviewsStore";
 import type { ExtensionUiStore } from "./ExtensionUiStore";
-import type { ProjectCatalogStore } from "./ProjectCatalogStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
-import type { SessionRegistryStore } from "./SessionRegistryStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
 import { CommandPaneStore } from "./CommandPaneStore";
-import { SessionManagementStore } from "./SessionManagementStore";
+import { SessionManagementContext } from "./context/SessionManagementContext";
+import { SessionRegistryContext } from "./context/SessionRegistryContext";
+import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import { SessionContinuationStore } from "./SessionContinuationStore";
 import { ProjectOpenStore, type ProjectOpenResult } from "./ProjectOpenStore";
 import type { WorkingDirectoryRetirementWorkflow } from "./WorkingDirectoryRetirementStore";
-import type { SessionLabel } from "../../contracts/application/application-data";
 import { SessionPresentationStore } from "./SessionPresentationStore";
-import { ProjectSessionCreationStore } from "./ProjectSessionCreationStore";
 
 export interface ProjectWorkbenchStoreProps {
   retirement: WorkingDirectoryRetirementWorkflow;
-  sessionRegistry: SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
-  projects: ProjectCatalogStore;
-  globalLabels(): ReadonlyArray<SessionLabel>;
-  defaultConfiguration?(): ChatConfiguration | undefined;
   reviews(): ReviewsStore;
   extensionUi(): ExtensionUiStore;
   catalog: SessionCatalogStore;
@@ -81,7 +74,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   get projectOpenStore(): ProjectOpenStore {
     return createStore(ProjectOpenStore, {
       operations: this.props.operations,
-      projects: this.props.projects,
+      projects: ProjectCatalogContext.consume(this)!,
       onOpening: () => {
         this.sessionOpenRevision += 1;
         this.openingSession = undefined;
@@ -125,47 +118,14 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   @child
-  get sessionManagementStore(): SessionManagementStore {
-    return createStore(SessionManagementStore, {
-      operations: this.props.operations,
-      catalog: this.props.catalog,
-      projects: this.props.projects,
-      globalLabels: this.props.globalLabels,
-      registry: this.sessionRegistry,
-      reportError: (error) => this.setError(error),
-    });
-  }
-
-  @child
   get sessionContinuationStore(): SessionContinuationStore {
     return createStore(SessionContinuationStore, {
       operations: this.props.operations,
-      createWorktree: async (projectPath, name, baseWorktreePath) => {
-        const record = await this.sessionCreationStore.worktrees.create(projectPath, {
-          name,
-          baseWorktreePath,
-          backgroundSetup: true,
-        });
-        return record.worktreePath;
-      },
       sessionContext: () => this.sessionContext(),
       sessionTitle: () => this.sessionTitle,
       closeCommandPane: () => this.commandPaneStore.close(),
       openSession: (sessionId, workingDirectory) =>
         this.openForkedSession(sessionId, workingDirectory),
-      reportError: (error) => this.setError(error),
-    });
-  }
-
-  @child
-  get sessionCreationStore(): ProjectSessionCreationStore {
-    return createStore(ProjectSessionCreationStore, {
-      registry: this.sessionRegistry,
-      operations: this.props.operations,
-      catalog: this.props.catalog,
-      activeSessionId: () => this.activeSessionId,
-      defaultConfiguration: this.props.defaultConfiguration,
-      activateWorkspace: (path) => this.projectOpenStore.activate(path),
       reportError: (error) => this.setError(error),
     });
   }
@@ -178,7 +138,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   get sessionRegistry() {
-    return this.props.sessionRegistry;
+    return SessionRegistryContext.consume(this)!;
   }
 
   get activeSessionId() {
@@ -240,7 +200,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     this.sessionRegistry.findSession(sessionId)?.markRead();
     // Opening a session also settles a user-marked unread reminder.
     if (this.props.catalog.find(sessionId)?.unread)
-      void this.sessionManagementStore.setSessionUnread(sessionId, false);
+      void SessionManagementContext.consume(this)!.setSessionUnread(sessionId, false);
   }
 
   startOperation() {
@@ -497,7 +457,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         if (!ready || this.signal.aborted || revision !== this.sessionOpenRevision) return;
         this.activateLoadedSession(sessionId);
       }
-      this.props.projects.register(this.props.catalog.projectPathFor(workspacePath));
+      ProjectCatalogContext.consume(this)!.register(
+        this.props.catalog.projectPathFor(workspacePath),
+      );
     } catch (error) {
       if (!this.signal.aborted && revision === this.sessionOpenRevision)
         this.setError(error, "Opening Project Session", this.activeSessionId ?? sessionId);
@@ -602,6 +564,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
     if (targetSessionId) await this.openSessionTarget(targetSessionId, true);
     else this.showTemporarySession(result.path, crypto.randomUUID(), true, true);
+  }
+
+  /** Restores input focus without exposing the active session's composer implementation. */
+  requestComposerFocus() {
+    this.activeSession?.conversationSessionStore.composerStore.draftStore.requestFocus();
   }
 
   dismissSecondarySurfaces() {

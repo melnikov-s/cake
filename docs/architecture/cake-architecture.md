@@ -231,6 +231,12 @@ is a refactoring signal, not precedent.
   Project Session index joining authoritative and renderer-pending summaries, with
   authority winning by session ID. Lookup, global ordering, and Project groups
   consume that index; surface-specific ordering remains with its surface Store.
+  Shared Project Session management and creation workflows are window-owned Root
+  children, not workbench subsystems. Provide narrowly named Store contexts at the
+  common owner and consume them at the feature that needs the capability, without
+  forwarding them through the registry or exposing another owner's child layout.
+  Project Session Stores bind session-specific policy into reusable conversation
+  primitives; shared chat primitives do not consume Project-only contexts.
   **ScreenCaptureAttachmentStore** owns capture destination presentation and routing,
   including unsent pane identities that intentionally remain outside sidebar lists.
 - **React** retains only tiny DOM, focus, hover, measurement, animation, or isolated

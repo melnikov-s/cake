@@ -14,10 +14,10 @@ export const ProjectComposerHeader = observer(function ProjectComposerHeader({
   recoverSavedDraft?: boolean;
 }) {
   const root = useStore(RootStore);
-  const store = root.projectWorkbenchStore;
+  const pendingSessions = root.sessionRegistry.pendingSessions;
   const extensionUi = root.extensionUiStore;
-  const sessionIsTemporary = store.sessionRegistry.pendingSessions.isTemporary(session.sessionId);
-  const sessionIsDraft = store.sessionRegistry.pendingSessions.isDraft(session.sessionId);
+  const sessionIsTemporary = pendingSessions.isTemporary(session.sessionId);
+  const sessionIsDraft = pendingSessions.isDraft(session.sessionId);
   const worktreeConfigurationMode = sessionIsDraft
     ? session.conversationSessionStore.composerStore.pendingSessionDraftStore.editing
       ? "edit-draft"
@@ -49,25 +49,22 @@ export const ProjectComposerHeader = observer(function ProjectComposerHeader({
         }
       />
       {recoverSavedDraft &&
-        store.sessionRegistry.pendingSessions.savedRecord(session.sessionId)?.status ===
-          "activating" && (
+        pendingSessions.savedRecord(session.sessionId)?.status === "activating" && (
           <SavedDraftRecovery
             disabled={root.desktopConnection?.connected === false}
             recover={() =>
-              void store.sessionRegistry.pendingSessions
-                .recoverUncertain(session.sessionId)
-                .catch((error: unknown) =>
-                  root.toastStore.show({
-                    tone: "error",
-                    title: "Could not recover saved Draft",
-                    message: error instanceof Error ? error.message : String(error),
-                  }),
-                )
+              void pendingSessions.recoverUncertain(session.sessionId).catch((error: unknown) =>
+                root.toastStore.show({
+                  tone: "error",
+                  title: "Could not recover saved Draft",
+                  message: error instanceof Error ? error.message : String(error),
+                }),
+              )
             }
           />
         )}
       <WorktreePill
-        creation={store.sessionCreationStore.worktrees}
+        creation={root.projectSessionCreationStore.worktrees}
         actions={session.worktreeStore}
         record={root.sessionCatalogStore.managedWorktree(session.workspacePath)}
         sessionId={session.sessionId}

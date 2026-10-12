@@ -78,6 +78,7 @@ async function renderStaged(load: Client["workspaces"]["loadStagedSlashCommands"
   const session = fixture.root.projectWorkbenchStore.activeSession;
   if (!session) throw new Error("Expected an unsent Project Session");
   const Surface = observer(function Surface() {
+    if (!fixture.root.sessionRegistry.findSession(session!.sessionId)) return null;
     return (
       <Chat
         store={session!.conversationSessionStore.chatStore}
@@ -85,7 +86,7 @@ async function renderStaged(load: Client["workspaces"]["loadStagedSlashCommands"
         composerFocusEnabled={false}
         composerHeader={
           <WorktreePill
-            creation={fixture.root.projectWorkbenchStore.sessionCreationStore.worktrees}
+            creation={fixture.root.projectSessionCreationStore.worktrees}
             actions={session!.worktreeStore}
             sessionId={session!.sessionId}
             projectPath="/project"

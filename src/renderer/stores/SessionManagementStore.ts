@@ -4,16 +4,15 @@ import { ClientContext } from "./context/ClientContext";
 import { ClientError } from "../client/Client";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import type { SessionRegistryStore } from "./SessionRegistryStore";
-import type { ProjectCatalogStore } from "./ProjectCatalogStore";
+import { SessionRegistryContext } from "./context/SessionRegistryContext";
+import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
+import { ProjectPendingSessionsContext } from "./context/ProjectPendingSessionsContext";
 import type { SessionLabel } from "../../contracts/application/application-data";
 
 export interface SessionManagementStoreProps {
   operations: SessionOperationCoordinatorStore;
   catalog: SessionCatalogStore;
-  projects: ProjectCatalogStore;
   globalLabels(): ReadonlyArray<SessionLabel>;
-  registry: SessionRegistryStore;
   reportError(error: unknown): void;
 }
 
@@ -25,20 +24,39 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     return ClientContext.consume(this)!;
   }
 
+  private get registry() {
+    return SessionRegistryContext.consume(this)!;
+  }
+
+  private get projects() {
+    return ProjectCatalogContext.consume(this)!;
+  }
+
+  private get pending() {
+    return ProjectPendingSessionsContext.consume(this)!;
+  }
+
+  /** Restores a resolved session before submission; active sessions need no mutation. */
+  ensureSessionActive(sessionId: string) {
+    return this.props.catalog.find(sessionId)?.resolved === true
+      ? this.resolveSession(sessionId, false)
+      : true;
+  }
+
   async renameSession(sessionId: string, name: string) {
     const title = name.trim().slice(0, SESSION_TITLE_MAX_LENGTH);
     if (!title || this.signal.aborted) return;
-    if (this.props.registry.pendingSessions.savedRecord(sessionId)?.status === "activating") return;
-    if (this.props.registry.pendingSessions.isDraft(sessionId)) {
+    if (this.pending.savedRecord(sessionId)?.status === "activating") return;
+    if (this.pending.isDraft(sessionId)) {
       try {
-        await this.props.registry.pendingSessions.updateSavedMetadata(sessionId, { title });
+        await this.pending.updateSavedMetadata(sessionId, { title });
       } catch (error) {
         if (!this.signal.aborted) this.props.reportError(error);
       }
       return;
     }
-    if (this.props.registry.pendingSessions.isTemporary(sessionId)) {
-      this.props.registry.pendingSessions.conversation(sessionId)?.setName(title);
+    if (this.pending.isTemporary(sessionId)) {
+      this.pending.conversation(sessionId)?.setName(title);
       return;
     }
     const operationId = this.props.operations.start("project-workbench");
@@ -58,11 +76,10 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   ) {
     const session = this.props.catalog.find(sessionId);
     if (!session || this.signal.aborted) return false;
-    if (this.props.registry.pendingSessions.savedRecord(sessionId)?.status === "activating")
-      return false;
-    if (this.props.registry.pendingSessions.isDraft(sessionId)) {
+    if (this.pending.savedRecord(sessionId)?.status === "activating") return false;
+    if (this.pending.isDraft(sessionId)) {
       try {
-        await this.props.registry.pendingSessions.updateSavedMetadata(sessionId, { resolved });
+        await this.pending.updateSavedMetadata(sessionId, { resolved });
         if (this.signal.aborted) return false;
         if (resolved) await onResolved?.([sessionId]);
         return !this.signal.aborted;
@@ -71,12 +88,12 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
         return false;
       }
     }
-    if (this.props.registry.pendingSessions.conversation(sessionId)?.setDraftResolved(resolved)) {
+    if (this.pending.conversation(sessionId)?.setDraftResolved(resolved)) {
       if (resolved) await onResolved?.([sessionId]);
       return !this.signal.aborted;
     }
-    if (resolved && this.props.registry.pendingSessions.isTemporary(sessionId)) {
-      this.props.registry.removeSession(sessionId);
+    if (resolved && this.pending.isTemporary(sessionId)) {
+      this.registry.removeSession(sessionId);
       await onResolved?.([sessionId]);
       return !this.signal.aborted;
     }
@@ -131,17 +148,16 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
 
   async setSessionLabels(sessionId: string, labelIds: readonly string[]) {
     const session = this.props.catalog.find(sessionId);
-    const pendingSession = this.props.registry.findSession(sessionId);
+    const pendingSession = this.registry.findSession(sessionId);
     const projectPath =
       session?.projectPath ??
       (pendingSession
         ? this.props.catalog.projectPathFor(pendingSession.workspacePath)
         : undefined);
     if (!projectPath || session?.resolved || this.signal.aborted) return false;
-    if (this.props.registry.pendingSessions.savedRecord(sessionId)?.status === "activating")
-      return false;
+    if (this.pending.savedRecord(sessionId)?.status === "activating") return false;
     if (this.transitioningSessionIds.has(sessionId)) return false;
-    const project = this.props.projects.find(projectPath);
+    const project = this.projects.find(projectPath);
     if (!project) return false;
     const availableIds = new Set(
       [...this.props.globalLabels(), ...project.workflow.labels].map((label) => label.id),
@@ -153,14 +169,14 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
 
     this.transitioningSessionIds.add(sessionId);
     try {
-      if (this.props.registry.pendingSessions.isDraft(sessionId)) {
-        await this.props.registry.pendingSessions.updateSavedMetadata(sessionId, {
+      if (this.pending.isDraft(sessionId)) {
+        await this.pending.updateSavedMetadata(sessionId, {
           labelIds: [...labelIds],
         });
         return !this.signal.aborted;
       }
-      if (this.props.registry.pendingSessions.isTemporary(sessionId)) {
-        await this.props.registry.pendingSessions.setLabels(sessionId, labelIds);
+      if (this.pending.isTemporary(sessionId)) {
+        await this.pending.setLabels(sessionId, labelIds);
         return !this.signal.aborted;
       }
       if (!session) return false;
@@ -180,12 +196,12 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   async deleteSession(sessionId: string) {
     if (!this.props.catalog.find(sessionId)?.resolved || this.signal.aborted) return;
     try {
-      if (this.props.registry.pendingSessions.isDraft(sessionId)) {
-        await this.props.registry.pendingSessions.deleteResolvedDraft(sessionId);
+      if (this.pending.isDraft(sessionId)) {
+        await this.pending.deleteResolvedDraft(sessionId);
         return;
       }
       await this.client.workspaces.deleteSession(sessionId, { signal: this.signal });
-      if (!this.signal.aborted) this.props.registry.removeSession(sessionId);
+      if (!this.signal.aborted) this.registry.removeSession(sessionId);
     } catch (error) {
       if (!this.signal.aborted) this.props.reportError(error);
     }

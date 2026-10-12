@@ -6,7 +6,8 @@ import { ClientContext } from "./context/ClientContext";
 import type { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
-import type { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
+import { SessionManagementContext } from "./context/SessionManagementContext";
+import { SessionRetirementContext } from "./context/SessionRetirementContext";
 import { SessionRegistryContext } from "./context/SessionRegistryContext";
 import { SidebarSessionListStore } from "./SidebarSessionListStore";
 
@@ -15,9 +16,6 @@ export interface SidebarStoreProps {
   worktreeOperations?: WorktreeOperationCatalog;
   cakeChat(): CakeChatCollectionStore;
   selectedConversation?(): { kind: "project-session" | "cake-chat"; sessionId: string } | undefined;
-  setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
-  workbench(): ProjectWorkbenchStore;
-  deleteSession(sessionId: string): Promise<void>;
   embeddedEditorSettings: EmbeddedEditorSettingsStore;
 }
 
@@ -196,21 +194,25 @@ export class SidebarStore extends Store<SidebarStoreProps> {
     this.navigationMode = "activity";
   }
 
-  setSessionResolved(sessionId: string, resolved: boolean) {
-    return this.props.setSessionResolved(sessionId, resolved);
+  renameSession(sessionId: string, name: string) {
+    return SessionManagementContext.consume(this)!.renameSession(sessionId, name);
+  }
+
+  async setSessionResolved(sessionId: string, resolved: boolean) {
+    await SessionRetirementContext.consume(this)!.setProjectSessionResolved(sessionId, resolved);
   }
 
   setSessionLabels(sessionId: string, labelIds: readonly string[]) {
-    return this.props.workbench().sessionManagementStore.setSessionLabels(sessionId, labelIds);
+    return SessionManagementContext.consume(this)!.setSessionLabels(sessionId, labelIds);
   }
 
   deleteSession(sessionId: string) {
-    return this.props.deleteSession(sessionId);
+    return SessionRetirementContext.consume(this)!.deleteProjectSession(sessionId);
   }
 
   setSessionUnread(sessionId: string, unread: boolean) {
     if (!unread) this.sessions.findSession(sessionId)?.markRead();
-    return this.props.workbench().sessionManagementStore.setSessionUnread(sessionId, unread);
+    return SessionManagementContext.consume(this)!.setSessionUnread(sessionId, unread);
   }
 
   sessionActivityTime(modified: string) {

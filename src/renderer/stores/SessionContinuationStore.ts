@@ -1,6 +1,7 @@
 import { Store } from "r-state-tree";
 import { suggestedWorktreeName } from "../../utils/worktree-name";
 import { ClientContext } from "./context/ClientContext";
+import { ProjectSessionCreationContext } from "./context/ProjectSessionCreationContext";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 
 export type SessionContinuationDestination =
@@ -11,7 +12,6 @@ export type SessionContinuationDestination =
 
 export interface SessionContinuationStoreProps {
   operations: SessionOperationCoordinatorStore;
-  createWorktree(projectPath: string, name: string, baseWorktreePath?: string): Promise<string>;
   sessionContext():
     | {
         sessionId: string;
@@ -96,6 +96,12 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
     this.prompt = undefined;
   }
 
+  tryCancelPrompt() {
+    if (!this.prompt) return false;
+    this.cancelPrompt();
+    return true;
+  }
+
   async confirmPrompt() {
     const prompt = this.prompt;
     if (!prompt) return;
@@ -115,17 +121,14 @@ export class SessionContinuationStore extends Store<SessionContinuationStoreProp
           destinationWorkingDirectory = prompt.projectPath;
           break;
         case "branch-worktree":
-          destinationWorkingDirectory = await this.props.createWorktree(
-            prompt.projectPath,
-            worktreeName,
-            prompt.workspacePath,
-          );
+          destinationWorkingDirectory = await ProjectSessionCreationContext.consume(
+            this,
+          )!.createContinuationWorktree(prompt.projectPath, worktreeName, prompt.workspacePath);
           break;
         case "new-worktree":
-          destinationWorkingDirectory = await this.props.createWorktree(
-            prompt.projectPath,
-            worktreeName,
-          );
+          destinationWorkingDirectory = await ProjectSessionCreationContext.consume(
+            this,
+          )!.createContinuationWorktree(prompt.projectPath, worktreeName);
           break;
       }
       if (this.signal.aborted) return;

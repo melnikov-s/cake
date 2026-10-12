@@ -51,6 +51,12 @@ export class CommandPaneStore extends Store<CommandPaneStoreProps> {
     this.props.requestComposerFocus();
   }
 
+  tryClose() {
+    if (!this.pane) return false;
+    this.close();
+    return true;
+  }
+
   dismiss() {
     this.pane = undefined;
     this.navigationPrompt = undefined;
@@ -78,6 +84,12 @@ export class CommandPaneStore extends Store<CommandPaneStoreProps> {
 
   cancelNavigation() {
     this.navigationPrompt = undefined;
+  }
+
+  tryCancelNavigation() {
+    if (!this.navigationPrompt) return false;
+    this.cancelNavigation();
+    return true;
   }
 
   async confirmNavigation() {

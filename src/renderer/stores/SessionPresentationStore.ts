@@ -111,6 +111,13 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
     }
   }
 
+  /** Escape dismisses only a visible native editor, not another session's retained mode. */
+  tryBackToAgent() {
+    if (!this.embeddedEditorStore.visible) return false;
+    void this.backToAgent();
+    return true;
+  }
+
   async backToAgent() {
     const session = this.session;
     if (!(await this.flushDrawBeforeLeaving())) return;
@@ -235,6 +242,11 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
     if (this.session !== session || this.props.activeSessionId() !== sessionId || !this.canOpen())
       throw new Error("The active session changed before VS Code navigation completed");
     return result;
+  }
+
+  /** Reprojects the active session's selection locations, including while its editor is hidden. */
+  refreshEditorHighlights() {
+    return this.embeddedEditorStore.syncSelectionHighlights();
   }
 
   private canOpen() {

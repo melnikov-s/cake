@@ -5,16 +5,13 @@ import type {
   DrawControlResponse,
 } from "../../contracts/draw/draw-control";
 import type { ProjectSessionStore } from "./ProjectSessionStore";
-import type { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
+import { ProjectSessionNavigationContext } from "./context/ProjectSessionNavigationContext";
+import { SessionPresentationContext } from "./context/SessionPresentationContext";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
 import { SessionRegistryContext } from "./context/SessionRegistryContext";
 
-export interface DrawControlStoreProps {
-  workbench(): ProjectWorkbenchStore;
-}
-
 /** Owns window-local Draw control registration and dispatch for loaded Project Sessions. */
-export class DrawControlStore extends Store<DrawControlStoreProps> {
+export class DrawControlStore extends Store {
   private readonly controls = new Map<string, DrawControl>();
 
   private get registry() {
@@ -63,9 +60,8 @@ export class DrawControlStore extends Store<DrawControlStoreProps> {
   }
 
   private async enterDraw(session: ProjectSessionStore) {
-    const workbench = this.props.workbench();
-    if (workbench.activeSessionId === session.sessionId)
-      await workbench.presentationStore.openDraw();
+    if (ProjectSessionNavigationContext.consume(this)!.activeSessionId === session.sessionId)
+      await SessionPresentationContext.consume(this)!.openDraw();
     else {
       session.showPresentation("draw");
       await session.drawStore.initialize();

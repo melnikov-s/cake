@@ -114,9 +114,7 @@ export const SidebarActivityFeed = observer(function SidebarActivityFeed({
                         onOpen={onOpenSession}
                         onToggleFamily={(sessionId) => sessionList.toggleFamilyCollapsed(sessionId)}
                         familyCollapsed={sessionList.isFamilyCollapsed(session.sessionId)}
-                        onRename={(sessionId, name) =>
-                          void chat.sessionManagementStore.renameSession(sessionId, name)
-                        }
+                        onRename={(sessionId, name) => void store.renameSession(sessionId, name)}
                         onResolve={(sessionId, resolved) =>
                           void store.setSessionResolved(sessionId, resolved)
                         }

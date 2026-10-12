@@ -20,6 +20,17 @@ import { DeliveryAvailabilityContext } from "./context/DeliveryAvailabilityConte
 import { ActiveProjectSessionContext } from "./context/ActiveProjectSessionContext";
 import { SessionRegistryStore } from "./SessionRegistryStore";
 import { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
+import { SessionManagementStore } from "./SessionManagementStore";
+import { ProjectSessionCreationStore } from "./ProjectSessionCreationStore";
+import { SessionManagementContext } from "./context/SessionManagementContext";
+import { ProjectPendingSessionsContext } from "./context/ProjectPendingSessionsContext";
+import { ProjectSessionCreationContext } from "./context/ProjectSessionCreationContext";
+import { SessionRetirementContext } from "./context/SessionRetirementContext";
+import { ProjectSessionNavigationContext } from "./context/ProjectSessionNavigationContext";
+import { SessionPresentationContext } from "./context/SessionPresentationContext";
+import { CommandPaneContext } from "./context/CommandPaneContext";
+import { SessionContinuationContext } from "./context/SessionContinuationContext";
+import { ProjectOpenContext } from "./context/ProjectOpenContext";
 import { SidebarStore } from "./SidebarStore";
 import { SessionMetadataStore } from "./SessionMetadataStore";
 import { ReviewsStore } from "./ReviewsStore";
@@ -91,7 +102,6 @@ export class RootStore extends Store<{
       registry: this.sessionRegistry,
       catalog: this.sessionCatalogStore,
       metadata: () => this.sessionMetadataStore,
-      workbench: () => this.projectWorkbenchStore,
       sidebar: () => this.sidebarStore,
       cakeChat: () => this.cakeChatCollectionStore,
       newSession: () => this.newSessionStore,
@@ -119,9 +129,7 @@ export class RootStore extends Store<{
 
   @child
   get drawControlStore(): DrawControlStore {
-    return createStore(DrawControlStore, {
-      workbench: () => this.projectWorkbenchStore,
-    });
+    return createStore(DrawControlStore);
   }
 
   get desktopConnection() {
@@ -148,6 +156,42 @@ export class RootStore extends Store<{
 
   [SessionRegistryContext.provide]() {
     return this.sessionRegistry;
+  }
+
+  [ProjectPendingSessionsContext.provide]() {
+    return this.sessionRegistry.pendingSessions;
+  }
+
+  [SessionManagementContext.provide]() {
+    return this.sessionManagementStore;
+  }
+
+  [ProjectSessionCreationContext.provide]() {
+    return this.projectSessionCreationStore;
+  }
+
+  [SessionRetirementContext.provide]() {
+    return this.sessionRetirementStore;
+  }
+
+  [ProjectSessionNavigationContext.provide]() {
+    return this.projectWorkbenchStore;
+  }
+
+  [SessionPresentationContext.provide]() {
+    return this.projectWorkbenchStore.presentationStore;
+  }
+
+  [CommandPaneContext.provide]() {
+    return this.projectWorkbenchStore.commandPaneStore;
+  }
+
+  [SessionContinuationContext.provide]() {
+    return this.projectWorkbenchStore.sessionContinuationStore;
+  }
+
+  [ProjectOpenContext.provide]() {
+    return this.projectWorkbenchStore.projectOpenStore;
   }
 
   [ToastContext.provide]() {
@@ -348,7 +392,6 @@ export class RootStore extends Store<{
       catalog: this.sessionCatalogStore,
       registry: this.sessionRegistry,
       layout: this.sessionLayoutStore,
-      workbench: () => this.projectWorkbenchStore,
       navigate: (target) => this.navigationStore.navigateToHistoryEntry(target),
       createProjectSession: (projectPath) => this.navigationStore.createSession(projectPath),
     });
@@ -360,7 +403,6 @@ export class RootStore extends Store<{
       catalog: this.sessionCatalogStore,
       registry: this.sessionRegistry,
       shell: this.appShellStore,
-      workbench: () => this.projectWorkbenchStore,
       focusedProjectPath: () => this.sidebarStore.focusedProjectPath,
       leaveProjectFocus: () => this.sidebarStore.leaveProjectFocus(),
       navigate: (target) => this.navigationStore.navigateToHistoryEntry(target),
@@ -380,7 +422,6 @@ export class RootStore extends Store<{
       savedDrafts: this.client.savedDrafts,
       operations: this.sessionOperationCoordinator,
       reviews: () => this.reviewsStore,
-      workbench: () => this.projectWorkbenchStore,
       sessionModel: (sessionId, workingDirectory) =>
         this.props.projection.projectConversation(sessionId, workingDirectory),
       discussionCatalog: (sessionId) => this.props.projection.discussionCatalog(sessionId),
@@ -530,11 +571,6 @@ export class RootStore extends Store<{
           ? { kind: "cake-chat", sessionId: selection.sessionId }
           : undefined;
       },
-      setSessionResolved: async (sessionId, resolved) => {
-        await this.sessionRetirementStore.setProjectSessionResolved(sessionId, resolved);
-      },
-      workbench: () => this.projectWorkbenchStore,
-      deleteSession: (sessionId) => this.sessionRetirementStore.deleteProjectSession(sessionId),
       embeddedEditorSettings: this.settingsStore.embeddedEditor,
     });
   }
@@ -665,14 +701,30 @@ export class RootStore extends Store<{
   }
 
   @child
+  get sessionManagementStore(): SessionManagementStore {
+    return createStore(SessionManagementStore, {
+      operations: this.sessionOperationCoordinator,
+      catalog: this.sessionCatalogStore,
+      globalLabels: () => this.settingsStore.globalLabels.labels,
+      reportError: (error) => this.projectWorkbenchStore.setError(error),
+    });
+  }
+
+  @child
+  get projectSessionCreationStore(): ProjectSessionCreationStore {
+    return createStore(ProjectSessionCreationStore, {
+      operations: this.sessionOperationCoordinator,
+      catalog: this.sessionCatalogStore,
+      defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,
+      reportError: (error) => this.projectWorkbenchStore.setError(error),
+    });
+  }
+
+  @child
   get projectWorkbenchStore(): ProjectWorkbenchStore {
     return createStore(ProjectWorkbenchStore, {
       retirement: this.workingDirectoryRetirementStore,
-      sessionRegistry: this.sessionRegistry,
       operations: this.sessionOperationCoordinator,
-      projects: this.projectCatalogStore,
-      globalLabels: () => this.settingsStore.globalLabels.labels,
-      defaultConfiguration: () => this.settingsStore.modelPresets.defaultConfiguration,
       reviews: () => this.reviewsStore,
       extensionUi: () => this.extensionUiStore,
       catalog: this.sessionCatalogStore,
@@ -744,6 +796,8 @@ export class RootStore extends Store<{
         notificationStore: this.notificationStore,
         projectCatalogStore: this.projectCatalogStore,
         projectWorkbenchStore: this.projectWorkbenchStore,
+        sessionManagementStore: this.sessionManagementStore,
+        projectSessionCreationStore: this.projectSessionCreationStore,
         sessionCatalogStore: this.sessionCatalogStore,
         sessionCoordinationStore: this.sessionCoordinationStore,
         sessionLayoutStore: this.sessionLayoutStore,

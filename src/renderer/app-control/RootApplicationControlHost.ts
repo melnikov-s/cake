@@ -7,6 +7,8 @@ import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore"
 import type { NotificationStore } from "../stores/NotificationStore";
 import type { ProjectCatalogStore } from "../stores/ProjectCatalogStore";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
+import type { SessionManagementStore } from "../stores/SessionManagementStore";
+import type { ProjectSessionCreationStore } from "../stores/ProjectSessionCreationStore";
 import type { SessionCatalogStore } from "../stores/SessionCatalogStore";
 import type { SessionCoordinationStore } from "../stores/SessionCoordinationStore";
 import type { SessionLayoutStore } from "../stores/SessionLayoutStore";
@@ -29,6 +31,8 @@ export interface RootApplicationControlCapabilities {
   notificationStore: NotificationStore;
   projectCatalogStore: ProjectCatalogStore;
   projectWorkbenchStore: ProjectWorkbenchStore;
+  sessionManagementStore: SessionManagementStore;
+  projectSessionCreationStore: ProjectSessionCreationStore;
   sessionCatalogStore: SessionCatalogStore;
   sessionCoordinationStore: SessionCoordinationStore;
   sessionLayoutStore: SessionLayoutStore;
@@ -193,10 +197,7 @@ export function createRootApplicationControlHost(
             );
         }),
       setSessionLabels: (sessionId, labelIds) =>
-        capabilities.projectWorkbenchStore.sessionManagementStore.setSessionLabels(
-          sessionId,
-          labelIds,
-        ),
+        capabilities.sessionManagementStore.setSessionLabels(sessionId, labelIds),
     },
     worktrees: {
       merge: async ({ sessionId, workingDirectory }) => {
@@ -237,10 +238,8 @@ export function createRootApplicationControlHost(
         capabilities.client.projectSessions.inspect({ sessionId }, { signal: capabilities.signal }),
       open: (sessionId, messageId) =>
         capabilities.navigationStore.openSession(sessionId, messageId),
-      create: (input) =>
-        capabilities.projectWorkbenchStore.sessionCreationStore.createPromptedSession(input),
-      createDraft: (input) =>
-        capabilities.projectWorkbenchStore.sessionCreationStore.createDraftSession(input),
+      create: (input) => capabilities.projectSessionCreationStore.createPromptedSession(input),
+      createDraft: (input) => capabilities.projectSessionCreationStore.createDraftSession(input),
       sendMessage: (sessionId, text, delivery, crossSession, inputRefs) =>
         capabilities.applicationControlStore().runOperation(async () => {
           await capabilities.prepareProjectSessionChat(sessionId);
@@ -358,7 +357,7 @@ export function createRootApplicationControlHost(
           );
         }),
       rename: (sessionId, title) =>
-        capabilities.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, title),
+        capabilities.sessionManagementStore.renameSession(sessionId, title),
       setProjectSessionsResolved: (sessionIds, resolved) =>
         capabilities.sessionRetirementStore.setProjectSessionsResolved(sessionIds, resolved),
     },

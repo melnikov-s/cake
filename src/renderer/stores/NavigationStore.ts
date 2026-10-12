@@ -8,7 +8,11 @@ import type { ArtifactLibraryStore } from "./ArtifactLibraryStore";
 import type { ArtifactPaneStore } from "./ArtifactPaneStore";
 import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
 import type { NewSessionStore } from "./NewSessionStore";
-import type { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
+import { ProjectSessionNavigationContext } from "./context/ProjectSessionNavigationContext";
+import { SessionPresentationContext } from "./context/SessionPresentationContext";
+import { CommandPaneContext } from "./context/CommandPaneContext";
+import { SessionContinuationContext } from "./context/SessionContinuationContext";
+import { ProjectOpenContext } from "./context/ProjectOpenContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionLayoutStore, SessionSplitAxis } from "./SessionLayoutStore";
 import type { SessionMetadataStore } from "./SessionMetadataStore";
@@ -25,7 +29,6 @@ export class NavigationStore extends Store<{
   registry: SessionRegistryStore;
   catalog: SessionCatalogStore;
   metadata(): SessionMetadataStore;
-  workbench(): ProjectWorkbenchStore;
   sidebar(): SidebarStore;
   cakeChat(): CakeChatCollectionStore;
   newSession(): NewSessionStore;
@@ -33,17 +36,29 @@ export class NavigationStore extends Store<{
   artifacts(): ArtifactLibraryStore;
   artifactPane(): ArtifactPaneStore;
 }> {
+  private get workbench() {
+    return ProjectSessionNavigationContext.consume(this)!;
+  }
+
+  private get presentation() {
+    return SessionPresentationContext.consume(this)!;
+  }
+
+  private get commands() {
+    return CommandPaneContext.consume(this)!;
+  }
+
   async openSession(sessionId: string, messageId?: string) {
     if (!this.props.metadata().workingDirectory(sessionId))
       throw new Error("Cake could not find that session");
-    const workbench = this.props.workbench();
+    const workbench = this.workbench;
     workbench.dismissSecondarySurfaces();
     this.props.layout.focusSession(sessionId);
     const opened = await workbench.openSession(sessionId);
-    if (opened === false || workbench.activeSession?.sessionId !== sessionId) return false;
-    if (!messageId) return true;
+    if (opened === false || workbench.activeSessionId !== sessionId) return false;
     const session = this.props.registry.findSession(sessionId);
     if (!session) return false;
+    if (!messageId) return true;
     const message = session.conversationSessionStore.chatStore.parts.find(
       (part) =>
         part.id === messageId ||
@@ -61,7 +76,7 @@ export class NavigationStore extends Store<{
 
   showLoadedProjectSession(sessionId: string) {
     this.props.layout.ensureSession(sessionId);
-    this.props.workbench().showLoadedSession(sessionId);
+    this.workbench.showLoadedSession(sessionId);
     this.selectProjectSessionForShell(sessionId);
   }
 
@@ -98,20 +113,20 @@ export class NavigationStore extends Store<{
 
   async createSession(workspacePath: string) {
     this.props.newSession().rememberProject(workspacePath);
-    const workbench = this.props.workbench();
-    await workbench.startNewSession(workspacePath);
-    const sessionId = workbench.activeSession?.sessionId;
-    if (sessionId) this.selectProjectSessionForShell(sessionId);
+    await this.workbench.startNewSession(workspacePath);
+    const sessionId = this.workbench.activeSessionId;
+    if (sessionId && this.props.registry.findSession(sessionId))
+      this.selectProjectSessionForShell(sessionId);
   }
 
   async startOneOffChat() {
     this.showEmptyWorkbench();
-    await this.props.workbench().projectOpenStore.startOneOffChat();
+    await ProjectOpenContext.consume(this)!.startOneOffChat();
   }
 
   async chooseProject() {
     this.showEmptyWorkbench();
-    await this.props.workbench().projectOpenStore.chooseProject();
+    await ProjectOpenContext.consume(this)!.chooseProject();
   }
 
   sessionInNavigationScope(entry: SessionHistoryEntry) {
@@ -162,9 +177,9 @@ export class NavigationStore extends Store<{
 
   focusSessionPane(paneId: string) {
     const sessionId = this.props.layout.focusPane(paneId);
-    if (!sessionId || this.props.workbench().activeSessionId === sessionId) return;
+    if (!sessionId || this.workbench.activeSessionId === sessionId) return;
     this.selectProjectSessionForShell(sessionId);
-    this.props.workbench().showLoadedSession(sessionId);
+    this.workbench.showLoadedSession(sessionId);
   }
 
   focusAdjacentSessionPane(direction: "left" | "right" | "above" | "below") {
@@ -187,7 +202,9 @@ export class NavigationStore extends Store<{
   }
 
   splitFocusedSession(axis: SessionSplitAxis) {
-    const source = this.props.workbench().activeSession;
+    const source = this.workbench.activeSessionId
+      ? this.props.registry.findSession(this.workbench.activeSessionId)
+      : undefined;
     if (!source || !this.props.layout.canSplit) return;
     const sessionId = crypto.randomUUID();
     const session = this.props.registry.pendingSessions.prepareStaged(
@@ -200,7 +217,7 @@ export class NavigationStore extends Store<{
       return;
     }
     this.selectProjectSessionForShell(sessionId);
-    this.props.workbench().showLoadedSession(sessionId);
+    this.workbench.showLoadedSession(sessionId);
     void session.stagedCommandStore.load(source.workspacePath);
     return { paneId, sessionId };
   }
@@ -224,7 +241,7 @@ export class NavigationStore extends Store<{
     }
     if (result.focusedSessionId) {
       this.selectProjectSessionForShell(result.focusedSessionId);
-      this.props.workbench().showLoadedSession(result.focusedSessionId);
+      this.workbench.showLoadedSession(result.focusedSessionId);
     }
   }
 
@@ -235,12 +252,12 @@ export class NavigationStore extends Store<{
   }
 
   showWorkbench() {
-    const workbench = this.props.workbench();
+    const workbench = this.workbench;
     workbench.dismissSecondarySurfaces();
     const context = workbench.sessionContext();
     if (context) this.props.shell.selectProjectSession(context.sessionId);
     else this.props.shell.showWorkbench();
-    workbench.presentationStore.restore();
+    this.presentation.restore();
   }
 
   returnToWorkbench() {
@@ -250,9 +267,7 @@ export class NavigationStore extends Store<{
       return;
     }
     this.showWorkbench();
-    this.props
-      .workbench()
-      .activeSession?.conversationSessionStore.composerStore.draftStore.requestFocus();
+    this.workbench.requestComposerFocus();
   }
 
   dismissTopSecondarySurface() {
@@ -260,15 +275,8 @@ export class NavigationStore extends Store<{
       this.props.newSession().close();
       return;
     }
-    const workbench = this.props.workbench();
-    if (workbench.commandPaneStore.navigationPrompt) {
-      workbench.commandPaneStore.cancelNavigation();
-      return;
-    }
-    if (workbench.sessionContinuationStore.prompt) {
-      workbench.sessionContinuationStore.cancelPrompt();
-      return;
-    }
+    if (this.commands.tryCancelNavigation()) return;
+    if (SessionContinuationContext.consume(this)!.tryCancelPrompt()) return;
     if (this.props.artifactPane().sessionId) {
       this.props.artifactPane().close();
       return;
@@ -277,29 +285,26 @@ export class NavigationStore extends Store<{
       this.returnToWorkbench();
       return;
     }
-    if (workbench.presentationStore.embeddedEditorStore.visible) {
-      workbench.presentationStore.backToAgent();
-      return;
-    }
-    if (workbench.commandPaneStore.pane) workbench.commandPaneStore.close();
+    if (this.presentation.tryBackToAgent()) return;
+    this.commands.tryClose();
   }
 
   async openCakeChat(sessionId?: string) {
     if (!sessionId) return this.startCakeChat();
-    this.props.workbench().dismissSecondarySurfaces();
+    this.workbench.dismissSecondarySurfaces();
     this.props.shell.selectCakeChat(sessionId);
     await this.props.cakeChat().openSession(sessionId);
   }
 
   async startCakeChat(prompt?: string) {
-    this.props.workbench().dismissSecondarySurfaces();
+    this.workbench.dismissSecondarySurfaces();
     this.props.shell.selectCakeChat();
     await this.props.cakeChat().activate(prompt);
     this.props.shell.selectCakeChat(this.props.cakeChat().sessionId);
   }
 
   openArtifact(sessionId: string, lineageId: string, revision?: number) {
-    this.props.workbench().commandPaneStore.dismiss();
+    this.commands.dismiss();
     this.props
       .artifactPane()
       .open(
@@ -310,7 +315,7 @@ export class NavigationStore extends Store<{
   }
 
   showArtifactLibrary(sessionId?: string, lineageId?: string, revision?: number) {
-    this.props.workbench().dismissSecondarySurfaces();
+    this.workbench.dismissSecondarySurfaces();
     const artifacts = this.props.artifacts();
     artifacts.open(sessionId);
     this.props.shell.showArtifactLibrary();
@@ -322,7 +327,7 @@ export class NavigationStore extends Store<{
   }
 
   showSettings() {
-    this.props.workbench().dismissSecondarySurfaces();
+    this.workbench.dismissSecondarySurfaces();
     this.props.shell.showSettings();
   }
 
@@ -334,7 +339,7 @@ export class NavigationStore extends Store<{
   }
 
   showEmptyWorkbench() {
-    this.props.workbench().dismissSecondarySurfaces();
+    this.workbench.dismissSecondarySurfaces();
     this.props.shell.showWorkbench();
   }
 }

@@ -154,6 +154,41 @@ function region(resolved = false) {
 afterEach(cleanup);
 
 describe("Session management workflow", () => {
+  it("renames an unselected session through the sidebar without changing the focused conversation", async () => {
+    const rename = vi.fn<Client["projectSessions"]["rename"]>(async () => undefined);
+    const menu = vi.fn<Client["electron"]["showSessionContextMenu"]>(async () => ({
+      action: "rename",
+    }));
+    const sessions = [
+      projectSession("background", { title: "Background session" }),
+      projectSession("focused", { title: "Focused session" }),
+    ];
+    using fixture = await renderManagement({
+      client: { projectSessions: { rename }, electron: { showSessionContextMenu: menu } },
+      sessions,
+      history: ["focused"],
+    });
+    await fixture.user.pointer({
+      target: region().getByRole("button", { name: /^Background session/ }),
+      keys: "[MouseRight]",
+    });
+    const input = await screen.findByRole("textbox", { name: "Session name" });
+    await fixture.user.clear(input);
+    await fixture.user.type(input, "Renamed background{Enter}");
+    await waitFor(() => expect(rename).toHaveBeenCalledOnce());
+    expect(rename).toHaveBeenCalledWith(
+      { sessionId: "background", name: "Renamed background" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    await fixture.publishSessions([{ ...sessions[0]!, title: "Renamed background" }, sessions[1]!]);
+    expect(region().getByText("Renamed background")).toBeDefined();
+    expect(
+      region()
+        .getByRole("button", { name: /^Focused session/ })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+  });
+
   it("retires authoritative family IDs and shows cleanup details before the projection arrives", async () => {
     const pending = deferred<void>();
     const resolve = vi.fn<Client["projectSessions"]["resolve"]>(() => pending.promise);

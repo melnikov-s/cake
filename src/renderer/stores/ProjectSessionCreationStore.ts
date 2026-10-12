@@ -4,10 +4,12 @@ import type { ChatConfiguration } from "../../contracts/conversations/session-co
 import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
 import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import { ClientContext } from "./context/ClientContext";
-import type { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore";
+import { ProjectPendingSessionsContext } from "./context/ProjectPendingSessionsContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import type { SessionRegistryStore } from "./SessionRegistryStore";
+import { SessionRegistryContext } from "./context/SessionRegistryContext";
+import { ProjectSessionNavigationContext } from "./context/ProjectSessionNavigationContext";
+import { ProjectOpenContext } from "./context/ProjectOpenContext";
 import { WorktreeCreationStore, type WorktreeDraftChoice } from "./WorktreeCreationStore";
 
 export interface CreatePromptedProjectSessionInput {
@@ -34,12 +36,9 @@ export interface ProjectSessionCreationResult {
 }
 
 export interface ProjectSessionCreationStoreProps {
-  registry: SessionRegistryStore;
   operations: SessionOperationCoordinatorStore;
   catalog: SessionCatalogStore;
-  activeSessionId(): string | undefined;
   defaultConfiguration?(): ChatConfiguration | undefined;
-  activateWorkspace(path: string): void;
   reportError(error: unknown): void;
 }
 
@@ -49,8 +48,12 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     return ClientContext.consume(this)!;
   }
 
-  private get pending(): ProjectPendingSessionsStore {
-    return this.props.registry.pendingSessions;
+  private get registry() {
+    return SessionRegistryContext.consume(this)!;
+  }
+
+  private get pending() {
+    return ProjectPendingSessionsContext.consume(this)!;
   }
 
   @child
@@ -60,10 +63,21 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
       catalog: this.props.catalog,
       relocateTemporarySession: (sessionId, workspacePath) => {
         this.pending.relocate(sessionId, workspacePath);
-        if (this.props.activeSessionId() === sessionId) this.props.activateWorkspace(workspacePath);
+        if (ProjectSessionNavigationContext.consume(this)!.activeSessionId === sessionId)
+          ProjectOpenContext.consume(this)!.activate(workspacePath);
       },
       reportError: this.props.reportError,
     });
+  }
+
+  /** Continuation forks can open their checkout before background setup finishes. */
+  async createContinuationWorktree(projectPath: string, name: string, baseWorktreePath?: string) {
+    const record = await this.worktrees.create(projectPath, {
+      name,
+      baseWorktreePath,
+      backgroundSetup: true,
+    });
+    return record.worktreePath;
   }
 
   /** Creates a cataloged renderer draft without acquiring a Pi runtime. */
@@ -119,9 +133,10 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     if (configuration) conversation.setConfiguration(configuration);
     try {
       await this.pending.createDraft(sessionId, initialPrompt, []);
+      this.signal.throwIfAborted();
       return sessionId;
     } catch (error) {
-      this.props.registry.removeSession(sessionId);
+      if (!this.signal.aborted) this.registry.removeSession(sessionId);
       throw error;
     }
   }
@@ -155,10 +170,11 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     this.pending.projectSubmission(sessionId, name);
     try {
       await this.client.projectSessions.start(input, { signal: this.signal });
+      this.signal.throwIfAborted();
       this.pending.materialize(sessionId, path);
       return sessionId;
     } catch (error) {
-      this.props.registry.removeSession(sessionId);
+      if (!this.signal.aborted) this.registry.removeSession(sessionId);
       throw error;
     }
   }
@@ -172,14 +188,14 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
   }
 
   candidates(sessionId: string) {
-    const session = this.props.registry.findSession(sessionId);
+    const session = this.registry.findSession(sessionId);
     if (!session) return [];
     const projectPath = this.props.catalog.projectPathFor(session.workspacePath);
     return this.worktrees.candidates(projectPath);
   }
 
   private async prepare(sessionId: string, firstUserMessage: string) {
-    const session = this.props.registry.findSession(sessionId);
+    const session = this.registry.findSession(sessionId);
     if (!session || !this.pending.isTemporary(sessionId)) return true;
     const projectPath = this.props.catalog.projectPathFor(session.workspacePath);
     return this.worktrees.prepare(
@@ -195,12 +211,10 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
     if (saved?.status !== "saved") return false;
     if (choice?.kind === "draft") return false;
     if (choice) this.configureDraftActivation(sessionId, choice);
-    if (!(await this.prepare(sessionId, saved.text))) return false;
+    if (!(await this.prepare(sessionId, saved.text)) || this.signal.aborted) return false;
     const prepared = this.request(sessionId);
     if (!prepared) return false;
-    const authority = this.pending.props.savedDrafts;
-    if (!authority) throw new Error("Saved Draft authority is unavailable");
-    const activated = await authority.activate(
+    const activated = await this.client.savedDrafts.activate(
       {
         sessionId,
         expectedRevision: saved.revision,
@@ -208,6 +222,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
       },
       { signal: this.signal },
     );
+    if (this.signal.aborted) return false;
     this.pending.markActivated(activated.record);
     if (this.pending.isTemporary(sessionId))
       this.pending.materialize(sessionId, activated.workingDirectory);
@@ -242,7 +257,12 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
             .catch(() => undefined)
         : undefined;
     try {
-      if (!(await this.prepare(sessionId, input.text))) {
+      const ready = await this.prepare(sessionId, input.text);
+      if (this.signal.aborted) {
+        namingController.abort();
+        return false;
+      }
+      if (!ready) {
         namingController.abort();
         this.pending.cancelSubmission(sessionId);
         return false;
@@ -274,15 +294,24 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
       // Attach the scoped observation first, rather than relying on the turn's
       // temporary lease to survive the start RPC / renderer promotion handoff.
       if (input.text.startsWith("/")) {
-        this.props.registry.observationRetention.materialize(sessionId);
-        if (!(await this.waitForRuntime(sessionId))) {
+        this.registry.observationRetention.materialize(sessionId);
+        const runtimeReady = await this.waitForRuntime(sessionId);
+        if (this.signal.aborted) {
+          namingController.abort();
+          return false;
+        }
+        if (!runtimeReady) {
           namingController.abort();
           this.pending.cancelSubmission(sessionId);
-          this.props.registry.observationRetention.remove(sessionId);
+          this.registry.observationRetention.remove(sessionId);
           return false;
         }
       }
       await this.client.projectSessions.start(startInput, { signal: this.signal });
+      if (this.signal.aborted) {
+        namingController.abort();
+        return false;
+      }
       const latestName = this.pending.conversation(sessionId)?.name;
       this.pending.materialize(sessionId, prepared.path);
       void (async () => {
@@ -293,7 +322,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
             { signal: namingSignal },
           );
         const title = await titleWork;
-        if (!title || namingSignal.aborted || !this.props.registry.findSession(sessionId)) return;
+        if (!title || namingSignal.aborted || !this.registry.findSession(sessionId)) return;
         await this.client.projectSessions.rename(
           { sessionId, name: title, onlyIfUnnamed: true },
           { signal: namingSignal },
@@ -304,9 +333,11 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
       return true;
     } catch (error) {
       namingController.abort();
-      this.pending.cancelSubmission(sessionId);
-      if (this.pending.isTemporary(sessionId))
-        this.props.registry.observationRetention.remove(sessionId);
+      if (!this.signal.aborted) {
+        this.pending.cancelSubmission(sessionId);
+        if (this.pending.isTemporary(sessionId))
+          this.registry.observationRetention.remove(sessionId);
+      }
       throw error;
     }
   }
@@ -325,7 +356,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
       const abort = () => finish(false);
       this.signal.addEventListener("abort", abort, { once: true });
       const dispose = reactiveEffect(() => {
-        const session = this.props.registry.findSession(sessionId);
+        const session = this.registry.findSession(sessionId);
         if (!session || !this.pending.isTemporary(sessionId)) queueMicrotask(() => finish(false));
         else if (session.model.observedSnapshotRevision > 0) queueMicrotask(() => finish(true));
       });
@@ -333,7 +364,7 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
   }
 
   request(sessionId: string) {
-    const session = this.props.registry.findSession(sessionId);
+    const session = this.registry.findSession(sessionId);
     if (!session || !this.pending.isTemporary(sessionId)) return undefined;
     return {
       path: session.workspacePath,

@@ -124,7 +124,7 @@ async function renderDrafts(drafts = fakeSavedDrafts(), client: TestClientOverri
                 />
               )}
               <WorktreePill
-                creation={root.projectWorkbenchStore.sessionCreationStore.worktrees}
+                creation={root.projectSessionCreationStore.worktrees}
                 actions={session.worktreeStore}
                 sessionId={sessionId}
                 projectPath={projectPath}

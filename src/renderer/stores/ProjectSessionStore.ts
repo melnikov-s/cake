@@ -9,15 +9,11 @@ import type { SubagentCatalog } from "../models/SubagentCatalog";
 import type { WorkflowCatalog } from "../models/WorkflowCatalog";
 import { WorkflowRunStore } from "./WorkflowRunStore";
 import type { ScheduledMessageCatalog } from "../models/ScheduledMessageCatalog";
-import type {
-  ChatConfiguration,
-  ModelPreset,
-} from "../../contracts/conversations/session-contract";
+import type { ModelPreset } from "../../contracts/conversations/session-contract";
 import type { CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
-import type { ProjectPendingSessionsStore } from "./ProjectPendingSessionsStore";
+import { ProjectPendingSessionsContext } from "./context/ProjectPendingSessionsContext";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { ReviewsStore } from "./ReviewsStore";
-import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import { parseScheduledMessage } from "../../utils/scheduled-message-time";
 import { ConversationSessionStore } from "./ConversationSessionStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
@@ -31,8 +27,14 @@ import { StagedSessionCommandStore } from "./StagedSessionCommandStore";
 import { SessionAssistantStore } from "./SessionAssistantStore";
 import { ClientContext } from "./context/ClientContext";
 import { DrawStore } from "./DrawStore";
-import { EditorSelectionsStore, type EditorSelectionsStoreProps } from "./EditorSelectionsStore";
-import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
+import { EditorSelectionsStore } from "./EditorSelectionsStore";
+import { SessionManagementContext } from "./context/SessionManagementContext";
+import { ProjectSessionCreationContext } from "./context/ProjectSessionCreationContext";
+import { ProjectSessionNavigationContext } from "./context/ProjectSessionNavigationContext";
+import { SessionPresentationContext } from "./context/SessionPresentationContext";
+import { CommandPaneContext } from "./context/CommandPaneContext";
+import { SessionContinuationContext } from "./context/SessionContinuationContext";
+import { ToastContext } from "./context/ToastContext";
 import type { SessionActivity } from "../lib/session-activity";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 
@@ -50,36 +52,17 @@ export interface ProjectSessionStoreProps extends SessionTarget {
   workflowCatalog: WorkflowCatalog;
   scheduledMessageCatalog: ScheduledMessageCatalog;
   artifactModel: ArtifactCatalog;
-  pendingSessions: ProjectPendingSessionsStore;
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
-  canSubmit(): boolean;
   isActive(): boolean;
   worktreeOperation: WorktreeStoreProps["operation"];
-  openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   projectName(): string;
   familyId(): string | undefined;
-  renameSession(name: string): Promise<void>;
-  toolCompactSession(entryId: string, prompt?: string): Promise<boolean>;
   modelPresets(): readonly ModelPreset[];
   assistantTools?(): readonly CakeControlTool[];
   openModelPresetSettings(): void;
-  newSessionConfiguration(): ChatConfiguration | undefined;
-  startNewSession(input: ComposerDeliveryInput): Promise<boolean>;
-  activateSavedDraft(choice?: WorktreeDraftChoice): Promise<boolean>;
-  ensureSessionActive(): boolean | Promise<boolean>;
-  configureDraftActivation(choice: WorktreeDraftChoice): void;
-  sessionCreationChoice(): WorktreeDraftChoice;
-  draftActivationCandidates(): ExistingWorktreeCandidate[];
-  onWorktreeLanded: WorktreeStoreProps["onLanded"];
-  onWorktreeDiscarded(
-    record: Parameters<WorktreeStoreProps["onDiscarded"]>[0],
-  ): Promise<void> | void;
   retirement: WorktreeStoreProps["retirement"];
-  onResolveWorktree: WorktreeStoreProps["onResolveWorkspace"];
   settings?(): AppearanceSettingsStore | undefined;
-  openEditorLocation: EditorSelectionsStoreProps["openLocation"];
-  refreshEditorHighlights: EditorSelectionsStoreProps["refreshHighlights"];
 }
 
 /** Owns the view and interaction workflow for one project Pi session. */
@@ -122,6 +105,18 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     );
   }
 
+  private get pending() {
+    return ProjectPendingSessionsContext.consume(this)!;
+  }
+
+  private get navigation() {
+    return ProjectSessionNavigationContext.consume(this)!;
+  }
+
+  private canSubmit() {
+    return !this.signal.aborted && this.navigation.canSubmitSession(this.sessionId);
+  }
+
   showPresentation(mode: ProjectSessionPresentationMode) {
     this.presentationMode = mode;
   }
@@ -130,8 +125,13 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   get editorSelectionsStore(): EditorSelectionsStore {
     return createStore(EditorSelectionsStore, {
       sessionId: this.sessionId,
-      openLocation: this.props.openEditorLocation,
-      refreshHighlights: this.props.refreshEditorHighlights,
+      openLocation: (location, signal) =>
+        SessionPresentationContext.consume(this)!.openSelectionLocation(
+          this.sessionId,
+          location,
+          signal,
+        ),
+      refreshHighlights: () => SessionPresentationContext.consume(this)!.refreshEditorHighlights(),
     });
   }
 
@@ -189,7 +189,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return createStore(SessionAssistantStore, {
       sessionId: this.sessionId,
       workspacePath: this.workspacePath,
-      staged: () => this.props.pendingSessions.isTemporary(this.sessionId),
+      staged: () => this.pending.isTemporary(this.sessionId),
       thread: () => this.props.discussionCatalog.threads.find(isSessionAssistantThread),
       stagedMessages: () =>
         this.canonicalParts.flatMap((part) => {
@@ -232,9 +232,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   get hydrated() {
-    return (
-      this.props.pendingSessions.isTemporary(this.sessionId) || Boolean(this.model.sessionFile)
-    );
+    return this.pending.isTemporary(this.sessionId) || Boolean(this.model.sessionFile);
   }
 
   @computed
@@ -275,10 +273,25 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       enabled: () => this.props.isActive(),
       isStreaming: () => this.isStreaming,
       operation: this.props.worktreeOperation,
-      onLanded: this.props.onWorktreeLanded,
-      onDiscarded: this.props.onWorktreeDiscarded,
+      onLanded: (_record, result) => {
+        ToastContext.consume(this)!.show(
+          result.resolved
+            ? {
+                tone: "info",
+                title: "Session merged and resolved",
+                message: "This session was merged into the project and resolved.",
+              }
+            : {
+                tone: "info",
+                title: "Worktree merged",
+                message: "Your work was merged back into the project.",
+              },
+        );
+      },
+      onDiscarded: () => undefined,
       retirement: this.props.retirement,
-      onResolveWorkspace: this.props.onResolveWorktree,
+      onResolveWorkspace: (workspacePath, options) =>
+        this.navigation.resolveWorktreeWorkspace(workspacePath, options),
     });
   }
 
@@ -320,7 +333,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
   }
 
   private async createSideChat(prompt: string) {
-    if (this.props.pendingSessions.isTemporary(this.sessionId)) return false;
+    if (this.pending.isTemporary(this.sessionId)) return false;
     const threadId = await this.props
       .reviews()
       .createSideChat({ sessionId: this.sessionId, workingDirectory: this.workspacePath }, prompt);
@@ -335,17 +348,11 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
       sessionId: this.sessionId,
       parts: () => this.model.uiParts,
       canEnter: () =>
-        this.props.isActive() &&
-        this.props.canSubmit() &&
-        !this.props.pendingSessions.isTemporary(this.sessionId),
+        this.props.isActive() && this.canSubmit() && !this.pending.isTemporary(this.sessionId),
       draft: () => this.conversationSessionStore.chatStore.draft,
       setDraft: (text) => this.conversationSessionStore.chatStore.setDraft(text),
       submitUtterance: () => {
-        if (
-          !this.props.isActive() ||
-          !this.props.canSubmit() ||
-          this.props.pendingSessions.isTemporary(this.sessionId)
-        )
+        if (!this.props.isActive() || !this.canSubmit() || this.pending.isTemporary(this.sessionId))
           return Promise.resolve(false);
         return this.conversationSessionStore.chatStore.submit();
       },
@@ -359,13 +366,18 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   @child
   get conversationSessionStore(): ConversationSessionStore {
+    // Bind Project Session policy here; shared conversations/composers remain
+    // reusable without depending on Project-only ambient capabilities.
+    const creation = ProjectSessionCreationContext.consume(this)!;
+    const management = SessionManagementContext.consume(this)!;
+    const pending = ProjectPendingSessionsContext.consume(this)!;
     return createStore(ConversationSessionStore, {
       sessionId: this.sessionId,
       model: this.model,
       operations: this.props.operations,
-      canSubmit: this.props.canSubmit,
-      startSession: this.props.startNewSession,
-      ensureSessionActive: this.props.ensureSessionActive,
+      canSubmit: () => this.canSubmit(),
+      startSession: (input) => creation.start(this.sessionId, input),
+      ensureSessionActive: () => management.ensureSessionActive(this.sessionId),
       composer: {
         projectPath: () => this.workspacePath,
         presentationMode: () => this.presentationMode,
@@ -373,48 +385,49 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
           const mode = ConversationModeContext.consume(this);
           return mode?.phase === "active" && mode.sessionId === this.sessionId ? "voice" : "text";
         },
-        openCommandPane: (pane) => this.props.openCommandPane(pane),
+        openCommandPane: (pane) => CommandPaneContext.consume(this)!.open(pane),
         createSideChat: (prompt) => this.createSideChat(prompt),
-        renameSession: (name) => this.props.renameSession(name),
-        toolCompactSession: (entryId, prompt) => this.props.toolCompactSession(entryId, prompt),
+        renameSession: (name) => management.renameSession(this.sessionId, name),
+        toolCompactSession: (entryId, prompt) =>
+          SessionContinuationContext.consume(this)!.toolCompactAt(entryId, prompt),
         scheduleMessage: (sessionId, args) => this.scheduleMessage(sessionId, args),
-        draftSessionPrompt: (sessionId) =>
-          this.props.pendingSessions.conversation(sessionId)?.draftPrompt,
-        isDeferredSession: (sessionId) => this.props.pendingSessions.isTemporary(sessionId),
+        draftSessionPrompt: (sessionId) => pending.conversation(sessionId)?.draftPrompt,
+        isDeferredSession: (sessionId) => pending.isTemporary(sessionId),
         createDraftSession: async (sessionId, text, attachments) => {
-          await this.props.pendingSessions.createDraft(sessionId, text, attachments);
+          await pending.createDraft(sessionId, text, attachments);
           return true;
         },
         updateDraftSession: async (sessionId, text, attachments) => {
-          await this.props.pendingSessions.updateDraft(sessionId, text, attachments);
+          await pending.updateDraft(sessionId, text, attachments);
           return true;
         },
-        activateSavedDraftSession: (choice) => this.props.activateSavedDraft(choice),
+        activateSavedDraftSession: (choice) => creation.activateSavedDraft(this.sessionId, choice),
         activateDraftSession: (sessionId) => {
-          const record = this.props.pendingSessions.savedRecord(sessionId);
+          const record = pending.savedRecord(sessionId);
           return record?.status === "saved"
             ? { text: record.text, attachments: [...record.attachments], resolved: record.resolved }
             : undefined;
         },
         applyGeneratedDraftName: (sessionId, title) =>
-          this.props.pendingSessions.conversation(sessionId)?.applyGeneratedDraftName(title),
-        configureDraftActivation: (choice) => this.props.configureDraftActivation(choice),
-        sessionCreationChoice: this.props.sessionCreationChoice,
+          pending.conversation(sessionId)?.applyGeneratedDraftName(title),
+        configureDraftActivation: (choice) =>
+          creation.configureDraftActivation(this.sessionId, choice),
+        sessionCreationChoice: () => creation.choice(this.sessionId),
         editorText: (entryId) =>
           this.model.tree.find((entry) => entry.piId === entryId)?.editorText,
       },
       configuration: {
-        deferredNewSession: () => this.props.pendingSessions.isTemporary(this.sessionId),
-        effectiveConfiguration: this.props.newSessionConfiguration,
+        deferredNewSession: () => pending.isTemporary(this.sessionId),
+        effectiveConfiguration: () => creation.request(this.sessionId)?.configuration,
         setPendingConfiguration: (configuration) =>
-          this.props.pendingSessions.conversation(this.sessionId)?.setConfiguration(configuration),
+          pending.conversation(this.sessionId)?.setConfiguration(configuration),
       },
       chat: {
         conversationMode: ConversationModeContext.consume(this)
           ? { workflow: ConversationModeContext.consume(this)!, target: this.conversationTarget }
           : undefined,
         commands: () =>
-          this.props.pendingSessions.isTemporary(this.sessionId)
+          pending.isTemporary(this.sessionId)
             ? this.stagedCommandStore.commands
             : this.model.commands,
         placeholder: () =>
@@ -422,9 +435,9 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
             ? "Add the next instruction…"
             : `Ask Cake to work in ${this.props.projectName()}…`,
         inputLabel: () => "Message",
-        sessionCreationChoice: this.props.sessionCreationChoice,
-        draftActivationCandidates: this.props.draftActivationCandidates,
-        isDraftSession: () => this.props.pendingSessions.isDraft(this.sessionId),
+        sessionCreationChoice: () => creation.choice(this.sessionId),
+        draftActivationCandidates: () => creation.candidates(this.sessionId),
+        isDraftSession: () => pending.isDraft(this.sessionId),
         suggestFiles: (prefix) =>
           this.conversationSessionStore.composerStore.draftStore.suggestFiles(prefix),
         rewordWorkingDirectory: () => this.workspacePath,
@@ -462,7 +475,7 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
     return createStore(SessionArtifactsStore, {
       sessionId: this.sessionId,
       model: this.props.artifactModel,
-      enabled: () => !this.props.pendingSessions.isTemporary(this.sessionId),
+      enabled: () => !this.pending.isTemporary(this.sessionId),
     });
   }
 

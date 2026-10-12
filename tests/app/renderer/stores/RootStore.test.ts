@@ -416,6 +416,36 @@ describe("RootStore agent-control transport and composition", () => {
     }
   });
 
+  // Background creation is an agent capability, with no equivalent React creation control.
+  it("cancels independent creation when the window closes before start returns", async () => {
+    let acceptStart!: (turnId: TurnId) => void;
+    let started!: () => void;
+    const startResult = new Promise<TurnId>((resolve) => (acceptStart = resolve));
+    const startRequested = new Promise<void>((resolve) => (started = resolve));
+    const start = vi.fn<Client["projectSessions"]["start"]>(() => {
+      started();
+      return startResult;
+    });
+    const models = RootProjection.create();
+    const client = createTestClient({ projectSessions: { start } });
+    const root = mountRootStore(client, { state: {}, children: {} }, async () => undefined, models);
+    try {
+      const creation = root.projectSessionCreationStore.createPromptedSession({
+        workspacePath: projectPath,
+        name: "Background task",
+        initialPrompt: "Implement the task",
+      });
+      await startRequested;
+      root[Symbol.dispose]();
+      expect(start.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+      acceptStart(TurnId.make("10000000-0000-4000-8000-000000000001"));
+      await expect(creation).rejects.toMatchObject({ name: "AbortError" });
+    } finally {
+      root[Symbol.dispose]();
+      models[Symbol.dispose]();
+    }
+  });
+
   it("routes independent session creation through a new managed worktree when requested", async () => {
     const models = RootProjection.create();
     const parentWorktreePath = "/projects/.cake-worktrees/parent-task";

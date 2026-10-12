@@ -61,7 +61,7 @@ async function renderRelocatedAuthorityWorkflow(landing: Client["managedWorktree
         composerFocusEnabled={false}
         composerHeader={
           <WorktreePill
-            creation={root.projectWorkbenchStore.sessionCreationStore.worktrees}
+            creation={root.projectSessionCreationStore.worktrees}
             actions={session.worktreeStore}
             sessionId="draft"
             projectPath={projectPath}

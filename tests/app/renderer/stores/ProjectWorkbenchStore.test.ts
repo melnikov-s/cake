@@ -70,7 +70,7 @@ describe("Project workbench bootstrap and external-control integration", () => {
       });
       // Let the mount-time Saved Draft refresh settle before creating a new authority record.
       await fixture.root.sessionRegistry.pendingSessions.refreshSavedDrafts();
-      const creation = fixture.root.projectWorkbenchStore.sessionCreationStore;
+      const creation = fixture.root.projectSessionCreationStore;
 
       const created =
         kind === "draft"

@@ -114,7 +114,7 @@ function renderRetirement(
       {sessions.map(({ name, session, record }) => (
         <section key={name} aria-label={`Worktree ${name}`}>
           <WorktreePill
-            creation={fixture.root.projectWorkbenchStore.sessionCreationStore.worktrees}
+            creation={fixture.root.projectSessionCreationStore.worktrees}
             actions={session.worktreeStore}
             record={record}
             sessionId={`session-${name}`}
