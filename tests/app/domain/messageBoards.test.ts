@@ -122,6 +122,89 @@ describe("Workboard policy", () => {
         }),
       ),
   );
+  it.effect(
+    "reports intended recipients and recorded out-of-audience intake without changing relevance",
+    () => {
+      const receiptFamily = {
+        ...family,
+        children: [
+          ...family.children,
+          {
+            sessionId: "idle",
+            parentSessionId: "parent",
+            requestId: "idle",
+            workingDirectory: "/parent-tree",
+            createdAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+      };
+      const receiptFamilyLayer = Layer.mock(SessionFamilyStorage, {
+        familyForMember: () => Effect.succeed(receiptFamily),
+        list: () => Effect.succeed([receiptFamily]),
+      });
+      return Effect.gen(function* () {
+        const board = yield* boards.ensureBoard(receiptFamily);
+        yield* boards.append("parent", {
+          description: "Addressed finding",
+          body: "Shared evidence",
+          audience: ["child"],
+        });
+        yield* boards.append("parent", {
+          description: "Workgroup finding",
+          body: "Other evidence",
+        });
+        yield* boards.recordIntake("idle", board.lineageId, [2], "notifiedAt");
+        const storage = yield* MessageBoardStorage;
+        const beforeBrowsing = yield* storage.receipts(board.lineageId);
+        expect((yield* boards.entryReceipts("parent", 1)).receipts).toEqual([
+          { sequence: 1, sessionId: "child" },
+        ]);
+        yield* boards.browse(board.lineageId, {});
+        yield* boards.browseBody(board.lineageId, 1);
+        expect((yield* boards.browseReceipts(board.lineageId, 1)).receipts).toEqual([
+          { sequence: 1, sessionId: "child" },
+        ]);
+        expect(yield* storage.receipts(board.lineageId)).toEqual(beforeBrowsing);
+        expect((yield* boards.readNew("child")).entries.map((entry) => entry.sequence)).toEqual([
+          1, 2,
+        ]);
+        expect((yield* boards.readNew("sibling")).entries.map((entry) => entry.sequence)).toEqual([
+          2,
+        ]);
+        expect((yield* boards.read("child", [1])).entries[0]?.body).toBe("Shared evidence");
+        yield* boards.recordIntake("child", board.lineageId, [1], "readAt");
+        yield* boards.recordIntake("sibling", board.lineageId, [1], "notifiedAt");
+        expect((yield* boards.entryReceipts("parent", 1)).receipts).toEqual([
+          { sequence: 1, sessionId: "child", readAt: expect.any(String) },
+          { sequence: 1, sessionId: "sibling", notifiedAt: expect.any(String) },
+        ]);
+        expect((yield* boards.read("sibling", [1])).entries[0]?.body).toBe("Shared evidence");
+        yield* boards.recordIntake("sibling", board.lineageId, [1], "readAt");
+        const recorded = yield* storage.receipts(board.lineageId);
+        const report = yield* boards.entryReceipts("parent", 1);
+        expect(report.receipts).toEqual([
+          { sequence: 1, sessionId: "child", readAt: expect.any(String) },
+          {
+            sequence: 1,
+            sessionId: "sibling",
+            notifiedAt: expect.any(String),
+            readAt: expect.any(String),
+          },
+        ]);
+        expect(yield* boards.browseReceipts(board.lineageId, 1)).toEqual(report);
+        expect(yield* storage.receipts(board.lineageId)).toEqual(recorded);
+        expect((yield* boards.readNew("child")).entries.map((entry) => entry.sequence)).toEqual([
+          2,
+        ]);
+        expect((yield* boards.readNew("sibling")).entries.map((entry) => entry.sequence)).toEqual([
+          2,
+        ]);
+        const session = yield* boards.sessionReceipts("parent", "sibling");
+        expect(session.entries.map(({ entry }) => entry.sequence)).toEqual([2]);
+        expect(session.entries[0]?.receipt).toEqual({ sequence: 2, sessionId: "sibling" });
+      }).pipe(Effect.provide(Layer.merge(messageBoardHarness().layer, receiptFamilyLayer)));
+    },
+  );
   it.effect("internal fetch and human artifact browsing never stamp agent receipts", () =>
     run(
       Effect.gen(function* () {

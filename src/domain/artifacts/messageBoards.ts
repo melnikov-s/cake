@@ -188,17 +188,18 @@ const receiptsFor = Effect.fn("MessageBoards.receiptsFor")(function* (
   const storage = yield* MessageBoardStorage;
   const entry = (yield* storage.entries(id)).find((value) => value.sequence === sequence);
   if (!entry) return yield* failure("receipts", "Entry not found");
-  const receipts = yield* storage.receipts(id);
+  const receipts = (yield* storage.receipts(id)).filter((value) => value.sequence === sequence);
+  // Audience routes discovery; explicit intake remains visible even outside that audience.
+  const recipients = new Set([
+    ...memberIds.filter((member) => boardRelevant(entry, member)),
+    ...receipts.map((receipt) => receipt.sessionId),
+  ]);
   return {
     entry: boardDescription(entry),
-    receipts: memberIds
-      .filter((member) => boardRelevant(entry, member))
-      .map(
-        (sessionId) =>
-          receipts.find(
-            (value) => value.sequence === sequence && value.sessionId === sessionId,
-          ) ?? { sequence, sessionId },
-      ),
+    receipts: [...recipients].map(
+      (sessionId) =>
+        receipts.find((value) => value.sessionId === sessionId) ?? { sequence, sessionId },
+    ),
   };
 });
 export const sessionReceipts = Effect.fn("MessageBoards.sessionReceipts")(function* (
