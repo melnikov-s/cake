@@ -6,7 +6,6 @@ import type {
 } from "../../contracts/dictation/dictation-data";
 import type { SpeechInputSettingsStore } from "./SpeechInputSettingsStore";
 import { speechRecognitionSettings } from "../../utils/speech-input-settings";
-import { punctuationPreview } from "../../utils/punctuation-text";
 import type { Client } from "../client/Client";
 import { encodePcm, type Microphone, type MicrophoneCapture } from "../dictation/microphone";
 import { openSpeechCapture } from "../dictation/speech-capture";
@@ -56,10 +55,7 @@ export class DictationStore extends Store<{
   state: DictationState | undefined;
   @snapshot enabled = false;
   /** Window preference shared with voice mode; text/results remain insertion-local and ephemeral. */
-  @snapshot textProcessingMode: TextProcessingMode = "utility";
-  /** Optional text-model failures never stop microphone capture or discard recognized words. */
-  processingError: string | undefined;
-  private punctuationInstallation: AbortController | undefined;
+  @snapshot textProcessingMode: TextProcessingMode = "raw";
   /** Window-local input mute; survives field changes, never persisted. */
   muted = false;
   phase: DictationPhase = "off";
@@ -87,7 +83,6 @@ export class DictationStore extends Store<{
       return () => {
         this.endUtterance();
         this.installation?.abort();
-        this.punctuationInstallation?.abort();
       };
     });
   }
@@ -316,42 +311,27 @@ export class DictationStore extends Store<{
     if (this.utterance === run && run.id === utteranceId) {
       run.rawText = text;
       const cleaned = this.textProcessingMode !== "raw" && run.cleanedRaw === text;
-      const span = run.target.replace(
-        cleaned
-          ? (run.cleanedText ?? text)
-          : this.textProcessingMode === "local"
-            ? punctuationPreview(text)
-            : text,
-      );
+      const span = run.target.replace(cleaned ? (run.cleanedText ?? text) : text);
       this.provisionalText =
         this.textProcessingMode !== "raw" && !cleaned && span ? span : undefined;
-      if (this.textProcessingMode === "local" && !cleaned) await this.punctuate(run, final);
     }
   }
-  setTextProcessingMode(mode: TextProcessingMode): boolean {
-    if (
-      mode === "local" &&
-      !["installed", "ready", "loading"].includes(this.state?.punctuation.status ?? "missing")
-    )
-      return false;
+  setTextProcessingMode(mode: TextProcessingMode): void {
     this.textProcessingMode = mode;
-    this.processingError = undefined;
     this.provisionalText = undefined;
     const run = this.utterance;
-    if (!run) return true;
+    if (!run) return;
     run.cleanupDue = false;
     run.cleanupController.abort();
     run.cleanupController = new AbortController();
     run.cleanupPending = undefined;
     run.cleanedRaw = undefined;
     run.cleanedText = undefined;
-    return true;
   }
   private scheduleCleanup(run: Utterance) {
     if (
       !run.cleanupDue ||
       run.pending ||
-      // A thinking pause is not final text in local mode; its tail waits for explicit Enter.
       this.textProcessingMode !== "utility" ||
       run.finishing ||
       run.cleanupPending
@@ -368,10 +348,6 @@ export class DictationStore extends Store<{
   private async clean(run: Utterance) {
     if (this.textProcessingMode === "raw" || !run.rawText.trim() || run.cleanedRaw === run.rawText)
       return;
-    if (this.textProcessingMode === "local") {
-      await this.punctuate(run, true);
-      return;
-    }
     const raw = run.rawText;
     const id = run.id;
     const signal = AbortSignal.any([
@@ -397,91 +373,6 @@ export class DictationStore extends Store<{
     if (run.rawText === raw) {
       run.target.replace(text);
       this.provisionalText = undefined;
-    }
-  }
-  private async punctuate(run: Utterance, final: boolean) {
-    const raw = run.rawText,
-      id = run.id;
-    const signal = AbortSignal.any([
-      this.signal,
-      run.controller.signal,
-      run.cleanupController.signal,
-    ]);
-    try {
-      const result = await this.props.client.punctuate(
-        { utteranceId: id, text: raw, final },
-        { signal },
-      );
-      if (
-        signal.aborted ||
-        this.utterance !== run ||
-        run.id !== id ||
-        run.rawText !== raw ||
-        this.textProcessingMode !== "local"
-      )
-        return;
-      this.processingError = undefined;
-      if (final) {
-        run.cleanedRaw = raw;
-        run.cleanedText = result.text;
-      }
-      const span = run.target.replace(result.text);
-      this.provisionalText =
-        span && result.pendingStart < result.text.length
-          ? {
-              ...span,
-              start: span.value.indexOf(result.text, span.start) + Math.max(0, result.pendingStart),
-            }
-          : undefined;
-    } catch (error) {
-      if (
-        signal.aborted ||
-        this.utterance !== run ||
-        run.id !== id ||
-        this.textProcessingMode !== "local"
-      )
-        return;
-      this.processingError = error instanceof Error ? error.message : String(error);
-      run.target.replace(raw);
-      this.provisionalText = undefined;
-    }
-  }
-  async installPunctuation() {
-    if (this.punctuationInstallation) return;
-    const controller = new AbortController();
-    this.punctuationInstallation = controller;
-    this.processingError = undefined;
-    try {
-      await this.props.client.installPunctuation({
-        signal: AbortSignal.any([this.signal, controller.signal]),
-      });
-    } catch (error) {
-      if (!controller.signal.aborted && !this.signal.aborted)
-        this.processingError = error instanceof Error ? error.message : String(error);
-    } finally {
-      if (this.punctuationInstallation === controller) this.punctuationInstallation = undefined;
-    }
-  }
-  cancelPunctuationInstall() {
-    this.punctuationInstallation?.abort();
-  }
-  get installingPunctuation() {
-    return this.punctuationInstallation !== undefined;
-  }
-  async removePunctuation() {
-    if (this.punctuationInstallation) return;
-    if (this.textProcessingMode === "local") this.setTextProcessingMode("raw");
-    const controller = new AbortController();
-    this.punctuationInstallation = controller;
-    try {
-      await this.props.client.removePunctuation({
-        signal: AbortSignal.any([this.signal, controller.signal]),
-      });
-    } catch (error) {
-      if (!this.signal.aborted)
-        this.processingError = error instanceof Error ? error.message : String(error);
-    } finally {
-      if (this.punctuationInstallation === controller) this.punctuationInstallation = undefined;
     }
   }
   private pump(run: Utterance) {

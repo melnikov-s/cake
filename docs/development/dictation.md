@@ -19,6 +19,15 @@ pages, widgets or OS-wide typing. It requires Apple Silicon and macOS 14+.
 4. Use the circular waveform to mute/unmute. Escape mutes before the field's usual
    Escape action. Muting preserves visible text; unmuting resumes at the caret.
 
+Recognition re-decodes a bounded recent-audio window with fresh decoder state.
+Recent words and punctuation can change as more speech arrives, including across
+thinking pauses. Older words settle after two matching hypotheses and at least six
+seconds of following audio. A fourteen-second audio budget forces old text to settle
+if agreement never arrives, retaining two seconds of left context and a revisable
+recent tail. Pauses stop feeding room noise but do not seal the recognition text;
+Enter explicitly finalizes it. Audio stays in memory and is released on finalization
+or when a new insertion starts.
+
 Focus determines the destination. Blurring, typing or moving the caret seals the
 current spoken span; late recognition must not replace manually edited text.
 [Conversation mode](conversation-mode.md) uses the same recognizer but submits the
@@ -34,8 +43,8 @@ does not restore a recording: capture prepares only in an eligible focused field
 Model selection is stored in `<Electron userData>/dictation/settings.json`; managed
 Parakeet data lives in its `model/` subdirectory. Downloads require explicit action,
 support cancellation and verify every pinned file before publishing an installation.
-Removal affects Cake's managed recognition data, not external folders, the separately
-installed punctuation model or the bundled engine.
+Removal affects Cake's managed recognition data, not external folders or the bundled
+engine.
 
 Use the checked-in manifests for exact versions, sizes and checksums:
 
@@ -91,22 +100,17 @@ must bypass the bundle cache. SwiftPM still uses keyed incremental scratch. A by
 is also needed after manually changing dependency checkouts, normally immutable inputs.
 
 Distribution must preserve native helpers/resources outside ASAR and sign/notarize
-them with Cake. Local helpers need only Apple system frameworks at runtime. Optional
-punctuation also requires ONNX Runtime's native bindings/libraries outside ASAR.
-Python is used only for developer evaluation and
-[tokenizer export](../../scripts/export-punctuation-tokenizer.py), never installed Cake.
+them with Cake. Local helpers need only Apple system frameworks at runtime. No
+additional punctuation model, tokenizer or ONNX Runtime is installed.
 A missing helper is an application repair/build-mode issue, not a reason to install
 a toolchain on the user's machine.
 
-## Text processing: three exclusive modes
+## Text processing
 
 **Settings → Voice & Dictation → Text processing** applies to dictation and voice mode:
 
-- **Raw:** retain recognition as supplied by Parakeet.
-- **Local punctuation:** explicitly download the offline English model first. It
-  adjusts punctuation/case without removing filler or summarizing. Model/runtime
-  working memory is substantially larger than the download size; measure on the
-  target device rather than treating weight size as a RAM budget.
+- **Recognition (default):** use Parakeet's local, revisable recognition directly,
+  including its punctuation and capitalization. No provider or second text model.
 - **Utility cleanup:** use only the configured utility model. Without one, or on
   processing failure, retain raw recognition rather than substituting the chat model.
   Only the current spoken insertion goes to the provider—not typed prefixes, project
@@ -117,17 +121,11 @@ The default preserves meaning, uncertainty, negations and technical identifiers 
 cleaning punctuation, filler, stutters and nearby spoken corrections. A model prompt
 cannot guarantee semantic fidelity; review important instructions before submission.
 
-Local punctuation uses
-[punctuation_fullstop_truecase_english](https://huggingface.co/1-800-BAD-CODE/punctuation_fullstop_truecase_english),
-licensed Apache-2.0. Weights, attribution and license install under
-`<Electron userData>/dictation/punctuation/model/`. The bundled exported tokenizer
-includes its source hash, transformation notice and license. This news-trained English
-model is not a perfect conversational or technical grammar model.
-
-Gray text marks a provisional spoken span; typed text stays ordinary. Manual edits,
-blur and mute seal that span. Local punctuation can revise recent words across thinking
-pauses; utility cleanup runs on a sustained pause or finalization, not every audio frame.
-Voice auto-send finalizes processing before submitting the composer.
+In utility mode, gray text marks the spoken insertion awaiting optional cleanup;
+typed text stays ordinary. Utility cleanup runs on a sustained pause or finalization,
+not every audio frame. Recognition itself revises recent text in both modes. Manual
+edits, blur and mute seal that insertion. Voice auto-send finalizes recognition and
+any selected utility cleanup before submitting the composer.
 
 Tune shared speech detection in **Speech input** settings; capture changes take effect
 on refocus or voice-mode re-entry. For microphone noise, output and diagnostic guidance,
@@ -148,14 +146,7 @@ pnpm build
 CAKE_DICTATION_TEST_MODEL=/absolute/path/to/model pnpm test:integration tests/integration/dictation-native.test.ts
 ```
 
-For real local punctuation inference without downloading a model:
-
-```sh
-CAKE_PUNCTUATION_TEST_ROOT=/absolute/punctuation/root pnpm test:integration tests/integration/local-punctuation.test.ts
-```
-
-The same punctuation environment variable enables real-inference cases in the isolated
-Electron dictation smoke. Follow [Electron testing](electron-testing.md) for compiled
-output and hidden-window rules. Synthetic speech and controlled fixtures verify mechanics,
-not physical-microphone quality or broad recognition accuracy. Keep measured results and
-model comparisons in artifacts rather than appending a verification history here.
+Follow [Electron testing](electron-testing.md) for compiled output and hidden-window
+rules. Synthetic speech and controlled fixtures verify mechanics, not physical-microphone
+quality or broad recognition accuracy. Keep measured results and model comparisons in
+artifacts rather than appending a verification history here.

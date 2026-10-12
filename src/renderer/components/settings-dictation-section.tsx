@@ -63,28 +63,18 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
           value={store.textProcessingMode}
           onChange={(event) => {
             const mode = event.target.value;
-            if (mode === "raw" || mode === "local" || mode === "utility")
-              store.setTextProcessingMode(mode);
+            if (mode === "raw" || mode === "utility") store.setTextProcessingMode(mode);
           }}
         >
-          <option value="raw">Raw · no additional processing</option>
-          <option
-            value="local"
-            disabled={
-              !["installed", "ready", "loading"].includes(state?.punctuation.status ?? "missing")
-            }
-          >
-            Local punctuation · CPU, offline
-          </option>
+          <option value="raw">Recognition · local live revisions</option>
           <option value="utility">Utility model · customizable cleanup</option>
         </Select>
         <p className="text-xs text-muted-foreground">
-          Shared by dictation and voice mode. Raw keeps recognition unchanged. Local revises
-          punctuation and capitalization across pauses without removing words; its recent gray tail
-          stays provisional until more context or finalization. Utility cleanup runs after three
-          seconds of silence or on submission and can remove fillers or follow your custom prompt.
-          Only utility mode sends dictated text to your configured utility provider and may incur
-          costs. The modes do not run together; failures keep raw recognition.
+          Shared by dictation and voice mode. Recognition revises recent speech as more context
+          arrives, including across thinking pauses, entirely offline. Optional utility cleanup runs
+          after three seconds of silence or on submission and can remove fillers or follow your
+          custom prompt. Only utility mode sends dictated text to your configured utility provider
+          and may incur costs. Failures keep recognition unchanged.
         </p>
       </div>
       {store.textProcessingMode === "utility" && prompts.prompts && (
@@ -98,53 +88,6 @@ export const SettingsDictationSection = observer(function SettingsDictationSecti
         />
       )}
       {prompts.error && <Callout variant="error">{prompts.error}</Callout>}
-      {store.processingError && (
-        <Callout variant="warning">{store.processingError} Raw recognition is retained.</Callout>
-      )}
-      <div className="grid gap-3 rounded-lg border border-border p-4">
-        <h3 className="text-sm font-medium">Local punctuation · English · CPU</h3>
-        <p className="text-xs text-muted-foreground">
-          Optional one-time 210 MB download from Hugging Face. English punctuation and
-          capitalization by 1-800-BAD-CODE, Apache-2.0. Runs offline on the CPU; no chat model,
-          audio upload, filler removal, or summarization. A smaller quantized version was not
-          selected because it reduced question-boundary accuracy in evaluation.
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            disabled={store.installingPunctuation}
-            onClick={() => void store.installPunctuation()}
-          >
-            Download punctuation model
-          </Button>
-          {store.installingPunctuation && (
-            <Button variant="outline" onClick={() => store.cancelPunctuationInstall()}>
-              Cancel punctuation download
-            </Button>
-          )}
-          {state?.punctuation.status !== "missing" && state?.punctuation.status !== undefined && (
-            <Button
-              variant="outline"
-              disabled={store.installingPunctuation}
-              onClick={() => void store.removePunctuation()}
-            >
-              Remove punctuation model
-            </Button>
-          )}
-        </div>
-        {state?.punctuation.status === "installing" && (
-          <div className="flex items-center gap-2 text-xs" role="status">
-            <LoadingSpinner label="Installing punctuation" />
-            {state.punctuation.message}
-            {state.punctuation.totalBytes > 0 &&
-              ` ${Math.min(100, Math.floor((state.punctuation.downloadedBytes / state.punctuation.totalBytes) * 100))}%`}
-          </div>
-        )}
-        {state?.punctuation.status === "error" && (
-          <Callout variant="warning">
-            {state.punctuation.message} Raw recognition is retained.
-          </Callout>
-        )}
-      </div>
       <div className="grid gap-3 rounded-lg border border-border p-4">
         <h3 className="text-sm font-medium">Parakeet TDT 0.6B v2 · English · Core ML</h3>
         <p className="text-xs text-muted-foreground">

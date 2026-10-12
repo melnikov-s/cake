@@ -351,7 +351,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       conversationAudioFixture: { tracks, contexts, nodes, endedNodes, processors },
     });
   });
-  const configure = async () => {
+  const configure = async (processingMode: "raw" | "utility" = "raw") => {
     await expect(async () => {
       const section = page.getByRole("button", { name: /Voice & Dictation/ });
       if (!(await section.isVisible()))
@@ -369,6 +369,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     ).toHaveCount(1);
     await page.getByLabel("Voice", { exact: true }).selectOption("fixture-voice");
     await expect(page.getByLabel("Voice", { exact: true })).toHaveValue("fixture-voice");
+    await page.getByLabel("Text processing", { exact: true }).selectOption(processingMode);
     await page.getByRole("button", { name: "Back to chat", exact: true }).click();
     await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
   };
@@ -647,7 +648,7 @@ test("utility post-processing cleans voice input through real RPC and Pi complet
     postProcessedText: "We need to do that.",
   });
   try {
-    await f.configure();
+    await f.configure("utility");
     const composer = f.page.getByRole("combobox", { name: "Message" });
     await composer.click();
     await composer.pressSequentially("Typed prefix:");
@@ -692,7 +693,7 @@ test("provisional speech wraps and scrolls with the native composer without taki
   const rawText = "We need to. Do that. ".repeat(140);
   const f = await launch({ recognizeSpeech: true, recognitionTexts: [rawText] });
   try {
-    await f.configure();
+    await f.configure("utility");
     const composer = f.page.getByRole("combobox", { name: "Message" });
     await composer.fill("Typed prefix:\n");
     await f.page.getByRole("button", { name: "Enter conversation mode" }).click();

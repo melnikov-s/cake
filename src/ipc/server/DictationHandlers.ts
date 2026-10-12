@@ -6,12 +6,6 @@ export const dictationHandlers = DictationRpc.of({
   "dictation.observeState": () =>
     Stream.unwrap(Effect.map(Dictation, (service) => service.observeState())),
   "dictation.install": () => Effect.flatMap(Dictation, (service) => service.install()),
-  "dictation.installPunctuation": () =>
-    Effect.flatMap(Dictation, (service) => service.installPunctuation()),
-  "dictation.removePunctuation": () =>
-    Effect.flatMap(Dictation, (service) => service.removePunctuation()),
-  "dictation.punctuate": (input) =>
-    Effect.flatMap(Dictation, (service) => service.punctuate(input)),
   "dictation.setModelPath": ({ path }) =>
     Effect.flatMap(Dictation, (service) => service.setModelPath(path)),
   "dictation.remove": () => Effect.flatMap(Dictation, (service) => service.remove()),

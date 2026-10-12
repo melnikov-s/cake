@@ -202,7 +202,8 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
           {
             label: "Text processing",
             targetId: "setting-text-processing",
-            keywords: "punctuation capitalization raw utility cleanup fillers",
+            keywords:
+              "recognition streaming revisions punctuation capitalization utility cleanup fillers",
           },
           {
             label: "Utility cleanup prompt",

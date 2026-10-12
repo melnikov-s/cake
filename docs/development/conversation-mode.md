@@ -36,7 +36,7 @@ separate a hallucinated short word from a genuine short reply. Use a closer/dire
 microphone, reduce excessive input gain, or use headphones if speaker leakage triggers
 capture. Browser echo cancellation is not a guarantee of full-duplex audio quality.
 
-**Text processing** chooses Raw, Local punctuation or Utility cleanup. See
+**Text processing** chooses local Recognition (the default) or optional Utility cleanup. See
 [processing privacy and setup](dictation.md#text-processing-three-exclusive-modes).
 Gray spoken text is provisional; typed text remains ordinary composer content.
 Review important dictated instructions before sending.

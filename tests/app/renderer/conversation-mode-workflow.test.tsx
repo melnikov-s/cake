@@ -62,7 +62,6 @@ function fixture(
     prepare?: Client["dictation"]["prepare"];
     transcribe?: Client["dictation"]["transcribe"];
     postProcess?: Client["workspaces"]["postProcessDictation"];
-    punctuate?: Client["dictation"]["punctuate"];
     detectSpeech?: Client["dictation"]["detectSpeech"];
     synthesize?: Client["speechOutput"]["synthesize"];
     enqueue?: SpeechPlayback["enqueue"];
@@ -122,7 +121,6 @@ function fixture(
         release,
         transcribe,
         detectSpeech: options.detectSpeech ?? detectFixtureSpeech,
-        ...(options.punctuate ? { punctuate: options.punctuate } : {}),
       },
       speechOutput: {
         synthesize,
@@ -232,45 +230,26 @@ afterEach(() => {
 });
 
 describe("Project Session conversation mode", () => {
-  it("uses shared local processing before auto-send without invoking utility cleanup", async () => {
-    const result = deferred<{ text: string; pendingStart: number }>();
-    const punctuate = vi.fn<Client["dictation"]["punctuate"]>((input) =>
-      input.final
-        ? result.promise
-        : Promise.resolve({ text: "Is this a question that I should be asking", pendingStart: 24 }),
-    );
-    const postProcess = vi.fn<Client["workspaces"]["postProcessDictation"]>(
-      async () => "Unexpected utility work",
-    );
+  it("uses revised recognition directly and waits for final words before auto-send", async () => {
+    const result = deferred<string>();
+    const postProcess = vi.fn<Client["workspaces"]["postProcessDictation"]>();
     using f = fixture({
-      transcribe: async () => "Is this a question that I should? Be asking?",
-      punctuate,
+      transcribe: async (input) =>
+        input.final ? result.promise : "Is this a question that I should be asking?",
       postProcess,
-      snapshot: {
-        state: {},
-        children: { dictationStore: { state: { textProcessingMode: "local" }, children: {} } },
-      },
     });
     await f.enter();
     await f.frames(0.1, 4);
     await f.frames(0, 33);
-    await waitFor(() =>
-      expect(punctuate).toHaveBeenLastCalledWith(
-        {
-          utteranceId: expect.any(String),
-          text: "Is this a question that I should? Be asking?",
-          final: true,
-        },
-        expect.any(Object),
-      ),
-    );
     expect(f.prompt).not.toHaveBeenCalled();
     await act(async () =>
-      result.resolve({ text: "Is this a question that I should be asking?", pendingStart: 43 }),
+      result.resolve("Is this a question that I should be asking? Please explain."),
     );
     await waitFor(() =>
       expect(f.prompt).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ text: "Is this a question that I should be asking?" }),
+        expect.objectContaining({
+          text: "Is this a question that I should be asking? Please explain.",
+        }),
         expect.any(Object),
       ),
     );
@@ -279,7 +258,14 @@ describe("Project Session conversation mode", () => {
   it("waits for light cleanup before automatically sending voice input", async () => {
     const result = deferred<string>();
     const postProcess = vi.fn<Client["workspaces"]["postProcessDictation"]>(() => result.promise);
-    using f = fixture({ transcribe: async () => "Um, hello. There.", postProcess });
+    using f = fixture({
+      transcribe: async () => "Um, hello. There.",
+      postProcess,
+      snapshot: {
+        state: {},
+        children: { dictationStore: { state: { textProcessingMode: "utility" }, children: {} } },
+      },
+    });
     await f.enter();
     await f.frames(0.1, 4);
     await f.frames(0, 33);
@@ -301,7 +287,13 @@ describe("Project Session conversation mode", () => {
   it("retains manual edits made while voice cleanup is pending", async () => {
     const result = deferred<string>();
     const postProcess = vi.fn<Client["workspaces"]["postProcessDictation"]>(() => result.promise);
-    using f = fixture({ postProcess });
+    using f = fixture({
+      postProcess,
+      snapshot: {
+        state: {},
+        children: { dictationStore: { state: { textProcessingMode: "utility" }, children: {} } },
+      },
+    });
     await f.enter();
     await f.frames(0.1, 4);
     await f.frames(0, 33);
@@ -316,7 +308,13 @@ describe("Project Session conversation mode", () => {
   });
 
   it("does not send an utterance that was completely retracted", async () => {
-    using f = fixture({ postProcess: async () => "" });
+    using f = fixture({
+      postProcess: async () => "",
+      snapshot: {
+        state: {},
+        children: { dictationStore: { state: { textProcessingMode: "utility" }, children: {} } },
+      },
+    });
     await f.enter();
     await f.frames(0.1, 4);
     await f.frames(0, 33);

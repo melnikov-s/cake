@@ -577,7 +577,6 @@ export class RootStore extends Store<{
       recognition: this.client.dictation,
       postProcess: (input, options) => this.client.workspaces.postProcessDictation(input, options),
       textProcessingMode: () => this.dictationStore.textProcessingMode,
-      punctuate: (input, options) => this.client.dictation.punctuate(input, options),
       microphone: this.props.microphone ?? microphone,
       playback: this.props.speechPlayback ?? this.defaultSpeechPlayback,
       settings: () => this.speechSettingsStore.settings,

@@ -17,16 +17,6 @@ const native = vi.hoisted(() => ({
     (root: string, signal: AbortSignal, progress: (value: unknown) => void) => Promise<void>
   >(async () => {}),
   remove: vi.fn(async () => {}),
-  punctuationInstalled: false,
-  punctuate: vi.fn(async (text: string, final: boolean) => ({
-    text: text.replace("should? Be", "should be"),
-    pendingStart: final ? text.length : 0,
-  })),
-  closePunctuation: vi.fn(async () => {}),
-  punctuationConstructed: vi.fn(),
-  installPunctuation: vi.fn<
-    (root: string, signal: AbortSignal, progress: (value: unknown) => void) => Promise<void>
-  >(async () => {}),
 }));
 vi.mock("node:fs/promises", () => ({ rm: native.remove }));
 vi.mock("../../../src/services/dictation/local-parakeet", () => ({
@@ -50,22 +40,10 @@ vi.mock("../../../src/services/dictation/local-parakeet", () => ({
     close = native.close;
   },
 }));
-vi.mock("../../../src/services/dictation/local-punctuation", () => ({
-  punctuationInstalled: async () => native.punctuationInstalled,
-  installPunctuation: native.installPunctuation,
-  loadPunctuationEngine: async () => {
-    native.punctuationConstructed();
-    return { engine: { punctuate: native.punctuate }, close: native.closePunctuation };
-  },
-}));
 beforeEach(() => {
   vi.clearAllMocks();
   native.path = "/external/model";
   native.available = true;
-  native.punctuationInstalled = false;
-  native.installPunctuation.mockImplementation(async () => {
-    native.punctuationInstalled = true;
-  });
   native.ready = () => Promise.resolve();
   native.install.mockImplementation(async () => {});
   native.remove.mockImplementation(async () => {
@@ -80,95 +58,6 @@ const state = (service: Dictation["Service"]) =>
     Stream.runCollect,
     Effect.map((values) => values[0]!),
   );
-
-it.effect(
-  "downloads punctuation only explicitly and reuses its warm CPU session without changing recognition",
-  () =>
-    Effect.gen(function* () {
-      const service = yield* Dictation;
-      expect((yield* state(service)).punctuation.status).toBe("missing");
-      expect(native.installPunctuation).not.toHaveBeenCalled();
-      yield* service.installPunctuation();
-      expect(native.installPunctuation).toHaveBeenCalledOnce();
-      expect(native.punctuationConstructed).not.toHaveBeenCalled();
-      yield* service.prepare();
-      const input = {
-        utteranceId: "insertion",
-        text: "Is this a question that I should? Be asking?",
-        final: true,
-      };
-      expect((yield* service.punctuate(input)).text).toBe(
-        "Is this a question that I should be asking?",
-      );
-      expect((yield* state(service)).punctuation.status).toBe("ready");
-      yield* service.punctuate(input);
-      expect(native.punctuate).toHaveBeenCalledTimes(2);
-      expect(native.punctuationConstructed).toHaveBeenCalledOnce();
-      expect(yield* service.transcribe({ utteranceId: "audio", pcm: "", final: true })).toBe(
-        "hello",
-      );
-      yield* service.release();
-      expect(native.closePunctuation).toHaveBeenCalledOnce();
-    }).pipe(Effect.provide(live())),
-);
-
-it.effect(
-  "a punctuation download can be cancelled without blocking recognition or deleting installed weights",
-  () =>
-    Effect.gen(function* () {
-      native.punctuationInstalled = true;
-      const started = yield* Deferred.make<void>();
-      let cancelled = false;
-      native.installPunctuation.mockImplementation(
-        (_root, signal) =>
-          new Promise<void>((_resolve, reject) => {
-            signal.addEventListener(
-              "abort",
-              () => {
-                cancelled = true;
-                reject(new Error("cancelled"));
-              },
-              { once: true },
-            );
-            Effect.runSync(Deferred.succeed(started, undefined));
-          }),
-      );
-      const service = yield* Dictation;
-      const installation = yield* service.installPunctuation().pipe(Effect.forkChild);
-      yield* Deferred.await(started);
-      expect((yield* state(service)).punctuation.status).toBe("installing");
-      yield* service.prepare();
-      expect(yield* service.transcribe({ utteranceId: "audio", pcm: "", final: true })).toBe(
-        "hello",
-      );
-      yield* Fiber.interrupt(installation);
-      expect(cancelled).toBe(true);
-      expect((yield* state(service)).punctuation.status).toBe("installed");
-      expect(native.remove).not.toHaveBeenCalled();
-    }).pipe(Effect.provide(live())),
-);
-
-it.effect("removes only punctuation data while the recognition worker remains ready", () =>
-  Effect.gen(function* () {
-    const service = yield* Dictation;
-    yield* service.installPunctuation();
-    yield* service.prepare();
-    native.remove.mockImplementation(async () => {
-      native.punctuationInstalled = false;
-    });
-    yield* service.removePunctuation();
-    expect(native.remove).toHaveBeenCalledWith("/fixture/punctuation", {
-      recursive: true,
-      force: true,
-    });
-    expect(native.close).not.toHaveBeenCalled();
-    expect((yield* state(service)).punctuation.status).toBe("missing");
-    expect((yield* state(service)).status).toBe("ready");
-    expect(
-      yield* service.transcribe({ utteranceId: "still-listening", pcm: "", final: true }),
-    ).toBe("hello");
-  }).pipe(Effect.provide(live())),
-);
 
 it.effect("projects RPC-encodable state with independently bundled engine availability", () =>
   Effect.gen(function* () {

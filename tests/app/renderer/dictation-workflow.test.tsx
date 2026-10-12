@@ -11,7 +11,6 @@ import {
 import type {
   DictationAudio,
   DictationState,
-  PunctuationResult,
 } from "../../../src/contracts/dictation/dictation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
@@ -600,173 +599,42 @@ describe("Dictation writing-field workflow", () => {
     await f.audio.push(new Float32Array(48_000));
     expect(f.prompt).not.toHaveBeenCalled();
   });
-  it("streams a revisable local passage across premature audio endings and finalizes before Enter without utility work", async () => {
-    const first = deferred<PunctuationResult>(),
-      final = deferred<PunctuationResult>();
-    const partialText = "Is this a question that I should";
-    const completeText = "Is this a question that I should be asking";
-    let previews = 0;
-    const punctuate = vi.fn<Client["dictation"]["punctuate"]>((input) =>
-      input.final
-        ? final.promise
-        : ++previews === 1
-          ? first.promise
-          : Promise.resolve({ text: completeText, pendingStart: 24 }),
+  it("revises recognition across a thinking pause and drains final words before Enter without utility work", async () => {
+    let text = "Is this a question that I should?";
+    const final = deferred<string>();
+    const transcribe = vi.fn<Client["dictation"]["transcribe"]>((input) =>
+      input.final ? final.promise : Promise.resolve(text),
     );
-    const postProcessDictation = vi.fn<Client["workspaces"]["postProcessDictation"]>(
-      async () => "Unexpected utility work",
-    );
-    using fixture = renderDictation({
-      state: {
-        ...installedDictationState,
-        punctuation: { status: "installed", downloadedBytes: 0, totalBytes: 0 },
-      },
-      client: { dictation: { punctuate }, workspaces: { postProcessDictation } },
+    const postProcessDictation = vi.fn<Client["workspaces"]["postProcessDictation"]>();
+    using f = renderDictation({
+      client: { dictation: { transcribe }, workspaces: { postProcessDictation } },
     });
-    await fixture.user.selectOptions(
-      screen.getByRole("combobox", { name: "Text processing" }),
-      "local",
-    );
-    await fixture.user.type(message(), "Typed:");
-    await fixture.user.click(mode());
-    await fixture.user.click(message());
-    await fixture.audio.push(new Float32Array(12_800));
-    await fixture.recognize(0, partialText + "?");
-    await waitFor(() => expect(punctuate).toHaveBeenCalledOnce());
-    expect(message().value).toBe("Typed: " + partialText);
-    await act(async () => first.resolve({ text: partialText, pendingStart: 10 }));
-    await waitFor(() =>
-      expect(document.querySelector('[data-slot="provisional-text"]')?.textContent).toBe(
-        "question that I should",
-      ),
-    );
-    await fixture.audio.push(new Float32Array(12_800));
-    await waitFor(() => expect(fixture.requests).toHaveLength(2));
-    await fixture.recognize(1, "Is this a question that I should? Be asking?");
-    await waitFor(() => expect(message().value).toBe("Typed: " + completeText));
-    await fixture.user.keyboard("{Enter}");
-    await waitFor(() => expect(fixture.requests).toHaveLength(3));
-    await fixture.recognize(2, "Is this a question that I should? Be asking?");
-    await waitFor(() =>
-      expect(punctuate).toHaveBeenLastCalledWith(
-        {
-          utteranceId: expect.any(String),
-          text: "Is this a question that I should? Be asking?",
-          final: true,
-        },
-        expect.any(Object),
-      ),
-    );
-    expect(fixture.prompt).not.toHaveBeenCalled();
-    await act(async () =>
-      final.resolve({ text: completeText + "?", pendingStart: completeText.length + 1 }),
-    );
-    await waitFor(() =>
-      expect(fixture.prompt).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ text: "Typed: " + completeText + "?" }),
-        expect.any(Object),
-      ),
-    );
-    expect(postProcessDictation).not.toHaveBeenCalled();
-    expect(punctuate).toHaveBeenCalledTimes(3);
-  });
-
-  it("keeps a local sentence ending provisional through a long thinking pause until Enter", async () => {
-    let raw = "Is this a question that I should?";
-    const punctuate = vi.fn<Client["dictation"]["punctuate"]>(async (input) => {
-      const text = input.text.replace("should? Be", "should be").replace(/\?$/, "");
-      return {
-        text: text + (input.final ? "?" : ""),
-        pendingStart: input.final ? text.length + 1 : 10,
-      };
-    });
-    using fixture = renderDictation({
-      state: {
-        ...installedDictationState,
-        punctuation: { status: "installed", downloadedBytes: 0, totalBytes: 0 },
-      },
-      client: { dictation: { transcribe: async () => raw, punctuate } },
-    });
-    await fixture.user.selectOptions(
-      screen.getByRole("combobox", { name: "Text processing" }),
-      "local",
-    );
-    await fixture.user.click(mode());
-    await fixture.user.click(message());
-    await fixture.audio.push(new Float32Array(16_384).fill(0.1));
-    await waitFor(() => expect(message().value).toBe("Is this a question that I should"));
-    for (let index = 0; index < 16; index++) await fixture.audio.push(new Float32Array(4096));
-    expect(message().value).toBe("Is this a question that I should");
-    expect(punctuate.mock.calls.some(([input]) => input.final)).toBe(false);
-    expect(document.querySelector('[data-slot="provisional-text"]')?.textContent).toBe(
-      "question that I should",
-    );
-    raw = "Is this a question that I should? Be asking?";
-    await fixture.audio.push(new Float32Array(16_384).fill(0.1));
-    await waitFor(() => expect(message().value).toBe("Is this a question that I should be asking"));
-    await fixture.user.keyboard("{Enter}");
-    await waitFor(() =>
-      expect(fixture.prompt).toHaveBeenCalledWith(
-        expect.objectContaining({ text: "Is this a question that I should be asking?" }),
-        expect.any(Object),
-      ),
-    );
-  });
-
-  it("seals manual edits and drops late local punctuation without restarting microphone capture", async () => {
-    const result = deferred<PunctuationResult>();
-    const punctuate = vi.fn<Client["dictation"]["punctuate"]>(() => result.promise);
-    using fixture = renderDictation({
-      state: {
-        ...installedDictationState,
-        punctuation: { status: "installed", downloadedBytes: 0, totalBytes: 0 },
-      },
-      client: { dictation: { punctuate } },
-    });
-    await fixture.user.selectOptions(
-      screen.getByRole("combobox", { name: "Text processing" }),
-      "local",
-    );
-    await fixture.user.click(mode());
-    await fixture.user.click(trial());
-    await fixture.audio.push(new Float32Array(12_800));
-    await fixture.recognize(0, "Hello. There.");
-    await waitFor(() => expect(punctuate).toHaveBeenCalledOnce());
-    await fixture.user.type(trial(), " edited");
-    await act(async () => result.resolve({ text: "Hello there.", pendingStart: 12 }));
-    expect(trial().value).toBe("Hello There edited");
-    expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce();
-    expect(document.querySelector('[data-slot="provisional-text"]')).toBeNull();
-  });
-
-  it("downloads the optional model explicitly and returns to raw when it is removed", async () => {
-    const installPunctuation = vi.fn<Client["dictation"]["installPunctuation"]>(async () => {
-      fixture.root.dictationStore.applyState({
-        ...installedDictationState,
-        punctuation: { status: "installed", downloadedBytes: 0, totalBytes: 0 },
-      });
-    });
-    const removePunctuation = vi.fn<Client["dictation"]["removePunctuation"]>(async () => {
-      fixture.root.dictationStore.applyState(installedDictationState);
-    });
-    using fixture = renderDictation({
-      client: { dictation: { installPunctuation, removePunctuation } },
-    });
-    expect(installPunctuation).not.toHaveBeenCalled();
-    await fixture.user.click(screen.getByRole("button", { name: "Download punctuation model" }));
-    await fixture.user.selectOptions(
-      screen.getByRole("combobox", { name: "Text processing" }),
-      "local",
-    );
-    expect(toSnapshot(fixture.root).children.dictationStore).toMatchObject({
-      state: { textProcessingMode: "local" },
-    });
-    await fixture.user.click(screen.getByRole("button", { name: "Remove punctuation model" }));
-    expect(removePunctuation).toHaveBeenCalledOnce();
     expect(screen.getByRole("combobox", { name: "Text processing" })).toHaveProperty(
       "value",
       "raw",
     );
+    await f.user.type(message(), "Typed:");
+    await f.user.click(mode());
+    await f.user.click(message());
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await waitFor(() => expect(message().value).toBe("Typed: " + text));
+    for (let i = 0; i < 16; i++) await f.audio.push(new Float32Array(4096));
+    expect(message().value).toBe("Typed: " + text);
+    text = "Is this a question that I should be asking?";
+    await f.audio.push(new Float32Array(16_384).fill(0.1));
+    await waitFor(() => expect(message().value).toBe("Typed: " + text));
+    expect(new Set(transcribe.mock.calls.map(([input]) => input.utteranceId)).size).toBe(1);
+    await f.user.keyboard("{Enter}");
+    await waitFor(() => expect(transcribe.mock.calls.at(-1)?.[0].final).toBe(true));
+    expect(f.prompt).not.toHaveBeenCalled();
+    await act(async () => final.resolve(text + " Please explain."));
+    await waitFor(() =>
+      expect(f.prompt).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ text: "Typed: " + text + " Please explain." }),
+        expect.any(Object),
+      ),
+    );
+    expect(postProcessDictation).not.toHaveBeenCalled();
   });
   it("persists only user enablement and microphone choice, restoring capture on focus", async () => {
     let saved: StoreSnapshot | undefined;
@@ -787,7 +655,7 @@ describe("Dictation writing-field workflow", () => {
       saved = toSnapshot(fixture.root);
       expect(save).toHaveBeenLastCalledWith(saved);
       expect(saved.children.dictationStore).toEqual({
-        state: { enabled: true, deviceId: "usb-mic", textProcessingMode: "utility" },
+        state: { enabled: true, deviceId: "usb-mic", textProcessingMode: "raw" },
         children: {},
       });
     }
@@ -1078,8 +946,8 @@ describe("Dictation writing-field workflow", () => {
       () => result.promise,
     );
     using fixture = renderDictation({ client: { workspaces: { postProcessDictation } } });
-    expect(screen.getByRole("combobox", { name: "Text processing" })).toHaveProperty(
-      "value",
+    await fixture.user.selectOptions(
+      screen.getByRole("combobox", { name: "Text processing" }),
       "utility",
     );
     await fixture.user.type(message(), "Typed prefix: ");
@@ -1115,6 +983,10 @@ describe("Dictation writing-field workflow", () => {
     using fixture = renderDictation({
       client: { workspaces: { postProcessDictation: () => result.promise } },
     });
+    await fixture.user.selectOptions(
+      screen.getByRole("combobox", { name: "Text processing" }),
+      "utility",
+    );
     await fixture.user.type(message(), "Typed prefix: ");
     await fixture.user.click(mode());
     await fixture.user.click(message());
@@ -1135,6 +1007,10 @@ describe("Dictation writing-field workflow", () => {
       () => result.promise,
     );
     using fixture = renderDictation({ client: { workspaces: { postProcessDictation } } });
+    await fixture.user.selectOptions(
+      screen.getByRole("combobox", { name: "Text processing" }),
+      "utility",
+    );
     await fixture.user.click(mode());
     await fixture.user.click(message());
     await fixture.audio.push(new Float32Array(4096).fill(0.1));
@@ -1153,6 +1029,10 @@ describe("Dictation writing-field workflow", () => {
       () => result.promise,
     );
     using fixture = renderDictation({ client: { workspaces: { postProcessDictation } } });
+    await fixture.user.selectOptions(
+      screen.getByRole("combobox", { name: "Text processing" }),
+      "utility",
+    );
     await fixture.user.click(mode());
     await fixture.user.click(message());
     await fixture.audio.push(new Float32Array(4096).fill(0.1));
@@ -1187,6 +1067,10 @@ describe("Dictation writing-field workflow", () => {
           workspaces: { postProcessDictation },
         },
       });
+      await fixture.user.selectOptions(
+        screen.getByRole("combobox", { name: "Text processing" }),
+        "utility",
+      );
       await fixture.user.click(mode());
       await fixture.user.click(message());
       await fixture.audio.push(new Float32Array(16_384).fill(0.1));
@@ -1232,6 +1116,10 @@ describe("Dictation writing-field workflow", () => {
         workspaces: { postProcessDictation },
       },
     });
+    await fixture.user.selectOptions(
+      screen.getByRole("combobox", { name: "Text processing" }),
+      "utility",
+    );
     await fixture.user.click(mode());
     await fixture.user.click(trial());
     for (let i = 0; i < 12; i++) await fixture.audio.push(new Float32Array(4096));
@@ -1255,6 +1143,10 @@ describe("Dictation writing-field workflow", () => {
     using fixture = renderDictation({
       client: { dictation: { transcribe: async () => raw }, workspaces: { postProcessDictation } },
     });
+    await fixture.user.selectOptions(
+      screen.getByRole("combobox", { name: "Text processing" }),
+      "utility",
+    );
     await fixture.user.click(mode());
     await fixture.user.click(trial());
     await fixture.audio.push(new Float32Array(16_384).fill(0.1));
@@ -1277,6 +1169,10 @@ describe("Dictation writing-field workflow", () => {
         },
       },
     });
+    await fixture.user.selectOptions(
+      screen.getByRole("combobox", { name: "Text processing" }),
+      "utility",
+    );
     await fixture.user.click(mode());
     await fixture.user.click(message());
     await fixture.audio.push(new Float32Array(4096).fill(0.1));
@@ -1301,6 +1197,10 @@ describe("Dictation writing-field workflow", () => {
         workspaces: { postProcessDictation },
       },
     });
+    await fixture.user.selectOptions(
+      screen.getByRole("combobox", { name: "Text processing" }),
+      "utility",
+    );
     await fixture.user.click(mode());
     await fixture.user.click(trial());
     await fixture.audio.push(new Float32Array(16_384).fill(0.1));

@@ -1,4 +1,4 @@
-import { chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -26,16 +26,6 @@ test("Cake dictation shows readiness, types into chat and annotations, and seals
     mkdir(join(cakeHome, "state"), { recursive: true }),
     mkdir(model, { recursive: true }),
   ]);
-  // Optional real local CPU model, supplied explicitly; no test downloads weights.
-  const localRoot = process.env.CAKE_PUNCTUATION_TEST_ROOT;
-  if (localRoot) {
-    const punctuationModel = join(dictation, "punctuation", "model");
-    await mkdir(punctuationModel, { recursive: true });
-    await cp(
-      join(localRoot, "model", "punct_cap_seg_en.onnx"),
-      join(punctuationModel, "punct_cap_seg_en.onnx"),
-    );
-  }
   const control = join(model, "control.json");
   const configure = (value: {
     ready: boolean;
@@ -168,7 +158,9 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
     await page.getByRole("button", { name: /Voice & Dictation/ }).click();
     const postProcess = page.getByLabel("Text processing", { exact: true });
-    await expect(postProcess).toHaveValue("utility");
+    await expect(postProcess).toHaveValue("raw");
+    // Optional cleanup still owns the gray pending-processing overlay.
+    await postProcess.selectOption("utility");
     await page.getByRole("switch", { name: "Dictation mode" }).click();
     const sample = page.getByLabel("Try dictation");
     await sample.focus();
@@ -465,13 +457,6 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await composer.fill("Typed first. Spoken next.");
     // Select transcript prose and exercise the real native context-menu path.
     await configure({ ready: true, hold: true });
-    if (localRoot) {
-      await page.getByRole("button", { name: "Open settings", exact: true }).click();
-      await page.getByRole("button", { name: /Voice & Dictation/ }).click();
-      await page.getByLabel("Text processing", { exact: true }).selectOption("local");
-      await page.getByRole("button", { name: "Back to chat" }).click();
-      await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
-    }
     const prose = page.getByText("Inspect this implementation before changing it.", {
       exact: true,
     });
@@ -498,23 +483,15 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await prose.dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
     const annotation = page.getByLabel("Annotation comment");
     await expect(annotation).toBeFocused();
-    const annotationText = localRoot
-      ? "Typed: Is this a question that I should be asking?"
-      : "Please change this implementation carefully.";
-    if (localRoot) {
-      await annotation.pressSequentially("Typed:");
-      await expect(annotation).toHaveValue("Typed:");
-      await expect(annotation).toBeFocused();
-      await configure({ ready: true, text: "Is this a question that I should?" });
-      await expect(annotation).toHaveValue("Typed: Is this a question that I should");
-      await configure({ ready: true, text: "Is this a question that I should? Be asking?" });
-      await expect(annotation).toHaveValue("Typed: Is this a question that I should be asking");
-      await expect(page.locator('[data-slot="provisional-text"]')).toHaveText("I should be asking");
-      await expect(annotation).toBeFocused();
-    } else {
-      await configure({ ready: true, text: "Please change", finalText: annotationText });
-      await expect(annotation).toHaveValue("Please change");
-    }
+    const annotationText = "Typed: Is this a question that I should be asking?";
+    await annotation.pressSequentially("Typed:");
+    await expect(annotation).toHaveValue("Typed:");
+    await expect(annotation).toBeFocused();
+    await configure({ ready: true, text: "Is this a question that I should?" });
+    await expect(annotation).toHaveValue("Typed: Is this a question that I should?");
+    await configure({ ready: true, text: "Is this a question that I should be asking?" });
+    await expect(annotation).toHaveValue(annotationText);
+    await expect(annotation).toBeFocused();
     await annotation.press("Enter");
     await expect(page.getByRole("dialog", { name: "Add annotation" })).toHaveCount(0);
     await configure({ ready: true, hold: true });

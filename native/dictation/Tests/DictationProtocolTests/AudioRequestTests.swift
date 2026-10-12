@@ -35,19 +35,6 @@ private func rejectsMalformedOrUnboundedAudio() throws {
   try rejects { _ = try AudioRequest.decode("{\"utteranceId\":\"\",\"pcm\":\"\",\"final\":false}") }
 }
 
-private func windowScheduleWaitsForLookaheadAndHandlesCoalescedAudio() throws {
-  var schedule = WindowSchedule()
-  try check(schedule.append(12_800) == 0, "First 800 ms waits")
-  try check(schedule.append(12_800) == 0, "Right lookahead required")
-  try check(schedule.append(12_800) == 1, "First model window")
-  try check(schedule.append(12_800) == 0, "Next chunk still incomplete")
-  try check(schedule.append(51_200) == 2, "Coalesced audio waits for every window")
-  try check(schedule.append(0) == 0, "Empty flush adds no complete window")
-  schedule = WindowSchedule()
-  try check(schedule.append(31_999) == 0, "Exact boundary, before")
-  try check(schedule.append(1) == 1, "Exact boundary, at")
-}
-
 private func gateIgnoresNoiseBeforeAndAfterSpeech() throws {
   var gate = SpeechGate()
   let noise = [Float](repeating: 0.5, count: 4096)
@@ -57,8 +44,12 @@ private func gateIgnoresNoiseBeforeAndAfterSpeech() throws {
   let voice = [Float](repeating: 0.001, count: 4096)
   let onset = gate.append(voice, speech: true)
   if case .audio(let audio) = onset.first {
-    try check(audio == [Float](repeating: 0.5, count: 9600) + voice, "Shared 600 ms lookback preserves quiet speech onset")
-  } else { throw TestFailure(message: "Expected speech onset") }
+    try check(
+      audio == [Float](repeating: 0.5, count: 9600) + voice,
+      "Shared 600 ms lookback preserves quiet speech onset")
+  } else {
+    throw TestFailure(message: "Expected speech onset")
+  }
   try check(gate.append(noise, speech: false).count == 1, "Preserve one tail frame")
   for _ in 0..<4 {
     try check(gate.append(noise, speech: false).isEmpty, "No new windows from long room noise")
@@ -79,16 +70,26 @@ private func gateRetainsInternalPausesAndFinalizesShortSpeech() throws {
   _ = gate.append(noise, speech: false)
   try check(gate.append(noise, speech: false).isEmpty, "Hold quiet frames pending resumed speech")
   if case .audio(let audio) = gate.append(voice, speech: true).first {
-    try check(audio == [Float](repeating: 0, count: 4096) + voice,
+    try check(
+      audio == [Float](repeating: 0, count: 4096) + voice,
       "Internal pause retains timing without passing background noise")
-  } else { throw TestFailure(message: "Short pause must not split the phrase") }
-  if case .end = gate.finish().first {} else { throw TestFailure(message: "Explicit finish flushes speech") }
+  } else {
+    throw TestFailure(message: "Short pause must not split the phrase")
+  }
+  if case .end = gate.finish().first {
+  } else {
+    throw TestFailure(message: "Explicit finish flushes speech")
+  }
   try check(gate.finish().isEmpty, "A second final flush is empty")
-  try check(gate.append([0.001, 0.002], speech: true).isEmpty, "Speech shorter than the shared minimum does not start recognition")
+  try check(
+    gate.append([0.001, 0.002], speech: true).isEmpty,
+    "Speech shorter than the shared minimum does not start recognition")
   _ = gate.finish()
   if case .audio(let audio) = gate.append(voice, speech: true).first {
     try check(audio == voice, "No stale preroll or candidate crosses a final boundary")
-  } else { throw TestFailure(message: "Short qualifying speech is retained") }
+  } else {
+    throw TestFailure(message: "Short qualifying speech is retained")
+  }
 }
 
 private func gateBoundsContinuousSpeech() throws {
@@ -105,8 +106,10 @@ private func gateBoundsContinuousSpeech() throws {
     }
   }
   try check(ended, "Long speech must finalize a bounded segment")
-  try check(deliveredSamples == 118 * voice.count, "Duration boundaries must not drop speech samples")
-  if case .audio = gate.append(voice, speech: true).first {} else {
+  try check(
+    deliveredSamples == 118 * voice.count, "Duration boundaries must not drop speech samples")
+  if case .audio = gate.append(voice, speech: true).first {
+  } else {
     throw TestFailure(message: "Speech continues in the next segment")
   }
 }
@@ -116,46 +119,69 @@ private func thresholdHysteresisPreservesDefaultsAndAllowsStricterCapture() thro
   let strict = SpeechThresholds(start: 0.85, continuation: 0.7)
   try standard.validate()
   try strict.validate()
-  try check(standard.isSpeech(0.7, previouslySpeaking: false), "The default onset threshold accepts ordinary speech")
-  try check(!strict.isSpeech(0.7, previouslySpeaking: false), "Stricter shared detection rejects ambiguous noise")
+  try check(
+    standard.isSpeech(0.7, previouslySpeaking: false),
+    "The default onset threshold accepts ordinary speech")
+  try check(
+    !strict.isSpeech(0.7, previouslySpeaking: false),
+    "Stricter shared detection rejects ambiguous noise")
   try check(strict.isSpeech(0.9, previouslySpeaking: false), "Confident speech is still accepted")
-  try check(strict.isSpeech(0.75, previouslySpeaking: true), "Continuation uses its lower hysteresis threshold")
-  try check(!strict.isSpeech(0.65, previouslySpeaking: true), "Speech ends below continuation threshold")
-  for invalid in [SpeechThresholds(start: .nan, continuation: 0.4),
+  try check(
+    strict.isSpeech(0.75, previouslySpeaking: true),
+    "Continuation uses its lower hysteresis threshold")
+  try check(
+    !strict.isSpeech(0.65, previouslySpeaking: true), "Speech ends below continuation threshold")
+  for invalid in [
+    SpeechThresholds(start: .nan, continuation: 0.4),
     SpeechThresholds(start: 1, continuation: 0.4), SpeechThresholds(start: 0.6, continuation: 0),
-    SpeechThresholds(start: 0.4, continuation: 0.6)] {
+    SpeechThresholds(start: 0.4, continuation: 0.6),
+  ] {
     try rejects { try invalid.validate() }
   }
 }
 
 private func sharedGateSettingsPreserveOnsetAndBoundContinuousSegments() throws {
-  let settings = SpeechRecognitionSettings(thresholds: .standard, minimumSpeechMs: 1000,
+  let settings = SpeechRecognitionSettings(
+    thresholds: .standard, minimumSpeechMs: 1000,
     prerollMs: 0, maximumUtteranceSeconds: 5)
   try settings.validate()
   var gate = SpeechGate(settings: settings)
   let voice = [Float](repeating: 0.1, count: 4096)
   let noise = [Float](repeating: 0.7, count: 4096)
-  for _ in 0..<3 { try check(gate.append(voice, speech: true).isEmpty, "Brief onset remains tentative") }
+  for _ in 0..<3 {
+    try check(gate.append(voice, speech: true).isEmpty, "Brief onset remains tentative")
+  }
   try check(gate.append(noise, speech: false).isEmpty, "Noise breaks the minimum-speech window")
-  for _ in 0..<3 { try check(gate.append(voice, speech: true).isEmpty, "A broken onset cannot qualify later speech early") }
+  for _ in 0..<3 {
+    try check(
+      gate.append(voice, speech: true).isEmpty, "A broken onset cannot qualify later speech early")
+  }
   if case .audio(let audio) = gate.append(voice, speech: true).first {
-    try check(audio == [Float](repeating: 0.1, count: 4 * 4096), "Zero lookback preserves all qualifying onset frames, not noise")
-  } else { throw TestFailure(message: "One second of sustained speech starts recognition") }
+    try check(
+      audio == [Float](repeating: 0.1, count: 4 * 4096),
+      "Zero lookback preserves all qualifying onset frames, not noise")
+  } else {
+    throw TestFailure(message: "One second of sustained speech starts recognition")
+  }
   var segments = 0
   for _ in 0..<16 {
     for event in gate.append(voice, speech: true) { if case .end = event { segments += 1 } }
   }
   try check(segments == 1, "Shared five-second cap finalizes a native segment")
   _ = gate.finish()
-  try check(gate.append(voice, speech: true).isEmpty, "Finishing retains the configured minimum for the next segment")
+  try check(
+    gate.append(voice, speech: true).isEmpty,
+    "Finishing retains the configured minimum for the next segment")
 }
 
 private func sharedLookbackAndSettingsDecodeAreValidated() throws {
-  let settings = SpeechRecognitionSettings(thresholds: SpeechThresholds(start: 0.85, continuation: 0.5),
+  let settings = SpeechRecognitionSettings(
+    thresholds: SpeechThresholds(start: 0.85, continuation: 0.5),
     minimumSpeechMs: 500, prerollMs: 300, maximumUtteranceSeconds: 5)
   let data = try JSONEncoder().encode(settings)
   let json = String(decoding: data, as: UTF8.self)
-  let request = try AudioRequest.decode("{\"utteranceId\":\"tuned\",\"pcm\":\"\",\"final\":false,\"settings\":\(json)}")
+  let request = try AudioRequest.decode(
+    "{\"utteranceId\":\"tuned\",\"pcm\":\"\",\"final\":false,\"settings\":\(json)}")
   try check(request.settings == settings, "Recognition requests carry all shared settings")
   var gate = SpeechGate(settings: settings)
   let noise = [Float](repeating: 0.5, count: 4096)
@@ -163,13 +189,25 @@ private func sharedLookbackAndSettingsDecodeAreValidated() throws {
   for _ in 0..<4 { _ = gate.append(noise, speech: false) }
   try check(gate.append(voice, speech: true).isEmpty, "Minimum duration also applies with lookback")
   if case .audio(let audio) = gate.append(voice, speech: true).first {
-    try check(audio == [Float](repeating: 0.5, count: 4800) + voice + voice, "Configured lookback is exact and onset remains intact")
-  } else { throw TestFailure(message: "Expected sustained speech") }
-  for invalid in [SpeechRecognitionSettings(thresholds: .standard, minimumSpeechMs: 99, prerollMs: 300, maximumUtteranceSeconds: 5),
-    SpeechRecognitionSettings(thresholds: .standard, minimumSpeechMs: 500, prerollMs: 1001, maximumUtteranceSeconds: 5),
-    SpeechRecognitionSettings(thresholds: .standard, minimumSpeechMs: 500, prerollMs: 300, maximumUtteranceSeconds: 4)] {
+    try check(
+      audio == [Float](repeating: 0.5, count: 4800) + voice + voice,
+      "Configured lookback is exact and onset remains intact")
+  } else {
+    throw TestFailure(message: "Expected sustained speech")
+  }
+  for invalid in [
+    SpeechRecognitionSettings(
+      thresholds: .standard, minimumSpeechMs: 99, prerollMs: 300, maximumUtteranceSeconds: 5),
+    SpeechRecognitionSettings(
+      thresholds: .standard, minimumSpeechMs: 500, prerollMs: 1001, maximumUtteranceSeconds: 5),
+    SpeechRecognitionSettings(
+      thresholds: .standard, minimumSpeechMs: 500, prerollMs: 300, maximumUtteranceSeconds: 4),
+  ] {
     let json = String(decoding: try JSONEncoder().encode(invalid), as: UTF8.self)
-    try rejects { _ = try AudioRequest.decode("{\"utteranceId\":\"bad\",\"pcm\":\"\",\"final\":false,\"settings\":\(json)}") }
+    try rejects {
+      _ = try AudioRequest.decode(
+        "{\"utteranceId\":\"bad\",\"pcm\":\"\",\"final\":false,\"settings\":\(json)}")
+    }
   }
 }
 
@@ -178,13 +216,13 @@ struct ProtocolTests {
   static func main() throws {
     try decodesMonoFloat32Audio()
     try rejectsMalformedOrUnboundedAudio()
-    try windowScheduleWaitsForLookaheadAndHandlesCoalescedAudio()
+    try rollingTranscriptTests()
     try gateIgnoresNoiseBeforeAndAfterSpeech()
     try gateRetainsInternalPausesAndFinalizesShortSpeech()
     try gateBoundsContinuousSpeech()
     try thresholdHysteresisPreservesDefaultsAndAllowsStricterCapture()
     try sharedGateSettingsPreserveOnsetAndBoundContinuousSegments()
     try sharedLookbackAndSettingsDecodeAreValidated()
-    print("Native dictation: 9 protocol and speech-boundary tests passed")
+    print("Native dictation: protocol, speech-boundary and rolling-revision tests passed")
   }
 }

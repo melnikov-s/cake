@@ -1,27 +1,7 @@
 import { Schema } from "effect";
 
-export const TextProcessingMode = Schema.Literals(["raw", "local", "utility"]);
+export const TextProcessingMode = Schema.Literals(["raw", "utility"]);
 export type TextProcessingMode = typeof TextProcessingMode.Type;
-
-export const PunctuationState = Schema.Struct({
-  status: Schema.Literals(["missing", "installed", "installing", "loading", "ready", "error"]),
-  message: Schema.optional(Schema.String),
-  downloadedBytes: Schema.Number,
-  totalBytes: Schema.Number,
-});
-export interface PunctuationState extends Schema.Schema.Type<typeof PunctuationState> {}
-
-export const PunctuationInput = Schema.Struct({
-  utteranceId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100)),
-  text: Schema.String.check(Schema.isMaxLength(32_000)),
-  final: Schema.Boolean,
-});
-export interface PunctuationInput extends Schema.Schema.Type<typeof PunctuationInput> {}
-export const PunctuationResult = Schema.Struct({
-  text: Schema.String.check(Schema.isMaxLength(64_000)),
-  pendingStart: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-});
-export interface PunctuationResult extends Schema.Schema.Type<typeof PunctuationResult> {}
 
 export const DictationState = Schema.Struct({
   supported: Schema.Boolean,
@@ -29,7 +9,6 @@ export const DictationState = Schema.Struct({
   modelPath: Schema.optional(Schema.String),
   managedModelPath: Schema.String,
   engineAvailable: Schema.Boolean,
-  punctuation: PunctuationState,
   message: Schema.optional(Schema.String),
   downloadedBytes: Schema.Number,
   totalBytes: Schema.Number,

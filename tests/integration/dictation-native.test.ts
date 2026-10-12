@@ -116,7 +116,7 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
       }
     }, 180_000);
 
-    test("completed phrases remain unchanged through noisy pauses and append resumed speech exactly once", async () => {
+    test("pauses do not create noise transcripts and resumed speech is assembled exactly once", async () => {
       await using f = await fixture();
       await f.worker.ready;
       const first = await syntheticSpeech(
@@ -138,7 +138,59 @@ describe.skipIf(process.platform !== "darwin" || process.arch !== "arm64" || !mo
       const final = await f.worker.transcribe({ utteranceId: "same-field", pcm: "", final: true });
       expect(final.match(/quick brown fox/gi)).toHaveLength(1);
       expect(final.match(/local voice input in cake/gi)).toHaveLength(1);
-      expect(final.startsWith(sealed ?? "")).toBe(true);
+    }, 180_000);
+
+    test("re-decodes a sentence across a long thinking pause without freezing a false sentence ending", async () => {
+      await using f = await fixture();
+      await f.worker.ready;
+      const first = await syntheticSpeech(f.root, "question-start", "Could you take a look at");
+      const second = await syntheticSpeech(
+        f.root,
+        "question-end",
+        "how we put together the different parts of streaming transcription?",
+      );
+      const partials = await stream(f.worker, "thinking-pause", first);
+      expect(partials.some((text) => /take a look/i.test(text))).toBe(true);
+      const silence = await stream(
+        f.worker,
+        "thinking-pause",
+        generatedPcm(4 * 16000, () => 0),
+      );
+      expect(silence.slice(-2)[0]).toBe(silence.at(-1));
+      await stream(f.worker, "thinking-pause", second);
+      const final = await f.worker.transcribe({
+        utteranceId: "thinking-pause",
+        pcm: "",
+        final: true,
+      });
+      expect(final).toMatch(/could you take a look at how we put together/i);
+      expect(final.match(/take a look/gi)).toHaveLength(1);
+      expect(final).toMatch(/different parts of streaming transcription\?/i);
+    }, 180_000);
+
+    test("retains every passage across rolling-window seams during long continuous speech", async () => {
+      await using f = await fixture();
+      await f.worker.ready;
+      const sentences = [
+        "The quick brown fox jumps over the lazy dog.",
+        "We need more context for the recognition model to understand the sentence.",
+        "Recent words should change as the speaker continues talking about the implementation.",
+        "The older passage should remain stable while the final question is still being spoken.",
+        "Can you explain how the different parts of streaming transcription fit together?",
+      ];
+      const pcm = await syntheticSpeech(f.root, "long-speech", sentences.join(" "));
+      expect(pcm.length / 4 / 16000).toBeGreaterThan(20);
+      await stream(f.worker, "long-speech", pcm);
+      const final = await f.worker.transcribe({ utteranceId: "long-speech", pcm: "", final: true });
+      for (const phrase of [
+        "quick brown fox",
+        "recognition model",
+        "recent words",
+        "older passage",
+        "different parts",
+      ])
+        expect(final.match(new RegExp(phrase, "gi")), phrase).toHaveLength(1);
+      expect(final).toMatch(/fit together\?/i);
     }, 180_000);
 
     test("finalizes a short spoken command even when submitted immediately", async () => {

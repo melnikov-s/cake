@@ -46,6 +46,10 @@ describe("Cake prompt settings workflow", () => {
     expect(screen.getByRole("heading", { name: "Voice & Dictation" })).toBeDefined();
     expect(screen.getByRole("region", { name: "Voice input" })).toBeDefined();
     expect(screen.getByRole("region", { name: "Speech output" })).toBeDefined();
+    await fixture.user.selectOptions(
+      screen.getByRole("combobox", { name: "Text processing" }),
+      "utility",
+    );
     const prompt = screen.getByRole("textbox", { name: "Utility cleanup prompt" });
     expect(prompt.getAttribute("placeholder")).toBe(defaultCakePrompts().dictationCleanup);
     await fixture.user.type(prompt, "Condense the rambling, preserving every requirement.");

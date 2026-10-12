@@ -92,6 +92,44 @@ const CakeChatComposerProjection = Schema.Struct({
 });
 
 describe("WindowStateStorage", () => {
+  for (const mode of ["raw", "local", "utility"]) {
+    it.effect(
+      `migrates version-13 ${mode} processing without losing dictation preferences or drafts`,
+      () => {
+        const snapshot = {
+          state: {},
+          children: {
+            dictationStore: {
+              state: { enabled: true, deviceId: "microphone", textProcessingMode: mode },
+              children: {},
+            },
+            composerStore: { state: { draft: "Keep my typed draft" }, children: {} },
+          },
+        };
+        return withStorage(JSON.stringify({ version: 13, data: snapshot }), (storage) =>
+          Effect.gen(function* () {
+            const expected = {
+              ...snapshot,
+              children: {
+                ...snapshot.children,
+                dictationStore: {
+                  ...snapshot.children.dictationStore,
+                  state: {
+                    enabled: true,
+                    deviceId: "microphone",
+                    textProcessingMode: mode === "utility" ? "utility" : "raw",
+                  },
+                },
+              },
+            };
+            assert.deepStrictEqual(yield* storage.load(), expected);
+            // The migration is persisted once and reads back the same current-version document.
+            assert.deepStrictEqual(yield* storage.load(), expected);
+          }),
+        );
+      },
+    );
+  }
   for (const enabled of [true, false]) {
     it.effect(
       `migrates the version-12 cleanup preference to ${enabled ? "utility" : "raw"}`,

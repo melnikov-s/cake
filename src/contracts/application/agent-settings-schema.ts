@@ -49,8 +49,6 @@ const dictationView = Schema.Struct({
   busy: Schema.Boolean,
   installing: Schema.Boolean,
   textProcessingMode: TextProcessingMode,
-  installingPunctuation: Schema.Boolean,
-  processingError: Schema.NullOr(Schema.String),
   error: Schema.NullOr(Schema.String),
 });
 
@@ -381,22 +379,14 @@ export const agentSettingsOperations = [
         deviceId: Schema.String.check(Schema.isMaxLength(4096)),
       }),
       Schema.Struct({
-        action: Schema.Literals([
-          "refresh-microphones",
-          "install",
-          "cancel-install",
-          "remove",
-          "install-punctuation",
-          "remove-punctuation",
-          "cancel-punctuation-install",
-        ]),
+        action: Schema.Literals(["refresh-microphones", "install", "cancel-install", "remove"]),
       }),
       Schema.Struct({
         action: Schema.Literal("model-path"),
         path: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
       }),
     ]),
-    "Use the originating desktop's shared Voice & Dictation controls, including raw/local/utility text processing, explicit punctuation download/removal, recognition model and microphone selection.",
+    "Use the originating desktop's shared Voice & Dictation controls, including local recognition or optional utility cleanup, recognition model and microphone selection.",
     { action: "enable", enabled: false },
     dictationView,
     [

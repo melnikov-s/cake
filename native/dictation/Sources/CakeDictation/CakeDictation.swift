@@ -1,5 +1,3 @@
-import AVFoundation
-import CoreML
 import DictationProtocol
 import FluidAudio
 import Foundation
@@ -15,61 +13,31 @@ private struct DetectionRequest: Decodable {
 
 @MainActor
 private final class Recognition {
-  private let models: AsrModels
+  private let engine: AsrManager
   private let detector: SpeechDetector
-  private var stream: SlidingWindowAsrManager?
-  private var updates: WindowUpdates?
-  private var updateTask: Task<Void, Never>?
-  private var expectedWindows = 0
-  private var schedule = WindowSchedule()
+  private var transcript = RollingTranscript()
+  private var newSamples = 0
+  private var decodeDue = false
   private var utteranceId: String?
   private var settings = SpeechRecognitionSettings.standard
   private var gate = SpeechGate()
   private var pendingSamples: [Float] = []
-  private var completed: [String] = []
   private var recognitionState = VadStreamState.initial()
   private var recognitionSpeech = false
   private var captureId: String?
   private var captureState = VadStreamState.initial()
   private var captureSpeech = false
+  private let lookaheadSamples = 6_400
 
   init(directory: URL, vadURL: URL) throws {
-    models = try AsrModels.loadLocal(from: directory, version: .v2)
+    let models = try AsrModels.loadLocal(from: directory, version: .v2)
+    engine = AsrManager(config: ASRConfig(tdtConfig: TdtConfig(blankId: 1024)), models: models)
     detector = try SpeechDetector(modelURL: vadURL)
   }
 
-  private func makeStream() async throws -> SlidingWindowAsrManager {
-    let config = SlidingWindowAsrConfig(
-      chunkSeconds: 1.6, hypothesisChunkSeconds: 0.8,
-      leftContextSeconds: 4.0, rightContextSeconds: 0.4,
-      minContextForConfirmation: 4.0, confirmationThreshold: 0.85,
-      tdtConfig: TdtConfig(blankId: 1024)
-    )
-    let engine = SlidingWindowAsrManager(config: config)
-    try await engine.loadModels(models)
-    try await engine.startStreaming()
-    return engine
-  }
-
-  private nonisolated func buffer(_ samples: [Float]) throws -> sending AVAudioPCMBuffer {
-    guard let format = AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1),
-      let pcm = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)),
-      let channel = pcm.floatChannelData?[0]
-    else { throw ProtocolError.invalidRequest }
-    pcm.frameLength = AVAudioFrameCount(samples.count)
-    samples.withUnsafeBufferPointer { source in
-      if let address = source.baseAddress { channel.update(from: address, count: source.count) }
-    }
-    return pcm
-  }
-
   func warmup() async throws {
-    let engine = try await makeStream()
-    await engine.streamAudio(try buffer([Float](
-      repeating: 0, count: WindowSchedule.chunkSamples + WindowSchedule.rightSamples)))
-    _ = try await engine.finish()
-    await engine.cancel()
-    // Exercise the detector before advertising readiness, with a throwaway recurrent state.
+    var state = TdtDecoderState.make()
+    _ = try await engine.transcribe([Float](repeating: 0, count: 12_800), decoderState: &state)
     _ = try await detector.classify(
       [Float](repeating: 0.00001, count: SpeechGate.frameSamples), state: .initial())
   }
@@ -94,43 +62,51 @@ private final class Recognition {
     return captureSpeech
   }
 
-  private func cancelStream() async {
-    await stream?.cancel()
-    stream = nil
-    updateTask?.cancel()
-    updateTask = nil
-    updates = nil
-    expectedWindows = 0
-    schedule = WindowSchedule()
+  private func decode(atCapacity: Bool = false, endpoint: Bool = false) async throws {
+    guard !transcript.audio.isEmpty else { return }
+    var audio = transcript.audio
+    if endpoint { audio.append(contentsOf: [Float](repeating: 0, count: lookaheadSamples)) }
+    // Parakeet requires at least 300 ms, including for an immediately submitted short command.
+    if audio.count < 4_800 {
+      audio.append(contentsOf: [Float](repeating: 0, count: 4_800 - audio.count))
+    }
+    // Fresh state permits revisions anywhere in the window, including punctuation from a
+    // previous thinking pause. Carrying decoder tokens would freeze those old decisions.
+    var state = TdtDecoderState.make()
+    let result = try await engine.transcribe(audio, decoderState: &state)
+    guard let timings = result.tokenTimings else {
+      throw ASRError.processingFailed("The speech model did not return token timings.")
+    }
+    let words = buildWordTimings(from: timings).map { word in
+      RecognizedWord(
+        text: word.word,
+        startSample: transcript.startSample + Int(word.startTime * 16_000),
+        endSample: transcript.startSample + Int(word.endTime * 16_000))
+    }
+    transcript.update(words, atCapacity: atCapacity)
+    newSamples = 0
+    decodeDue = false
   }
 
   private func consume(_ events: [SpeechGate.Event]) async throws {
     for event in events {
       switch event {
       case .audio(let samples):
-        if stream == nil {
-          let engine = try await makeStream()
-          let source = await engine.transcriptionUpdates
-          let counter = WindowUpdates()
-          updates = counter
-          updateTask = Task.detached {
-            for await _ in source { await counter.advance() }
+        var offset = 0
+        while offset < samples.count {
+          if transcript.remainingSamples == 0 {
+            try await decode(atCapacity: true)
+            guard transcript.remainingSamples > 0 else { throw ProtocolError.invalidRequest }
           }
-          stream = engine
+          let count = min(samples.count - offset, transcript.remainingSamples)
+          try transcript.append(Array(samples[offset..<(offset + count)]))
+          offset += count
+          newSamples += count
         }
-        guard let engine = stream else { throw ProtocolError.invalidRequest }
-        expectedWindows += schedule.append(samples.count)
-        await engine.streamAudio(try buffer(samples))
-        await updates?.wait(until: expectedWindows)
       case .end:
-        if let engine = stream {
-          // Explicit submission can arrive immediately after the last syllable. Supply
-          // right lookahead as silence instead of requiring room noise to finish words.
-          await engine.streamAudio(try buffer([Float](repeating: 0, count: WindowSchedule.rightSamples)))
-          let text = try await engine.finish()
-          if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { completed.append(text) }
-        }
-        await cancelStream()
+        // An audio endpoint is a chance to improve the hypothesis, not a text commit.
+        // Quiet room noise remains excluded; the recent audio survives until speech resumes.
+        decodeDue = true
       }
     }
   }
@@ -147,12 +123,13 @@ private final class Recognition {
     let samples = try request.samples()
     let requestedSettings = request.settings ?? .standard
     if utteranceId != request.utteranceId {
-      await cancelStream()
       utteranceId = request.utteranceId
       settings = requestedSettings
       gate = SpeechGate(settings: settings)
+      transcript = RollingTranscript()
+      newSamples = 0
+      decodeDue = false
       pendingSamples = []
-      completed = []
       recognitionState = .initial()
       recognitionSpeech = false
     } else if requestedSettings != settings {
@@ -168,12 +145,18 @@ private final class Recognition {
       if !pendingSamples.isEmpty { try await classifyRecognition(pendingSamples) }
       pendingSamples = []
       try await consume(gate.finish())
+    }
+    if request.final || decodeDue || newSamples >= 12_800 {
+      try await decode(endpoint: request.final || decodeDue)
+    }
+    let text = transcript.text
+    if request.final {
+      // Explicit finalization releases capture-local audio, including the retained overlap.
+      transcript = RollingTranscript()
       utteranceId = nil
     }
-    let confirmed = await stream?.confirmedTranscript ?? ""
-    let volatile = await stream?.volatileTranscript ?? ""
-    // Every result is a full replacement, not a delta. Finished phrases are appended exactly once.
-    return (completed + [confirmed, volatile]).filter { !$0.isEmpty }.joined(separator: " ")
+    // Every result is a full replacement. The renderer owns and protects the spoken insertion.
+    return text
   }
 }
 

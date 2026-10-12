@@ -40,23 +40,3 @@ public struct AudioRequest: Decodable, Sendable {
     }
   }
 }
-
-/// Mirrors the pinned FluidAudio sliding-window scheduler. Awaiting each expected update
-/// provides backpressure instead of feeding an unbounded AsyncStream of audio into Core ML.
-public struct WindowSchedule: Sendable {
-  public static let sampleRate = 16_000
-  public static let chunkSamples = 25_600  // 1.6 seconds
-  public static let rightSamples = 6_400  // 0.4 seconds lookahead
-  private var received = 0
-  private var processed = 0
-
-  public init() {}
-
-  public mutating func append(_ count: Int) -> Int {
-    received += count
-    let available = max(0, (received - Self.rightSamples) / Self.chunkSamples)
-    let updates = max(0, available - processed)
-    processed = available
-    return updates
-  }
-}

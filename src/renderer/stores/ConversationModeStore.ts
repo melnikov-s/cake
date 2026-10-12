@@ -1,7 +1,6 @@
 import { Store, createContext, untracked } from "r-state-tree";
 import type { UiPart } from "../../contracts/conversations/session-contract";
 import type { TextProcessingMode } from "../../contracts/dictation/dictation-data";
-import { punctuationPreview } from "../../utils/punctuation-text";
 import type { SpeechOutputSettings } from "../../contracts/speech/speech-output-data";
 import type { SpeechOutputCommands, Client } from "../client/Client";
 import { encodePcm, type Microphone, type MicrophoneCapture } from "../dictation/microphone";
@@ -32,7 +31,6 @@ export interface ConversationModeStoreProps {
   microphone: Microphone;
   postProcess: Client["workspaces"]["postProcessDictation"];
   textProcessingMode(): TextProcessingMode;
-  punctuate: Client["dictation"]["punctuate"];
   playback: SpeechPlayback;
   settings(): SpeechOutputSettings | undefined;
   enabled(): boolean;
@@ -253,7 +251,7 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       run.autoSend = false;
     this.sendProgress = undefined;
   }
-  private updateDraft(run: Utterance, text: string, provisional: boolean, pendingStart = 0): void {
+  private updateDraft(run: Utterance, text: string, provisional: boolean): void {
     if (!this.target || run.draftInvalid) return;
     const draft = this.target.draft();
     if (run.draftText && !draft.endsWith(run.draftText)) {
@@ -268,15 +266,8 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
     run.draftText = text.trim() ? `${prefix && !/\s$/.test(prefix) ? " " : ""}${text.trim()}` : "";
     const value = prefix + run.draftText;
     this.provisionalText =
-      provisional &&
-      this.props.textProcessingMode() !== "raw" &&
-      run.draftText &&
-      pendingStart < text.length
-        ? {
-            value,
-            start: prefix.length + (run.draftText.length - text.trim().length) + pendingStart,
-            end: value.length,
-          }
+      provisional && this.props.textProcessingMode() !== "raw" && run.draftText
+        ? { value, start: prefix.length, end: value.length }
         : undefined;
     this.target.setDraft(value);
     this.updateSendProgress(run);
@@ -552,28 +543,8 @@ export class ConversationModeStore extends Store<ConversationModeStoreProps> {
       // this run's insertion and disarm the countdown, preserving typed text.
       if (!rejected && run.interruption?.state !== "pending" && !text.trim() && run.draftText)
         this.updateDraft(run, "", false);
-      if (!rejected && run.interruption?.state !== "pending" && text.trim()) {
-        const raw = text;
-        const local = this.props.textProcessingMode() === "local";
-        this.updateDraft(run, local ? punctuationPreview(raw) : raw, true);
-        if (local && !run.draftInvalid) {
-          try {
-            const result = await this.props.punctuate(
-              { utteranceId: run.id, text: raw, final },
-              { signal },
-            );
-            if (signal.aborted || revision !== this.revision) return;
-            if (this.props.textProcessingMode() === "local") {
-              text = result.text;
-              this.updateDraft(run, text, !final, result.pendingStart);
-              this.transcript = text;
-            } else this.updateDraft(run, raw, false);
-          } catch {
-            if (signal.aborted || revision !== this.revision) return;
-            this.updateDraft(run, raw, false);
-          }
-        }
-      }
+      if (!rejected && run.interruption?.state !== "pending" && text.trim())
+        this.updateDraft(run, text, true);
       if (final) {
         if (
           !rejected &&
