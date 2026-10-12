@@ -244,6 +244,175 @@ describe("WorktreeService", { timeout: 20_000 }, () => {
     expect((await git(repo, "log", "-1", "--format=%s")).stdout.trim()).toBe("feature two");
   });
 
+  it.each([
+    { strategy: "preserve" as const, legacy: false },
+    { strategy: "squash" as const, legacy: false },
+    { strategy: "preserve" as const, legacy: true },
+  ])(
+    "counts and lands only later source work after a conflict-resolved target rebase ($strategy, legacy=$legacy)",
+    async ({ strategy, legacy }) => {
+      const repo = await repository();
+      const storage = join(
+        tmpdir(),
+        `cake-worktree-checkpoint-${Math.random().toString(16).slice(2)}.json`,
+      );
+      let worktrees = service(storage);
+      const parent = await worktrees.create(repo, undefined, "rebase-parent");
+      const child = await worktrees.create(repo, parent.worktreePath, "landed-child");
+      await writeFile(join(child.worktreePath, "README.md"), "child patch\n");
+      await commitAll(child.worktreePath, "old child patch");
+      await writeFile(join(child.worktreePath, "old.txt"), "old patch\n");
+      await commitAll(child.worktreePath, "another old child patch");
+      const landedSource = (await git(child.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+      await worktrees.land(child.worktreePath, {
+        request: { strategy, message: "old child patches" },
+      });
+      expect((await worktrees.status(child.worktreePath))?.record.landedSourceCommit).toBe(
+        landedSource,
+      );
+
+      await writeFile(join(repo, "README.md"), "upstream change\n");
+      await commitAll(repo, "upstream");
+      expect(await worktrees.rebase(parent.worktreePath)).toMatchObject({ outcome: "resolving" });
+      await writeFile(
+        join(parent.worktreePath, "README.md"),
+        "conflict-resolved child patch with upstream change\n",
+      );
+      await git(parent.worktreePath, "add", "README.md");
+      await git(parent.worktreePath, "-c", "core.editor=true", "rebase", "--continue");
+      const rebasedTarget = (await git(parent.worktreePath, "rev-parse", "HEAD")).stdout.trim();
+      expect(
+        (
+          await git(child.worktreePath, "rev-list", "--count", `${parent.branch}..HEAD`)
+        ).stdout.trim(),
+      ).toBe("2");
+
+      if (legacy) {
+        // Reopen real pre-checkpoint persisted metadata, without touching the Git histories.
+        const records = (await worktrees.records()).map((entry) => {
+          const next = { ...entry };
+          delete next.landedSourceCommit;
+          return next;
+        });
+        await worktrees.dispose();
+        await writeFile(storage, JSON.stringify({ schemaVersion: 1, records }));
+        worktrees = service(storage);
+      }
+      await expect(worktrees.status(child.worktreePath)).resolves.toMatchObject({
+        aheadCount: 0,
+        merged: true,
+        record: { state: "landed", landedSourceCommit: landedSource },
+      });
+      await writeFile(join(child.worktreePath, "scratch.txt"), "dirty\n");
+      await expect(worktrees.status(child.worktreePath)).resolves.toMatchObject({
+        aheadCount: 0,
+        dirtyCount: 1,
+      });
+      await expect(worktrees.land(child.worktreePath, { request: { strategy } })).rejects.toThrow(
+        "uncommitted changes",
+      );
+      await rm(join(child.worktreePath, "scratch.txt"));
+      await expect(worktrees.land(child.worktreePath, { request: { strategy } })).resolves.toEqual({
+        outcome: "landed",
+      });
+      expect((await git(parent.worktreePath, "rev-parse", "HEAD")).stdout.trim()).toBe(
+        rebasedTarget,
+      );
+
+      await writeFile(join(child.worktreePath, "later.txt"), "genuine later work\n");
+      await commitAll(child.worktreePath, "later child patch");
+      await expect(worktrees.status(child.worktreePath)).resolves.toMatchObject({ aheadCount: 1 });
+      await expect(
+        worktrees.land(child.worktreePath, { request: { strategy, message: "later child patch" } }),
+      ).resolves.toMatchObject({ outcome: "landed" });
+      await expect(worktrees.status(child.worktreePath)).resolves.toMatchObject({ aheadCount: 0 });
+      expect(await readFile(join(parent.worktreePath, "README.md"), "utf8")).toBe(
+        "conflict-resolved child patch with upstream change\n",
+      );
+      expect(await readFile(join(parent.worktreePath, "later.txt"), "utf8")).toBe(
+        "genuine later work\n",
+      );
+
+      // Target-only advancement and another replay must not turn acknowledged work into new work.
+      await writeFile(join(repo, "target-only.txt"), "target advancement\n");
+      await commitAll(repo, "target only");
+      await expect(worktrees.rebase(parent.worktreePath)).resolves.toEqual({ outcome: "rebased" });
+      await expect(worktrees.status(child.worktreePath)).resolves.toMatchObject({ aheadCount: 0 });
+      await expect(worktrees.rebase(child.worktreePath)).resolves.toEqual({ outcome: "rebased" });
+      await expect(worktrees.status(child.worktreePath)).resolves.toMatchObject({
+        aheadCount: 0,
+        behindCount: 0,
+      });
+      await writeFile(join(child.worktreePath, "last.txt"), "another later patch\n");
+      await commitAll(child.worktreePath, "last patch");
+      await expect(worktrees.status(child.worktreePath)).resolves.toMatchObject({ aheadCount: 1 });
+      await expect(
+        worktrees.land(child.worktreePath, { request: { strategy, message: "last patch" } }),
+      ).resolves.toMatchObject({ outcome: "landed" });
+      await expect(worktrees.status(child.worktreePath)).resolves.toMatchObject({ aheadCount: 0 });
+      await worktrees.discard(child.worktreePath, false);
+      await worktrees.discard(parent.worktreePath, false);
+    },
+  );
+
+  it("retains later work through aborted and externally continued checkpoint rebases", async () => {
+    const repo = await repository();
+    const storage = join(
+      tmpdir(),
+      `cake-worktree-rebase-checkpoint-${Math.random().toString(16).slice(2)}.json`,
+    );
+    let worktrees = service(storage);
+    const source = await worktrees.create(repo);
+    await writeFile(join(source.worktreePath, "old.txt"), "landed\n");
+    await commitAll(source.worktreePath, "old patch");
+    await worktrees.land(source.worktreePath, { request: { strategy: "preserve" } });
+    const checkpoint = (await worktrees.status(source.worktreePath))?.record.landedSourceCommit;
+    await writeFile(join(repo, "README.md"), "target change\n");
+    await commitAll(repo, "target changes");
+    const replayBase = (await git(repo, "rev-parse", "HEAD")).stdout.trim();
+    await writeFile(join(source.worktreePath, "README.md"), "genuine later change\n");
+    await commitAll(source.worktreePath, "later source change");
+    await expect(worktrees.rebase(source.worktreePath)).resolves.toMatchObject({
+      outcome: "resolving",
+    });
+    expect((await worktrees.records())[0]).toMatchObject({
+      landedSourceCommit: checkpoint,
+      pendingLandedSourceCommit: replayBase,
+    });
+    await worktrees.dispose();
+    worktrees = service(storage);
+    await git(source.worktreePath, "rebase", "--abort");
+    await expect(worktrees.status(source.worktreePath)).resolves.toMatchObject({
+      aheadCount: 1,
+      record: { landedSourceCommit: checkpoint },
+    });
+    expect((await worktrees.records())[0]?.pendingLandedSourceCommit).toBeUndefined();
+    await expect(worktrees.rebase(source.worktreePath)).resolves.toMatchObject({
+      outcome: "resolving",
+    });
+    await writeFile(
+      join(source.worktreePath, "README.md"),
+      "resolved genuine later change with target\n",
+    );
+    await git(source.worktreePath, "add", "README.md");
+    await git(source.worktreePath, "-c", "core.editor=true", "rebase", "--continue");
+    await worktrees.dispose();
+    worktrees = service(storage);
+    await expect(worktrees.status(source.worktreePath)).resolves.toMatchObject({
+      aheadCount: 1,
+      record: { landedSourceCommit: replayBase },
+    });
+    expect((await worktrees.records())[0]?.pendingLandedSourceCommit).toBeUndefined();
+    await expect(
+      worktrees.land(source.worktreePath, { request: { strategy: "preserve" } }),
+    ).resolves.toMatchObject({ outcome: "landed" });
+    await expect(worktrees.status(source.worktreePath)).resolves.toMatchObject({ aheadCount: 0 });
+    expect(await readFile(join(repo, "README.md"), "utf8")).toBe(
+      "resolved genuine later change with target\n",
+    );
+    await worktrees.discard(source.worktreePath, false);
+  });
+
   it("rebases deterministically when the target branch advances", async () => {
     const repo = await repository();
     const worktrees = service();

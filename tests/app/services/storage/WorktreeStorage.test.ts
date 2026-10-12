@@ -63,6 +63,27 @@ describe("WorktreeStorage", () => {
     });
   });
 
+  it.effect(
+    "persists the acknowledged source checkpoint independently of the original base",
+    () => {
+      const records = [
+        {
+          ...record(0),
+          state: "landed" as const,
+          baseCommit: "original-base",
+          landedSourceCommit: "last-landed-source",
+        },
+      ];
+      const files = new Map<string, string>();
+      return Effect.gen(function* () {
+        yield* Effect.flatMap(WorktreeStorage, (storage) => storage.save(records)).pipe(
+          Effect.provide(storageLayer(files)),
+        );
+        expect(yield* load.pipe(Effect.provide(storageLayer(files)))).toEqual(records);
+      });
+    },
+  );
+
   it.effect("loads a catalog larger than 500 without dropping active or historical records", () => {
     const records = Array.from({ length: 1_001 }, (_, index) => record(index));
     const files = new Map([[storagePath, document(records)]]);

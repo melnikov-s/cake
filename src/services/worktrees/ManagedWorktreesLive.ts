@@ -144,16 +144,19 @@ export const ManagedWorktreesLive: Layer.Layer<
     const closeRecord = Effect.fn("ManagedWorktrees.closeRecord")(function* (
       record: WorktreeRecord,
       state: "landed" | "resolved" | "discarded" | "missing",
+      landedSourceCommit?: string,
     ) {
       yield* updateRecord(record, (current) => {
         const retainPreviousState =
           state === "resolved" && (current.state === "landed" || current.state === "discarded");
-        const closed: WorktreeRecord = {
+        const closed = {
           ...current,
           state,
           resolvedFrom: retainPreviousState ? current.state : undefined,
-        };
+        } satisfies WorktreeRecord;
+        if (landedSourceCommit) closed.landedSourceCommit = landedSourceCommit;
         Reflect.deleteProperty(closed, "pendingStrategy");
+        if (state === "landed") Reflect.deleteProperty(closed, "pendingLandedSourceCommit");
         return closed;
       });
     });
@@ -218,9 +221,71 @@ export const ManagedWorktreesLive: Layer.Layer<
     });
     const revListCount = Effect.fn("ManagedWorktrees.revListCount")(function* (
       cwd: string,
-      range: string,
+      ...revisions: ReadonlyArray<string>
     ) {
-      return Number.parseInt((yield* git(cwd, "rev-list", "--count", range)).trim(), 10) || 0;
+      return (
+        Number.parseInt((yield* git(cwd, "rev-list", "--count", ...revisions)).trim(), 10) || 0
+      );
+    });
+    // Pre-checkpoint preserve landings can be recovered from target history, not patch IDs.
+    // If that history has expired (or was squashed), retain the conservative target comparison.
+    const withLandingCheckpoint = Effect.fn("ManagedWorktrees.withLandingCheckpoint")(function* (
+      record: WorktreeRecord,
+    ) {
+      if (record.state !== "landed") return record;
+      const pending = record.pendingLandedSourceCommit;
+      if (pending && !(yield* rebaseInProgress(record.worktreePath))) {
+        const completed = yield* isAncestor(record.worktreePath, pending, "HEAD");
+        yield* updateRecord(record, (current) => {
+          if (current.pendingLandedSourceCommit !== pending) return current;
+          const next = { ...current };
+          if (completed) next.landedSourceCommit = pending;
+          Reflect.deleteProperty(next, "pendingLandedSourceCommit");
+          return next;
+        });
+        record =
+          (yield* Ref.get(recordsRef)).find(
+            (current) => current.worktreePath === record.worktreePath,
+          ) ?? record;
+      }
+      if (record.landedSourceCommit) return record;
+      const history = yield* gitOptional(record.worktreePath, [
+        "reflog",
+        "show",
+        "--format=%H",
+        record.baseBranch,
+      ]);
+      let checkpoint: string | undefined;
+      if (history._tag === "Some") {
+        for (const tip of new Set(history.value.split("\n").filter(Boolean))) {
+          const common = yield* gitOptional(record.worktreePath, ["merge-base", "HEAD", tip]);
+          if (common._tag !== "Some" || !common.value) continue;
+          if (!checkpoint || (yield* isAncestor(record.worktreePath, checkpoint, common.value)))
+            checkpoint = common.value;
+        }
+      }
+      if (!checkpoint) return record;
+      const recovered = checkpoint;
+      yield* updateRecord(record, (current) =>
+        current.landedSourceCommit ? current : { ...current, landedSourceCommit: recovered },
+      );
+      return (
+        (yield* Ref.get(recordsRef)).find(
+          (current) => current.worktreePath === record.worktreePath,
+        ) ?? record
+      );
+    });
+    const newCommitCount = Effect.fn("ManagedWorktrees.newCommitCount")(function* (
+      record: WorktreeRecord,
+      source = "HEAD",
+    ) {
+      // Exclude both acknowledged source history and work already present on the target.
+      return yield* revListCount(
+        record.worktreePath,
+        ...(record.landedSourceCommit
+          ? [source, `^${record.landedSourceCommit}`, `^${record.baseBranch}`]
+          : [`${record.baseBranch}..${source}`]),
+      );
     });
     const dirtyFileCount = Effect.fn("ManagedWorktrees.dirtyFileCount")(function* (cwd: string) {
       return (yield* git(cwd, "status", "--porcelain"))
@@ -555,10 +620,32 @@ export const ManagedWorktreesLive: Layer.Layer<
       record: WorktreeRecord,
       target = record.baseBranch,
     ) {
-      const result = yield* Effect.result(gitMutation(record.worktreePath, "rebase", target));
+      const current =
+        (yield* Ref.get(recordsRef)).find((entry) => entry.worktreePath === record.worktreePath) ??
+        record;
+      const targetHead = (yield* git(record.worktreePath, "rev-parse", target)).trim();
+      const result = yield* Effect.result(
+        gitMutation(
+          record.worktreePath,
+          "rebase",
+          ...(current.landedSourceCommit
+            ? ["--onto", targetHead, current.landedSourceCommit]
+            : [targetHead]),
+        ),
+      );
+      const resolving = result._tag === "Failure" && (yield* rebaseInProgress(record.worktreePath));
+      if (current.landedSourceCommit && (result._tag === "Success" || resolving))
+        yield* updateRecord(current, (entry) => {
+          const next = { ...entry };
+          if (resolving) next.pendingLandedSourceCommit = targetHead;
+          else {
+            next.landedSourceCommit = targetHead;
+            Reflect.deleteProperty(next, "pendingLandedSourceCommit");
+          }
+          return next;
+        });
       if (result._tag === "Success") return null;
-      if (yield* rebaseInProgress(record.worktreePath))
-        return yield* unmergedFiles(record.worktreePath);
+      if (resolving) return yield* unmergedFiles(record.worktreePath);
       return yield* internalError(
         `Cake could not replay the worktree commits onto the target branch: ${messageOf(result.failure)}`,
       );
@@ -602,13 +689,14 @@ export const ManagedWorktreesLive: Layer.Layer<
       message: string,
     ) {
       const targetPath = record.parentWorktreePath ?? record.projectPath;
-      yield* gitMutation(targetPath, "merge", "--squash", record.branch)
+      const sourceCommit = (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim();
+      yield* gitMutation(targetPath, "merge", "--squash", sourceCommit)
         .pipe(Effect.andThen(gitMutation(targetPath, "commit", "-m", message)))
         .pipe(
           Effect.tapCause(() => gitMutation(targetPath, "reset", "--merge").pipe(Effect.ignore)),
         );
       const commit = (yield* git(targetPath, "rev-parse", "HEAD")).trim();
-      yield* closeRecord(record, "landed");
+      yield* closeRecord(record, "landed", sourceCommit);
       return commit;
     });
     const landSquash = Effect.fn("ManagedWorktrees.landSquash")(function* (
@@ -652,6 +740,10 @@ export const ManagedWorktreesLive: Layer.Layer<
       record: WorktreeRecord,
       request: WorktreeLandRequest,
     ): Effect.fn.Return<WorktreeLandOutcome, unknown, never> {
+      // Queue waiters must use the checkpoint committed by the preceding landing.
+      record =
+        (yield* Ref.get(recordsRef)).find((entry) => entry.worktreePath === record.worktreePath) ??
+        record;
       if (!(yield* exists(record.worktreePath))) {
         yield* closeRecord(record, "missing");
         return yield* internalError("The worktree no longer exists on disk");
@@ -680,11 +772,20 @@ export const ManagedWorktreesLive: Layer.Layer<
         return yield* internalError(
           "The landing target has uncommitted changes. Commit or stash them first.",
         );
-      if ((yield* revListCount(record.worktreePath, `${record.baseBranch}..HEAD`)) === 0) {
-        yield* closeRecord(record, "landed");
+      record = yield* withLandingCheckpoint(record);
+      const sourceCommit = (yield* git(record.worktreePath, "rev-parse", "HEAD")).trim();
+      if ((yield* newCommitCount(record, sourceCommit)) === 0) {
+        yield* closeRecord(record, "landed", sourceCommit);
         return { outcome: "landed" };
       }
       if (request.strategy === "squash") {
+        if (record.landedSourceCommit) {
+          const conflicts = yield* rebaseOntoTarget(record);
+          if (conflicts) {
+            yield* rememberPendingLanding(record, "squash");
+            return { outcome: "resolving", files: conflicts };
+          }
+        }
         const outcome = yield* landSquash(record, request.message);
         if (outcome.outcome !== "landed") yield* rememberPendingLanding(record, "squash");
         return outcome;
@@ -701,7 +802,7 @@ export const ManagedWorktreesLive: Layer.Layer<
         );
         if (merge._tag === "Success") {
           const commit = (yield* git(targetPath, "rev-parse", "HEAD")).trim();
-          yield* closeRecord(record, "landed");
+          yield* closeRecord(record, "landed", commit);
           return { outcome: "landed", commit };
         }
         lastError = messageOf(merge.failure);
@@ -744,7 +845,7 @@ export const ManagedWorktreesLive: Layer.Layer<
       worktreePath: string,
     ): Effect.fn.Return<WorktreeStatus | undefined, unknown> {
       const normalized = resolveNormalized(worktreePath);
-      const record = (yield* Ref.get(recordsRef)).find(
+      let record = (yield* Ref.get(recordsRef)).find(
         (entry) => resolveNormalized(entry.worktreePath) === normalized,
       );
       if (!record || !["active", "landed"].includes(record.state ?? "active")) return undefined;
@@ -756,6 +857,7 @@ export const ManagedWorktreesLive: Layer.Layer<
       const targetPath = record.parentWorktreePath ?? record.projectPath;
       if (!(yield* exists(targetPath)))
         return yield* internalError("The worktree landing target no longer exists");
+      record = yield* withLandingCheckpoint(record);
       const [
         dirtyCount,
         aheadCount,
@@ -768,7 +870,7 @@ export const ManagedWorktreesLive: Layer.Layer<
       ] = yield* Effect.all(
         [
           dirtyFileCount(record.worktreePath),
-          revListCount(record.worktreePath, `${record.baseBranch}..HEAD`),
+          newCommitCount(record),
           revListCount(record.worktreePath, `HEAD..${record.baseBranch}`),
           record.state === "landed"
             ? Effect.succeed(true)
@@ -998,7 +1100,8 @@ export const ManagedWorktreesLive: Layer.Layer<
                 )).trim();
                 if ((yield* revListCount(record.worktreePath, `HEAD..${targetHead}`)) === 0)
                   return { outcome: "rebased" as const };
-                const conflicts = yield* rebaseOntoTarget(record, targetHead);
+                const checkpointRecord = yield* withLandingCheckpoint(record);
+                const conflicts = yield* rebaseOntoTarget(checkpointRecord, targetHead);
                 return conflicts
                   ? ({ outcome: "resolving", files: conflicts } as const)
                   : ({ outcome: "rebased" } as const);
@@ -1071,6 +1174,7 @@ export const ManagedWorktreesLive: Layer.Layer<
                   resolveNormalized(entry.worktreePath) === normalized,
               );
               if (!record) return undefined;
+              let recreatedSourceCommit: string | undefined;
               if (!(yield* exists(record.worktreePath))) {
                 const targetPath = record.parentWorktreePath ?? record.projectPath;
                 if (!(yield* exists(targetPath)))
@@ -1090,12 +1194,19 @@ export const ManagedWorktreesLive: Layer.Layer<
                   record.worktreePath,
                   branchExists ? record.branch : record.baseBranch,
                 );
+                if (!branchExists && record.resolvedFrom === "landed")
+                  recreatedSourceCommit = (yield* git(
+                    record.worktreePath,
+                    "rev-parse",
+                    "HEAD",
+                  )).trim();
               }
-              const restored: WorktreeRecord = {
+              const restored = {
                 ...record,
                 state: record.resolvedFrom === "landed" ? "landed" : "active",
                 resolvedFrom: undefined,
-              };
+              } satisfies WorktreeRecord;
+              if (recreatedSourceCommit) restored.landedSourceCommit = recreatedSourceCommit;
               yield* updateRecord(record, () => restored);
               return restored;
             }),

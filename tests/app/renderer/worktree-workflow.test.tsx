@@ -235,6 +235,33 @@ describe("Worktree operation workflows", () => {
     expect(fixture.landing.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("keeps dirty landed work actionable without inventing new commits", async () => {
+    const startLanding = vi.fn<Client["managedWorktrees"]["startLanding"]>(async () =>
+      operation("waiting"),
+    );
+    using fixture = renderWorktree({
+      status: status({
+        record: { ...status().record, state: "landed", landedSourceCommit: "acknowledged-source" },
+        aheadCount: 0,
+        behindCount: 18,
+        dirtyCount: 1,
+        merged: true,
+      }),
+      client: { managedWorktrees: { startLanding } },
+    });
+    await fixture.user.click(await screen.findByRole("button", { name: /^Commit & land$/ }));
+    expect(screen.queryByText(/new commits? since landing/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Resolve$/ })).toBeNull();
+    expect(startLanding).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspacePath: "/worktree",
+        commitBeforeLanding: true,
+        strategy: "preserve",
+        resolveAfterLanding: false,
+      }),
+    );
+  });
+
   it("keeps a repeat landing active until authoritative completion rather than treating an already-landed record as finished", async () => {
     const cancelLanding = vi.fn<Client["managedWorktrees"]["cancelLanding"]>(async () => undefined);
     const startLanding = vi.fn<Client["managedWorktrees"]["startLanding"]>(async () =>

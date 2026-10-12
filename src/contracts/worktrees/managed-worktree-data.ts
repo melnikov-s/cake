@@ -11,6 +11,10 @@ export const WorktreeRecord = Schema.Struct({
   baseBranch: bounded(1, 512),
   parentWorktreePath: Schema.optional(bounded(1, 4_096)),
   baseCommit: Schema.optional(bounded(1, 256)),
+  // Source history already acknowledged by landing (or its new base after Cake rebases it).
+  landedSourceCommit: Schema.optionalKey(bounded(1, 256)),
+  // Adopt this replay base only after conflict resolution completes, never after rebase --abort.
+  pendingLandedSourceCommit: Schema.optionalKey(bounded(1, 256)),
   state: Schema.optional(Schema.Literals(["active", "landed", "resolved", "discarded", "missing"])),
   // Retirement must retain landing classification. Explicit undefined clears the live projection.
   resolvedFrom: Schema.optional(Schema.Literals(["landed", "discarded"])),

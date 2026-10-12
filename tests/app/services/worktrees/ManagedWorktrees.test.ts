@@ -132,6 +132,198 @@ const makeLayer = (
 };
 
 describe("ManagedWorktrees Effect service", () => {
+  it.effect(
+    "recovers a historical source checkpoint without hiding commits made before recovery",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const temporary = yield* fileSystem.makeTempDirectoryScoped();
+          const repository = `${temporary}/repo`;
+          const worktreePath = `${temporary}/source`;
+          yield* fileSystem.makeDirectory(`${repository}/.git`, { recursive: true });
+          yield* fileSystem.makeDirectory(worktreePath);
+          const initial = {
+            ...record(repository, worktreePath, "agent/source"),
+            state: "landed" as const,
+          };
+          const calls: Array<ReadonlyArray<string>> = [];
+          const layer = ManagedWorktreesLive.pipe(
+            Layer.provide(
+              makeLayer([initial], {
+                commonDirectory: () => repository,
+                run: (cwd, args) => {
+                  calls.push(args);
+                  if (args[0] === "reflog")
+                    return Effect.succeed("rewritten-target\nold-target\nbase\n");
+                  if (args[0] === "merge-base" && args[1] !== "--is-ancestor")
+                    return Effect.succeed(args[2] === "old-target" ? "landed-source\n" : "base\n");
+                  if (args[0] === "merge-base" && args[1] === "--is-ancestor")
+                    return args[2] === "base"
+                      ? Effect.succeed("")
+                      : Effect.fail(
+                          new GitError({
+                            operation: "merge-base",
+                            workingDirectory: cwd,
+                            message: "not ancestor",
+                          }),
+                        );
+                  if (args[0] === "rev-list" && args.includes("^landed-source"))
+                    return Effect.succeed("2\n");
+                  if (args[0] === "rev-list") return Effect.succeed("18\n");
+                  if (args[0] === "status" && cwd === worktreePath)
+                    return Effect.succeed("?? scratch.txt\n");
+                  return undefined;
+                },
+              }),
+            ),
+          );
+          yield* Effect.gen(function* () {
+            const worktrees = yield* ManagedWorktrees;
+            expect(yield* worktrees.status(worktreePath)).toMatchObject({
+              aheadCount: 2,
+              dirtyCount: 1,
+              record: { landedSourceCommit: "landed-source" },
+            });
+            expect(yield* worktrees.records()).toMatchObject([
+              { landedSourceCommit: "landed-source" },
+            ]);
+            expect(
+              yield* Effect.result(worktrees.land(worktreePath, "dirty", { strategy: "preserve" })),
+            ).toMatchObject({ _tag: "Failure" });
+            expect(calls.some((args) => args[0] === "rebase" || args[0] === "merge")).toBe(false);
+          }).pipe(Effect.provide(layer));
+        }),
+      ).pipe(Effect.provide(BootstrapLive)),
+  );
+
+  it.effect("uses the latest persisted checkpoint after waiting in the landing queue", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const temporary = yield* fileSystem.makeTempDirectoryScoped();
+        const repository = `${temporary}/repo`;
+        const worktreePath = `${temporary}/source`;
+        yield* fileSystem.makeDirectory(`${repository}/.git`, { recursive: true });
+        yield* fileSystem.makeDirectory(worktreePath);
+        const initial = {
+          ...record(repository, worktreePath, "agent/source"),
+          state: "landed" as const,
+          landedSourceCommit: "old-source",
+        };
+        const mergeStarted = yield* Deferred.make<void>();
+        const finishMerge = yield* Deferred.make<void>();
+        let head = "new-source";
+        const rebases: Array<ReadonlyArray<string>> = [];
+        const layer = ManagedWorktreesLive.pipe(
+          Layer.provide(
+            makeLayer([initial], {
+              commonDirectory: () => repository,
+              run: (_cwd, args) => {
+                if (args[0] === "rev-list" && args.length === 5)
+                  return Effect.succeed(args.includes(`^${head}`) ? "0\n" : "1\n");
+                if (args[0] === "rev-parse" && args[1] === "HEAD")
+                  return Effect.succeed(`${head}\n`);
+                if (args[0] === "rev-parse" && args[1] === "main")
+                  return Effect.succeed("rewritten-target\n");
+                if (args[0] === "rebase")
+                  return Effect.sync(() => {
+                    rebases.push(args);
+                    head = "rebased-source";
+                    return "";
+                  });
+                if (args[0] === "merge")
+                  return Deferred.succeed(mergeStarted, undefined).pipe(
+                    Effect.andThen(Deferred.await(finishMerge)),
+                    Effect.as(""),
+                  );
+                return undefined;
+              },
+            }),
+          ),
+        );
+        yield* Effect.gen(function* () {
+          const worktrees = yield* ManagedWorktrees;
+          const first = yield* worktrees
+            .land(worktreePath, "first", { strategy: "preserve" })
+            .pipe(Effect.forkScoped);
+          yield* Deferred.await(mergeStarted);
+          const second = yield* worktrees
+            .land(worktreePath, "second", { strategy: "preserve" })
+            .pipe(Effect.forkScoped);
+          yield* Effect.yieldNow;
+          expect(second.pollUnsafe()).toBeUndefined();
+          yield* Deferred.succeed(finishMerge, undefined);
+          expect(yield* Fiber.join(first)).toMatchObject({ outcome: "landed" });
+          expect(yield* Fiber.join(second)).toEqual({ outcome: "landed" });
+          expect(rebases).toEqual([["rebase", "--onto", "rewritten-target", "old-source"]]);
+          expect(yield* worktrees.records()).toMatchObject([
+            { landedSourceCommit: "rebased-source" },
+          ]);
+          expect(yield* worktrees.status(worktreePath)).toMatchObject({ aheadCount: 0 });
+        }).pipe(Effect.provide(layer));
+      }),
+    ).pipe(Effect.provide(BootstrapLive)),
+  );
+
+  it.effect.each(["preserve", "squash"] as const)(
+    "checkpoints the source actually landed with %s, not commits added after the merge",
+    (strategy) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const temporary = yield* fileSystem.makeTempDirectoryScoped();
+          const repository = `${temporary}/repo`;
+          const worktreePath = `${temporary}/source`;
+          yield* fileSystem.makeDirectory(`${repository}/.git`, { recursive: true });
+          yield* fileSystem.makeDirectory(worktreePath);
+          let sourceHead = "source-to-land";
+          let targetHead = "target-before";
+          const initial = {
+            ...record(repository, worktreePath, "agent/source"),
+            state: "landed" as const,
+            landedSourceCommit: "old-source",
+          };
+          const layer = ManagedWorktreesLive.pipe(
+            Layer.provide(
+              makeLayer([initial], {
+                commonDirectory: () => repository,
+                run: (cwd, args) => {
+                  if (args[0] === "rev-parse" && args[1] === "HEAD")
+                    return Effect.succeed(cwd === worktreePath ? sourceHead : targetHead);
+                  if (args[0] === "rev-parse" && args[1] === "main")
+                    return Effect.succeed(targetHead);
+                  if (args[0] === "merge")
+                    return Effect.sync(() => {
+                      if (strategy === "squash") expect(args[2]).toBe("source-to-land");
+                      else targetHead = "source-to-land";
+                      sourceHead = "source-after-merge";
+                      return "";
+                    });
+                  if (args[0] === "commit")
+                    return Effect.sync(() => {
+                      targetHead = "squash-commit";
+                      return "";
+                    });
+                  return undefined;
+                },
+              }),
+            ),
+          );
+          yield* Effect.gen(function* () {
+            const worktrees = yield* ManagedWorktrees;
+            expect(
+              yield* worktrees.land(worktreePath, "land", { strategy, message: "landed patch" }),
+            ).toMatchObject({ outcome: "landed" });
+            expect(yield* worktrees.records()).toMatchObject([
+              { landedSourceCommit: "source-to-land" },
+            ]);
+            expect(yield* worktrees.status(worktreePath)).toMatchObject({ aheadCount: 1 });
+          }).pipe(Effect.provide(layer));
+        }),
+      ).pipe(Effect.provide(BootstrapLive)),
+  );
+
   it.effect.each(["landed", "discarded"] as const)(
     "retains the landing classification of a %s worktree through resolution and restoration",
     (previousState) =>
@@ -195,7 +387,12 @@ describe("ManagedWorktrees Effect service", () => {
 
             const expectedState = previousState === "landed" ? "landed" : "active";
             const restored = yield* worktrees.restoreResolved(worktreePath);
-            expect(restored).toEqual({ ...initial, state: expectedState });
+            const expectedRecord = {
+              ...initial,
+              state: expectedState,
+              ...(previousState === "landed" ? { landedSourceCommit: "head" } : {}),
+            };
+            expect(restored).toEqual(expectedRecord);
             expect(yield* Ref.get(persisted)).toEqual([restored]);
             expect(yield* fileSystem.exists(worktreePath)).toBe(true);
             applyManagedWorktreeCatalogUpdate(catalog, yield* Queue.take(updates));
@@ -216,7 +413,7 @@ describe("ManagedWorktrees Effect service", () => {
               // A second resolve/unresolve must preserve the classification too.
               yield* worktrees.cleanupResolved(worktreePath);
               yield* worktrees.restoreResolved(worktreePath);
-              expect(yield* worktrees.records()).toEqual([initial]);
+              expect(yield* worktrees.records()).toEqual([expectedRecord]);
             }
           }).pipe(Effect.provide(live(retired)));
         }).pipe(Effect.provide(BootstrapLive)),

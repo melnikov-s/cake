@@ -680,6 +680,17 @@ reduces that Stream into its window-lifetime `WorktreeCatalog`; `SessionSummary`
 mutable lifecycle copy and joins by Working Directory. A pending creation fact exists only
 until the authoritative entity arrives.
 
+A landed record's `landedSourceCommit` is the acknowledged source-history boundary,
+not its original `baseCommit` or the target's current tip. Status and landing exclude
+both that boundary and current target history when counting later source commits.
+Cake replays only the later range onto the target and advances the boundary to the
+new replay base; a conflicted replay retains a pending base until Git ancestry proves
+completion (an abort retains the old boundary). Successful landing checkpoints the
+source tip for both preserve and squash strategies. Pre-checkpoint preserve records
+can recover their boundary from source ancestry in the target reflog, including
+conflict-resolved target rebases. Missing historical evidence or old squash records
+remain conservative rather than guessing a source tip and hiding later work.
+
 Landing, cleanup, and resolution policy are backend-owned. The process-scoped
 landing coordinator retains accepted operations independently of renderer lifetime;
 renderer Stores start, retry, dismiss, and present that work. Repository queueing,

@@ -365,9 +365,26 @@ test("lands new commits from an already-landed worktree before resolving it", as
   await execFileAsync("git", ["worktree", "add", "-b", "agent/finished", worktreePath], {
     cwd: project,
   });
-  await writeFile(join(worktreePath, "follow-up.ts"), "export const followUp = true;\n");
+  const baseCommit = (
+    await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: project })
+  ).stdout.trim();
+  await execFileAsync("git", ["branch", "upstream", baseCommit], { cwd: project });
+  await writeFile(join(worktreePath, "README.md"), "old child patch\n");
   await execFileAsync("git", ["add", "-A"], { cwd: worktreePath });
-  await execFileAsync("git", ["commit", "-m", "follow-up after landing"], { cwd: worktreePath });
+  await execFileAsync("git", ["commit", "-m", "already landed patch"], { cwd: worktreePath });
+  const landedSourceCommit = (
+    await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: worktreePath })
+  ).stdout.trim();
+  await execFileAsync("git", ["merge", "--ff-only", "agent/finished"], { cwd: project });
+  await execFileAsync("git", ["checkout", "upstream"], { cwd: project });
+  await writeFile(join(project, "README.md"), "upstream change\n");
+  await execFileAsync("git", ["add", "-A"], { cwd: project });
+  await execFileAsync("git", ["commit", "-m", "upstream change"], { cwd: project });
+  await execFileAsync("git", ["checkout", "main"], { cwd: project });
+  await expect(execFileAsync("git", ["rebase", "upstream"], { cwd: project })).rejects.toThrow();
+  await writeFile(join(project, "README.md"), "conflict-resolved old patch and upstream change\n");
+  await execFileAsync("git", ["add", "-A"], { cwd: project });
+  await execFileAsync("git", ["-c", "core.editor=true", "rebase", "--continue"], { cwd: project });
   const sessionDirectory = cakeWorkspaceSessionDirectory(
     worktreePath,
     join(cakeHome, "pi", "sessions"),
@@ -390,6 +407,8 @@ test("lands new commits from an already-landed worktree before resolving it", as
           worktreePath,
           branch: "agent/finished",
           baseBranch: "main",
+          baseCommit,
+          landedSourceCommit,
           state: "landed",
           createdAt: new Date(0).toISOString(),
         },
@@ -440,6 +459,23 @@ test("lands new commits from an already-landed worktree before resolving it", as
 
   try {
     const page = await application.firstWindow();
+    await expect(page.getByRole("button", { name: "Resolve", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByRole("button", { name: /^Land new commit/ })).toHaveCount(0);
+    await expect(page.getByText(/new commits? since landing/)).toHaveCount(0);
+
+    await writeFile(join(worktreePath, "scratch.txt"), "uncommitted later work\n");
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Commit & land", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByText(/new commits? since landing/)).toHaveCount(0);
+    await rm(join(worktreePath, "scratch.txt"));
+    await writeFile(join(worktreePath, "follow-up.ts"), "export const followUp = true;\n");
+    await execFileAsync("git", ["add", "-A"], { cwd: worktreePath });
+    await execFileAsync("git", ["commit", "-m", "follow-up after landing"], { cwd: worktreePath });
+    await page.reload();
     const landNewCommit = page.getByRole("button", { name: "Land new commit", exact: true });
     await expect(landNewCommit).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("1 new commit since landing", { exact: true })).toBeVisible();
@@ -453,6 +489,9 @@ test("lands new commits from an already-landed worktree before resolving it", as
         (await execFileAsync("git", ["log", "-1", "--format=%s"], { cwd: project })).stdout.trim(),
       )
       .toBe("follow-up after landing");
+    expect(await readFile(join(project, "README.md"), "utf8")).toBe(
+      "conflict-resolved old patch and upstream change\n",
+    );
 
     const composerWorktreeIcon = page.locator('.workbench-composer [data-worktree-state="landed"]');
     await expect(composerWorktreeIcon).toHaveAttribute("aria-label", "Merged worktree");

@@ -234,6 +234,7 @@ export const WorktreePill = observer(function WorktreePill({
   const hasCommits = (status?.aheadCount ?? 0) > 0;
   const hasWorkToMerge = hasUncommittedChanges || hasCommits;
   const hasNewCommitsSinceLanding = landed && status?.record.state === "landed" && hasCommits;
+  const hasWorkSinceLanding = landed && status?.record.state === "landed" && hasWorkToMerge;
   const statusDisabledReason = status ? undefined : "Loading worktree status…";
   const sessionDisabledReason = actions.isSessionRunning
     ? "Wait for the session to finish before using worktree actions."
@@ -277,7 +278,9 @@ export const WorktreePill = observer(function WorktreePill({
           : actions.phase === "resolving"
             ? "Resolving conflicts…"
             : hasUncommittedChanges
-              ? `Commit & land ${newCommitCount === 1 ? "new commit" : "new commits"}`
+              ? hasCommits
+                ? `Commit & land ${newCommitCount === 1 ? "new commit" : "new commits"}`
+                : "Commit & land"
               : `Land ${newCommitCount === 1 ? "new commit" : "new commits"}`;
   const targetWarning = status?.targetDirty
     ? "The merge target has uncommitted changes."
@@ -336,7 +339,7 @@ export const WorktreePill = observer(function WorktreePill({
             />
           )}
           <div className="ml-auto flex min-w-0 flex-nowrap items-center justify-end gap-1">
-            {status && (!landed || hasNewCommitsSinceLanding) && status.behindCount > 0 && (
+            {status && (!landed || hasWorkSinceLanding) && status.behindCount > 0 && (
               <WorktreePillAction
                 icon={<RebaseIcon />}
                 aria-label="Rebase"
@@ -391,11 +394,15 @@ export const WorktreePill = observer(function WorktreePill({
                 )}
               </>
             )}
-            {hasNewCommitsSinceLanding && (
+            {hasWorkSinceLanding && (
               <WorktreePillAction
                 icon={<MergeIcon />}
                 aria-label={landNewCommitsLabel}
-                tooltip="Land commits added since the previous landing"
+                tooltip={
+                  hasUncommittedChanges
+                    ? "Commit changes and land"
+                    : "Land commits added since the previous landing"
+                }
                 disabledReason={mergeDisabledReason}
                 onClick={() => {
                   if (status?.targetDirty) {
@@ -408,7 +415,7 @@ export const WorktreePill = observer(function WorktreePill({
                 {landNewCommitsLabel}
               </WorktreePillAction>
             )}
-            {landed && !hasNewCommitsSinceLanding && !isFamilyChild && (
+            {landed && !hasWorkSinceLanding && !isFamilyChild && (
               <WorktreePillAction
                 icon={<ResolveIcon />}
                 aria-label="Resolve"
