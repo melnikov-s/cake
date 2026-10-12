@@ -1,6 +1,6 @@
 import type { WorktreeLandingControl } from "../../contracts/worktrees/worktree-agent-control";
 import { Schema } from "effect";
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
 const proposeSquashMessageInputSchema = Schema.Struct({
   subject: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(200))),

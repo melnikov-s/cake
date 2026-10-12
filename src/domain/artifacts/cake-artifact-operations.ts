@@ -1,6 +1,6 @@
 import type { CakeArtifactOperationOptions } from "../../contracts/artifacts/artifact-agent-control";
 import type { CakeOperationHost } from "../../contracts/agent/cake-operation-context";
-import { editText } from "../../services/pi/runtime/edit-text";
+import { editText } from "../../services/pi/edit-text";
 import { Schema } from "effect";
 
 import {
@@ -13,11 +13,11 @@ import {
 
 import { widgetConversationFromOperation } from "../widgets/widgetOperationContext";
 import { ArtifactProjectionMetadata } from "../../contracts/artifacts/artifact-projection-data";
-import { cakeOperationImageResult } from "../../services/pi/runtime/cake-operation-registry";
-import type {
-  CakeOperationDefinition,
-  CakeOperationExecutionContext,
-} from "../../services/pi/runtime/cake-operation-registry";
+import {
+  cakeOperationImageResult,
+  type CakeOperationDefinition,
+  type CakeOperationExecutionContext,
+} from "../../contracts/agent/cake-operation";
 
 type ArtifactFileImportInput = Parameters<
   NonNullable<CakeArtifactOperationOptions["importArtifactFile"]>

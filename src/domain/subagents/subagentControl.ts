@@ -4,7 +4,7 @@ import type {
   CakeSessionRuntimeAcquireOptions,
   CakeSessionRuntimes,
 } from "../../services/pi/CakeSessionRuntimes";
-import type { CakeSessionRuntimeOptions } from "../../services/pi/runtime/cake-session-runtime";
+import type { AgentOperationControl } from "../../contracts/agent/cake-operation-options";
 import type { SubagentCoordinator } from "../../services/subagents/SubagentCoordinator";
 import type { SubagentEnvironment } from "../../services/subagents/SubagentEnvironment";
 import type { ApplicationState } from "../../services/storage/ApplicationState";
@@ -29,7 +29,7 @@ export const makeSubagentControl =
   (
     options: () => CakeSessionRuntimeAcquireOptions,
     workingDirectory: string,
-  ): NonNullable<CakeSessionRuntimeOptions["agentControl"]> => {
+  ): AgentOperationControl => {
     const parent = (parentSessionId: string): subagents.SubagentParentRuntime => ({
       parentSessionId,
       workingDirectory,

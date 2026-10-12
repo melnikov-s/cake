@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cakeOperationProviders } from "../../../src/layers/CakeOperations";
 import * as projectSessionOperations from "../../../src/domain/project-sessions/cake-session-operations";
 import { createConversationOperations } from "../../../src/domain/conversations/cake-conversation-operations";
-import type { CakeSessionRuntimeOptions } from "../../../src/services/pi/runtime/cake-session-runtime";
-import type { CakeOperationProviders } from "../../../src/services/pi/runtime/cake-operation-providers";
+import type { CakeOperationOptions } from "../../../src/contracts/agent/cake-operation-options";
+import type { CakeOperationProviders } from "../../../src/contracts/agent/cake-operation-api";
 
-type CurrentSessionControl = NonNullable<CakeSessionRuntimeOptions["currentSessionControl"]>;
+type CurrentSessionControl = NonNullable<CakeOperationOptions["currentSessionControl"]>;
 
 const bridge: Parameters<CakeOperationProviders["project"]>[1] = {
   host: { appendEntry: () => undefined },
@@ -26,22 +26,17 @@ function control(overrides: Partial<CurrentSessionControl> = {}): CurrentSession
   };
 }
 
-function operations(overrides: Partial<CakeSessionRuntimeOptions> = {}) {
+function operations(overrides: Partial<CakeOperationOptions> = {}) {
   return cakeOperationProviders.project(
     {
       cwd: "/project",
-      agentDir: "/agent",
-      sessionDir: "/sessions",
-      trusted: false,
-      requestUi: async () => undefined,
-      onEvent: () => undefined,
       ...overrides,
     },
     bridge,
   );
 }
 
-function commands(overrides: Partial<CakeSessionRuntimeOptions> = {}) {
+function commands(overrides: Partial<CakeOperationOptions> = {}) {
   return operations(overrides).map((operation) => operation.command);
 }
 

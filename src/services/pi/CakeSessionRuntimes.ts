@@ -1,4 +1,4 @@
-import type { CakeOperationProviders } from "./runtime/cake-operation-providers";
+import type { CakeOperationProviders } from "../../contracts/agent/cake-operation-api";
 import {
   Context,
   Deferred,
@@ -20,7 +20,7 @@ import type {
   PiPendingMessageReorder,
   PiPendingMessages,
   PiQueuedMessages,
-} from "./conversation-data";
+} from "../../contracts/conversations/pending-message-data";
 import type { ArtifactPointer } from "../../contracts/artifacts/artifact-contract";
 import {
   jsonValueSchema,

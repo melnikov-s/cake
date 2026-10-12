@@ -6,8 +6,8 @@ import {
   type ProjectSessionCreateInput,
 } from "../../contracts/project-sessions/agent-session-create";
 
-import type { RuntimeOperationApi } from "../../services/pi/runtime/cake-operation-providers";
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { RuntimeOperationApi } from "../../contracts/agent/cake-operation-api";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
 export function createProjectSessionOperations(
   api: () => RuntimeOperationApi,

@@ -2,8 +2,8 @@ import { Effect, Schema } from "effect";
 import { CakeModelSelection } from "../../contracts/model-presets/cake-model-selection";
 import { type JsonObject } from "../../contracts/serialization/json-contract";
 
-import type { RuntimeOperationApi } from "../../services/pi/runtime/cake-operation-providers";
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { RuntimeOperationApi } from "../../contracts/agent/cake-operation-api";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
 import { createSessionSendBatchOperation } from "../conversations/cake-session-batch-send-operation";
 

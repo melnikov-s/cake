@@ -9,7 +9,7 @@ import {
   type CakeSessionRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-session-runtime";
 import { cakeOperationProviders } from "../../../src/layers/CakeOperations";
-import type { CakeOperationProviders } from "../../../src/services/pi/runtime/cake-operation-providers";
+import type { CakeOperationProviders } from "../../../src/contracts/agent/cake-operation-api";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 
 const directories: string[] = [];
@@ -45,7 +45,7 @@ describe("Backend-owned Cake operation composition", () => {
   it("assembles domain operations before the live session API exists", () => {
     const callbacks = bridge();
     const registry = new CakeOperationRegistry(
-      cakeOperationProviders.project(options("/workspace"), callbacks),
+      cakeOperationProviders.project({ cwd: "/workspace" }, callbacks),
     );
     expect(callbacks.api).not.toHaveBeenCalled();
     expect(registry.operationHelp("session.info")).toContain("sessionFile");

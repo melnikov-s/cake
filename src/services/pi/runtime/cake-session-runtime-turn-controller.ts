@@ -10,7 +10,10 @@ import type { Attachment, UiPart } from "../../../contracts/conversations/sessio
 import type { ProjectSessionPresentationMode } from "../../../contracts/project-sessions/project-session-presentation";
 import { parsePiBuiltinCommand } from "../../../contracts/conversations/session-contract";
 import { parseCrossSessionMessage } from "../../../contracts/conversations/cross-session-message";
-import type { PiPendingMessageReorder, PiPendingMessages } from "../conversation-data";
+import type {
+  PiPendingMessageReorder,
+  PiPendingMessages,
+} from "../../../contracts/conversations/pending-message-data";
 import { RuntimeTurnCompletion, TurnCanceledError } from "./RuntimeTurnCompletion";
 import {
   addPresentationModeReminder,

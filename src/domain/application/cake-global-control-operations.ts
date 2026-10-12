@@ -4,13 +4,13 @@ import {
   type ExplicitCakeModelSelection,
 } from "../../contracts/model-presets/cake-model-selection";
 import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
-import type { CakeSessionRuntimeOptions } from "../../services/pi/runtime/cake-session-runtime";
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { GlobalOperationControl } from "../../contracts/agent/cake-operation-options";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 import { createCakeSettingsOperations } from "./cake-settings-operations";
 import { createSessionSendBatchOperation } from "../conversations/cake-session-batch-send-operation";
 
 export function createGlobalControlOperations(
-  control: NonNullable<CakeSessionRuntimeOptions["globalControl"]>,
+  control: GlobalOperationControl,
   resolveModel: (selection: CakeModelSelection | undefined) => ExplicitCakeModelSelection,
 ): CakeOperationDefinition[] {
   const settings = createCakeSettingsOperations((command, input, signal) =>

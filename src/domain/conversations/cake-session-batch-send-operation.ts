@@ -6,7 +6,7 @@ import {
   type SessionSendBatchOutcome,
 } from "../../contracts/conversations/session-send-batch";
 import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
 const rejectedSend = Schema.Struct({ ok: Schema.Literal(false), error: Schema.String });
 

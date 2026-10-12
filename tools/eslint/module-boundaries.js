@@ -82,6 +82,8 @@ const rule = {
       privileged:
         "{{from}} code cannot import privileged runtime package {{source}}. Use shared contracts and the typed RPC/preload boundary.",
       pi: "Pi SDK imports belong only beneath src/services/pi or src/services/pi-durable.",
+      piRuntime:
+        "Domain code cannot import Pi runtime internals ({{source}}). Use src/contracts/agent for operation contracts or top-level src/services/pi capabilities.",
       ipcLocation:
         "IPC modules belong in protocol/, client/, server/, or transport/. Move shared schemas, values, and codecs into feature-named src/contracts modules.",
     },
@@ -117,6 +119,10 @@ const rule = {
       if (!target) return;
       const relativeTarget = path.relative(cwd, target).split(path.sep).join("/");
       const to = owner(relativeTarget);
+      if (from === "domain" && /^src\/services\/pi\/runtime(?:\/|$)/.test(relativeTarget)) {
+        context.report({ node, messageId: "piRuntime", data: { source } });
+        return;
+      }
       if (to && !allowed[from].has(to))
         context.report({ node, messageId: "dependency", data: { from, to, source } });
     }

@@ -178,6 +178,55 @@ describe("IPC source organization", () => {
   );
 });
 
+describe("Domain Pi operation boundary", () => {
+  const domainFile = "src/domain/projects/fixture.ts";
+
+  it.each([
+    'import { value } from "../../services/pi/runtime/cake-operation-registry"; export { value };',
+    'import type { Value } from "../../services/pi/runtime/cake-session-runtime"; export type { Value };',
+    'export * from "../../services/pi/runtime/cake-session-runtime-capabilities";',
+    'type Value = import("../../services/pi/runtime/cake-operation-registry").Value; export type { Value };',
+    'const value = import("../../services/pi/runtime/session-projection"); export { value };',
+    'const value = require("../../services/pi/runtime/session-discovery"); export { value };',
+    'export * from "src/services/pi/runtime";',
+    'export * from "../../services/pi/./runtime/cake-operation-registry.ts?raw";',
+  ])("rejects runtime internals: %s", async (code) => {
+    const messages = await violations(code, domainFile);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.messageId).toBe("piRuntime");
+  });
+
+  it("normalizes absolute runtime paths", async () => {
+    const messages = await violations(
+      valueImport(resolve("src/services/pi/runtime/cake-session-runtime.ts")),
+      domainFile,
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.messageId).toBe("piRuntime");
+  });
+
+  it.each([
+    "../../contracts/agent/cake-operation",
+    "../../contracts/agent/cake-operation-api",
+    "../../contracts/agent/cake-operation-options",
+    "../../services/pi/CakeSessionRuntimes",
+    "../../services/pi/edit-text",
+    "../../services/pi/subagent-parent-tool",
+  ])("permits contracts and top-level capabilities: %s", async (source) => {
+    expect(await violations(valueImport(source), domainFile)).toHaveLength(0);
+  });
+
+  it.each([
+    "src/services/pi/fixture.ts",
+    "src/services/pi-durable/fixture.ts",
+    "src/layers/FixtureLive.ts",
+  ])("permits adapter and composition wiring in %s", async (file) => {
+    expect(
+      await violations(valueImport("src/services/pi/runtime/cake-session-runtime"), file),
+    ).toHaveLength(0);
+  });
+});
+
 describe("Pi SDK authority", () => {
   it.each([
     "@earendil-works/pi-coding-agent",

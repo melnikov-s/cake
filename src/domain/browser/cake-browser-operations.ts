@@ -5,7 +5,7 @@ import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
 import {
   cakeOperationImageResult,
   type CakeOperationDefinition,
-} from "../../services/pi/runtime/cake-operation-registry";
+} from "../../contracts/agent/cake-operation";
 
 const browserEnterInputSchema = Schema.Struct({});
 const browserCdpInputSchema = Schema.Struct({

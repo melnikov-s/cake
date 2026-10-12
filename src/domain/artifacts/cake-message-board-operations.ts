@@ -12,7 +12,7 @@ import {
   BoardSessionReceipts,
 } from "../../contracts/artifacts/message-board";
 import type { MessageBoardControl } from "../../contracts/artifacts/message-board-control";
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
 export const createMessageBoardOperations = (
   control: MessageBoardControl,

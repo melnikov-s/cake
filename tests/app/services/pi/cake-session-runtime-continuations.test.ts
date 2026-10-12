@@ -11,10 +11,8 @@ import {
 } from "../../../../src/services/storage/SessionFamilyStorage";
 import { makePiCallbackExecutor } from "../../../../src/services/pi/PiCallbackAdapter";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  CakeSessionRuntimeOptions,
-  ProjectSessionLivePolicyControl,
-} from "../../../../src/services/pi/runtime/cake-session-runtime";
+import type { CakeSessionRuntimeOptions } from "../../../../src/services/pi/runtime/cake-session-runtime";
+import type { ProjectSessionLivePolicyControl } from "../../../../src/contracts/agent/cake-operation-options";
 import { createCakeSessionRuntimeContinuations } from "../../../../src/services/pi/runtime/cake-session-runtime-continuations";
 
 function deferred<Value>() {

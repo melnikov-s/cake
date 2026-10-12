@@ -8,7 +8,7 @@ import { createSessionFamilyOperations } from "../domain/session-families/cake-s
 import { createScheduledMessageOperations } from "../domain/scheduled-messages/cake-scheduled-message-operations";
 import { createSessionWorktreeOperations } from "../domain/worktrees/cake-session-worktree-operations";
 import { Schema } from "effect";
-import type { CakeOperationProviders } from "../services/pi/runtime/cake-operation-providers";
+import type { CakeOperationProviders } from "../contracts/agent/cake-operation-api";
 import {
   artifactRecordSchema,
   type CakeArtifactV1,

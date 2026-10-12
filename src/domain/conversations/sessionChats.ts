@@ -16,7 +16,7 @@ import {
 } from "../../services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
-import type { PiQueuedMessages } from "../../services/pi/conversation-data";
+import type { PiQueuedMessages } from "../../contracts/conversations/pending-message-data";
 import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import {
   TurnId,

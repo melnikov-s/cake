@@ -29,13 +29,13 @@ import type {
   UiPart,
 } from "../../contracts/conversations/session-contract";
 import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
-import type { PiPendingMessageReorder } from "../pi/conversation-data";
+import type { PiPendingMessageReorder } from "../../contracts/conversations/pending-message-data";
 import type {
   CakeModelSelection,
   ExplicitCakeModelSelection,
 } from "../../contracts/model-presets/cake-model-selection";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
-import type { CakeOperationProviders } from "../pi/runtime/cake-operation-providers";
+import type { CakeOperationProviders } from "../../contracts/agent/cake-operation-api";
 import {
   CakeOperationRegistry,
   cakeToolDescription,

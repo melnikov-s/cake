@@ -9,8 +9,8 @@ import {
   WorkflowWorkerTarget,
 } from "../../contracts/workflows/workflow-data";
 
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
-import { workflowAuthoringReference } from "../../services/pi/runtime/workflow-authoring";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
+import { workflowAuthoringReference } from "./workflow-authoring";
 
 /** Project-owned execution is explicit even when called from permanent Cake Chat. */
 export function createCakeWorkflowOperations(control: WorkflowControl): CakeOperationDefinition[] {

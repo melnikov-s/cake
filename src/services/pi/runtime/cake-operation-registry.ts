@@ -1,6 +1,14 @@
 import { Schema } from "effect";
-import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
-import type { CakeOperationRuntime } from "../../../contracts/agent/cake-operation-context";
+import {
+  MAX_CAKE_OPERATION_IMAGE_BYTES,
+  type CakeOperationContent,
+  type CakeOperationDefinition,
+  type CakeOperationExample,
+  type CakeOperationExecutionContext,
+  type CakeOperationImageContent,
+  type CakeOperationImageResult,
+  type CakeOperationResult,
+} from "../../../contracts/agent/cake-operation";
 import {
   jsonObjectSchema,
   jsonValueSchema,
@@ -10,7 +18,6 @@ import {
 
 const CAKE_OPERATION_PROTOCOL = "cake.operation/v1" as const;
 const MAX_CAKE_OPERATION_RESULT_BYTES = 1_048_576;
-export const MAX_CAKE_OPERATION_IMAGE_BYTES = 8_000_000;
 const MAX_CAKE_OPERATION_IMAGES = 4;
 const MAX_CAKE_OPERATION_IMAGE_BASE64_LENGTH = Math.ceil(MAX_CAKE_OPERATION_IMAGE_BYTES / 3) * 4;
 
@@ -28,69 +35,6 @@ export const cakeToolEnvelopeSchema = Schema.Struct({
     }),
   ),
 });
-
-export interface CakeOperationExecutionContext {
-  signal: AbortSignal;
-  toolCallId: string;
-  onUpdate?(value: JsonValue): void;
-  runtime: CakeOperationRuntime;
-}
-
-interface CakeOperationExample {
-  input?: JsonObject;
-  description?: string;
-}
-
-export interface CakeOperationImageContent {
-  readonly type: "image";
-  readonly data: string;
-  readonly mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
-}
-
-export interface CakeOperationImageResult {
-  readonly _tag: "CakeOperationImageResult";
-  /** JSON metadata shown as text and retained in tool details. Image bytes stay in content only. */
-  readonly metadata: JsonValue;
-  readonly images: ReadonlyArray<CakeOperationImageContent>;
-}
-
-export type CakeOperationResult = JsonValue | CakeOperationImageResult;
-export type CakeOperationContent =
-  | { readonly type: "text"; readonly text: string }
-  | CakeOperationImageContent;
-
-export function cakeOperationImageResult(
-  metadata: JsonValue,
-  images: ReadonlyArray<CakeOperationImageContent>,
-): CakeOperationImageResult {
-  return { _tag: "CakeOperationImageResult", metadata, images };
-}
-
-export interface CakeOperationDefinition<
-  Input = unknown,
-  Output extends CakeOperationResult = CakeOperationResult,
-> {
-  command: string;
-  /** Live Project Session control capability required for registration. */
-  requires?: keyof NonNullable<CakeSessionRuntimeOptions["currentSessionControl"]>;
-  topic: string;
-  summary: string;
-  guidance?: readonly string[];
-  inputSchema: Schema.ConstraintDecoder<Input, never>;
-  /** Exact schema used in generated help when validation is delegated across a validated boundary. */
-  inputJsonSchema?: JsonObject;
-  /** Opt into validated data for codemode; other operations continue to resolve to text.
-   * The registry also validates JSON after decoding, allowing authoritative projection
-   * schemas whose optional fields include undefined in TypeScript. */
-  outputSchema?: Schema.ConstraintDecoder<unknown, never>;
-  /** Bounded multi-outcome operations must expose every outcome in model-facing text. */
-  truncateResultText?: boolean;
-  examples: readonly CakeOperationExample[];
-  result: string;
-  limitations?: readonly string[];
-  available?(): boolean;
-  execute(input: Input, context: CakeOperationExecutionContext): Promise<Output>;
-}
 
 const cakeOperationImageSchema = Schema.Struct({
   type: Schema.Literal("image"),

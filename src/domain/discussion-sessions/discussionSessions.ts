@@ -11,7 +11,7 @@ import {
   type CakeSessionRuntimeAcquireOptions,
   type CakeSessionHandle,
 } from "../../services/pi/CakeSessionRuntimes";
-import { sessionAssistantSystemPrompt } from "../../services/pi/runtime/session-assistant";
+import { sessionAssistantSystemPrompt } from "../../services/pi/session-assistant";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import {

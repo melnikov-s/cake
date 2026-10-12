@@ -6,12 +6,10 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
-import type { MessageBoardControl } from "../../../contracts/artifacts/message-board-control";
 import { observeMessageBoardRequests } from "./message-board-extension";
 import { createTurnResultCapture } from "./turn-result-capture";
 import type { PiTurnResult } from "../../../contracts/pi/turn-result-data";
-import type { ProjectSessionAgentPolicy } from "../../../contracts/project-sessions/project-session-agent-policy";
-import type { InterviewRecord } from "../../../contracts/interviews/interview";
+import type { CakeOperationOptions } from "../../../contracts/agent/cake-operation-options";
 import type { CakeChatMemoryOptions } from "../cake-chat-memory-options";
 import { Option, Schema } from "effect";
 import {
@@ -32,45 +30,27 @@ import {
   type UtilityModel,
 } from "../../../contracts/conversations/session-contract";
 import type {
-  CakeModelPresetCatalog,
   CakeModelSelection,
   ExplicitCakeModelSelection,
 } from "../../../contracts/model-presets/cake-model-selection";
-import type { NonChatModelPreferences } from "../../../contracts/models/non-chat-model-data";
-import {
-  crossSessionContextSnapshot,
-  type CrossSessionContextSnapshot,
-} from "../../../contracts/conversations/cross-session-message";
-import type { PiPendingMessageReorder, PiPendingMessages } from "../conversation-data";
+import { crossSessionContextSnapshot } from "../../../contracts/conversations/cross-session-message";
+import type {
+  PiPendingMessageReorder,
+  PiPendingMessages,
+} from "../../../contracts/conversations/pending-message-data";
 import type {
   SessionInspectionQuery,
   QueuedSessionCommandReceipt,
 } from "../../../contracts/conversations/session-query-data";
 import { inspectSessionHistory } from "./session-inspection";
 import { piBuiltinSlashCommands } from "../../../contracts/conversations/session-contract";
-import {
-  SubagentResult as subagentResultSchema,
-  type ParallelSubagentInput as DomainParallelSubagentInput,
-  type SubagentTaskInput as DomainSubagentTaskInput,
-} from "../../../contracts/subagents/subagent-data";
+import { SubagentResult as subagentResultSchema } from "../../../contracts/subagents/subagent-data";
 import {
   jsonValueSchema,
   type JsonObject,
   type JsonValue,
 } from "../../../contracts/serialization/json-contract";
-import type {
-  ArtifactRecord,
-  ArtifactPointer,
-  CakeArtifactV1,
-} from "../../../contracts/artifacts/artifact-contract";
-import type { ArtifactProjectionMetadata } from "../../../contracts/artifacts/artifact-projection-data";
-import type { ResolvedAgentArtifact } from "../../../contracts/artifacts/artifact-agent-control";
-import type { VscodeControl } from "../../../contracts/editor/vscode-agent-control";
-import type { BrowserControl } from "../../../contracts/browser/browser-agent-control";
-import type { WorktreeLandingControl } from "../../../contracts/worktrees/worktree-agent-control";
-import type { WorkflowControl } from "../../../contracts/workflows/workflow-agent-control";
-import type { SessionPluginControl } from "../../../contracts/application/session-plugin-agent-control";
-import type { CakeDrawControl } from "../../../contracts/draw/draw-agent-control";
+import type { ArtifactPointer } from "../../../contracts/artifacts/artifact-contract";
 import type { ProjectSessionPresentationMode } from "../../../contracts/project-sessions/project-session-presentation";
 import { assertSessionPath } from "./session-path";
 import { cakeWorkspaceSessionDirectory, findSessionFile } from "./session-discovery";
@@ -102,8 +82,7 @@ import {
   type ConversationResponseMode,
 } from "../../../contracts/conversations/response-mode-reminders";
 import { createCakeSessionRuntimeCapabilities } from "./cake-session-runtime-capabilities";
-import type { GlobalControlTool } from "../../../contracts/agent/cake-operation-control";
-import type { CakeOperationProviders } from "./cake-operation-providers";
+import type { CakeOperationProviders } from "../../../contracts/agent/cake-operation-api";
 import { createPromptCacheLineage } from "./prompt-cache-lineage";
 import { projectCakeOperationRuntime } from "./cake-operation-context";
 import {
@@ -112,11 +91,6 @@ import {
 } from "./cake-session-runtime-configuration";
 import { createCakeSessionRuntimeContinuations } from "./cake-session-runtime-continuations";
 import type { RuntimeUiRequest } from "./runtime-ui-request";
-import type {
-  InlineWidgetGenerationRequest,
-  InlineWidgetGenerationResult,
-  InlineWidgetRevisionRequest,
-} from "../../../contracts/widgets/widget-generation";
 import type { ReviewParentContext } from "./sidecar-runtime";
 
 export const piRuntimeVersion = "1.0.0" as const;
@@ -155,14 +129,7 @@ export type CakeSessionRuntimeEvent =
   | { type: "usage-updated"; sessionId: string; usage: SessionUsage }
   | { type: "extension-ui"; sessionId: string; event: ExtensionUiEvent };
 
-/** Live policy queries do not authorize a later mutation. */
-export interface ProjectSessionLivePolicyControl {
-  readPolicy(): Promise<ProjectSessionAgentPolicy>;
-  resolveDeferredStandalone(): Promise<void>;
-}
-
-export interface CakeSessionRuntimeOptions {
-  cwd: string;
+export interface CakeSessionRuntimeOptions extends CakeOperationOptions {
   trusted: boolean;
   agentDir: string;
   sessionDir: string;
@@ -173,58 +140,27 @@ export interface CakeSessionRuntimeOptions {
   sessionFile?: string;
   additionalSystemPrompt?: string;
   cakeChatMemory?: CakeChatMemoryOptions;
-  allowedCakeOperations?: readonly string[];
   /** Replaces Pi's normal prompt and disables context-file loading for an isolated runtime. */
   isolatedSystemPrompt?: string;
   /** Explicit SDK tools available only to this runtime. */
   customTools?: ToolDefinition[];
-  tools?: string[];
-  auxiliary?: boolean;
   /** In-memory Pi history; never creates or resumes a persisted session. */
   ephemeral?: boolean;
   /** Fresh project resources/MCP with investigation-only instructions and no edit/write tools. */
   projectInvestigation?: boolean;
-  workflowControl?: WorkflowControl;
-  messageBoardControl?: MessageBoardControl;
   /** Workflow workers load project context/skills, but not Cake controls or project-chat prompts. */
   auxiliaryProjectResources?: boolean;
   /** Subset of builtin slash command names to advertise; defaults to all of them. */
   slashCommands?: readonly string[];
   requestUi(request: RuntimeUiRequest): Promise<string | undefined>;
   emitExtensionUiIntent?(intent: ExtensionUiIntent): void;
-  persistArtifact?(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
-  requestInterview?(record: InterviewRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
-  generateInlineWidget?(
-    input: InlineWidgetGenerationRequest,
-  ): Promise<InlineWidgetGenerationResult>;
-  sessionPluginControl?: Omit<SessionPluginControl, "generate">;
-  reviseInlineWidget?(input: InlineWidgetRevisionRequest): Promise<InlineWidgetGenerationResult>;
-  resolveArtifact?(reference: string): Promise<ResolvedAgentArtifact>;
-  hasLinkedArtifacts?(): Promise<boolean>;
-  listArtifactMetadata?(): Promise<ReadonlyArray<ArtifactProjectionMetadata>>;
-  historyArtifact?(reference: string): Promise<ReadonlyArray<ArtifactProjectionMetadata>>;
-  restoreArtifact?(input: {
-    lineageId: string;
-    sourceRevision: number;
-    expectedRevision: number;
-  }): Promise<ResolvedAgentArtifact>;
-  linkArtifact?(reference: string): Promise<ArtifactProjectionMetadata>;
-  unlinkArtifact?(lineageId: string): Promise<void>;
-  importArtifactFile?(input: {
-    path: string;
-    id: string;
-    revision: number;
-    title?: string;
-  }): Promise<CakeArtifactV1>;
   reviewContextPath?(sessionId: string): string;
   utilityModel?(): UtilityModel | undefined;
-  modelPresets?(): CakeModelPresetCatalog;
   /** Cake policy is supplied by composition; Pi only applies concrete configurations. */
   resolveModelSelection?(
     selection: CakeModelSelection | undefined,
     inherited: ExplicitCakeModelSelection | undefined,
   ): ExplicitCakeModelSelection;
-  nonChatModelPreferences?(): NonChatModelPreferences;
   fastMode?: {
     get(): boolean;
     set(enabled: boolean): Promise<void>;
@@ -240,115 +176,6 @@ export interface CakeSessionRuntimeOptions {
     signal?: AbortSignal;
   }): Promise<void>;
   sessionTitleChanged?(sessionId: string, title: string): Promise<void>;
-  currentSessionControl?: ProjectSessionLivePolicyControl & {
-    resolved(): boolean;
-    canResolve?(): boolean;
-    setResolved(resolved: boolean): Promise<void>;
-    createSession?(
-      input: {
-        name: string;
-        initialPrompt: string;
-        model: ChatConfiguration;
-        worktreeName?: string;
-      },
-      signal: AbortSignal,
-    ): Promise<JsonValue>;
-    createDraftSession?(
-      input: { name: string; initialPrompt: string; model?: ChatConfiguration },
-      signal: AbortSignal,
-    ): Promise<JsonValue>;
-    createChildSession?(
-      input: {
-        requestId: string;
-        title: string;
-        initialPrompt: string;
-        model: ChatConfiguration;
-        placement: "none" | "right" | "down";
-        worktreeName?: string;
-        senderContext: CrossSessionContextSnapshot;
-      },
-      signal: AbortSignal,
-    ): Promise<JsonValue>;
-    forkSession?(input: {
-      entryId: string;
-      prompt?: string;
-      title?: string;
-      resolveSource: boolean;
-      placement: "none" | "right" | "down";
-      destinationWorkingDirectory?: string;
-    }): Promise<JsonValue>;
-    routeFamilyMessage?(
-      command: "sessions.send" | "sessions.reply",
-      input: JsonObject,
-      signal: AbortSignal,
-      senderContext?: CrossSessionContextSnapshot,
-    ): Promise<JsonValue | undefined>;
-    mergeSession?(targetSessionId: string | undefined, signal: AbortSignal): Promise<JsonValue>;
-    discardSession?(
-      targetSessionId: string | undefined,
-      keepBranch: boolean,
-      signal: AbortSignal,
-    ): Promise<JsonValue>;
-    invokeAppControl?(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
-    pendingMessages?(sessionId: string, signal: AbortSignal): Promise<PiPendingMessages>;
-    reorderPendingMessage?(
-      sessionId: string,
-      input: PiPendingMessageReorder,
-      signal: AbortSignal,
-    ): Promise<PiPendingMessages>;
-  };
-  vscodeControl?: VscodeControl;
-  browserControl?: BrowserControl;
-  drawControl?: CakeDrawControl;
-  worktreeLandingControl?: WorktreeLandingControl;
-  globalControl?: {
-    tools: readonly GlobalControlTool[];
-    invoke(input: { name: string; arguments: JsonValue }, signal: AbortSignal): Promise<JsonValue>;
-  };
-  /**
-   * The validated Cake application-control gateway scoped to one parent Project
-   * Session, added to an auxiliary sidecar's `cake` tool without any of the
-   * Cake Chat runtime semantics that `globalControl` implies.
-   */
-  sessionControl?: {
-    tools: readonly GlobalControlTool[];
-    invoke(input: { name: string; arguments: JsonValue }, signal: AbortSignal): Promise<JsonValue>;
-  };
-  agentControl?: {
-    run(
-      input: DomainSubagentTaskInput,
-      parentSessionId: string,
-      signal: AbortSignal,
-      onUpdate?: (value: JsonValue) => void,
-      anchorPartId?: string,
-    ): Promise<JsonValue>;
-    start(
-      input: DomainSubagentTaskInput,
-      parentSessionId: string,
-      signal: AbortSignal,
-      anchorPartId?: string,
-    ): Promise<JsonValue>;
-    parallel(
-      input: DomainParallelSubagentInput,
-      parentSessionId: string,
-      signal: AbortSignal,
-      onUpdate?: (value: JsonValue) => void,
-      anchorPartId?: string,
-    ): Promise<JsonValue>;
-    prompt(
-      input: { handleId: string; text: string; delivery: "prompt" | "follow-up" },
-      parentSessionId: string,
-      signal: AbortSignal,
-    ): Promise<JsonValue>;
-    wait(
-      handleId: string,
-      parentSessionId: string,
-      signal: AbortSignal,
-      onUpdate?: (value: JsonValue) => void,
-    ): Promise<JsonValue>;
-    abort(handleId: string, parentSessionId: string): Promise<JsonValue>;
-    close(handleId: string, parentSessionId: string): Promise<JsonValue>;
-  };
   onEvent(event: CakeSessionRuntimeEvent): void;
   onTurnResult?(turnId: string, result: PiTurnResult): void;
 }

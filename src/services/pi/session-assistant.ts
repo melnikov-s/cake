@@ -1,8 +1,9 @@
-import { jsonObjectSchema } from "../../../contracts/serialization/json-contract";
-import type { GlobalControlTool } from "../../../contracts/agent/cake-operation-control";
-import { CakeOperationRegistry, type CakeOperationDefinition } from "./cake-operation-registry";
-import { renderPromptTemplate } from "./prompt-template";
-import sessionAssistantPromptTemplate from "./prompts/session-assistant.md?raw";
+import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
+import type { GlobalControlTool } from "../../contracts/agent/cake-operation-control";
+import { CakeOperationRegistry } from "./runtime/cake-operation-registry";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
+import { renderPromptTemplate } from "./runtime/prompt-template";
+import sessionAssistantPromptTemplate from "./runtime/prompts/session-assistant.md?raw";
 
 /**
  * The session assistant's system prompt. It runs on the shared Discussion

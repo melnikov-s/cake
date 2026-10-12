@@ -15,7 +15,7 @@ import type { EditorSelectionOpenResult } from "../../contracts/editor/editor-se
 import { agentEditorLocation } from "../../utils/agent-editor-location";
 import { createCakeVscodeSelectionOperations } from "./cake-vscode-selection-operations";
 
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 import { createCakeVscodeDebugOperations } from "./cake-vscode-debug-operations";
 
 const coordinate = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10_000_001 }));

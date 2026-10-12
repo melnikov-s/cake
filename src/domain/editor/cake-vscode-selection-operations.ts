@@ -5,7 +5,7 @@ import type {
   EditorSelectionState,
   EditorSelectionUpdate,
 } from "../../contracts/editor/editor-selection";
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 import { agentEditorLocation } from "../../utils/agent-editor-location";
 
 const vscodeSelectionsListInputSchema = Schema.Struct({});

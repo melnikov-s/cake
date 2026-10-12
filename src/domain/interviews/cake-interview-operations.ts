@@ -8,7 +8,7 @@ import {
   type InterviewRecord,
 } from "../../contracts/interviews/interview";
 import { jsonValueSchema, type JsonValue } from "../../contracts/serialization/json-contract";
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
 export function createCakeInterviewOperations(
   pi: { appendEntry(type: string, data: JsonValue): void },

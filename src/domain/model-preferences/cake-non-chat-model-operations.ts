@@ -4,7 +4,7 @@ import {
   NonChatModelType,
   type NonChatModelPreferences,
 } from "../../contracts/models/non-chat-model-data";
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
 const selectionInput = Schema.Struct({
   type: NonChatModelType,

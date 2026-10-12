@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { CakeModelSelection } from "../../contracts/model-presets/cake-model-selection";
-import type { CakeOperationProviders } from "../../services/pi/runtime/cake-operation-providers";
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { CakeOperationProviders } from "../../contracts/agent/cake-operation-api";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
 export function createCoordinatorOperations(
   bridge: Parameters<CakeOperationProviders["coordinator"]>[1],

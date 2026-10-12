@@ -9,7 +9,7 @@ import {
   type JsonValue,
 } from "../../contracts/serialization/json-contract";
 
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
 const pluginId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const identity = {

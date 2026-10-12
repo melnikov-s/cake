@@ -8,7 +8,7 @@ import {
   type JsonObject,
   type JsonValue,
 } from "../../contracts/serialization/json-contract";
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
 export function createCakeSettingsOperations(
   invoke: (command: string, input: JsonObject, signal: AbortSignal) => Promise<JsonValue>,

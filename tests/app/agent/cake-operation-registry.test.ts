@@ -2,14 +2,16 @@ import { Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import {
   CakeOperationRegistry,
-  MAX_CAKE_OPERATION_IMAGE_BYTES,
-  cakeOperationImageResult,
   cakeToolDescription,
   cakeToolEnvelopeSchema,
+} from "../../../src/services/pi/runtime/cake-operation-registry";
+import {
+  MAX_CAKE_OPERATION_IMAGE_BYTES,
+  cakeOperationImageResult,
   type CakeOperationDefinition,
   type CakeOperationImageContent,
   type CakeOperationImageResult,
-} from "../../../src/services/pi/runtime/cake-operation-registry";
+} from "../../../src/contracts/agent/cake-operation";
 import { createCakeToolDefinition } from "../../../src/services/pi/runtime/cake-session-runtime-capabilities";
 
 function context() {

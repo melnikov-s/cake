@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import type { CakeModelPresetCatalog } from "../../contracts/model-presets/cake-model-selection";
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
 /** Exposes Cake-owned model presets without provider credentials. */
 export function createCakeModelOperations(

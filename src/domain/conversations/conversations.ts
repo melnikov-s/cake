@@ -7,7 +7,7 @@ import type {
   CakeSessionRuntimes,
   PiSessionUpdate,
 } from "../../services/pi/CakeSessionRuntimes";
-import type { PiQueuedMessages } from "../../services/pi/conversation-data";
+import type { PiQueuedMessages } from "../../contracts/conversations/pending-message-data";
 import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
 import type {

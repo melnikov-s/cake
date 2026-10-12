@@ -1,11 +1,11 @@
 import { Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { createCakeArtifactOperations } from "../../../src/domain/artifacts/cake-artifact-operations";
+import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import {
-  CakeOperationRegistry,
   cakeOperationImageResult,
   type CakeOperationDefinition,
-} from "../../../src/services/pi/runtime/cake-operation-registry";
+} from "../../../src/contracts/agent/cake-operation";
 import { createCakeToolDefinition } from "../../../src/services/pi/runtime/cake-session-runtime-capabilities";
 import { artifactMetadata, artifactOperationOptions } from "../../fixtures/cake-structured-output";
 

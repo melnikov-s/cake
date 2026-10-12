@@ -28,7 +28,7 @@ import type {
   CakeSessionRuntime,
   CakeSessionRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-session-runtime";
-import { subagentSystemPrompt } from "../../../src/services/pi/runtime/subagent-system-prompt";
+import { subagentSystemPrompt } from "../../../src/services/pi/subagent-system-prompt";
 import {
   SubagentCoordinator,
   SubagentCoordinatorLive,

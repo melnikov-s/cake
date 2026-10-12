@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from "effect";
-import type { CakeOperationProviders } from "../pi/runtime/cake-operation-providers";
+import type { CakeOperationProviders } from "../../contracts/agent/cake-operation-api";
 import type {
   PiSessionPreview,
   PiSessionSummary,

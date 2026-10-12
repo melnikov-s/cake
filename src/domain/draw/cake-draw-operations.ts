@@ -19,7 +19,7 @@ import {
   cakeOperationImageResult,
   type CakeOperationDefinition,
   type CakeOperationResult,
-} from "../../services/pi/runtime/cake-operation-registry";
+} from "../../contracts/agent/cake-operation";
 
 const empty = Schema.Struct({});
 const optionalBoardId = Schema.optionalKey(Schema.String.check(Schema.isUUID(4)));

@@ -4,8 +4,8 @@ import type {
   ExplicitCakeModelSelection,
 } from "../../contracts/model-presets/cake-model-selection";
 import { type JsonObject, type JsonValue } from "../../contracts/serialization/json-contract";
-import type { CakeSessionRuntimeOptions } from "../../services/pi/runtime/cake-session-runtime";
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { AgentOperationControl } from "../../contracts/agent/cake-operation-options";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 import type { SubagentTaskInput as DomainSubagentTaskInput } from "../../contracts/subagents/subagent-data";
 import {
   parallelSubagentSchema,
@@ -14,7 +14,7 @@ import {
 } from "../../contracts/subagents/subagent-tool-input";
 
 export function createAgentControlOperations(
-  control: NonNullable<CakeSessionRuntimeOptions["agentControl"]>,
+  control: AgentOperationControl,
   parentSessionId: () => string | undefined,
   resolveModel: (selection: CakeModelSelection | undefined) => ExplicitCakeModelSelection,
   projectAware = false,

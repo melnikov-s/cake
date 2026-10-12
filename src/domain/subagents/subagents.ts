@@ -37,8 +37,8 @@ import {
   CakeSessionRuntimes,
   type CakeSessionRuntimeAcquireOptions,
 } from "../../services/pi/CakeSessionRuntimes";
-import { createSubagentParentTool } from "../../services/pi/runtime/subagent-parent-tool";
-import { subagentSystemPrompt } from "../../services/pi/runtime/subagent-system-prompt";
+import { createSubagentParentTool } from "../../services/pi/subagent-parent-tool";
+import { subagentSystemPrompt } from "../../services/pi/subagent-system-prompt";
 import {
   SubagentCoordinator,
   activityOf,

@@ -1,14 +1,17 @@
 import type {
   CakeModelSelection,
   ExplicitCakeModelSelection,
-} from "../../../contracts/model-presets/cake-model-selection";
-import type { JsonObject, JsonValue } from "../../../contracts/serialization/json-contract";
-import type { PiPendingMessages, PiPendingMessageReorder } from "../conversation-data";
-import type { ProjectSessionCreateInput } from "../../../contracts/project-sessions/agent-session-create";
-import type { CakeOperationHost } from "../../../contracts/agent/cake-operation-context";
-import type { NonChatModelType } from "../../../contracts/models/non-chat-model-data";
-import type { CakeOperationDefinition } from "./cake-operation-registry";
-import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
+} from "../model-presets/cake-model-selection";
+import type { JsonObject, JsonValue } from "../serialization/json-contract";
+import type {
+  PiPendingMessages,
+  PiPendingMessageReorder,
+} from "../conversations/pending-message-data";
+import type { ProjectSessionCreateInput } from "../project-sessions/agent-session-create";
+import type { CakeOperationHost } from "./cake-operation-context";
+import type { NonChatModelType } from "../models/non-chat-model-data";
+import type { CakeOperationDefinition } from "./cake-operation";
+import type { CakeOperationOptions } from "./cake-operation-options";
 
 export interface RuntimeOperationApi {
   info(): Promise<JsonValue>;
@@ -61,7 +64,7 @@ export interface RuntimeOperationApi {
 /** Backend composition supplies product operations; the Pi adapter supplies only live capabilities. */
 export interface CakeOperationProviders {
   project(
-    options: CakeSessionRuntimeOptions,
+    options: CakeOperationOptions,
     bridge: {
       host: CakeOperationHost;
       api(): RuntimeOperationApi;
@@ -74,7 +77,7 @@ export interface CakeOperationProviders {
     },
   ): CakeOperationDefinition[];
   coordinator(
-    options: CakeSessionRuntimeOptions,
+    options: CakeOperationOptions,
     bridge: {
       sessionId: string;
       resolveModel(selection: CakeModelSelection | undefined): ExplicitCakeModelSelection;

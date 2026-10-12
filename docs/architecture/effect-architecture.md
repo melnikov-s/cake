@@ -523,10 +523,17 @@ no separate public `PiExtensions` service.
 
 Feature agent operations live beside their Cake domain workflows. The shared backend
 injects `layers/CakeOperations.ts` into the regular-Pi and Durable adapters; neither
-adapter imports feature implementations. `cake-operation-registry` owns the tool
-protocol: envelope validation, progressive help, result/image limits, and dispatch.
-The engine adapter supplies live callback capabilities and projects SDK tool callers
-to Cake-owned scalar context before invoking domain operations.
+adapter imports feature implementations. `contracts/agent/` owns operation definitions,
+execution context, results, runtime APIs, and the product-facing callback/options contract.
+Domain operations depend on those contracts rather than Pi runtime implementation files.
+`cake-operation-registry` implements the tool protocol: envelope validation, progressive
+help, result/image limit enforcement, and dispatch. The engine adapter supplies live
+callback capabilities and projects SDK tool callers to Cake-owned scalar context before
+invoking domain operations. Workflow authoring guidance lives in the workflows domain;
+staged artifact text editing remains a Pi Service because it uses Pi's authoritative edit tool.
+The boundary lint forbids domain imports from `services/pi/runtime`; domain-used Pi
+capabilities live at the Service's top level. Composition and engine adapters may still
+connect runtime implementations directly.
 
 ### `PiModels`
 

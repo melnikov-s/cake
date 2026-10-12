@@ -8,10 +8,10 @@ import {
   QueuedSessionCommand,
 } from "../../contracts/conversations/session-query-data";
 
-import { PiPendingMessageReorder } from "../../services/pi/conversation-data";
+import { PiPendingMessageReorder } from "../../contracts/conversations/pending-message-data";
 
-import type { RuntimeOperationApi } from "../../services/pi/runtime/cake-operation-providers";
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { RuntimeOperationApi } from "../../contracts/agent/cake-operation-api";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
 export function createConversationOperations(
   api: () => RuntimeOperationApi,

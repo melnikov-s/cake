@@ -11,7 +11,7 @@ import {
   CakeSessionRuntimes,
   makeCakeSessionRuntimesLayer,
 } from "../../../src/services/pi/CakeSessionRuntimes";
-import type { PiPendingMessages } from "../../../src/services/pi/conversation-data";
+import type { PiPendingMessages } from "../../../src/contracts/conversations/pending-message-data";
 import {
   SessionCatalogChanges,
   type SessionCatalogChange,

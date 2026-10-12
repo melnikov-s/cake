@@ -27,9 +27,12 @@ import {
   CakeOperationRegistry,
   cakeToolDescription,
   cakeToolEnvelopeSchema,
-  type CakeOperationDefinition,
 } from "./cake-operation-registry";
-import type { CakeOperationProviders, RuntimeOperationApi } from "./cake-operation-providers";
+import type { CakeOperationDefinition } from "../../../contracts/agent/cake-operation";
+import type {
+  CakeOperationProviders,
+  RuntimeOperationApi,
+} from "../../../contracts/agent/cake-operation-api";
 import { loadCakeSessionRuntimeResourceLoader } from "./cake-session-runtime-resources";
 import { detectGitWorktree, worktreeSystemPrompt } from "./worktree-system-prompt";
 import { cakeAgentDocumentationDirectory } from "./cake-agent-documentation";

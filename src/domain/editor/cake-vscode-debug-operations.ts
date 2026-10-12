@@ -5,7 +5,7 @@ import {
   type JsonValue,
 } from "../../contracts/serialization/json-contract";
 import type { VscodeActionResult } from "../../contracts/vscode/vscode-action-result";
-import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
 interface VscodeDebugControl {
   runScript(
