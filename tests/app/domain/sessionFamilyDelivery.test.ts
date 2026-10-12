@@ -4,7 +4,10 @@ import { it } from "@effect/vitest";
 import { Deferred, Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
 import { deliver, initialize } from "../../../src/domain/session-families/sessionFamilies";
-import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
+import {
+  encodeCrossSessionMessage,
+  parseCrossSessionMessage,
+} from "../../../src/contracts/conversations/cross-session-message";
 import {
   makeCakeSessionRuntimesLayer,
   CakeSessionRuntimes,
@@ -139,13 +142,29 @@ describe("Session Family outcome delivery", () => {
 
   it.effect("recovers an accepted reply when acknowledgement was interrupted", () => {
     const replyId = "367f6f87-5cc4-440f-b91f-28f6e722db81";
+    const reply = encodeCrossSessionMessage("Finished", {
+      version: 1,
+      messageId: replyId,
+      threadId: turnId,
+      sequence: 1,
+      expectsResponse: false,
+      replyToMessageId: childId,
+      sender: { sessionId: childId, title: "Child", kind: "project-session" },
+    });
+    let accepted = false;
     return Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;
       yield* storage.addChild(reservation);
       yield* storage.recordTurn(outcome);
-      yield* storage.prepareResponse(childId, "session-1", childId, replyId, [childId]);
-      const pending = (yield* storage.state()).turns[0];
-      assert.ok(pending);
+      yield* storage.prepareResponse(childId, "session-1", childId, replyId, [turnId]);
+      const pending = { ...outcome, replyMessageIds: [replyId] };
+      assert.deepEqual((yield* storage.state()).turns, [pending]);
+      // Queue admission is not transcript acceptance and must not acknowledge the outbox.
+      yield* Effect.scoped(deliver(pending));
+      assert.deepEqual((yield* storage.state()).turns, [pending]);
+      accepted = true;
+      yield* Effect.scoped(deliver(pending));
+      assert.deepEqual((yield* storage.state()).turns, []);
       yield* Effect.scoped(deliver(pending));
       assert.deepEqual((yield* storage.state()).turns, []);
     }).pipe(
@@ -165,27 +184,21 @@ describe("Session Family outcome delivery", () => {
                 ...fakeRuntime(runtimeOptions, () => undefined),
                 snapshot: async () => ({
                   ...snapshot,
-                  parts: [
-                    {
-                      id: replyId,
-                      kind: "context" as const,
-                      title: "Session · Child",
-                      text: "Finished",
-                      crossSession: {
-                        version: 1 as const,
-                        messageId: replyId,
-                        threadId: replyId,
-                        sequence: 1,
-                        expectsResponse: false,
-                        replyToMessageId: childId,
-                        sender: {
-                          sessionId: childId,
-                          title: "Child",
-                          kind: "project-session" as const,
+                  parts: accepted
+                    ? projectSessionEntries([
+                        {
+                          type: "message",
+                          id: replyId,
+                          parentId: null,
+                          timestamp: "2026-01-01T00:00:00.000Z",
+                          message: { role: "user", content: reply, timestamp: 1 },
                         },
-                      },
-                    },
-                  ],
+                      ])
+                    : [],
+                }),
+                listQueuedMessages: async () => ({
+                  steering: [],
+                  followUp: accepted ? [] : [reply],
                 }),
                 prompt: async () => {
                   throw new Error("Do not send a fallback for a delivered reply");

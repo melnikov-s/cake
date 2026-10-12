@@ -34,8 +34,9 @@ function harness() {
     tokens: { input: 24, output: 6, cacheRead: 0, cacheWrite: 0, total: 30 },
     cost: 0.6,
   };
-  // SAFETY: only queue accessors and Pi's authoritative statistics are invoked by this projector.
+  // SAFETY: only the prompt, queue accessors and Pi's authoritative statistics are read.
   const session = {
+    systemPrompt: "",
     getSteeringMessages: () => [],
     getFollowUpMessages: () => [],
     getSessionStats: () => stats,

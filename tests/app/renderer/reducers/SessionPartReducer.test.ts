@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import { messageSnapshots } from "../../../../src/renderer/reducers/SessionPartReducer";
 import { applySnapshot, toSnapshot } from "r-state-tree";
 import { Conversation } from "../../../../src/renderer/models/Conversation";
-import type { UiPart } from "../../../../src/ipc/session-contract";
+import type { UiPart } from "../../../../src/contracts/conversations/session-contract";
 
 it("maps Pi identities without retaining renamed transport fields", () => {
   const snapshots = messageSnapshots(

@@ -2938,6 +2938,7 @@ describe("S1 Pi runtime", () => {
     );
     if (prompt?.kind !== "context") throw new Error("Missing live prompt");
     const fullPrompt = first.getReviewParentContext!().systemPrompt;
+    if (fullPrompt === undefined) throw new Error("Missing live system prompt");
     first.dispose();
     runtimes.splice(runtimes.indexOf(first), 1);
     const stored = SessionManager.create(

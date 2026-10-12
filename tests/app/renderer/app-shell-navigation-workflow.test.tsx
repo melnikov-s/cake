@@ -144,8 +144,8 @@ describe("App shell navigation workflow", () => {
     );
     await fixture.user.click(screen.getByRole("button", { name: "Close all artifacts" }));
     await expectProjectChat("alpha");
-    // Closing the browser restores the session's still-open artifact list.
-    await fixture.user.click(screen.getByRole("button", { name: "Browse all artifacts" }));
+    // The artifact popover closes when browsing; reopen it from the same session.
+    await openLibrary(fixture.user);
     await fixture.user.click(settings());
     expect(await screen.findByText("Model configuration")).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Back to chat" }));
