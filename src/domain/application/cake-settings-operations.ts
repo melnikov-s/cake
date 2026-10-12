@@ -15,6 +15,7 @@ export function createCakeSettingsOperations(
 ): CakeOperationDefinition[] {
   return agentSettingsOperations.map((operation) => ({
     command: operation.command,
+    requires: "invokeAppControl",
     topic: "settings",
     summary: operation.summary,
     guidance: [...agentSettingsGuidance, ...operation.guidance],

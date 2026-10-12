@@ -58,6 +58,7 @@ export function createConversationOperations(
     },
     {
       command: "sessions.list",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary: "List Project Sessions across all registered Cake projects.",
       guidance: [
@@ -71,6 +72,7 @@ export function createConversationOperations(
     },
     {
       command: "sessions.cake",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary:
         "Discover or invoke any Cake capability registered on a target Project Session, in that session's own scope.",
@@ -90,6 +92,7 @@ export function createConversationOperations(
     ...(["history", "compactions", "tree", "context", "usage", "commands"] as const).map(
       (kind): CakeOperationDefinition => ({
         command: `sessions.${kind}`,
+        requires: "invokeAppControl",
         topic: "sessions",
         summary:
           kind === "history"
@@ -122,6 +125,7 @@ export function createConversationOperations(
     ),
     {
       command: "sessions.queue-command",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary: "Queue a slash command between responses without interrupting the active response.",
       inputSchema: Schema.Struct({
@@ -139,6 +143,7 @@ export function createConversationOperations(
     },
     {
       command: "sessions.info",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary: "Inspect one explicitly targeted Project Session.",
       guidance: ["sessionFile is the full path to Pi's authoritative JSONL transcript."],
@@ -152,6 +157,7 @@ export function createConversationOperations(
     },
     {
       command: "sessions.pending",
+      requires: "pendingMessages",
       topic: "sessions",
       summary: "List the live pending inputs for an explicitly targeted Project Session.",
       guidance: [
@@ -172,6 +178,7 @@ export function createConversationOperations(
     },
     {
       command: "sessions.reorder",
+      requires: "reorderPendingMessage",
       topic: "sessions",
       summary: "Move one live pending input to an exact one-based position in its queue lane.",
       guidance: [
@@ -204,8 +211,9 @@ export function createConversationOperations(
       },
     },
     ...(["sessions.cancel-queued", "sessions.steer-queued", "sessions.send-now"] as const).map(
-      (command) => ({
+      (command): CakeOperationDefinition => ({
         command,
+        requires: "invokeAppControl",
         topic: "sessions",
         summary:
           command === "sessions.cancel-queued"
@@ -228,6 +236,7 @@ export function createConversationOperations(
     ),
     {
       command: "sessions.clear-queue",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary: "Clear all steering and follow-up inputs queued in a targeted Project Session.",
       inputSchema: Schema.Struct({
@@ -239,6 +248,7 @@ export function createConversationOperations(
     },
     {
       command: "sessions.abort",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary: "Stop the active turn in an explicitly targeted Project Session.",
       guidance: [
@@ -253,6 +263,7 @@ export function createConversationOperations(
     },
     {
       command: "sessions.rename",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary: "Rename an explicitly targeted Project Session in any Cake project.",
       guidance: [
@@ -270,6 +281,7 @@ export function createConversationOperations(
     },
     {
       command: "sessions.set-labels",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary: "Replace the ordered labels on one Project Session. The first label is primary.",
       guidance: [
@@ -300,6 +312,7 @@ export function createConversationOperations(
     },
     {
       command: "sessions.compact",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary: "Compact an explicitly targeted Project Session.",
       inputSchema: Schema.Struct({

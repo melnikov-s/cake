@@ -10,6 +10,7 @@ export function createSessionWorktreeOperations(
   return [
     {
       command: "session.merge",
+      requires: "mergeSession",
       topic: "sessions",
       summary: "Queue Cake's normal merge workflow for the calling session's Managed Worktree.",
       guidance: [
@@ -23,6 +24,7 @@ export function createSessionWorktreeOperations(
     },
     {
       command: "sessions.merge",
+      requires: "mergeSession",
       topic: "sessions",
       summary: "Queue Cake's normal merge workflow for one immediate child session.",
       inputSchema: Schema.Struct({
@@ -38,6 +40,7 @@ export function createSessionWorktreeOperations(
     },
     {
       command: "session.discard",
+      requires: "discardSession",
       topic: "sessions",
       summary: "Discard the calling session's isolated Managed Worktree without resolving it.",
       inputSchema: Schema.Struct({
@@ -57,6 +60,7 @@ export function createSessionWorktreeOperations(
     },
     {
       command: "sessions.discard",
+      requires: "discardSession",
       topic: "sessions",
       summary:
         "Discard one immediate child session's isolated Managed Worktree without resolving it.",

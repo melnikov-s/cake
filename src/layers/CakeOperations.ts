@@ -1,6 +1,4 @@
 import type { CakeModelSelection } from "../contracts/model-presets/cake-model-selection";
-import type { CakeOperationDefinition } from "../services/pi/runtime/cake-operation-registry";
-import type { CakeSessionRuntimeOptions } from "../services/pi/runtime/cake-session-runtime";
 import { createCakeSettingsOperations } from "../domain/application/cake-settings-operations";
 import { createCakeWorkflowOperations } from "../domain/workflows/cake-workflow-operations";
 import { createSessionApplicationOperations } from "../domain/application/cake-session-application-operations";
@@ -30,46 +28,6 @@ import { createCakeSessionPluginOperations } from "../domain/session-plugins/cak
 import { createCakeWorktreeOperations } from "../domain/worktrees/cake-worktree-operations";
 import { createCakeVscodeOperations } from "../domain/editor/cake-vscode-operations";
 
-const filterProjectSessionOperations = (
-  definitions: CakeOperationDefinition[],
-  options: CakeSessionRuntimeOptions,
-) =>
-  definitions.filter(
-    (operation) =>
-      (operation.command !== "session.resolve" ||
-        (options.currentSessionControl !== undefined &&
-          options.currentSessionControl.canResolve?.() !== false)) &&
-      (!["session.merge", "sessions.merge"].includes(operation.command) ||
-        options.currentSessionControl?.mergeSession !== undefined) &&
-      (!["session.discard", "sessions.discard"].includes(operation.command) ||
-        options.currentSessionControl?.discardSession !== undefined) &&
-      (!(
-        [
-          "app.state",
-          "app.user-selection",
-          "app.split",
-          "settings.sections",
-          "settings.get",
-          "settings.update",
-          "project.settings.get",
-          "project.settings.update",
-          "notifications.send",
-        ].includes(operation.command) || operation.command.startsWith("session-labels.")
-      ) ||
-        options.currentSessionControl?.invokeAppControl !== undefined) &&
-      (operation.command !== "session.create" ||
-        options.currentSessionControl?.createSession !== undefined) &&
-      (operation.command !== "session.create-draft" ||
-        options.currentSessionControl?.createDraftSession !== undefined) &&
-      (operation.command !== "session.fork" ||
-        options.currentSessionControl?.forkSession !== undefined) &&
-      (operation.command !== "sessions.create-child" ||
-        options.currentSessionControl?.createChildSession !== undefined) &&
-      (!operation.command.startsWith("sessions.") ||
-        operation.command === "sessions.create-child" ||
-        options.currentSessionControl?.invokeAppControl !== undefined),
-  );
-
 export const cakeOperationProviders: CakeOperationProviders = {
   project(options, bridge) {
     // Capture a lazy resolver: the SDK loads extensions before the session API is ready.
@@ -97,27 +55,25 @@ export const cakeOperationProviders: CakeOperationProviders = {
     const readOnlyAuxiliary =
       Boolean(options.auxiliary) &&
       !(options.tools ?? []).some((tool) => tool === "bash" || tool === "edit" || tool === "write");
+    const control = options.currentSessionControl;
+    const capabilities = {
+      ...control,
+      setResolved: control?.canResolve?.() === false ? undefined : control?.setResolved,
+    };
     const definitions = [
-      ...filterProjectSessionOperations(
-        [
-          ...(options.workflowControl ? createCakeWorkflowOperations(options.workflowControl) : []),
-          ...(!options.auxiliary &&
-          options.tools === undefined &&
-          options.currentSessionControl?.invokeAppControl
-            ? createCakeSettingsOperations((command, input, signal) =>
-                bridge.api().invokeAppControl(command, input, signal),
-              )
-            : []),
-          ...createProjectSessionOperations(bridge.api),
-          ...createSessionApplicationOperations(bridge.api),
-          ...createAgentProjectSettingsOperations(bridge.api),
-          ...createConversationOperations(bridge.api),
-          ...createSessionFamilyOperations(bridge.api),
-          ...createScheduledMessageOperations(bridge.api),
-          ...createSessionWorktreeOperations(bridge.api),
-        ],
-        options,
-      ),
+      ...(options.workflowControl ? createCakeWorkflowOperations(options.workflowControl) : []),
+      ...(!options.auxiliary && options.tools === undefined
+        ? createCakeSettingsOperations((command, input, signal) =>
+            bridge.api().invokeAppControl(command, input, signal),
+          )
+        : []),
+      ...createProjectSessionOperations(bridge.api),
+      ...createSessionApplicationOperations(bridge.api),
+      ...createAgentProjectSettingsOperations(bridge.api),
+      ...createConversationOperations(bridge.api),
+      ...createSessionFamilyOperations(bridge.api),
+      ...createScheduledMessageOperations(bridge.api),
+      ...createSessionWorktreeOperations(bridge.api),
       ...(!options.auxiliary && options.tools === undefined && options.nonChatModelPreferences
         ? createCakeNonChatModelOperations(options.nonChatModelPreferences, {
             getAvailableOfType: bridge.getAvailableOfType,
@@ -148,6 +104,7 @@ export const cakeOperationProviders: CakeOperationProviders = {
         : []),
     ].filter(
       (definition) =>
+        (definition.requires === undefined || capabilities[definition.requires] !== undefined) &&
         (!options.allowedCakeOperations ||
           options.allowedCakeOperations.includes(definition.command)) &&
         (!readOnlyAuxiliary ||

@@ -15,6 +15,7 @@ export function createProjectSessionOperations(
   return [
     {
       command: "session.create",
+      requires: "createSession",
       topic: "sessions",
       summary:
         "Create, name, and start an independent Project Session in the calling session's project.",
@@ -57,6 +58,7 @@ export function createProjectSessionOperations(
     },
     {
       command: "session.fork",
+      requires: "forkSession",
       topic: "sessions",
       summary:
         "Fork the calling session at a specific transcript entry or, when omitted, at the latest settled entry.",
@@ -112,6 +114,7 @@ export function createProjectSessionOperations(
     },
     {
       command: "session.create-draft",
+      requires: "createDraftSession",
       topic: "sessions",
       summary:
         "Create a saved draft in the calling Project Session's project without starting a Pi session.",
@@ -147,6 +150,7 @@ export function createProjectSessionOperations(
     },
     {
       command: "session.resolve",
+      requires: "setResolved",
       topic: "sessions",
       summary:
         "Resolve or restore the calling session, or its entire Session Family through the root.",

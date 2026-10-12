@@ -20,6 +20,7 @@ export function createSessionFamilyOperations(
   return [
     {
       command: "sessions.create-child",
+      requires: "createChildSession",
       topic: "sessions",
       summary: "Create and start a full child Project Session in the calling session's family.",
       guidance: [
@@ -76,6 +77,7 @@ export function createSessionFamilyOperations(
     },
     {
       command: "sessions.list-family",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary: "List only the Project Sessions in the calling session's family.",
       guidance: [
@@ -91,6 +93,7 @@ export function createSessionFamilyOperations(
     },
     {
       command: "sessions.send",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary: "Send a message to an explicitly targeted Project Session in any Cake project.",
       guidance: [
@@ -132,11 +135,15 @@ export function createSessionFamilyOperations(
         "An informational correlated receipt with target identity, recipient context snapshot, queue facts when pending, and response expectation. No acknowledgment is needed.",
       execute: invokeAppControl("sessions.send"),
     },
-    createSessionSendBatchOperation((input, signal) =>
-      api().invokeAppControl("sessions.send", input, signal),
-    ),
+    {
+      ...createSessionSendBatchOperation((input, signal) =>
+        api().invokeAppControl("sessions.send", input, signal),
+      ),
+      requires: "invokeAppControl",
+    },
     {
       command: "sessions.reply",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary:
         "Reply to the originating session in the current open exchange without carrying its session ID.",
@@ -161,6 +168,7 @@ export function createSessionFamilyOperations(
     },
     {
       command: "sessions.thread",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary: "Inspect participants, message count, limit, closure, and delivery states.",
       inputSchema: Schema.Struct({
@@ -172,6 +180,7 @@ export function createSessionFamilyOperations(
     },
     {
       command: "sessions.close-thread",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary:
         "Close the current exchange so queued or late arrivals cannot cause an automatic reply.",

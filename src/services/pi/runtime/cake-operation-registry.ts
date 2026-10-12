@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
 import type { CakeOperationRuntime } from "../../../contracts/agent/cake-operation-context";
 import {
   jsonObjectSchema,
@@ -70,6 +71,8 @@ export interface CakeOperationDefinition<
   Output extends CakeOperationResult = CakeOperationResult,
 > {
   command: string;
+  /** Live Project Session control capability required for registration. */
+  requires?: keyof NonNullable<CakeSessionRuntimeOptions["currentSessionControl"]>;
   topic: string;
   summary: string;
   guidance?: readonly string[];

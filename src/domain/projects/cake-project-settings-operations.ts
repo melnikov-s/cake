@@ -20,6 +20,7 @@ export function createAgentProjectSettingsOperations(
   return [
     {
       command: "project.settings.get",
+      requires: "invokeAppControl",
       topic: "project",
       summary: "Read every setting for the calling Project Session's Cake Project.",
       guidance: [
@@ -32,6 +33,7 @@ export function createAgentProjectSettingsOperations(
     },
     {
       command: "project.settings.update",
+      requires: "invokeAppControl",
       topic: "project",
       summary:
         "Patch any setting for the calling Project Session's Cake Project and return all committed settings.",

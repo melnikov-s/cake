@@ -17,6 +17,7 @@ export function createScheduledMessageOperations(
   return [
     {
       command: "sessions.schedule",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary: "Schedule a message to an explicitly targeted Project Session at an ISO timestamp.",
       inputSchema: Schema.Struct({
@@ -38,6 +39,7 @@ export function createScheduledMessageOperations(
     },
     {
       command: "sessions.scheduled",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary: "List durable scheduled messages, optionally for one Project Session.",
       inputSchema: Schema.Struct({
@@ -51,6 +53,7 @@ export function createScheduledMessageOperations(
     },
     {
       command: "sessions.cancel-scheduled",
+      requires: "invokeAppControl",
       topic: "sessions",
       summary: "Cancel one scheduled message by ID.",
       inputSchema: Schema.Struct({

@@ -24,6 +24,7 @@ export function createSessionApplicationOperations(
   return [
     {
       command: "app.user-selection",
+      requires: "invokeAppControl",
       topic: "app",
       summary: "Read the text currently highlighted by the user in the Cake window.",
       inputSchema: empty,
@@ -34,6 +35,7 @@ export function createSessionApplicationOperations(
     },
     {
       command: "app.state",
+      requires: "invokeAppControl",
       topic: "app",
       summary: "Inspect the invoking Cake window's current selection and session summaries.",
       inputSchema: empty,
@@ -43,6 +45,7 @@ export function createSessionApplicationOperations(
     },
     {
       command: "app.split",
+      requires: "invokeAppControl",
       topic: "app",
       summary: "Split the calling conversation pane and open a new chat in it.",
       guidance: ["Splits are relative to the calling conversation's pane."],
@@ -53,6 +56,7 @@ export function createSessionApplicationOperations(
     },
     {
       command: "settings.sections",
+      requires: "invokeAppControl",
       topic: "settings",
       summary:
         "List the Cake settings sections available to agents, including scope and writability.",
@@ -63,6 +67,7 @@ export function createSessionApplicationOperations(
     },
     {
       command: "settings.get",
+      requires: "invokeAppControl",
       topic: "settings",
       summary: "Read the effective settings for one Cake settings section in this window.",
       inputSchema: CakeSettingsGetInput,
@@ -72,6 +77,7 @@ export function createSessionApplicationOperations(
     },
     {
       command: "settings.update",
+      requires: "invokeAppControl",
       topic: "settings",
       summary:
         "Patch one Cake settings section in this window and return its committed effective settings.",
@@ -87,6 +93,7 @@ export function createSessionApplicationOperations(
     },
     {
       command: "session-labels.list",
+      requires: "invokeAppControl",
       topic: "session-labels",
       summary: "List global and project-specific labels available to Project Sessions.",
       inputSchema: empty,
@@ -97,6 +104,7 @@ export function createSessionApplicationOperations(
     },
     {
       command: "session-labels.add",
+      requires: "invokeAppControl",
       topic: "session-labels",
       summary: "Add a global or project-specific session label.",
       guidance: ["Omit projectPath to create a global label available in every Project."],
@@ -122,6 +130,7 @@ export function createSessionApplicationOperations(
     },
     {
       command: "session-labels.update",
+      requires: "invokeAppControl",
       topic: "session-labels",
       summary: "Rename or recolor an existing session label.",
       inputSchema: Schema.Struct({
@@ -145,6 +154,7 @@ export function createSessionApplicationOperations(
     },
     {
       command: "session-labels.remove",
+      requires: "invokeAppControl",
       topic: "session-labels",
       summary: "Remove a session label and clear it from every session that uses it.",
       inputSchema: Schema.Struct({ labelId: Schema.String.check(Schema.isUUID(4)) }),
@@ -154,6 +164,7 @@ export function createSessionApplicationOperations(
     },
     {
       command: "session-labels.reorder",
+      requires: "invokeAppControl",
       topic: "session-labels",
       summary: "Move a global or project-specific label to a new zero-based position.",
       inputSchema: Schema.Struct({
@@ -166,6 +177,7 @@ export function createSessionApplicationOperations(
     },
     {
       command: "notifications.send",
+      requires: "invokeAppControl",
       topic: "notifications",
       summary: "Send a bounded native system notification through the operating system.",
       inputSchema: Schema.Struct({
