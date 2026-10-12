@@ -18,12 +18,14 @@ export const ArtifactCatalogMenu = observer(function ArtifactCatalogMenu({
   store,
   sessionArtifacts,
   onOpen,
+  onOpenArtifact,
   onOpenLibrary,
 }: {
   store: ArtifactLibraryStore;
   sessionArtifacts?: SessionArtifactsStore;
   onOpen?(): void;
-  onOpenLibrary(lineageId?: string): void;
+  onOpenArtifact(lineageId: string): void;
+  onOpenLibrary(): void;
 }) {
   const [open, setOpen] = useState(false);
   const source = sessionArtifacts ?? store;
@@ -38,9 +40,9 @@ export const ArtifactCatalogMenu = observer(function ArtifactCatalogMenu({
         title: lineage.title,
         kind: lineage.latest?.kind,
       }));
-  const browse = (lineageId?: string) => {
+  const browse = () => {
     setOpen(false);
-    onOpenLibrary(lineageId);
+    onOpenLibrary();
   };
   return (
     <Popover
@@ -89,7 +91,10 @@ export const ArtifactCatalogMenu = observer(function ArtifactCatalogMenu({
                     ? (store.boardPreviews[item.id] ?? "Workboard")
                     : item.kind
                 }
-                onClick={() => browse(item.id)}
+                onClick={() => {
+                  setOpen(false);
+                  onOpenArtifact(item.id);
+                }}
               />
             ))
           )}

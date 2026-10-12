@@ -1,7 +1,9 @@
 import { useState, type ReactNode } from "react";
 import type { SourceLocation } from "../../contracts/editor/source-location";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
 import { observer } from "r-state-tree/react";
 import { ArtifactHost } from "@/components/artifact-host";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import {
@@ -15,7 +17,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { CopyIcon, RestoreIcon } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
-import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
 import {
   decodeArtifactLineageId,
@@ -38,6 +39,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
   activeSessionId,
   sessions,
   inlineWidgets,
+  compact = false,
   onOpenSourceLocation,
   wrapArtifact,
 }: {
@@ -46,6 +48,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
   activeSessionId?: string;
   sessions: SessionCatalogStore;
   inlineWidgets: InlineWidgetStore;
+  compact?: boolean;
   onOpenSourceLocation?(location: SourceLocation): void;
   wrapArtifact?(artifactId: string, children: ReactNode): ReactNode;
 }) {
@@ -103,7 +106,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
   ) : undefined;
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-      <header className="border-b border-border/65 px-6 py-4">
+      <header className={cn("border-b border-border/65 px-6 py-4", compact && "px-4 py-3")}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -166,9 +169,16 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
           isWorkboard
             ? "grid-cols-1"
             : "grid-cols-[minmax(0,1fr)_17rem] max-[900px]:grid-cols-1 max-[900px]:overflow-auto",
+          compact && !isWorkboard && "grid-cols-1 overflow-auto",
         )}
       >
-        <main className="min-h-0 overflow-auto p-6">
+        <main
+          className={cn(
+            "min-h-0 overflow-auto p-6",
+            compact && "p-4",
+            compact && !isWorkboard && "overflow-visible",
+          )}
+        >
           {content ? (
             wrapArtifact ? (
               wrapArtifact(lineage.id, content)
@@ -195,7 +205,12 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
           )}
         </main>
         {!isWorkboard && (
-          <aside className="min-h-0 overflow-auto border-l border-border/65 p-4 max-[900px]:border-l-0 max-[900px]:border-t">
+          <aside
+            className={cn(
+              "min-h-0 overflow-auto border-l border-border/65 p-4 max-[900px]:border-l-0 max-[900px]:border-t",
+              compact && "overflow-visible border-l-0 border-t",
+            )}
+          >
             <h2 className="text-xs font-semibold">Revision history</h2>
             <Select
               className="mt-2"
@@ -246,7 +261,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
                   >
                     Compare with latest
                   </Button>
-                  {activeSessionId && (
+                  {activeSummary && (
                     <Button size="sm" onClick={() => store.requestRestore(selectedRevision)}>
                       <RestoreIcon /> Restore as new latest
                     </Button>
@@ -264,7 +279,9 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
                   <strong>
                     {link.target.type === "family"
                       ? "Shared with workgroup"
-                      : (sessions.find(link.target.sessionId)?.title ?? link.target.sessionId)}
+                      : link.target.sessionId === CAKE_CHAT_SESSION_ID
+                        ? "Cake Chat"
+                        : (sessions.find(link.target.sessionId)?.title ?? link.target.sessionId)}
                   </strong>
                   <p className="mt-0.5 text-muted-foreground">
                     {link.mode === "follow-latest"

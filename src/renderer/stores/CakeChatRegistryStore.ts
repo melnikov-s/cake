@@ -5,6 +5,7 @@ import {
 } from "../../contracts/cake-chats/cake-chat-data";
 import type { ModelPreset } from "../../contracts/conversations/session-contract";
 import type { Conversation } from "../models/Conversation";
+import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { CakeChatControls } from "../models/CakeChatControls";
 import type { WorkflowCatalog } from "../models/WorkflowCatalog";
@@ -15,6 +16,7 @@ import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordin
 
 export interface CakeChatRegistryStoreProps {
   sessionModel(sessionId: string): Conversation;
+  artifactModel: ArtifactCatalog;
   controlsModel(sessionId: string): CakeChatControls;
   subagentCatalog(sessionId: string): SubagentCatalog;
   workflowCatalog(sessionId: string): WorkflowCatalog;
@@ -39,6 +41,7 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
         key: sessionId,
         sessionId,
         model: this.props.sessionModel(sessionId),
+        artifactModel: this.props.artifactModel,
         controls: this.props.controlsModel(sessionId),
         subagentCatalog: this.props.subagentCatalog(sessionId),
         workflowCatalog: this.props.workflowCatalog,

@@ -16,10 +16,13 @@ import { SubagentActivityStore } from "./SubagentActivityStore";
 import { WorkflowRunStore } from "./WorkflowRunStore";
 import { workflowOwnerReferences } from "../../utils/workflow-references";
 import { RequestInspectorStore } from "./RequestInspectorStore";
+import { SessionArtifactsStore } from "./SessionArtifactsStore";
+import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 
 export interface CakeChatSessionStoreProps {
   sessionId: string;
   model: Conversation;
+  artifactModel: ArtifactCatalog;
   controls: CakeChatControls;
   subagentCatalog: SubagentCatalog;
   workflowCatalog(sessionId: string): WorkflowCatalog;
@@ -61,6 +64,14 @@ export class CakeChatSessionStore extends Store<CakeChatSessionStoreProps> {
       sessionId: this.sessionId,
       model: this.props.subagentCatalog,
       parts: () => this.model.uiParts,
+    });
+  }
+
+  @child
+  get sessionArtifactsStore(): SessionArtifactsStore {
+    return createStore(SessionArtifactsStore, {
+      sessionId: this.sessionId,
+      model: this.props.artifactModel,
     });
   }
 

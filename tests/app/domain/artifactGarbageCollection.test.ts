@@ -6,6 +6,7 @@ import { it } from "@effect/vitest";
 import { Effect, Layer, Schema } from "effect";
 import { afterEach, describe, expect } from "vitest";
 import { collectGarbage } from "../../../src/domain/artifacts/artifactGarbageCollection";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
 import { ArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
 import type { CakeArtifactV1 } from "../../../src/contracts/artifacts/artifact-contract";
 import { makeArtifactProjectionLive } from "../../../src/services/artifacts/ArtifactProjectionLive";
@@ -108,6 +109,30 @@ const publish = Effect.fn("Test.publishArtifact")(function* (
 });
 
 describe("artifact reachability garbage collection", () => {
+  it.effect(
+    "retains permanent Cake Chat links without a regular Pi session file but collects deleted Project Session links",
+    () =>
+      Effect.gen(function* () {
+        const { layer } = yield* Effect.promise(() => testLayer({}));
+        yield* Effect.gen(function* () {
+          yield* publish("coordinator-report", CAKE_CHAT_SESSION_ID, {
+            type: "session",
+            sessionId: CAKE_CHAT_SESSION_ID,
+          });
+          yield* publish("deleted-report", "deleted-session", {
+            type: "session",
+            sessionId: "deleted-session",
+          });
+          const stats = yield* collectGarbage();
+          expect(stats.lineagesRemoved).toBe(1);
+          const catalog = yield* (yield* ArtifactStorage).catalog();
+          expect(catalog.lineages.map((lineage) => lineage.id)).toEqual(["coordinator-report"]);
+          expect(catalog.links.map((link) => link.target)).toEqual([
+            { type: "session", sessionId: CAKE_CHAT_SESSION_ID },
+          ]);
+        }).pipe(Effect.provide(layer));
+      }),
+  );
   it.effect(
     "retains accepted widget captures with revision history and deletes their existing blobs only when unreachable",
     () =>

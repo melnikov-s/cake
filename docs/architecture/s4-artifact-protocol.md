@@ -33,16 +33,18 @@ inline, expanded by default, with a Collapse/Expand control and no separate
 `Open artifact` action. All artifact kinds use their existing `ArtifactHost` renderer.
 Creating or updating an artifact refreshes the catalog without opening a browsing
 surface. Cake Chat and Project Session headers use the same `ArtifactCatalogMenu`
-popover and shared Artifact Library. Project headers show their linked-artifact count
-and effective session/family list; Cake Chat offers the global catalog. Selecting a
-list item closes the popover and opens the library (at the linked revision for a
-Project Session). Browsing never opens automatically on publication.
+popover. Both headers show their linked-artifact count and effective session/family
+list. Selecting a list item closes the popover and opens that artifact in an isolated,
+resizable side pane at the linked revision, keeping the conversation alongside it
+when space permits. The pane belongs to that conversation and closes on navigation.
+The explicit `Browse all artifacts` action opens the shared Artifact Library.
+Browsing never opens automatically on publication.
 Ordinary Markdown artifact links remain prose links. A standalone
 `![Title](cake://artifact/<id>@rN)` paragraph renders an expanded inline artifact
 when that exact revision has no publication surface in the conversation. If the
 publication already renders that exact revision, the redundant embed is omitted;
-other revisions remain distinct. The shared library owns artifact selection,
-revision history, references, link management, and fullscreen presentation. The durable pointer records the originating assistant entry
+other revisions remain distinct. The isolated pane and shared library reuse the same
+artifact detail workflow for revision history, references, link management, and fullscreen presentation. The durable pointer records the originating assistant entry
 and tool call, so the reference appears only while that assistant message is on the
 active Pi branch. Readable fallbacks remain in Cake's artifact repository and
 exact-revision projection; they are not copied into the pointer or automatically
@@ -125,8 +127,9 @@ it. It does not mutate a lineage or revision.
 
 A lineage is reachable when it has a direct link to a surviving session, a family
 link whose family still has a surviving member, or a durable exact artifact pointer
-anywhere in a surviving Pi transcript. The Artifact Library is not a retention
-root. A reachable lineage retains every exact historical revision, and a blob is
+anywhere in a surviving Pi transcript. The permanent Cake Chat is a surviving
+session independently of regular Pi session files, so its direct links are retained.
+The Artifact Library is not a retention root. A reachable lineage retains every exact historical revision, and a blob is
 removed only when no retained revision uses its digest.
 
 Collection runs best-effort after permanent deletion commits and once at startup.

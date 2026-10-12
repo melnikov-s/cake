@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { Effect, Layer, Schema } from "effect";
+import { it as effectIt } from "@effect/vitest";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   ArtifactLineageId,
@@ -430,6 +432,32 @@ describe("artifact lineage workflows", () => {
     );
     expect(failure).toMatchObject({ _tag: "ArtifactError", operation: "authorize" });
   });
+
+  effectIt.effect(
+    "reads the permanent coordinator's linked artifacts without Project Session access",
+    () =>
+      Effect.gen(function* () {
+        const base = yield* Effect.promise(() => makeLayer(() => []));
+        yield* Effect.gen(function* () {
+          for (const name of ["coordinator-report", "unrelated-report"]) {
+            const id = lineageId(name);
+            yield* workflows.create({
+              sessionId: "author",
+              lineageId: id,
+              snapshot: snapshot(id, "author", 1, name),
+              workingDirectory: "/project",
+            });
+          }
+          yield* workflows.linkSession(lineageId("coordinator-report"), CAKE_CHAT_SESSION_ID, {
+            mode: "pinned",
+            revision: revision(1),
+          });
+          const values = yield* artifacts.listEffective(CAKE_CHAT_SESSION_ID);
+          expect(values.map((value) => value.revision.lineageId)).toEqual(["coordinator-report"]);
+          expect(values[0]?.exactRef).toBe("cake://artifact/coordinator-report@r1");
+        }).pipe(Effect.provide(Layer.merge(base, Layer.mock(ProjectAccess, {}))));
+      }),
+  );
 
   it("bounds and searches the global catalog and compares exact revision text", async () => {
     const layer = await makeLayer(() => []);

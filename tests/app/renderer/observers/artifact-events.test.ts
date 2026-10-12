@@ -95,8 +95,9 @@ describe("observeArtifactEvents", () => {
 
     const refresh = vi.fn();
     const root = {
-      sessionRegistry: { sessions: [{ sessionArtifactsStore: { receive: refresh } }] },
+      refreshSessionArtifacts: refresh,
       artifactLibraryStore: { load: vi.fn(async () => undefined), receiveBoardChange: vi.fn() },
+      artifactPaneStore: { receiveBoardChange: vi.fn() },
       projectWorkbenchStore: { setError: vi.fn() },
     } as unknown as RootStore;
     const cancel = observeArtifactEvents(runtimeFor(client), root);
@@ -109,6 +110,11 @@ describe("observeArtifactEvents", () => {
     );
     expect(root.artifactLibraryStore.receiveBoardChange).toHaveBeenNthCalledWith(3, "shared");
     expect(root.artifactLibraryStore.receiveBoardChange).toHaveBeenNthCalledWith(4);
+    expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenCalledTimes(4);
+    expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(1, "artifact");
+    expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(2, "shared");
+    expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(3, "shared");
+    expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(4);
     expect(root.artifactLibraryStore.load).toHaveBeenCalledTimes(2);
     cancel();
     projection[Symbol.dispose]();
@@ -152,14 +158,13 @@ describe("observeArtifactEvents", () => {
 
     const projection = RootProjection.create();
     const root = {
-      sessionRegistry: {
-        sessions: [
-          { sessionArtifactsStore: parent.subject },
-          { sessionArtifactsStore: child.subject },
-          { sessionArtifactsStore: unrelated.subject },
-        ],
+      refreshSessionArtifacts: () => {
+        parent.subject.receive();
+        child.subject.receive();
+        unrelated.subject.receive();
       },
       artifactLibraryStore: { load: vi.fn(async () => undefined), receiveBoardChange: vi.fn() },
+      artifactPaneStore: { receiveBoardChange: vi.fn() },
       projectWorkbenchStore: { setError: vi.fn() },
     } as unknown as RootStore;
     const cancel = observeArtifactEvents(runtimeFor(client), root);

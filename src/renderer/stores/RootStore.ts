@@ -51,6 +51,7 @@ import type { RootProjection } from "../models/RootProjection";
 import { formatHotkey } from "../lib/hotkeys";
 import { UiHintModeStore } from "./UiHintModeStore";
 import { ArtifactLibraryStore } from "./ArtifactLibraryStore";
+import { ArtifactPaneStore } from "./ArtifactPaneStore";
 import { ArtifactReferencePreviewStore } from "./ArtifactReferencePreviewStore";
 import { DrawControlStore } from "./DrawControlStore";
 import { ProjectSessionPlacementStore } from "./ProjectSessionPlacementStore";
@@ -97,6 +98,7 @@ export class RootStore extends Store<{
       newSession: () => this.newSessionStore,
       settings: () => this.settingsStore,
       artifacts: () => this.artifactLibraryStore,
+      artifactPane: () => this.artifactPaneStore,
     });
   }
   @child
@@ -300,13 +302,32 @@ export class RootStore extends Store<{
   }
 
   @child
+  get artifactPaneStore(): ArtifactPaneStore {
+    return createStore(ArtifactPaneStore, {
+      model: this.props.projection.artifacts,
+      currentSessionId: () => {
+        const selection = this.appShellStore.selection;
+        return selection.kind === "project-session" || selection.kind === "cake-chat"
+          ? selection.sessionId
+          : undefined;
+      },
+      artifactsChanged: () => this.refreshSessionArtifacts(),
+      clearReferenceOperationError: (lineageId) =>
+        this.artifactReferencePreviewStore.clearOperationError(lineageId),
+    });
+  }
+
+  refreshSessionArtifacts() {
+    for (const session of this.sessionRegistry.sessions) session.sessionArtifactsStore.receive();
+    for (const session of this.cakeChatCollectionStore.registry.sessions)
+      session.sessionArtifactsStore.receive();
+  }
+
+  @child
   get artifactLibraryStore(): ArtifactLibraryStore {
     return createStore(ArtifactLibraryStore, {
       model: this.props.projection.artifacts,
-      artifactsChanged: () => {
-        for (const session of this.sessionRegistry.sessions)
-          session.sessionArtifactsStore.receive();
-      },
+      artifactsChanged: () => this.refreshSessionArtifacts(),
       clearReferenceOperationError: (lineageId) =>
         this.artifactReferencePreviewStore.clearOperationError(lineageId),
     });
@@ -316,10 +337,7 @@ export class RootStore extends Store<{
   get artifactReferencePreviewStore(): ArtifactReferencePreviewStore {
     return createStore(ArtifactReferencePreviewStore, {
       model: this.props.projection.artifacts,
-      artifactsChanged: () => {
-        for (const session of this.sessionRegistry.sessions)
-          session.sessionArtifactsStore.receive();
-      },
+      artifactsChanged: () => this.refreshSessionArtifacts(),
     });
   }
 
@@ -858,6 +876,7 @@ export class RootStore extends Store<{
   get cakeChatCollectionStore(): CakeChatCollectionStore {
     return createStore(CakeChatCollectionStore, {
       catalog: this.cakeChatCatalogModel,
+      artifactModel: this.props.projection.artifacts,
       isSelected: () => this.appShellStore.selection.kind === "cake-chat",
       sessionModel: (sessionId) => this.props.projection.cakeChatConversation(sessionId),
       controlsModel: (sessionId) => this.props.projection.controlsForCakeChat(sessionId),

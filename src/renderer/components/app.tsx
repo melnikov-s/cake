@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { observer, StoreProvider, useStore } from "r-state-tree/react";
 import {
   Confirmation,
@@ -51,6 +58,7 @@ import { TreeNavigationDialog } from "@/components/tree-navigation-dialog";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
 import { ArtifactSelectionSurface } from "@/components/artifact-selection-surface";
 import { ArtifactLibrary } from "@/components/artifact-library";
+import { ArtifactPaneLayout } from "@/components/artifact-pane-layout";
 import { ArtifactCatalogMenu } from "@/components/artifact-catalog-menu";
 import { BlockingInterviews } from "@/components/blocking-interviews";
 import { UiDialog } from "@/components/ui-dialog";
@@ -175,7 +183,11 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     [root],
   );
   const artifactCatalogMenu = (
-    <ArtifactCatalogMenu store={root.artifactLibraryStore} onOpenLibrary={openArtifactLibrary} />
+    <ArtifactCatalogMenu
+      store={root.artifactLibraryStore}
+      onOpenArtifact={openArtifactLibrary}
+      onOpenLibrary={openArtifactLibrary}
+    />
   );
   const openCakeChat = useCallback(
     (sessionId?: string) => {
@@ -211,7 +223,8 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
   }, [extensionUi.title]);
   useEffect(() => {
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") root.navigationStore.dismissTopSecondarySurface();
+      if (event.key === "Escape" && !event.defaultPrevented)
+        root.navigationStore.dismissTopSecondarySurface();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
@@ -334,6 +347,63 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     };
   };
   const projectTranscriptBehavior = session ? projectTranscriptBehaviorFor(session) : undefined;
+  const artifactPane = (paneSession: { sessionId: string }, children: ReactNode) => {
+    const projectSession = root.sessionRegistry.findSession(paneSession.sessionId);
+    const behavior = projectSession ? projectTranscriptBehaviorFor(projectSession) : undefined;
+    return (
+      <ArtifactPaneLayout
+        store={root.artifactPaneStore}
+        sessionId={paneSession.sessionId}
+        referencePreviews={root.artifactReferencePreviewStore}
+        sessions={root.sessionCatalogStore}
+        inlineWidgets={root.inlineWidgetStore}
+        onOpenSourceLocation={behavior?.openSourceLocation}
+        wrapArtifact={
+          projectSession && behavior?.showSelectionContextMenu
+            ? (artifactId, content) => (
+                <ArtifactSelectionSurface
+                  key={artifactId}
+                  session={projectSession}
+                  artifactId={artifactId}
+                  showContextMenu={behavior.showSelectionContextMenu!}
+                  onReturnToChat={() => {
+                    root.artifactPaneStore.close();
+                    root.navigationStore.returnToWorkbench();
+                  }}
+                >
+                  {content}
+                </ArtifactSelectionSurface>
+              )
+            : undefined
+        }
+      >
+        {children}
+      </ArtifactPaneLayout>
+    );
+  };
+  const artifactControl = (
+    paneSession: {
+      sessionId: string;
+      sessionArtifactsStore: NonNullable<typeof session>["sessionArtifactsStore"];
+    },
+    onOpen?: () => void,
+  ) => (
+    <ArtifactCatalogMenu
+      store={root.artifactLibraryStore}
+      sessionArtifacts={paneSession.sessionArtifactsStore}
+      onOpen={onOpen}
+      onOpenArtifact={(lineageId) =>
+        root.navigationStore.openArtifact(
+          paneSession.sessionId,
+          lineageId,
+          paneSession.sessionArtifactsStore.associations.find(
+            (association) => association.lineage?.id === lineageId,
+          )?.selectedRevision,
+        )
+      }
+      onOpenLibrary={() => root.navigationStore.showArtifactLibrary(paneSession.sessionId)}
+    />
+  );
   const renderCakeChatPaneHeader = (
     pane: SessionPaneNode,
     paneSession: NonNullable<typeof cakeChatSession>,
@@ -357,7 +427,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
             <SidebarIcon />
           </IconButton>
         )}
-        {artifactCatalogMenu}
+        {artifactControl(paneSession, () => root.navigationStore.focusCakeChatPane(pane.paneId))}
         <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
         <RequestInspector store={paneSession.requestInspectorStore} />
         <IconButton
@@ -510,22 +580,6 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
       />
     </>
   ) : undefined;
-  const artifactControl = (paneSession: NonNullable<typeof session>, onOpen?: () => void) => (
-    <ArtifactCatalogMenu
-      store={root.artifactLibraryStore}
-      sessionArtifacts={paneSession.sessionArtifactsStore}
-      onOpen={onOpen}
-      onOpenLibrary={(lineageId) =>
-        root.navigationStore.showArtifactLibrary(
-          paneSession.sessionId,
-          lineageId,
-          paneSession.sessionArtifactsStore.associations.find(
-            (association) => association.lineage?.id === lineageId,
-          )?.selectedRevision,
-        )
-      }
-    />
-  );
   const renderProjectPaneHeader = (
     pane: SessionPaneNode,
     paneSession: NonNullable<typeof session>,
@@ -817,36 +871,42 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     return (
       <>
         <StoreProvider key={session.sessionId} store={session}>
-          <DrawWorkspace
-            draw={session.drawStore}
-            sidebarCollapsed={sidebarCollapsed}
-            canGoBack={shell.canGoBack}
-            canGoForward={shell.canGoForward}
-            onToggleSidebar={toggleSidebar}
-            onGoBack={goBack}
-            onGoForward={goForward}
-            projectChat={session.conversationSessionStore.chatStore}
-            sideChat={session.conversationSessionStore.sideChatStore}
-            projectSidebar={projectSidebar}
-            projectSidebarVisible={!sidebarCollapsed}
-            projectSidebarWidth={displayedSidebarWidth}
-            onProjectSidebarWidthChange={setSidebarWidth}
-            headerActions={workspaceModeControls(session, "draw")}
-            projectComposerHeader={projectComposerHeader}
-            projectComposerContent={workspaceComposerContent}
-            projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
-            sessionTitle={store.sessionTitle}
-            terminalDock={
-              terminal.docked ? (
-                <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
-              ) : undefined
-            }
-            transcriptBehavior={projectTranscriptBehavior}
-            chatSidebarVisible={session.workspaceChatSidebarVisible}
-            chatSidebarWidth={session.workspaceChatSidebarWidth}
-            onChatSidebarWidthChange={(width) => session.setWorkspaceChatSidebarWidth(width)}
-            onToggleChatSidebar={() => session.toggleWorkspaceChatSidebar()}
-          />
+          {artifactPane(
+            session,
+            <DrawWorkspace
+              draw={session.drawStore}
+              sidebarCollapsed={sidebarCollapsed}
+              canGoBack={shell.canGoBack}
+              canGoForward={shell.canGoForward}
+              onToggleSidebar={toggleSidebar}
+              onGoBack={goBack}
+              onGoForward={goForward}
+              projectChat={session.conversationSessionStore.chatStore}
+              sideChat={session.conversationSessionStore.sideChatStore}
+              projectSidebar={projectSidebar}
+              projectSidebarVisible={!sidebarCollapsed}
+              projectSidebarWidth={displayedSidebarWidth}
+              onProjectSidebarWidthChange={setSidebarWidth}
+              headerActions={workspaceModeControls(session, "draw")}
+              projectComposerHeader={projectComposerHeader}
+              projectComposerContent={workspaceComposerContent}
+              projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
+              sessionTitle={store.sessionTitle}
+              terminalDock={
+                terminal.docked ? (
+                  <QuakeTerminal
+                    store={terminal}
+                    retirement={root.workingDirectoryRetirementStore}
+                  />
+                ) : undefined
+              }
+              transcriptBehavior={projectTranscriptBehavior}
+              chatSidebarVisible={session.workspaceChatSidebarVisible}
+              chatSidebarWidth={session.workspaceChatSidebarWidth}
+              onChatSidebarWidthChange={(width) => session.setWorkspaceChatSidebarWidth(width)}
+              onToggleChatSidebar={() => session.toggleWorkspaceChatSidebar()}
+            />,
+          )}
         </StoreProvider>
         {!terminal.docked && (
           <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
@@ -867,28 +927,34 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     return (
       <>
         <StoreProvider key={session.sessionId} store={session}>
-          <BrowserWorkspace
-            browser={store.presentationStore.browserStore}
-            onToggleSidebar={toggleSidebar}
-            onToggleChatSidebar={() => session.toggleWorkspaceChatSidebar()}
-            projectSidebar={projectSidebar}
-            projectSidebarVisible={!sidebarCollapsed}
-            projectSidebarWidth={displayedSidebarWidth}
-            onProjectSidebarWidthChange={setSidebarWidth}
-            projectChat={session.conversationSessionStore.chatStore}
-            sideChat={session.conversationSessionStore.sideChatStore}
-            headerActions={workspaceModeControls(session, "browser")}
-            projectComposerHeader={projectComposerHeader}
-            projectComposerContent={workspaceComposerContent}
-            projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
-            sessionTitle={store.sessionTitle}
-            terminalDock={
-              terminal.docked ? (
-                <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
-              ) : undefined
-            }
-            transcriptBehavior={projectTranscriptBehavior}
-          />
+          {artifactPane(
+            session,
+            <BrowserWorkspace
+              browser={store.presentationStore.browserStore}
+              onToggleSidebar={toggleSidebar}
+              onToggleChatSidebar={() => session.toggleWorkspaceChatSidebar()}
+              projectSidebar={projectSidebar}
+              projectSidebarVisible={!sidebarCollapsed}
+              projectSidebarWidth={displayedSidebarWidth}
+              onProjectSidebarWidthChange={setSidebarWidth}
+              projectChat={session.conversationSessionStore.chatStore}
+              sideChat={session.conversationSessionStore.sideChatStore}
+              headerActions={workspaceModeControls(session, "browser")}
+              projectComposerHeader={projectComposerHeader}
+              projectComposerContent={workspaceComposerContent}
+              projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
+              sessionTitle={store.sessionTitle}
+              terminalDock={
+                terminal.docked ? (
+                  <QuakeTerminal
+                    store={terminal}
+                    retirement={root.workingDirectoryRetirementStore}
+                  />
+                ) : undefined
+              }
+              transcriptBehavior={projectTranscriptBehavior}
+            />,
+          )}
         </StoreProvider>
         {!terminal.docked && (
           <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
@@ -909,28 +975,34 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
     return (
       <>
         <StoreProvider key={session.sessionId} store={session}>
-          <IdeWorkspace
-            editor={store.presentationStore.embeddedEditorStore}
-            selections={session.editorSelectionsStore}
-            reviews={reviews}
-            projectSidebar={projectSidebar}
-            projectSidebarVisible={!sidebarCollapsed}
-            projectSidebarWidth={displayedSidebarWidth}
-            onProjectSidebarWidthChange={setSidebarWidth}
-            projectChat={session.conversationSessionStore.chatStore}
-            sideChat={session.conversationSessionStore.sideChatStore}
-            headerActions={workspaceModeControls(session, "vscode")}
-            projectComposerHeader={projectComposerHeader}
-            projectComposerContent={workspaceComposerContent}
-            projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
-            sessionTitle={store.sessionTitle}
-            terminalDock={
-              terminal.docked ? (
-                <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
-              ) : undefined
-            }
-            transcriptBehavior={projectTranscriptBehavior}
-          />
+          {artifactPane(
+            session,
+            <IdeWorkspace
+              editor={store.presentationStore.embeddedEditorStore}
+              selections={session.editorSelectionsStore}
+              reviews={reviews}
+              projectSidebar={projectSidebar}
+              projectSidebarVisible={!sidebarCollapsed}
+              projectSidebarWidth={displayedSidebarWidth}
+              onProjectSidebarWidthChange={setSidebarWidth}
+              projectChat={session.conversationSessionStore.chatStore}
+              sideChat={session.conversationSessionStore.sideChatStore}
+              headerActions={workspaceModeControls(session, "vscode")}
+              projectComposerHeader={projectComposerHeader}
+              projectComposerContent={workspaceComposerContent}
+              projectComposerLeadingAccessory={projectComposerLeadingAccessory(session)}
+              sessionTitle={store.sessionTitle}
+              terminalDock={
+                terminal.docked ? (
+                  <QuakeTerminal
+                    store={terminal}
+                    retirement={root.workingDirectoryRetirementStore}
+                  />
+                ) : undefined
+              }
+              transcriptBehavior={projectTranscriptBehavior}
+            />,
+          )}
         </StoreProvider>
         {!terminal.docked && (
           <QuakeTerminal store={terminal} retirement={root.workingDirectoryRetirementStore} />
@@ -1129,6 +1201,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
                   : undefined
               }
               renderHeader={renderCakeChatPaneHeader}
+              wrapPane={artifactPane}
               onFocus={(paneId) => root.navigationStore.focusCakeChatPane(paneId)}
               onClose={(paneId) => root.navigationStore.closeCakeChatPane(paneId)}
             />
@@ -1229,6 +1302,7 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
                 : undefined
             }
             renderHeader={renderProjectPaneHeader}
+            wrapPane={artifactPane}
             onFocus={(paneId) => root.navigationStore.focusSessionPane(paneId)}
             onSplit={(axis) => root.navigationStore.splitFocusedSession(axis)}
             onClose={(paneId) => root.navigationStore.closeSessionPane(paneId)}

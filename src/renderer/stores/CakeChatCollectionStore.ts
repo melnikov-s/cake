@@ -8,6 +8,7 @@ import type {
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import { describeError } from "../lib/error-details";
 import type { CakeChatCatalog } from "../models/CakeChatCatalog";
+import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import type { Conversation } from "../models/Conversation";
 import type { CakeChatControls } from "../models/CakeChatControls";
 import type { WorkflowCatalog } from "../models/WorkflowCatalog";
@@ -25,6 +26,7 @@ import { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorS
 
 export interface CakeChatCollectionStoreProps {
   catalog: CakeChatCatalog;
+  artifactModel: ArtifactCatalog;
   sessionModel(sessionId: string): Conversation;
   controlsModel(sessionId: string): CakeChatControls;
   subagentCatalog(sessionId: string): SubagentCatalog;
@@ -72,6 +74,7 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   get registry(): CakeChatRegistryStore {
     return createStore(CakeChatRegistryStore, {
       sessionModel: this.props.sessionModel,
+      artifactModel: this.props.artifactModel,
       controlsModel: this.props.controlsModel,
       subagentCatalog: this.props.subagentCatalog,
       workflowCatalog: this.props.workflowCatalog,

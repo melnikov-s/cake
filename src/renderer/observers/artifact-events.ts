@@ -10,22 +10,24 @@ export const observeArtifactEvents = (runtime: Runtime, root: RootStore) =>
       try {
         if (event.type === "message-board-invalidated") {
           root.artifactLibraryStore.receiveBoardChange(event.lineageId);
+          root.artifactPaneStore.receiveBoardChange(event.lineageId);
           return;
         }
         if (event.type === "renderer-events-ready") {
           // Reconcile content after stream subscription/reconnection, not only after opening.
           root.artifactLibraryStore.receiveBoardChange();
+          root.artifactPaneStore.receiveBoardChange();
           return;
         }
         if (event.type === "artifact-updated" || event.type === "artifact-catalog-invalidated") {
           // Native artifact events are ordered invalidations. Every loaded session refetches its
           // effective projection because a family link may make a change visible there;
           // reconnect/remount starts with that same authoritative current query.
-          for (const sessionStore of root.sessionRegistry.sessions)
-            sessionStore.sessionArtifactsStore.receive();
-          root.artifactLibraryStore.receiveBoardChange(
-            event.type === "artifact-updated" ? event.record.artifact.id : event.lineageId,
-          );
+          root.refreshSessionArtifacts();
+          const lineageId =
+            event.type === "artifact-updated" ? event.record.artifact.id : event.lineageId;
+          root.artifactLibraryStore.receiveBoardChange(lineageId);
+          root.artifactPaneStore.receiveBoardChange(lineageId);
           void root.artifactLibraryStore.load();
           return;
         }

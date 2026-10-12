@@ -71,7 +71,7 @@ test("Workboards update live, preserve reading state, and reconcile after board 
       .getByRole("dialog", { name: "Artifacts", exact: true })
       .getByRole("button", { name: /Editor isolation/ })
       .click();
-    await expect(page.getByLabel("Filter artifacts by kind")).toBeVisible();
+    await expect(page.getByRole("complementary", { name: "Artifact", exact: true })).toBeVisible();
     const board = page.locator(`[data-artifact-id="${MESSAGE_BOARD_FIXTURE_ID}"]`);
     await expect(board.getByRole("region", { name: "Workboard", exact: true })).toBeVisible();
     await expect(page.getByText("Append-only coordination log", { exact: true })).toBeVisible();
@@ -146,6 +146,12 @@ test("Workboards update live, preserve reading state, and reconcile after board 
     expect(await board.evaluate((element) => element.closest("main")!.scrollTop)).toBe(scrollTop);
     await expect(finding).toHaveAttribute("aria-expanded", "true");
 
+    // Browse explicitly before switching to an artifact outside the current session.
+    await page.getByRole("button", { name: "1 artifacts" }).click();
+    await page
+      .getByRole("dialog", { name: "Artifacts", exact: true })
+      .getByRole("button", { name: "Browse all artifacts" })
+      .click();
     // Changing the selected descriptor ends the old board lifetime, not the window event stream.
     const lineages = page.getByRole("navigation", { name: "Artifact lineages" });
     await lineages.getByRole("button", { name: /Switchboard/ }).click();

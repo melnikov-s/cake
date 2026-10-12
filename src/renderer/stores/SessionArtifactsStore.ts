@@ -6,7 +6,7 @@ import { ClientContext } from "./context/ClientContext";
 /**
  * Owns one session's effective artifact query. Mount, menu opening, and ordered
  * artifact invalidations refetch the authoritative projection. Only the newest
- * started refresh may commit; the shared library owns selection and mutations.
+ * started refresh may commit; artifact viewers own selection and mutations.
  */
 export class SessionArtifactsStore extends Store<{
   sessionId: string;

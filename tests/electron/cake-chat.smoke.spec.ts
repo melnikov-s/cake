@@ -330,7 +330,7 @@ test("permanent Cake Chat retains its input, history and settings across restart
         .click();
       await expect(queue.getByRole("listitem")).toHaveCount(5 - index);
     }
-    await page.getByRole("button", { name: "Artifacts", exact: true }).click();
+    await page.getByRole("button", { name: "0 artifacts", exact: true }).click();
     await page.getByRole("button", { name: "Browse all artifacts", exact: true }).click();
     await expect(page.getByLabel("Search artifact library")).toBeVisible();
     await page.getByRole("button", { name: "Close all artifacts", exact: true }).click();
@@ -367,7 +367,7 @@ test("permanent Cake Chat retains its input, history and settings across restart
     expect(requests).toHaveLength(requestCount);
     await page.keyboard.press("Escape");
     await expect(inspectButton).toBeFocused();
-    await page.getByRole("button", { name: "Artifacts", exact: true }).click();
+    await page.getByRole("button", { name: "0 artifacts", exact: true }).click();
     await page.getByRole("button", { name: "Browse all artifacts", exact: true }).click();
     await expect(coordinator.getByRole("img", { name: "Running" })).toBeVisible();
     releaseFirstReply?.();

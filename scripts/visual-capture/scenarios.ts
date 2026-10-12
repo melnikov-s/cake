@@ -3,6 +3,7 @@ import {
   MESSAGE_BOARD_FIXTURE_ID,
 } from "../../tests/fixtures/message-board.ts";
 import { defaultApplicationState } from "../../src/contracts/application/application-data.ts";
+import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-data.ts";
 import { openRequestInspectorFixture } from "./request-inspector-fixture.ts";
 import { drawMermaidArchitecture } from "../../tests/fixtures/draw-mermaid-architecture.ts";
 import { addResponseModeReminder } from "../../src/contracts/conversations/response-mode-reminders.ts";
@@ -1166,7 +1167,7 @@ async function seedArtifactScenario(
 const inlineArtifactScenario: VisualCaptureScenario = {
   name: "inline-artifact",
   description: "One saved visualization, expanded inline by default with collapse and fullscreen",
-  states: ["default", "collapsed", "fullscreen", "popup"],
+  states: ["default", "collapsed", "fullscreen", "popup", "pane"],
   async seed(paths, theme) {
     await seedArtifactScenario(
       paths,
@@ -1225,6 +1226,22 @@ export default function Visual() {
           .getByRole("button", { name: /Inline visualization/ }),
       ).toBeVisible();
     }
+    if (state === "pane") {
+      await page.getByRole("button", { name: "1 artifacts" }).click();
+      await page
+        .getByRole("dialog", { name: "Artifacts", exact: true })
+        .getByRole("button", { name: /Inline visualization/ })
+        .click();
+      const pane = page.getByRole("complementary", { name: "Artifact", exact: true });
+      await expect(pane).toBeVisible();
+      await expect(
+        pane
+          .locator("iframe")
+          .contentFrame()
+          .getByRole("heading", { name: "One artifact, two views" }),
+      ).toBeVisible();
+      await expect(page.getByRole("dialog", { name: "Artifacts", exact: true })).not.toBeAttached();
+    }
     if (state === "collapsed")
       await disclosure.getByRole("button", { name: "Inline visualization Collapse" }).click();
     if (state === "fullscreen")
@@ -1234,9 +1251,11 @@ export default function Visual() {
     await page.mouse.move(1, 1);
   },
   region(page, state) {
-    return state === "popup" || state === "fullscreen"
-      ? page.getByRole("dialog")
-      : page.locator('[data-slot="artifact-disclosure"]').first();
+    return state === "pane"
+      ? page.locator('[data-slot="artifact-pane-layout"]')
+      : state === "popup" || state === "fullscreen"
+        ? page.getByRole("dialog")
+        : page.locator('[data-slot="artifact-disclosure"]').first();
   },
 };
 
@@ -1708,6 +1727,51 @@ const cakeChatScenario: VisualCaptureScenario = {
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
     await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator("body"),
+};
+
+const cakeChatArtifactScenario: VisualCaptureScenario = {
+  name: "cake-chat-artifact",
+  description: "Cake Chat session-scoped artifacts opening in an isolated side pane",
+  states: ["default"],
+  async seed(paths, theme) {
+    await cakeChatScenario.seed(paths, theme);
+    for (const [id, sessionId] of [
+      ["coordinator-report", CAKE_CHAT_SESSION_ID],
+      ["unrelated-report", "visual-assistant-markdown-code"],
+    ] as const) {
+      await seedArtifact(
+        paths,
+        {
+          protocol: "cake.artifact/v1",
+          id,
+          sessionId,
+          revision: 1,
+          kind: "markdown",
+          title: id === "coordinator-report" ? "Coordinator report" : "Unrelated project report",
+          payload: {
+            markdown:
+              "## Session artifact\n\nThis report belongs to this conversation.\n\n- Keep the conversation visible.\n- Open the library only when browsing all artifacts.",
+          },
+          fallback: { markdown: "A session-scoped report." },
+        },
+        new Date(0).toISOString(),
+      );
+    }
+  },
+  async prepare(page) {
+    await cakeChatScenario.prepare(page, "default");
+    await page.getByRole("button", { name: "1 artifacts" }).click();
+    const menu = page.getByRole("dialog", { name: "Artifacts", exact: true });
+    await expect(
+      menu.getByRole("navigation", { name: "Artifact list" }).getByRole("button"),
+    ).toHaveCount(1);
+    await menu.getByRole("button", { name: /Coordinator report/ }).click();
+    await expect(page.getByRole("complementary", { name: "Artifact", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Session artifact", exact: true }),
+    ).toBeVisible();
   },
   region: (page) => page.locator("body"),
 };
@@ -2596,6 +2660,7 @@ export const visualCaptureScenarios = [
   projectCustomInstructionsScenario,
   newSessionScenario,
   cakeChatScenario,
+  cakeChatArtifactScenario,
   cakeChatInspectorScenario,
   taskInputAttachmentsScenario,
   cakeChatSidebarUnread,

@@ -5,6 +5,7 @@ import { ProjectSessionConfiguration } from "../../services/project-sessions/Pro
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { SessionFamilyStorage, familyMemberIds } from "../../services/storage/SessionFamilyStorage";
 import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
 
 interface ArtifactGarbageCollectionStats {
   readonly skipped: boolean;
@@ -41,10 +42,11 @@ export const collectGarbage = Effect.fn("Artifacts.collectGarbage")(function* ()
   const transcriptLineageIds = yield* Effect.forEach(references.lineageIds, (lineageId) =>
     Schema.decodeUnknownEffect(ArtifactLineageId)(lineageId),
   );
-  const survivingSessions = new Set(references.sessionIds);
+  // The permanent coordinator survives independently of regular Pi session files.
+  const survivingSessions = new Set([...references.sessionIds, CAKE_CHAT_SESSION_ID]);
   const collected = yield* storage.collectUnreachable({
     expectedCatalogToken: snapshot.token,
-    survivingSessionIds: references.sessionIds,
+    survivingSessionIds: [...survivingSessions],
     survivingFamilyIds: familyRecords
       .filter((family) =>
         familyMemberIds(family).some((sessionId) => survivingSessions.has(sessionId)),
