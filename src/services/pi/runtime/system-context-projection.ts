@@ -1,7 +1,26 @@
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { Tool } from "@earendil-works/pi-ai";
 import type { UiPart } from "../../../contracts/conversations/session-contract";
 
 type ContextPart = Extract<UiPart, { kind: "context" }>;
-const piSectionNames = new Set(["preamble", "tools", "rules", "docs"]);
+type SourceGroup = "system" | "tools" | "skills" | "worktree" | "instructions";
+const sourceGroups = ["system", "tools", "skills", "worktree", "instructions"] as const;
+const sourceTitles = {
+  system: "System",
+  tools: "Tools",
+  skills: "Skills",
+  worktree: "Worktree",
+  instructions: "AGENTS.md",
+} as const;
+
+/** Pi's current tool declarations, without executable handlers or Cake metadata. */
+export function runtimeSystemTools(session: Pick<AgentSession, "agent">): Tool[] {
+  return session.agent.state.tools.map(({ name, description, parameters, constrainedSampling }) => {
+    const tool: Tool = { name, description, parameters };
+    if (constrainedSampling !== undefined) tool.constrainedSampling = constrainedSampling;
+    return tool;
+  });
+}
 
 function sectionBody(name: string, text: string): string {
   const opening = `<${name}>\n`;
@@ -11,9 +30,8 @@ function sectionBody(name: string, text: string): string {
     : text;
 }
 
-/** Split only Pi's rendered section boundaries; opaque/forced prompt text stays disclosed. */
-export function projectRuntimeSystemPrompt(prompt: string, baseId = "runtime"): ContextPart[] {
-  const sections: Record<string, string> = {};
+function splitPrompt(prompt: string) {
+  const sections: Record<string, string | null> = {};
   let content = "";
   let offset = 0;
   for (const match of prompt.matchAll(/^<([a-z][a-z0-9_-]*)>\n[\s\S]*?^<\/\1>/gm)) {
@@ -24,127 +42,112 @@ export function projectRuntimeSystemPrompt(prompt: string, baseId = "runtime"): 
     offset = match.index + match[0].length;
   }
   content += prompt.slice(offset);
-  // With no sections, do not claim provenance for a custom or forced prompt
-  // that Pi treats as opaque. Preserve extension text outside the sections too.
-  return projectPromptSections(content.trim(), sections, baseId);
+  return { content: content.trim(), sections };
+}
+
+function sourceGroup(name: string): SourceGroup {
+  if (name === "tools" || name === "skills") return name;
+  if (name === "worktree_instructions") return "worktree";
+  if (name === "project_context") return "instructions";
+  return "system";
+}
+
+function toolContext(tools: readonly unknown[], label = "Tool declarations"): string {
+  return `## ${label}\n\n\`\`\`json\n${JSON.stringify(tools, null, 2)}\n\`\`\``;
 }
 
 function projectPromptSections(
   content: string,
   sections: Record<string, string | null>,
   baseId: string,
+  declarations: readonly string[] = [],
 ): ContextPart[] {
-  const parts: ContextPart[] = [];
-  const add = (key: string, title: string, text: string) => {
-    if (text.trim())
-      parts.push({
-        id: key === "content" ? `${baseId}-system-prompt` : `${baseId}-system-prompt-${key}`,
-        kind: "context",
-        title: title.slice(0, 512),
-        text,
-      });
-  };
-  add("content", "System prompt", content);
-  const piText = Object.entries(sections)
-    .filter(([name, value]) => piSectionNames.has(name) && typeof value === "string")
-    .map(([, value]) => value)
-    .join("\n\n");
-  add("pi", "Pi system prompt", piText);
+  const groups = {
+    system: content ? [content] : [],
+    tools: new Array<string>(),
+    skills: new Array<string>(),
+    worktree: new Array<string>(),
+    instructions: new Array<string>(),
+  } satisfies Record<SourceGroup, string[]>;
   for (const [name, value] of Object.entries(sections)) {
-    if (value === null || piSectionNames.has(name)) continue;
+    if (value === null) {
+      groups[sourceGroup(name)].push(`Removed system prompt section ${JSON.stringify(name)}.`);
+      continue;
+    }
     const body = sectionBody(name, value);
-    if (name === "addendum") {
-      // Cake marks source boundaries while assembling the addendum. Do not infer
-      // provenance from headings or split arbitrary user Markdown on blank lines.
-      const titles = new Map([
-        ["cake_system_prompt", "Cake system prompt"],
-        ["session_instructions", "Session instructions"],
-        ["worktree_instructions", "Worktree instructions"],
-        ["project_investigation", "Project investigation instructions"],
-      ]);
+    if (name === "project_context") {
       let offset = 0;
-      let index = 0;
-      for (const match of body.matchAll(
-        /^<(cake_system_prompt|session_instructions|worktree_instructions|project_investigation)>\n[\s\S]*?^<\/\1>/gm,
-      )) {
-        add(`additional-${index++}`, "Additional instructions", body.slice(offset, match.index));
-        add(match[1]!, titles.get(match[1]!)!, match[0]);
-        offset = match.index + match[0].length;
-      }
-      add(`additional-${index}`, "Additional instructions", body.slice(offset));
-    } else if (name === "project_context") {
-      let remainder = "";
-      let offset = 0;
-      let index = 0;
       for (const match of body.matchAll(
         /<project_instructions path="([^"]+)">\n[\s\S]*?\n<\/project_instructions>/g,
       )) {
-        remainder += body.slice(offset, match.index);
-        const path = match[1]!;
-        const filename = path.split(/[\\/]/).at(-1) ?? path;
-        add(`file-${index++}`, `${filename} · ${path}`, match[0]);
+        groups.system.push(body.slice(offset, match.index));
+        groups.instructions.push(`## \`${match[1]}\`\n\n${match[0]}`);
         offset = match.index + match[0].length;
       }
-      remainder += body.slice(offset);
-      // This is Pi's container label, not a separate instruction source.
-      remainder = remainder.replace(/^Project-specific instructions and guidelines:\s*/, "");
-      add("project-context", "Project context", remainder);
-    } else {
-      const title =
-        name === "skills"
-          ? "Skills"
-          : name === "cwd"
-            ? "Working directory"
-            : `System section · ${name}`;
-      add(`section-${name}`, title, value);
-    }
+      groups.system.push(body.slice(offset));
+    } else if (name === "addendum") {
+      // Only explicit worktree boundaries carry worktree provenance. Other additions
+      // (Cake, session, user, and extension guidance) remain together in System.
+      let offset = 0;
+      for (const match of body.matchAll(
+        /^<worktree_instructions>\n[\s\S]*?^<\/worktree_instructions>/gm,
+      )) {
+        groups.system.push(body.slice(offset, match.index));
+        groups.worktree.push(match[0]);
+        offset = match.index + match[0].length;
+      }
+      groups.system.push(body.slice(offset));
+    } else groups[sourceGroup(name)].push(value);
   }
-  return parts;
+  groups.tools.push(...declarations);
+  return sourceGroups.flatMap((key) => {
+    const text = groups[key]
+      .map((value) => value.replace(/^Project-specific instructions and guidelines:\s*/, "").trim())
+      .filter(Boolean)
+      .join("\n\n");
+    return text
+      ? [{ id: `${baseId}-system-prompt-${key}`, kind: "context", title: sourceTitles[key], text }]
+      : [];
+  });
 }
 
-/** Present Pi's instruction sources and tool changes separately. */
+/** Group the live prompt without changing Pi's model-facing instructions. */
+export function projectRuntimeSystemPrompt(
+  prompt: string,
+  baseId = "runtime",
+  tools: readonly Tool[] = [],
+): ContextPart[] {
+  const { content, sections } = splitPrompt(prompt);
+  return projectPromptSections(content, sections, baseId, tools.length ? [toolContext(tools)] : []);
+}
+
+/** Apply the same source groups to stored baselines and instruction/tool deltas. */
 export function projectSystemContext(message: unknown, baseId: string, content: string): UiPart[] {
   if (typeof message !== "object" || message === null) return [];
-  const sections: Record<string, string | null> = {};
+  const parsed = splitPrompt(content);
   const rawSections = Reflect.get(message, "sections");
   if (typeof rawSections === "object" && rawSections !== null)
     for (const [name, value] of Object.entries(rawSections))
-      if (typeof value === "string" || value === null) sections[name] = value;
-  const parts: UiPart[] = [
-    ...projectRuntimeSystemPrompt(content, baseId),
-    ...projectPromptSections("", sections, baseId),
-  ];
-  for (const [name, value] of Object.entries(sections))
-    if (value === null)
-      parts.push({
-        id: `${baseId}-section-removed-${parts.length}`,
-        kind: "context",
-        title: `System section removed · ${name}`.slice(0, 512),
-        text: `Removed system prompt section ${JSON.stringify(name)}.`,
-      });
+      if (typeof value === "string" || value === null) parsed.sections[name] = value;
+  const declarations: string[] = [];
   for (const [field, label] of [
-    ["toolsAdded", "Tool"],
-    ["toolsRemoved", "Tool removed"],
+    ["toolsAdded", "Tool declarations"],
+    ["toolsRemoved", "Tools removed"],
   ] as const) {
     const tools = Reflect.get(message, field);
-    if (!Array.isArray(tools)) continue;
-    tools.forEach((tool, index) => {
-      if (typeof tool !== "object" || tool === null) return;
-      const name = Reflect.get(tool, "name");
-      parts.push({
-        id: `${baseId}-${field}-${index}`,
-        kind: "context",
-        title: `${label} · ${typeof name === "string" ? name : "unnamed"}`.slice(0, 512),
-        text: `\`\`\`json\n${JSON.stringify(tool, null, 2)}\n\`\`\``,
-      });
-    });
+    if (Array.isArray(tools) && tools.length) declarations.push(toolContext(tools, label));
   }
-  return parts;
+  return projectPromptSections(parsed.content, parsed.sections, baseId, declarations);
 }
 
-/** Suppress an identical full baseline, never an individual source-change patch. */
-export function withoutRuntimeSystemPrompt(parts: readonly UiPart[], prompt: string): UiPart[] {
-  const runtimeParts = projectRuntimeSystemPrompt(prompt);
+/** Suppress identical full instruction baselines, retaining tool changes and partial patches. */
+export function withoutRuntimeSystemPrompt(
+  parts: readonly UiPart[],
+  prompt: string,
+  tools: readonly Tool[] = [],
+): UiPart[] {
+  const runtimeParts = projectRuntimeSystemPrompt(prompt, "runtime", tools);
+  const runtimeInstructions = runtimeParts.filter((part) => part.title !== "Tools");
   const groups = new Map<string, ContextPart[]>();
   for (const part of parts) {
     if (part.kind !== "context" || part.origin === "compacted") continue;
@@ -157,13 +160,20 @@ export function withoutRuntimeSystemPrompt(parts: readonly UiPart[], prompt: str
   }
   const redundantIds = new Set<string>();
   for (const group of groups.values()) {
-    if (group.length !== runtimeParts.length) continue;
+    const instructions = group.filter((part) => part.title !== "Tools");
     if (
-      runtimeParts.every((runtime) =>
-        group.some((part) => runtime.title === part.title && runtime.text === part.text),
+      runtimeInstructions.length === 0 ||
+      instructions.length !== runtimeInstructions.length ||
+      !runtimeInstructions.every((runtime) =>
+        instructions.some((part) => runtime.title === part.title && runtime.text === part.text),
       )
     )
-      for (const part of group) redundantIds.add(part.id);
+      continue;
+    for (const part of group)
+      if (
+        runtimeParts.some((runtime) => runtime.title === part.title && runtime.text === part.text)
+      )
+        redundantIds.add(part.id);
   }
   return parts.filter((part) => !redundantIds.has(part.id));
 }

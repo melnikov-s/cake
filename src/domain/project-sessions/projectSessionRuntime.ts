@@ -211,7 +211,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
   const globalInstructions = appState.globalCustomInstructions.trim();
   const projectInstructions = projectSettings?.customInstructions.trim();
   const projectPrompt = setupInstructions
-    ? `## Project worktree setup instructions\n\n${setupInstructions}`
+    ? `<worktree_instructions>\n## Project worktree setup instructions\n\n${setupInstructions}\n</worktree_instructions>`
     : undefined;
   const worktreeOperationTarget = Effect.fn("ProjectSessions.worktreeOperationTarget")(function* (
     targetSessionId?: string,

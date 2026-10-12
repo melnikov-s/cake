@@ -281,12 +281,12 @@ test("shows compacted historical work in place, muted and expandable", async () 
   const fixtureParts = projectConversationDisplay(
     SessionManager.open(join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`)),
   );
-  expect(
-    fixtureParts.filter((part) => part.kind === "context" && part.title === "Pi system prompt"),
-  ).toEqual([
-    expect.objectContaining({ origin: "compacted" }),
-    expect.objectContaining({ text: expect.stringContaining("Genuinely changed instructions") }),
-  ]);
+  expect(fixtureParts.filter((part) => part.kind === "context" && part.title === "System")).toEqual(
+    [
+      expect.objectContaining({ origin: "compacted" }),
+      expect.objectContaining({ text: expect.stringContaining("Genuinely changed instructions") }),
+    ],
+  );
 
   const application = await electron.launch({
     args: [repositoryRoot],
@@ -373,8 +373,8 @@ test("shows compacted historical work in place, muted and expandable", async () 
     // The genuine instruction change stays inspectable even if the runtime
     // materializes its current prompt while this initially passive preview is open.
     const systemChange = page
-      .locator('[data-part-id="entry-changed-system-system-prompt-pi"]')
-      .getByRole("button", { name: "Pi system prompt", exact: true });
+      .locator('[data-part-id="entry-changed-system-system-prompt-system"]')
+      .getByRole("button", { name: "System", exact: true });
     await expect(systemChange).toHaveCount(1);
     await systemChange.click();
     await expect(
@@ -384,7 +384,7 @@ test("shows compacted historical work in place, muted and expandable", async () 
       "Markdown",
     );
     await systemChange.click();
-    await page.getByRole("button", { name: "Tool · read", exact: true }).click();
+    await page.getByRole("button", { name: "Tools", exact: true }).click();
     await expect(page.locator('[data-slot="context-pill"] pre')).toContainText('"name": "read"');
     // This unopened-runtime preview shows the original event and genuine change,
     // but does not mistake the carried checkpoint for another injection.

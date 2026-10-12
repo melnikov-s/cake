@@ -50,6 +50,7 @@ it("renders live nested events and metadata-only saved history in the real proje
   // Root/Conversation/ChatStore deliver activity to the authoritative Chat.
   const pi = {
     systemPrompt: "",
+    agent: { state: { tools: [] } },
     getSteeringMessages: () => [],
     getFollowUpMessages: () => [],
     getSessionStats: () => ({

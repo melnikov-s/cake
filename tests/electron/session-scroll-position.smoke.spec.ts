@@ -631,11 +631,9 @@ for (const scenario of [
         const firstItem = transcript.locator('[data-slot="transcript-item"]').first();
         await expect(firstItem).toHaveAttribute(
           "data-transcript-anchor-id",
-          "runtime-system-prompt-pi",
+          "runtime-system-prompt-system",
         );
-        await expect(
-          firstItem.getByRole("button", { name: "Pi system prompt", exact: true }),
-        ).toBeVisible();
+        await expect(firstItem.getByRole("button", { name: "System", exact: true })).toBeVisible();
         await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBe(0);
         await page.waitForTimeout(250);
 

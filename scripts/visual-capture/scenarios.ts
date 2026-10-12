@@ -362,14 +362,19 @@ const conversationEntryOrigin = "http://127.0.0.1:9";
 const contextPillsScenario: VisualCaptureScenario = {
   ...assistantMarkdownCode,
   name: "context-pills",
-  description:
-    "Inspectable injected reminders and hidden Cake/extension context in horizontal pills",
+  description: "Grouped prompt sources and inspectable injected context in horizontal pills",
   states: ["default", "expanded", "sources"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
     await writeFile(
       join(paths.project, "AGENTS.md"),
       "## Project instructions\n\nUse shared UI primitives and keep the conversation primary.",
+    );
+    const skillDirectory = join(paths.cakeHome, "pi", "skills", "context-fixture");
+    await mkdir(skillDirectory, { recursive: true });
+    await writeFile(
+      join(skillDirectory, "SKILL.md"),
+      "---\nname: context-fixture\ndescription: Context disclosure fixture.\n---\n\nRead detailed instructions only when relevant.\n",
     );
     const timestamp = new Date(0).toISOString();
     const file = join(
@@ -424,21 +429,36 @@ const contextPillsScenario: VisualCaptureScenario = {
     await expect(
       page.locator('[data-slot="context-group"]').last().locator('[data-slot="context-pill"]'),
     ).toHaveCount(4, { timeout: 20_000 });
-    const piPrompt = page.getByRole("button", { name: "Pi system prompt", exact: true });
-    await expect(piPrompt).toBeVisible();
-    await piPrompt.click();
-    await expect(page.locator('[data-part-id="runtime-system-prompt-pi"]')).toContainText(
+    const sources = page.locator('[data-slot="context-group"]').first();
+    await expect(sources.locator('[data-slot="context-pill"] button')).toHaveText([
+      "System",
+      "Tools",
+      "Skills",
+      "AGENTS.md",
+    ]);
+    const system = sources.getByRole("button", { name: "System", exact: true });
+    await system.click();
+    await expect(page.locator('[data-part-id="runtime-system-prompt-system"]')).toContainText(
       "coding assistant",
     );
-    await piPrompt.click();
-    const cakePrompt = page.getByRole("button", { name: "Cake system prompt", exact: true });
-    await cakePrompt.click();
     await expect(
       page.getByRole("heading", { name: "Cake desktop environment", exact: true }),
     ).toBeVisible();
-    await cakePrompt.click();
+    await system.click();
+    const tools = sources.getByRole("button", { name: "Tools", exact: true });
+    await tools.click();
+    await expect(page.locator('[data-part-id="runtime-system-prompt-tools"]')).toContainText(
+      '"name": "read"',
+    );
+    await tools.click();
+    const skills = sources.getByRole("button", { name: "Skills", exact: true });
+    await skills.click();
+    await expect(page.locator('[data-part-id="runtime-system-prompt-skills"]')).toContainText(
+      "context-fixture",
+    );
+    await skills.click();
     if (state === "sources") {
-      await page.getByRole("button", { name: /^AGENTS\.md ·/ }).click();
+      await sources.getByRole("button", { name: "AGENTS.md", exact: true }).click();
       await expect(
         page.getByRole("heading", { name: "Project instructions", exact: true }),
       ).toBeVisible();

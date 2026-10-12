@@ -1699,16 +1699,14 @@ describe("Pi 1.0.0 foundation contract", () => {
     const expected = [
       expect.objectContaining({
         kind: "context",
-        title: "System section · workflow",
-        text: "<workflow>\n## Exact system section\n</workflow>",
+        title: "System",
+        text: expect.stringContaining('Removed system prompt section "obsolete"'),
       }),
-      expect.objectContaining({ kind: "context", title: "System section removed · obsolete" }),
       expect.objectContaining({
         kind: "context",
-        title: "Tool · write",
-        text: `\`\`\`json\n${JSON.stringify(message.toolsAdded[0], null, 2)}\n\`\`\``,
+        title: "Tools",
+        text: expect.stringContaining('"name": "write"'),
       }),
-      expect.objectContaining({ kind: "context", title: "Tool removed · read" }),
     ];
     expect(createLiveMessageProjector()({ type: "message_start", message })).toEqual(expected);
     const session = SessionManager.inMemory("/project");
@@ -1717,16 +1715,16 @@ describe("Pi 1.0.0 foundation contract", () => {
     const live = createLiveMessageProjector({
       currentSystemPrompt: () => "<workflow>\n## Exact system section\n</workflow>",
     });
-    expect(live({ type: "message_start", message })).toEqual(expected.slice(1));
+    expect(live({ type: "message_start", message })).toEqual(expected);
     expect(
       live({ type: "message_start", message: { ...message, content: "New instructions" } }),
     ).toEqual([
       expect.objectContaining({
         kind: "context",
-        title: "System prompt",
-        text: "New instructions",
+        title: "System",
+        text: expect.stringContaining("New instructions"),
       }),
-      ...expected,
+      expected[1],
     ]);
   });
 
@@ -2893,7 +2891,7 @@ describe("S1 Pi runtime", () => {
     expect(snapshot.tree.filter((entry) => entry.messageRole === "user")).toHaveLength(2);
   });
 
-  it("projects loaded personal and project AGENTS.md independently and refreshes their contents on reload", async () => {
+  it("groups loaded personal and project AGENTS.md and refreshes their contents on reload", async () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");
     await mkdir(agentDir, { recursive: true });
@@ -2910,22 +2908,20 @@ describe("S1 Pi runtime", () => {
     });
     runtimes.push(runtime);
     const initial = await runtime.snapshot();
-    const personalTitle = `AGENTS.md · ${join(agentDir, "AGENTS.md")}`;
-    const projectTitle = `AGENTS.md · ${join(directory, "AGENTS.md")}`;
+    const instructionTitle = "AGENTS.md";
     expect(initial.parts).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ title: "Pi system prompt" }),
-        expect.objectContaining({ title: "Cake system prompt" }),
+        expect.objectContaining({ title: "Tools" }),
         expect.objectContaining({
-          title: personalTitle,
+          title: instructionTitle,
           text: expect.stringContaining("Personal instruction source"),
         }),
         expect.objectContaining({
-          title: projectTitle,
+          title: instructionTitle,
           text: expect.stringContaining("Project instruction source"),
         }),
         expect.objectContaining({
-          title: "Session instructions",
+          title: "System",
           text: expect.stringContaining("Session-specific instructions"),
         }),
       ]),
@@ -2935,19 +2931,25 @@ describe("S1 Pi runtime", () => {
     const reloaded = await runtime.snapshot();
     expect(reloaded.parts).toContainEqual(
       expect.objectContaining({
-        title: projectTitle,
+        title: instructionTitle,
         text: expect.stringContaining("Updated project instructions"),
       }),
     );
     expect(
-      reloaded.parts.filter((part) => part.kind === "context" && part.title === personalTitle),
+      reloaded.parts.filter((part) => part.kind === "context" && part.title === instructionTitle),
     ).toHaveLength(1);
-    expect(
-      reloaded.parts.filter((part) => part.kind === "context" && part.title === projectTitle),
-    ).toHaveLength(1);
+    const instructions = reloaded.parts.find(
+      (part) => part.kind === "context" && part.title === instructionTitle,
+    );
+    expect(instructions).toMatchObject({
+      text: expect.stringContaining(join(agentDir, "AGENTS.md")),
+    });
+    expect(instructions).toMatchObject({
+      text: expect.stringContaining(join(directory, "AGENTS.md")),
+    });
   });
 
-  it("shows separated live prompt sources alongside tools after restoring a stored baseline", async () => {
+  it("shows grouped live prompt sources and retains changed tool declarations after restoring a baseline", async () => {
     const directory = await createTemporaryDirectory();
     const options = {
       cwd: directory,
@@ -2960,7 +2962,7 @@ describe("S1 Pi runtime", () => {
     const first = await createCakeSessionRuntime(options);
     runtimes.push(first);
     const prompt = (await first.snapshot()).parts.find(
-      (part) => part.kind === "context" && part.title === "Pi system prompt",
+      (part) => part.kind === "context" && part.title === "System",
     );
     if (prompt?.kind !== "context") throw new Error("Missing live prompt");
     const fullPrompt = first.getReviewParentContext!().systemPrompt;
@@ -2994,12 +2996,15 @@ describe("S1 Pi runtime", () => {
     });
     runtimes.push(reopened);
     const parts = (await reopened.snapshot()).parts;
-    expect(
-      parts.filter((part) => part.kind === "context" && part.title === "Pi system prompt"),
-    ).toEqual([expect.objectContaining({ id: "runtime-system-prompt-pi", text: prompt.text })]);
-    expect(parts).toContainEqual(expect.objectContaining({ title: "Cake system prompt" }));
+    expect(parts.filter((part) => part.kind === "context" && part.title === "System")).toEqual([
+      expect.objectContaining({ id: "runtime-system-prompt-system", text: prompt.text }),
+    ]);
     expect(parts).toContainEqual(
-      expect.objectContaining({ kind: "context", title: "Tool · read" }),
+      expect.objectContaining({
+        kind: "context",
+        title: "Tools",
+        text: expect.stringContaining('"name": "read"'),
+      }),
     );
   });
 
@@ -3024,11 +3029,10 @@ describe("S1 Pi runtime", () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: "context",
-          title: "Pi system prompt",
+          title: "System",
           text: expect.stringContaining("coding assistant"),
         }),
-        expect.objectContaining({ title: "Cake system prompt" }),
-        expect.objectContaining({ title: "Working directory" }),
+        expect.objectContaining({ title: "Tools" }),
       ]),
     );
     expect(firstSnapshot.piSettings).toMatchObject({
@@ -3378,8 +3382,8 @@ describe("S1 Pi runtime", () => {
     expect(isolated.sessionId).not.toBe(second.sessionId);
     expect((await isolated.snapshot()).parts).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ kind: "context", title: "Pi system prompt" }),
-        expect.objectContaining({ kind: "context", title: "Cake system prompt" }),
+        expect.objectContaining({ kind: "context", title: "System" }),
+        expect.objectContaining({ kind: "context", title: "Tools" }),
       ]),
     );
   });

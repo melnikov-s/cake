@@ -4,6 +4,7 @@ import {
   type SessionEntry,
   type SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import type { Tool } from "@earendil-works/pi-ai";
 import { createHash } from "node:crypto";
 import { Option, Schema } from "effect";
 import {
@@ -657,6 +658,7 @@ export function createLiveMessageProjector(
     deferProviderErrors?: boolean;
     suppressAbort?(): boolean;
     currentSystemPrompt?(): string;
+    currentSystemTools?(): readonly Tool[];
     renderUserMessageAsMarkdown?(message: unknown): boolean;
   } = {},
 ) {
@@ -683,7 +685,11 @@ export function createLiveMessageProjector(
     ) {
       const parts = partsFromMessage(event.message, `live-context-${++userIndex}`);
       return event.message.role === "system" && options.currentSystemPrompt
-        ? withoutRuntimeSystemPrompt(parts, options.currentSystemPrompt())
+        ? withoutRuntimeSystemPrompt(
+            parts,
+            options.currentSystemPrompt(),
+            options.currentSystemTools?.(),
+          )
         : parts;
     }
     if (event.type === "message_start" && event.message.role === "assistant") {

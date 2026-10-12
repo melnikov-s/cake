@@ -260,7 +260,7 @@ describe("CakeSessionRuntime characterization", () => {
     await runtime.toolCompact(selectedId);
     const compacted = await runtime.snapshot();
     expect(
-      before.parts.filter((part) => part.kind === "context" && part.title === "Pi system prompt"),
+      before.parts.filter((part) => part.kind === "context" && part.title === "System"),
     ).toHaveLength(1);
     expect(
       compacted.parts.filter((part) => part.kind === "context" && part.origin !== "compacted"),
@@ -317,7 +317,7 @@ describe("CakeSessionRuntime characterization", () => {
           text: expect.stringContaining("CHANGED_CANONICAL_INSTRUCTION"),
         }),
       }),
-      expect.objectContaining({ part: expect.objectContaining({ title: "Cake system prompt" }) }),
+      expect.objectContaining({ part: expect.objectContaining({ title: "System" }) }),
     ]);
     expect(requestSystems(bodies[5]!)[0]!.content).toContain("CHANGED_CANONICAL_INSTRUCTION");
     expect(requestSystems(bodies[5]!)[0]!.content).not.toContain("REQUIRED_CANONICAL_INSTRUCTION");

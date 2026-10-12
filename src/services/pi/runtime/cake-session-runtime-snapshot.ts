@@ -21,6 +21,7 @@ import { projectConversationDisplay } from "./conversation-display-projection";
 import { projectTree } from "./session-projection";
 import {
   projectRuntimeSystemPrompt,
+  runtimeSystemTools,
   withoutRuntimeSystemPrompt,
 } from "./system-context-projection";
 import { projectPiSettings } from "./settings-translation";
@@ -52,14 +53,15 @@ export function projectCakeSessionRuntimeSnapshot(
   const branchParts = projectConversationDisplay(session.sessionManager, {
     live: session.isStreaming,
   });
+  const tools = runtimeSystemTools(session);
   return {
     workspacePath: input.workspacePath,
     sessionId: input.sessionId,
     sessionFile: session.sessionFile ?? "",
     sessionListed: input.sessionListed,
     parts: [
-      ...projectRuntimeSystemPrompt(session.systemPrompt),
-      ...withoutRuntimeSystemPrompt(branchParts, session.systemPrompt),
+      ...projectRuntimeSystemPrompt(session.systemPrompt, "runtime", tools),
+      ...withoutRuntimeSystemPrompt(branchParts, session.systemPrompt, tools),
       ...input.queuedParts,
       ...input.transientParts,
     ],

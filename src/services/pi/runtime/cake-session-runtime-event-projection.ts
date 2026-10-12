@@ -20,7 +20,7 @@ import {
 } from "./session-projection";
 import type { ResponseRetryNotice } from "./response-retry";
 import { createNestedToolActivityProjection } from "./nested-tool-activity-projection";
-import { projectRuntimeSystemPrompt } from "./system-context-projection";
+import { projectRuntimeSystemPrompt, runtimeSystemTools } from "./system-context-projection";
 
 export type RuntimeProjectionEvent =
   | { type: "part-updated"; sessionId: string; part: UiPart }
@@ -97,12 +97,15 @@ export function createCakeSessionRuntimeEventProjection(input: {
   );
   const pendingUserPresentations: PendingUserPresentation[] = [];
   let runtimePromptIds = new Set(
-    projectRuntimeSystemPrompt(session.systemPrompt).map((part) => part.id),
+    projectRuntimeSystemPrompt(session.systemPrompt, "runtime", runtimeSystemTools(session)).map(
+      (part) => part.id,
+    ),
   );
   const projectLiveMessage = createLiveMessageProjector({
     deferProviderErrors: true,
     suppressAbort: input.suppressAbort,
     currentSystemPrompt: () => session.systemPrompt,
+    currentSystemTools: () => runtimeSystemTools(session),
     renderUserMessageAsMarkdown: (message) => {
       if (typeof message !== "object" || message === null) return false;
       const content = textFromContent(Reflect.get(message, "content"));
@@ -224,7 +227,11 @@ export function createCakeSessionRuntimeEventProjection(input: {
     if (event.type === "agent_start") {
       emit({ type: "streaming", sessionId, streaming: true });
       // before_agent_start extensions may have changed the effective prompt for this run.
-      const promptParts = projectRuntimeSystemPrompt(session.systemPrompt);
+      const promptParts = projectRuntimeSystemPrompt(
+        session.systemPrompt,
+        "runtime",
+        runtimeSystemTools(session),
+      );
       const nextIds = new Set(promptParts.map((part) => part.id));
       for (const partId of runtimePromptIds)
         if (!nextIds.has(partId)) emit({ type: "part-removed", sessionId, partId });
