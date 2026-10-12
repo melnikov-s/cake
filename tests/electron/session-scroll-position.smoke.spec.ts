@@ -612,7 +612,7 @@ for (const scenario of [
         await firstSession.locator(".session-row").click();
         await expect(firstSession).toHaveClass(/active/);
         await expect(transcript.locator('[data-slot="transcript-item"]').first()).toContainText(
-          "First scroll fixture",
+          "System prompt",
         );
         await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBe(0);
         await page.waitForTimeout(250);
