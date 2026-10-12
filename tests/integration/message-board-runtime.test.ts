@@ -8,9 +8,19 @@ import {
   ModelRuntime,
   SessionManager,
   SettingsManager,
+  type CustomMessageEntry,
   type InlineExtension,
 } from "@earendil-works/pi-coding-agent";
-import { Schema } from "effect";
+import { Effect, Layer, ManagedRuntime, Schema } from "effect";
+import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import * as boards from "../../src/domain/artifacts/messageBoards";
+import { makeArtifactStorageLive } from "../../src/services/storage/ArtifactStorageLive";
+import { makeMessageBoardStorageLive } from "../../src/services/storage/MessageBoardStorageLive";
+import { MessageBoardStorage } from "../../src/services/storage/MessageBoardStorage";
+import {
+  makeSessionFamilyStorageLive,
+  SessionFamilyStorage,
+} from "../../src/services/storage/SessionFamilyStorage";
 import { CakeOperationRegistry } from "../../src/services/pi/runtime/cake-operation-registry";
 import { createMessageBoardOperations } from "../../src/services/pi/runtime/cake-message-board-operations";
 import {
@@ -62,21 +72,28 @@ const harness = async (
     after?: InlineExtension;
     before?: InlineExtension;
     terminate?: boolean;
+    persisted?: { cwd: string; control: MessageBoardControl; sessionFile?: string };
   } = {},
 ) => {
-  const cwd = await mkdtemp(join(tmpdir(), "cake-board-runtime-"));
-  directories.push(cwd);
+  const cwd = input.persisted?.cwd ?? (await mkdtemp(join(tmpdir(), "cake-board-runtime-")));
+  if (!input.persisted) directories.push(cwd);
   const agentDir = join(cwd, "agent");
-  await mkdir(agentDir);
+  await mkdir(agentDir, { recursive: true });
   let boardId = "family-board-test";
   const entries: BoardEntry[] = [];
   const receipts: BoardReceipt[] = [];
   const requests: Message[][] = [];
   const started = [gate(), gate()];
   const released = [gate(), gate()];
-  const control: MessageBoardControl = {
-    append: async () => {
-      throw new Error("Unused append");
+  const control: MessageBoardControl = input.persisted?.control ?? {
+    append: async (input) => {
+      const value: BoardEntry = {
+        ...entry(entries.length + 1),
+        ...input,
+        audience: input.audience ?? "workgroup",
+      };
+      entries.push(value);
+      return { boardId, entry: boardDescription(value) };
     },
     readNew: async (page, notificationOnly, excluded = []) => {
       const available = entries.filter((entry) => {
@@ -200,7 +217,11 @@ const harness = async (
     ],
   });
   await loader.reload();
-  const manager = SessionManager.inMemory(cwd);
+  const manager = input.persisted
+    ? input.persisted.sessionFile
+      ? SessionManager.open(input.persisted.sessionFile)
+      : SessionManager.create(cwd, join(cwd, "sessions"))
+    : SessionManager.inMemory(cwd);
   const { session } = await createAgentSession({
     cwd,
     agentDir,
@@ -227,7 +248,7 @@ const harness = async (
                 return {
                   content: [{ type: "text", text: "Released" }],
                   details: undefined,
-                  ...(input.terminate ? { terminate: true } : {}),
+                  terminate: input.terminate ?? false,
                 };
               },
             },
@@ -250,7 +271,7 @@ const harness = async (
               description: "Read a board body",
               parameters: Type.Object({}),
               async execute(toolCallId, _input, signal) {
-                if (!entries.length) entries.push(entry(1));
+                if (!input.persisted && !entries.length) entries.push(entry(1));
                 const registry = new CakeOperationRegistry(createMessageBoardOperations(control));
                 const { content, details } = await registry.invoke(
                   { command: "boards.read", input: { sequences: [1] } },
@@ -283,6 +304,63 @@ const harness = async (
   };
 };
 
+// A fresh Layer graph and ManagedRuntime are acquired on every call. Only disk survives recreation.
+const persistedBackend = async (cwd: string) => {
+  const artifactRoot = join(cwd, "artifacts");
+  const runtime = ManagedRuntime.make(
+    Layer.mergeAll(
+      makeArtifactStorageLive(artifactRoot),
+      makeMessageBoardStorageLive(artifactRoot),
+      makeSessionFamilyStorageLive(join(cwd, "session-families.json")),
+    ).pipe(Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer))),
+  );
+  const control: MessageBoardControl = {
+    append: (input) => runtime.runPromise(boards.append("parent", input)),
+    readNew: (input, notificationOnly, excluded) =>
+      runtime.runPromise(boards.readNew("child", input, notificationOnly, excluded)),
+    read: (sequences) => runtime.runPromise(boards.read("child", sequences)),
+    entryReceipts: (sequence) => runtime.runPromise(boards.entryReceipts("child", sequence)),
+    sessionReceipts: (sessionId, input) =>
+      runtime.runPromise(boards.sessionReceipts("child", sessionId, input)),
+    recordIntake: (boardId, sequences, kind) =>
+      runtime.runPromise(boards.recordIntake("child", boardId, sequences, kind)),
+  };
+  return { runtime, control, storage: await runtime.runPromise(MessageBoardStorage) };
+};
+const seedPersistedBoard = async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "cake-board-recovery-"));
+  directories.push(cwd);
+  const backend = await persistedBackend(cwd);
+  const board = await backend.runtime.runPromise(
+    Effect.gen(function* () {
+      const family = yield* (yield* SessionFamilyStorage).addChild({
+        familyId: "recovery",
+        parentSessionId: "parent",
+        parentWorkingDirectory: cwd,
+        childSessionId: "child",
+        childWorkingDirectory: cwd,
+        requestId: "child-request",
+        projectPath: cwd,
+        createdAt: "2026-01-01T00:00:00Z",
+      });
+      return yield* boards.ensureBoard(family);
+    }),
+  );
+  return { cwd, backend, boardId: board.lineageId };
+};
+const persistedReminders = (manager: SessionManager) =>
+  manager
+    .getBranch()
+    .filter(
+      (entry): entry is CustomMessageEntry =>
+        entry.type === "custom_message" && entry.customType === MESSAGE_BOARD_REMINDER,
+    );
+const persistedSessionFile = (manager: SessionManager) => {
+  const file = manager.getSessionFile();
+  if (!file) throw new Error("Expected a disk-backed Pi session");
+  return file;
+};
+
 describe("message-board intake in real Pi", () => {
   it("delivers coalesced descriptions only after the full parallel tool batch, without queues or extra turns", async () => {
     const fixture = await harness({ tools: 2 });
@@ -293,8 +371,13 @@ describe("message-board intake in real Pi", () => {
       });
       const prompt = fixture.session.prompt("Work independently");
       await Promise.all(fixture.started.map((gate) => gate.promise));
-      fixture.entries.push(entry(1), entry(2));
+      await fixture.control.append({ description: "Finding 1", body: "Full evidence 1" });
+      await fixture.control.append({ description: "Finding 2", body: "Full evidence 2" });
       expect(fixture.receipts).toEqual([]);
+      expect(fixture.requests).toHaveLength(1);
+      expect(fixture.session.isStreaming).toBe(true);
+      expect(fixture.session.getSteeringMessages()).toEqual([]);
+      expect(fixture.session.getFollowUpMessages()).toEqual([]);
       fixture.released[0]?.resolve();
       expect(fixture.requests).toHaveLength(1);
       fixture.released[1]?.resolve();
@@ -387,9 +470,17 @@ describe("message-board intake in real Pi", () => {
       await fixture.session.prompt("Continue again");
       expect(fixture.requests).toHaveLength(4);
       expect(fixture.receipts.filter((receipt) => receipt.notifiedAt)).toHaveLength(25);
-      expect(
-        fixture.manager.getBranch().filter((entry) => entry.type === "custom_message"),
-      ).toHaveLength(3);
+      const notices = persistedReminders(fixture.manager);
+      const batches = notices.map((notice) =>
+        Schema.decodeUnknownSync(
+          Schema.Struct({ entries: Schema.Array(Schema.Struct({ sequence: Schema.Number })) }),
+        )(notice.details).entries.map((entry) => entry.sequence),
+      );
+      expect(batches.map((batch) => batch.length)).toEqual([10, 10, 5]);
+      expect(batches.flat()).toEqual(Array.from({ length: 25 }, (_, index) => index + 1));
+      expect(fixture.receipts.map((receipt) => receipt.sequence)).toEqual(batches.flat());
+      expect(fixture.session.getSteeringMessages()).toEqual([]);
+      expect(fixture.session.getFollowUpMessages()).toEqual([]);
     } finally {
       fixture.session.dispose();
     }
@@ -548,7 +639,7 @@ describe("message-board intake in real Pi", () => {
       expect(fixture.receipts).toHaveLength(1);
       fixture.setBoardId("family-board-new");
       fixture.receipts.splice(0);
-      // A fork/restart has a fresh request observer but inherited Pi context.
+      // Simulate inherited context with a fresh observer; this does not recreate Pi or storage.
       observeMessageBoardRequests(fixture.session, fixture.control);
       await fixture.session.prompt("New family with inherited history");
       expect(JSON.stringify(fixture.requests[1])).toContain(
@@ -564,14 +655,168 @@ describe("message-board intake in real Pi", () => {
   it("collects on genuine idle-start without waking the agent on append", async () => {
     const fixture = await harness();
     try {
-      fixture.entries.push(entry(1));
+      await fixture.control.append({ description: "Finding 1", body: "Full evidence 1" });
       expect(fixture.requests).toHaveLength(0);
+      expect(fixture.session.isStreaming).toBe(false);
+      expect(fixture.session.getSteeringMessages()).toEqual([]);
+      expect(fixture.session.getFollowUpMessages()).toEqual([]);
       await fixture.session.prompt("Start");
       expect(fixture.requests).toHaveLength(1);
       expect(JSON.stringify(fixture.requests[0])).toContain("Finding 1");
       expect(fixture.receipts[0]?.notifiedAt).toEqual(expect.any(String));
     } finally {
       fixture.session.dispose();
+    }
+  });
+});
+
+describe("message-board disk recovery with a recreated Pi session and storage runtime", () => {
+  it("reloads entries and independent receipts without staging or stamping duplicate notifications", async () => {
+    const seeded = await seedPersistedBoard();
+    let backend = seeded.backend;
+    await backend.control.append({ description: "Finding 1", body: "Full evidence 1" });
+    await backend.control.append({ description: "Finding 2", body: "Full evidence 2" });
+    let fixture = await harness({
+      persisted: { cwd: seeded.cwd, control: backend.control },
+      readBody: true,
+    });
+    try {
+      await fixture.session.prompt("Read one of the shared findings");
+      const boardId = seeded.boardId;
+      const entriesBefore = await backend.runtime.runPromise(backend.storage.entries(boardId));
+      const receiptsBefore = await backend.runtime.runPromise(backend.storage.receipts(boardId));
+      expect(entriesBefore.map((entry) => entry.body)).toEqual([
+        "Full evidence 1",
+        "Full evidence 2",
+      ]);
+      expect(receiptsBefore).toEqual([
+        {
+          sequence: 1,
+          sessionId: "child",
+          notifiedAt: expect.any(String),
+          readAt: expect.any(String),
+        },
+        { sequence: 2, sessionId: "child", notifiedAt: expect.any(String) },
+      ]);
+      const remindersBefore = persistedReminders(fixture.manager);
+      expect(remindersBefore).toHaveLength(1);
+      const oldSession = fixture.session;
+      const oldStorage = backend.storage;
+      const sessionId = fixture.manager.getSessionId();
+      const sessionFile = persistedSessionFile(fixture.manager);
+      fixture.session.dispose();
+      await backend.runtime.dispose();
+
+      backend = await persistedBackend(seeded.cwd);
+      fixture = await harness({
+        persisted: { cwd: seeded.cwd, control: backend.control, sessionFile },
+      });
+      expect(fixture.session).not.toBe(oldSession);
+      expect(backend.storage).not.toBe(oldStorage);
+      expect(fixture.manager.getSessionId()).toBe(sessionId);
+      expect(await backend.runtime.runPromise(backend.storage.entries(boardId))).toEqual(
+        entriesBefore,
+      );
+      expect(await backend.runtime.runPromise(backend.storage.receipts(boardId))).toEqual(
+        receiptsBefore,
+      );
+      expect(persistedReminders(fixture.manager)).toEqual(remindersBefore);
+      expect(
+        (await backend.runtime.runPromise(boards.readNew("child", {}))).entries.map(
+          (entry) => entry.sequence,
+        ),
+      ).toEqual([2]);
+      expect((await backend.runtime.runPromise(boards.readNew("child", {}, true))).entries).toEqual(
+        [],
+      );
+      expect(fixture.requests).toEqual([]);
+
+      await fixture.session.prompt("Continue after recreation");
+      expect(fixture.requests).toHaveLength(1);
+      expect(persistedReminders(fixture.manager)).toEqual(remindersBefore);
+      expect(await backend.runtime.runPromise(backend.storage.receipts(boardId))).toEqual(
+        receiptsBefore,
+      );
+    } finally {
+      fixture.session.dispose();
+      await backend.runtime.dispose();
+    }
+  });
+
+  it("recovers an undelivered description and newly appended idle entry only on the next genuine request", async () => {
+    const seeded = await seedPersistedBoard();
+    let backend = seeded.backend;
+    let fixture = await harness({
+      persisted: { cwd: seeded.cwd, control: backend.control },
+      tools: 1,
+      terminate: true,
+    });
+    try {
+      const queues: string[] = [];
+      const unsubscribe = fixture.session.subscribe((event) => {
+        if (event.type === "queue_update") queues.push(event.type);
+      });
+      const prompt = fixture.session.prompt("Work on a held tool");
+      await fixture.started[0]?.promise;
+      const boardId = seeded.boardId;
+      await backend.control.append({
+        description: "Finding 1",
+        body: "Full evidence 1",
+      });
+      expect(fixture.requests).toHaveLength(1);
+      expect(fixture.session.isStreaming).toBe(true);
+      expect(fixture.session.getSteeringMessages()).toEqual([]);
+      expect(fixture.session.getFollowUpMessages()).toEqual([]);
+      expect(await backend.runtime.runPromise(backend.storage.receipts(boardId))).toEqual([]);
+      fixture.released[0]?.resolve();
+      await prompt;
+      expect(queues).toEqual([]);
+      unsubscribe();
+      expect(fixture.requests).toHaveLength(1);
+      expect(await backend.runtime.runPromise(backend.storage.receipts(boardId))).toEqual([]);
+      const pendingReminders = persistedReminders(fixture.manager);
+      expect(pendingReminders).toHaveLength(1);
+      const sessionFile = persistedSessionFile(fixture.manager);
+      const oldStorage = backend.storage;
+      fixture.session.dispose();
+      await backend.runtime.dispose();
+
+      backend = await persistedBackend(seeded.cwd);
+      fixture = await harness({
+        persisted: { cwd: seeded.cwd, control: backend.control, sessionFile },
+      });
+      expect(backend.storage).not.toBe(oldStorage);
+      expect(persistedReminders(fixture.manager)).toEqual(pendingReminders);
+      expect(await backend.runtime.runPromise(backend.storage.receipts(boardId))).toEqual([]);
+      await backend.control.append({ description: "Finding 2", body: "Full evidence 2" });
+      expect(fixture.requests).toEqual([]);
+      expect(fixture.session.isStreaming).toBe(false);
+      expect(fixture.session.getSteeringMessages()).toEqual([]);
+      expect(fixture.session.getFollowUpMessages()).toEqual([]);
+      expect(persistedReminders(fixture.manager)).toEqual(pendingReminders);
+      expect(await backend.runtime.runPromise(backend.storage.receipts(boardId))).toEqual([]);
+
+      await fixture.session.prompt("Resume after recreation");
+      expect(fixture.requests).toHaveLength(1);
+      const context = JSON.stringify(fixture.requests[0]);
+      expect(context.match(/Finding 1/g)).toHaveLength(1);
+      expect(context.match(/Finding 2/g)).toHaveLength(1);
+      expect(context).not.toContain("Full evidence");
+      const deliveredReceipts = await backend.runtime.runPromise(backend.storage.receipts(boardId));
+      expect(deliveredReceipts).toEqual([
+        { sequence: 1, sessionId: "child", notifiedAt: expect.any(String) },
+        { sequence: 2, sessionId: "child", notifiedAt: expect.any(String) },
+      ]);
+      expect(persistedReminders(fixture.manager)).toHaveLength(2);
+      await fixture.session.prompt("Continue once more");
+      expect(fixture.requests).toHaveLength(2);
+      expect(persistedReminders(fixture.manager)).toHaveLength(2);
+      expect(await backend.runtime.runPromise(backend.storage.receipts(boardId))).toEqual(
+        deliveredReceipts,
+      );
+    } finally {
+      fixture.session.dispose();
+      await backend.runtime.dispose();
     }
   });
 });

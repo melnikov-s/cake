@@ -11,10 +11,12 @@ import {
 } from "../../src/services/storage/SessionFamilyStorage";
 
 export const MESSAGE_BOARD_FIXTURE_ID = "family-board-visual-message-board-family";
+export const SWITCH_BOARD_FIXTURE_ID = "family-board-visual-switch-board-family";
 const MESSAGE_BOARD_FIXTURE_PARENT = "visual-workboard-member-1";
 export const seedMessageBoardFixture = async (
   paths: { cakeHome: string; userData: string; project: string },
   theme: string = "dark",
+  options: { secondBoard?: boolean } = {},
 ) => {
   const timestamp = "2026-01-01T10:00:00.000Z";
   const childId = "visual-workboard-member-2";
@@ -61,6 +63,12 @@ export const seedMessageBoardFixture = async (
   for (const [sessionId, title] of [
     [MESSAGE_BOARD_FIXTURE_PARENT, "Editor isolation"],
     [childId, "Security reviewer"],
+    ...(options.secondBoard
+      ? [
+          ["visual-switch-member-1", "Switchboard owner"],
+          ["visual-switch-member-2", "Switchboard reader"],
+        ]
+      : []),
   ]) {
     await writeFile(
       join(sessionDirectory, `2026-01-01T10-00-00-000Z_${sessionId}.jsonl`),
@@ -117,6 +125,23 @@ export const seedMessageBoardFixture = async (
       });
       yield* boards.recordIntake(MESSAGE_BOARD_FIXTURE_PARENT, board.lineageId, [1], "notifiedAt");
       yield* boards.recordIntake(childId, board.lineageId, [2], "readAt");
+      if (options.secondBoard) {
+        const secondFamily = yield* (yield* SessionFamilyStorage).addChild({
+          familyId: "visual-switch-board-family",
+          parentSessionId: "visual-switch-member-1",
+          parentWorkingDirectory: paths.project,
+          childSessionId: "visual-switch-member-2",
+          childWorkingDirectory: paths.project,
+          requestId: "visual-switch-member-2",
+          projectPath: paths.project,
+          createdAt: timestamp,
+        });
+        yield* boards.ensureBoard(secondFamily, "Switchboard");
+        yield* boards.append("visual-switch-member-2", {
+          description: "Switchboard finding",
+          body: "Independent board evidence",
+        });
+      }
     }).pipe(Effect.provide(services)),
   );
 };

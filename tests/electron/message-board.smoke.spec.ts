@@ -3,10 +3,19 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
-import { seedMessageBoardFixture, MESSAGE_BOARD_FIXTURE_ID } from "../fixtures/message-board";
+import {
+  seedMessageBoardFixture,
+  MESSAGE_BOARD_FIXTURE_ID,
+  SWITCH_BOARD_FIXTURE_ID,
+} from "../fixtures/message-board";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
-const appendLiveEntries = (application: ElectronApplication, start: number, count: number) =>
+const appendLiveEntries = (
+  application: ElectronApplication,
+  start: number,
+  count: number,
+  sessionId = "visual-workboard-member-2",
+) =>
   application.evaluate(
     async (_electron, range) => {
       const append = (
@@ -16,14 +25,14 @@ const appendLiveEntries = (application: ElectronApplication, start: number, coun
       ).cakeSmokeAppendBoard;
       if (!append) throw new Error("Workboard smoke append hook unavailable");
       for (let sequence = range.start; sequence < range.start + range.count; sequence += 1)
-        await append("visual-workboard-member-2", {
+        await append(range.sessionId, {
           description: `Live finding ${sequence}`,
           body: `Additional coordination evidence ${sequence}`,
         });
     },
-    { start, count },
+    { start, count, sessionId },
   );
-test("message board opens through artifacts and human expansion does not stamp agent read receipts", async () => {
+test("Workboards update live, preserve reading state, and reconcile after board switching and renderer disposal", async () => {
   const root = await mkdtemp(join(tmpdir(), "cake-message-board-smoke-"));
   const paths = {
     cakeHome: join(root, "cake-home"),
@@ -32,7 +41,7 @@ test("message board opens through artifacts and human expansion does not stamp a
   };
   let application: ElectronApplication | undefined;
   try {
-    await seedMessageBoardFixture(paths);
+    await seedMessageBoardFixture(paths, "dark", { secondBoard: true });
     const receiptPath = join(
       paths.cakeHome,
       "state",
@@ -136,6 +145,65 @@ test("message board opens through artifacts and human expansion does not stamp a
     ).toHaveCount(1);
     expect(await board.evaluate((element) => element.closest("main")!.scrollTop)).toBe(scrollTop);
     await expect(finding).toHaveAttribute("aria-expanded", "true");
+
+    // Changing the selected descriptor ends the old board lifetime, not the window event stream.
+    const lineages = page.getByRole("navigation", { name: "Artifact lineages" });
+    await lineages.getByRole("button", { name: /Switchboard/ }).click();
+    const otherBoard = page.locator(`[data-artifact-id="${SWITCH_BOARD_FIXTURE_ID}"]`);
+    const otherFinding = otherBoard.getByRole("button", {
+      name: "#1 · Switchboard finding",
+      exact: true,
+    });
+    await expect(otherFinding).toBeVisible();
+    await expect(board).not.toBeAttached();
+    await otherFinding.click();
+    await expect(otherBoard.getByText("Independent board evidence", { exact: true })).toBeVisible();
+    await appendLiveEntries(application, 30, 1);
+    await appendLiveEntries(application, 2, 1, "visual-switch-member-2");
+    await expect(
+      otherBoard.getByRole("button", { name: "#2 · Live finding 2", exact: true }),
+    ).toBeVisible();
+    await expect(otherFinding).toHaveAttribute("aria-expanded", "true");
+    await expect(
+      otherBoard.getByRole("button", { name: "#30 · Live finding 30", exact: true }),
+    ).toHaveCount(0);
+    await lineages.getByRole("button", { name: /Editor isolation/ }).click();
+    await expect(finding).toBeVisible();
+    await expect(finding).toHaveAttribute("aria-expanded", "false");
+    await board.getByRole("button", { name: "Load more entries", exact: true }).click();
+    await expect(
+      board.getByRole("button", { name: "#30 · Live finding 30", exact: true }),
+    ).toHaveCount(1);
+
+    // Navigate only this isolated renderer away: the real pagehide handlers dispose its
+    // observers, Stores and runtime. The backend can still append without any desktop viewer.
+    const rendererUrl = page.url();
+    await page.goto("about:blank");
+    await expect(page.getByRole("region", { name: "Workboard", exact: true })).toHaveCount(0);
+    await appendLiveEntries(application, 31, 1);
+    await page.goto(rendererUrl);
+    await expect(page.getByLabel("Filter artifacts by kind")).toBeVisible();
+    await page
+      .getByRole("navigation", { name: "Artifact lineages" })
+      .getByRole("button", { name: /Editor isolation/ })
+      .click();
+    await expect(finding).toBeVisible();
+    await board.getByRole("button", { name: "Load more entries", exact: true }).click();
+    await expect(
+      board.getByRole("button", { name: "#31 · Live finding 31", exact: true }),
+    ).toHaveCount(1);
+    await finding.click();
+    await expect(board.getByText("Finding:", { exact: true })).toBeVisible();
+    await appendLiveEntries(application, 32, 1);
+    await expect(
+      board.getByRole("button", { name: "#32 · Live finding 32", exact: true }),
+    ).toHaveCount(1);
+    await expect(finding).toHaveAttribute("aria-expanded", "true");
+    expect(
+      await application.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().every((window) => !window.isVisible() && !window.isFocused()),
+      ),
+    ).toBe(true);
   } finally {
     await application?.close();
     await rm(root, { recursive: true, force: true });
