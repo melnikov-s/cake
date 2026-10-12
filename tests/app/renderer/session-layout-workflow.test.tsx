@@ -118,6 +118,44 @@ function pane(title: string) {
 }
 
 describe("Session layout workflow", () => {
+  it("back enables Forward, forward returns to the selected session, and a divergent visit truncates it", async () => {
+    using fixture = renderLayout();
+    const back = screen.getByRole("button", { name: "Go back in session history" });
+    const forward = screen.getByRole("button", { name: "Go forward in session history" });
+    await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    expect(back.hasAttribute("disabled")).toBe(false);
+    expect(forward.hasAttribute("disabled")).toBe(true);
+    await fixture.user.click(back);
+    expect(pane("alpha conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
+    expect(forward.hasAttribute("disabled")).toBe(false);
+    await fixture.user.click(forward);
+    expect(pane("beta conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
+    await fixture.user.click(back);
+    await fixture.user.click(screen.getByRole("button", { name: /^gamma conversation / }));
+    expect(forward.hasAttribute("disabled")).toBe(true);
+    await fixture.user.click(back);
+    expect(pane("alpha conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
+    await fixture.user.click(forward);
+    expect(pane("gamma conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
+  });
+
+  it("traverses to the pane's actual target rather than the intervening window visit", async () => {
+    using fixture = renderLayout();
+    await fixture.user.click(screen.getByRole("button", { name: "Split down" }));
+    await fixture.user.click(screen.getByRole("button", { name: /^beta conversation / }));
+    await fixture.user.click(pane("alpha conversation").getByRole("combobox", { name: "Message" }));
+    await fixture.user.click(screen.getByRole("button", { name: /^gamma conversation / }));
+    const back = screen.getByRole("button", { name: "Go back in session history" });
+    const forward = screen.getByRole("button", { name: "Go forward in session history" });
+    await fixture.user.click(back);
+    expect(pane("alpha conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
+    expect(pane("beta conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
+    expect(forward.hasAttribute("disabled")).toBe(false);
+    await fixture.user.click(forward);
+    expect(pane("gamma conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
+    expect(pane("beta conversation").getByRole("combobox", { name: "Message" })).toBeDefined();
+  });
+
   it("splits into a new composer, navigates in that pane and closes back to a single conversation", async () => {
     using fixture = renderLayout();
     expect(screen.getAllByRole("combobox", { name: "Message" })).toHaveLength(1);

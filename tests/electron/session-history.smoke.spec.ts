@@ -103,8 +103,8 @@ test("navigates session history with back, forward, and resolve", async () => {
     const activeForwardSession = page.locator(
       ".session-item.active[data-session-id='history-forward-session']",
     );
-    const backShortcut = process.platform === "darwin" ? "Meta+[" : "Alt+ArrowLeft";
-    const forwardShortcut = process.platform === "darwin" ? "Meta+]" : "Alt+ArrowRight";
+    const backShortcut = process.platform === "darwin" ? "Meta+BracketLeft" : "Alt+ArrowLeft";
+    const forwardShortcut = process.platform === "darwin" ? "Meta+BracketRight" : "Alt+ArrowRight";
 
     await expect(back).toBeDisabled();
     await expect(forward).toBeDisabled();
@@ -121,6 +121,10 @@ test("navigates session history with back, forward, and resolve", async () => {
     await page.keyboard.press(backShortcut);
     await expect(activeBackSession).toHaveCount(1);
     await expect(forward).toBeEnabled();
+    await test.info().attach("history-after-keyboard-back", {
+      body: await page.screenshot(),
+      contentType: "image/png",
+    });
 
     await forward.click();
     await expect(activeForwardSession).toHaveCount(1);

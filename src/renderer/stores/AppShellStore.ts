@@ -96,7 +96,19 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     return entry;
   }
 
-  private historyCursorInDirection(direction: -1 | 1): number | undefined {
+  /** Coordinates pane-local traversal with this window's visit history.
+   * The cursor commits only when the actual target selection lands.
+   */
+  prepareProjectSessionTraversal(sessionId: string, direction: -1 | 1) {
+    const entry = { kind: "project-session", sessionId } as const;
+    const cursor = this.historyCursorInDirection(direction, entry);
+    this.pendingTraversal = cursor === undefined ? undefined : { entry, cursor };
+  }
+
+  private historyCursorInDirection(
+    direction: -1 | 1,
+    target?: SessionHistoryEntry,
+  ): number | undefined {
     for (
       let cursor = this.sessionHistoryCursor + direction;
       cursor >= 0 && cursor < this.sessionHistory.length;
@@ -104,6 +116,7 @@ export class AppShellStore extends Store<AppShellStoreProps> {
     ) {
       const entry = this.sessionHistory[cursor]!;
       if (!this.props.sessionInNavigationScope(entry)) continue;
+      if (target && !sameSessionEntry(entry, target)) continue;
       const resolved =
         entry.kind === "project-session"
           ? this.metadata.isResolved(entry.sessionId)

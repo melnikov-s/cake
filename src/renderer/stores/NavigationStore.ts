@@ -133,8 +133,10 @@ export class NavigationStore extends Store<{
       !this.props.sidebar().focusModeProjectPath &&
       this.props.shell.surface === "workbench" &&
       this.props.layout.goBack();
-    if (sessionId) void this.openSession(sessionId);
-    else void this.navigateToHistoryEntry(this.props.shell.goBack());
+    if (sessionId) {
+      this.props.shell.prepareProjectSessionTraversal(sessionId, -1);
+      void this.openSession(sessionId);
+    } else void this.navigateToHistoryEntry(this.props.shell.goBack());
   }
 
   navigateForward() {
@@ -142,8 +144,10 @@ export class NavigationStore extends Store<{
       !this.props.sidebar().focusModeProjectPath &&
       this.props.shell.surface === "workbench" &&
       this.props.layout.goForward();
-    if (sessionId) void this.openSession(sessionId);
-    else void this.navigateToHistoryEntry(this.props.shell.goForward());
+    if (sessionId) {
+      this.props.shell.prepareProjectSessionTraversal(sessionId, 1);
+      void this.openSession(sessionId);
+    } else void this.navigateToHistoryEntry(this.props.shell.goForward());
   }
 
   navigateActiveSession(direction: "next" | "previous") {
