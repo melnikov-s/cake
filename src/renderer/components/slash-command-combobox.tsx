@@ -26,6 +26,8 @@ type SlashCommand = ConversationSnapshot["commands"][number];
 export interface ComposerFocusHandle {
   /** Returns true only when the editable input was focused, rather than its Tab anchor. */
   requestFocus(): boolean;
+  shouldParkFocus(): boolean;
+  parkingAnchor(): HTMLDivElement | null;
 }
 
 interface SlashCommandComboboxProps extends Omit<
@@ -162,7 +164,16 @@ export function SlashCommandCombobox({
     input.focus();
     return true;
   }, [dictation]);
-  useImperativeHandle(focusRef, () => ({ requestFocus }), [requestFocus]);
+  useImperativeHandle(
+    focusRef,
+    () => ({
+      requestFocus,
+      shouldParkFocus: () =>
+        focusEnabledRef.current && Boolean(dictation?.enabled && !dictation.muted),
+      parkingAnchor: () => focusAnchorRef.current,
+    }),
+    [requestFocus, dictation],
+  );
   useLayoutEffect(() => {
     if (!initialFocus.current) return;
     initialFocus.current = false;
@@ -281,12 +292,20 @@ export function SlashCommandCombobox({
   };
 
   const restoreFocusAfterSubmit = async (submittedValue?: string) => {
+    const focusAtSubmit = document.activeElement;
     try {
       await onSubmit(submittedValue);
     } finally {
+      // A deferred dictation send must not take focus back after the user moves on.
+      const movedOn =
+        dictation?.enabled && !dictation.muted && document.activeElement !== focusAtSubmit;
       // Empty Enter is not a send and must not interrupt ongoing dictation.
-      if (submittedValue?.trim() || document.activeElement !== inputRef.current)
-        requestAnimationFrame(requestFocus);
+      if (!movedOn && (submittedValue?.trim() || document.activeElement !== inputRef.current))
+        requestAnimationFrame(() => {
+          if (dictation?.enabled && !dictation.muted && document.activeElement !== focusAtSubmit)
+            return;
+          requestFocus();
+        });
     }
   };
 

@@ -28,7 +28,7 @@ export interface ConversationComposerStoreProps {
   selectModel(value: string): Promise<boolean | void>;
   renameSession?(name: string): Promise<boolean | void>;
   toolCompactSession?(entryId: string, prompt?: string): Promise<boolean>;
-  deliver(input: ConversationDeliveryInput): Promise<boolean | void>;
+  deliver(input: ConversationDeliveryInput): Promise<boolean | void | { turnId: string }>;
   editMessage(
     input: Omit<ConversationDeliveryInput, "delivery"> & { entryId: string },
   ): Promise<void>;

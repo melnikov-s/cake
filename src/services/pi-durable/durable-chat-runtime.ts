@@ -98,6 +98,7 @@ const queuedInput = (item: Extract<InboxItem, { content: unknown }>, id: string)
           }));
   return {
     itemId: id,
+    turnId: id,
     text: input.text,
     renderUserMessageAsMarkdown: input.markdown,
     attachments: [

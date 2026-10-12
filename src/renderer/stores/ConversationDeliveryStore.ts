@@ -23,7 +23,7 @@ export interface ConversationDeliveryStoreProps {
   sessionId(): string | undefined;
   canonicalParts(): UiPart[];
   isStreaming(): boolean;
-  deliver(input: ConversationDeliveryInput): Promise<boolean | void>;
+  deliver(input: ConversationDeliveryInput): Promise<boolean | void | { turnId: string }>;
   editMessage(
     input: Omit<ConversationDeliveryInput, "delivery"> & { entryId: string },
   ): Promise<void>;
@@ -65,7 +65,7 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
     delivery: "prompt" | "steer",
     restoreOnError: boolean,
     renderUserMessageAsMarkdown: boolean,
-  ): Promise<boolean> {
+  ): Promise<boolean | { turnId: string }> {
     const sessionId = this.props.sessionId();
     if (!sessionId || (!text && attachments.length === 0)) return false;
     this.clearError();
@@ -97,7 +97,7 @@ export class ConversationDeliveryStore extends Store<ConversationDeliveryStorePr
         return false;
       }
       this.finish(operationId);
-      return !this.signal.aborted;
+      return !this.signal.aborted && (delivered ?? true);
     } catch (error) {
       if (this.signal.aborted) {
         this.finish(operationId);

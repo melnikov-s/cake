@@ -117,6 +117,7 @@ export function createCakeSessionRuntimeTurnController(input: {
   type QueueLane = "steering" | "follow-up";
   type TrackedQueueItem = {
     itemId: string;
+    turnId?: string;
     text: string;
     content: string;
     attachments: Attachment[];
@@ -433,6 +434,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       if (wasStreaming)
         trackedQueue[lane].push({
           itemId: randomUUID(),
+          ...(turnId ? { turnId } : null),
           text,
           content,
           attachments: [...attachments],
@@ -616,6 +618,7 @@ export function createCakeSessionRuntimeTurnController(input: {
           .filter((item) => item.delivery === "steer")
           .map((item) => ({
             itemId: item.itemId,
+            ...(item.turnId ? { turnId: item.turnId } : null),
             text: item.text,
             content: item.content,
             attachments: item.attachments,
@@ -628,6 +631,7 @@ export function createCakeSessionRuntimeTurnController(input: {
           .filter((item) => item.delivery === "follow-up")
           .map((item) => ({
             itemId: item.itemId,
+            ...(item.turnId ? { turnId: item.turnId } : null),
             text: item.text,
             content: item.content,
             attachments: item.attachments,
@@ -653,7 +657,7 @@ export function createCakeSessionRuntimeTurnController(input: {
       compactionQueue = heldLanes.flatMap((lane) =>
         queues[lane].map((entry) => ({
           ...entry,
-          turnId: held.get(entry.itemId)?.turnId,
+          turnId: entry.turnId ?? held.get(entry.itemId)?.turnId,
           delivery: lane === "steering" ? ("steer" as const) : ("follow-up" as const),
         })),
       );
@@ -754,6 +758,7 @@ export function createCakeSessionRuntimeTurnController(input: {
               renderAs: item.renderUserMessageAsMarkdown ? ("markdown" as const) : part.renderAs,
               queuedInput: {
                 itemId: item.itemId,
+                ...(item.turnId ? { turnId: item.turnId } : null),
                 ...(item.command ? { command: item.command } : null),
                 text: item.text,
                 attachments: item.attachments,

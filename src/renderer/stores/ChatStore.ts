@@ -28,6 +28,7 @@ import {
 export interface QueuedPrompt {
   id: string;
   itemId?: string;
+  turnId?: string;
   command?: string;
   text: string;
   attachments: Attachment[];
@@ -73,7 +74,7 @@ export interface ChatStoreProps {
   submit(
     draft: string,
     options?: { renderUserMessageAsMarkdown?: boolean },
-  ): Promise<boolean | void>;
+  ): Promise<boolean | void | { turnId: string }>;
   userMessagePresentation?: UserMessagePresentationCapabilities;
   activateDraft?(choice?: WorktreeDraftChoice): Promise<boolean>;
   sessionCreationChoice?(): WorktreeDraftChoice;
@@ -121,8 +122,90 @@ export interface ChatStoreProps {
 
 export type { TranscriptScrollPosition };
 
+interface EnterContinuation {
+  generation: number;
+  turnId?: string;
+  requested: number;
+  completed: number;
+}
+
 /** Common state and behavior contract for every Cake conversation surface. */
 export class ChatStore extends Store<ChatStoreProps> {
+  private enterContinuation: EnterContinuation | undefined;
+  private enterContinuationGeneration = 0;
+  private advancingEnterContinuation = false;
+  private enterContinuationError: string | undefined;
+
+  constructor(props: ChatStore["props"]) {
+    super(props);
+    this.effect(() => {
+      const continuation = this.enterContinuation;
+      if (!continuation?.turnId || this.advancingEnterContinuation) return;
+      const queued = this.queuedPrompts.find(
+        (entry) => entry.turnId === continuation.turnId && !entry.pending,
+      );
+      // Admission and lane changes can precede their queue projection. Missing means
+      // wait, never select another input. A consumed input therefore cannot be escalated.
+      if (!queued) return;
+      if (
+        continuation.requested > continuation.completed &&
+        (continuation.completed === 0 || queued.state === "steering")
+      )
+        void this.advanceEnterContinuation(continuation, queued);
+    });
+  }
+
+  get hasEnterContinuation() {
+    return this.enterContinuation !== undefined;
+  }
+
+  beginEnterContinuation() {
+    const generation = ++this.enterContinuationGeneration;
+    this.enterContinuationError = undefined;
+    this.enterContinuation = { generation, requested: 0, completed: 0 };
+    return generation;
+  }
+
+  cancelEnterContinuation() {
+    if (!this.enterContinuation) return;
+    this.enterContinuationGeneration += 1;
+    this.enterContinuation = undefined;
+  }
+
+  continueSentMessage() {
+    const continuation = this.enterContinuation;
+    if (continuation)
+      this.enterContinuation = {
+        ...continuation,
+        requested: Math.min(2, continuation.requested + 1),
+      };
+  }
+
+  private async advanceEnterContinuation(continuation: EnterContinuation, queued: QueuedPrompt) {
+    this.advancingEnterContinuation = true;
+    try {
+      if (continuation.completed === 0) {
+        if (!this.canSteerQueuedPrompt || queued.command) {
+          this.cancelEnterContinuation();
+          return;
+        }
+        if (queued.state === "queued") await this.steerQueuedPrompt(queued.id);
+        const current = this.enterContinuation;
+        if (current?.generation === continuation.generation)
+          this.enterContinuation = { ...current, completed: 1 };
+      } else {
+        if (this.canStopAndSendQueuedPrompt) await this.stopAndSendQueuedPrompt(queued.id);
+        if (this.enterContinuation?.generation === continuation.generation)
+          this.cancelEnterContinuation();
+      }
+    } catch (error) {
+      this.enterContinuationError = error instanceof Error ? error.message : String(error);
+      if (this.enterContinuation?.generation === continuation.generation)
+        this.cancelEnterContinuation();
+    } finally {
+      this.advancingEnterContinuation = false;
+    }
+  }
   get history() {
     return this.props.history;
   }
@@ -304,6 +387,8 @@ export class ChatStore extends Store<ChatStoreProps> {
     return this.props.usage?.();
   }
   get error() {
+    if (this.enterContinuationError)
+      return { message: this.enterContinuationError, title: "Queued prompt" };
     if (this.rewordError) return { message: this.rewordError, title: "Reword failed" };
     if (this.transcriptInteraction.error) return this.transcriptInteraction.error;
     if (this.scheduledMessageInteraction.error)
@@ -348,7 +433,13 @@ export class ChatStore extends Store<ChatStoreProps> {
     }
   }
 
-  async submit(value = this.draft, options?: { renderUserMessageAsMarkdown?: boolean }) {
+  async submit(
+    value = this.draft,
+    options?: {
+      renderUserMessageAsMarkdown?: boolean;
+      enterContinuation?: number;
+    },
+  ) {
     if (value !== this.draft) this.setDraft(value);
     const empty = !value.trim() && this.attachments.length === 0 && this.annotations.length === 0;
     const steering = this.queuedPrompts.find(
@@ -365,7 +456,11 @@ export class ChatStore extends Store<ChatStoreProps> {
       await this.steerQueuedPrompt(queued.id);
       return true;
     }
-    if (!this.props.canSubmit(value) || this.submittingLocally) return false;
+    if (!this.props.canSubmit(value) || this.submittingLocally) {
+      if (this.enterContinuation?.generation === options?.enterContinuation)
+        this.cancelEnterContinuation();
+      return false;
+    }
     this.submittingLocally = true;
     const submittedRevision = this.draftRevision;
     try {
@@ -375,8 +470,19 @@ export class ChatStore extends Store<ChatStoreProps> {
       });
       if (submitted !== false && this.draft === value && this.draftRevision === submittedRevision)
         this.setDraft("");
+      const continuation = this.enterContinuation;
+      if (continuation && continuation.generation === options?.enterContinuation) {
+        if (submitted && submitted !== true)
+          this.enterContinuation = { ...continuation, turnId: submitted.turnId };
+        else this.cancelEnterContinuation();
+      }
       return submitted !== false;
     } finally {
+      if (
+        this.enterContinuation?.generation === options?.enterContinuation &&
+        !this.enterContinuation?.turnId
+      )
+        this.cancelEnterContinuation();
       this.submittingLocally = false;
     }
   }

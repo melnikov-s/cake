@@ -4,7 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import {
+  TurnId,
+  type ConversationEvent,
+} from "../../../src/contracts/conversations/conversation-data";
 import type {
   DictationAudio,
   DictationState,
@@ -168,7 +171,7 @@ function renderDictation(
         ...options.client?.dictation,
       },
       workspaces: { postProcessDictation: async (text) => text, ...options.client?.workspaces },
-      sessionChats: { prompt },
+      sessionChats: { prompt, ...options.client?.sessionChats },
     },
   });
   const session = fixture.root.sessionRegistry.load(sessionId, "/project");
@@ -197,6 +200,7 @@ function renderDictation(
       tree: [],
     },
   });
+  let revision = 1;
   const view = render(
     <StoreProvider store={fixture.root.dictationStore}>
       <SettingsDictationSection
@@ -218,7 +222,12 @@ function renderDictation(
     prepare,
     release,
     requests,
-    prompt,
+    prompt: options.client?.sessionChats?.prompt ?? prompt,
+    publish(event: ConversationEvent) {
+      act(() =>
+        applyConversationUpdate(session.model, { _tag: "Event", revision: ++revision, event }),
+      );
+    },
     requestFocus() {
       act(() => session.conversationSessionStore.composerStore.draftStore.requestFocus());
     },
@@ -298,6 +307,168 @@ describe("Dictation writing-field workflow", () => {
     expect(document.activeElement).toBe(message());
     await waitFor(() => expect(f.audio.getUserMedia).toHaveBeenCalledTimes(captures + 1));
   });
+
+  it.each([false, true])(
+    "serializes rapid Enter escalation across admission and a lane-projection gap; cancellation during steering=%s",
+    async (cancelDuringSteering) => {
+      const turnId = TurnId.make("10000000-0000-4000-8000-000000000001");
+      const admission = deferred<typeof turnId>();
+      const steering = deferred<void>();
+      const newest = {
+        id: "newest-queued",
+        kind: "text" as const,
+        role: "user" as const,
+        text: "Same text",
+        status: "complete" as const,
+        deliveryState: "queued" as const,
+        queuedInput: {
+          itemId: "20000000-0000-4000-8000-000000000002",
+          turnId,
+          text: "Same text",
+          attachments: [],
+          renderUserMessageAsMarkdown: false,
+        },
+      };
+      const prompt = vi.fn<Client["sessionChats"]["prompt"]>(() => admission.promise);
+      const steerQueuedMessage = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>(async () => {
+        await steering.promise;
+        f.publish({ _tag: "PartRemoved", sessionId: "dictation-session", partId: newest.id });
+        f.publish({
+          _tag: "PartUpdated",
+          sessionId: "dictation-session",
+          part: {
+            ...newest,
+            id: "newest-steering",
+            deliveryState: "steering",
+          },
+        });
+        return { steering: ["Same text"], followUp: ["Same text"] };
+      });
+      const sendQueuedMessageNow = vi.fn<Client["sessionChats"]["sendQueuedMessageNow"]>(
+        async () => {
+          f.publish({
+            _tag: "PartRemoved",
+            sessionId: "dictation-session",
+            partId: "newest-steering",
+          });
+          return { steering: [], followUp: ["Same text"] };
+        },
+      );
+      using f = renderDictation({
+        composerFocusEnabled: true,
+        client: {
+          sessionChats: { prompt, steerQueuedMessage, sendQueuedMessageNow },
+        },
+      });
+      f.publish({ _tag: "StreamingChanged", sessionId: "dictation-session", streaming: true });
+      f.publish({
+        _tag: "PartUpdated",
+        sessionId: "dictation-session",
+        part: {
+          ...newest,
+          id: "older",
+          queuedInput: {
+            ...newest.queuedInput,
+            itemId: "20000000-0000-4000-8000-000000000003",
+            turnId: "10000000-0000-4000-8000-000000000003",
+          },
+        },
+      });
+      await f.user.click(mode());
+      await f.user.type(message(), "Same text");
+      await f.user.keyboard("{Enter}");
+      await waitFor(() => expect(f.requests).toHaveLength(1));
+      await f.recognize(0, "");
+      await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+      await f.user.keyboard("{Enter}{Enter}");
+      expect(steerQueuedMessage).not.toHaveBeenCalled();
+      f.publish({ _tag: "PartUpdated", sessionId: "dictation-session", part: newest });
+      await act(async () => admission.resolve(turnId));
+      await waitFor(() => expect(steerQueuedMessage).toHaveBeenCalledOnce());
+      expect(steerQueuedMessage.mock.calls[0]?.[0]).toEqual({
+        sessionId: "dictation-session",
+        partId: newest.id,
+      });
+      expect(sendQueuedMessageNow).not.toHaveBeenCalled();
+      if (cancelDuringSteering) await f.user.keyboard("{ArrowDown}");
+      await act(async () => steering.resolve());
+      if (cancelDuringSteering) {
+        await waitFor(() =>
+          expect(screen.getByRole("button", { name: "Cancel steering: Same text" })).toBeTruthy(),
+        );
+        await f.user.keyboard("{Enter}");
+        expect(sendQueuedMessageNow).not.toHaveBeenCalled();
+      } else {
+        await waitFor(() => expect(sendQueuedMessageNow).toHaveBeenCalledOnce());
+        expect(sendQueuedMessageNow.mock.calls[0]?.[0]).toEqual({
+          sessionId: "dictation-session",
+          partId: "newest-steering",
+        });
+      }
+      expect(
+        screen.getAllByRole("button", { name: "View queued message: Same text" }),
+      ).toHaveLength(cancelDuringSteering ? 2 : 1);
+      expect(prompt).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["other key", "pointer", "focus"] as const)(
+    "cancels pending admission continuation on %s and never re-arms on completion",
+    async (action) => {
+      const turnId = TurnId.make("10000000-0000-4000-8000-000000000001");
+      const admission = deferred<typeof turnId>();
+      const prompt = vi.fn<Client["sessionChats"]["prompt"]>(() => admission.promise);
+      const steerQueuedMessage = vi.fn<Client["sessionChats"]["steerQueuedMessage"]>(async () => ({
+        steering: [],
+        followUp: ["Delayed"],
+      }));
+      using f = renderDictation({
+        composerFocusEnabled: true,
+        client: { sessionChats: { prompt, steerQueuedMessage } },
+      });
+      await f.user.click(mode());
+      await f.user.type(message(), "Delayed");
+      await f.user.keyboard("{Enter}");
+      await waitFor(() => expect(f.requests).toHaveLength(1));
+      await f.recognize(0, "");
+      await waitFor(() => expect(prompt).toHaveBeenCalledOnce());
+      await f.user.keyboard("{Enter}");
+      if (action === "other key") await f.user.keyboard("{ArrowDown}");
+      else if (action === "pointer")
+        await f.user.click(screen.getByLabelText("Use an existing Core ML Parakeet model folder"));
+      else act(() => trial().focus());
+      const focused = document.activeElement;
+      f.publish({
+        _tag: "PartUpdated",
+        sessionId: "dictation-session",
+        part: {
+          id: "delayed-queued",
+          kind: "text",
+          role: "user",
+          text: "Delayed",
+          status: "complete",
+          deliveryState: "queued",
+          queuedInput: {
+            itemId: "20000000-0000-4000-8000-000000000001",
+            turnId,
+            text: "Delayed",
+            attachments: [],
+            renderUserMessageAsMarkdown: false,
+          },
+        },
+      });
+      await act(async () => admission.resolve(turnId));
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "View queued message: Delayed" })).toBeTruthy(),
+      );
+      if (action !== "other key") expect(document.activeElement).toBe(focused);
+      f.requestFocus();
+      await waitFor(() => expect(document.activeElement).toBe(message().parentElement));
+      await f.user.keyboard("{Enter}");
+      expect(steerQueuedMessage).not.toHaveBeenCalled();
+      expect(prompt).toHaveBeenCalledOnce();
+    },
+  );
 
   it("empty Enter keeps listening without reopening capture, including pending noise-only recognition", async () => {
     using f = renderDictation();

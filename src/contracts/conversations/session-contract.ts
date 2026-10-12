@@ -311,6 +311,8 @@ export const uiPartSchema = Schema.Union([
     queuedInput: Schema.optionalKey(
       Schema.Struct({
         itemId: Schema.String.check(Schema.isUUID(4)),
+        /** Admission identity returned to the sender; absent for extension-generated inputs. */
+        turnId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
         command: Schema.optionalKey(boundedText),
         text: boundedText,
         attachments: Schema.Array(attachmentSchema).check(Schema.isMaxLength(20)),

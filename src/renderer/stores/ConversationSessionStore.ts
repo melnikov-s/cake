@@ -325,6 +325,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
               id: part.partKey,
               text: part.text ?? "",
               itemId: part.queuedInput?.itemId,
+              turnId: part.queuedInput?.turnId,
               command: part.queuedInput?.command,
               attachments: part.queuedInput?.attachments.slice() ?? [],
               renderUserMessageAsMarkdown:
@@ -350,7 +351,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
     if (!active) return false;
     const command =
       input.delivery === "steer" ? this.client.sessionChats.steer : this.client.sessionChats.prompt;
-    await command(
+    const turnId = await command(
       {
         sessionId: input.sessionId,
         text: input.text,
@@ -363,7 +364,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
       },
       { signal: this.signal },
     );
-    return true;
+    return { turnId };
   }
 
   private async configureActiveSession(command: () => Promise<void>) {

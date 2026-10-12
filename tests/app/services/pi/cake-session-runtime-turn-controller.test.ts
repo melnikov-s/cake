@@ -6,6 +6,7 @@ import {
 import { durableModel } from "../../../fixtures/durable-chat";
 import { describe, expect, it, vi } from "vitest";
 import { createCakeSessionRuntimeTurnController } from "../../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
+import { TurnCanceledError } from "../../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import { encodeCrossSessionMessage } from "../../../../src/contracts/conversations/cross-session-message";
 import { projectQueuedMessages } from "../../../../src/services/pi/runtime/session-projection";
 import { projectConversationDisplay } from "../../../../src/services/pi/runtime/conversation-display-projection";
@@ -848,6 +849,50 @@ describe("CakeSessionRuntime turn controller", () => {
           renderUserMessageAsMarkdown: true,
         },
       });
+    });
+
+    it("keeps admission identity through identical inputs, compaction-held promotion, and synchronous lane replacement", async () => {
+      const { controller, session, syncQueuedParts } = createQueuedFixture({
+        steering: [],
+        followUp: [],
+      });
+      await controller.prompt("Same", "follow-up", []);
+      Object.assign(session, { isCompacting: true });
+      const turnId = "10000000-0000-4000-8000-000000000001";
+      const completed = controller
+        .prompt("Same", "follow-up", [], false, turnId)
+        .catch((error) => error);
+      const newest = controller.queuedParts().at(-1)!;
+      expect(newest).toMatchObject({ queuedInput: { turnId } });
+      const clearQueue = session.clearQueue.bind(session);
+      session.clearQueue = vi.fn(() => {
+        const result = clearQueue();
+        expect(
+          controller
+            .queuedParts()
+            .some((part) => part.kind === "text" && part.queuedInput?.turnId === turnId),
+        ).toBe(true);
+        return result;
+      });
+      await controller.steerQueuedMessage(newest.id);
+      expect(syncQueuedParts).toHaveBeenCalled();
+      expect(controller.queuedParts()[0]).toMatchObject({
+        deliveryState: "steering",
+        queuedInput: { turnId },
+      });
+      // Transfer the held input to the live SDK queue, preserving the same receipt.
+      Object.assign(session, { isCompacting: false });
+      const item = (await controller.pendingMessages()).items.find(
+        (entry) => entry.lane === "steering",
+      )!;
+      await controller.reorderPendingMessage({ itemId: item.itemId, position: 1 });
+      expect(controller.queuedParts()[0]).toMatchObject({
+        deliveryState: "steering",
+        queuedInput: { turnId },
+      });
+      expect(controller.queuedParts()[1]).toMatchObject({ text: "Same", deliveryState: "queued" });
+      controller.dispose();
+      expect(await completed).toBeInstanceOf(TurnCanceledError);
     });
 
     it("marks only send-now's interruption as an intentional handoff", async () => {

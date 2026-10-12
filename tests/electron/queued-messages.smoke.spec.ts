@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -9,8 +9,7 @@ import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cro
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
-test("reorders both lanes, cancels one item, hands off without an error, and links the sender", async () => {
-  test.setTimeout(90_000);
+async function queuedMessagesFixture(dictation = false) {
   const root = await mkdtemp(join(tmpdir(), "cake-queued-messages-"));
   const userData = join(root, "user-data"),
     project = join(root, "project"),
@@ -48,7 +47,7 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
               reasoning: false,
               input: ["text"],
               cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-              contextWindow: 4096,
+              contextWindow: 200_000,
               maxTokens: 1024,
             },
           ],
@@ -136,8 +135,26 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
     join(project, ".pi", "extensions", "queue-fixture.ts"),
     `export default function(pi) { pi.registerCommand("fixture-agent", { description: "Queue the agent fixture", handler: async () => { pi.sendUserMessage(${JSON.stringify(agentMessage)}, { deliverAs: "followUp" }); } }); }`,
   );
+  const helper = join(root, "dictation-helper");
+  if (dictation) {
+    const modelPath = join(userData, "dictation", "model");
+    await mkdir(modelPath, { recursive: true });
+    await writeFile(join(userData, "dictation", "settings.json"), JSON.stringify({ modelPath }));
+    await writeFile(
+      helper,
+      `#!${process.execPath}
+const readline = require('node:readline');
+console.log(JSON.stringify({ ready: true }));
+readline.createInterface({ input: process.stdin }).on('line', line => {
+  const request = JSON.parse(line);
+  console.log(JSON.stringify(request.operation === 'detectSpeech' ? { speech: false } : { text: '' }));
+});
+`,
+    );
+    await chmod(helper, 0o755);
+  }
   const app = await electron.launch({
-    args: [repositoryRoot],
+    args: [repositoryRoot, "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
     cwd: repositoryRoot,
     env: {
       ...process.env,
@@ -146,8 +163,27 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
       CAKE_HOME: cakeHome,
       PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
       PI_CODING_AGENT_SESSION_DIR: "",
+      ...(dictation ? { CAKE_SMOKE_DICTATION_HELPER: helper } : {}),
     },
   });
+  return {
+    app,
+    responses,
+    sessionId,
+    sourceId,
+    async dispose() {
+      await app.close();
+      for (const response of responses) response.destroy();
+      await new Promise<void>((done) => server.close(() => done()));
+      await rm(root, { recursive: true, force: true });
+    },
+  };
+}
+
+test("reorders both lanes, cancels one item, hands off without an error, and links the sender", async () => {
+  test.setTimeout(90_000);
+  const fixture = await queuedMessagesFixture();
+  const { app, responses, sourceId } = fixture;
   try {
     const page = await app.firstWindow();
     await expect(page.getByText("Ready for queue testing.")).toBeVisible({ timeout: 20_000 });
@@ -207,9 +243,183 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
     if (await exit.isVisible()) await exit.click();
     await expect(page.getByText("Origin transcript.")).toBeVisible({ timeout: 15_000 });
   } finally {
-    await app.close();
-    for (const response of responses) response.destroy();
-    await new Promise<void>((done) => server.close(() => done()));
-    await rm(root, { recursive: true, force: true });
+    await fixture.dispose();
+  }
+});
+
+test("consecutive Enter escalates only the just-sent message without restarting dictation", async () => {
+  test.skip(process.platform !== "darwin" || process.arch !== "arm64", "Local dictation platform");
+  test.setTimeout(90_000);
+  const fixture = await queuedMessagesFixture(true);
+  const { app, responses, sessionId, sourceId } = fixture;
+  try {
+    const page = await app.firstWindow();
+    await expect(page.getByText("Ready for queue testing.")).toBeVisible({ timeout: 20_000 });
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
+    const send = async (text: string) => {
+      await composer.click();
+      await expect(composer).toBeFocused();
+      await composer.pressSequentially(text);
+      await expect(composer).toHaveValue(text);
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      await page.keyboard.press("Enter");
+      await expect(composer).toHaveValue("");
+    };
+    await send("Start held response");
+    await expect.poll(() => responses.length).toBe(1);
+    await send("Older queued message");
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /Voice & Dictation/ }).click();
+    await page.getByRole("switch", { name: "Dictation mode" }).click();
+    await page.getByRole("button", { name: "Back to chat" }).click();
+    const anchor = page.getByRole("group", { name: "Press Tab to write", exact: true });
+    await expect(anchor).toBeFocused();
+    // Arrival alone must not arm continuation, even with an existing queue.
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("button", { name: "Send now as steering: Older queued message" }),
+    ).toBeVisible();
+    await page.evaluate(() => {
+      const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      Reflect.set(window, "continuationCaptures", 0);
+      navigator.mediaDevices.getUserMedia = (...args) => {
+        Reflect.set(
+          window,
+          "continuationCaptures",
+          Reflect.get(window, "continuationCaptures") + 1,
+        );
+        return original(...args);
+      };
+    });
+    await send("Just sent message");
+    await expect(anchor).toBeFocused();
+    await expect(
+      page.getByRole("button", { name: "Send now as steering: Just sent message" }),
+    ).toBeVisible();
+    const captures = await page.evaluate(() => Reflect.get(window, "continuationCaptures"));
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("button", { name: "Cancel steering: Just sent message" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Send now as steering: Older queued message" }),
+    ).toBeVisible();
+    await expect(anchor).toBeFocused();
+    await expect(composer).not.toBeFocused();
+    expect(await page.evaluate(() => Reflect.get(window, "continuationCaptures"))).toBe(captures);
+    await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveCount(0);
+    // Keep the provider response held while testing cancellation. Force-send's RPC
+    // intentionally completes with its new turn, so exercise it last.
+    await page.keyboard.press("ArrowDown");
+
+    for (const action of ["key", "pointer", "selection", "focus"] as const) {
+      const text = `Cancelled by ${action}`;
+      await send(text);
+      await expect(anchor).toBeFocused();
+      await expect(
+        page.getByRole("button", { name: `Send now as steering: ${text}` }),
+      ).toBeVisible();
+      if (action === "key") {
+        await page.keyboard.press("ArrowDown");
+      } else if (action === "pointer") {
+        await page
+          .getByRole("list", { name: "Queued prompts" })
+          .click({ position: { x: 2, y: 2 } });
+      } else if (action === "selection") {
+        // A native selection can change without pointer/focus events (e.g. selection tools).
+        await page.getByRole("list", { name: "Queued prompts" }).evaluate((element) => {
+          window.getSelection()?.selectAllChildren(element);
+        });
+        await expect
+          .poll(() => page.evaluate(() => window.getSelection()?.isCollapsed))
+          .toBe(false);
+        await page.evaluate(() => window.getSelection()?.removeAllRanges());
+      } else if (action === "focus") {
+        await page.getByRole("button", { name: "Open settings", exact: true }).focus();
+        await page.keyboard.press("Enter");
+        await expect(page.getByRole("button", { name: "Back to chat", exact: true })).toBeVisible();
+        await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+      }
+      // Returning focus to the anchor is not another send and must not re-arm it.
+      await anchor.evaluate((element) => element.focus());
+      await page.keyboard.press("Enter");
+      await expect(
+        page.getByRole("button", { name: `Send now as steering: ${text}` }),
+      ).toBeVisible();
+      expect(responses.length).toBe(1);
+    }
+
+    await send("Held key message");
+    await expect(anchor).toBeFocused();
+    await page.keyboard.down("Enter");
+    await page.keyboard.down("Enter");
+    await page.keyboard.up("Enter");
+    await expect(
+      page.getByRole("button", { name: "Cancel steering: Held key message" }),
+    ).toBeVisible();
+    expect(responses.length).toBe(1);
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("button", { name: "Cancel steering: Held key message" }),
+    ).toBeVisible();
+    expect(responses.length).toBe(1);
+
+    await send("Tab cancels continuation");
+    await expect(anchor).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(composer).toBeFocused();
+    await page.keyboard.type("Deliberate new draft");
+    await expect(composer).toHaveValue("Deliberate new draft");
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await anchor.evaluate((element) => element.focus());
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("button", { name: "Send now as steering: Tab cancels continuation" }),
+    ).toBeVisible();
+    await expect(composer).toHaveValue("Deliberate new draft");
+    await composer.fill("");
+    await send("Cancelled by navigation");
+    await expect(anchor).toBeFocused();
+    await page.locator(`[data-navigation-item][data-session-id="${sourceId}"]`).click();
+    await expect(page.getByText("Origin transcript.")).toBeVisible();
+    await page.keyboard.press("Enter");
+    await page.locator(`[data-navigation-item][data-session-id="${sessionId}"]`).click();
+    await expect(anchor).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("button", { name: "Send now as steering: Cancelled by navigation" }),
+    ).toBeVisible();
+    expect(responses.length).toBe(1);
+
+    await send("Force this exact message");
+    await expect(anchor).toBeFocused();
+    const finalCaptures = await page.evaluate(() => Reflect.get(window, "continuationCaptures"));
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("button", { name: "Cancel steering: Force this exact message" }),
+    ).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect.poll(() => responses.length).toBe(2);
+    await expect(
+      page.getByRole("button", { name: "View queued message: Force this exact message" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "View queued message: Just sent message" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Send now as steering: Older queued message" }),
+    ).toBeVisible();
+    await expect(anchor).toBeFocused();
+    await expect(composer).not.toBeFocused();
+    expect(await page.evaluate(() => Reflect.get(window, "continuationCaptures"))).toBe(
+      finalCaptures,
+    );
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("button", { name: "Send now as steering: Older queued message" }),
+    ).toBeVisible();
+  } finally {
+    await fixture.dispose();
   }
 });

@@ -26,6 +26,12 @@ See `AGENTS.md` for renderer implementation rules.
 `Textarea.focusAnchorRef` exposes a non-editable, programmatically focusable wrapper.
 Focusing it positions native forward Tab at the textarea without activating dictation;
 it does not add a tab stop or intercept normal Tab/Shift+Tab navigation.
+After a manual chat send while dictation is unmuted, consecutive plain Enter presses
+can steer, then stop-and-send that exact input without focusing the textarea.
+`ChatStore` owns this transient continuation; the mounted chat routes DOM cancellation
+on another key, pointer/wheel interaction, selection, focus departure, window blur,
+or pane/session departure. Arrival focus and automatic voice sends do not arm it.
+Admission identity, not text or queue position, links the receipt to the runtime queue.
 
 [`ReadableData`](../../src/renderer/components/ui/readable-data.tsx) renders complete literal values as readable documents, ordered arrays and definition lists, with optional section disclosure and embedded raster-image previews. It never fetches remote image references or interprets strings as Markdown. Use it for reading captured context; copy operations retain the original serialized body, and syntax-highlighted source remains owned by AI Elements.
 

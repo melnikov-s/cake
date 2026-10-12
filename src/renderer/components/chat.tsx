@@ -5,6 +5,7 @@ import { AnnotationSummary } from "@/components/annotation-summary";
 import { ChatComposer } from "@/components/chat-composer";
 import { ChatComposerInput } from "@/components/chat-composer-input";
 import type { ComposerFocusHandle } from "./slash-command-combobox";
+import { useComposerEnterContinuation } from "../hooks/use-composer-enter-continuation";
 import { ChatSubmitAction } from "@/components/chat-submit-action";
 import { ImagePreview } from "@/components/image-preview";
 import { ChatTranscript, type ChatTranscriptBehavior } from "@/components/chat-transcript";
@@ -181,10 +182,27 @@ export const Chat = observer(function Chat({
     () => ({ scrollToBottom: () => transcriptRef.current?.scrollToBottom() }),
     [],
   );
+  useComposerEnterContinuation(
+    store,
+    composerVisible && !activatingDraft && composerFocusEnabled,
+    composerInputRef,
+    composerFocusRef,
+  );
   const submitMessage = async (value?: string) => {
-    if (store.canSubmitValue(value) && !store.editingMessage)
-      void transcriptRef.current?.scrollToBottom();
-    await store.submit(value);
+    const canSend = store.canSubmitValue(value) && !store.editingMessage;
+    if (canSend) void transcriptRef.current?.scrollToBottom();
+    const focusAtSubmit = document.activeElement;
+    const continuation =
+      canSend && composerFocusRef.current?.shouldParkFocus()
+        ? store.beginEnterContinuation()
+        : undefined;
+    await store.submit(value, { enterContinuation: continuation });
+    if (
+      continuation !== undefined &&
+      store.hasEnterContinuation &&
+      document.activeElement === focusAtSubmit
+    )
+      composerFocusRef.current?.requestFocus();
   };
   useLayoutEffect(() => {
     const layout = layoutRef.current;
