@@ -478,7 +478,7 @@ describe("Session artifact workflows", () => {
     using fixture = renderSessionArtifacts({ materialize });
     await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
     await fixture.user.click(await screen.findByRole("button", { name: /Family report/ }));
-    expect(await screen.findByText("Shared with family")).toBeDefined();
+    expect(await screen.findByText("Shared with workgroup")).toBeDefined();
     expect(screen.getByText("Following latest")).toBeDefined();
     await fixture.user.click(screen.getByRole("button", { name: "Copy reference" }));
     await waitFor(async () =>

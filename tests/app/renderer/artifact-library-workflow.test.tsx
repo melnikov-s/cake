@@ -248,6 +248,16 @@ describe("Artifact library workflow", () => {
     await openReport(fixture.user);
     expect(await screen.findByText("report content r52")).toBeDefined();
     expect(screen.getByText("Shared with workgroup")).toBeDefined();
+    expect(screen.getByText("Revision 52 of 52 · Latest")).toBeDefined();
+    expect(screen.getByText("Following latest")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Copy exact revision reference" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Copy readable path" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Pin r52" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Unlink" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Linked sessions" })).toBeDefined();
+    expect(
+      within(screen.getByRole("main").parentElement!).getByRole("complementary"),
+    ).toBeDefined();
     const revisions = screen.getByRole("combobox", { name: "Selected artifact revision" });
     expect(within(revisions).getAllByRole("option")).toHaveLength(50);
     await fixture.user.click(screen.getByRole("button", { name: "Load older revisions" }));

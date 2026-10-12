@@ -15,6 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { CopyIcon, RestoreIcon } from "@/components/ui/icons";
 import { LoadingState } from "@/components/ui/loading-state";
+import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
 import {
   decodeArtifactLineageId,
@@ -63,6 +64,8 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
   const selectedRevision = decodeArtifactRevisionNumber(selectedNumber);
   const latestRevision = decodeArtifactRevisionNumber(lineage.latestRevision);
   const selected = lineage.revision(selectedNumber);
+  const kind = selected?.kind ?? lineage.latest?.kind;
+  const isWorkboard = kind === "message-board";
   const record = selected?.record;
   const activeSummary = activeSessionId ? sessions.find(activeSessionId) : undefined;
   const target: ArtifactLinkTarget | undefined = activeSummary
@@ -107,15 +110,17 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
               <h1 className="truncate font-display text-xl font-semibold">
                 {lineage.title ?? lineage.id}
               </h1>
-              <Badge>
-                {selected?.kind === "message-board"
-                  ? "Workboard"
-                  : (selected?.kind ?? lineage.latest?.kind)}
-              </Badge>
+              <Badge>{isWorkboard ? "Workboard" : kind}</Badge>
             </div>
             <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-              Revision {selectedNumber} of {lineage.latestRevision}
-              {selectedNumber < lineage.latestRevision ? " · Historical revision" : " · Latest"}
+              {isWorkboard ? (
+                "Append-only coordination log"
+              ) : (
+                <>
+                  Revision {selectedNumber} of {lineage.latestRevision}
+                  {selectedNumber < lineage.latestRevision ? " · Historical revision" : " · Latest"}
+                </>
+              )}
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -126,10 +131,12 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
             >
               <CopyIcon /> {copied === "reference" ? "Copied" : "Copy reference"}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => copy("exact", exactRef)}>
-              <CopyIcon /> {copied === "exact" ? "Copied" : "Copy exact revision reference"}
-            </Button>
-            {activeSessionId && (
+            {!isWorkboard && (
+              <Button variant="outline" size="sm" onClick={() => copy("exact", exactRef)}>
+                <CopyIcon /> {copied === "exact" ? "Copied" : "Copy exact revision reference"}
+              </Button>
+            )}
+            {!isWorkboard && activeSessionId && (
               <Button
                 variant="outline"
                 size="sm"
@@ -153,7 +160,14 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
           </Callout>
         )}
       </header>
-      <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_17rem] max-[900px]:grid-cols-1 max-[900px]:overflow-auto">
+      <div
+        className={cn(
+          "grid min-h-0",
+          isWorkboard
+            ? "grid-cols-1"
+            : "grid-cols-[minmax(0,1fr)_17rem] max-[900px]:grid-cols-1 max-[900px]:overflow-auto",
+        )}
+      >
         <main className="min-h-0 overflow-auto p-6">
           {content ? (
             wrapArtifact ? (
@@ -162,9 +176,11 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
               content
             )
           ) : (
-            <LoadingState label={`Loading revision ${selectedNumber}`} />
+            <LoadingState
+              label={isWorkboard ? "Loading Workboard" : `Loading revision ${selectedNumber}`}
+            />
           )}
-          {store.comparison && (
+          {!isWorkboard && store.comparison && (
             <section
               className="mt-6 grid grid-cols-2 gap-3 max-[760px]:grid-cols-1"
               aria-label="Revision comparison"
@@ -178,138 +194,140 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
             </section>
           )}
         </main>
-        <aside className="min-h-0 overflow-auto border-l border-border/65 p-4 max-[900px]:border-l-0 max-[900px]:border-t">
-          <h2 className="text-xs font-semibold">Revision history</h2>
-          <Select
-            className="mt-2"
-            aria-label="Selected artifact revision"
-            value={selectedNumber}
-            onChange={(event) =>
-              void store.selectRevision(
-                lineageId,
-                decodeArtifactRevisionNumber(Number(event.target.value)),
-              )
-            }
-          >
-            {lineage.revisions
-              .toSorted((left, right) => right.revision - left.revision)
-              .map((revision) => (
-                <option key={revision.revision} value={revision.revision}>
-                  r{revision.revision} · {displayDate(revision.publishedAt)}
-                </option>
-              ))}
-          </Select>
-          {store.historyError && (
-            <Callout variant="error" className="mt-2">
-              {store.historyError}
-            </Callout>
-          )}
-          {(store.historyHasMore || store.historyError) && (
-            <Button
-              className="mt-2 w-full"
-              variant="outline"
-              size="sm"
-              disabled={store.historyLoading}
-              onClick={() => void store.loadOlderHistory()}
+        {!isWorkboard && (
+          <aside className="min-h-0 overflow-auto border-l border-border/65 p-4 max-[900px]:border-l-0 max-[900px]:border-t">
+            <h2 className="text-xs font-semibold">Revision history</h2>
+            <Select
+              className="mt-2"
+              aria-label="Selected artifact revision"
+              value={selectedNumber}
+              onChange={(event) =>
+                void store.selectRevision(
+                  lineageId,
+                  decodeArtifactRevisionNumber(Number(event.target.value)),
+                )
+              }
             >
-              {store.historyLoading
-                ? "Loading revision history…"
-                : store.historyError
-                  ? "Retry revision history"
-                  : "Load older revisions"}
-            </Button>
-          )}
-          <div className="mt-2 grid gap-2">
-            {selectedNumber !== lineage.latestRevision && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void store.compare(lineageId, selectedRevision, latestRevision)}
-                >
-                  Compare with latest
-                </Button>
-                {activeSessionId && (
-                  <Button size="sm" onClick={() => store.requestRestore(selectedRevision)}>
-                    <RestoreIcon /> Restore as new latest
-                  </Button>
-                )}
-              </>
+              {lineage.revisions
+                .toSorted((left, right) => right.revision - left.revision)
+                .map((revision) => (
+                  <option key={revision.revision} value={revision.revision}>
+                    r{revision.revision} · {displayDate(revision.publishedAt)}
+                  </option>
+                ))}
+            </Select>
+            {store.historyError && (
+              <Callout variant="error" className="mt-2">
+                {store.historyError}
+              </Callout>
             )}
-          </div>
-          <h2 className="mt-6 text-xs font-semibold">Linked sessions</h2>
-          <div className="mt-2 grid gap-2 text-[11px]">
-            {store.selectedLinks.length === 0 && (
-              <p className="text-muted-foreground">Not linked to a session.</p>
+            {(store.historyHasMore || store.historyError) && (
+              <Button
+                className="mt-2 w-full"
+                variant="outline"
+                size="sm"
+                disabled={store.historyLoading}
+                onClick={() => void store.loadOlderHistory()}
+              >
+                {store.historyLoading
+                  ? "Loading revision history…"
+                  : store.historyError
+                    ? "Retry revision history"
+                    : "Load older revisions"}
+              </Button>
             )}
-            {store.selectedLinks.map((link) => (
-              <div key={link.id} className="rounded-lg border border-border p-2">
-                <strong>
-                  {link.target.type === "family"
-                    ? "Shared with workgroup"
-                    : (sessions.find(link.target.sessionId)?.title ?? link.target.sessionId)}
-                </strong>
-                <p className="mt-0.5 text-muted-foreground">
-                  {link.mode === "follow-latest"
-                    ? "Following latest"
-                    : `Pinned r${link.pinnedRevision}`}
-                </p>
-              </div>
-            ))}
-          </div>
-          {target && activeSessionId && (
-            <div className="mt-4 grid gap-2 border-t border-border/65 pt-4">
-              {!currentLink ? (
-                <Button
-                  size="sm"
-                  onClick={() => void referencePreviews.link(activeSessionId, lineageId, target)}
-                >
-                  {target.type === "family" ? "Link to this family" : "Link to this session"}
-                </Button>
-              ) : (
+            <div className="mt-2 grid gap-2">
+              {selectedNumber !== lineage.latestRevision && (
                 <>
-                  {currentLink.mode === "pinned" ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        void referencePreviews.setSelection(activeSessionId, lineageId, target, {
-                          mode: "follow-latest",
-                        })
-                      }
-                    >
-                      Follow latest
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        void referencePreviews.setSelection(activeSessionId, lineageId, target, {
-                          mode: "pinned",
-                          revision: selectedRevision,
-                        })
-                      }
-                    >
-                      Pin r{selectedNumber}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void store.compare(lineageId, selectedRevision, latestRevision)}
+                  >
+                    Compare with latest
+                  </Button>
+                  {activeSessionId && (
+                    <Button size="sm" onClick={() => store.requestRestore(selectedRevision)}>
+                      <RestoreIcon /> Restore as new latest
                     </Button>
                   )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() =>
-                      void referencePreviews.unlink(activeSessionId, lineageId, target)
-                    }
-                  >
-                    Unlink
-                  </Button>
                 </>
               )}
             </div>
-          )}
-        </aside>
+            <h2 className="mt-6 text-xs font-semibold">Linked sessions</h2>
+            <div className="mt-2 grid gap-2 text-[11px]">
+              {store.selectedLinks.length === 0 && (
+                <p className="text-muted-foreground">Not linked to a session.</p>
+              )}
+              {store.selectedLinks.map((link) => (
+                <div key={link.id} className="rounded-lg border border-border p-2">
+                  <strong>
+                    {link.target.type === "family"
+                      ? "Shared with workgroup"
+                      : (sessions.find(link.target.sessionId)?.title ?? link.target.sessionId)}
+                  </strong>
+                  <p className="mt-0.5 text-muted-foreground">
+                    {link.mode === "follow-latest"
+                      ? "Following latest"
+                      : `Pinned r${link.pinnedRevision}`}
+                  </p>
+                </div>
+              ))}
+            </div>
+            {target && activeSessionId && (
+              <div className="mt-4 grid gap-2 border-t border-border/65 pt-4">
+                {!currentLink ? (
+                  <Button
+                    size="sm"
+                    onClick={() => void referencePreviews.link(activeSessionId, lineageId, target)}
+                  >
+                    {target.type === "family" ? "Link to this family" : "Link to this session"}
+                  </Button>
+                ) : (
+                  <>
+                    {currentLink.mode === "pinned" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          void referencePreviews.setSelection(activeSessionId, lineageId, target, {
+                            mode: "follow-latest",
+                          })
+                        }
+                      >
+                        Follow latest
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          void referencePreviews.setSelection(activeSessionId, lineageId, target, {
+                            mode: "pinned",
+                            revision: selectedRevision,
+                          })
+                        }
+                      >
+                        Pin r{selectedNumber}
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        void referencePreviews.unlink(activeSessionId, lineageId, target)
+                      }
+                    >
+                      Unlink
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </aside>
+        )}
       </div>
-      {pendingRestoreRevision !== undefined && activeSessionId && (
+      {!isWorkboard && pendingRestoreRevision !== undefined && activeSessionId && (
         <DialogBackdrop onClose={() => store.cancelRestore()}>
           <DialogContent role="alertdialog" aria-labelledby="restore-artifact-title">
             <DialogHeader>

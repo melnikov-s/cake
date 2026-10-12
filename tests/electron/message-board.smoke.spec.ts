@@ -48,6 +48,25 @@ test("message board opens through artifacts and human expansion does not stamp a
     await expect(page.getByLabel("Filter artifacts by kind")).toBeVisible();
     const board = page.locator(`[data-artifact-id="${MESSAGE_BOARD_FIXTURE_ID}"]`);
     await expect(board.getByRole("region", { name: "Workboard", exact: true })).toBeVisible();
+    await expect(page.getByText("Append-only coordination log", { exact: true })).toBeVisible();
+    await expect(page.getByText("Shared with workgroup", { exact: true })).toHaveCount(0);
+    expect(
+      await board.evaluate((element) => {
+        const main = element.closest("main")!;
+        return Math.abs(main.clientWidth - main.parentElement!.clientWidth) <= 1;
+      }),
+    ).toBe(true);
+    await expect(page.getByRole("button", { name: "Copy reference", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy ID", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Unlink|Link to this/ })).toHaveCount(0);
+    await expect(page.getByLabel("Selected artifact revision")).toHaveCount(0);
+    await expect(page.getByText("Revision history", { exact: true })).toHaveCount(0);
+    await expect(page.getByText(/Revision 1 of 1|Following latest|Pinned r/)).toHaveCount(0);
+    await expect(
+      page.getByRole("button", {
+        name: /Copy exact revision reference|Copy readable path|Pin r|Follow latest|Compare with latest|Restore as new latest/,
+      }),
+    ).toHaveCount(0);
     const finding = board.getByRole("button", { name: /^#1 · Editor isolation/ });
     await expect(finding).toBeVisible();
     await finding.focus();
