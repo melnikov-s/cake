@@ -42,8 +42,39 @@ export function CaptureCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [loaded, setLoaded] = useState<HTMLImageElement>();
   const activePointer = useRef<number | undefined>(undefined);
-  const callbacks = useRef({ onPalette, onError });
-  callbacks.current = { onPalette, onError };
+  const callbacks = useRef({ onMove, onEnd, onAbandon, onPalette, onError });
+  callbacks.current = { onMove, onEnd, onAbandon, onPalette, onError };
+  useEffect(() => {
+    // Losing pointer capture only changes event routing. Keep the gesture until release
+    // or an actual pointercancel, including when the pointer ends over the toolbar.
+    const move = (event: PointerEvent) => {
+      const canvas = canvasRef.current;
+      if (canvas && activePointer.current === event.pointerId)
+        callbacks.current.onMove(capturePoint(canvas, event));
+    };
+    const end = (event: PointerEvent) => {
+      const canvas = canvasRef.current;
+      if (!canvas || activePointer.current !== event.pointerId) return;
+      activePointer.current = undefined;
+      const point = capturePoint(canvas, event);
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      callbacks.current.onEnd(point);
+    };
+    const cancel = (event: PointerEvent) => {
+      if (activePointer.current !== event.pointerId) return;
+      activePointer.current = undefined;
+      callbacks.current.onAbandon();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", cancel);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", cancel);
+      activePointer.current = undefined;
+    };
+  }, []);
   useEffect(() => {
     let active = true;
     void loadCaptureImage(image)
@@ -79,20 +110,6 @@ export function CaptureCanvas({
       context.strokeRect(selection.x, selection.y, selection.width, selection.height);
     }
   }, [loaded, arrows, selection]);
-  const point = (event: React.PointerEvent<HTMLCanvasElement>): CapturePoint => {
-    const canvas = event.currentTarget;
-    const bounds = canvas.getBoundingClientRect();
-    return {
-      x: Math.max(
-        0,
-        Math.min(canvas.width, ((event.clientX - bounds.left) * canvas.width) / bounds.width),
-      ),
-      y: Math.max(
-        0,
-        Math.min(canvas.height, ((event.clientY - bounds.top) * canvas.height) / bounds.height),
-      ),
-    };
-  };
   return (
     <canvas
       ref={canvasRef}
@@ -109,27 +126,25 @@ export function CaptureCanvas({
         event.preventDefault();
         activePointer.current = event.pointerId;
         event.currentTarget.setPointerCapture(event.pointerId);
-        onBegin(point(event));
-      }}
-      onPointerMove={(event) => {
-        if (activePointer.current === event.pointerId) onMove(point(event));
-      }}
-      onPointerUp={(event) => {
-        if (activePointer.current !== event.pointerId) return;
-        activePointer.current = undefined;
-        event.currentTarget.releasePointerCapture(event.pointerId);
-        onEnd(point(event));
-      }}
-      onPointerCancel={() => {
-        activePointer.current = undefined;
-        onAbandon();
-      }}
-      onLostPointerCapture={() => {
-        if (activePointer.current !== undefined) {
-          activePointer.current = undefined;
-          onAbandon();
-        }
+        onBegin(capturePoint(event.currentTarget, event));
       }}
     />
   );
+}
+
+function capturePoint(
+  canvas: HTMLCanvasElement,
+  event: { clientX: number; clientY: number },
+): CapturePoint {
+  const bounds = canvas.getBoundingClientRect();
+  return {
+    x: Math.max(
+      0,
+      Math.min(canvas.width, ((event.clientX - bounds.left) * canvas.width) / bounds.width),
+    ),
+    y: Math.max(
+      0,
+      Math.min(canvas.height, ((event.clientY - bounds.top) * canvas.height) / bounds.height),
+    ),
+  };
 }

@@ -348,6 +348,20 @@ test("captures and annotates through the hidden native overlay into the existing
     await settings.click();
     overlay = await begin();
     const cropBounds = (await overlay.locator("canvas").boundingBox())!;
+    // Explicit cancellation still discards just the gesture and lets the next drag work.
+    for (const cancellation of ["Escape", "pointercancel"] as const) {
+      await overlay.mouse.move(cropBounds.width * 0.2, cropBounds.height * 0.4);
+      await overlay.mouse.down();
+      await overlay.mouse.move(cropBounds.width * 0.3, cropBounds.height * 0.6);
+      if (cancellation === "Escape") await overlay.keyboard.press("Escape");
+      else
+        await overlay.locator("canvas").evaluate((canvas) => {
+          canvas.dispatchEvent(new PointerEvent("pointercancel", { pointerId: 1, bubbles: true }));
+        });
+      await overlay.mouse.up();
+      await expect(overlay.getByRole("toolbar")).toHaveAttribute("aria-busy", "false");
+      expect(application.windows()).toHaveLength(2);
+    }
     await overlay.getByRole("button", { name: "Annotate", exact: true }).click();
     await overlay.mouse.move(
       cropBounds.x + cropBounds.width * 0.15,
@@ -372,18 +386,34 @@ test("captures and annotates through the hidden native overlay into the existing
     const inAreaGrip = (await cropGrip.boundingBox())!;
     await overlay.mouse.move(inAreaGrip.x + 15, inAreaGrip.y + 15);
     await overlay.mouse.down();
-    await overlay.mouse.move(cropBounds.width * 0.5, cropBounds.height * 0.85);
+    await overlay.mouse.move(cropBounds.width * 0.1, cropBounds.height * 0.35);
     await overlay.mouse.up();
-    // Reverse drag includes the newly committed annotation and finishes immediately.
+    // Reverse drag includes the annotation and ends over the toolbar after capture loss.
     await overlay.mouse.move(
       cropBounds.x + cropBounds.width * 0.35,
       cropBounds.y + cropBounds.height * 0.75,
     );
     await overlay.mouse.down();
     await overlay.mouse.move(
-      cropBounds.x + cropBounds.width * 0.1,
-      cropBounds.y + cropBounds.height * 0.35,
+      cropBounds.x + cropBounds.width * 0.2,
+      cropBounds.y + cropBounds.height * 0.5,
     );
+    // Native/browser capture loss changes event routing, not the user's intent to crop.
+    // Keep moving after capture is released, then release the mouse over another element.
+    await overlay.locator("canvas").evaluate(async (canvas) => {
+      canvas.releasePointerCapture(1);
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      // Events for another pointer must not cancel the active mouse gesture either.
+      canvas.dispatchEvent(new PointerEvent("pointercancel", { pointerId: 2, bubbles: true }));
+    });
+    const cropEnd = {
+      x: cropBounds.x + cropBounds.width * 0.1,
+      y: cropBounds.y + cropBounds.height * 0.35,
+    };
+    expect(
+      await overlay.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.tagName, cropEnd),
+    ).not.toBe("CANVAS");
+    await overlay.mouse.move(cropEnd.x, cropEnd.y);
     await overlay.mouse.up();
     await expect.poll(() => application.windows().length).toBe(1);
     await expect(preview).toHaveCount(2);
@@ -408,6 +438,21 @@ test("captures and annotates through the hidden native overlay into the existing
         return false;
       }, cropped!),
     ).toBe(true);
+
+    // Repeat normal and interrupted drags: every release attaches once, without retries.
+    for (const [index, loseCapture] of [false, true, false, true].entries()) {
+      await settings.click();
+      overlay = await begin();
+      const canvas = overlay.locator("canvas");
+      const bounds = (await canvas.boundingBox())!;
+      await overlay.mouse.move(bounds.x + bounds.width * 0.2, bounds.y + bounds.height * 0.4);
+      await overlay.mouse.down();
+      if (loseCapture) await canvas.evaluate((element) => element.releasePointerCapture(1));
+      await overlay.mouse.move(bounds.x + bounds.width * 0.4, bounds.y + bounds.height * 0.6);
+      await overlay.mouse.up();
+      await expect.poll(() => application.windows().length).toBe(1);
+      await expect(preview).toHaveCount(3 + index);
+    }
 
     await settings.click();
     overlay = await begin();
@@ -445,7 +490,7 @@ test("captures and annotates through the hidden native overlay into the existing
       .click();
     await overlay.getByRole("button", { name: "Attach full display" }).click();
     await expect.poll(() => application.windows().length).toBe(1);
-    await expect(preview).toHaveCount(3);
+    await expect(preview).toHaveCount(7);
     await expect(composer).toHaveValue("Keep this draft plus screenshot");
   } finally {
     await application.close();
