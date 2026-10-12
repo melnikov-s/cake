@@ -175,13 +175,17 @@ const artifactPointerOriginSchema = Schema.Struct({
   assistantEntryId: provenanceIdSchema,
   toolCallId: provenanceIdSchema,
 });
+// Retired kinds remain valid only in immutable transcript references, not new artifacts.
+const persistedArtifactKindSchema = Schema.Union([
+  artifactKindSchema,
+  Schema.Literals(["architecture", "request"]),
+]);
 /** Bounded exact-revision transcript reference. Artifact payload and fallback are never included. */
 export const artifactPointerSchema = Schema.Struct({
   protocol: Schema.Literal(ARTIFACT_PROTOCOL),
   lineageId: idSchema,
   revision: Schema.Int.check(Schema.isGreaterThan(0)),
-  // "architecture" is retained only for immutable historical reachability.
-  kind: Schema.Union([artifactKindSchema, Schema.Literal("architecture")]),
+  kind: persistedArtifactKindSchema,
   digest: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
   title: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))),
   stableRef: artifactStableRefSchema,
@@ -200,7 +204,7 @@ const legacyArtifactPointerSchema = Schema.Struct({
   artifactId: idSchema,
   sessionId: idSchema,
   revision: Schema.Int.check(Schema.isGreaterThan(0)),
-  kind: Schema.Union([artifactKindSchema, Schema.Literal("architecture")]),
+  kind: persistedArtifactKindSchema,
   digest: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
   fallback: Schema.Struct({ markdown: textSchema }),
   origin: Schema.optionalKey(artifactPointerOriginSchema),

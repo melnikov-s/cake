@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_ARTIFACT_INPUT_BYTES,
   artifactPointerSchema,
+  decodeArtifactPointer,
   parseArtifactInput,
 } from "../../../src/contracts/artifacts/artifact-contract";
 
@@ -120,6 +121,38 @@ describe("cake.artifact/v1 contract", () => {
       }).kind,
     ).toBe("architecture");
   });
+
+  it.each(["architecture", "request"])(
+    "preserves retired %s transcript references in both persisted formats",
+    (kind) => {
+      const pointer = {
+        protocol: "cake.artifact/v1",
+        lineageId: "historical-artifact",
+        revision: 2,
+        kind,
+        digest: "a".repeat(64),
+        stableRef: "cake://artifact/historical-artifact",
+        exactRef: "cake://artifact/historical-artifact@r2",
+      };
+      const legacy = {
+        protocol: pointer.protocol,
+        artifactId: pointer.lineageId,
+        sessionId: "session-1",
+        revision: pointer.revision,
+        kind,
+        digest: pointer.digest,
+        fallback: { markdown: "Historical fallback" },
+      };
+      expect(decodeArtifactPointer(pointer)).toEqual(pointer);
+      expect(decodeArtifactPointer(legacy)).toEqual(pointer);
+      expect(
+        decodeArtifactPointer({ ...pointer, exactRef: "cake://artifact/other@r2" }),
+      ).toBeUndefined();
+      expect(decodeArtifactPointer({ ...legacy, digest: "invalid" })).toBeUndefined();
+      expect(decodeArtifactPointer({ ...pointer, kind: "unknown" })).toBeUndefined();
+      expect(() => parseArtifactInput({ ...markdown(), kind })).toThrow();
+    },
+  );
 
   it("accepts delegated widget source as Cake-owned artifact payload", () => {
     const artifact = parseArtifactInput({
