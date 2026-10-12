@@ -58,9 +58,11 @@ test("icon buttons reveal their tooltip bubble on hover and hide on leave", asyn
     await page.mouse.move(400, 300);
     await expect(page.getByRole("tooltip")).toHaveCount(0);
 
-    const newChat = page.locator('button.icon-button[aria-label="New Cake Chat"]');
-    await newChat.hover();
-    await expect(page.getByRole("tooltip")).toHaveText("New Cake Chat", { timeout: 2_000 });
+    const newSession = page.getByRole("button", { name: "New session", exact: true });
+    await newSession.hover();
+    await expect(page.getByRole("tooltip")).toHaveText(`New session (${modifier}N)`, {
+      timeout: 2_000,
+    });
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

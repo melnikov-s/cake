@@ -412,7 +412,10 @@ test("remote Electron uses the full shell and only the server owns agent state",
       await expect(input).toHaveValue("Remote rewrite");
       await expect(input).toBeFocused();
       // @ completion resolves files in the server's working directory, not this device.
-      await input.fill("Read @server-no");
+      await input.click();
+      await input.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
+      await input.pressSequentially("Read @server-no");
+      await expect(input).toHaveValue("Read @server-no");
       await expect(page.getByRole("option", { name: /server-note\.txt/ })).toBeVisible();
       await input.press("Tab");
       await expect(input).toHaveValue("Read @server-note.txt ");
@@ -435,7 +438,25 @@ test("remote Electron uses the full shell and only the server owns agent state",
       await page.getByRole("button", { name: "Stop", exact: true }).click();
       // A pasted image larger than the default 1MiB socket request cap transfers
       // in chunks and reaches the real Pi/provider image preparation path.
-      const pasted = Buffer.alloc(1_400_000, 7);
+      // A valid noisy PNG exercises chunked upload and Pi's actual image path.
+      // Arbitrary bytes with an image MIME type are rejected by image preparation.
+      const pasted = Buffer.from(
+        await page.evaluate(() => {
+          const canvas = document.createElement("canvas");
+          canvas.width = canvas.height = 700;
+          const context = canvas.getContext("2d")!;
+          const pixels = context.createImageData(700, 700);
+          let state = 1;
+          for (let index = 0; index < pixels.data.length; index++) {
+            state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+            pixels.data[index] = index % 4 === 3 ? 255 : state >>> 24;
+          }
+          context.putImageData(pixels, 0, 0);
+          return canvas.toDataURL("image/png").split(",")[1]!;
+        }),
+        "base64",
+      );
+      expect(pasted.byteLength).toBeGreaterThan(1_048_576);
       await input.fill("Inspect pasted image");
       await input.evaluate((element, data) => {
         const bytes = Uint8Array.from(atob(data), (character) => character.charCodeAt(0));

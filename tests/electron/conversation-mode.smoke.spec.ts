@@ -1452,7 +1452,9 @@ for (const betweenSentences of [false, true]) {
 }
 
 for (const { text, frames } of [
-  { text: "Wait.", frames: 2 },
+  // Capture emits 100ms frames, while native VAD processes 4096-sample
+  // (256ms) batches. Three voiced frames deliver a complete short-speech batch.
+  { text: "Wait.", frames: 3 },
   { text: "Actually change that approach", frames: 8 },
 ]) {
   test(`background acknowledgment leaves speech running, but ${text} interrupts through recognition`, async () => {

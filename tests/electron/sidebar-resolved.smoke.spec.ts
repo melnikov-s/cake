@@ -83,8 +83,7 @@ test("resolves and restores the selected project session in the desktop sidebar"
   try {
     const page = await application.firstWindow();
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole("button", { name: "Collapse Cake Chat" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "New Cake Chat" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Cake Chat", exact: true })).toBeVisible();
     await expect(page.getByRole("region", { name: "Expand Resolved" })).toHaveCount(0);
 
     const selectedSession = page
@@ -125,7 +124,7 @@ test("resolves and restores the selected project session in the desktop sidebar"
     await restoreAction.click();
     await expect(restoreAction).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Ask session assistant" })).toBeVisible();
-    await expect(selectedSession.locator('[data-slot="avatar"]')).toHaveCSS("width", "12px");
+    await expect(selectedSession.locator('[data-slot="avatar"]')).toHaveCSS("width", "8px");
     await expect(
       page.locator(`[data-slot="sidebar"] [data-session-id='${sessionId}']`),
     ).toHaveCount(1);

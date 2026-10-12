@@ -133,9 +133,9 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
     await expect(picker).toBeVisible();
     const square = sessionItem.locator('[data-slot="session-leading"] [data-slot="avatar"]');
     await expect(square).toHaveAttribute("data-variant", "square");
-    await expect(square).toHaveCSS("width", "12px");
-    await expect(square).toHaveCSS("height", "12px");
-    await expect(square).toHaveCSS("border-radius", "3px");
+    await expect(square).toHaveCSS("width", "8px");
+    await expect(square).toHaveCSS("height", "8px");
+    await expect(square).toHaveCSS("border-radius", "2px");
     const projectIcon = projectGroup.locator(':scope > div [data-slot="avatar"]').first();
     await expect(projectIcon).toHaveAttribute("data-variant", "artwork");
     await expect(projectIcon).toHaveCSS("width", "20px");
@@ -152,7 +152,7 @@ test("customizes labels and assigns multiple labels from the sidebar avatar", as
     await expect.poll(markerColumnOffset).toBeLessThan(0.5);
     await projectGroup.hover();
     await projectGroup.getByRole("button", { name: "Focus on project" }).click();
-    await expect(square).toHaveCSS("width", "12px");
+    await expect(square).toHaveCSS("width", "8px");
     await expect(projectIcon).toHaveCSS("width", "28px");
     await expect.poll(markerColumnOffset).toBeLessThan(0.5);
     await page.getByRole("button", { name: "Exit focus mode for project" }).click();

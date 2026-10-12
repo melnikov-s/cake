@@ -26,26 +26,31 @@ test("429 polling keeps the stop control available", async () => {
   });
   const address = server.address() as AddressInfo;
 
-  await mkdir(join(project, ".pi", "extensions"), { recursive: true });
+  // Staged chats use the provider catalog before a project runtime exists.
+  // Configure the unbilled provider at the actual catalog boundary.
+  await mkdir(join(cakeHome, "pi"), { recursive: true });
   await writeFile(
-    join(project, ".pi", "extensions", "rate-limit-provider.ts"),
-    `export default function (pi) { pi.registerProvider("rate-limit-provider", ${JSON.stringify({
-      name: "Rate limit provider",
-      baseUrl: `http://127.0.0.1:${address.port}/v1`,
-      apiKey: "fixture",
-      api: "openai-completions",
-      models: [
-        {
-          id: "fixture-model",
-          name: "Fixture model",
-          reasoning: false,
-          input: ["text"],
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-          contextWindow: 4_096,
-          maxTokens: 1_024,
+    join(cakeHome, "pi", "models.json"),
+    JSON.stringify({
+      providers: {
+        "rate-limit-provider": {
+          baseUrl: `http://127.0.0.1:${address.port}/v1`,
+          apiKey: "fixture",
+          api: "openai-completions",
+          models: [
+            {
+              id: "fixture-model",
+              name: "Fixture model",
+              reasoning: false,
+              input: ["text"],
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              contextWindow: 4_096,
+              maxTokens: 1_024,
+            },
+          ],
         },
-      ],
-    })}); }\n`,
+      },
+    }),
   );
 
   await writeFile(
@@ -89,16 +94,19 @@ test("429 polling keeps the stop control available", async () => {
 
   try {
     const page = await application.firstWindow();
-    const trust = page.getByRole("button", { name: "Trust and open" });
-    await expect(trust).toBeVisible({ timeout: 20_000 });
-    await trust.click();
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
 
     // Select the fixture model.
     const configuration = page.getByRole("button", { name: "Model configuration" });
     await configuration.click();
-    await page.getByRole("button", { name: /Change model/ }).click();
     const search = page.getByLabel("Search presets and models");
+    // An unconfigured staged chat opens the picker directly; an existing model
+    // opens the configuration summary first.
+    const changeModel = page.getByRole("button", { name: /Change model/ });
+    await expect
+      .poll(async () => (await search.isVisible()) || (await changeModel.isVisible()))
+      .toBe(true);
+    if (await changeModel.isVisible()) await changeModel.click();
     await expect(search).toBeVisible();
     await search.fill("Fixture model");
     await page
@@ -110,7 +118,7 @@ test("429 polling keeps the stop control available", async () => {
     await expect(page.getByLabel("Search presets and models")).toBeHidden();
 
     // Submit a prompt; the provider always answers 429.
-    const composer = page.getByLabel("Message");
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await composer.fill("Do the thing");
     await composer.press("Enter");
     await expect(composer).toHaveValue("");
@@ -119,7 +127,7 @@ test("429 polling keeps the stop control available", async () => {
     // Wait for the retry notice.
     await expect(page.getByText(/Next retry in/)).toBeVisible({ timeout: 30_000 });
 
-    const stop = page.getByRole("button", { name: "Stop" });
+    const stop = page.getByRole("button", { name: "Stop", exact: true });
     await expect(stop).toBeVisible();
     await expect(stop).toBeEnabled();
 

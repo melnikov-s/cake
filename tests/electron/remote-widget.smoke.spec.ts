@@ -345,7 +345,7 @@ export default function RemoteWidget() {
       }, reviewImage!);
       expect(reviewedColors.cyan).toBeGreaterThan(20_000);
       expect(reviewedColors.orange).toBe(0);
-      await expect(page.getByLabel("Remote reviewed widget", { exact: true })).toBeVisible();
+      await expect(page.locator('iframe[title="Remote reviewed widget"]')).toBeVisible();
     } finally {
       await application.close();
     }

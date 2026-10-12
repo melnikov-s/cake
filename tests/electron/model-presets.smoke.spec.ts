@@ -197,7 +197,7 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
     await expect(mainPage.getByRole("button", { name: "Model configuration" })).toContainText(
       "Unavailable but editable",
     );
-    await mainPage.getByRole("button", { name: "New Cake Chat" }).first().click();
+    await mainPage.getByRole("button", { name: "Cake Chat", exact: true }).click();
     await expect(mainPage.getByLabel("Message Cake Chat")).toBeVisible();
     await expect(mainPage.getByRole("button", { name: "Model configuration" })).toContainText(
       "Unavailable but editable",

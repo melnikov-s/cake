@@ -1,8 +1,9 @@
-import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { seedCakeChatHistory } from "./durable-chat-fixture";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -13,15 +14,14 @@ test("uses native session menus and preserves Cake Chat settings context", async
   const cakeHome = join(temporaryRoot, "cake-home");
   const sessionId = "sidebar-rename-session";
   const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
-  const cakeChatDirectory = join(cakeHome, "pi", "global-chat", "sessions");
-  const cakeChatSessionId = "sidebar-rename-cake-chat";
   const timestamp = new Date(0).toISOString();
   await Promise.all([
     mkdir(userData, { recursive: true }),
     mkdir(project, { recursive: true }),
     mkdir(sessionDirectory, { recursive: true }),
-    mkdir(cakeChatDirectory, { recursive: true }),
+    mkdir(join(cakeHome, "state"), { recursive: true }),
   ]);
+  await seedCakeChatHistory(cakeHome, "Original Cake Chat conversation");
   await writeFile(
     join(userData, "window-state.json"),
     JSON.stringify({
@@ -34,77 +34,33 @@ test("uses native session menus and preserves Cake Chat settings context", async
       draftsBySession: {},
     }),
   );
-  await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
     join(cakeHome, "state", "application.json"),
     JSON.stringify({
       schemaVersion: 1,
-      projects: [
-        {
-          path: project,
-          name: "project",
-          addedAt: new Date(0).toISOString(),
-          lastOpenedAt: new Date(0).toISOString(),
-        },
-      ],
+      projects: [{ path: project, name: "project", addedAt: timestamp, lastOpenedAt: timestamp }],
       trustedProjectPaths: [],
     }),
   );
-  await Promise.all([
-    writeFile(
-      join(sessionDirectory, ".pi-session-metadata.json"),
-      JSON.stringify({
-        version: 1,
-        sessions: { [sessionId]: { title: "Original session title" } },
-      }),
-    ),
-    writeFile(
-      join(cakeChatDirectory, ".pi-session-metadata.json"),
-      JSON.stringify({
-        version: 1,
-        sessions: { [cakeChatSessionId]: { title: "Original Cake Chat title" } },
-      }),
-    ),
-    writeFile(
-      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
-      [
-        { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
-        {
-          type: "message",
-          id: "user-1",
-          parentId: null,
-          timestamp,
-          message: {
-            role: "user",
-            content: [{ type: "text", text: "Original session title" }],
-            timestamp: 0,
-          },
+  await writeFile(
+    join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+    [
+      { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+      {
+        type: "message",
+        id: "user-1",
+        parentId: null,
+        timestamp,
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Original session title" }],
+          timestamp: 0,
         },
-      ]
-        .map((entry) => JSON.stringify(entry))
-        .join("\n") + "\n",
-    ),
-    writeFile(
-      join(cakeChatDirectory, `1970-01-01T00-00-00-000Z_${cakeChatSessionId}.jsonl`),
-      [
-        { type: "session", version: 3, id: cakeChatSessionId, timestamp, cwd: homedir() },
-        {
-          type: "message",
-          id: "cake-user-1",
-          parentId: null,
-          timestamp,
-          message: {
-            role: "user",
-            content: [{ type: "text", text: "Original Cake Chat title" }],
-            timestamp: 0,
-          },
-        },
-      ]
-        .map((entry) => JSON.stringify(entry))
-        .join("\n") + "\n",
-    ),
-  ]);
-
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+  );
   const application = await electron.launch({
     args: [repositoryRoot],
     cwd: repositoryRoot,
@@ -117,48 +73,54 @@ test("uses native session menus and preserves Cake Chat settings context", async
       PI_CODING_AGENT_SESSION_DIR: "",
     },
   });
-
   try {
     const page = await application.firstWindow();
-    await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("combobox", { name: "Message", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
+    // Exercise native menu construction without displaying an OS popup.
+    await application.evaluate(({ Menu }) => {
+      const original = Menu.buildFromTemplate.bind(Menu);
+      Reflect.set(globalThis, "sidebarMenus", []);
+      Menu.buildFromTemplate = (template) => {
+        const menu = original(template);
+        menu.popup = (options) => {
+          Reflect.get(globalThis, "sidebarMenus").push(menu.items.map(({ label }) => label));
+          options?.callback?.();
+        };
+        return menu;
+      };
+    });
     const sessionRow = page.locator(".session-row").filter({ hasText: "Original session title" });
     await expect(sessionRow).toHaveCount(1);
     await sessionRow.click({ button: "right" });
-
-    // Native Electron menus are outside the renderer accessibility tree. The
-    // sidebar must no longer mount a second HTML menu over the native one.
+    await expect
+      .poll(() => application.evaluate(() => Reflect.get(globalThis, "sidebarMenus").length))
+      .toBe(1);
     await expect(page.getByRole("menu")).toHaveCount(0);
     await expect(page.getByLabel("Session name")).toHaveCount(0);
-    await page.keyboard.press("Escape");
-
-    const cakeChatRow = page
-      .locator(".session-row")
-      .filter({ hasText: "Original Cake Chat title" });
-    await expect(cakeChatRow).toHaveCount(1);
+    const cakeChatRow = page.getByRole("button", { name: "Cake Chat", exact: true });
     await cakeChatRow.click({ button: "right" });
+    await expect
+      .poll(() => application.evaluate(() => Reflect.get(globalThis, "sidebarMenus").length))
+      .toBe(2);
     await expect(page.getByRole("menu")).toHaveCount(0);
-    await expect(page.getByLabel("Session name")).toHaveCount(0);
-    await page.keyboard.press("Escape");
-
     await cakeChatRow.click();
-    await expect(page.getByLabel("Message Cake Chat")).toBeVisible();
-    await expect(page.getByText("Original Cake Chat title", { exact: true }).first()).toBeVisible();
-
+    const composer = page.getByRole("combobox", { name: "Message Cake Chat", exact: true });
+    await expect(composer).toBeVisible();
+    await expect(
+      page.locator(".transcript").getByText("Original Cake Chat conversation", { exact: true }),
+    ).toBeVisible();
+    await composer.fill("Retained coordinator draft");
     await page.getByRole("button", { name: "Open settings", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: /Agent/ }).click();
     await expect(page.getByText("Auto-compact", { exact: true })).toBeVisible();
-    await expect(page.getByText("Open a chat to load Pi’s settings.")).toHaveCount(0);
     await page.getByRole("button", { name: "Back to chat" }).click();
-    await expect(page.getByLabel("Message Cake Chat")).toBeVisible();
-
-    await page.getByRole("button", { name: "New Cake Chat" }).first().click();
-    await expect(page.getByLabel("Message Cake Chat")).toBeVisible();
-    await expect(page.locator(".session-row").filter({ hasText: "New chat" })).toHaveCount(1);
-    expect(await readdir(cakeChatDirectory)).toEqual([
-      ".pi-session-metadata.json",
-      `1970-01-01T00-00-00-000Z_${cakeChatSessionId}.jsonl`,
-    ]);
+    await expect(composer).toHaveValue("Retained coordinator draft");
+    await expect(
+      page.locator(".transcript").getByText("Original Cake Chat conversation", { exact: true }),
+    ).toBeVisible();
   } finally {
     await application.close();
     await rm(temporaryRoot, { recursive: true, force: true });

@@ -1,8 +1,9 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { seedCakeChatHistory } from "./durable-chat-fixture";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -12,7 +13,8 @@ test("selects multiple project sessions and Cake Chat with independent transcrip
   const project = join(temporaryRoot, "project");
   const cakeHome = join(temporaryRoot, "cake-home");
   const projectSessions = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
-  const cakeChats = join(cakeHome, "pi", "global-chat", "sessions");
+  const cakeChatText = "Cake observation transcript";
+  await seedCakeChatHistory(cakeHome, cakeChatText);
   const timestamp = new Date(0).toISOString();
   const sessions = [
     {
@@ -27,15 +29,9 @@ test("selects multiple project sessions and Cake Chat with independent transcrip
       directory: projectSessions,
       cwd: project,
     },
-    {
-      id: "observation-chat",
-      title: "Cake observation transcript",
-      directory: cakeChats,
-      cwd: homedir(),
-    },
   ];
   await Promise.all(
-    [userData, project, projectSessions, cakeChats, join(cakeHome, "state")].map((path) =>
+    [userData, project, projectSessions, join(cakeHome, "state")].map((path) =>
       mkdir(path, { recursive: true }),
     ),
   );
@@ -63,7 +59,7 @@ test("selects multiple project sessions and Cake Chat with independent transcrip
       trustedProjectPaths: [],
     }),
   );
-  for (const directory of [projectSessions, cakeChats]) {
+  for (const directory of [projectSessions]) {
     await writeFile(
       join(directory, ".pi-session-metadata.json"),
       JSON.stringify({
@@ -113,6 +109,7 @@ test("selects multiple project sessions and Cake Chat with independent transcrip
     page.on("console", (message) => {
       if (message.text().includes("observation failed")) failures.push(message.text());
     });
+    await page.locator("body").waitFor({ state: "attached" });
     await page.evaluate(() => {
       const flashes: string[] = [];
       Object.assign(window, { emptySessionFlashes: flashes });
@@ -130,6 +127,17 @@ test("selects multiple project sessions and Cake Chat with independent transcrip
         page.locator(".transcript").getByText(session.title, { exact: true }),
       ).toBeVisible({ timeout: 20_000 });
     }
+    await page.getByRole("button", { name: "Cake Chat", exact: true }).click();
+    await expect(
+      page.getByRole("combobox", { name: "Message Cake Chat", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.locator(".transcript").getByText(cakeChatText, { exact: true }),
+    ).toBeVisible();
+    await page.locator(`.session-item[data-session-id="${sessions[0]!.id}"] .session-row`).click();
+    await expect(
+      page.locator(".transcript").getByText(sessions[0]!.title, { exact: true }),
+    ).toBeVisible();
     expect(failures).toEqual([]);
     expect(await page.evaluate(() => Reflect.get(window, "emptySessionFlashes"))).toEqual([]);
     await page.getByRole("button", { name: "New chat in project", exact: true }).click();

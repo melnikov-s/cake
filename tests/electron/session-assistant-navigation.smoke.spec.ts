@@ -42,8 +42,11 @@ for (const scenario of ["migrated", "unavailable"] as const) {
         request.on("data", (chunk) => {
           body += chunk;
         });
-        request.on("end", () => {
+        request.on("end", async () => {
           requests.push(JSON.parse(body));
+          // The archive must be discoverable initially; remove its external
+          // storage only after the assistant has been asked to navigate to it.
+          if (scenario === "unavailable" && requests.length === 1) await rm(targetFile);
           const invocation =
             requests.length === 1
               ? { command: "sessions.open", input: { sessionId: targetId } }
@@ -67,7 +70,12 @@ for (const scenario of ["migrated", "unavailable"] as const) {
                       },
                     ],
                   }
-                : { content: "Moved and resolved." },
+                : {
+                    content:
+                      scenario === "unavailable"
+                        ? "That session is no longer available"
+                        : "Moved and resolved.",
+                  },
             ) +
               chunk({}, invocation ? "tool_calls" : "stop") +
               "data: [DONE]\n\n",
@@ -80,7 +88,10 @@ for (const scenario of ["migrated", "unavailable"] as const) {
       const targetDirectory = cakeWorkspaceSessionDirectory(workingDirectory, resolvedRoot);
       const oldDirectory = cakeWorkspaceSessionDirectory(workingDirectory, oldActiveRoot);
       const sourceFile = join(sourceDirectory, `1970-01-01T00-00-00-000Z_${sourceId}.jsonl`);
-      const targetFile = join(targetDirectory, `1970-01-01T00-00-00-000Z_${targetId}.jsonl`);
+      const targetFile = join(
+        cakeWorkspaceSessionDirectory(workingDirectory, activeRoot),
+        `1970-01-01T00-00-00-000Z_${targetId}.jsonl`,
+      );
       const transcript = (id: string, cwd: string, text: string) =>
         [
           { type: "session", version: 3, id, timestamp, cwd },
@@ -117,7 +128,10 @@ for (const scenario of ["migrated", "unavailable"] as const) {
       );
       await writeFile(sourceFile, transcript(sourceId, project, "Find my earlier conversation."));
       const archived = transcript(targetId, workingDirectory, "Archived sharing discussion.");
-      if (scenario === "migrated") await writeFile(targetFile, archived);
+      await writeFile(
+        join(targetDirectory, `1970-01-01T00-00-00-000Z_${targetId}.jsonl`),
+        archived,
+      );
       await writeFile(join(oldDirectory, `1970-01-01T00-00-00-000Z_${targetId}.jsonl`), archived);
       await writeFile(
         entryPath,
@@ -127,8 +141,8 @@ for (const scenario of ["migrated", "unavailable"] as const) {
           projectPath: project,
           projectName: "project",
           workingDirectory,
-          activeRoot: oldActiveRoot,
-          resolvedRoot: oldResolvedRoot,
+          activeRoot: scenario === "migrated" ? oldActiveRoot : activeRoot,
+          resolvedRoot: scenario === "migrated" ? oldResolvedRoot : resolvedRoot,
           createdAt: timestamp,
           modifiedAt: timestamp,
         }),
@@ -217,6 +231,8 @@ for (const scenario of ["migrated", "unavailable"] as const) {
           CAKE_ELECTRON_SMOKE: "1",
           CAKE_ELECTRON_USER_DATA: userData,
           CAKE_HOME: cakeHome,
+          PI_CODING_AGENT_DIR: join(cakeHome, "pi"),
+          PI_CODING_AGENT_SESSION_DIR: "",
         },
       });
       try {
@@ -299,16 +315,12 @@ for (const scenario of ["migrated", "unavailable"] as const) {
         const entry = JSON.parse(await readFile(entryPath, "utf8"));
         expect(entry).toMatchObject({ version: 2, activeRoot, resolvedRoot });
         expect(await readFile(targetFile, "utf8")).toBe(archived);
-        await expect
-          .poll(async () => {
-            try {
-              await readFile(sourceFile);
-              return false;
-            } catch {
-              return true;
-            }
-          })
-          .toBe(true);
+        // Resolution is metadata now: Pi's original stays in its normal namespace.
+        expect(await readFile(sourceFile, "utf8")).toContain("Find my earlier conversation.");
+        const resolution = JSON.parse(
+          await readFile(join(metadataRoot, "resolution.json"), "utf8"),
+        );
+        expect(resolution.directories[sourceDirectory]).toContain(sourceId);
       } finally {
         await application.close();
         await new Promise<void>((resolve) => server.close(() => resolve()));

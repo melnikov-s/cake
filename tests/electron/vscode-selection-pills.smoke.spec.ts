@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { createServer } from "node:http";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
 import type { JsonObject } from "../../src/contracts/serialization/json-contract";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
-import { emitRendererEvent } from "./main-harness";
+import { emitRendererEvent, installLocalModelHttpGuard } from "./main-harness";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const sessionId = "selection-tour";
@@ -30,6 +31,39 @@ async function fixture() {
         (_, index) => `export const line${index + 1} = ${index + 1};`,
       ).join("\n"),
     );
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.end(
+      `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: { role: "assistant", content: "Selection received." }, finish_reason: null }] })}\n\n` +
+        `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", created: 0, model: "fixture", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Missing fixture server address");
+  await writeFile(
+    join(cakeHome, "pi", "models.json"),
+    JSON.stringify({
+      providers: {
+        fixture: {
+          baseUrl: `http://127.0.0.1:${address.port}/v1`,
+          apiKey: "fixture",
+          api: "openai-completions",
+          models: [
+            {
+              id: "fixture",
+              name: "Fixture",
+              reasoning: false,
+              input: ["text"],
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+              contextWindow: 32_000,
+              maxTokens: 1024,
+            },
+          ],
+        },
+      },
+    }),
+  );
   const timestamp = new Date(0).toISOString();
   await writeFile(
     join(userData, "window-state.json"),
@@ -56,9 +90,17 @@ async function fixture() {
     [
       { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
       {
+        type: "model_change",
+        id: "model",
+        parentId: null,
+        timestamp,
+        provider: "fixture",
+        modelId: "fixture",
+      },
+      {
         type: "message",
         id: "user-1",
-        parentId: null,
+        parentId: "model",
         timestamp,
         message: {
           role: "user",
@@ -91,6 +133,21 @@ async function fixture() {
       invocation: { _tag: "InvokeAppControl", command, input },
     });
   await expect(page.getByLabel("Message", { exact: true })).toBeVisible({ timeout: 20_000 });
+  await installLocalModelHttpGuard(application, `http://127.0.0.1:${address.port}`);
+  await page.getByRole("button", { name: "Model configuration" }).click();
+  const search = page.getByLabel("Search presets and models");
+  const changeModel = page.getByRole("button", { name: /Change model/ });
+  await expect
+    .poll(async () => (await search.isVisible()) || (await changeModel.isVisible()))
+    .toBe(true);
+  if (await changeModel.isVisible()) await changeModel.click();
+  await search.fill("Fixture");
+  await page
+    .getByRole("button", { name: /Fixture.*fixture/ })
+    .first()
+    .click();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(search).toBeHidden();
   await command("vscode.enter");
   await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible({
     timeout: 20_000,
@@ -113,6 +170,8 @@ async function fixture() {
     open,
     close: async () => {
       await application.close();
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(temporaryRoot, { recursive: true, force: true });
     },
   };
@@ -204,15 +263,18 @@ test("a user-selected source opens on click, appears in the sent message, and le
       startLine: 3,
       endLine: 4,
     });
-    const source = h.page.getByRole("button", { name: /Open src\/a\.ts#L4-L5 in VS Code/ });
-    await expect(source).toBeVisible();
-    await expect(h.page.getByRole("button", { name: "Open in VS Code" })).toHaveCount(0);
+    const attachment = h.page.getByRole("button", { name: "src/a.ts#L4-L5", exact: true });
+    await expect(attachment).toBeVisible();
+    const source = h.page.getByRole("button", {
+      name: "Open src/a.ts#L4-L5 in VS Code",
+      exact: true,
+    });
     const input = h.page.getByLabel("Message", { exact: true });
-    await input.fill("What is this selection?");
+    await input.focus();
+    await expect(attachment).toBeVisible();
+    await input.pressSequentially("What is this selection?");
     await h.page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(
-      h.page.locator("form").getByRole("button", { name: /Open src\/a\.ts/ }),
-    ).toHaveCount(0);
+    await expect(attachment).toHaveCount(0);
     await expect(h.page.getByText("What is this selection?", { exact: true })).toBeVisible();
     await expect(source).toBeVisible();
     await expect.poll(() => editorState(h.application)).toMatchObject({ tabs: ["b.ts"] });

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -67,6 +68,40 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
       trustedProjectPaths: [],
     }),
   );
+  // A persisted discussion is backed by its real Pi sidecar, not an orphaned
+  // pending comment with no conversation Store to reopen.
+  const sidecar = SessionManager.create(
+    project,
+    cakeWorkspaceSessionDirectory(
+      project,
+      join(
+        cakeHome,
+        "pi",
+        "review-sessions",
+        digestKey(project),
+        digestKey(sessionId),
+        digestKey("existing-side-chat"),
+      ),
+    ),
+  );
+  sidecar.appendMessage({ role: "user", content: "Compare the two approaches", timestamp: 0 });
+  sidecar.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "A saved comparison." }],
+    api: "openai-completions",
+    provider: "fixture",
+    model: "fixture",
+    stopReason: "stop",
+    timestamp: 1,
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+  });
   await writeFile(
     join(reviewDirectory, `${digestKey("existing-side-chat")}.json`),
     `${JSON.stringify(
@@ -84,13 +119,9 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
           contextAfter: "",
           diff: "",
         },
-        pendingComments: [
-          {
-            id: "pending-side-chat-prompt",
-            body: "Compare the two approaches",
-            createdAt: timestamp,
-          },
-        ],
+        pendingComments: [],
+        agentSessionId: sidecar.getSessionId(),
+        agentSessionFile: sidecar.getSessionFile(),
         status: "open",
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -202,19 +233,21 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
     await expect(fullscreen).toHaveCount(0);
 
     await code.scrollIntoViewIfNeeded();
-    const selectionTarget = await code.evaluate((element, selectedText) => {
-      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        const start = node.textContent?.indexOf(selectedText) ?? -1;
-        if (start < 0) continue;
-        const range = document.createRange();
-        range.setStart(node, start);
-        range.setEnd(node, start + selectedText.length);
-        const rect = range.getBoundingClientRect();
-        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      }
-      throw new Error(`Could not locate ${selectedText}`);
-    }, "UtilityModePreferences");
+    const locateSelection = () =>
+      code.evaluate((element, selectedText) => {
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const start = node.textContent?.indexOf(selectedText) ?? -1;
+          if (start < 0) continue;
+          const range = document.createRange();
+          range.setStart(node, start);
+          range.setEnd(node, start + selectedText.length);
+          const rect = range.getBoundingClientRect();
+          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        }
+        throw new Error(`Could not locate ${selectedText}`);
+      }, "UtilityModePreferences");
+    let selectionTarget = await locateSelection();
 
     await page.mouse.dblclick(selectionTarget.x, selectionTarget.y);
 
@@ -343,6 +376,10 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
       return;
     }
 
+    // Adding the annotation changes composer height and transcript geometry.
+    // Measure the settled highlighted code again rather than reusing old pixels.
+    await code.scrollIntoViewIfNeeded();
+    selectionTarget = await locateSelection();
     await page.mouse.dblclick(selectionTarget.x, selectionTarget.y);
     await expect
       .poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
@@ -367,10 +404,11 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
 
     const layout = page.locator('[data-slot="side-chat-layout"]');
     await expect(layout).toHaveAttribute("data-presentation", "side-by-side");
-    const defaultWidth = await dialog.evaluate((element) => element.getBoundingClientRect().width);
-    expect(Math.round(defaultWidth)).toBe(416);
-
     const resizeHandle = page.getByRole("separator", { name: "Resize side chat" });
+    const defaultWidth = await dialog.evaluate((element) => element.getBoundingClientRect().width);
+    // The layout allocates 416px including its 1px dividing border.
+    expect(Math.round(defaultWidth)).toBe(415);
+    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "416");
     await resizeHandle.focus();
     await resizeHandle.press("ArrowLeft");
     await expect
@@ -393,10 +431,14 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
     const sideChatsButton = page.getByRole("button", { name: "Side chats, 1 open" });
     await sideChatsButton.click();
     const sideChatsList = page.getByRole("dialog", { name: "Open side chats" });
-    await expect(sideChatsList).toContainText("Compare the two approaches");
-    await sideChatsList.getByRole("button", { name: /Compare the two approaches/ }).click();
+    // Discussion catalogs carry thread metadata; the live sidecar owns its transcript.
+    await sideChatsList.getByRole("button", { name: /Side chat/ }).click();
     const existingSideChat = page.getByRole("complementary", { name: "Side chat" });
     await expect(existingSideChat).toBeVisible();
+    await expect(
+      existingSideChat.getByText("Compare the two approaches", { exact: true }),
+    ).toBeVisible();
+    await expect(existingSideChat.getByText("A saved comparison.", { exact: true })).toBeVisible();
     await existingSideChat.getByRole("button", { name: "Close Side chat" }).click();
   } finally {
     await application.close();

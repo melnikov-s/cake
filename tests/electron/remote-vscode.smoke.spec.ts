@@ -235,10 +235,10 @@ test("separate Node backend serves a real leased code-server workbench to remote
       },
     });
     const observerPage = await observer.firstWindow();
-    await expect(observerPage.getByTitle(/^Open hello\.ts.*in VS Code$/)).toBeVisible({
+    await expect(observerPage.getByRole("link", { name: "hello.ts", exact: true })).toBeVisible({
       timeout: 25_000,
     });
-    await page.getByTitle(/^Open hello\.ts.*in VS Code$/).click();
+    await page.getByRole("link", { name: "hello.ts", exact: true }).click();
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible({
       timeout: 25_000,
     });
@@ -270,10 +270,17 @@ test("separate Node backend serves a real leased code-server workbench to remote
     await editor.keyboard.press("Enter");
     await editor.locator(".quick-input-widget input").fill("Selected on the remote desktop");
     await editor.keyboard.press("Enter");
+    const sourceAttachment = page
+      .locator("form")
+      .getByRole("button", { name: /^hello\.ts/ })
+      .last();
+    await expect(sourceAttachment).toBeVisible();
+    await sourceAttachment.click();
     await expect(page.getByText("Selected on the remote desktop", { exact: true })).toBeVisible();
     await expect(
       observerPage.getByText("Selected on the remote desktop", { exact: true }),
     ).toHaveCount(0);
+    await page.getByRole("combobox", { name: "Message", exact: true }).click();
     await editor.locator(".view-lines").first().click();
     await editor.keyboard.press("Meta+End");
     await editor.keyboard.type("\nexport const editedRemotely = true;\n");
@@ -292,7 +299,7 @@ test("separate Node backend serves a real leased code-server workbench to remote
     await editor.getByRole("button", { name: "Cake: Back to Agent", exact: true }).click();
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeHidden();
     // Hiding presentation does not surrender its exclusive backend lease.
-    await observerPage.getByTitle(/^Open hello\.ts.*in VS Code$/).click();
+    await observerPage.getByRole("link", { name: "hello.ts", exact: true }).click();
     await expect(observerPage.getByText(/already open in another desktop/).first()).toBeVisible();
     await page
       .getByRole("button", { name: "Open workspace changes in VS Code", exact: true })
@@ -328,7 +335,7 @@ test("separate Node backend serves a real leased code-server workbench to remote
       .getByRole("alert")
       .getByRole("button", { name: "Back to agent", exact: true })
       .click();
-    await observerPage.getByTitle(/^Open hello\.ts.*in VS Code$/).click();
+    await observerPage.getByRole("link", { name: "hello.ts", exact: true }).click();
     const second = observer;
     await expect
       .poll(() => editorState(second), { timeout: 25_000 })

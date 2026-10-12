@@ -306,7 +306,12 @@ test("shows compacted historical work in place, muted and expandable", async () 
     const groups = page.locator('[data-slot="activity-group"]');
     await expect(groups).toHaveCount(2, { timeout: 20_000 });
     await expect(page.getByText("Check again", { exact: true })).toBeVisible();
-    await expect(page.getByText("Cake Chat · session message · 1", { exact: true })).toBeVisible();
+    const incoming = page.getByRole("region", { name: "Message from another session" });
+    await expect(incoming.getByRole("link", { name: "Cake Chat", exact: true })).toHaveAttribute(
+      "href",
+      "cake://session/coordinator",
+    );
+    await expect(incoming).toContainText("Check again");
     await expect(page.getByRole("img", { name: "Image 2", exact: true })).toBeVisible();
     const compacted = page.locator('[data-slot="activity-group"][data-origin="compacted"]');
     await expect(compacted).toHaveCount(1);

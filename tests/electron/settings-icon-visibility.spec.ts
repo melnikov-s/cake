@@ -57,7 +57,7 @@ test("workspace settings icon visibility follows sidebar state", async () => {
     const page = await application.firstWindow();
     await expect(page.getByLabel("Message")).toBeVisible({ timeout: 20_000 });
 
-    const settings = page.getByRole("button", { name: "Open settings" });
+    const settings = page.getByRole("button", { name: "Open settings", exact: true });
     await expect(settings).toBeVisible();
 
     await page.getByRole("complementary").getByRole("button", { name: "Toggle sidebar" }).click();

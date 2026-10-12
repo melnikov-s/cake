@@ -57,7 +57,7 @@ test("promotes a staged chat immediately and leaves New Chat free for the next s
       const text = message.text();
       if (text.includes("synchronization failed")) synchronizationErrors.push(text);
     });
-    const composer = page.getByLabel("Message");
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
 
     const avatar = page.locator('[data-slot="avatar"][data-animated="true"]');

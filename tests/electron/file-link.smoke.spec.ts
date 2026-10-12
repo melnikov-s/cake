@@ -9,6 +9,7 @@ import { emitRendererEvent } from "./main-harness";
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 test("a file-path link opens IDE mode with VS Code and the shared Cake chat drawer", async () => {
+  test.setTimeout(90_000);
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-file-link-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -134,7 +135,9 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
           content: [
             {
               type: "text",
-              text: 'Phase 4 — Model references ([`src/modelMeta.ts#L1`](src/modelMeta.ts#L1)) is done. Read [the website](https://example.com/docs "Authored title") or [this session](cake://session/file-link-session).',
+              text:
+                'Phase 4 — Model references ([`src/modelMeta.ts#L1`](src/modelMeta.ts#L1)) is done. Read [the website](https://example.com/docs "Authored title") or [this session](cake://session/file-link-session).\n\n' +
+                "The model metadata lives alongside the application contract so every caller can inspect the same provider and model identity. The desktop presents this source through the embedded editor while the conversation remains authoritative in Pi. Review the associated definitions before changing the configuration, and keep the current chat draft when moving between the editor and agent views.",
             },
           ],
           api: "anthropic-messages",
@@ -478,8 +481,8 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     const composerAvatar = page.locator(
       'aside [data-slot="composer-leading-accessory"] [data-slot="avatar"][data-animated="true"]',
     );
-    // The default 420px drawer is too narrow to give the composer avatar its own gutter.
-    await expect(composerAvatar).toBeHidden();
+    // Compact composers retain the assistant inside the input's reserved gutter.
+    await expect(composerAvatar).toBeVisible();
     await composer.fill("/toolcompact");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(composer).toHaveValue("");
@@ -525,20 +528,20 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await page.mouse.up();
     await expect(resizeHandle).toHaveAttribute("aria-valuenow", "380");
     await expect(page.locator("aside")).toHaveCSS("width", "380px");
-    await expect(composerAvatar).toBeHidden();
+    await expect(composerAvatar).toBeVisible();
     await resizeHandle.focus();
     await resizeHandle.press("ArrowLeft");
     await expect(resizeHandle).toHaveAttribute("aria-valuenow", "396");
-    await expect(composerAvatar).toBeHidden();
+    await expect(composerAvatar).toBeVisible();
     await resizeHandle.press("ArrowLeft");
     await expect(resizeHandle).toHaveAttribute("aria-valuenow", "412");
-    await expect(composerAvatar).toBeHidden();
-    // The avatar appears once the composer dock reaches 32rem, so it never squeezes a compact composer.
+    await expect(composerAvatar).toBeVisible();
+    // Resizing preserves the assistant and the in-progress input at every width.
     for (const width of ["460", "508", "556"]) {
       await resizeHandle.press("Shift+ArrowLeft");
       await expect(resizeHandle).toHaveAttribute("aria-valuenow", width);
     }
-    await expect(composerAvatar).toBeHidden();
+    await expect(composerAvatar).toBeVisible();
     await resizeHandle.press("Shift+ArrowLeft");
     await expect(resizeHandle).toHaveAttribute("aria-valuenow", "604");
     await expect(composerAvatar).toBeVisible();

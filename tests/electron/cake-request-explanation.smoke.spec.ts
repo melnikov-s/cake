@@ -55,7 +55,8 @@ for (const theme of ["light", "dark"] as const) {
         requestCapability: false,
         horizontalOverflow: false,
       });
-      await next.click();
+      await next.focus();
+      await next.press("Enter");
       await expect(frame.getByRole("heading", { name: "A narrow crossing." })).toBeVisible();
       const evidence = frame.getByRole("button", { name: "Inspect evidence" });
       await evidence.focus();
@@ -64,7 +65,7 @@ for (const theme of ["light", "dark"] as const) {
       await frame.getByRole("button", { name: "04 Run" }).click();
       await expect(frame.getByRole("heading", { name: "Pi runs the agent." })).toBeVisible();
       await expect(frame.locator(".pi")).toHaveClass(/active/);
-      await expect(frame.getByText("src/services/pi/CakeSessionRuntimes.ts:596–598")).toBeVisible();
+      await expect(frame.getByText("src/services/pi/PiSessions.ts:596–598")).toBeVisible();
       await frame.getByRole("button", { name: "05 Project" }).click();
       await expect(frame.getByText("UP / updates")).toBeVisible();
       await expect(
@@ -77,7 +78,9 @@ for (const theme of ["light", "dark"] as const) {
       );
 
       await page.getByRole("button", { name: "View A prompt through Cake fullscreen" }).click();
-      const full = page.locator('iframe[title="A prompt through Cake fullscreen"]');
+      const full = page
+        .getByRole("dialog", { name: "A prompt through Cake", exact: true })
+        .locator('iframe[title="A prompt through Cake"]');
       await expect(full).toBeVisible();
       const box = await full.boundingBox();
       expect(box!.width).toBeGreaterThan(1200);
@@ -86,9 +89,7 @@ for (const theme of ["light", "dark"] as const) {
       await fullFrame.getByRole("button", { name: "04 Run" }).click();
       await expect(fullFrame.getByRole("heading", { name: "Pi runs the agent." })).toBeVisible();
       await fullFrame.getByRole("button", { name: "Inspect evidence" }).click();
-      await expect(
-        fullFrame.getByText("src/services/pi/CakeSessionRuntimes.ts:596–598"),
-      ).toBeVisible();
+      await expect(fullFrame.getByText("src/services/pi/PiSessions.ts:596–598")).toBeVisible();
       const overflow = await fullFrame
         .locator("body")
         .evaluate((body) => body.scrollWidth > body.clientWidth);
