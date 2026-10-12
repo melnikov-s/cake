@@ -252,6 +252,9 @@ export const ChatTranscript = observer(function ChatTranscript({
     };
     const commitScrollPosition = () => {
       saveTimer = undefined;
+      // The scroll event can precede Virtuoso replacing its rendered range.
+      // Save the current DOM anchor, keeping the last capture if geometry is unavailable.
+      pendingPosition = captureScrollPosition() ?? pendingPosition;
       if (pendingPosition) store.transcriptInteraction.setTranscriptScrollPosition(pendingPosition);
     };
     const captureAndSchedule = () => {
@@ -336,7 +339,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       window.removeEventListener("pointercancel", handlePointerUp);
       scroller.removeEventListener("scroll", captureAndSchedule);
       if (saveTimer !== undefined) clearTimeout(saveTimer);
-      if (pendingPosition) store.transcriptInteraction.setTranscriptScrollPosition(pendingPosition);
+      commitScrollPosition();
     };
   }, [scroller, stopScroll, store, virtualized]);
   const error = errorOverride ?? store.error;
