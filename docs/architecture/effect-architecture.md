@@ -696,8 +696,23 @@ landing coordinator retains accepted operations independently of renderer lifeti
 renderer Stores start, retry, dismiss, and present that work. Repository queueing,
 persisted pauses and merge-and-resolve intent, automation prompts, and partial
 cleanup results belong to the [worktree domain](../../src/domain/worktrees/).
-Queue progress is process-local; persisted pauses can be adopted after restart,
-and terminal-operation acknowledgement cannot discard durable resolve intent.
+Queue progress is process-local; `queued` is published only after the engine inserts
+an operation into its FIFO, before waiting for promotion. Renderer status refreshes
+coalesce without dropping an update received in flight. Persisted pauses can be
+adopted after restart, including squash-message requests; explicit dismissal clears
+the durable landing pause, while terminal-operation acknowledgement cannot discard
+durable resolve intent. Recovery must not resolve an older landed record while a
+later operation is active or while the checkout has unlanded work.
+
+Landing and rebase require the source checkout to remain on its recorded branch.
+Dirty-target approval applies only to preserve landings: squash commits require a
+clean target index and checkout. Automatic resolved cleanup refuses dirty,
+conflicted, or newly committed source work and uses non-forced checkout removal.
+Removing a parent requires removing its extant child worktrees first. Cleanup Git
+failures remain visible rather than being reported as successful removal;
+successful removal also releases the checkout's landing reservations. Project-wide
+resolved-worktree cleanup uses this same safe, restorable retirement path, not
+forced discard.
 
 A merge-and-resolve operation remains `landed` when Git landing and session
 resolution commit but checkout cleanup fails. Its optional `cleanupFailures`

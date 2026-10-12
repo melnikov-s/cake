@@ -81,12 +81,12 @@ const prompt = Effect.fn("WorktreeLandings.prompt")(function* (
     .pipe(asError("prompt"));
 });
 
+const gitBlocked = (status: WorktreeStatus) =>
+  status.dirtyCount > 0 || status.merging || status.rebasing;
+
 const landingBlocked = (status: WorktreeStatus, strategy: WorktreeLandRequest["strategy"]) =>
-  status.dirtyCount > 0 ||
-  status.merging ||
-  status.rebasing ||
-  status.aheadCount === 0 ||
-  (strategy === "squash" && !status.squashMessageReady);
+  gitBlocked(status) ||
+  (status.aheadCount > 0 && strategy === "squash" && !status.squashMessageReady);
 
 const performLanding: (
   operation: WorktreeLandingOperation,
@@ -172,14 +172,27 @@ const performLanding: (
   yield* performLanding(operation);
 });
 
+const reserveLanding = Effect.fn("WorktreeLandings.reserveLanding")(function* (
+  operation: WorktreeLandingOperation,
+) {
+  const coordinator = yield* WorktreeLandingCoordinator;
+  yield* (yield* ManagedWorktrees)
+    .prepareLanding(
+      operation.workspacePath,
+      operation.operationId,
+      update(operation.workspacePath, operation.operationId, (current) => ({
+        ...current,
+        phase: "queued",
+      })).pipe(Effect.provideService(WorktreeLandingCoordinator, coordinator)),
+    )
+    .pipe(asError("prepareLanding"));
+});
+
 const prepareCommitAndLand = Effect.fn("WorktreeLandings.prepareCommitAndLand")(function* (
   operation: WorktreeLandingOperation,
 ) {
-  const worktrees = yield* ManagedWorktrees;
   const application = yield* ApplicationState;
-  yield* worktrees
-    .prepareLanding(operation.workspacePath, operation.operationId)
-    .pipe(asError("prepareLanding"));
+  yield* reserveLanding(operation);
   const status = yield* requireStatus(operation.workspacePath);
   if (status.dirtyCount === 0) return yield* performLanding(operation);
   yield* update(operation.workspacePath, operation.operationId, (current) => ({
@@ -194,7 +207,8 @@ const prepareCommitAndLand = Effect.fn("WorktreeLandings.prepareCommitAndLand")(
     }),
   );
   const refreshed = yield* requireStatus(operation.workspacePath);
-  if (landingBlocked(refreshed, operation.strategy ?? "preserve")) {
+  // Squash proposals are requested by land, not by the preceding commit step.
+  if (gitBlocked(refreshed)) {
     yield* update(operation.workspacePath, operation.operationId, (current) => ({
       ...current,
       phase: "stalled",
@@ -208,9 +222,7 @@ const prepareCommitAndLand = Effect.fn("WorktreeLandings.prepareCommitAndLand")(
 const prepareAndLand = Effect.fn("WorktreeLandings.prepareAndLand")(function* (
   operation: WorktreeLandingOperation,
 ) {
-  yield* (yield* ManagedWorktrees)
-    .prepareLanding(operation.workspacePath, operation.operationId)
-    .pipe(asError("prepareLanding"));
+  yield* reserveLanding(operation);
   yield* performLanding(operation);
 });
 
@@ -218,9 +230,7 @@ const adoptLanding = Effect.fn("WorktreeLandings.adoptLanding")(function* (
   operation: WorktreeLandingOperation,
   ready: boolean,
 ) {
-  yield* (yield* ManagedWorktrees)
-    .prepareLanding(operation.workspacePath, operation.operationId)
-    .pipe(asError("prepareLanding"));
+  yield* reserveLanding(operation);
   if (ready) return yield* performLanding(operation);
   yield* update(operation.workspacePath, operation.operationId, (current) => ({
     ...current,
@@ -364,13 +374,17 @@ export const start = Effect.fn("WorktreeLandings.start")(function* (input: {
     resolveAfterLanding: input.resolveAfterLanding || undefined,
   });
   yield* insert(operation);
-  if (input.resolveAfterLanding)
-    yield* (yield* ManagedWorktrees)
-      .setResolveAfterLanding(input.workspacePath, true)
-      .pipe(asError("start"));
   yield* run(
     operation,
-    input.commitBeforeLanding ? prepareCommitAndLand(operation) : prepareAndLand(operation),
+    Effect.gen(function* () {
+      if (input.resolveAfterLanding)
+        yield* (yield* ManagedWorktrees)
+          .setResolveAfterLanding(input.workspacePath, true)
+          .pipe(asError("start"));
+      yield* input.commitBeforeLanding
+        ? prepareCommitAndLand(operation)
+        : prepareAndLand(operation);
+    }),
   );
   return operation;
 });
@@ -443,7 +457,7 @@ export const retry = Effect.fn("WorktreeLandings.retry")(function* (input: {
               }),
             );
             const refreshed = yield* requireStatus(operation.workspacePath);
-            if (landingBlocked(refreshed, operation.strategy ?? "preserve")) {
+            if (gitBlocked(refreshed)) {
               yield* update(operation.workspacePath, operation.operationId, (item) => ({
                 ...item,
                 phase: "stalled",
@@ -506,13 +520,13 @@ export const cancel = Effect.fn("WorktreeLandings.cancel")(function* (
   const current = (yield* SubscriptionRef.get(coordinator.state)).operations.get(workspacePath);
   // A delayed renderer request must never cancel a newer operation for the same worktree.
   if (!current || current.operationId !== operationId) return;
-  if (current.phase !== "waiting" && current.phase !== "stalled")
+  if (current.phase !== "waiting" && current.phase !== "queued" && current.phase !== "stalled")
     return yield* new WorktreeLandingError({
       operation: "cancel",
       message: "This merge has already started and can no longer be canceled.",
     });
   const worktrees = yield* ManagedWorktrees;
-  if (current.kind === "landing" && current.phase === "waiting") {
+  if (current.kind === "landing" && (current.phase === "waiting" || current.phase === "queued")) {
     // The engine owns the FIFO and must atomically prove that this entry is
     // still pending. A status check here would race with queue promotion.
     yield* worktrees
@@ -544,7 +558,16 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
   const durableRecord = (yield* worktrees.records().pipe(asError("inspect"))).find(
     (record) => record.worktreePath === input.workspacePath,
   );
-  if (durableRecord?.state === "landed" && durableRecord.resolveAfterLanding) {
+  const existing = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
+    input.workspacePath,
+  );
+  let status = yield* worktrees.status(input.workspacePath).pipe(asError("inspect"));
+  if (
+    durableRecord?.state === "landed" &&
+    durableRecord.resolveAfterLanding &&
+    (!existing || isTerminal(existing)) &&
+    (!status || (!gitBlocked(status) && status.aheadCount === 0))
+  ) {
     const result = yield* (yield* WorktreeLandingCompletion).resolveWorkingDirectory(
       input.workspacePath,
     );
@@ -574,8 +597,8 @@ export const inspect = Effect.fn("WorktreeLandings.inspect")(function* (input: {
     });
     if (current) yield* update(input.workspacePath, current.operationId, () => completed);
     else if (result.cleanupFailures.length > 0) yield* insert(completed);
+    status = yield* worktrees.status(input.workspacePath).pipe(asError("inspect"));
   }
-  const status = yield* worktrees.status(input.workspacePath).pipe(asError("inspect"));
   let operation = (yield* SubscriptionRef.get(coordinator.state)).operations.get(
     input.workspacePath,
   );

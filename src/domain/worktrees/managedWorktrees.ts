@@ -368,7 +368,9 @@ export const discardResolvedForProject = Effect.fn("ManagedWorktrees.discardReso
             message: "Running terminal programs require confirmation before cleanup",
           });
         yield* terminals.closeWorkingDirectory(workingDirectory);
-        yield* worktrees.discard(workingDirectory, false);
+        // Resolved-session cleanup is not approval to destroy work added after landing.
+        // Use the same safe, restorable retirement path as ordinary resolution.
+        yield* worktrees.cleanupResolved(workingDirectory);
         yield* revokeProjectTrust(workingDirectory);
       }).pipe(
         Effect.mapError((cause) =>

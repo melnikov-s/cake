@@ -535,6 +535,7 @@ export const ManagedWorktreesLive: Layer.Layer<
     const acquireLanding = Effect.fn("ManagedWorktrees.acquireLanding")(function* (
       record: WorktreeRecord,
       operationId: string,
+      onQueued?: Effect.Effect<void>,
     ) {
       const ready = yield* Deferred.make<void, Error>();
       const entry: LandingEntry = {
@@ -552,7 +553,8 @@ export const ManagedWorktreesLive: Layer.Layer<
         return [current !== undefined, next] as const;
       });
       if (wait)
-        yield* Deferred.await(ready).pipe(
+        yield* (onQueued ?? Effect.void).pipe(
+          Effect.andThen(Deferred.await(ready)),
           Effect.onInterrupt(() => cancelLandingInternal(record, operationId, false)),
         );
     });
@@ -589,6 +591,7 @@ export const ManagedWorktreesLive: Layer.Layer<
           return yield* internalError("This merge has already started and cannot be canceled.");
       } else if (result.entry)
         yield* Deferred.fail(result.entry.ready, new Error("Worktree landing was canceled."));
+      return result !== "missing";
     });
 
     const rememberPendingLanding = Effect.fn("ManagedWorktrees.rememberPendingLanding")(function* (
@@ -736,6 +739,13 @@ export const ManagedWorktreesLive: Layer.Layer<
       }
       return { outcome: "landed", commit: yield* squashMerge(record, requested) };
     });
+    const requireSourceBranch = Effect.fn("ManagedWorktrees.requireSourceBranch")(function* (
+      record: WorktreeRecord,
+    ) {
+      const branch = (yield* git(record.worktreePath, "rev-parse", "--abbrev-ref", "HEAD")).trim();
+      if (branch !== record.branch)
+        return yield* internalError(`Switch the source worktree back to "${record.branch}" first.`);
+    });
     const landRecord = Effect.fn("ManagedWorktrees.landRecord")(function* (
       record: WorktreeRecord,
       request: WorktreeLandRequest,
@@ -759,6 +769,7 @@ export const ManagedWorktreesLive: Layer.Layer<
         return yield* internalError(
           "The worktree has uncommitted changes. Commit or discard them first.",
         );
+      yield* requireSourceBranch(record);
       const targetPath = record.parentWorktreePath ?? record.projectPath;
       if (!(yield* exists(targetPath)))
         return yield* internalError("The worktree landing target no longer exists");
@@ -768,7 +779,11 @@ export const ManagedWorktreesLive: Layer.Layer<
         return yield* internalError(
           `Switch the landing target back to "${record.baseBranch}" first.`,
         );
-      if ((yield* dirtyFileCount(targetPath)) > 0 && !request.allowDirtyTarget)
+      // Squash commits the target index wholesale; it cannot preserve unrelated staged work.
+      if (
+        (yield* dirtyFileCount(targetPath)) > 0 &&
+        (!request.allowDirtyTarget || request.strategy === "squash")
+      )
         return yield* internalError(
           "The landing target has uncommitted changes. Commit or stash them first.",
         );
@@ -814,6 +829,17 @@ export const ManagedWorktreesLive: Layer.Layer<
       options: { readonly keepBranch: boolean; readonly state: "discarded" | "resolved" },
     ) {
       const normalized = resolveNormalized(record.worktreePath);
+      const dependents = (yield* Ref.get(recordsRef)).filter(
+        (entry) =>
+          entry.parentWorktreePath !== undefined &&
+          resolveNormalized(entry.parentWorktreePath) === normalized &&
+          ["active", "landed"].includes(entry.state ?? "active"),
+      );
+      for (const child of dependents)
+        if (yield* exists(child.worktreePath))
+          return yield* internalError(
+            "Remove child worktrees before removing their landing target.",
+          );
       yield* Ref.update(awaitingSquashProposals, (items) => {
         const next = new Set(items);
         next.delete(normalized);
@@ -829,13 +855,25 @@ export const ManagedWorktreesLive: Layer.Layer<
           record.projectPath,
           "worktree",
           "remove",
-          "--force",
+          ...(options.state === "discarded" ? ["--force"] : []),
           record.worktreePath,
-        ).pipe(Effect.ignore);
-      yield* gitMutation(record.projectPath, "worktree", "prune").pipe(Effect.ignore);
-      if (!options.keepBranch)
-        yield* gitMutation(record.projectPath, "branch", "-D", record.branch).pipe(Effect.ignore);
+        );
+      yield* gitMutation(record.projectPath, "worktree", "prune");
+      if (
+        !options.keepBranch &&
+        (yield* revParseExists(record.projectPath, `refs/heads/${record.branch}`))
+      )
+        yield* gitMutation(record.projectPath, "branch", "-D", record.branch);
       yield* closeRecord(record, options.state);
+      // Removed checkouts cannot retain reservations, including a paused squash landing.
+      const queue = (yield* Ref.get(landingQueues)).get(
+        yield* repositoryIdentity(record.projectPath),
+      );
+      for (const pending of queue?.pending ?? [])
+        if (pending.worktreePath === normalized)
+          yield* cancelLandingInternal(record, pending.operationId, false);
+      if (queue?.active?.worktreePath === normalized)
+        yield* releaseLanding(record, queue.active.operationId);
     });
 
     const records = Effect.fn("ManagedWorktrees.records")(function* () {
@@ -996,19 +1034,20 @@ export const ManagedWorktreesLive: Layer.Layer<
           "ManagedWorktrees.status",
           statusInternal(worktreePath).pipe(Effect.tap(() => publish(worktreePath))),
         ),
-      prepareLanding: Effect.fn("ManagedWorktrees.prepareLanding")((worktreePath, operationId) =>
-        mapError(
-          "ManagedWorktrees.prepareLanding",
-          Effect.gen(function* () {
-            const record = (yield* Ref.get(recordsRef)).find(
-              (entry) =>
-                ["active", "landed"].includes(entry.state ?? "active") &&
-                resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
-            );
-            if (!record) return yield* internalError("Cake could not find that worktree");
-            yield* acquireLanding(record, operationId);
-          }),
-        ),
+      prepareLanding: Effect.fn("ManagedWorktrees.prepareLanding")(
+        (worktreePath, operationId, onQueued) =>
+          mapError(
+            "ManagedWorktrees.prepareLanding",
+            Effect.gen(function* () {
+              const record = (yield* Ref.get(recordsRef)).find(
+                (entry) =>
+                  ["active", "landed"].includes(entry.state ?? "active") &&
+                  resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
+              );
+              if (!record) return yield* internalError("Cake could not find that worktree");
+              yield* acquireLanding(record, operationId, onQueued);
+            }),
+          ),
       ),
       setResolveAfterLanding: (worktreePath, enabled) =>
         mapError(
@@ -1056,8 +1095,29 @@ export const ManagedWorktreesLive: Layer.Layer<
                 (entry) =>
                   resolveNormalized(entry.worktreePath) === resolveNormalized(worktreePath),
               );
-              if (record) yield* cancelLandingInternal(record, operationId, onlyIfQueued);
-              else if (onlyIfQueued)
+              if (record) {
+                const canceled = yield* cancelLandingInternal(record, operationId, onlyIfQueued);
+                if (canceled && !onlyIfQueued) {
+                  // Dismissal must abandon the durable pause too, or inspect will adopt it again.
+                  yield* updateRecord(record, (current) => {
+                    const next = { ...current };
+                    Reflect.deleteProperty(next, "pendingStrategy");
+                    return next;
+                  });
+                  const normalized = resolveNormalized(record.worktreePath);
+                  yield* Ref.update(awaitingSquashProposals, (items) => {
+                    const next = new Set(items);
+                    next.delete(normalized);
+                    return next;
+                  });
+                  yield* Ref.update(squashProposals, (items) => {
+                    const next = new Map(items);
+                    next.delete(normalized);
+                    return next;
+                  });
+                  yield* publish(worktreePath);
+                }
+              } else if (onlyIfQueued)
                 return yield* internalError(
                   "This merge has already started and cannot be canceled.",
                 );
@@ -1090,6 +1150,7 @@ export const ManagedWorktreesLive: Layer.Layer<
                   return yield* internalError(
                     "The worktree has uncommitted changes. Commit or discard them first.",
                   );
+                yield* requireSourceBranch(record);
                 const targetPath = record.parentWorktreePath ?? record.projectPath;
                 if (!(yield* exists(targetPath)))
                   return yield* internalError("The worktree rebase target no longer exists");
@@ -1146,9 +1207,21 @@ export const ManagedWorktreesLive: Layer.Layer<
                   (entry) => resolveNormalized(entry.worktreePath) === normalized,
                 );
                 if (!record || !["landed", "discarded"].includes(record.state ?? "active")) return;
-                if (record.state === "landed")
+                if (record.state === "landed") {
+                  if (yield* exists(record.worktreePath)) {
+                    const checkpoint = yield* withLandingCheckpoint(record);
+                    if (
+                      (yield* dirtyFileCount(record.worktreePath)) > 0 ||
+                      (yield* rebaseInProgress(record.worktreePath)) ||
+                      (yield* revParseExists(record.worktreePath, "MERGE_HEAD")) ||
+                      (yield* newCommitCount(checkpoint)) > 0
+                    )
+                      return yield* internalError(
+                        "The worktree has unlanded work. Land or explicitly discard it before cleanup.",
+                      );
+                  }
                   yield* cleanup(record, { keepBranch: false, state: "resolved" });
-                else yield* closeRecord(record, "resolved");
+                } else yield* closeRecord(record, "resolved");
               }),
             );
             yield* publish(worktreePath);
@@ -1243,7 +1316,7 @@ export const ManagedWorktreesLive: Layer.Layer<
               next.delete(normalized);
               return [found, next] as const;
             });
-            if (!awaiting)
+            if (!awaiting && record.pendingStrategy !== "squash")
               return yield* internalError(
                 "No worktree landing is waiting for a squash commit message",
               );

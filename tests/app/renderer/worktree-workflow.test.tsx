@@ -277,6 +277,46 @@ describe("Worktree operation workflows", () => {
     expect(cancelLanding).not.toHaveBeenCalled();
   });
 
+  it("shows authoritative queue insertion even when the status snapshot predates the reservation", async () => {
+    const cancelLanding = vi.fn<Client["managedWorktrees"]["cancelLanding"]>(async () => undefined);
+    using fixture = renderWorktree({
+      operation: operation("queued"),
+      client: { managedWorktrees: { cancelLanding } },
+    });
+    expect(await screen.findByRole("button", { name: "Waiting to merge…" })).toBeDefined();
+    await fixture.user.click(screen.getByRole("button", { name: "Cancel queued merge" }));
+    expect(cancelLanding).toHaveBeenCalledWith({
+      operationId: "landing-operation",
+      workspacePath: "/worktree",
+      intent: "cancel",
+    });
+  });
+
+  it("reconciles a projection update received during an older in-flight status refresh", async () => {
+    const response = gate<Awaited<ReturnType<Client["managedWorktrees"]["landing"]>>>();
+    const landing = vi
+      .fn<Client["managedWorktrees"]["landing"]>()
+      .mockResolvedValueOnce({ status: status() })
+      .mockImplementationOnce(() => response.promise)
+      .mockResolvedValue({
+        status: status({
+          record: { ...status().record, state: "landed" },
+          aheadCount: 0,
+          merged: true,
+        }),
+      });
+    const cancelLanding = vi.fn<Client["managedWorktrees"]["cancelLanding"]>(async () => undefined);
+    using fixture = renderWorktree({ client: { managedWorktrees: { landing, cancelLanding } } });
+    await screen.findByRole("button", { name: "Merge" });
+    await fixture.publish(operation("queued"));
+    await waitFor(() => expect(landing).toHaveBeenCalledTimes(2));
+    await fixture.publish(operation("landed"));
+    await act(async () => response.resolve({ status: status() }));
+    await waitFor(() => expect(landing).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Resolve" })).toBeDefined());
+    expect(cancelLanding).toHaveBeenCalledTimes(1);
+  });
+
   it("offers queue cancellation only for the matching authoritative reservation", async () => {
     const current = operation("waiting");
     const cancelLanding = vi.fn<Client["managedWorktrees"]["cancelLanding"]>(async () => undefined);

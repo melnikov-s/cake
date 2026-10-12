@@ -7,6 +7,7 @@ const bounded = (minimum: number, maximum: number) =>
 
 export const WorktreeLandingPhase = Schema.Literals([
   "waiting",
+  "queued",
   "landing",
   "committing",
   "rebasing",

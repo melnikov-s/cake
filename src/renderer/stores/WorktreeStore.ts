@@ -49,6 +49,7 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
   private startedLandingOperationId: string | undefined;
   private startedResolveAfterLanding = false;
   private readonly refreshingWorkspacePaths = new Set<string>();
+  private readonly refreshAgainWorkspacePaths = new Set<string>();
   private observedWorkspacePath: string | undefined;
   private completedOperationId: string | undefined;
 
@@ -84,11 +85,13 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
 
   /** True only when main has authoritatively placed this operation behind another landing. */
   get isQueued() {
+    const operation = this.props.operation();
     return (
       this.phase === "waiting" &&
       this.operationId !== undefined &&
-      this.status?.landingState === "queued" &&
-      this.status.landingOperationId === this.operationId
+      ((operation?.phase === "queued" && operation.operationId === this.operationId) ||
+        (this.status?.landingState === "queued" &&
+          this.status.landingOperationId === this.operationId))
     );
   }
 
@@ -100,7 +103,11 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
     if (!this.shouldRefresh || this.signal.aborted) return;
     const workspacePath = requestedWorkspacePath ?? this.props.workspacePath();
     const sessionId = this.props.sessionId();
-    if (!workspacePath || !sessionId || this.refreshingWorkspacePaths.has(workspacePath)) return;
+    if (!workspacePath || !sessionId) return;
+    if (this.refreshingWorkspacePaths.has(workspacePath)) {
+      this.refreshAgainWorkspacePaths.add(workspacePath);
+      return;
+    }
     if (workspacePath !== this.observedWorkspacePath) {
       this.observedWorkspacePath = workspacePath;
       this.status = undefined;
@@ -129,6 +136,13 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       // Transient Git or transport failures surface through the next projected operation or intent.
     } finally {
       this.refreshingWorkspacePaths.delete(workspacePath);
+      // An operation projection can advance while its preceding status RPC is in flight.
+      // Coalesce those requests, but do not lose the refresh proving queue/completion state.
+      if (
+        this.refreshAgainWorkspacePaths.delete(workspacePath) &&
+        this.props.workspacePath() === workspacePath
+      )
+        void this.refresh(workspacePath);
     }
   }
 
@@ -340,7 +354,11 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
           (this.startedLandingOperationId === operation.operationId &&
             this.startedResolveAfterLanding),
       );
-    } else if (operation.phase === "complete") {
+    } else if (
+      operation.phase === "complete" &&
+      this.completedOperationId !== operation.operationId
+    ) {
+      this.completedOperationId = operation.operationId;
       await this.managedWorktrees.cancelLanding({
         operationId: operation.operationId,
         workspacePath,
@@ -362,10 +380,11 @@ export class WorktreeStore extends Store<WorktreeStoreProps> {
       this.error = operation.error;
       return;
     }
-    if (operation.phase === "waiting") {
+    if (operation.phase === "waiting" || operation.phase === "queued") {
       if (
-        this.status?.landingState === "queued" &&
-        this.status.landingOperationId === operation.operationId
+        operation.phase === "queued" ||
+        (this.status?.landingState === "queued" &&
+          this.status.landingOperationId === operation.operationId)
       )
         this.phase = "waiting";
       else if (this.phase !== "committing") this.phase = "landing";

@@ -60,6 +60,64 @@ async function commitAll(cwd: string, message: string) {
 }
 
 describe("WorktreeService", { timeout: 20_000 }, () => {
+  it("does not squash the target's pre-existing staged work, even with dirty-target approval", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const source = await worktrees.create(repo);
+    await writeFile(join(source.worktreePath, "feature.txt"), "feature\n");
+    await commitAll(source.worktreePath, "feature");
+    await writeFile(join(repo, "personal.txt"), "unfinished target work\n");
+    await git(repo, "add", "personal.txt");
+    const before = (await git(repo, "rev-parse", "HEAD")).stdout;
+    await expect(
+      worktrees.land(source.worktreePath, {
+        request: { strategy: "squash", message: "feature only", allowDirtyTarget: true },
+      }),
+    ).rejects.toThrow(/uncommitted changes/i);
+    expect((await git(repo, "rev-parse", "HEAD")).stdout).toBe(before);
+    expect((await git(repo, "diff", "--cached", "--name-only")).stdout.trim()).toBe("personal.txt");
+    expect(await readFile(join(repo, "personal.txt"), "utf8")).toBe("unfinished target work\n");
+    await worktrees.discard(source.worktreePath, false);
+  });
+
+  it.each(["dirty", "committed"] as const)(
+    "keeps later %s work when automatic resolved cleanup is requested",
+    async (kind) => {
+      const repo = await repository();
+      const worktrees = service();
+      const source = await worktrees.create(repo);
+      await worktrees.land(source.worktreePath, { request: { strategy: "preserve" } });
+      await writeFile(join(source.worktreePath, "later.txt"), "not landed\n");
+      if (kind === "committed") await commitAll(source.worktreePath, "later work");
+      const before = (await git(source.worktreePath, "rev-parse", "HEAD")).stdout;
+      await expect(worktrees.cleanupResolved(source.worktreePath)).rejects.toThrow(
+        /unlanded work/i,
+      );
+      expect(await readFile(join(source.worktreePath, "later.txt"), "utf8")).toBe("not landed\n");
+      expect((await git(source.worktreePath, "rev-parse", "HEAD")).stdout).toBe(before);
+      expect((await worktrees.records())[0]?.state).toBe("landed");
+      await worktrees.discard(source.worktreePath, false);
+    },
+  );
+
+  it("releases the queue when an explicitly discarded worktree had a paused squash landing", async () => {
+    const repo = await repository();
+    const worktrees = service();
+    const first = await worktrees.create(repo);
+    const second = await worktrees.create(repo);
+    await writeFile(join(first.worktreePath, "first.txt"), "first\n");
+    await commitAll(first.worktreePath, "first");
+    await writeFile(join(second.worktreePath, "second.txt"), "second\n");
+    await commitAll(second.worktreePath, "second");
+    expect(await worktrees.land(first.worktreePath, { request: { strategy: "squash" } })).toEqual({
+      outcome: "proposal",
+    });
+    const next = worktrees.land(second.worktreePath, { request: { strategy: "preserve" } });
+    await worktrees.discard(first.worktreePath, false);
+    await expect(next).resolves.toMatchObject({ outcome: "landed" });
+    expect(await readFile(join(repo, "second.txt"), "utf8")).toBe("second\n");
+    await worktrees.discard(second.worktreePath, false);
+  });
   it("creates a managed worktree outside the repository on an agent branch", async () => {
     const repo = await repository();
     const record = await service().create(repo);

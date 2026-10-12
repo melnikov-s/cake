@@ -68,6 +68,8 @@ function services(options: {
   promptWait?: Effect.Effect<void>;
   prompts?: Partial<CakePrompts>;
   prepare?: Effect.Effect<void, ManagedWorktreeError>;
+  queued?: boolean;
+  setResolveIntent?: (enabled: boolean) => Effect.Effect<void, ManagedWorktreeError>;
   cancel?: (onlyIfQueued: boolean | undefined) => Effect.Effect<void, ManagedWorktreeError>;
   resolve?: (
     workingDirectory: string,
@@ -82,9 +84,12 @@ function services(options: {
     hasDeferredSetup: () => Effect.succeed(false),
     status: () => Effect.sync(options.status),
     setResolveAfterLanding: (_worktreePath, enabled) =>
-      Effect.sync(() => options.events.push(`resolve-intent:${enabled}`)),
-    prepareLanding: () =>
+      Effect.sync(() => options.events.push(`resolve-intent:${enabled}`)).pipe(
+        Effect.andThen(options.setResolveIntent?.(enabled) ?? Effect.void),
+      ),
+    prepareLanding: (_path, _operationId, onQueued) =>
       Effect.sync(() => options.events.push("prepare")).pipe(
+        Effect.andThen(options.queued ? (onQueued ?? Effect.void) : Effect.void),
         Effect.andThen(options.prepare ?? Effect.void),
       ),
     land: () =>
@@ -157,6 +162,146 @@ const awaitPhase = (phase: WorktreeLandingPhase) =>
   });
 
 describe("WorktreeLandings", () => {
+  it.effect(
+    "reports resolve-intent persistence failure instead of leaving an unstarted waiting operation",
+    () => {
+      const events: string[] = [];
+      const layer = services({
+        status: baseStatus,
+        events,
+        setResolveIntent: (enabled) =>
+          enabled
+            ? Effect.fail(new ManagedWorktreeError({ operation: "save", message: "disk full" }))
+            : Effect.void,
+      });
+      return Effect.scoped(
+        Effect.gen(function* () {
+          yield* worktreeLandings.start({
+            operationId: "failed-intent",
+            workspacePath,
+            sessionId: "session-1",
+            strategy: "preserve",
+            allowDirtyTarget: false,
+            commitBeforeLanding: false,
+            resolveAfterLanding: true,
+          });
+          yield* awaitPhase("failed");
+          expect(events).not.toContain("prepare");
+          expect(events).not.toContain("land");
+          expect(
+            (yield* worktreeLandings.inspect({ workspacePath, sessionId: "session-1" })).operation
+              ?.error,
+          ).toBe("disk full");
+        }).pipe(Effect.provide(layer)),
+      );
+    },
+  );
+  it.effect("projects authoritative queue insertion before waiting for promotion", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events: string[] = [];
+        const gate = yield* Deferred.make<void>();
+        const layer = services({
+          status: baseStatus,
+          events,
+          queued: true,
+          prepare: Deferred.await(gate),
+        });
+        yield* Effect.gen(function* () {
+          yield* worktreeLandings.start({
+            operationId: "queued-landing",
+            workspacePath,
+            sessionId: "session-1",
+            strategy: "preserve",
+            allowDirtyTarget: false,
+            commitBeforeLanding: false,
+          });
+          yield* awaitPhase("queued");
+          expect(events).toEqual(["prepare"]);
+          yield* Deferred.succeed(gate, undefined);
+          yield* awaitPhase("landed");
+          expect(events).toEqual(["prepare", "land"]);
+        }).pipe(Effect.provide(layer));
+      }),
+    ),
+  );
+  it.effect.each(["preserve", "squash"] as const)(
+    "continues a clean commit step into %s landing, including when there is nothing left to land",
+    (strategy) => {
+      const events: string[] = [];
+      let status = { ...baseStatus(), dirtyCount: 1, aheadCount: 0 };
+      const layer = services({
+        status: () => status,
+        events,
+        prompt: () => {
+          status = { ...baseStatus(), aheadCount: 0 };
+        },
+      });
+      return Effect.scoped(
+        Effect.gen(function* () {
+          yield* worktreeLandings.start({
+            operationId: "clean-commit",
+            workspacePath,
+            sessionId: "session-1",
+            strategy,
+            allowDirtyTarget: false,
+            commitBeforeLanding: true,
+          });
+          yield* awaitPhase("landed");
+          expect(events).toEqual(["prepare", "prompt", "land"]);
+        }).pipe(Effect.provide(layer)),
+      );
+    },
+  );
+
+  it.effect("does not recover an old landed resolve intent while a later landing is active", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events: string[] = [];
+        const gate = yield* Deferred.make<void>();
+        const prepared = yield* Deferred.make<void>();
+        const landed = { ...record, state: "landed" as const, resolveAfterLanding: true };
+        const layer = services({
+          status: () => ({ ...baseStatus(), record: landed }),
+          records: () => [landed],
+          events,
+          prepare: Deferred.succeed(prepared, undefined).pipe(Effect.andThen(Deferred.await(gate))),
+          resolve: (workingDirectory) =>
+            Effect.sync(() => {
+              events.push("resolve");
+              return {
+                projectPath: "/project",
+                workingDirectory,
+                resolvedSessionIds: [],
+                failures: [],
+                cleanupFailures: [],
+              };
+            }),
+        });
+        yield* Effect.gen(function* () {
+          yield* worktreeLandings.start({
+            operationId: "later-landing",
+            workspacePath,
+            sessionId: "session-1",
+            strategy: "preserve",
+            allowDirtyTarget: false,
+            commitBeforeLanding: false,
+            resolveAfterLanding: true,
+          });
+          yield* Deferred.await(prepared);
+          const snapshot = yield* worktreeLandings.inspect({
+            workspacePath,
+            sessionId: "session-1",
+          });
+          expect(snapshot.operation?.phase).toBe("waiting");
+          expect(events).not.toContain("resolve");
+          yield* Deferred.succeed(gate, undefined);
+          yield* awaitPhase("landed");
+          expect(events.filter((event) => event === "resolve")).toHaveLength(1);
+        }).pipe(Effect.provide(layer));
+      }),
+    ),
+  );
   it.effect("retains landed status and exposes cleanup failures after resolution committed", () => {
     const events: string[] = [];
     const cleanupFailure = new ResolutionCleanupFailed({

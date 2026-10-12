@@ -367,7 +367,10 @@ export class SidebarSessionListStore extends Store<{
       if (isActiveSessionActivity(session.activity)) activeSessionIds.add(session.sessionId);
     }
     for (const operation of this.props.worktreeOperations?.operations ?? []) {
-      if (operation.kind === "landing" && operation.phase === "waiting")
+      if (
+        operation.kind === "landing" &&
+        (operation.phase === "waiting" || operation.phase === "queued")
+      )
         activeSessionIds.add(operation.sessionId);
     }
     return [...activeSessionIds].flatMap((sessionId) => {

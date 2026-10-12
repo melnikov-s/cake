@@ -37,6 +37,8 @@ export interface ManagedWorktreesService {
   readonly prepareLanding: (
     worktreePath: string,
     operationId: string,
+    /** Runs after FIFO insertion, before waiting for promotion. */
+    onQueued?: Effect.Effect<void>,
   ) => Effect.Effect<void, ManagedWorktreeError>;
   readonly setResolveAfterLanding: (
     worktreePath: string,

@@ -75,7 +75,7 @@ export class SessionMetadataStore extends Store<{
       (operation) =>
         operation.sessionId === sessionId &&
         operation.kind === "landing" &&
-        operation.phase === "waiting",
+        (operation.phase === "waiting" || operation.phase === "queued"),
     );
     if (waitingToMerge) return "running";
     return this.props.catalog.find(sessionId)?.unread ? "unread" : undefined;

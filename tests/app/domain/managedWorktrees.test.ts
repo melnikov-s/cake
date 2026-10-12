@@ -304,6 +304,7 @@ describe("Managed Worktrees domain cleanup", () => {
     const discarded: string[] = [];
     const changes: SessionCatalogChange[] = [];
     const trustedProjectPaths = ["/project", "/eligible", "/active"];
+    const cleaned: string[] = [];
     const records = [
       record("/project", "/eligible"),
       record("/project", "/active"),
@@ -317,6 +318,7 @@ describe("Managed Worktrees domain cleanup", () => {
       activeWorkingDirectories: ["/active"],
       trustedProjectPaths,
       discarded,
+      cleaned,
       changes,
     });
     return Effect.gen(function* () {
@@ -325,7 +327,8 @@ describe("Managed Worktrees domain cleanup", () => {
       const result = yield* managedWorktrees.discardResolvedForProject("/project");
       assert.deepEqual(result.discardedWorkingDirectories, ["/eligible"]);
       assert.deepEqual(result.failures, []);
-      assert.deepEqual(discarded, ["/eligible"]);
+      assert.deepEqual(discarded, []);
+      assert.deepEqual(cleaned, ["/eligible"]);
       assert.deepEqual(trustedProjectPaths, ["/project", "/active"]);
       assert.deepEqual(changes, [
         {
@@ -365,8 +368,9 @@ describe("Managed Worktrees domain cleanup", () => {
     );
   });
 
-  it.effect("reports a per-worktree failure and continues cleanup", () => {
+  it.effect("reports a per-worktree failure and continues safe cleanup", () => {
     const discarded: string[] = [];
+    const cleaned: string[] = [];
     const changes: SessionCatalogChange[] = [];
     return Effect.gen(function* () {
       const result = yield* managedWorktrees.discardResolvedForProject("/project");
@@ -377,7 +381,8 @@ describe("Managed Worktrees domain cleanup", () => {
           message: "Running terminal programs require confirmation before cleanup",
         },
       ]);
-      assert.deepEqual(discarded, ["/second"]);
+      assert.deepEqual(discarded, []);
+      assert.deepEqual(cleaned, ["/second"]);
     }).pipe(
       Effect.provide(
         makeLayer({
@@ -385,6 +390,7 @@ describe("Managed Worktrees domain cleanup", () => {
           resolvedWorkingDirectories: ["/first", "/second"],
           runningWorkingDirectories: ["/first"],
           discarded,
+          cleaned,
           changes,
         }),
       ),

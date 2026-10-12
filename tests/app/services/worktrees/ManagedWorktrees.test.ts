@@ -105,7 +105,11 @@ const makeLayer = (
             ),
           );
         if (command === "rev-parse" && args[0] === "--abbrev-ref")
-          return respond(Effect.succeed("main\n"));
+          return respond(
+            Effect.succeed(
+              `${initial.find((entry) => entry.worktreePath === workingDirectory)?.branch ?? "main"}\n`,
+            ),
+          );
         if (command === "rev-parse" && args[0] === "--git-path")
           return respond(Effect.succeed("\n"));
         if (command === "rev-parse" && args[0] === "--verify")
@@ -132,6 +136,306 @@ const makeLayer = (
 };
 
 describe("ManagedWorktrees Effect service", () => {
+  it.effect.each(["discard", "resolve"] as const)(
+    "keeps a stacked landing target while its child still exists during %s",
+    (operation) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const temporary = yield* fileSystem.makeTempDirectoryScoped();
+          const repository = `${temporary}/repo`;
+          const parentPath = `${temporary}/parent`;
+          const childPath = `${temporary}/child`;
+          for (const directory of [`${repository}/.git`, parentPath, childPath])
+            yield* fileSystem.makeDirectory(directory, { recursive: true });
+          const parent = {
+            ...record(repository, parentPath, "agent/parent"),
+            state: "landed" as const,
+            landedSourceCommit: "acknowledged",
+          };
+          const child = {
+            ...record(repository, childPath, "agent/child"),
+            parentWorktreePath: parentPath,
+            baseBranch: parent.branch,
+          };
+          const mutations: string[] = [];
+          const layer = ManagedWorktreesLive.pipe(
+            Layer.provide(
+              makeLayer([parent, child], {
+                commonDirectory: () => repository,
+                run: (_cwd, args) => {
+                  if (args[0] === "rev-list") return Effect.succeed("0\n");
+                  if (args[0] === "worktree" || args[0] === "branch") mutations.push(args[0]);
+                  return undefined;
+                },
+              }),
+            ),
+          );
+          yield* Effect.gen(function* () {
+            const worktrees = yield* ManagedWorktrees;
+            const result = yield* Effect.result(
+              operation === "discard"
+                ? worktrees.discard(parentPath, false)
+                : worktrees.cleanupResolved(parentPath),
+            );
+            expect(result).toMatchObject({ _tag: "Failure" });
+            expect(yield* worktrees.records()).toEqual([parent, child]);
+            expect(mutations).toEqual([]);
+          }).pipe(Effect.provide(layer));
+        }),
+      ).pipe(Effect.provide(BootstrapLive)),
+  );
+
+  it.effect(
+    "releases a removed worktree's landing reservations and promotes the next worktree",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const temporary = yield* fileSystem.makeTempDirectoryScoped();
+          const repository = `${temporary}/repo`;
+          const firstPath = `${temporary}/first`;
+          const secondPath = `${temporary}/second`;
+          for (const directory of [`${repository}/.git`, firstPath, secondPath])
+            yield* fileSystem.makeDirectory(directory, { recursive: true });
+          const layer = ManagedWorktreesLive.pipe(
+            Layer.provide(
+              makeLayer(
+                [
+                  record(repository, firstPath, "agent/first"),
+                  record(repository, secondPath, "agent/second"),
+                ],
+                { commonDirectory: () => repository },
+              ),
+            ),
+          );
+          yield* Effect.gen(function* () {
+            const worktrees = yield* ManagedWorktrees;
+            yield* worktrees.prepareLanding(firstPath, "first");
+            const queued = yield* Deferred.make<void>();
+            const second = yield* worktrees
+              .prepareLanding(
+                secondPath,
+                "second",
+                Deferred.succeed(queued, undefined).pipe(Effect.asVoid),
+              )
+              .pipe(Effect.forkScoped);
+            yield* Deferred.await(queued);
+            yield* worktrees.discard(firstPath, false);
+            yield* Fiber.join(second);
+            expect(yield* worktrees.status(secondPath)).toMatchObject({
+              landingState: "running",
+              landingOperationId: "second",
+            });
+            yield* worktrees.cancelLanding(secondPath, "second");
+          }).pipe(Effect.provide(layer));
+        }),
+      ).pipe(Effect.provide(BootstrapLive)),
+  );
+  it.effect.each(["land", "rebase"] as const)(
+    "refuses %s after the source checkout switched branches",
+    (operation) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const temporary = yield* fileSystem.makeTempDirectoryScoped();
+          const repository = `${temporary}/repo`;
+          const worktreePath = `${temporary}/source`;
+          yield* fileSystem.makeDirectory(`${repository}/.git`, { recursive: true });
+          yield* fileSystem.makeDirectory(worktreePath);
+          const mutations: string[] = [];
+          const layer = ManagedWorktreesLive.pipe(
+            Layer.provide(
+              makeLayer([record(repository, worktreePath, "agent/source")], {
+                commonDirectory: () => repository,
+                run: (cwd, args) => {
+                  if (cwd === worktreePath && args[0] === "rev-parse" && args[1] === "--abbrev-ref")
+                    return Effect.succeed("unrelated\n");
+                  if (args[0] === "rebase" || args[0] === "merge") mutations.push(args[0]);
+                  return undefined;
+                },
+              }),
+            ),
+          );
+          yield* Effect.gen(function* () {
+            const worktrees = yield* ManagedWorktrees;
+            const result = yield* Effect.result(
+              operation === "land"
+                ? worktrees
+                    .land(worktreePath, "source", { strategy: "preserve" })
+                    .pipe(Effect.asVoid)
+                : worktrees.rebase(worktreePath).pipe(Effect.asVoid),
+            );
+            expect(result).toMatchObject({ _tag: "Failure" });
+            expect(mutations).toEqual([]);
+          }).pipe(Effect.provide(layer));
+        }),
+      ).pipe(Effect.provide(BootstrapLive)),
+  );
+  it.effect.each(["dirty", "ahead", "remove-failure", "branch-failure"] as const)(
+    "preserves the record and reports unsafe or failed resolved cleanup: %s",
+    (scenario) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const temporary = yield* fileSystem.makeTempDirectoryScoped();
+          const repository = `${temporary}/repo`;
+          const worktreePath = `${temporary}/source`;
+          yield* fileSystem.makeDirectory(`${repository}/.git`, { recursive: true });
+          yield* fileSystem.makeDirectory(worktreePath);
+          const initial: WorktreeRecord = {
+            ...record(repository, worktreePath, "agent/source"),
+            state: "landed",
+            landedSourceCommit: "acknowledged",
+          };
+          const mutations: string[] = [];
+          const layer = ManagedWorktreesLive.pipe(
+            Layer.provide(
+              makeLayer([initial], {
+                commonDirectory: () => repository,
+                run: (cwd, args) => {
+                  if (args[0] === "status" && cwd === worktreePath)
+                    return Effect.succeed(scenario === "dirty" ? "?? later.txt\n" : "");
+                  if (args[0] === "rev-list")
+                    return Effect.succeed(scenario === "ahead" ? "1\n" : "0\n");
+                  if (
+                    args[0] === "rev-parse" &&
+                    args[1] === "--verify" &&
+                    args[3]?.startsWith("refs/heads/")
+                  )
+                    return Effect.succeed("head");
+                  if ((args[0] === "worktree" && args[1] === "remove") || args[0] === "branch") {
+                    mutations.push(args[0]);
+                    if (
+                      (scenario === "remove-failure" && args[0] === "worktree") ||
+                      (scenario === "branch-failure" && args[0] === "branch")
+                    )
+                      return Effect.fail(
+                        new GitError({
+                          operation: "cleanup",
+                          workingDirectory: cwd,
+                          message: "checkout busy",
+                        }),
+                      );
+                  }
+                  return undefined;
+                },
+              }),
+            ),
+          );
+          yield* Effect.gen(function* () {
+            const worktrees = yield* ManagedWorktrees;
+            expect(yield* Effect.result(worktrees.cleanupResolved(worktreePath))).toMatchObject({
+              _tag: "Failure",
+            });
+            expect(yield* worktrees.records()).toEqual([initial]);
+            if (scenario === "dirty" || scenario === "ahead") expect(mutations).toEqual([]);
+            if (scenario === "remove-failure") expect(mutations).toEqual(["worktree"]);
+          }).pipe(Effect.provide(layer));
+        }),
+      ).pipe(Effect.provide(BootstrapLive)),
+  );
+
+  it.effect(
+    "dismisses durable landing intent without resurrecting it or clearing a newer reservation",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const temporary = yield* fileSystem.makeTempDirectoryScoped();
+          const repository = `${temporary}/repo`;
+          const worktreePath = `${temporary}/source`;
+          yield* fileSystem.makeDirectory(`${repository}/.git`, { recursive: true });
+          yield* fileSystem.makeDirectory(worktreePath);
+          const initial = {
+            ...record(repository, worktreePath, "agent/source"),
+            pendingStrategy: "squash" as const,
+          };
+          const layer = ManagedWorktreesLive.pipe(
+            Layer.provide(makeLayer([initial], { commonDirectory: () => repository })),
+          );
+          yield* Effect.gen(function* () {
+            const worktrees = yield* ManagedWorktrees;
+            yield* worktrees.prepareLanding(worktreePath, "current");
+            yield* worktrees.cancelLanding(worktreePath, "older");
+            expect((yield* worktrees.records())[0]?.pendingStrategy).toBe("squash");
+            yield* worktrees.cancelLanding(worktreePath, "current");
+            expect((yield* worktrees.records())[0]?.pendingStrategy).toBeUndefined();
+            expect((yield* worktrees.status(worktreePath))?.landingState).toBeUndefined();
+          }).pipe(Effect.provide(layer));
+        }),
+      ).pipe(Effect.provide(BootstrapLive)),
+  );
+
+  it.effect("accepts a requested squash proposal from durable pause metadata after restart", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const temporary = yield* fileSystem.makeTempDirectoryScoped();
+        const repository = `${temporary}/repo`;
+        const worktreePath = `${temporary}/source`;
+        yield* fileSystem.makeDirectory(`${repository}/.git`, { recursive: true });
+        yield* fileSystem.makeDirectory(worktreePath);
+        const initial = {
+          ...record(repository, worktreePath, "agent/source"),
+          pendingStrategy: "squash" as const,
+        };
+        const layer = ManagedWorktreesLive.pipe(
+          Layer.provide(makeLayer([initial], { commonDirectory: () => repository })),
+        );
+        yield* Effect.gen(function* () {
+          const worktrees = yield* ManagedWorktrees;
+          yield* worktrees.proposeSquashMessage({
+            workspacePath: worktreePath,
+            subject: "Recovered squash",
+          });
+          expect(yield* worktrees.status(worktreePath)).toMatchObject({ squashMessageReady: true });
+        }).pipe(Effect.provide(layer));
+      }),
+    ).pipe(Effect.provide(BootstrapLive)),
+  );
+
+  it.effect.each(["preserve", "squash"] as const)(
+    "protects dirty target changes with %s landing",
+    (strategy) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const temporary = yield* fileSystem.makeTempDirectoryScoped();
+          const repository = `${temporary}/repo`;
+          const worktreePath = `${temporary}/source`;
+          yield* fileSystem.makeDirectory(`${repository}/.git`, { recursive: true });
+          yield* fileSystem.makeDirectory(worktreePath);
+          const mutations: string[] = [];
+          const layer = ManagedWorktreesLive.pipe(
+            Layer.provide(
+              makeLayer([record(repository, worktreePath, "agent/source")], {
+                commonDirectory: () => repository,
+                run: (cwd, args) => {
+                  if (args[0] === "status" && cwd === repository)
+                    return Effect.succeed("M  staged.txt\n");
+                  if (["rebase", "merge", "commit", "reset"].includes(args[0] ?? ""))
+                    mutations.push(args[0] ?? "");
+                  return undefined;
+                },
+              }),
+            ),
+          );
+          yield* Effect.gen(function* () {
+            const worktrees = yield* ManagedWorktrees;
+            const result = yield* Effect.result(
+              worktrees.land(worktreePath, "land", {
+                strategy,
+                message: "Squash",
+                allowDirtyTarget: true,
+              }),
+            );
+            expect(result._tag).toBe(strategy === "squash" ? "Failure" : "Success");
+            if (strategy === "squash") expect(mutations).toEqual([]);
+          }).pipe(Effect.provide(layer));
+        }),
+      ).pipe(Effect.provide(BootstrapLive)),
+  );
   it.effect(
     "recovers a historical source checkpoint without hiding commits made before recovery",
     () =>
@@ -346,6 +650,7 @@ describe("ManagedWorktrees Effect service", () => {
               Layer.provide(
                 makeLayer(records, {
                   save: (next) => Ref.set(persisted, next),
+                  run: (_cwd, args) => (args[0] === "rev-list" ? Effect.succeed("0\n") : undefined),
                   onRun: (_cwd, args) => {
                     if (args[0] === "worktree" && args[1] === "remove")
                       return fileSystem
@@ -465,8 +770,13 @@ describe("ManagedWorktrees Effect service", () => {
           yield* Effect.gen(function* () {
             const worktrees = yield* ManagedWorktrees;
             yield* worktrees.prepareLanding(firstPath, "first");
+            const queued = yield* Deferred.make<void>();
             const second = yield* worktrees
-              .prepareLanding(secondPath, "second")
+              .prepareLanding(
+                secondPath,
+                "second",
+                Deferred.succeed(queued, undefined).pipe(Effect.asVoid),
+              )
               .pipe(Effect.forkScoped);
 
             const awaitQueued = Effect.fn("Test.awaitQueued")(function* (
@@ -482,6 +792,7 @@ describe("ManagedWorktrees Effect service", () => {
                 yield* Effect.yieldNow;
               }
             });
+            yield* Deferred.await(queued);
             yield* awaitQueued(secondPath, 1);
             const third = yield* worktrees
               .prepareLanding(thirdPath, "third")
@@ -815,7 +1126,7 @@ describe("ManagedWorktrees Effect service", () => {
             return Promise.reject(new Error("missing"));
           if (command === "rev-parse" && args[0] === "--git-path") return Promise.resolve("\n");
           if (command === "rev-parse" && args[0] === "--abbrev-ref")
-            return Promise.resolve("main\n");
+            return Promise.resolve(_cwd === worktreePath ? "agent/interrupted\n" : "main\n");
           if (command === "rev-parse") return Promise.resolve("head\n");
           if (command === "status" || command === "diff") return Promise.resolve("");
           if (command === "rev-list") return Promise.resolve("1\n");
