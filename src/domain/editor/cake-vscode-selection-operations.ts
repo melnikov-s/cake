@@ -1,11 +1,12 @@
+import type { VscodeSelectionControl } from "../../contracts/editor/vscode-selection-agent-control";
 import { Schema } from "effect";
-import { EditorSelectionId } from "../../../contracts/editor/editor-selection";
+import { EditorSelectionId } from "../../contracts/editor/editor-selection";
 import type {
   EditorSelectionState,
   EditorSelectionUpdate,
-} from "../../../contracts/editor/editor-selection";
-import type { CakeOperationDefinition } from "./cake-operation-registry";
-import { agentEditorLocation } from "../../../utils/agent-editor-location";
+} from "../../contracts/editor/editor-selection";
+import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import { agentEditorLocation } from "../../utils/agent-editor-location";
 
 const vscodeSelectionsListInputSchema = Schema.Struct({});
 const vscodeSelectionsRemoveInputSchema = Schema.Struct({ id: EditorSelectionId });
@@ -16,11 +17,6 @@ const vscodeSelectionsClearInputSchema = Schema.Struct({});
  * bridge. These calls reach its EditorSelectionsStore, never a main collection.
  * No owning renderer/session Store means an explicit unavailable error.
  */
-export interface VscodeSelectionControl {
-  listSelections(signal: AbortSignal): Promise<EditorSelectionState>;
-  removeSelection(id: EditorSelectionId, signal: AbortSignal): Promise<EditorSelectionUpdate>;
-  clearSelections(signal: AbortSignal): Promise<EditorSelectionUpdate>;
-}
 
 /**
  * Session-local selection operations backed by the owning renderer Store.

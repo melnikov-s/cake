@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCakeVscodeOperations } from "../../../src/services/pi/runtime/cake-vscode-operations";
+import { createCakeVscodeOperations } from "../../../src/domain/editor/cake-vscode-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import type { EditorLocation } from "../../../src/contracts/editor/editor-location";
 import type {
@@ -10,7 +10,7 @@ import type {
   EditorSelectionOpenResult,
 } from "../../../src/contracts/editor/editor-selection";
 import type { JsonValue } from "../../../src/contracts/serialization/json-contract";
-import type { VscodeActionResult } from "../../../src/services/vscode/VsCodeServer";
+import type { VscodeActionResult } from "../../../src/contracts/vscode/vscode-action-result";
 
 function state(selections: EditorSelectionState["selections"] = []): EditorSelectionState {
   return { sessionId: "session-a", selections };

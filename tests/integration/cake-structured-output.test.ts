@@ -17,7 +17,7 @@ import {
   type JsonObject,
   type JsonValue,
 } from "../../src/contracts/serialization/json-contract";
-import { createCakeArtifactOperations } from "../../src/services/pi/runtime/cake-artifact-operations";
+import { createCakeArtifactOperations } from "../../src/domain/artifacts/cake-artifact-operations";
 import { createCakeToolDefinition } from "../../src/services/pi/runtime/cake-session-runtime-capabilities";
 import { shutdownCakeSessionExtensions } from "../../src/services/pi/runtime/cake-session-runtime-resources";
 import { artifactMetadata, artifactOperationOptions } from "../fixtures/cake-structured-output";

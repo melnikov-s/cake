@@ -1,22 +1,21 @@
+import type { VscodeControl } from "../../contracts/editor/vscode-agent-control";
 import { Schema } from "effect";
-import type { JsonObject, JsonValue } from "../../../contracts/serialization/json-contract";
+import type { JsonObject } from "../../contracts/serialization/json-contract";
 import {
   editorLocationFromPath,
   type EditorLocation,
-} from "../../../contracts/editor/editor-location";
+} from "../../contracts/editor/editor-location";
 import {
   gitRevisionSchema,
   type SourceLocation,
   type SourcePosition,
-} from "../../../contracts/editor/source-location";
-import type { VscodeActionResult } from "../../vscode/VsCodeServer";
-import type { EditorSelectionOpenResult } from "../../../contracts/editor/editor-selection";
-import { agentEditorLocation } from "../../../utils/agent-editor-location";
-import {
-  createCakeVscodeSelectionOperations,
-  type VscodeSelectionControl,
-} from "./cake-vscode-selection-operations";
-import type { CakeOperationDefinition } from "./cake-operation-registry";
+} from "../../contracts/editor/source-location";
+
+import type { EditorSelectionOpenResult } from "../../contracts/editor/editor-selection";
+import { agentEditorLocation } from "../../utils/agent-editor-location";
+import { createCakeVscodeSelectionOperations } from "./cake-vscode-selection-operations";
+
+import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
 import { createCakeVscodeDebugOperations } from "./cake-vscode-debug-operations";
 
 const coordinate = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10_000_001 }));
@@ -49,19 +48,6 @@ const vscodeScriptInputSchema = Schema.Struct({
 
 type VscodeOpenInput = typeof vscodeOpenInputSchema.Type;
 type VscodeScriptInput = typeof vscodeScriptInputSchema.Type;
-
-export interface VscodeControl extends VscodeSelectionControl {
-  enter(signal: AbortSignal): Promise<void>;
-  open(
-    location: EditorLocation,
-    signal: AbortSignal,
-  ): Promise<VscodeActionResult<EditorSelectionOpenResult>>;
-  runScript(
-    source: string,
-    input: JsonValue,
-    signal: AbortSignal,
-  ): Promise<VscodeActionResult<JsonValue>>;
-}
 
 function sourceLocation(input: VscodeOpenInput): SourceLocation {
   const presentation = {

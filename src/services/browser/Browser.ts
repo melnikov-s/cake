@@ -23,9 +23,7 @@ export interface BrowserBounds {
 
 export type BrowserAction = "back" | "forward" | "reload" | "stop";
 
-export type BrowserActionResult<Value> =
-  | { readonly status: "completed"; readonly value: Value }
-  | { readonly status: "mode-required" };
+import type { BrowserActionResult } from "../../contracts/browser/browser-action-result";
 
 export interface BrowserService {
   readonly open: (

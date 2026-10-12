@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { InterviewDefinition } from "../../../src/contracts/interviews/interview";
-import { createCakeInterviewOperations } from "../../../src/services/pi/runtime/cake-interview-operations";
+import { createCakeInterviewOperations } from "../../../src/domain/interviews/cake-interview-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
 
@@ -16,24 +16,8 @@ const context = () => ({
   signal: new AbortController().signal,
   toolCallId: "call-1",
   runtime: {
-    sessionManager: {
-      getSessionId: () => "session-1",
-      getBranch: () =>
-        [
-          {
-            id: "assistant-1",
-            type: "message",
-            message: {
-              role: "assistant",
-              content: [
-                { type: "toolCall", id: "call-1" },
-                { type: "toolCall", id: "call-2" },
-              ],
-            },
-          },
-          { id: "already-appended-metadata", type: "custom" },
-        ] as never,
-    },
+    sessionId: "session-1",
+    assistantEntryId: "assistant-1",
   },
 });
 
@@ -169,7 +153,7 @@ describe("Interview operation and Pi projection", () => {
         { command: "interview.open", input: { request } },
         {
           ...context(),
-          runtime: { sessionManager: { getSessionId: () => "session-1", getBranch: () => [] } },
+          runtime: { sessionId: "session-1" },
         },
       ),
     ).rejects.toThrow("originating assistant");

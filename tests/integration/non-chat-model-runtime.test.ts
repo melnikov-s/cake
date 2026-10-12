@@ -1,3 +1,4 @@
+import { cakeOperationProviders } from "../../src/layers/CakeOperations";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { watch } from "node:fs";
 import { tmpdir } from "node:os";
@@ -76,7 +77,7 @@ describe("Native non-chat model settings contract", () => {
       requestUi: async () => undefined,
       onEvent: () => {},
     };
-    const runtime = await createCakeSessionRuntime(options);
+    const runtime = await createCakeSessionRuntime(options, cakeOperationProviders);
     runtimes.push(runtime);
     expect((await runtime.snapshot()).model).toMatchObject({
       provider: "non-chat-fixture",
@@ -121,7 +122,7 @@ describe("Native non-chat model settings contract", () => {
     await runtime.prompt(script, "prompt", []);
     const previousCalls = await readFile(h.trace, "utf8");
     expect(previousCalls.trim().split("\n")).toHaveLength(2);
-    const fresh = await createCakeSessionRuntime(options);
+    const fresh = await createCakeSessionRuntime(options, cakeOperationProviders);
     runtimes.push(fresh);
     expect((await fresh.snapshot()).model).toMatchObject({
       provider: "non-chat-fixture",
@@ -205,36 +206,39 @@ describe("Native non-chat model settings contract", () => {
       image: reference("image-a"),
       classifier: reference("classifier-a"),
     };
-    const runtime = await createCakeSessionRuntime({
-      ...h,
-      trusted: true,
-      sessionDir: join(h.cwd, "sessions"),
-      newSession: true,
-      requestUi: async () => undefined,
-      onEvent: () => {},
-      nonChatModelPreferences: () => preferences,
-      currentSessionControl: {
-        resolved: () => false,
-        setResolved: async () => {},
-        readPolicy: async () => ({ canFork: true, deferResolution: true }),
-        resolveDeferredStandalone: async () => {},
-        invokeAppControl: async (command, input, signal) => {
-          signal.throwIfAborted();
-          const invocation = await Schema.decodeUnknownPromise(AgentSettingsInvocation)(
-            { name: command, arguments: input },
-            { onExcessProperty: "error" },
-          );
-          if (invocation.name !== "settings.models.set-non-chat")
-            throw new Error("Unexpected fixture operation");
-          const { type, preference } = invocation.arguments;
-          const next = { ...preferences };
-          if (preference === null) delete next[type];
-          else next[type] = preference;
-          preferences = next;
-          return { ok: true, command, value: preferences };
+    const runtime = await createCakeSessionRuntime(
+      {
+        ...h,
+        trusted: true,
+        sessionDir: join(h.cwd, "sessions"),
+        newSession: true,
+        requestUi: async () => undefined,
+        onEvent: () => {},
+        nonChatModelPreferences: () => preferences,
+        currentSessionControl: {
+          resolved: () => false,
+          setResolved: async () => {},
+          readPolicy: async () => ({ canFork: true, deferResolution: true }),
+          resolveDeferredStandalone: async () => {},
+          invokeAppControl: async (command, input, signal) => {
+            signal.throwIfAborted();
+            const invocation = await Schema.decodeUnknownPromise(AgentSettingsInvocation)(
+              { name: command, arguments: input },
+              { onExcessProperty: "error" },
+            );
+            if (invocation.name !== "settings.models.set-non-chat")
+              throw new Error("Unexpected fixture operation");
+            const { type, preference } = invocation.arguments;
+            const next = { ...preferences };
+            if (preference === null) delete next[type];
+            else next[type] = preference;
+            preferences = next;
+            return { ok: true, command, value: preferences };
+          },
         },
       },
-    });
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
     expect((await runtime.snapshot()).model).toMatchObject({
       provider: "non-chat-fixture",
@@ -277,25 +281,28 @@ describe("Native non-chat model settings contract", () => {
       type: "image",
       model: "image-a",
     });
-    const restricted = await createCakeSessionRuntime({
-      ...h,
-      trusted: true,
-      sessionDir: join(h.cwd, "restricted"),
-      newSession: true,
-      auxiliary: true,
-      tools: ["read"],
-      requestUi: async () => undefined,
-      onEvent: () => {},
-      currentSessionControl: {
-        resolved: () => false,
-        setResolved: async () => {},
-        readPolicy: async () => ({ canFork: true, deferResolution: true }),
-        resolveDeferredStandalone: async () => {},
-        invokeAppControl: async () => {
-          throw new Error("Restricted settings must not dispatch");
+    const restricted = await createCakeSessionRuntime(
+      {
+        ...h,
+        trusted: true,
+        sessionDir: join(h.cwd, "restricted"),
+        newSession: true,
+        auxiliary: true,
+        tools: ["read"],
+        requestUi: async () => undefined,
+        onEvent: () => {},
+        currentSessionControl: {
+          resolved: () => false,
+          setResolved: async () => {},
+          readPolicy: async () => ({ canFork: true, deferResolution: true }),
+          resolveDeferredStandalone: async () => {},
+          invokeAppControl: async () => {
+            throw new Error("Restricted settings must not dispatch");
+          },
         },
       },
-    });
+      cakeOperationProviders,
+    );
     runtimes.push(restricted);
     expect((await restricted.snapshot()).model).toMatchObject({
       provider: "non-chat-fixture",
@@ -314,15 +321,18 @@ describe("Native non-chat model settings contract", () => {
 
   it("cancels an in-flight native image request without reporting success", async () => {
     const h = await setup();
-    const runtime = await createCakeSessionRuntime({
-      ...h,
-      trusted: true,
-      sessionDir: join(h.cwd, "sessions"),
-      newSession: true,
-      requestUi: async () => undefined,
-      onEvent: () => {},
-      nonChatModelPreferences: () => ({ image: reference("image-a") }),
-    });
+    const runtime = await createCakeSessionRuntime(
+      {
+        ...h,
+        trusted: true,
+        sessionDir: join(h.cwd, "sessions"),
+        newSession: true,
+        requestUi: async () => undefined,
+        onEvent: () => {},
+        nonChatModelPreferences: () => ({ image: reference("image-a") }),
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
     expect((await runtime.snapshot()).model).toMatchObject({
       provider: "non-chat-fixture",

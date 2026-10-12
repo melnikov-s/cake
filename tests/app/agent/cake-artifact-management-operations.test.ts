@@ -5,10 +5,8 @@ import type {
   ArtifactRecord,
   CakeArtifactV1,
 } from "../../../src/contracts/artifacts/artifact-contract";
-import {
-  createCakeArtifactOperations,
-  type CakeArtifactOperationOptions,
-} from "../../../src/services/pi/runtime/cake-artifact-operations";
+import { createCakeArtifactOperations } from "../../../src/domain/artifacts/cake-artifact-operations";
+import { type CakeArtifactOperationOptions } from "../../../src/contracts/artifacts/artifact-agent-control";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 
 // Pi's mutation queue canonicalizes paths; artifact I/O itself stays in memory.
@@ -18,7 +16,8 @@ vi.mock("node:fs/promises", async (importOriginal) => ({
 }));
 
 const runtime = {
-  sessionManager: { getSessionId: () => "session-1", getLeafId: () => "assistant-1" },
+  sessionId: "session-1",
+  entryId: "assistant-1",
   model: { provider: "provider", id: "model" },
 };
 const context = (toolCallId = "tool-1") => ({

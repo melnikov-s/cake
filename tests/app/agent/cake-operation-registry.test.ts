@@ -240,7 +240,14 @@ describe("Cake operation registry", () => {
       { command: "context.image" },
       new AbortController().signal,
       undefined,
-      {} as never,
+      {
+        sessionManager: {
+          getSessionId: () => "session-1",
+          getSessionFile: () => undefined,
+          getLeafId: () => null,
+          getBranch: () => [],
+        },
+      } as never,
     );
 
     expect(result.content).toEqual([

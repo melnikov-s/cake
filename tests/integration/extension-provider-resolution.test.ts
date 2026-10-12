@@ -1,3 +1,4 @@
+import { cakeOperationProviders } from "../../src/layers/CakeOperations";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -90,12 +91,15 @@ async function openRuntime(
               summarize: async () => "Unused: no turn is submitted",
             },
           }),
-        ).pipe(Effect.provide(makeCakeChatDurableLive())),
+        ).pipe(Effect.provide(makeCakeChatDurableLive(cakeOperationProviders))),
       )
-    : await createCakeSessionRuntime({
-        ...runtimeOptions,
-        ...(options.auxiliary ? { auxiliary: true, tools: ["read"] } : {}),
-      });
+    : await createCakeSessionRuntime(
+        {
+          ...runtimeOptions,
+          ...(options.auxiliary ? { auxiliary: true, tools: ["read"] } : {}),
+        },
+        cakeOperationProviders,
+      );
   runtimes.push(runtime);
   return runtime;
 }

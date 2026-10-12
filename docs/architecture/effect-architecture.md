@@ -521,6 +521,13 @@ internals.
 Pi Extension execution is session-bound and belongs to `CakeSessionRuntimes`. There is
 no separate public `PiExtensions` service.
 
+Feature agent operations live beside their Cake domain workflows. The shared backend
+injects `layers/CakeOperations.ts` into the regular-Pi and Durable adapters; neither
+adapter imports feature implementations. `cake-operation-registry` owns the tool
+protocol: envelope validation, progressive help, result/image limits, and dispatch.
+The engine adapter supplies live callback capabilities and projects SDK tool callers
+to Cake-owned scalar context before invoking domain operations.
+
 ### `PiModels`
 
 `PiModels` owns the complete Pi model capability:

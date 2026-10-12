@@ -64,13 +64,13 @@ import type {
   CakeArtifactV1,
 } from "../../../contracts/artifacts/artifact-contract";
 import type { ArtifactProjectionMetadata } from "../../../contracts/artifacts/artifact-projection-data";
-import type { ResolvedAgentArtifact } from "./cake-artifact-operations";
-import type { VscodeControl } from "./cake-vscode-operations";
-import type { BrowserControl } from "./cake-browser-operations";
-import type { WorktreeLandingControl } from "./cake-worktree-operations";
-import type { WorkflowControl } from "./cake-workflow-operations";
-import type { SessionPluginControl } from "./cake-session-plugin-operations";
-import type { CakeDrawControl } from "./cake-draw-operations";
+import type { ResolvedAgentArtifact } from "../../../contracts/artifacts/artifact-agent-control";
+import type { VscodeControl } from "../../../contracts/editor/vscode-agent-control";
+import type { BrowserControl } from "../../../contracts/browser/browser-agent-control";
+import type { WorktreeLandingControl } from "../../../contracts/worktrees/worktree-agent-control";
+import type { WorkflowControl } from "../../../contracts/workflows/workflow-agent-control";
+import type { SessionPluginControl } from "../../../contracts/application/session-plugin-agent-control";
+import type { CakeDrawControl } from "../../../contracts/draw/draw-agent-control";
 import type { ProjectSessionPresentationMode } from "../../../contracts/project-sessions/project-session-presentation";
 import { assertSessionPath } from "./session-path";
 import { cakeWorkspaceSessionDirectory, findSessionFile } from "./session-discovery";
@@ -101,11 +101,11 @@ import {
   stripResponseModeReminder,
   type ConversationResponseMode,
 } from "../../../contracts/conversations/response-mode-reminders";
-import {
-  createCakeSessionRuntimeCapabilities,
-  type GlobalControlTool,
-} from "./cake-session-runtime-capabilities";
+import { createCakeSessionRuntimeCapabilities } from "./cake-session-runtime-capabilities";
+import type { GlobalControlTool } from "../../../contracts/agent/cake-operation-control";
+import type { CakeOperationProviders } from "./cake-operation-providers";
 import { createPromptCacheLineage } from "./prompt-cache-lineage";
+import { projectCakeOperationRuntime } from "./cake-operation-context";
 import {
   createCakeSessionRuntimeConfiguration,
   createCakeSessionRuntimeConfigurationState,
@@ -116,14 +116,8 @@ import type {
   InlineWidgetGenerationRequest,
   InlineWidgetGenerationResult,
   InlineWidgetRevisionRequest,
-  ReviewParentContext,
-} from "./sidecar-runtime";
-
-export {
-  createAgentControlOperations,
-  createGlobalControlOperations,
-  projectSessionCreateInputSchema,
-} from "./cake-session-runtime-capabilities";
+} from "../../../contracts/widgets/widget-generation";
+import type { ReviewParentContext } from "./sidecar-runtime";
 
 export const piRuntimeVersion = "1.0.0" as const;
 
@@ -434,6 +428,7 @@ export interface CakeSessionRuntime {
 
 export async function createCakeSessionRuntime(
   options: CakeSessionRuntimeOptions,
+  providers: CakeOperationProviders,
 ): Promise<CakeSessionRuntime> {
   if (options.globalControl)
     throw new Error("Cake Chat is owned by the Durable coordinator service");
@@ -452,6 +447,7 @@ export async function createCakeSessionRuntime(
   const promptCacheLineage = createPromptCacheLineage();
   const requestInterview = options.requestInterview;
   const capabilities = await createCakeSessionRuntimeCapabilities({
+    providers,
     options: {
       ...options,
       requestInterview: requestInterview
@@ -1058,7 +1054,7 @@ export async function createCakeSessionRuntime(
         {
           signal,
           toolCallId: `session-plugin:${crypto.randomUUID()}`,
-          runtime: session,
+          runtime: projectCakeOperationRuntime(session, `cake-operation-${command}`),
         },
       );
       if (

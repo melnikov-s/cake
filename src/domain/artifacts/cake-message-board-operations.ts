@@ -10,9 +10,9 @@ import {
   BoardSequence,
   BoardSessionId,
   BoardSessionReceipts,
-} from "../../../contracts/artifacts/message-board";
-import type { MessageBoardControl } from "../../../contracts/artifacts/message-board-control";
-import type { CakeOperationDefinition } from "./cake-operation-registry";
+} from "../../contracts/artifacts/message-board";
+import type { MessageBoardControl } from "../../contracts/artifacts/message-board-control";
+import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
 
 export const createMessageBoardOperations = (
   control: MessageBoardControl,

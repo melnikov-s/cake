@@ -208,7 +208,7 @@
           "claim": "The widgets.present definition accepts bounded brief/data/fallback, calls generateInlineWidget with model and turn signal, persists a cake.artifact/v1 widget, and appends a Pi artifact pointer.",
           "sources": [
             {
-              "path": "src/services/pi/runtime/cake-artifact-operations.ts",
+              "path": "src/domain/artifacts/cake-artifact-operations.ts",
               "symbol": "createCakeArtifactOperations"
             },
             {

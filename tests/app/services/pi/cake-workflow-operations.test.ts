@@ -3,10 +3,8 @@ import {
   CakeOperationRegistry,
   cakeToolDescription,
 } from "../../../../src/services/pi/runtime/cake-operation-registry";
-import {
-  createCakeWorkflowOperations,
-  type WorkflowControl,
-} from "../../../../src/services/pi/runtime/cake-workflow-operations";
+import { createCakeWorkflowOperations } from "../../../../src/domain/workflows/cake-workflow-operations";
+import { type WorkflowControl } from "../../../../src/contracts/workflows/workflow-agent-control";
 
 describe("Cake workflow proposal operation", () => {
   it("updates discovery and stale-call admission when the experiment changes in an existing session", async () => {
@@ -18,7 +16,7 @@ describe("Cake workflow proposal operation", () => {
     const context = {
       signal: new AbortController().signal,
       toolCallId: "experiment",
-      runtime: undefined,
+      runtime: {},
     };
     const envelope = {
       command: "workflows.propose",
@@ -56,7 +54,7 @@ describe("Cake workflow proposal operation", () => {
     const context = {
       signal: new AbortController().signal,
       toolCallId: "proposal",
-      runtime: undefined,
+      runtime: {},
     };
     const result = await registry.invoke({ command: "workflows.propose", input }, context);
     expect(invoke).toHaveBeenCalledExactlyOnceWith("workflows.propose", input, context.signal);

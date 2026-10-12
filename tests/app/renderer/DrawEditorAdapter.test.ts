@@ -26,10 +26,8 @@ import { DrawStore } from "../../../src/renderer/stores/DrawStore";
 import type { Client } from "../../../src/renderer/client/Client";
 import { mountWithClient } from "./mount-with-client";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
-import {
-  createCakeDrawOperations,
-  type CakeDrawControl,
-} from "../../../src/services/pi/runtime/cake-draw-operations";
+import { createCakeDrawOperations } from "../../../src/domain/draw/cake-draw-operations";
+import { type CakeDrawControl } from "../../../src/contracts/draw/draw-agent-control";
 
 vi.mock("@excalidraw/mermaid-to-excalidraw", () => ({
   parseMermaidToExcalidraw: vi.fn(async () => ({

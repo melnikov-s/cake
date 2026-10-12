@@ -1,6 +1,6 @@
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { dirname, resolve } from "node:path";
-import type { WidgetPreview } from "../../../contracts/widgets/widget-preview";
+
 import { Effect, type FileSystem, type Path } from "effect";
 import {
   type ReviewSessionProjection,
@@ -11,10 +11,7 @@ import { assertSessionPath } from "./session-path";
 import { atomicWriteFile } from "../../storage/internal/atomicFile";
 import { projectSessionEntries } from "./session-projection";
 import type { JsonValue } from "../../../contracts/serialization/json-contract";
-import type {
-  WidgetConversationOrigin,
-  WidgetConversationTarget,
-} from "../../../contracts/widgets/widget-conversation";
+import type { WidgetConversationTarget } from "../../../contracts/widgets/widget-conversation";
 import { prepareWidgetConversation } from "./widget-conversation";
 
 export const inlineWidgetLayoutRequirements =
@@ -54,36 +51,6 @@ export interface InlineWidgetRepairResult {
   sessionId: string;
   sessionFile?: string;
   response: string;
-}
-
-export interface InlineWidgetGenerationRequest {
-  sessionId: string;
-  parentConversation: WidgetConversationOrigin;
-  brief: string;
-  data?: unknown;
-  initialState?: JsonValue;
-  fallback: string;
-  surface?: "widget" | "session-plugin";
-  model?: { provider: string; id: string };
-  signal?: AbortSignal;
-}
-
-export interface InlineWidgetGenerationResult {
-  language: "react";
-  source: string;
-  generationSessionId: string;
-  preview: WidgetPreview;
-}
-
-export interface InlineWidgetRevisionRequest {
-  sessionId: string;
-  generationSessionId: string;
-  source: string;
-  brief: string;
-  fallback: string;
-  instructions: string;
-  model?: { provider: string; id: string };
-  signal?: AbortSignal;
 }
 
 export async function runInlineWidgetVisualReview(options: {

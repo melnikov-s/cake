@@ -1,16 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCakeSessionPluginOperations } from "../../../src/services/pi/runtime/cake-session-plugin-operations";
+import { createCakeSessionPluginOperations } from "../../../src/domain/session-plugins/cake-session-plugin-operations";
 
 const context = {
   signal: new AbortController().signal,
   toolCallId: "tool-1",
   runtime: {
     model: { provider: "openai", id: "builder" },
-    sessionManager: {
-      getSessionId: () => "session-1",
-      getSessionFile: () => "/sessions/source.jsonl",
-      getLeafId: () => "assistant-1",
-    },
+    sessionId: "session-1",
+    sessionFile: "/sessions/source.jsonl",
+    entryId: "assistant-1",
   },
 };
 

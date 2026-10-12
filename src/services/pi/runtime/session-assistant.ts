@@ -1,5 +1,5 @@
 import { jsonObjectSchema } from "../../../contracts/serialization/json-contract";
-import type { GlobalControlTool } from "./cake-session-runtime-capabilities";
+import type { GlobalControlTool } from "../../../contracts/agent/cake-operation-control";
 import { CakeOperationRegistry, type CakeOperationDefinition } from "./cake-operation-registry";
 import { renderPromptTemplate } from "./prompt-template";
 import sessionAssistantPromptTemplate from "./prompts/session-assistant.md?raw";

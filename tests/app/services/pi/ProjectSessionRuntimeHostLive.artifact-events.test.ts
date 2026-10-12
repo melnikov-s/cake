@@ -10,7 +10,7 @@ import type { CakeArtifactV1 } from "../../../../src/contracts/artifacts/artifac
 import type { CakeEvent } from "../../../../src/contracts/application/cake-rpc-contract";
 import { ArtifactProjection } from "../../../../src/services/artifacts/ArtifactProjection";
 import { CakeOperationRegistry } from "../../../../src/services/pi/runtime/cake-operation-registry";
-import { createCakeArtifactOperations } from "../../../../src/services/pi/runtime/cake-artifact-operations";
+import { createCakeArtifactOperations } from "../../../../src/domain/artifacts/cake-artifact-operations";
 import { makeArtifactProjectionLive } from "../../../../src/services/artifacts/ArtifactProjectionLive";
 import { WorkspaceFileExport } from "../../../../src/services/filesystem/WorkspaceFileExport";
 import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
@@ -175,11 +175,9 @@ describe("ProjectSessionRuntimeHostLive artifact events", () => {
       signal: new AbortController().signal,
       toolCallId: "handoff",
       runtime: {
-        sessionManager: {
-          getSessionId: () => sessionId,
-          getSessionFile: () => "/sessions/parent.jsonl",
-          getLeafId: () => "assistant",
-        },
+        sessionId: sessionId,
+        sessionFile: "/sessions/parent.jsonl",
+        entryId: "assistant",
       },
     });
     const published = await makeRegistry(parent).invoke(

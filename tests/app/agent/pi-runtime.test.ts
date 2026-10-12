@@ -1,3 +1,4 @@
+import { cakeOperationProviders } from "../../../src/layers/CakeOperations";
 import { Effect, Schema, Stream } from "effect";
 import {
   ProjectSessionFamilyInfo,
@@ -12,11 +13,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createCakeSessionRuntime,
   piRuntimeVersion,
-  projectSessionCreateInputSchema,
   subagentCompletionMessage,
   type CakeSessionRuntime,
   type CakeSessionRuntimeEvent,
 } from "../../../src/services/pi/runtime/cake-session-runtime";
+import { projectSessionCreateInputSchema } from "../../../src/contracts/project-sessions/agent-session-create";
 import { projectConversationDisplay } from "../../../src/services/pi/runtime/conversation-display-projection";
 import {
   createFoundationRuntime,
@@ -92,21 +93,24 @@ function maximumObjectDepth(value: unknown) {
 describe("Pi 1.0.0 foundation contract", () => {
   it("enables the Cake gateway for project sessions", async () => {
     const directory = await createTemporaryDirectory();
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir: join(directory, "agent"),
-      sessionDir: join(directory, "sessions"),
-      trusted: false,
-      newSession: true,
-      requestUi: async () => undefined,
-      generateInlineWidget: async () => ({
-        language: "react",
-        source: "export default () => null",
-        generationSessionId: "generation-1",
-        preview: { mimeType: "image/png", data: "cG5n" },
-      }),
-      onEvent: () => undefined,
-    });
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir: join(directory, "agent"),
+        sessionDir: join(directory, "sessions"),
+        trusted: false,
+        newSession: true,
+        requestUi: async () => undefined,
+        generateInlineWidget: async () => ({
+          language: "react",
+          source: "export default () => null",
+          generationSessionId: "generation-1",
+          preview: { mimeType: "image/png", data: "cG5n" },
+        }),
+        onEvent: () => undefined,
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
 
     if (!runtime.getReviewParentContext) throw new Error("Expected a project runtime");
@@ -132,21 +136,24 @@ describe("Pi 1.0.0 foundation contract", () => {
   it("returns current family information from session.info without recreating the runtime", async () => {
     const directory = await createTemporaryDirectory();
     let policy: ProjectSessionAgentPolicy = { canFork: true, deferResolution: true };
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir: join(directory, "agent"),
-      sessionDir: join(directory, "sessions"),
-      trusted: false,
-      newSession: true,
-      requestUi: async () => undefined,
-      currentSessionControl: {
-        resolved: () => false,
-        setResolved: async () => undefined,
-        readPolicy: async () => policy,
-        resolveDeferredStandalone: async () => undefined,
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir: join(directory, "agent"),
+        sessionDir: join(directory, "sessions"),
+        trusted: false,
+        newSession: true,
+        requestUi: async () => undefined,
+        currentSessionControl: {
+          resolved: () => false,
+          setResolved: async () => undefined,
+          readPolicy: async () => policy,
+          resolveDeferredStandalone: async () => undefined,
+        },
+        onEvent: () => undefined,
       },
-      onEvent: () => undefined,
-    });
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
     const call = runtime.callCakeOperation;
     if (!call) throw new Error("Expected Project Session controls");
@@ -241,18 +248,21 @@ describe("Pi 1.0.0 foundation contract", () => {
     let hasLinkedArtifacts = false;
     const listArtifactMetadata = vi.fn(async () => []);
     try {
-      const runtime = await createCakeSessionRuntime({
-        cwd: directory,
-        agentDir,
-        sessionDir: join(directory, "sessions"),
-        trusted: true,
-        newSession: true,
-        requestUi: async () => undefined,
-        hasLinkedArtifacts: async () => hasLinkedArtifacts,
-        listArtifactMetadata,
-        reviewContextPath: () => reviewContextPath,
-        onEvent: () => undefined,
-      });
+      const runtime = await createCakeSessionRuntime(
+        {
+          cwd: directory,
+          agentDir,
+          sessionDir: join(directory, "sessions"),
+          trusted: true,
+          newSession: true,
+          requestUi: async () => undefined,
+          hasLinkedArtifacts: async () => hasLinkedArtifacts,
+          listArtifactMetadata,
+          reviewContextPath: () => reviewContextPath,
+          onEvent: () => undefined,
+        },
+        cakeOperationProviders,
+      );
       runtimes.push(runtime);
       await runtime.setModel("fixture-provider", "fixture-model");
 
@@ -417,22 +427,25 @@ describe("Pi 1.0.0 foundation contract", () => {
       workspacePath: "/projects/.cake-worktrees/investigate-rendering",
     }));
     try {
-      const runtime = await createCakeSessionRuntime({
-        cwd: directory,
-        agentDir,
-        sessionDir: join(directory, "sessions"),
-        trusted: true,
-        newSession: true,
-        requestUi: async () => undefined,
-        currentSessionControl: {
-          resolved: () => false,
-          setResolved: async () => undefined,
-          readPolicy: async () => ({ canFork: true, deferResolution: true }),
-          resolveDeferredStandalone: async () => undefined,
-          createSession,
+      const runtime = await createCakeSessionRuntime(
+        {
+          cwd: directory,
+          agentDir,
+          sessionDir: join(directory, "sessions"),
+          trusted: true,
+          newSession: true,
+          requestUi: async () => undefined,
+          currentSessionControl: {
+            resolved: () => false,
+            setResolved: async () => undefined,
+            readPolicy: async () => ({ canFork: true, deferResolution: true }),
+            resolveDeferredStandalone: async () => undefined,
+            createSession,
+          },
+          onEvent: () => undefined,
         },
-        onEvent: () => undefined,
-      });
+        cakeOperationProviders,
+      );
       runtimes.push(runtime);
       await runtime.setModel("fixture-provider", "fixture-model");
       await runtime.prompt("Create the investigation session", "prompt", []);
@@ -461,15 +474,18 @@ describe("Pi 1.0.0 foundation contract", () => {
   it("executes ! and !! commands without starting a model turn", async () => {
     const directory = await createTemporaryDirectory();
     const events: CakeSessionRuntimeEvent[] = [];
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir: join(directory, "agent"),
-      sessionDir: join(directory, "sessions"),
-      trusted: false,
-      newSession: true,
-      requestUi: async () => undefined,
-      onEvent: (event) => events.push(event),
-    });
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir: join(directory, "agent"),
+        sessionDir: join(directory, "sessions"),
+        trusted: false,
+        newSession: true,
+        requestUi: async () => undefined,
+        onEvent: (event) => events.push(event),
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
 
     await runtime.prompt("!printf included", "prompt", []);
@@ -566,22 +582,25 @@ describe("Pi 1.0.0 foundation contract", () => {
     const autoLabelSession = vi.fn(async () => undefined);
     const sessionDir = join(directory, "sessions");
     try {
-      const runtime = await createCakeSessionRuntime({
-        cwd: directory,
-        agentDir,
-        sessionDir,
-        trusted: true,
-        utilityModel: () => ({
-          provider: "fixture-provider",
-          modelId: "fixture-model",
-          thinkingLevel: "off",
-        }),
-        generateSessionTitle: generateTitle as never,
-        autoLabelSession,
-        sessionTitleChanged,
-        requestUi: async () => undefined,
-        onEvent: (event) => events.push(event),
-      });
+      const runtime = await createCakeSessionRuntime(
+        {
+          cwd: directory,
+          agentDir,
+          sessionDir,
+          trusted: true,
+          utilityModel: () => ({
+            provider: "fixture-provider",
+            modelId: "fixture-model",
+            thinkingLevel: "off",
+          }),
+          generateSessionTitle: generateTitle as never,
+          autoLabelSession,
+          sessionTitleChanged,
+          requestUi: async () => undefined,
+          onEvent: (event) => events.push(event),
+        },
+        cakeOperationProviders,
+      );
       runtimes.push(runtime);
       await runtime.setModel("fixture-provider", "fixture-model");
       prompt = runtime.prompt(
@@ -775,21 +794,24 @@ describe("Pi 1.0.0 foundation contract", () => {
     const setResolved = vi.fn<(resolved: boolean) => Promise<void>>(async () => undefined);
     let prompt: Promise<void> | undefined;
     try {
-      const runtime = await createCakeSessionRuntime({
-        cwd: directory,
-        agentDir,
-        sessionDir: join(directory, "sessions"),
-        trusted: true,
-        newSession: true,
-        requestUi: async () => undefined,
-        currentSessionControl: {
-          resolved: () => false,
-          setResolved,
-          readPolicy: async () => ({ canFork: true, deferResolution: true }),
-          resolveDeferredStandalone: () => setResolved(true),
+      const runtime = await createCakeSessionRuntime(
+        {
+          cwd: directory,
+          agentDir,
+          sessionDir: join(directory, "sessions"),
+          trusted: true,
+          newSession: true,
+          requestUi: async () => undefined,
+          currentSessionControl: {
+            resolved: () => false,
+            setResolved,
+            readPolicy: async () => ({ canFork: true, deferResolution: true }),
+            resolveDeferredStandalone: () => setResolved(true),
+          },
+          onEvent: () => undefined,
         },
-        onEvent: () => undefined,
-      });
+        cakeOperationProviders,
+      );
       runtimes.push(runtime);
       await runtime.setModel("fixture-provider", "fixture-model");
       prompt = runtime.prompt("Commit and resolve this session", "prompt", []);
@@ -899,22 +921,25 @@ describe("Pi 1.0.0 foundation contract", () => {
     const forkSession = vi.fn(async () => ({ ok: true, sessionId: "forked" }));
     let prompt: Promise<void> | undefined;
     try {
-      const runtime = await createCakeSessionRuntime({
-        cwd: directory,
-        agentDir,
-        sessionDir: join(directory, "sessions"),
-        trusted: true,
-        newSession: true,
-        requestUi: async () => undefined,
-        currentSessionControl: {
-          resolved: () => false,
-          setResolved: async () => undefined,
-          readPolicy: async () => ({ canFork: true, deferResolution: true }),
-          resolveDeferredStandalone: async () => undefined,
-          forkSession,
+      const runtime = await createCakeSessionRuntime(
+        {
+          cwd: directory,
+          agentDir,
+          sessionDir: join(directory, "sessions"),
+          trusted: true,
+          newSession: true,
+          requestUi: async () => undefined,
+          currentSessionControl: {
+            resolved: () => false,
+            setResolved: async () => undefined,
+            readPolicy: async () => ({ canFork: true, deferResolution: true }),
+            resolveDeferredStandalone: async () => undefined,
+            forkSession,
+          },
+          onEvent: () => undefined,
         },
-        onEvent: () => undefined,
-      });
+        cakeOperationProviders,
+      );
       runtimes.push(runtime);
       await runtime.setModel("fixture-provider", "fixture-model");
       prompt = runtime.prompt("Fork this session", "prompt", []);
@@ -966,17 +991,20 @@ describe("Pi 1.0.0 foundation contract", () => {
       })}); }\n`,
     );
     const snapshots: ConversationSnapshot[] = [];
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir: join(directory, "agent"),
-      sessionDir: join(directory, "sessions"),
-      trusted: true,
-      newSession: true,
-      requestUi: async () => undefined,
-      onEvent: (event) => {
-        if (event.type === "snapshot") snapshots.push(event.snapshot);
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir: join(directory, "agent"),
+        sessionDir: join(directory, "sessions"),
+        trusted: true,
+        newSession: true,
+        requestUi: async () => undefined,
+        onEvent: (event) => {
+          if (event.type === "snapshot") snapshots.push(event.snapshot);
+        },
       },
-    });
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
 
     // A stale preset may request fast mode for a model that does not support it.
@@ -2265,15 +2293,18 @@ describe("S1 Pi runtime", () => {
         });
       }`,
     );
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir,
-      sessionDir: join(directory, "sessions"),
-      trusted: true,
-      newSession: true,
-      requestUi: async () => undefined,
-      onEvent: () => undefined,
-    });
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir,
+        sessionDir: join(directory, "sessions"),
+        trusted: true,
+        newSession: true,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
 
     try {
@@ -2351,15 +2382,18 @@ describe("S1 Pi runtime", () => {
     );
 
     try {
-      const runtime = await createCakeSessionRuntime({
-        cwd: directory,
-        agentDir,
-        sessionDir: join(directory, "sessions"),
-        trusted: true,
-        newSession: true,
-        requestUi: async () => undefined,
-        onEvent: () => undefined,
-      });
+      const runtime = await createCakeSessionRuntime(
+        {
+          cwd: directory,
+          agentDir,
+          sessionDir: join(directory, "sessions"),
+          trusted: true,
+          newSession: true,
+          requestUi: async () => undefined,
+          onEvent: () => undefined,
+        },
+        cakeOperationProviders,
+      );
       runtimes.push(runtime);
       await runtime.setModel("fixture-provider", "fixture-model");
 
@@ -2376,24 +2410,27 @@ describe("S1 Pi runtime", () => {
 
   it("exposes delegation as hidden subagents rather than session construction", async () => {
     const directory = await createTemporaryDirectory();
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir: join(directory, "agent"),
-      sessionDir: join(directory, "sessions"),
-      trusted: false,
-      newSession: true,
-      requestUi: async () => undefined,
-      agentControl: {
-        run: async () => ({ handleId: crypto.randomUUID(), status: "complete" }),
-        start: async () => ({ handleId: crypto.randomUUID(), status: "running" }),
-        parallel: async () => ({ mode: "parallel", completed: 0, total: 0, results: [] }),
-        prompt: async () => ({ streaming: false, parts: [] }),
-        wait: async () => ({ streaming: false, parts: [] }),
-        abort: async () => ({ streaming: false }),
-        close: async () => ({ closed: true }),
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir: join(directory, "agent"),
+        sessionDir: join(directory, "sessions"),
+        trusted: false,
+        newSession: true,
+        requestUi: async () => undefined,
+        agentControl: {
+          run: async () => ({ handleId: crypto.randomUUID(), status: "complete" }),
+          start: async () => ({ handleId: crypto.randomUUID(), status: "running" }),
+          parallel: async () => ({ mode: "parallel", completed: 0, total: 0, results: [] }),
+          prompt: async () => ({ streaming: false, parts: [] }),
+          wait: async () => ({ streaming: false, parts: [] }),
+          abort: async () => ({ streaming: false }),
+          close: async () => ({ closed: true }),
+        },
+        onEvent: () => undefined,
       },
-      onEvent: () => undefined,
-    });
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
 
     const parentContext = runtime.getReviewParentContext?.();
@@ -2405,17 +2442,20 @@ describe("S1 Pi runtime", () => {
 
   it("keeps auxiliary runtime snapshots limited to turn execution data", async () => {
     const directory = await createTemporaryDirectory();
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir: join(directory, "agent"),
-      sessionDir: join(directory, "sessions"),
-      trusted: false,
-      newSession: true,
-      auxiliary: true,
-      tools: ["read", "grep", "find", "ls"],
-      requestUi: async () => undefined,
-      onEvent: () => undefined,
-    });
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir: join(directory, "agent"),
+        sessionDir: join(directory, "sessions"),
+        trusted: false,
+        newSession: true,
+        auxiliary: true,
+        tools: ["read", "grep", "find", "ls"],
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
 
     const auxiliary = await runtime.snapshot();
@@ -2427,18 +2467,21 @@ describe("S1 Pi runtime", () => {
   it("isolates a subagent prompt and tools from Cake and project context", async () => {
     const directory = await createTemporaryDirectory();
     await writeFile(join(directory, "AGENTS.md"), "PROJECT INSTRUCTIONS MUST NOT LOAD");
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir: join(directory, "agent"),
-      sessionDir: join(directory, "sessions"),
-      trusted: true,
-      newSession: true,
-      auxiliary: true,
-      isolatedSystemPrompt: "You are a focused subagent.",
-      tools: ["read", "bash", "edit", "write"],
-      requestUi: async () => undefined,
-      onEvent: () => undefined,
-    });
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir: join(directory, "agent"),
+        sessionDir: join(directory, "sessions"),
+        trusted: true,
+        newSession: true,
+        auxiliary: true,
+        isolatedSystemPrompt: "You are a focused subagent.",
+        tools: ["read", "bash", "edit", "write"],
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
 
     const context = runtime.getReviewParentContext?.();
@@ -2453,14 +2496,17 @@ describe("S1 Pi runtime", () => {
     const previousKey = process.env.OPENAI_API_KEY;
     process.env.OPENAI_API_KEY = "test-openai-key";
     try {
-      const runtime = await createCakeSessionRuntime({
-        cwd: directory,
-        agentDir: join(directory, "agent"),
-        sessionDir: join(directory, "sessions"),
-        trusted: false,
-        requestUi: async () => undefined,
-        onEvent: () => undefined,
-      });
+      const runtime = await createCakeSessionRuntime(
+        {
+          cwd: directory,
+          agentDir: join(directory, "agent"),
+          sessionDir: join(directory, "sessions"),
+          trusted: false,
+          requestUi: async () => undefined,
+          onEvent: () => undefined,
+        },
+        cakeOperationProviders,
+      );
       runtimes.push(runtime);
 
       const openai = (await runtime.snapshot()).models.find((model) => model.provider === "openai");
@@ -2490,14 +2536,17 @@ describe("S1 Pi runtime", () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");
     const onEvent = vi.fn();
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir,
-      sessionDir: join(directory, "sessions"),
-      trusted: false,
-      requestUi: async () => undefined,
-      onEvent,
-    });
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir,
+        sessionDir: join(directory, "sessions"),
+        trusted: false,
+        requestUi: async () => undefined,
+        onEvent,
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
 
     await runtime.setPiSetting({ key: "retryEnabled", value: false });
@@ -2544,14 +2593,17 @@ describe("S1 Pi runtime", () => {
       join(agentDir, "extensions", "slow.ts"),
       `export default async function () { await new Promise((resolve) => setTimeout(resolve, 400)); };\n`,
     );
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir,
-      sessionDir: join(agentDir, "sessions"),
-      trusted: false,
-      requestUi: async () => undefined,
-      onEvent,
-    });
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir,
+        sessionDir: join(agentDir, "sessions"),
+        trusted: false,
+        requestUi: async () => undefined,
+        onEvent,
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
 
     expect((await runtime.snapshot()).commands).toEqual(
@@ -2648,15 +2700,18 @@ describe("S1 Pi runtime", () => {
     );
 
     try {
-      const source = await createCakeSessionRuntime({
-        cwd: directory,
-        agentDir,
-        sessionDir,
-        trusted: true,
-        newSession: true,
-        requestUi: async () => undefined,
-        onEvent: () => undefined,
-      });
+      const source = await createCakeSessionRuntime(
+        {
+          cwd: directory,
+          agentDir,
+          sessionDir,
+          trusted: true,
+          newSession: true,
+          requestUi: async () => undefined,
+          onEvent: () => undefined,
+        },
+        cakeOperationProviders,
+      );
       runtimes.push(source);
       await source.setModel("fixture-responses", "fixture-model");
       await source.prompt("First question", "prompt", []);
@@ -2666,15 +2721,18 @@ describe("S1 Pi runtime", () => {
       const forkPoint = (await source.snapshot()).tree.at(-1)?.id;
       if (!forkPoint) throw new Error("Expected a fork point");
       const fork = await source.fork(forkPoint, "Forked");
-      const forked = await createCakeSessionRuntime({
-        cwd: directory,
-        agentDir,
-        sessionDir,
-        sessionId: fork.sessionId,
-        trusted: true,
-        requestUi: async () => undefined,
-        onEvent: () => undefined,
-      });
+      const forked = await createCakeSessionRuntime(
+        {
+          cwd: directory,
+          agentDir,
+          sessionDir,
+          sessionId: fork.sessionId,
+          trusted: true,
+          requestUi: async () => undefined,
+          onEvent: () => undefined,
+        },
+        cakeOperationProviders,
+      );
       runtimes.push(forked);
       expect(forked.sessionId).toBe(fork.sessionId);
 
@@ -2749,15 +2807,18 @@ describe("S1 Pi runtime", () => {
     const sourceSessionId = source.getSessionId();
     const sourceSessionFile = source.getSessionFile()!;
 
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir,
-      sessionDir,
-      sessionId: sourceSessionId,
-      trusted: false,
-      requestUi: async () => undefined,
-      onEvent: () => undefined,
-    });
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir,
+        sessionDir,
+        sessionId: sourceSessionId,
+        trusted: false,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
 
     const fork = await runtime.fork(forkPointId, "Forked copy");
@@ -2856,15 +2917,18 @@ describe("S1 Pi runtime", () => {
       stopReason: "stop",
       timestamp: Date.now(),
     });
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir,
-      sessionDir,
-      sessionId: source.getSessionId(),
-      trusted: false,
-      requestUi: async () => undefined,
-      onEvent: () => undefined,
-    });
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir,
+        sessionDir,
+        sessionId: source.getSessionId(),
+        trusted: false,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
 
     const compacted = await runtime.toolCompact(assistantEntryId);
@@ -2897,15 +2961,18 @@ describe("S1 Pi runtime", () => {
     await mkdir(agentDir, { recursive: true });
     await writeFile(join(agentDir, "AGENTS.md"), "Personal instruction source");
     await writeFile(join(directory, "AGENTS.md"), "Project instruction source");
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir,
-      sessionDir: join(directory, "sessions"),
-      trusted: true,
-      additionalSystemPrompt: "Session-specific instructions",
-      requestUi: async () => undefined,
-      onEvent: () => undefined,
-    });
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir,
+        sessionDir: join(directory, "sessions"),
+        trusted: true,
+        additionalSystemPrompt: "Session-specific instructions",
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
     const initial = await runtime.snapshot();
     const instructionTitle = "AGENTS.md";
@@ -2959,7 +3026,7 @@ describe("S1 Pi runtime", () => {
       requestUi: async () => undefined,
       onEvent: () => undefined,
     };
-    const first = await createCakeSessionRuntime(options);
+    const first = await createCakeSessionRuntime(options, cakeOperationProviders);
     runtimes.push(first);
     const prompt = (await first.snapshot()).parts.find(
       (part) => part.kind === "context" && part.title === "System",
@@ -2990,10 +3057,13 @@ describe("S1 Pi runtime", () => {
       stopReason: "stop",
       timestamp: 2,
     });
-    const reopened = await createCakeSessionRuntime({
-      ...options,
-      sessionId: stored.getSessionId(),
-    });
+    const reopened = await createCakeSessionRuntime(
+      {
+        ...options,
+        sessionId: stored.getSessionId(),
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(reopened);
     const parts = (await reopened.snapshot()).parts;
     expect(parts.filter((part) => part.kind === "context" && part.title === "System")).toEqual([
@@ -3012,14 +3082,17 @@ describe("S1 Pi runtime", () => {
     const directory = await createTemporaryDirectory();
     const agentDir = join(directory, "agent");
     const sessionDir = join(directory, "sessions");
-    const first = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir,
-      sessionDir,
-      trusted: false,
-      requestUi: async () => undefined,
-      onEvent: () => undefined,
-    });
+    const first = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir,
+        sessionDir,
+        trusted: false,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(first);
     const firstSnapshot = await first.snapshot();
 
@@ -3306,17 +3379,20 @@ describe("S1 Pi runtime", () => {
     );
 
     const titles = new Map<string, string>();
-    const second = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir,
-      sessionDir,
-      trusted: false,
-      sessionTitleChanged: async (sessionId, title) => {
-        titles.set(sessionId, title);
+    const second = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir,
+        sessionDir,
+        trusted: false,
+        sessionTitleChanged: async (sessionId, title) => {
+          titles.set(sessionId, title);
+        },
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
       },
-      requestUi: async () => undefined,
-      onEvent: () => undefined,
-    });
+      cakeOperationProviders,
+    );
     runtimes.push(second);
 
     expect(second.sessionId).toBe(first.sessionId);
@@ -3367,16 +3443,19 @@ describe("S1 Pi runtime", () => {
     ).toBe("First session (1)");
 
     const requestedSessionId = crypto.randomUUID();
-    const isolated = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir,
-      sessionDir,
-      trusted: false,
-      newSession: true,
-      sessionId: requestedSessionId,
-      requestUi: async () => undefined,
-      onEvent: () => undefined,
-    });
+    const isolated = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir,
+        sessionDir,
+        trusted: false,
+        newSession: true,
+        sessionId: requestedSessionId,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(isolated);
     expect(isolated.sessionId).toBe(requestedSessionId);
     expect(isolated.sessionId).not.toBe(second.sessionId);
@@ -3411,15 +3490,18 @@ describe("S1 Pi runtime", () => {
     await mkdir(workspaceSessionDir, { recursive: true });
     await writeFile(sessionFile, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
 
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir,
-      sessionDir,
-      sessionFile,
-      trusted: false,
-      requestUi: async () => undefined,
-      onEvent: () => undefined,
-    });
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir,
+        sessionDir,
+        sessionFile,
+        trusted: false,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
 
     const snapshot = await runtime.snapshot();
@@ -3453,15 +3535,18 @@ describe("S3 Pi ecosystem compatibility", () => {
     process.env.HOME = standaloneHome;
     vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
     try {
-      const runtime = await createCakeSessionRuntime({
-        cwd: directory,
-        agentDir,
-        sessionDir: join(agentDir, "sessions"),
-        trusted: false,
-        newSession: true,
-        requestUi: async () => undefined,
-        onEvent: () => undefined,
-      });
+      const runtime = await createCakeSessionRuntime(
+        {
+          cwd: directory,
+          agentDir,
+          sessionDir: join(agentDir, "sessions"),
+          trusted: false,
+          newSession: true,
+          requestUi: async () => undefined,
+          onEvent: () => undefined,
+        },
+        cakeOperationProviders,
+      );
       runtimes.push(runtime);
       const snapshot = await runtime.snapshot();
 
@@ -3537,18 +3622,21 @@ export default function (pi) {
     const events: Array<{ type: string; event?: { kind: string } }> = [];
     const requests: string[] = [];
     const intents: ExtensionUiIntent[] = [];
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir,
-      sessionDir: join(directory, "sessions"),
-      trusted: true,
-      requestUi: async (request) => {
-        requests.push(request.kind);
-        return request.kind === "select" ? "one" : request.kind === "editor" ? "edited" : "value";
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir,
+        sessionDir: join(directory, "sessions"),
+        trusted: true,
+        requestUi: async (request) => {
+          requests.push(request.kind);
+          return request.kind === "select" ? "one" : request.kind === "editor" ? "edited" : "value";
+        },
+        emitExtensionUiIntent: (intent) => intents.push(intent),
+        onEvent: (event) => events.push(event),
       },
-      emitExtensionUiIntent: (intent) => intents.push(intent),
-      onEvent: (event) => events.push(event),
-    });
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
 
     const firstSnapshot = await runtime.snapshot();
@@ -3627,14 +3715,17 @@ export default function (pi) {
       join(directory, ".pi", "settings.json"),
       JSON.stringify({ packages: [subagentPath] }),
     );
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir,
-      sessionDir: join(directory, "sessions"),
-      trusted: true,
-      requestUi: async () => undefined,
-      onEvent: () => undefined,
-    });
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir,
+        sessionDir: join(directory, "sessions"),
+        trusted: true,
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
     const extension = (await runtime.snapshot()).compatibility.resources.find(
       (item) => item.kind === "extension" && item.path?.includes("subagent"),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
-import { createCakeModelOperations } from "../../../src/services/pi/runtime/cake-model-operations";
+import { createCakeModelOperations } from "../../../src/domain/model-presets/cake-model-operations";
 
 const context = {
   signal: new AbortController().signal,

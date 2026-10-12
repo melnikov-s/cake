@@ -1,0 +1,195 @@
+import { Effect, Schema } from "effect";
+
+import { type JsonObject } from "../../contracts/serialization/json-contract";
+import {
+  CakeSettingsGetInput,
+  CakeSettingsUpdateInput,
+} from "../../contracts/application/cake-settings-schema";
+
+import { SessionLabelColor } from "../../contracts/application/application-data";
+
+import type { RuntimeOperationApi } from "../../services/pi/runtime/cake-operation-providers";
+import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+
+export function createSessionApplicationOperations(
+  api: () => RuntimeOperationApi,
+): CakeOperationDefinition[] {
+  const empty = Schema.Struct({});
+  const invokeAppControl =
+    (command: string): CakeOperationDefinition["execute"] =>
+    (input, context) => {
+      // SAFETY: CakeOperationRegistry decoded input with the operation's object schema.
+      return api().invokeAppControl(command, input as JsonObject, context.signal);
+    };
+  return [
+    {
+      command: "app.user-selection",
+      topic: "app",
+      summary: "Read the text currently highlighted by the user in the Cake window.",
+      inputSchema: empty,
+      examples: [{}],
+      result: "The currently selected text, or no text if nothing is highlighted in Cake.",
+      execute: (_input, context) =>
+        api().invokeAppControl("app.user-selection", {}, context.signal),
+    },
+    {
+      command: "app.state",
+      topic: "app",
+      summary: "Inspect the invoking Cake window's current selection and session summaries.",
+      inputSchema: empty,
+      examples: [{}],
+      result: "The current application selection, projects, and bounded session summaries.",
+      execute: (_input, context) => api().invokeAppControl("app.state", {}, context.signal),
+    },
+    {
+      command: "app.split",
+      topic: "app",
+      summary: "Split the calling conversation pane and open a new chat in it.",
+      guidance: ["Splits are relative to the calling conversation's pane."],
+      inputSchema: Schema.Struct({ direction: Schema.Literals(["right", "down"]) }),
+      examples: [{ input: { direction: "right" } }],
+      result: "The new pane and conversation identity.",
+      execute: invokeAppControl("app.split"),
+    },
+    {
+      command: "settings.sections",
+      topic: "settings",
+      summary:
+        "List the Cake settings sections available to agents, including scope and writability.",
+      inputSchema: empty,
+      examples: [{}],
+      result: "The available settings section IDs, descriptions, scopes, and writability.",
+      execute: invokeAppControl("settings.sections"),
+    },
+    {
+      command: "settings.get",
+      topic: "settings",
+      summary: "Read the effective settings for one Cake settings section in this window.",
+      inputSchema: CakeSettingsGetInput,
+      examples: [{ input: { section: "appearance" } }],
+      result: "The section's effective current settings and window scope.",
+      execute: invokeAppControl("settings.get"),
+    },
+    {
+      command: "settings.update",
+      topic: "settings",
+      summary:
+        "Patch one Cake settings section in this window and return its committed effective settings.",
+      guidance: [
+        "Call settings.get before updating a section. Unspecified fields remain unchanged.",
+        "For hotkeys, null restores the default binding and an empty string disables the shortcut.",
+      ],
+      inputSchema: CakeSettingsUpdateInput,
+      examples: [{ input: { section: "appearance", changes: { theme: "dark" } } }],
+      result:
+        "The section's committed effective settings after window-state persistence completes.",
+      execute: invokeAppControl("settings.update"),
+    },
+    {
+      command: "session-labels.list",
+      topic: "session-labels",
+      summary: "List global and project-specific labels available to Project Sessions.",
+      inputSchema: empty,
+      examples: [{}],
+      result: "All session labels with their IDs, names, colors, and scopes.",
+      execute: (_input, context) =>
+        api().invokeAppControl("session-labels.list", {}, context.signal),
+    },
+    {
+      command: "session-labels.add",
+      topic: "session-labels",
+      summary: "Add a global or project-specific session label.",
+      guidance: ["Omit projectPath to create a global label available in every Project."],
+      inputSchema: Schema.Struct({
+        name: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(40))),
+        color: SessionLabelColor,
+        projectPath: Schema.optionalKey(
+          Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)),
+        ),
+      }),
+      examples: [
+        { input: { name: "In review", color: "cyan" } },
+        {
+          input: {
+            name: "Ready to deploy",
+            color: "green",
+            projectPath: "/path/to/project",
+          },
+        },
+      ],
+      result: "The added session label and its scope.",
+      execute: invokeAppControl("session-labels.add"),
+    },
+    {
+      command: "session-labels.update",
+      topic: "session-labels",
+      summary: "Rename or recolor an existing session label.",
+      inputSchema: Schema.Struct({
+        labelId: Schema.String.check(Schema.isUUID(4)),
+        name: Schema.optionalKey(
+          Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(40))),
+        ),
+        color: Schema.optionalKey(SessionLabelColor),
+      }),
+      examples: [
+        {
+          input: {
+            labelId: "00000000-0000-4000-8000-000000000001",
+            name: "In review",
+            color: "cyan",
+          },
+        },
+      ],
+      result: "The updated session label and its scope.",
+      execute: invokeAppControl("session-labels.update"),
+    },
+    {
+      command: "session-labels.remove",
+      topic: "session-labels",
+      summary: "Remove a session label and clear it from every session that uses it.",
+      inputSchema: Schema.Struct({ labelId: Schema.String.check(Schema.isUUID(4)) }),
+      examples: [{ input: { labelId: "00000000-0000-4000-8000-000000000001" } }],
+      result: "The removed session label and its former scope.",
+      execute: invokeAppControl("session-labels.remove"),
+    },
+    {
+      command: "session-labels.reorder",
+      topic: "session-labels",
+      summary: "Move a global or project-specific label to a new zero-based position.",
+      inputSchema: Schema.Struct({
+        labelId: Schema.String.check(Schema.isUUID(4)),
+        index: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(99)),
+      }),
+      examples: [{ input: { labelId: "00000000-0000-4000-8000-000000000001", index: 0 } }],
+      result: "The reordered session label and its scope.",
+      execute: invokeAppControl("session-labels.reorder"),
+    },
+    {
+      command: "notifications.send",
+      topic: "notifications",
+      summary: "Send a bounded native system notification through the operating system.",
+      inputSchema: Schema.Struct({
+        title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+        body: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_000)),
+        level: Schema.Literals(["info", "success", "warning", "error"]).pipe(
+          Schema.withDecodingDefaultKey(Effect.succeed("info" as const)),
+        ),
+      }),
+      examples: [
+        {
+          input: {
+            title: "Authentication refactor complete",
+            body: "The implementation and focused tests are ready for review.",
+            level: "success",
+          },
+        },
+      ],
+      result: "A queued status after Cake accepts the notification for debounced delivery.",
+      limitations: [
+        "Notifications are debounced per calling session, so only the latest message in a burst is delivered.",
+        "Notifications do not impersonate user input or enter another session transcript.",
+      ],
+      execute: invokeAppControl("notifications.send"),
+    },
+  ];
+}

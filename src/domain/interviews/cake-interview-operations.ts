@@ -1,18 +1,14 @@
+import type { CakeInterviewOperationOptions } from "../../contracts/interviews/interview-agent-control";
 import { Schema } from "effect";
-import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
   InterviewDefinition,
   InterviewEntry,
   InterviewResult,
   validateInterviewResponse,
   type InterviewRecord,
-} from "../../../contracts/interviews/interview";
-import { jsonValueSchema, type JsonValue } from "../../../contracts/serialization/json-contract";
-import type { CakeOperationDefinition } from "./cake-operation-registry";
-
-export interface CakeInterviewOperationOptions {
-  requestInterview(record: InterviewRecord, signal: AbortSignal): Promise<JsonValue | undefined>;
-}
+} from "../../contracts/interviews/interview";
+import { jsonValueSchema, type JsonValue } from "../../contracts/serialization/json-contract";
+import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
 
 export function createCakeInterviewOperations(
   pi: { appendEntry(type: string, data: JsonValue): void },
@@ -62,25 +58,13 @@ export function createCakeInterviewOperations(
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry decoded input with InterviewDefinition.
         const { request } = input as { request: InterviewDefinition };
-        // SAFETY: the gateway supplies Pi's tool execution context.
-        const runtime = context.runtime as {
-          sessionManager: { getSessionId(): string; getBranch(): SessionEntry[] };
-        };
-        const assistantEntryId = runtime.sessionManager
-          .getBranch()
-          .findLast(
-            (entry) =>
-              entry.type === "message" &&
-              entry.message.role === "assistant" &&
-              entry.message.content.some(
-                (block) => block.type === "toolCall" && block.id === context.toolCallId,
-              ),
-          )?.id;
+        const { sessionId, assistantEntryId } = context.runtime;
+        if (!sessionId) throw new Error("The Cake session is not ready");
         if (!assistantEntryId)
           throw new Error("An interview requires an originating assistant message");
         const record: InterviewRecord = {
           id: context.toolCallId,
-          sessionId: runtime.sessionManager.getSessionId(),
+          sessionId,
           request,
         };
         const entry = Schema.decodeUnknownSync(InterviewEntry)({

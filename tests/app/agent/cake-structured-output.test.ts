@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
-import { createCakeArtifactOperations } from "../../../src/services/pi/runtime/cake-artifact-operations";
+import { createCakeArtifactOperations } from "../../../src/domain/artifacts/cake-artifact-operations";
 import {
   CakeOperationRegistry,
   cakeOperationImageResult,
@@ -32,7 +32,14 @@ async function invokeTool(definitions: CakeOperationDefinition[], command: strin
     { command, input },
     context.signal,
     undefined,
-    {} as never,
+    {
+      sessionManager: {
+        getSessionId: () => "session-1",
+        getSessionFile: () => undefined,
+        getLeafId: () => null,
+        getBranch: () => [],
+      },
+    } as never,
   );
 }
 

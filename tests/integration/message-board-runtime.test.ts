@@ -22,7 +22,7 @@ import {
   SessionFamilyStorage,
 } from "../../src/services/storage/SessionFamilyStorage";
 import { CakeOperationRegistry } from "../../src/services/pi/runtime/cake-operation-registry";
-import { createMessageBoardOperations } from "../../src/services/pi/runtime/cake-message-board-operations";
+import { createMessageBoardOperations } from "../../src/domain/artifacts/cake-message-board-operations";
 import {
   Type,
   createAssistantMessageEventStream,
@@ -278,7 +278,7 @@ const harness = async (
                   {
                     toolCallId,
                     signal: signal ?? new AbortController().signal,
-                    runtime: undefined,
+                    runtime: {},
                   },
                 );
                 return { content, details };

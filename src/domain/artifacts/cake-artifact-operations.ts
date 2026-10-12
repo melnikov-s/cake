@@ -1,84 +1,27 @@
-import { createEditTool } from "@earendil-works/pi-coding-agent";
+import type { CakeArtifactOperationOptions } from "../../contracts/artifacts/artifact-agent-control";
+import type { CakeOperationHost } from "../../contracts/agent/cake-operation-context";
+import { editText } from "../../services/pi/runtime/edit-text";
 import { Schema } from "effect";
-import type { JsonValue } from "../../../contracts/serialization/json-contract";
+
 import {
   MAX_ARTIFACT_INPUT_BYTES,
   artifactPointerSchema,
   parseArtifactInput,
   type ArtifactRecord,
   type CakeArtifactV1,
-} from "../../../contracts/artifacts/artifact-contract";
-import type {
-  InlineWidgetGenerationRequest,
-  InlineWidgetGenerationResult,
-  InlineWidgetRevisionRequest,
-} from "./sidecar-runtime";
-import { captureWidgetConversation } from "./widget-conversation";
-import { ArtifactProjectionMetadata } from "../../../contracts/artifacts/artifact-projection-data";
-import { cakeOperationImageResult } from "./cake-operation-registry";
+} from "../../contracts/artifacts/artifact-contract";
+
+import { widgetConversationFromOperation } from "../widgets/widgetOperationContext";
+import { ArtifactProjectionMetadata } from "../../contracts/artifacts/artifact-projection-data";
+import { cakeOperationImageResult } from "../../services/pi/runtime/cake-operation-registry";
 import type {
   CakeOperationDefinition,
   CakeOperationExecutionContext,
-} from "./cake-operation-registry";
+} from "../../services/pi/runtime/cake-operation-registry";
 
-interface ArtifactFileImportInput {
-  path: string;
-  id: string;
-  revision: number;
-  title?: string;
-}
-
-export interface ResolvedAgentArtifact {
-  readonly record: ArtifactRecord;
-  readonly metadata: ArtifactProjectionMetadata;
-}
-
-export interface CakeArtifactOperationOptions {
-  persistArtifact(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
-  generateInlineWidget?(
-    input: InlineWidgetGenerationRequest,
-  ): Promise<InlineWidgetGenerationResult>;
-  reviseInlineWidget?(input: InlineWidgetRevisionRequest): Promise<InlineWidgetGenerationResult>;
-  resolveArtifact?(reference: string): Promise<ResolvedAgentArtifact>;
-  hasLinkedArtifacts?(): Promise<boolean>;
-  listArtifactMetadata?(): Promise<ReadonlyArray<ArtifactProjectionMetadata>>;
-  historyArtifact?(reference: string): Promise<ReadonlyArray<ArtifactProjectionMetadata>>;
-  restoreArtifact?(input: {
-    lineageId: string;
-    sourceRevision: number;
-    expectedRevision: number;
-  }): Promise<ResolvedAgentArtifact>;
-  linkArtifact?(reference: string): Promise<ArtifactProjectionMetadata>;
-  unlinkArtifact?(lineageId: string): Promise<void>;
-  importArtifactFile?(input: ArtifactFileImportInput): Promise<CakeArtifactV1>;
-}
-
-interface BeforeAgentStartEvent {
-  readonly systemPrompt: string;
-}
-
-interface SystemPromptGuidance {
-  readonly systemPrompt: string;
-}
-
-export interface PiArtifactOperationHost {
-  appendEntry(type: string, data: JsonValue): void;
-  on?(
-    event: "before_agent_start",
-    handler: (
-      event: BeforeAgentStartEvent,
-    ) => void | SystemPromptGuidance | Promise<void | SystemPromptGuidance>,
-  ): void;
-}
-
-interface PiToolRuntimeContext {
-  sessionManager: {
-    getSessionId(): string;
-    getSessionFile(): string | undefined;
-    getLeafId(): string | null;
-  };
-  model?: { provider: string; id: string };
-}
+type ArtifactFileImportInput = Parameters<
+  NonNullable<CakeArtifactOperationOptions["importArtifactFile"]>
+>[0];
 
 const artifactIdSchema = Schema.String.check(
   Schema.isMinLength(1),
@@ -188,8 +131,9 @@ const artifactHistorySchema = Schema.Struct({
 });
 
 function runtimeContext(context: CakeOperationExecutionContext) {
-  // SAFETY: createCakeGatewayExtension supplies Pi's validated tool execution context.
-  return context.runtime as PiToolRuntimeContext;
+  const sessionId = context.runtime.sessionId;
+  if (!sessionId) throw new Error("The Cake session is not ready");
+  return { ...context.runtime, sessionId };
 }
 
 const stableReference = (value: string) =>
@@ -199,10 +143,10 @@ const linkedArtifactSystemGuidance =
   "This session has linked artifacts. Use artifacts.list to inspect them when relevant.";
 
 export function createCakeArtifactOperations(
-  pi: PiArtifactOperationHost,
+  pi: CakeOperationHost,
   options: CakeArtifactOperationOptions,
 ): CakeOperationDefinition[] {
-  const persist = async (input: unknown, sessionId: string) => {
+  const persist = async (input: CakeArtifactV1, sessionId: string) => {
     const artifact = parseArtifactInput(input);
     if (artifact.sessionId !== sessionId)
       throw new Error("Artifact sessionId does not match the active Pi session");
@@ -229,7 +173,7 @@ export function createCakeArtifactOperations(
   };
   const pointerOrigin = (context: CakeOperationExecutionContext) => {
     const runtime = runtimeContext(context);
-    const assistantEntryId = runtime.sessionManager.getLeafId();
+    const assistantEntryId = runtime.entryId;
     if (!assistantEntryId)
       throw new Error("Artifact creation requires an originating assistant message");
     return { assistantEntryId, toolCallId: context.toolCallId };
@@ -389,7 +333,7 @@ export function createCakeArtifactOperations(
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry parsed input with artifactCreateSchema.
         const draft = (input as typeof artifactCreateSchema.Type).artifact;
-        const sessionId = runtimeContext(context).sessionManager.getSessionId();
+        const sessionId = runtimeContext(context).sessionId;
         let artifact: CakeArtifactV1;
         if (draft.kind === "file") {
           if (!options.importArtifactFile)
@@ -452,23 +396,16 @@ export function createCakeArtifactOperations(
         if (current.artifact.kind !== "markdown")
           throw new Error(`Artifact ${update.lineageId} is ${current.artifact.kind}, not markdown`);
         // Pi edits staged bytes only; Cake still owns immutable revision publication.
-        let markdown = current.artifact.payload.markdown;
-        const editTool = createEditTool(current.workspacePath, {
-          operations: {
-            access: async () => undefined,
-            readFile: async () => Buffer.from(markdown, "utf-8"),
-            writeFile: async (_path, content) => {
-              markdown = content;
-            },
-          },
+        const markdown = await editText({
+          workingDirectory: current.workspacePath,
+          path: resolved.metadata.exactPath,
+          text: current.artifact.payload.markdown,
+          edits: update.edits,
+          toolCallId: context.toolCallId,
+          signal: context.signal,
         });
-        await editTool.execute(
-          context.toolCallId,
-          { path: resolved.metadata.exactPath, edits: [...update.edits] },
-          context.signal,
-        );
         if (context.signal.aborted) throw new Error("Artifact update was cancelled");
-        const sessionId = runtimeContext(context).sessionManager.getSessionId();
+        const sessionId = runtimeContext(context).sessionId;
         let artifact: CakeArtifactV1 = {
           ...current.artifact,
           sessionId,
@@ -512,7 +449,7 @@ export function createCakeArtifactOperations(
             `Artifact ${update.lineageId} is at revision ${current.artifact.revision}; expected ${update.expectedRevision}`,
           );
         const runtime = runtimeContext(context);
-        const sessionId = runtime.sessionManager.getSessionId();
+        const sessionId = runtime.sessionId;
         const revision = update.expectedRevision + 1;
         let artifact: CakeArtifactV1;
         if ("markdown" in update) {
@@ -677,10 +614,10 @@ export function createCakeArtifactOperations(
         if (new TextEncoder().encode(serialized).byteLength > 262_144)
           throw new Error("Widget brief exceeds the 262144-byte limit");
         const runtime = runtimeContext(context);
-        const sessionId = runtime.sessionManager.getSessionId();
+        const sessionId = runtime.sessionId;
         const generated = await options.generateInlineWidget!({
           sessionId,
-          parentConversation: captureWidgetConversation(runtime),
+          parentConversation: widgetConversationFromOperation(runtime),
           brief: widget.brief,
           data: widget.data,
           fallback: widget.fallback.markdown,

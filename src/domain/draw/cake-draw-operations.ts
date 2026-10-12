@@ -1,9 +1,10 @@
+import type { CakeDrawControl } from "../../contracts/draw/draw-agent-control";
 /* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is Cake Draw's precise domain entity. */
 import { Buffer } from "node:buffer";
 import { extname } from "node:path";
 import { Schema } from "effect";
-import type { DrawBoardMetadata } from "../../../contracts/draw/draw-board-data";
-import type { JsonObject } from "../../../contracts/serialization/json-contract";
+
+import type { JsonObject } from "../../contracts/serialization/json-contract";
 import {
   DRAW_APPLY_MAX_OPERATIONS,
   type DrawControlResponse,
@@ -12,30 +13,13 @@ import {
   DrawFlowInput,
   DrawFrameInput,
   DrawReadScope,
-  type DrawControlInvocation,
-} from "../../../contracts/draw/draw-control";
+} from "../../contracts/draw/draw-control";
 import {
   MAX_CAKE_OPERATION_IMAGE_BYTES,
   cakeOperationImageResult,
   type CakeOperationDefinition,
   type CakeOperationResult,
-} from "./cake-operation-registry";
-
-export interface CakeDrawControl {
-  readonly list: (signal: AbortSignal) => Promise<ReadonlyArray<DrawBoardMetadata>>;
-  readonly create: (title: string, signal: AbortSignal) => Promise<DrawBoardMetadata>;
-  readonly open: (boardId: string, signal: AbortSignal) => Promise<typeof DrawControlResponse.Type>;
-  readonly request: (
-    invocation: DrawControlInvocation,
-    signal: AbortSignal,
-  ) => Promise<typeof DrawControlResponse.Type>;
-  readonly exportFile: (
-    path: string,
-    content: Uint8Array,
-    signal: AbortSignal,
-  ) => Promise<{ readonly path: string; readonly bytes: number }>;
-  readonly canMutate: () => boolean;
-}
+} from "../../services/pi/runtime/cake-operation-registry";
 
 const empty = Schema.Struct({});
 const optionalBoardId = Schema.optionalKey(Schema.String.check(Schema.isUUID(4)));

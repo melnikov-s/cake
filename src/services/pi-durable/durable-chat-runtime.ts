@@ -30,15 +30,12 @@ import type {
 } from "../../contracts/conversations/session-contract";
 import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
 import type { PiPendingMessageReorder } from "../pi/conversation-data";
-import {
+import type {
   CakeModelSelection,
-  type ExplicitCakeModelSelection,
+  ExplicitCakeModelSelection,
 } from "../../contracts/model-presets/cake-model-selection";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
-import {
-  createGlobalControlOperations,
-  createAgentControlOperations,
-} from "../pi/runtime/cake-session-runtime-capabilities";
+import type { CakeOperationProviders } from "../pi/runtime/cake-operation-providers";
 import {
   CakeOperationRegistry,
   cakeToolDescription,
@@ -61,7 +58,6 @@ import { durableModels } from "./durable-models";
 import type { RequestInspection } from "./request-inspection";
 import { openDurableChatEngine } from "./durable-chat-engine";
 import { readDurableOriginalPage } from "./durable-chat-history";
-import { createCakeModelOperations } from "../pi/runtime/cake-model-operations";
 
 import { durableChatDatabase, purgeLegacyGlobalChatHistory } from "./durable-chat-location";
 import { coordinatorSystemPrompt } from "./coordinator-system-prompt";
@@ -117,6 +113,7 @@ const unsupported = async () => {
 /** The shared Cake conversation contract, backed solely by Pi Durable for the coordinator. */
 export async function createDurableCakeChatRuntime(
   options: CakeSessionRuntimeOptions,
+  providers: CakeOperationProviders,
   inspection?: RequestInspection,
 ): Promise<CakeSessionRuntime> {
   if (
@@ -181,73 +178,29 @@ export async function createDurableCakeChatRuntime(
     return { ...(selection ?? inherited) };
   };
   const operations = new CakeOperationRegistry(
-    [
-      ...createGlobalControlOperations(options.globalControl, resolveModel),
-      ...createCakeModelOperations(options.modelPresets ?? (() => ({ presets: [] }))),
-      ...(options.agentControl
-        ? createAgentControlOperations(options.agentControl, () => sessionId, resolveModel, true)
-        : []),
-      ...[
-        {
-          command: "session.info",
-          topic: "sessions",
-          summary: "Inspect the permanent global coordinator.",
-          execute: async () => ({ sessionId, kind: "cake-chat", sessionFile, streaming }),
-        },
-        {
-          command: "session.usage",
-          topic: "sessions",
-          summary: "Inspect coordinator usage.",
-          execute: async () => (await runtime.snapshot()).usage ?? {},
-        },
-        {
-          command: "context.status",
-          topic: "context",
-          summary: "Inspect the active bounded context.",
-          execute: async () => {
-            const context = await engine.root.context(BACKGROUND_CONTEXT);
-            const { tokens } = estimateContextTokens(context.messages);
-            return {
-              tokens,
-              contextWindow: selected.contextWindow,
-              percent: (tokens / selected.contextWindow) * 100,
-            };
-          },
-        },
-        {
-          command: "context.compact",
-          topic: "context",
-          summary: "Compact the active run.",
-          execute: async () => {
-            await runtime.compact();
-            return { compacted: true };
-          },
-        },
-      ].map((operation) => ({
-        ...operation,
-        inputSchema: Schema.Struct({}),
-        examples: [{}],
-        result: "Coordinator facts.",
-        execute: async () => Schema.decodeUnknownSync(Schema.Json)(await operation.execute()),
-      })),
-      {
-        command: "session.set-model",
-        topic: "sessions",
-        summary: "Select a configured coordinator model.",
-        inputSchema: Schema.Struct({ model: CakeModelSelection }),
-        examples: [{ input: { model: "Sol" } }],
-        result: "The selected model.",
-        execute: async (input: unknown) => {
-          const parsed = Schema.decodeUnknownSync(Schema.Struct({ model: Schema.Unknown }))(input);
-          const model = resolveModel(Schema.decodeUnknownSync(CakeModelSelection)(parsed.model));
-          await runtime.applyConfiguration(model);
-          return model;
-        },
+    providers.coordinator(options, {
+      sessionId,
+      resolveModel,
+      info: async () => ({ sessionId, kind: "cake-chat", sessionFile, streaming }),
+      usage: async () =>
+        Schema.decodeUnknownSync(Schema.Json)((await runtime.snapshot()).usage ?? {}),
+      contextStatus: async () => {
+        const context = await engine.root.context(BACKGROUND_CONTEXT);
+        const { tokens } = estimateContextTokens(context.messages);
+        return {
+          tokens,
+          contextWindow: selected.contextWindow,
+          percent: (tokens / selected.contextWindow) * 100,
+        };
       },
-    ].filter(
-      (operation) =>
-        !options.allowedCakeOperations || options.allowedCakeOperations.includes(operation.command),
-    ),
+      compact: async () => {
+        await runtime.compact();
+        return { compacted: true };
+      },
+      setModel: async (model) => {
+        await runtime.applyConfiguration(model);
+      },
+    }),
   );
   const registry = createRegistry();
   const parameters = Schema.toStandardJSONSchemaV1(cakeToolEnvelopeSchema)[
@@ -265,7 +218,7 @@ export async function createDurableCakeChatRuntime(
       const result = await operations.invoke(input, {
         signal: context.abortSignal ?? new AbortController().signal,
         toolCallId: api.callId,
-        runtime: api,
+        runtime: { sessionId, model: { provider: selected.provider, id: selected.id } },
         onUpdate: (value) => {
           void api.details(copyJson(value), context).catch(() => undefined);
         },

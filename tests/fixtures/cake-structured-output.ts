@@ -1,5 +1,5 @@
 import type { ArtifactProjectionMetadata } from "../../src/contracts/artifacts/artifact-projection-data";
-import type { CakeArtifactOperationOptions } from "../../src/services/pi/runtime/cake-artifact-operations";
+import type { CakeArtifactOperationOptions } from "../../src/contracts/artifacts/artifact-agent-control";
 
 export function artifactMetadata(id = "design-plan"): ArtifactProjectionMetadata {
   return {

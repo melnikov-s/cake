@@ -7,7 +7,7 @@ import type { CakeModelPresetCatalog } from "../contracts/model-presets/cake-mod
 import type { WorktreeLandingCoordinator } from "../contracts/worktrees/worktree-contract";
 import type { JsonValue } from "../contracts/serialization/json-contract";
 import type { ProjectSessionControlInvocation } from "../contracts/project-sessions/project-session-data";
-import type { VscodeActionResult } from "../services/vscode/VsCodeServer";
+import type { VscodeActionResult } from "../contracts/vscode/vscode-action-result";
 import {
   parseArtifactInput,
   type ArtifactRecord,
@@ -23,9 +23,11 @@ import {
   runInlineWidgetGeneration,
   runInlineWidgetRepair,
   runInlineWidgetVisualReview,
+} from "../services/pi/runtime/sidecar-runtime";
+import {
   type InlineWidgetRevisionRequest,
   type InlineWidgetGenerationRequest,
-} from "../services/pi/runtime/sidecar-runtime";
+} from "../contracts/widgets/widget-generation";
 import type {
   InlineWidgetGenerationRequest as WidgetReviewInput,
   InlineWidgetGenerationResult,
@@ -35,7 +37,7 @@ import type { CakeSessionRuntimeOptions } from "../services/pi/runtime/cake-sess
 import type { RuntimeUiRequest } from "../services/pi/runtime/runtime-ui-request";
 import type { ImportWorkspaceFileInput } from "../services/artifacts/importWorkspaceFile";
 import type { ArtifactProjectionMetadata } from "../contracts/artifacts/artifact-projection-data";
-import type { ResolvedAgentArtifact } from "../services/pi/runtime/cake-artifact-operations";
+import type { ResolvedAgentArtifact } from "../contracts/artifacts/artifact-agent-control";
 
 interface ArtifactRepositoryPort {
   readonly upsert: (

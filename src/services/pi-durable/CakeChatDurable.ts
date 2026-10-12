@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from "effect";
+import type { CakeOperationProviders } from "../pi/runtime/cake-operation-providers";
 import type {
   PiSessionPreview,
   PiSessionSummary,
@@ -49,7 +50,7 @@ const operation = <A>(name: string, evaluate: () => Promise<A>) =>
       }),
   });
 
-export const makeCakeChatDurableLive = () =>
+export const makeCakeChatDurableLive = (providers: CakeOperationProviders) =>
   Layer.sync(CakeChatDurable, () => {
     const inspection = createRequestInspectionHistory();
     return CakeChatDurable.of({
@@ -66,7 +67,9 @@ export const makeCakeChatDurableLive = () =>
         Effect.sync(inspection.clear),
       ),
       createRuntime: (options) =>
-        operation("createRuntime", () => createDurableCakeChatRuntime(options, inspection)),
+        operation("createRuntime", () =>
+          createDurableCakeChatRuntime(options, providers, inspection),
+        ),
       catalogEntry: (directory) =>
         operation("catalogEntry", () => readDurableChatSummary(directory)),
       inspect: (directory, sessionId) =>

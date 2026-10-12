@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import type { CakeOperationRuntime } from "../../../contracts/agent/cake-operation-context";
 import {
   jsonObjectSchema,
   jsonValueSchema,
@@ -31,7 +32,7 @@ export interface CakeOperationExecutionContext {
   signal: AbortSignal;
   toolCallId: string;
   onUpdate?(value: JsonValue): void;
-  runtime: unknown;
+  runtime: CakeOperationRuntime;
 }
 
 interface CakeOperationExample {

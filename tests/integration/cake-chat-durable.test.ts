@@ -1,3 +1,4 @@
+import { cakeOperationProviders } from "../../src/layers/CakeOperations";
 import { mkdir, mkdtemp, readFile, rm, writeFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -98,7 +99,7 @@ async function fixture() {
   });
   await legacy.setRuntimeApiKey("openai", "fixture-key");
   vi.spyOn(ModelRuntime, "create").mockResolvedValue(legacy);
-  const serviceRuntime = ManagedRuntime.make(makeCakeChatDurableLive());
+  const serviceRuntime = ManagedRuntime.make(makeCakeChatDurableLive(cakeOperationProviders));
   cleanup.push(() => serviceRuntime.dispose());
   const service = await serviceRuntime.runPromise(CakeChatDurable);
   const summarize = vi.fn<(input: { signal: AbortSignal }) => Promise<string>>(

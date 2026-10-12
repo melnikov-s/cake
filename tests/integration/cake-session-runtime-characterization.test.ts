@@ -1,3 +1,4 @@
+import { cakeOperationProviders } from "../../src/layers/CakeOperations";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -113,19 +114,22 @@ async function createFixtureRuntime(
   options: { sessionFile?: string; projectInvestigation?: boolean } = {},
 ) {
   vi.stubEnv("PI_CODING_AGENT_DIR", join(directory, "agent"));
-  const runtime = await createCakeSessionRuntime({
-    cwd: directory,
-    agentDir: join(directory, "agent"),
-    sessionDir: join(directory, "sessions"),
-    trusted: true,
-    newSession: options.sessionFile ? undefined : true,
-    sessionFile: options.sessionFile,
-    ...(options.projectInvestigation
-      ? { auxiliary: true, ephemeral: true, projectInvestigation: true }
-      : {}),
-    requestUi: async () => undefined,
-    onEvent: (event) => events.push(event),
-  });
+  const runtime = await createCakeSessionRuntime(
+    {
+      cwd: directory,
+      agentDir: join(directory, "agent"),
+      sessionDir: join(directory, "sessions"),
+      trusted: true,
+      newSession: options.sessionFile ? undefined : true,
+      sessionFile: options.sessionFile,
+      ...(options.projectInvestigation
+        ? { auxiliary: true, ephemeral: true, projectInvestigation: true }
+        : {}),
+      requestUi: async () => undefined,
+      onEvent: (event) => events.push(event),
+    },
+    cakeOperationProviders,
+  );
   runtimes.push(runtime);
   await runtime.setModel("fixture-provider", "fixture-model");
   events.length = 0;
@@ -364,15 +368,18 @@ describe("CakeSessionRuntime characterization", () => {
     const file = manager.getSessionFile()!;
     expect(file.startsWith(paths.piSessions)).toBe(true);
     terminal.session.dispose();
-    const runtime = await createCakeSessionRuntime({
-      cwd: directory,
-      agentDir: paths.piAgent,
-      sessionDir: paths.piSessions,
-      trusted: true,
-      sessionId: id,
-      requestUi: async () => undefined,
-      onEvent: () => {},
-    });
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd: directory,
+        agentDir: paths.piAgent,
+        sessionDir: paths.piSessions,
+        trusted: true,
+        sessionId: id,
+        requestUi: async () => undefined,
+        onEvent: () => {},
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
     expect(runtime.sessionId).toBe(id);
     expect(runtime.sessionFile).toBe(file);

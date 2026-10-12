@@ -1,11 +1,10 @@
-import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { Schema } from "effect";
 import {
   NonChatModelReference,
   NonChatModelType,
   type NonChatModelPreferences,
-} from "../../../contracts/models/non-chat-model-data";
-import type { CakeOperationDefinition } from "./cake-operation-registry";
+} from "../../contracts/models/non-chat-model-data";
+import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
 
 const selectionInput = Schema.Struct({
   type: NonChatModelType,
@@ -25,7 +24,13 @@ const selectionOutput = Schema.Struct({
 /** Selection only: execution and request-time credentials remain Pi's native codemode responsibility. */
 export function createCakeNonChatModelOperations(
   readPreferences: () => NonChatModelPreferences,
-  runtime: Pick<ModelRuntime, "getAvailableOfType">,
+  runtime: {
+    getAvailableOfType(
+      type: typeof NonChatModelType.Type,
+      provider: undefined,
+      options: { signal: AbortSignal },
+    ): Promise<ReadonlyArray<{ provider: string; id: string }>>;
+  },
 ): CakeOperationDefinition[] {
   return [
     {

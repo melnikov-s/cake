@@ -1,11 +1,11 @@
+import type { BrowserControl } from "../../contracts/browser/browser-agent-control";
 import { Option, Schema } from "effect";
+import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
+
 import {
-  jsonObjectSchema,
-  type JsonObject,
-  type JsonValue,
-} from "../../../contracts/serialization/json-contract";
-import type { BrowserActionResult } from "../../browser/Browser";
-import { cakeOperationImageResult, type CakeOperationDefinition } from "./cake-operation-registry";
+  cakeOperationImageResult,
+  type CakeOperationDefinition,
+} from "../../services/pi/runtime/cake-operation-registry";
 
 const browserEnterInputSchema = Schema.Struct({});
 const browserCdpInputSchema = Schema.Struct({
@@ -26,21 +26,6 @@ const browserEventsInputSchema = Schema.Struct({
 
 const screenshotResultSchema = Schema.Struct({ data: Schema.String });
 type BrowserCdpInput = typeof browserCdpInputSchema.Type;
-
-export interface BrowserControl {
-  enter(signal: AbortSignal): Promise<void>;
-  cdp(
-    method: string,
-    params: JsonObject,
-    signal: AbortSignal,
-  ): Promise<BrowserActionResult<JsonValue>>;
-  events(
-    methods: ReadonlyArray<string>,
-    limit: number,
-    clear: boolean,
-    signal: AbortSignal,
-  ): Promise<BrowserActionResult<JsonValue>>;
-}
 
 function modeRequired() {
   return {

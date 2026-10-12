@@ -1,14 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ArtifactRecord } from "../../../src/contracts/artifacts/artifact-contract";
-import { createCakeArtifactOperations } from "../../../src/services/pi/runtime/cake-artifact-operations";
+import { createCakeArtifactOperations } from "../../../src/domain/artifacts/cake-artifact-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 
 const runtime = {
-  sessionManager: {
-    getSessionId: () => "session-1",
-    getSessionFile: () => "/sessions/source.jsonl",
-    getLeafId: () => "assistant-1",
-  },
+  sessionId: "session-1",
+  sessionFile: "/sessions/source.jsonl",
+  entryId: "assistant-1",
   model: { provider: "provider", id: "model" },
 };
 

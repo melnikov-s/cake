@@ -21,9 +21,7 @@ interface RequestIdentity {
 interface WorkspaceRequest extends RequestIdentity {
   readonly workspacePath: string;
 }
-export type VscodeActionResult<Value> =
-  | { readonly status: "completed"; readonly value: Value }
-  | { readonly status: "mode-required" };
+import type { VscodeActionResult } from "../../contracts/vscode/vscode-action-result";
 
 /** Backend-owned process, install, companion and exclusive desktop lease authority. */
 export class VsCodeServer extends Context.Service<

@@ -1,3 +1,4 @@
+import { cakeOperationProviders } from "../../../src/layers/CakeOperations";
 import { it } from "@effect/vitest";
 import { describe, expect, vi } from "vitest";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
@@ -72,6 +73,7 @@ describe("Workflow workers", () => {
       if (!options) return;
       const capabilities = yield* Effect.promise(() =>
         createCakeSessionRuntimeCapabilities({
+          providers: cakeOperationProviders,
           options,
           agentDir: options.agentDir,
           settingsManager: SettingsManager.inMemory(),
@@ -114,6 +116,7 @@ describe("Workflow workers", () => {
         if (!options) return;
         const capabilities = yield* Effect.promise(() =>
           createCakeSessionRuntimeCapabilities({
+            providers: cakeOperationProviders,
             options: {
               ...options,
               cwd: resolve("tests/app/services/fixtures/workflow-project"),

@@ -29,9 +29,9 @@ import { mergePiExecutionSetting } from "../../../src/services/pi/live/PiSetting
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
-import { createCakeSettingsOperations } from "../../../src/services/pi/runtime/cake-settings-operations";
-import { createGlobalControlOperations } from "../../../src/services/pi/runtime/cake-session-runtime-capabilities";
-import { createCakeNonChatModelOperations } from "../../../src/services/pi/runtime/cake-non-chat-model-operations";
+import { createCakeSettingsOperations } from "../../../src/domain/application/cake-settings-operations";
+import { createGlobalControlOperations } from "../../../src/domain/application/cake-global-control-operations";
+import { createCakeNonChatModelOperations } from "../../../src/domain/model-preferences/cake-non-chat-model-operations";
 import {
   listAppControlTools,
   listSessionAssistantControlTools,
@@ -220,7 +220,7 @@ async function fixture(trusted = true) {
   });
   const registry = new CakeOperationRegistry(createCakeSettingsOperations(dispatch));
   const call = (command: string, input: JsonObject = {}, signal = new AbortController().signal) =>
-    registry.invoke({ command, input }, { signal, toolCallId: "settings-test", runtime: null });
+    registry.invoke({ command, input }, { signal, toolCallId: "settings-test", runtime: {} });
   return {
     root,
     runtime,
@@ -273,7 +273,7 @@ describe("Agent Settings through the real application-control/Client/domain boun
         (
           await cakeChat.invoke(
             { command: "settings.models.get" },
-            { signal: new AbortController().signal, toolCallId: "cake-chat", runtime: null },
+            { signal: new AbortController().signal, toolCallId: "cake-chat", runtime: {} },
           )
         ).structuredContent,
       ).toMatchObject({
@@ -527,7 +527,7 @@ describe("Agent Settings through the real application-control/Client/domain boun
       const select = (input: JsonObject) =>
         native.invoke(
           { command: "models.select-non-chat", input },
-          { signal: new AbortController().signal, toolCallId: "native", runtime: null },
+          { signal: new AbortController().signal, toolCallId: "native", runtime: {} },
         );
       expect((await select({ type: "image" })).structuredContent).toMatchObject({
         result: { source: "preference", model: { id: "image-a" } },

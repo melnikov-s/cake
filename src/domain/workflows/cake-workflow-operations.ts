@@ -1,3 +1,4 @@
+import type { WorkflowControl } from "../../contracts/workflows/workflow-agent-control";
 import { Schema } from "effect";
 import {
   WorkflowOwner,
@@ -6,15 +7,10 @@ import {
   WorkflowSaveInput,
   WorkflowStartInput,
   WorkflowWorkerTarget,
-} from "../../../contracts/workflows/workflow-data";
-import type { JsonObject, JsonValue } from "../../../contracts/serialization/json-contract";
-import type { CakeOperationDefinition } from "./cake-operation-registry";
-import { workflowAuthoringReference } from "./workflow-authoring";
+} from "../../contracts/workflows/workflow-data";
 
-export interface WorkflowControl {
-  isEnabled(): boolean;
-  invoke(command: string, input: JsonObject, signal: AbortSignal): Promise<JsonValue>;
-}
+import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
+import { workflowAuthoringReference } from "../../services/pi/runtime/workflow-authoring";
 
 /** Project-owned execution is explicit even when called from permanent Cake Chat. */
 export function createCakeWorkflowOperations(control: WorkflowControl): CakeOperationDefinition[] {

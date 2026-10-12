@@ -2,8 +2,8 @@ import { Schema } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { resolveCakeModelSelection } from "../../../src/domain/model-presets/cake-model-selection";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
-import { createAgentControlOperations } from "../../../src/services/pi/runtime/cake-session-runtime";
-import { subagentTaskSchema } from "../../../src/services/pi/runtime/subagent-contract";
+import { createAgentControlOperations } from "../../../src/domain/subagents/cake-subagent-operations";
+import { subagentTaskSchema } from "../../../src/contracts/subagents/subagent-tool-input";
 
 describe("subagent contract", () => {
   it("accepts one general-purpose subagent task shape", () => {

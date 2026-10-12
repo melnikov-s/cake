@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
-import { createGlobalControlOperations } from "../../../src/services/pi/runtime/cake-session-runtime-capabilities";
+import { createGlobalControlOperations } from "../../../src/domain/application/cake-global-control-operations";
 import type { Client } from "../../../src/renderer/client/Client";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";

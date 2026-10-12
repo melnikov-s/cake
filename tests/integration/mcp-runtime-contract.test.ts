@@ -1,3 +1,4 @@
+import { cakeOperationProviders } from "../../src/layers/CakeOperations";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createAssistantMessageEventStream, type AssistantMessage } from "@earendil-works/pi-ai";
@@ -600,30 +601,33 @@ describe("Cake native MCP runtime contract", () => {
         );
         const intents: ExtensionUiIntent[] = [];
         const inputs: string[] = [];
-        const runtime = await createCakeSessionRuntime({
-          cwd,
-          agentDir,
-          trusted: true,
-          sessionDir: join(cwd, "sessions"),
-          newSession: true,
-          onEvent: () => {},
-          emitExtensionUiIntent: (intent) => intents.push(intent),
-          requestUi: async (request) => {
-            expect(request.kind).toBe("text");
-            inputs.push(request.title);
-            if (!complete) return undefined;
-            const notice = intents.findLast(
-              (intent) => intent.kind === "notify" && intent.message.includes("/authorize"),
-            );
-            if (!notice || notice.kind !== "notify")
-              throw new Error("Authorization URL was not shown");
-            const authorization = new URL(notice.message.split("\n").at(-1) ?? "");
-            const redirect = new URL(authorization.searchParams.get("redirect_uri") ?? "");
-            redirect.searchParams.set("code", "fixture-code");
-            redirect.searchParams.set("state", authorization.searchParams.get("state") ?? "");
-            return redirect.href;
+        const runtime = await createCakeSessionRuntime(
+          {
+            cwd,
+            agentDir,
+            trusted: true,
+            sessionDir: join(cwd, "sessions"),
+            newSession: true,
+            onEvent: () => {},
+            emitExtensionUiIntent: (intent) => intents.push(intent),
+            requestUi: async (request) => {
+              expect(request.kind).toBe("text");
+              inputs.push(request.title);
+              if (!complete) return undefined;
+              const notice = intents.findLast(
+                (intent) => intent.kind === "notify" && intent.message.includes("/authorize"),
+              );
+              if (!notice || notice.kind !== "notify")
+                throw new Error("Authorization URL was not shown");
+              const authorization = new URL(notice.message.split("\n").at(-1) ?? "");
+              const redirect = new URL(authorization.searchParams.get("redirect_uri") ?? "");
+              redirect.searchParams.set("code", "fixture-code");
+              redirect.searchParams.set("state", authorization.searchParams.get("state") ?? "");
+              return redirect.href;
+            },
           },
-        });
+          cakeOperationProviders,
+        );
         runtimes.push(runtime);
         await runtime.prompt("/mcp", "prompt", []);
         await runtime.prompt("/mcp login oauth", "prompt", []);
@@ -668,16 +672,19 @@ describe("Cake native MCP runtime contract", () => {
       `import { appendFile } from 'node:fs/promises'; export default (pi) => { pi.on('session_shutdown', async (event, ctx) => { await appendFile(${JSON.stringify(trace)}, event.reason + ':' + ctx.cwd + '\\n'); }); };`,
     );
     const intents: ExtensionUiIntent[] = [];
-    const runtime = await createCakeSessionRuntime({
-      cwd,
-      agentDir,
-      trusted: true,
-      sessionDir: join(cwd, "sessions"),
-      newSession: true,
-      requestUi: async () => undefined,
-      emitExtensionUiIntent: (intent) => intents.push(intent),
-      onEvent: () => {},
-    });
+    const runtime = await createCakeSessionRuntime(
+      {
+        cwd,
+        agentDir,
+        trusted: true,
+        sessionDir: join(cwd, "sessions"),
+        newSession: true,
+        requestUi: async () => undefined,
+        emitExtensionUiIntent: (intent) => intents.push(intent),
+        onEvent: () => {},
+      },
+      cakeOperationProviders,
+    );
     runtimes.push(runtime);
     expect((await runtime.snapshot()).commands.some((command) => command.name === "mcp")).toBe(
       true,

@@ -2,13 +2,13 @@ import { Schema } from "effect";
 import {
   agentSettingsOperations,
   agentSettingsGuidance,
-} from "../../../contracts/application/agent-settings-schema";
+} from "../../contracts/application/agent-settings-schema";
 import {
   jsonObjectSchema,
   type JsonObject,
   type JsonValue,
-} from "../../../contracts/serialization/json-contract";
-import type { CakeOperationDefinition } from "./cake-operation-registry";
+} from "../../contracts/serialization/json-contract";
+import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
 
 export function createCakeSettingsOperations(
   invoke: (command: string, input: JsonObject, signal: AbortSignal) => Promise<JsonValue>,

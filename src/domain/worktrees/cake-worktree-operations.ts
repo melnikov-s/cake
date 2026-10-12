@@ -1,15 +1,12 @@
+import type { WorktreeLandingControl } from "../../contracts/worktrees/worktree-agent-control";
 import { Schema } from "effect";
-import type { CakeOperationDefinition } from "./cake-operation-registry";
+import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
 
 const proposeSquashMessageInputSchema = Schema.Struct({
   subject: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(200))),
   body: Schema.optionalKey(Schema.Trim.pipe(Schema.check(Schema.isMaxLength(4_000)))),
 });
 type ProposeSquashMessageInput = typeof proposeSquashMessageInputSchema.Type;
-
-export interface WorktreeLandingControl {
-  proposeSquashMessage(message: { subject: string; body?: string }): Promise<void>;
-}
 
 export function createCakeWorktreeOperations(
   control: WorktreeLandingControl,

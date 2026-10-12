@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { generateReviewedWidget } from "../../../../src/domain/widgets/widgetGenerationReview";
 import { ProjectSessionIntegrationHost } from "../../../../src/layers/ProjectSessionIntegrationHost";
-import type { InlineWidgetGenerationRequest } from "../../../../src/services/pi/runtime/sidecar-runtime";
+import type { InlineWidgetGenerationRequest } from "../../../../src/contracts/widgets/widget-generation";
 import { RenderedWidgetCaptureError } from "../../../../src/contracts/widgets/rendered-widget-capture-errors";
 import { inlineWidgetDocument } from "../../../../src/services/widgets/inline-widget-document-registry";
 

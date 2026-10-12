@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { JsonValue } from "../../../src/contracts/serialization/json-contract";
-import type { BrowserActionResult } from "../../../src/services/browser/Browser";
-import { createCakeBrowserOperations } from "../../../src/services/pi/runtime/cake-browser-operations";
+import type { BrowserActionResult } from "../../../src/contracts/browser/browser-action-result";
+import { createCakeBrowserOperations } from "../../../src/domain/browser/cake-browser-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 
 function harness() {

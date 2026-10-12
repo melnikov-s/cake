@@ -73,7 +73,7 @@ it("Chromium imports a published companion in the shared shell and dispatches it
                 },
               ],
               errors: [],
-              runtime: undefined,
+              runtime: {},
             }),
           } as unknown as ResourceLoader),
         ),

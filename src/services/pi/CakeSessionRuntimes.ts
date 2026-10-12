@@ -1,3 +1,4 @@
+import type { CakeOperationProviders } from "./runtime/cake-operation-providers";
 import {
   Context,
   Deferred,
@@ -1199,11 +1200,9 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
 const coordinatorDirectory = (directory: string) =>
   /(?:^|[/\\])global-chat[/\\]sessions$/.test(directory);
 
-export const makeCakeSessionRuntimesLive = (): Layer.Layer<
-  CakeSessionRuntimes,
-  never,
-  CakeChatDurable
-> =>
+export const makeCakeSessionRuntimesLive = (
+  providers: CakeOperationProviders,
+): Layer.Layer<CakeSessionRuntimes, never, CakeChatDurable> =>
   Layer.unwrap(
     Effect.gen(function* () {
       const durable = yield* CakeChatDurable;
@@ -1262,7 +1261,7 @@ export const makeCakeSessionRuntimesLive = (): Layer.Layer<
           options.globalControl
             ? durable.createRuntime(options)
             : Effect.tryPromise({
-                try: () => createCakeSessionRuntime(options),
+                try: () => createCakeSessionRuntime(options, providers),
                 catch: (cause) => cause,
               }),
         changelog: () => Effect.sync(loadPiChangelog),

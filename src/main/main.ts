@@ -9,7 +9,7 @@ import * as messageBoards from "../domain/artifacts/messageBoards";
 import type { JsonValue } from "../contracts/serialization/json-contract";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
-import { createCakeArtifactOperations } from "../services/pi/runtime/cake-artifact-operations";
+import { createCakeArtifactOperations } from "../domain/artifacts/cake-artifact-operations";
 import { CakeOperationRegistry } from "../services/pi/runtime/cake-operation-registry";
 import { WorkflowSandbox } from "../services/pi/WorkflowSandbox";
 import { WorkflowProgram } from "../contracts/workflows/workflow-data";
@@ -305,11 +305,9 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
             signal: controller.signal,
             toolCallId: "smoke-publication",
             runtime: {
-              sessionManager: {
-                getSessionId: () => input.sessionId,
-                getSessionFile: () => "/smoke/parent.jsonl",
-                getLeafId: () => "smoke-assistant",
-              },
+              sessionId: input.sessionId,
+              sessionFile: "/smoke/parent.jsonl",
+              entryId: "smoke-assistant",
             },
           };
           const publication = yield* Effect.promise(() =>

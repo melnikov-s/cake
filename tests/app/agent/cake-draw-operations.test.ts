@@ -1,10 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { createCakeToolDefinition } from "../../../src/services/pi/runtime/cake-session-runtime-capabilities";
-import {
-  createCakeDrawOperations,
-  type CakeDrawControl,
-} from "../../../src/services/pi/runtime/cake-draw-operations";
+import { createCakeDrawOperations } from "../../../src/domain/draw/cake-draw-operations";
+import { type CakeDrawControl } from "../../../src/contracts/draw/draw-agent-control";
 
 const tinyPng =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
@@ -436,7 +434,14 @@ describe("Cake Draw operations", () => {
       { command: "draw.render", input: { scope: "viewport" } },
       new AbortController().signal,
       undefined,
-      {} as never,
+      {
+        sessionManager: {
+          getSessionId: () => "session-1",
+          getSessionFile: () => undefined,
+          getLeafId: () => null,
+          getBranch: () => [],
+        },
+      } as never,
     );
     expect(nativeResult.content).toContainEqual({
       type: "image",

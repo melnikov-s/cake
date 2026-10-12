@@ -3,9 +3,9 @@ import {
   jsonObjectSchema,
   jsonValueSchema,
   type JsonValue,
-} from "../../../contracts/serialization/json-contract";
-import type { VscodeActionResult } from "../../vscode/VsCodeServer";
-import type { CakeOperationDefinition } from "./cake-operation-registry";
+} from "../../contracts/serialization/json-contract";
+import type { VscodeActionResult } from "../../contracts/vscode/vscode-action-result";
+import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
 
 interface VscodeDebugControl {
   runScript(
@@ -287,11 +287,10 @@ function modeRequired() {
 async function runDebugScript(
   control: VscodeDebugControl,
   source: string,
-  input: unknown,
+  input: JsonValue,
   signal: AbortSignal,
 ) {
-  const jsonInput = Schema.decodeUnknownSync(jsonValueSchema)(input);
-  const result = await control.runScript(source, jsonInput, signal);
+  const result = await control.runScript(source, input, signal);
   return result.status === "mode-required" ? modeRequired() : result.value;
 }
 
@@ -315,7 +314,13 @@ export function createCakeVscodeDebugOperations(
       examples: [{ input: { configuration: "Debug Current Test" } }],
       result: "Whether VS Code started debugging and the active debug-session identity.",
       limitations: [...limitation, "The corresponding language debug adapter must be installed."],
-      execute: (input, context) => runDebugScript(control, startSource, input, context.signal),
+      execute: (input, context) =>
+        runDebugScript(
+          control,
+          startSource,
+          Schema.decodeUnknownSync(jsonValueSchema)(input),
+          context.signal,
+        ),
     },
     {
       command: "vscode.debug.status",
@@ -326,7 +331,13 @@ export function createCakeVscodeDebugOperations(
       examples: [{}],
       result: "The active debug-session identity and normalized breakpoint list.",
       limitations: limitation,
-      execute: (input, context) => runDebugScript(control, statusSource, input, context.signal),
+      execute: (input, context) =>
+        runDebugScript(
+          control,
+          statusSource,
+          Schema.decodeUnknownSync(jsonValueSchema)(input),
+          context.signal,
+        ),
     },
     {
       command: "vscode.debug.setBreakpoint",
@@ -338,7 +349,12 @@ export function createCakeVscodeDebugOperations(
       result: "The normalized breakpoint location.",
       limitations: limitation,
       execute: (input, context) =>
-        runDebugScript(control, setBreakpointSource, input, context.signal),
+        runDebugScript(
+          control,
+          setBreakpointSource,
+          Schema.decodeUnknownSync(jsonValueSchema)(input),
+          context.signal,
+        ),
     },
     {
       command: "vscode.debug.clearBreakpoints",
@@ -351,7 +367,12 @@ export function createCakeVscodeDebugOperations(
       result: "The number of removed breakpoints.",
       limitations: limitation,
       execute: (input, context) =>
-        runDebugScript(control, clearBreakpointsSource, input, context.signal),
+        runDebugScript(
+          control,
+          clearBreakpointsSource,
+          Schema.decodeUnknownSync(jsonValueSchema)(input),
+          context.signal,
+        ),
     },
     {
       command: "vscode.debug.stack",
@@ -362,7 +383,13 @@ export function createCakeVscodeDebugOperations(
       examples: [{ input: { threadId: 1, levels: 20 } }],
       result: "Debug threads with their current stack frames.",
       limitations: [...limitation, "Stack traces generally require the target to be paused."],
-      execute: (input, context) => runDebugScript(control, stackSource, input, context.signal),
+      execute: (input, context) =>
+        runDebugScript(
+          control,
+          stackSource,
+          Schema.decodeUnknownSync(jsonValueSchema)(input),
+          context.signal,
+        ),
     },
     {
       command: "vscode.debug.scopes",
@@ -373,7 +400,13 @@ export function createCakeVscodeDebugOperations(
       examples: [{ input: { frameId: 7 } }],
       result: "Scopes and variable references for the requested stack frame.",
       limitations: limitation,
-      execute: (input, context) => runDebugScript(control, scopesSource, input, context.signal),
+      execute: (input, context) =>
+        runDebugScript(
+          control,
+          scopesSource,
+          Schema.decodeUnknownSync(jsonValueSchema)(input),
+          context.signal,
+        ),
     },
     {
       command: "vscode.debug.variables",
@@ -384,7 +417,13 @@ export function createCakeVscodeDebugOperations(
       examples: [{ input: { variablesReference: 12, count: 100 } }],
       result: "Variables for the requested debugger variable reference.",
       limitations: limitation,
-      execute: (input, context) => runDebugScript(control, variablesSource, input, context.signal),
+      execute: (input, context) =>
+        runDebugScript(
+          control,
+          variablesSource,
+          Schema.decodeUnknownSync(jsonValueSchema)(input),
+          context.signal,
+        ),
     },
     {
       command: "vscode.debug.evaluate",
@@ -395,7 +434,13 @@ export function createCakeVscodeDebugOperations(
       examples: [{ input: { expression: "user.id", frameId: 7, context: "watch" } }],
       result: "The debug adapter's evaluation result and optional expandable variable reference.",
       limitations: [...limitation, "Evaluation can execute code in the debug target."],
-      execute: (input, context) => runDebugScript(control, evaluateSource, input, context.signal),
+      execute: (input, context) =>
+        runDebugScript(
+          control,
+          evaluateSource,
+          Schema.decodeUnknownSync(jsonValueSchema)(input),
+          context.signal,
+        ),
     },
     {
       command: "vscode.debug.control",
@@ -406,7 +451,13 @@ export function createCakeVscodeDebugOperations(
       examples: [{ input: { action: "next", threadId: 1 } }],
       result: "Confirmation that the debug adapter accepted the control request.",
       limitations: limitation,
-      execute: (input, context) => runDebugScript(control, controlSource, input, context.signal),
+      execute: (input, context) =>
+        runDebugScript(
+          control,
+          controlSource,
+          Schema.decodeUnknownSync(jsonValueSchema)(input),
+          context.signal,
+        ),
     },
     {
       command: "vscode.debug.stop",
@@ -417,7 +468,13 @@ export function createCakeVscodeDebugOperations(
       examples: [{}],
       result: "Whether VS Code stopped the active debug session.",
       limitations: limitation,
-      execute: (input, context) => runDebugScript(control, stopSource, input, context.signal),
+      execute: (input, context) =>
+        runDebugScript(
+          control,
+          stopSource,
+          Schema.decodeUnknownSync(jsonValueSchema)(input),
+          context.signal,
+        ),
     },
   ];
 }

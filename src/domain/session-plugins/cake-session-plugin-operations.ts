@@ -1,15 +1,15 @@
+import type { SessionPluginControl } from "../../contracts/application/session-plugin-agent-control";
 import { Schema } from "effect";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { captureWidgetConversation } from "./widget-conversation";
-import { SessionPluginControls } from "../../../contracts/application/session-plugin-controls";
-import type { SessionPlugin } from "../../../contracts/application/application-data";
+import { widgetConversationFromOperation } from "../widgets/widgetOperationContext";
+import { SessionPluginControls } from "../../contracts/application/session-plugin-controls";
+
 import {
   jsonObjectSchema,
   type JsonObject,
   type JsonValue,
-} from "../../../contracts/serialization/json-contract";
-import type { InlineWidgetGenerationRequest } from "./sidecar-runtime";
-import type { CakeOperationDefinition } from "./cake-operation-registry";
+} from "../../contracts/serialization/json-contract";
+
+import type { CakeOperationDefinition } from "../../services/pi/runtime/cake-operation-registry";
 
 const pluginId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const identity = {
@@ -29,18 +29,6 @@ const pluginBrief = Schema.Union([
     initialState: SessionPluginControls,
   }),
 ]);
-
-export interface SessionPluginControl {
-  readonly sessionId: string;
-  readonly generate: (input: InlineWidgetGenerationRequest) => Promise<{
-    readonly source: string;
-    readonly generationSessionId: string;
-  }>;
-  readonly present: (plugin: SessionPlugin) => Promise<void>;
-  readonly setState: (pluginId: string, state: JsonValue) => Promise<void>;
-  readonly patchState: (pluginId: string, patch: JsonObject) => Promise<void>;
-  readonly delete: (pluginId: string) => Promise<void>;
-}
 
 export function createCakeSessionPluginOperations(
   control: SessionPluginControl,
@@ -160,25 +148,12 @@ export function createCakeSessionPluginOperations(
         }
         const generated = await control.generate({
           sessionId: control.sessionId,
-          // SAFETY: the Cake gateway supplies Pi's validated tool runtime context.
-          parentConversation: captureWidgetConversation(context.runtime as ExtensionContext),
+          parentConversation: widgetConversationFromOperation(context.runtime),
           brief: request.brief,
           data: request.data,
           initialState: request.initialState ?? null,
           fallback: request.title,
-          model:
-            typeof context.runtime === "object" &&
-            context.runtime !== null &&
-            "model" in context.runtime &&
-            typeof context.runtime.model === "object" &&
-            context.runtime.model !== null &&
-            "provider" in context.runtime.model &&
-            "id" in context.runtime.model
-              ? {
-                  provider: String(context.runtime.model.provider),
-                  id: String(context.runtime.model.id),
-                }
-              : undefined,
+          model: context.runtime.model,
           surface: "session-plugin",
           signal: context.signal,
         });

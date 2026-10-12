@@ -64,7 +64,7 @@ async function fixture(packageName: string): Promise<ResourceLoader> {
         },
       ],
       errors: [],
-      runtime: undefined,
+      runtime: {},
     }),
   } as unknown as ResourceLoader;
 }
