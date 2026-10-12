@@ -279,9 +279,9 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
           sessionId,
         )
         .pipe(asError("catalog"));
-      const turnIds = yield* sessions.currentTurnIds({ ...location, sessionId });
+      const status = yield* sessions.currentStatus({ ...location, sessionId });
       return item
-        ? summary(item, location, resolved, unread, turnIds.length > 0, family)
+        ? summary(item, location, resolved, unread, status?.streaming ?? false, family)
         : undefined;
     }),
   );
@@ -386,9 +386,11 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
           Stream.filter((item) => !familyByMember.has(item.id)),
           Stream.mapEffect((item) =>
             sessions
-              .currentTurnIds({ ...location, sessionId: item.id })
+              .currentStatus({ ...location, sessionId: item.id })
               .pipe(
-                Effect.map((turnIds) => summary(item, location, false, unread, turnIds.length > 0)),
+                Effect.map((status) =>
+                  summary(item, location, false, unread, status?.streaming ?? false),
+                ),
               ),
           ),
           Stream.catch(() => Stream.empty),
@@ -447,7 +449,7 @@ const catalogEventForSessionChange = Effect.fn("ProjectSessions.catalogEventForS
       },
       change.sessionId,
     );
-    const turnIds = yield* sessions.currentTurnIds({ ...location, sessionId: change.sessionId });
+    const status = yield* sessions.currentStatus({ ...location, sessionId: change.sessionId });
     return item
       ? ({
           _tag: "Upserted",
@@ -456,7 +458,7 @@ const catalogEventForSessionChange = Effect.fn("ProjectSessions.catalogEventForS
             location,
             false,
             new Set(state.unreadSessionIds),
-            turnIds.length > 0,
+            status?.streaming ?? false,
             family,
           ),
         } as const)
@@ -470,11 +472,11 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
 ) {
   if (change._tag === "ProjectSessionActivityChanged") {
     if (change.projectPath !== query.projectPath || query.resolved) return undefined;
-    const turnIds = yield* (yield* CakeSessionRuntimes).currentTurnIds(change);
+    const status = yield* (yield* CakeSessionRuntimes).currentStatus(change);
     return {
       _tag: "ActivityChanged",
       sessionId: change.sessionId,
-      running: turnIds.length > 0,
+      running: status?.streaming ?? false,
     } as const;
   }
   if (change._tag === "ProjectSessionRemoved")

@@ -129,7 +129,7 @@ afterEach(cleanup);
 for (const kind of ["project-session"] as const) {
   describe(`${kind} sidebar order`, () => {
     it.each(["complete", "failed", "aborted"] as const)(
-      "shows accepted work before streaming and clears running only after %s settlement",
+      "shows accepted work before streaming and clears running when Pi stops before %s bookkeeping",
       async (outcome) => {
         using fixture = renderOrdering();
         const sessionId = "previous";
@@ -152,8 +152,8 @@ for (const kind of ["project-session"] as const) {
         fixture.publishEvent({ _tag: "StreamingChanged", sessionId, streaming: true });
         expect(running()).not.toBeNull();
         fixture.publishEvent({ _tag: "StreamingChanged", sessionId, streaming: false });
-        // Streaming ends before settlement; the accepted turn still owns active work.
-        expect(running()).not.toBeNull();
+        // Pi has stopped; delayed correlation bookkeeping is not agent work.
+        expect(running()).toBeNull();
         fixture.publishEvent({ _tag: "TurnSettled", sessionId, turnId, outcome });
         expect(running()).toBeNull();
       },

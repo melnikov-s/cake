@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
-import { Context, Deferred, Effect, Exit, Fiber, Layer, Option, Ref, Scope, Stream } from "effect";
+import {
+  Context,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Option,
+  Queue,
+  Ref,
+  Scope,
+  Stream,
+} from "effect";
 import { describe } from "vitest";
 import {
   makeCakeSessionRuntimesLayer,
@@ -234,6 +246,66 @@ describe("CakeSessionRuntimes", () => {
           { text: "withdrawn", outcome: "aborted" },
         ],
       );
+    }),
+  );
+
+  it.effect("projects queued input and completed Pi runs as idle before bookkeeping settles", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const activity = yield* Queue.unbounded<void>();
+      let streaming = false;
+      let executingIds: string[] = [];
+      let emitStreaming: (value: boolean) => void = () => undefined;
+      const layer = makeCakeSessionRuntimesLayer({
+        sessionIds: () => Stream.empty,
+        catalog: () => Stream.empty,
+        catalogEntry: () => Effect.succeed(undefined),
+        inspect: () => Effect.succeed(undefined),
+        changelog: () => Effect.succeed(""),
+        createRuntime: (runtimeOptions) => {
+          emitStreaming = (value) => {
+            streaming = value;
+            runtimeOptions.onEvent({ type: "streaming", sessionId: "session-1", streaming: value });
+          };
+          return Effect.succeed({
+            ...fakeRuntime(runtimeOptions, () => undefined),
+            get streaming() {
+              return streaming;
+            },
+            executingTurnIds: () => executingIds,
+            prompt: () =>
+              Effect.runPromise(
+                Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(release))),
+              ),
+          });
+        },
+      });
+      const context = yield* Layer.build(layer);
+      const sessions = Context.get(context, CakeSessionRuntimes);
+      const handle = yield* sessions.acquire({
+        ...options(),
+        onTurnActivityChanged: Queue.offer(activity, undefined).pipe(Effect.asVoid),
+      });
+      const target = {
+        workingDirectory: "/project",
+        sessionDirectory: "/sessions",
+        sessionId: "session-1",
+      };
+      const turnId = yield* handle.followUp("Queued work");
+      yield* Deferred.await(started);
+      yield* Queue.take(activity);
+      assert.equal((yield* sessions.currentStatus(target))?.streaming, false);
+      executingIds = [turnId];
+      emitStreaming(true);
+      yield* Queue.take(activity);
+      assert.equal((yield* sessions.currentStatus(target))?.streaming, true);
+      emitStreaming(false);
+      yield* Queue.take(activity);
+      assert.equal((yield* sessions.currentStatus(target))?.streaming, false);
+      // The correlation still exists, but the actual Pi run has ended.
+      assert.deepEqual(yield* handle.currentTurnIds(), [turnId]);
+      yield* Deferred.succeed(release, undefined);
     }),
   );
 

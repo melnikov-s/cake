@@ -73,10 +73,13 @@ lifecycle, Project, and catalog sources update only their own Models. None of
 those updates rebuilds a Project Session-shaped payload or replaces the
 Conversation projection.
 
-The lightweight Project Session catalog also projects whether the runtime has
-accepted turns. Its initial snapshot and activity events update sidebar indicators
-without demanding a Conversation observation or selecting the session. Activity
-is runtime-derived and is not persisted as session metadata.
+The lightweight Project Session catalog projects active Pi work, including prompt
+preparation before streaming starts, but not queued follow-ups or turn correlations
+retained after Pi settles. Pi activity transitions and acceptance/settlement events
+refresh sidebar indicators without demanding a Conversation observation or selecting
+the session. Activity is runtime-derived and is not persisted as session metadata.
+Conversation activity likewise clears when Pi stops, independently of later turn
+completion bookkeeping.
 
 ## Relationship language
 

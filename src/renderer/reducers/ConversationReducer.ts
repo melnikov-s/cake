@@ -156,8 +156,11 @@ function applyConversationEvent(model: Conversation, event: ConversationEvent) {
         model.sessionId,
       );
     else if (event._tag === "PartRemoved") removePart(model.parts, event.partId);
-    else if (event._tag === "StreamingChanged") model.streaming = event.streaming;
-    else if (event._tag === "UsageUpdated")
+    else if (event._tag === "StreamingChanged") {
+      model.streaming = event.streaming;
+      // Pi's settled run ends activity even if correlation bookkeeping follows later.
+      if (!event.streaming) model.activeTurnIds.splice(0);
+    } else if (event._tag === "UsageUpdated")
       model.usage = Schema.decodeUnknownSync(sessionUsageSchema)(event.usage);
     else if (event._tag === "TurnAccepted") {
       // Follow-ups are queued input, not active work. Pi's streaming projection

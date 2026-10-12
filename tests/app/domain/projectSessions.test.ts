@@ -2036,11 +2036,14 @@ describe("Project Sessions domain", () => {
   );
 
   it.effect.each(["complete", "failed", "aborted"] as const)(
-    "projects unopened family child activity through the catalog until %s settlement",
+    "clears unopened family child activity when Pi stops before %s bookkeeping",
     (outcome) =>
       Effect.gen(function* () {
         const finished = yield* Deferred.make<void, Error>();
         const started = yield* Deferred.make<void>();
+        let streaming = false;
+        let executingIds: string[] = [];
+        let stopPi = () => undefined;
         const layer = makeLayer(undefined, {
           family: {
             familyId: "family",
@@ -2051,10 +2054,29 @@ describe("Project Sessions domain", () => {
             children: [{ sessionId: "session-1", requestId: "child", createdAt: "2026-01-01" }],
           },
           catalog: () => Stream.make(sessionSummary("parent"), sessionSummary("session-1")),
-          prompt: () =>
-            Effect.runPromise(
-              Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(finished))),
-            ),
+          runtime: (options) => {
+            stopPi = () => {
+              streaming = false;
+              options.onEvent({ type: "streaming", sessionId: "session-1", streaming: false });
+            };
+            return {
+              ...fakeRuntime(options),
+              get streaming() {
+                return streaming;
+              },
+              executingTurnIds: () => executingIds,
+              prompt: (_text, _delivery, _attachments, _markdown, turnId) => {
+                executingIds = turnId ? [turnId] : [];
+                streaming = true;
+                options.onEvent({ type: "streaming", sessionId: "session-1", streaming: true });
+                return Effect.runPromise(
+                  Deferred.succeed(started, undefined).pipe(
+                    Effect.andThen(Deferred.await(finished)),
+                  ),
+                );
+              },
+            };
+          },
         });
         yield* Effect.gen(function* () {
           const query = { projectPath: "/project", resolved: false };
@@ -2097,6 +2119,23 @@ describe("Project Sessions domain", () => {
             true,
           );
           yield* Deferred.await(started);
+          // Consume the activity notification for Pi's start, then stop Pi while
+          // the accepted prompt still awaits its completion bookkeeping.
+          applySessionCatalogGroupUpdate(catalog, query, yield* Queue.take(received));
+          stopPi();
+          applySessionCatalogGroupUpdate(catalog, query, yield* Queue.take(received));
+          assert.equal(catalog.find("session-1")?.running, false);
+          assert.equal((yield* handle.currentTurnIds()).length, 1);
+          const idleReconnect = yield* (yield* projectSessionMetadata.observeCatalog(query)).pipe(
+            Stream.take(1),
+            Stream.runCollect,
+          );
+          assert.equal(
+            idleReconnect[0]?._tag === "Snapshot" &&
+              idleReconnect[0].sessions.find((session) => session.sessionId === "session-1")
+                ?.running,
+            false,
+          );
           if (outcome === "complete") yield* Deferred.succeed(finished, undefined);
           else
             yield* Deferred.fail(

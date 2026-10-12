@@ -464,6 +464,12 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
           Effect.acquireRelease(
             Effect.gen(function* () {
               const events = yield* PubSub.unbounded<PiSessionEvent>();
+              const activityEvents = yield* PubSub.subscribe(events);
+              yield* Stream.fromSubscription(activityEvents).pipe(
+                Stream.filter((event) => event.type === "streaming"),
+                Stream.runForEach(() => key.options.onTurnActivityChanged ?? Effect.void),
+                Effect.forkScoped,
+              );
               const activeTurns = yield* Ref.make<
                 ReadonlyMap<string, "prompt" | "steer" | "follow-up">
               >(new Map());
@@ -1171,8 +1177,10 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         return {
           streaming:
             shared.runtime.streaming ||
-            [...(yield* Ref.get(shared.activeTurns)).keys()].some(
-              (id) => !shared.settledInputIds.has(id),
+            // Accepted prompts bridge preparation to Pi's first event. Queued
+            // follow-ups and correlations retained after Pi stops are not work.
+            [...(yield* Ref.get(shared.activeTurns))].some(
+              ([id, delivery]) => delivery !== "follow-up" && !shared.settledInputIds.has(id),
             ),
           pending: queued.steering.length > 0 || queued.followUp.length > 0,
           persisted: shared.runtime.sessionFile.length > 0,
