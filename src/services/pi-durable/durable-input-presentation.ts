@@ -1,6 +1,6 @@
 import { Option, Schema } from "effect";
 import type { Message } from "@earendil-works/pi-durable-ai";
-import { attachmentSchema, type Attachment } from "../../ipc/session-contract";
+import { attachmentSchema, type Attachment } from "../../contracts/conversations/session-contract";
 import { promptText } from "../pi/runtime/session-projection";
 
 const Presentation = Schema.Struct({

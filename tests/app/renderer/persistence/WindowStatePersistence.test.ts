@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { createStore, mount, snapshot, Store, toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { JsonValue } from "../../../../src/ipc/json-contract";
+import type { JsonValue } from "../../../../src/contracts/serialization/json-contract";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { createTestClient } from "../test-client";
 import { mountRootStore } from "../../../../src/renderer/bootstrap/mount-root-store";

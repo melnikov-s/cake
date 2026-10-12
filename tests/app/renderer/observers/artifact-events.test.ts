@@ -2,7 +2,7 @@ import { Effect, Queue, Schema, Stream } from "effect";
 import { createStore } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import { EffectiveArtifactProjection } from "../../../../src/contracts/artifacts/artifact-lineage";
-import type { ArtifactRecord } from "../../../../src/ipc/artifact-contract";
+import type { ArtifactRecord } from "../../../../src/contracts/artifacts/artifact-contract";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { ArtifactCatalog } from "../../../../src/renderer/models/ArtifactCatalog";

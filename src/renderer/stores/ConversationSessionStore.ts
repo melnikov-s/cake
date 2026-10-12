@@ -1,6 +1,10 @@
 import { Store, child, createStore, effect as reactiveEffect } from "r-state-tree";
 import type { Conversation } from "../models/Conversation";
-import type { ModelPreset, ConversationSnapshot, UiPart } from "../../ipc/session-contract";
+import type {
+  ModelPreset,
+  ConversationSnapshot,
+  UiPart,
+} from "../../contracts/conversations/session-contract";
 import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import type { StoreEvent } from "../events/StoreEvent";
 import {

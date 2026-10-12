@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { useMessageHighlights, type MessageHighlightAnchor } from "@/lib/message-highlights";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { FullscreenSurface } from "@/components/fullscreen-surface";
-import type { SourceLocation } from "../../ipc/source-location";
+import type { SourceLocation } from "../../contracts/editor/source-location";
 
 /** Presents arbitrary transient message content without creating a transcript entry or artifact. */
 export function FullscreenMessage({

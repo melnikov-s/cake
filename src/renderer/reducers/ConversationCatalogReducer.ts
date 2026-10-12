@@ -1,4 +1,4 @@
-import type { ConversationSnapshot } from "../../ipc/session-contract";
+import type { ConversationSnapshot } from "../../contracts/conversations/session-contract";
 import { batch } from "r-state-tree";
 import { modelOptionKey } from "../../utils/model-option-key";
 import { LlmModel } from "../models/LlmModel";

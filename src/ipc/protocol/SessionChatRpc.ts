@@ -4,8 +4,8 @@ import {
   QueuedSessionCommand,
   QueuedSessionCommandReceipt,
   SessionInspectionQuery,
-} from "../session-query-data";
-import { jsonValueSchema } from "../json-contract";
+} from "../../contracts/conversations/session-query-data";
+import { jsonValueSchema } from "../../contracts/serialization/json-contract";
 import {
   ConversationHistoryPage,
   QueuedConversationMessages,
@@ -14,7 +14,7 @@ import {
   SessionChatPromptInput,
   SessionChatTarget,
   TurnId,
-} from "../conversation-data";
+} from "../../contracts/conversations/conversation-data";
 
 /** Conversation behavior shared by every primary Project Session and Cake Chat. */
 export const SessionChatRpc = RpcGroup.make(

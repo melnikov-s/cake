@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { UiPart } from "../../../ipc/session-contract";
+import type { UiPart } from "../../../contracts/conversations/session-contract";
 import { Badge } from "../ui/badge";
 import { DisclosureTrigger } from "../ui/disclosure-trigger";
 import { TerminalIcon } from "../ui/icons";

@@ -1,6 +1,6 @@
 import { Store, child, createStore } from "r-state-tree";
 import type { Conversation } from "../models/Conversation";
-import type { ModelPreset } from "../../ipc/session-contract";
+import type { ModelPreset } from "../../contracts/conversations/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { ConversationHistoryStore } from "./ConversationHistoryStore";
 import { ConversationSessionStore } from "./ConversationSessionStore";
@@ -8,7 +8,7 @@ import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { CakeChatPendingSessionsStore } from "./CakeChatPendingSessionsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import type { CakeChatTarget } from "../../ipc/cake-chat-data";
+import type { CakeChatTarget } from "../../contracts/cake-chats/cake-chat-data";
 import type { CakeChatControls } from "../models/CakeChatControls";
 import type { WorkflowCatalog } from "../models/WorkflowCatalog";
 import type { SubagentCatalog } from "../models/SubagentCatalog";

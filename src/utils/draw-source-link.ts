@@ -1,4 +1,8 @@
-import type { SourceLocation, SourcePosition, SourceRange } from "../ipc/source-location";
+import type {
+  SourceLocation,
+  SourcePosition,
+  SourceRange,
+} from "../contracts/editor/source-location";
 
 const DRAW_SOURCE_LINK_ORIGIN = "https://cake.invalid";
 const DRAW_SOURCE_LINK_PATH = "/draw/source";

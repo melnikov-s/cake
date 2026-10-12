@@ -1,6 +1,9 @@
 import { Context, type Effect, type Stream } from "effect";
 import type { BrowserWindow, WebContents } from "electron";
-import type { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../../ipc/cake-rpc-contract";
+import type {
+  cakeRpcPayloadSchemas,
+  cakeRpcSuccessSchemas,
+} from "../../contracts/application/cake-rpc-contract";
 import type { ElectronError } from "../../contracts/desktop/electron-errors";
 
 export const CAKE_TITLE_BAR_HEIGHT = 46;

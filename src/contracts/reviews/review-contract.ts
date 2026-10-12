@@ -4,7 +4,7 @@ import {
   uiPartSchema,
   type ConversationSnapshot,
   type UiPart,
-} from "./session-contract";
+} from "../conversations/session-contract";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));

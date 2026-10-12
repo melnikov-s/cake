@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "../../ipc/json-contract";
+import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
 import type { Client } from "../client/Client";
 import type { SessionPluginStore } from "../stores/SessionPluginStore";
 

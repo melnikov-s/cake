@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
-import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
+import { SESSION_TITLE_MAX_LENGTH } from "../../contracts/conversations/session-contract";
 import { isActiveSessionActivity } from "../lib/session-activity";
 import type { SidebarStore } from "../stores/SidebarStore";
 import type { SessionMetadataStore } from "../stores/SessionMetadataStore";

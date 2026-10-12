@@ -1,5 +1,5 @@
 import type { DrawDocumentSnapshot } from "../../contracts/draw/draw-editor";
-import type { JsonObject, JsonValue } from "../../ipc/json-contract";
+import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
 
 export interface ValidatedDrawDocument extends JsonObject {
   readonly type: typeof DRAW_SNAPSHOT_TYPE;

@@ -12,7 +12,11 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Schema } from "effect";
-import { jsonValueSchema, type JsonObject, type JsonValue } from "../../src/ipc/json-contract";
+import {
+  jsonValueSchema,
+  type JsonObject,
+  type JsonValue,
+} from "../../src/contracts/serialization/json-contract";
 import { createCakeArtifactOperations } from "../../src/services/pi/runtime/cake-artifact-operations";
 import { createCakeToolDefinition } from "../../src/services/pi/runtime/cake-session-runtime-capabilities";
 import { shutdownCakeSessionExtensions } from "../../src/services/pi/runtime/cake-session-runtime-resources";

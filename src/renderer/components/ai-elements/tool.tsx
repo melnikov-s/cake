@@ -1,7 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
-import type { NestedToolCall, ToolOutputContent, UiPart } from "../../../ipc/session-contract";
-import type { SourceLocation } from "../../../ipc/source-location";
+import type {
+  NestedToolCall,
+  ToolOutputContent,
+  UiPart,
+} from "../../../contracts/conversations/session-contract";
+import type { SourceLocation } from "../../../contracts/editor/source-location";
 import type { ChatStore } from "../../stores/ChatStore";
 import { toolOperationName } from "../../../utils/cake-tool";
 import { toolDiff } from "../../../utils/turn-diff";

@@ -4,7 +4,10 @@ import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { inspectSessionHistory } from "../../../../src/services/pi/runtime/session-inspection";
 import { appendToolCompactedBranch } from "../../../../src/services/pi/runtime/session-tool-compaction";
-import { SessionHistoryQuery, QueuedSessionCommand } from "../../../../src/ipc/session-query-data";
+import {
+  SessionHistoryQuery,
+  QueuedSessionCommand,
+} from "../../../../src/contracts/conversations/session-query-data";
 
 function assistant(content: AssistantMessage["content"]): AssistantMessage {
   return {

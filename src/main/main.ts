@@ -3,15 +3,15 @@ import { loadDesktopHost, installDesktopSocketOrigin } from "../services/electro
 import { makeRemoteMainLive } from "./RemoteMainLive";
 import { Cause, Effect, Exit, ManagedRuntime, Schema } from "effect";
 import { app, nativeTheme } from "electron";
-import { cakeEventSchema, type CakeEvent } from "../ipc/cake-rpc-contract";
-import type { JsonValue } from "../ipc/json-contract";
+import { cakeEventSchema, type CakeEvent } from "../contracts/application/cake-rpc-contract";
+import type { JsonValue } from "../contracts/serialization/json-contract";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
 import { createCakeArtifactOperations } from "../services/pi/runtime/cake-artifact-operations";
 import { CakeOperationRegistry } from "../services/pi/runtime/cake-operation-registry";
 import { WorkflowSandbox } from "../services/pi/WorkflowSandbox";
 import { WorkflowProgram } from "../contracts/workflows/workflow-data";
-import { DrawControlInvocation } from "../ipc/draw-control";
+import { DrawControlInvocation } from "../contracts/draw/draw-control";
 import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import { ClientEvents } from "../services/clients/ClientEvents";
 import {

@@ -6,7 +6,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
 import { Option, Schema } from "effect";
-import { decodeArtifactPointer, type ArtifactPointer } from "../../../ipc/artifact-contract";
+import {
+  decodeArtifactPointer,
+  type ArtifactPointer,
+} from "../../../contracts/artifacts/artifact-contract";
 import {
   InterviewEntry,
   InterviewResult,
@@ -25,7 +28,7 @@ import {
   type SessionTreeEntry,
   type ToolOutputContent,
   type UiPart,
-} from "../../../ipc/session-contract";
+} from "../../../contracts/conversations/session-contract";
 
 export { toolCompactEntryType } from "./tool-compaction-provenance";
 import { toolCompactEntryType, toolCompactMarkerSchema } from "./tool-compaction-provenance";

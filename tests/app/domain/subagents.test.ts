@@ -17,7 +17,7 @@ import {
   defaultApplicationState,
   type ApplicationState as ApplicationStateValue,
 } from "../../../src/contracts/application/application-data";
-import type { ConversationSnapshot } from "../../../src/ipc/session-contract";
+import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
 import {
   makeCakeSessionRuntimesLayer,
   type CakeSessionRuntimeAcquireOptions,

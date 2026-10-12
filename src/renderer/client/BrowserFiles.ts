@@ -1,4 +1,4 @@
-import type { Attachment } from "../../ipc/session-contract";
+import type { Attachment } from "../../contracts/conversations/session-contract";
 import { ClientError } from "./Client";
 
 /** Browser File objects never leave this tab. Opaque tokens are only resolved here, not by the backend. */

@@ -1,6 +1,6 @@
 import { Store, child, createStore } from "r-state-tree";
-import type { ReviewAnchor } from "../../ipc/review-contract";
-import type { Annotation } from "../../ipc/session-contract";
+import type { ReviewAnchor } from "../../contracts/reviews/review-contract";
+import type { Annotation } from "../../contracts/conversations/session-contract";
 import type { DiscussionCatalog } from "../models/DiscussionCatalog";
 import type { ReviewsStore } from "./ReviewsStore";
 import { ChatStore } from "./ChatStore";

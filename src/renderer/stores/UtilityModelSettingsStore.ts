@@ -1,5 +1,9 @@
 import { Store } from "r-state-tree";
-import type { ApplicationState, ThinkingLevel, UtilityModel } from "../../ipc/session-contract";
+import type {
+  ApplicationState,
+  ThinkingLevel,
+  UtilityModel,
+} from "../../contracts/conversations/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 

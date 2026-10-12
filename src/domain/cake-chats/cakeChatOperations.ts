@@ -16,7 +16,7 @@ import {
   CakeChatError,
   type CakeChatStartInput,
   type CakeChatTarget,
-} from "../../ipc/cake-chat-data";
+} from "../../contracts/cake-chats/cake-chat-data";
 import { asError, publishCatalogChange, sessionNamespace } from "./cakeChatMetadata";
 import { prepareTaskInputs } from "../conversations/taskInputs";
 

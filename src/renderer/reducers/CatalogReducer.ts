@@ -7,8 +7,8 @@ import type {
   ProjectCatalogUpdate,
   SessionCatalogUpdate,
 } from "../../contracts/application/catalog-data";
-import type { ProjectSessionCatalogQuery } from "../../ipc/project-session-data";
-import type { CakeChatCatalogQuery } from "../../ipc/cake-chat-data";
+import type { ProjectSessionCatalogQuery } from "../../contracts/project-sessions/project-session-data";
+import type { CakeChatCatalogQuery } from "../../contracts/cake-chats/cake-chat-data";
 import type { CakeChatCatalog } from "../models/CakeChatCatalog";
 import type { ProjectCatalog } from "../models/ProjectCatalog";
 import type { SessionCatalog } from "../models/SessionCatalog";

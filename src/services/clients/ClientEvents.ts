@@ -1,5 +1,5 @@
 import { Context, type Stream } from "effect";
-import type { CakeEvent } from "../../ipc/cake-rpc-contract";
+import type { CakeEvent } from "../../contracts/application/cake-rpc-contract";
 
 export type FocusedCakeEvent<Types extends CakeEvent["type"]> = Extract<
   CakeEvent,

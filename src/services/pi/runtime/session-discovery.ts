@@ -12,7 +12,7 @@ import {
   type FileSuggestion,
   type PiSessionPreview,
   type PiSessionSummary,
-} from "../../../ipc/session-contract";
+} from "../../../contracts/conversations/session-contract";
 import {
   projectConversationDisplay,
   projectConversationForkDisplay,

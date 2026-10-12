@@ -906,7 +906,7 @@ src/
 ├── layers/                   # Production composition adapters joining domains to callback APIs
 ├── config/                   # Decoded process configuration values
 ├── ipc/
-│   ├── protocol/             # Shared Effect RPC groups and Schemas
+│   ├── protocol/             # Effect RPC groups using shared contracts
 │   ├── client/               # CakeIpcClient and renderer transport Layer
 │   ├── server/               # CakeRpcServer endpoint and shared handlers
 │   └── transport/            # Electron RPC protocol adapters
@@ -952,18 +952,18 @@ CakeRpcServer → domain operations → Services
 `architecture/module-boundaries` in `tools/eslint/module-boundaries.js` enforces
 these dependencies through the repository's ESLint configuration (`pnpm lint`):
 
-| Source                                                       | Allowed application dependencies                                            |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| Shared contracts, IPC data, transport envelopes, and `utils` | Shared values only                                                          |
-| Process config                                               | Config and shared values                                                    |
-| Services                                                     | Services, process config, and shared values                                 |
-| Domain                                                       | Domain, Services, process config, and shared values                         |
-| Composition Layers                                           | Backend wiring, domain, Services, config, and shared protocols/values       |
-| Main, backend, server, and RPC handlers/server transports    | Backend, composition, domain, Services, config, and shared protocols/values |
-| Renderer                                                     | Renderer, RPC client infrastructure, shared protocols/values                |
-| RPC clients/client transport                                 | Client infrastructure and shared protocols/values                           |
-| RPC protocols                                                | Protocols and shared values                                                 |
-| Preload                                                      | Shared transport/contracts only                                             |
+| Source                                                    | Allowed application dependencies                                            |
+| --------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Shared contracts, transport envelopes, and `utils`        | Shared values only                                                          |
+| Process config                                            | Config and shared values                                                    |
+| Services                                                  | Services, process config, and shared values                                 |
+| Domain                                                    | Domain, Services, process config, and shared values                         |
+| Composition Layers                                        | Backend wiring, domain, Services, config, and shared protocols/values       |
+| Main, backend, server, and RPC handlers/server transports | Backend, composition, domain, Services, config, and shared protocols/values |
+| Renderer                                                  | Renderer, RPC client infrastructure, shared protocols/values                |
+| RPC clients/client transport                              | Client infrastructure and shared protocols/values                           |
+| RPC protocols                                             | Protocols and shared values                                                 |
+| Preload                                                   | Shared transport/contracts only                                             |
 
 Services never import Cake domain modules or composition adapters. `src/layers/`
 joins capabilities to domain callbacks or backend listener wiring; Services receive
@@ -1001,7 +1001,7 @@ contracts/worktrees/        Managed Worktree records, operation projections, and
 contracts/*/                other feature inputs, outputs, errors, and pure codecs shared across layers
 services/*/                 internal capability values, storage migrations, and implementations
 domain/                     internal Cake business values and workflow policies
-ipc/                        cross-process inputs, projections, and control schemas
+ipc/                        protocol, client, server, and transport infrastructure only
 ipc/protocol/               Effect RPC groups using shared contracts
 renderer/models/            reactive projection schemas
 ```
@@ -1015,10 +1015,17 @@ their values; backend execution remains in domain/Services. Service-local schema
 need not move unless another layer consumes them. Data purity or a `-data.ts`
 filename never justifies a reverse dependency into domain.
 
+Shared cross-process inputs, projections, control schemas, and pure serialization
+helpers live in feature-named `contracts/` modules. The application event and
+request/success schema catalog lives in `contracts/application/cake-rpc-contract.ts`;
+it contains shared data definitions, not RPC groups or transport code. `ipc/` has
+no root data modules; the boundary lint rejects files outside its four
+infrastructure directories and prevents Services/domain from importing protocols.
+
 Pi message envelope codecs and exact presentation/response reminder formats
 live in `contracts/conversations/`; coordination delivery workflows remain in
-domain. Model selection tool schemas live in `ipc/cake-model-selection.ts`, while
-preset input/projection/error schemas live in `contracts/model-presets/` and preset
+domain. Model selection tool schemas and preset input/projection/error schemas
+live in `contracts/model-presets/` and preset
 resolution remains domain policy supplied to Pi through a resolver callback.
 The callback reads current application configuration at execution time. Artifact,
 Draw, and widget workflow callbacks are composed in

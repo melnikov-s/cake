@@ -1,5 +1,9 @@
 import { observable, Store, untracked } from "r-state-tree";
-import type { UiPart, WorkLogsExpansion, WorkLogViewMode } from "../../ipc/session-contract";
+import type {
+  UiPart,
+  WorkLogsExpansion,
+  WorkLogViewMode,
+} from "../../contracts/conversations/session-contract";
 import { workLogChangeChunks } from "../../utils/turn-diff";
 import { workLogGroupKeys } from "../../utils/work-log-groups";
 

@@ -1,5 +1,5 @@
 import { Store, computed, observable } from "r-state-tree";
-import type { UiPart } from "../../ipc/session-contract";
+import type { UiPart } from "../../contracts/conversations/session-contract";
 
 export interface UserMessagePresentationCapabilities {
   setMarkdown(entryId: string, renderAsMarkdown: boolean): Promise<void>;

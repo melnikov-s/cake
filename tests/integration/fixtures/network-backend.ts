@@ -61,7 +61,10 @@ import { SubagentCoordinatorLive } from "../../../src/services/subagents/Subagen
 import { SubagentEnvironment } from "../../../src/services/subagents/SubagentEnvironment";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { fakeRuntime, snapshot } from "../../app/helpers/piRuntimeFixture";
-import type { Attachment, ConversationSnapshot } from "../../../src/ipc/session-contract";
+import type {
+  Attachment,
+  ConversationSnapshot,
+} from "../../../src/contracts/conversations/session-contract";
 
 /** A mechanism fixture, NOT proof of production graph acquisition. Real RPC/domain policy,
  * ApplicationState, connection authorities and CakeSessionRuntimes; controlled Pi/storage/worktree

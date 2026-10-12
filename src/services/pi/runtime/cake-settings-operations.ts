@@ -1,6 +1,13 @@
 import { Schema } from "effect";
-import { agentSettingsOperations, agentSettingsGuidance } from "../../../ipc/agent-settings-schema";
-import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
+import {
+  agentSettingsOperations,
+  agentSettingsGuidance,
+} from "../../../contracts/application/agent-settings-schema";
+import {
+  jsonObjectSchema,
+  type JsonObject,
+  type JsonValue,
+} from "../../../contracts/serialization/json-contract";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 
 export function createCakeSettingsOperations(

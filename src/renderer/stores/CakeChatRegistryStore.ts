@@ -1,6 +1,9 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
-import { CAKE_CHAT_SESSION_ID, type CakeChatTarget } from "../../ipc/cake-chat-data";
-import type { ModelPreset } from "../../ipc/session-contract";
+import {
+  CAKE_CHAT_SESSION_ID,
+  type CakeChatTarget,
+} from "../../contracts/cake-chats/cake-chat-data";
+import type { ModelPreset } from "../../contracts/conversations/session-contract";
 import type { Conversation } from "../models/Conversation";
 import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
 import type { CakeChatControls } from "../models/CakeChatControls";

@@ -1,9 +1,12 @@
 import { Context, type Effect, type Stream } from "effect";
-import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
-import type { EditorLocation } from "../../ipc/editor-location";
-import type { EditorSelectionHighlights, EditorSelectionReveal } from "../../ipc/editor-selection";
-import type { JsonValue } from "../../ipc/json-contract";
-import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
+import type { EditorAnnotationSnapshot } from "../../contracts/editor/editor-annotation";
+import type { EditorLocation } from "../../contracts/editor/editor-location";
+import type {
+  EditorSelectionHighlights,
+  EditorSelectionReveal,
+} from "../../contracts/editor/editor-selection";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
+import type { VscodeEditorAction } from "../../contracts/vscode/vscode-editor-action";
 import type { VsCodeLease } from "./VsCodeServerRuntime";
 import type { VsCodeServerError } from "../../contracts/vscode/vs-code-server-errors";
 

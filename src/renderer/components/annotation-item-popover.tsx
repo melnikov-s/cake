@@ -11,7 +11,7 @@ import { observer } from "r-state-tree/react";
 import { IconButton } from "@/components/ui/icon-button";
 import { CheckIcon, CloseIcon, EditIcon, TrashIcon } from "@/components/ui/icons";
 import { Textarea } from "@/components/ui/textarea";
-import type { Annotation } from "../../ipc/session-contract";
+import type { Annotation } from "../../contracts/conversations/session-contract";
 import type { MessageCommentAnchorRect } from "./message-comment-anchor";
 
 function anchorRect(anchor: HTMLElement | MessageCommentAnchorRect) {

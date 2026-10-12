@@ -36,16 +36,19 @@ import type {
   WorktreeLandingSnapshot,
 } from "../../contracts/worktrees/worktree-landing-data";
 import type { CakeIpcClientService } from "../../ipc/client/CakeIpcClient";
-import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
-import type { EditorLocation } from "../../ipc/editor-location";
+import type { EditorAnnotationSnapshot } from "../../contracts/editor/editor-annotation";
+import type { EditorLocation } from "../../contracts/editor/editor-location";
 import type {
   CompiledInlineWidget,
   InlineWidgetCapability,
   InlineWidgetLanguage,
-} from "../../ipc/inline-widget-contract";
-import type { JsonValue } from "../../ipc/json-contract";
-import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
-import type { EditorSelectionHighlights, EditorSelectionReveal } from "../../ipc/editor-selection";
+} from "../../contracts/widgets/inline-widget-contract";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
+import type { VscodeEditorAction } from "../../contracts/vscode/vscode-editor-action";
+import type {
+  EditorSelectionHighlights,
+  EditorSelectionReveal,
+} from "../../contracts/editor/editor-selection";
 import type {
   Attachment,
   ApplicationState,
@@ -53,7 +56,7 @@ import type {
   ModelOption,
   ConversationSnapshot,
   UtilityModel,
-} from "../../ipc/session-contract";
+} from "../../contracts/conversations/session-contract";
 import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
 import type {
   SpeechOutputAudio,

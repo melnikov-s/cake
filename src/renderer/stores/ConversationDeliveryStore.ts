@@ -1,11 +1,11 @@
 import { Store, child, createStore } from "r-state-tree";
-import type { Attachment, UiPart } from "../../ipc/session-contract";
-import { parsePiBuiltinCommand } from "../../ipc/session-contract";
+import type { Attachment, UiPart } from "../../contracts/conversations/session-contract";
+import { parsePiBuiltinCommand } from "../../contracts/conversations/session-contract";
 import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../lib/error-details";
 import { OptimisticUserMessagesStore } from "./OptimisticUserMessagesStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
-import type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
+import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
 
 export interface ConversationDeliveryInput {

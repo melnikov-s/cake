@@ -22,8 +22,8 @@ import {
   createCakeSessionRuntime,
   type CakeSessionRuntime,
 } from "../../src/services/pi/runtime/cake-session-runtime";
-import type { JsonObject } from "../../src/ipc/json-contract";
-import type { ExtensionUiIntent } from "../../src/ipc/session-contract";
+import type { JsonObject } from "../../src/contracts/serialization/json-contract";
+import type { ExtensionUiIntent } from "../../src/contracts/conversations/session-contract";
 import { startMcpServer } from "../fixtures/mcp-server";
 import { projectSessionEntries } from "../../src/services/pi/runtime/session-projection";
 

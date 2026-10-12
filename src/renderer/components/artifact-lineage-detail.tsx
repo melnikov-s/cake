@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import type { SourceLocation } from "../../ipc/source-location";
+import type { SourceLocation } from "../../contracts/editor/source-location";
 import { observer } from "r-state-tree/react";
 import { ArtifactHost } from "@/components/artifact-host";
 import { Button } from "@/components/ui/button";

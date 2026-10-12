@@ -11,8 +11,11 @@ import type {
   PiSettings,
   ConversationSnapshot,
   UiPart,
-} from "../../../ipc/session-contract";
-import { piBuiltinSlashCommands, slashCommandSchema } from "../../../ipc/session-contract";
+} from "../../../contracts/conversations/session-contract";
+import {
+  piBuiltinSlashCommands,
+  slashCommandSchema,
+} from "../../../contracts/conversations/session-contract";
 import { supportsFastMode } from "../fast-mode";
 import { projectConversationDisplay } from "./conversation-display-projection";
 import { projectTree } from "./session-projection";

@@ -1,4 +1,4 @@
-import type { NestedToolCall, UiPart } from "../../../ipc/session-contract";
+import type { NestedToolCall, UiPart } from "../../../contracts/conversations/session-contract";
 import { boundedProjectionKey, projectNestedToolCalls } from "./session-projection";
 
 type ToolPart = Extract<UiPart, { kind: "tool" }>;

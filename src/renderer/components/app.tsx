@@ -62,10 +62,10 @@ import {
   cakeNativeHotkeyInputEventName,
   hotkeyFromKeyboardEvent,
 } from "@/lib/hotkeys";
-import type { CakeHotkeyActionId } from "../../ipc/cake-settings-data";
+import type { CakeHotkeyActionId } from "../../contracts/application/cake-settings-data";
 import { cn } from "@/lib/utils";
-import { editorLocationFromPath } from "../../ipc/editor-location";
-import type { SourceLocation } from "../../ipc/source-location";
+import { editorLocationFromPath } from "../../contracts/editor/editor-location";
+import type { SourceLocation } from "../../contracts/editor/source-location";
 import { toWorkspaceRelativePath } from "../../utils/workspace-relative-path";
 import { RootStore } from "../stores/RootStore";
 import type { SessionPaneNode } from "../stores/SessionLayoutStore";

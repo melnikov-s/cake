@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { Chip } from "./chip";
 import { Markdown } from "../ai-elements/markdown";
-import type { SourceLocation } from "../../../ipc/source-location";
+import type { SourceLocation } from "../../../contracts/editor/source-location";
 
 /** Exact model-facing context, collapsed without hiding its existence. */
 export function ContextPill({

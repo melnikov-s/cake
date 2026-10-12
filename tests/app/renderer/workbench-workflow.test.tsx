@@ -5,7 +5,7 @@ import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
-import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
+import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { App } from "../../../src/renderer/components/app";

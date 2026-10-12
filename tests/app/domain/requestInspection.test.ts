@@ -3,7 +3,7 @@ import { Effect, Layer } from "effect";
 import { expect } from "vitest";
 import { inspect } from "../../../src/domain/cake-chats/requestInspection";
 import { CakeChatDurable } from "../../../src/services/pi-durable/CakeChatDurable";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/ipc/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
 import { createRequestInspectionHistory } from "../../../src/services/pi-durable/request-inspection";
 
 it.effect(

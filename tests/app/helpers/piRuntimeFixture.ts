@@ -3,7 +3,7 @@ import type {
   CakeSessionRuntime,
   CakeSessionRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-session-runtime";
-import type { ConversationSnapshot } from "../../../src/ipc/session-contract";
+import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
 export const snapshot: ConversationSnapshot = {
   workspacePath: "/project",
   sessionId: "session-1",

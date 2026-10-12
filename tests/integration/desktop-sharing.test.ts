@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import type { CakeEvent } from "../../src/ipc/cake-rpc-contract";
+import type { CakeEvent } from "../../src/contracts/application/cake-rpc-contract";
 import {
   rendererConnectionHeader,
   correlationIdHeader,

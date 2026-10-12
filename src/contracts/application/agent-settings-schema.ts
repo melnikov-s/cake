@@ -1,29 +1,25 @@
 import { Schema } from "effect";
-import { piSettingUpdateSchema, piSettingsSchema, modelOptionSchema } from "./session-contract";
-import { jsonValueSchema } from "./json-contract";
 import {
-  ModelPreset,
-  UtilityModel,
-  SessionLabelMutation,
-  SessionLabel,
-} from "../contracts/application/application-data";
-import { CakePrompts } from "../contracts/application/cake-prompt-data";
+  piSettingUpdateSchema,
+  piSettingsSchema,
+  modelOptionSchema,
+} from "../conversations/session-contract";
+import { jsonValueSchema } from "../serialization/json-contract";
+import { ModelPreset, UtilityModel, SessionLabelMutation, SessionLabel } from "./application-data";
+import { CakePrompts } from "./cake-prompt-data";
 import {
   NonChatModelPreferenceUpdate,
   NonChatModelPreferences,
-} from "../contracts/models/non-chat-model-data";
-import { McpSettingsSnapshot, McpSettingsMutation } from "../contracts/pi/mcp-settings-data";
-import { PiNonChatModel } from "../contracts/pi/model-data";
-import { DictationState, TextProcessingMode } from "../contracts/dictation/dictation-data";
-import {
-  DesktopSharingInput,
-  DesktopSharingState,
-} from "../contracts/desktop/desktop-sharing-data";
-import { DesktopHostSelection } from "../contracts/desktop/desktop-host-data";
-import { NativeMcpConfigEdit } from "../contracts/pi/mcp-config-validation";
+} from "../models/non-chat-model-data";
+import { McpSettingsSnapshot, McpSettingsMutation } from "../pi/mcp-settings-data";
+import { PiNonChatModel } from "../pi/model-data";
+import { DictationState, TextProcessingMode } from "../dictation/dictation-data";
+import { DesktopSharingInput, DesktopSharingState } from "../desktop/desktop-sharing-data";
+import { DesktopHostSelection } from "../desktop/desktop-host-data";
+import { NativeMcpConfigEdit } from "../pi/mcp-config-validation";
 import { cakeSettingsSections } from "./cake-settings-data";
-import { TurnId } from "./conversation-data";
-import { SpeechOutputSettings, SpeechOutputVoice } from "../contracts/speech/speech-output-data";
+import { TurnId } from "../conversations/conversation-data";
+import { SpeechOutputSettings, SpeechOutputVoice } from "../speech/speech-output-data";
 
 const empty = Schema.Struct({});
 const scope = Schema.Literals(["backend", "project"]);

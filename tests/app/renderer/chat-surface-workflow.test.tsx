@@ -1,8 +1,8 @@
 /** @vitest-environment jsdom */
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TurnId } from "../../../src/ipc/conversation-data";
-import type { UiPart } from "../../../src/ipc/session-contract";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { changedFile, chatSessionId, renderChatSurface } from "./chat-surface-workflow-fixture";
 

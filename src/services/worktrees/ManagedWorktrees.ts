@@ -9,7 +9,7 @@ import type {
   WorktreeLandRequest,
   WorktreeRebaseOutcome,
   WorktreeStatus,
-} from "../../ipc/worktree-contract";
+} from "../../contracts/worktrees/worktree-contract";
 import type { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
 
 export interface ManagedWorktreesService {

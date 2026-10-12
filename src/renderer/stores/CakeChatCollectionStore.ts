@@ -1,7 +1,10 @@
 import { Store, child, createStore } from "r-state-tree";
 import type { SessionActivity } from "../lib/session-activity";
-import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
-import type { ChatConfiguration, ModelPreset } from "../../ipc/session-contract";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import type {
+  ChatConfiguration,
+  ModelPreset,
+} from "../../contracts/conversations/session-contract";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import { describeError } from "../lib/error-details";
 import type { CakeChatCatalog } from "../models/CakeChatCatalog";

@@ -1,10 +1,13 @@
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ConversationSnapshot, TurnId } from "../../../src/ipc/conversation-data";
+import type {
+  ConversationSnapshot,
+  TurnId,
+} from "../../../src/contracts/conversations/conversation-data";
 import {
   sessionAssistantThreadPath,
   type DiscussionThread,
-} from "../../../src/ipc/discussion-session-data";
+} from "../../../src/contracts/discussion-sessions/discussion-session-data";
 import { SessionAssistant } from "../../../src/renderer/components/session-assistant";
 import {
   applyConversationSnapshot,

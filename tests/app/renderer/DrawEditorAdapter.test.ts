@@ -18,7 +18,10 @@ import {
 import { assertPersistableDrawDocument } from "../../../src/renderer/draw/DrawDocumentValidation";
 import { createStore } from "r-state-tree";
 import { Schema } from "effect";
-import { DrawControlInvocation, DrawControlResponse } from "../../../src/ipc/draw-control";
+import {
+  DrawControlInvocation,
+  DrawControlResponse,
+} from "../../../src/contracts/draw/draw-control";
 import { DrawStore } from "../../../src/renderer/stores/DrawStore";
 import type { Client } from "../../../src/renderer/client/Client";
 import { mountWithClient } from "./mount-with-client";

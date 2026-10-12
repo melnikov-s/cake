@@ -25,7 +25,7 @@ import {
   type WorktreeLandRequest,
   type WorktreeRebaseOutcome,
   type WorktreeStatus,
-} from "../../ipc/worktree-contract";
+} from "../../contracts/worktrees/worktree-contract";
 import { Git } from "../git/Git";
 import { WorktreeStorage } from "../storage/WorktreeStorage";
 import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";

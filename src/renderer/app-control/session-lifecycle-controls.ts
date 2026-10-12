@@ -1,8 +1,11 @@
 import { Effect, Schema } from "effect";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
-import { SESSION_TITLE_MAX_LENGTH, thinkingLevelSchema } from "../../ipc/session-contract";
+import {
+  SESSION_TITLE_MAX_LENGTH,
+  thinkingLevelSchema,
+} from "../../contracts/conversations/session-contract";
 import { isActiveSessionActivity } from "../lib/session-activity";
-import { CakeModelSelection } from "../../ipc/cake-model-selection";
+import { CakeModelSelection } from "../../contracts/model-presets/cake-model-selection";
 import type { AppControlResult } from "./app-control-data";
 import { sessionLabels, knownSession } from "./control-projections";
 import { bounded, trimmed, sessionIdTargetSchema } from "./control-arguments";

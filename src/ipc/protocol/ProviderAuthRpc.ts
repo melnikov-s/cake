@@ -1,7 +1,10 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { PiProviderAuthError } from "../../contracts/pi/model-data";
-import { SessionChatError, SessionChatTarget } from "../conversation-data";
+import {
+  SessionChatError,
+  SessionChatTarget,
+} from "../../contracts/conversations/conversation-data";
 
 /** Pi authentication is server-owned; interactive prompts target the initiating desktop client. */
 export const ProviderAuthRpc = RpcGroup.make(

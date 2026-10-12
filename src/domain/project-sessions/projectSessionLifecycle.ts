@@ -26,7 +26,7 @@ import {
   ProjectSessionError,
   type ProjectSessionLocation,
   type ProjectSessionTarget,
-} from "../../ipc/project-session-data";
+} from "../../contracts/project-sessions/project-session-data";
 import {
   archiveLocation,
   asError,

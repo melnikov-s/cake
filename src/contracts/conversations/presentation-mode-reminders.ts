@@ -1,4 +1,4 @@
-import type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
+import type { ProjectSessionPresentationMode } from "../project-sessions/project-session-presentation";
 
 const reminders = {
   enterVscode: `<system-reminder>

@@ -5,7 +5,7 @@ import {
   type InterviewRecord,
   type InterviewResult,
 } from "../../contracts/interviews/interview";
-import type { JsonValue } from "../../ipc/json-contract";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
 import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../lib/error-details";
 import { listedOptions, type InterviewFormValue } from "../lib/interview-form";

@@ -5,7 +5,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { seedWorkflowCheckpoint } from "../fixtures/workflow-checkpoint";
 import { workflowSource, workflowRunFixture } from "../fixtures/dynamic-workflow";
-import type { CakeEvent } from "../../src/ipc/cake-rpc-contract";
+import type { CakeEvent } from "../../src/contracts/application/cake-rpc-contract";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 

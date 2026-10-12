@@ -6,7 +6,7 @@ import type {
   ConversationSnapshot,
   PiSessionSummary,
   UiPart,
-} from "../../../src/ipc/session-contract";
+} from "../../../src/contracts/conversations/session-contract";
 import type { PiModel } from "../../../src/contracts/pi/model-data";
 import { fakeRuntime, snapshot } from "../../app/helpers/piRuntimeFixture";
 

@@ -1,5 +1,8 @@
 import { Store } from "r-state-tree";
-import type { ApplicationState, UtilityModel } from "../../ipc/session-contract";
+import type {
+  ApplicationState,
+  UtilityModel,
+} from "../../contracts/conversations/session-contract";
 import { defaultCakeChatPreferences } from "../../contracts/cake-chats/cake-chat-preferences";
 import type { CakeChatPreferences } from "../../contracts/application/application-data";
 import { ClientContext } from "./context/ClientContext";

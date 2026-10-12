@@ -1,6 +1,9 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { BrowserError } from "../../contracts/browser/browser-errors";
-import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
+import {
+  cakeRpcPayloadSchemas,
+  cakeRpcSuccessSchemas,
+} from "../../contracts/application/cake-rpc-contract";
 
 type BrowserOperation = keyof Pick<
   typeof cakeRpcPayloadSchemas,

@@ -28,7 +28,7 @@ import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktre
 import { checkpoint, model, makeMemoryWorkflowStorage } from "./workflowFixture";
 import { fakeRuntime, options, snapshot } from "./piRuntimeFixture";
 import { familyStorageHarness } from "./familyStorageHarness";
-import type { JsonValue } from "../../../src/ipc/json-contract";
+import type { JsonValue } from "../../../src/contracts/serialization/json-contract";
 import type {
   WorkflowError,
   WorkflowProgram,

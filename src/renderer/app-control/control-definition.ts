@@ -1,6 +1,6 @@
 import { Schema } from "effect";
-import { CakeControlTool } from "../../ipc/cake-chat-data";
-import type { JsonValue } from "../../ipc/json-contract";
+import { CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
 import type {
   AgentControlSource,
   AppControlCommand,

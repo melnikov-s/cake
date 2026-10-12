@@ -1,6 +1,6 @@
 import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import { Option, Schema } from "effect";
-import { uiPartSchema, type UiPart } from "../../../ipc/session-contract";
+import { uiPartSchema, type UiPart } from "../../../contracts/conversations/session-contract";
 import { isCompactedWorkLogPart } from "../../../utils/work-log-groups";
 
 /** Hidden display-only provenance carried by an ordinary Pi fork. */

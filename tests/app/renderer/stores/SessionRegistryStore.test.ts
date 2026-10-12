@@ -1,6 +1,6 @@
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
-import { piBuiltinSlashCommands } from "../../../../src/ipc/session-contract";
+import { piBuiltinSlashCommands } from "../../../../src/contracts/conversations/session-contract";
 import { applySessionCatalogGroupUpdate } from "../../../../src/renderer/reducers/CatalogReducer";
 import { applyConversationUpdate } from "../../../../src/renderer/reducers/ConversationReducer";
 import { sessionSummary } from "../fixtures/catalog-fixtures";

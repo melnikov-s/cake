@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Button } from "@/components/ui/button";
-import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
+import type { CakeArtifactV1 } from "../../contracts/artifacts/artifact-contract";
 
 export function FileArtifact({
   artifact,

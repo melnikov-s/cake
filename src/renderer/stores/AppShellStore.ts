@@ -1,6 +1,6 @@
 import { Store, observable, snapshot } from "r-state-tree";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
-import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
 
 export type AppSurface = "workbench" | "cake-chat" | "artifact-library" | "settings";
 

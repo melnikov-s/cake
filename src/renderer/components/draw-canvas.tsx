@@ -1,7 +1,7 @@
 import { Excalidraw } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import type { SourceLocation } from "../../ipc/source-location";
+import type { SourceLocation } from "../../contracts/editor/source-location";
 import { isCakeDrawSourceUrl, parseDrawSourceLink } from "../../utils/draw-source-link";
 import { useCallback, useEffect, useRef, type PointerEvent } from "react";
 import { observer } from "r-state-tree/react";

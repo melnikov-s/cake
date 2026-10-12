@@ -4,7 +4,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { UiPart } from "../../../src/ipc/session-contract";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { WorkLogDiff } from "../../../src/renderer/components/ai-elements/work-log-diff";
 
 function editPart(diff: string, inputStreaming = true): Extract<UiPart, { kind: "tool" }> {

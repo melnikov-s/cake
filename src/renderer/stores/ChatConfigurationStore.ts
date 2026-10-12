@@ -4,7 +4,7 @@ import type {
   ModelOption,
   ModelPreset,
   ThinkingLevel,
-} from "../../ipc/session-contract";
+} from "../../contracts/conversations/session-contract";
 import type { Conversation } from "../models/Conversation";
 import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";

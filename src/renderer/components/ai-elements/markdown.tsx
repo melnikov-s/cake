@@ -25,7 +25,7 @@ import {
   syntaxHighlightLanguageNames,
 } from "@/lib/syntax-highlighter";
 import { cn } from "@/lib/utils";
-import type { SourceLocation } from "../../../ipc/source-location";
+import type { SourceLocation } from "../../../contracts/editor/source-location";
 import { parseSourceLocation } from "../../../utils/source-location";
 import { Link } from "../ui/link";
 import { MarkdownTable } from "../ui/markdown-table";

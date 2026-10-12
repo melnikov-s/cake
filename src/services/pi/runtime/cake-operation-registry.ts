@@ -4,7 +4,7 @@ import {
   jsonValueSchema,
   type JsonObject,
   type JsonValue,
-} from "../../../ipc/json-contract";
+} from "../../../contracts/serialization/json-contract";
 
 const CAKE_OPERATION_PROTOCOL = "cake.operation/v1" as const;
 const MAX_CAKE_OPERATION_RESULT_BYTES = 1_048_576;

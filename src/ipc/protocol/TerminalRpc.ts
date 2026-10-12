@@ -4,7 +4,7 @@ import {
   cakeRpcPayloadSchemas,
   cakeRpcSuccessSchemas,
   terminalEventSchema,
-} from "../cake-rpc-contract";
+} from "../../contracts/application/cake-rpc-contract";
 
 type TerminalOperation = keyof Pick<
   typeof cakeRpcPayloadSchemas,

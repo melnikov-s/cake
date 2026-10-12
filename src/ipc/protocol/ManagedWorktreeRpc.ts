@@ -7,7 +7,10 @@ import { WorktreeLandingError } from "../../contracts/worktrees/worktree-landing
 import { ManagedWorktreeCatalogUpdate } from "../../contracts/worktrees/managed-worktree-data";
 import { WorktreeOperationCatalogUpdate } from "../../contracts/worktrees/worktree-operation-data";
 import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
-import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
+import {
+  cakeRpcPayloadSchemas,
+  cakeRpcSuccessSchemas,
+} from "../../contracts/application/cake-rpc-contract";
 
 type ManagedWorktreeOperation = "create-worktree" | "discard-worktree";
 type LandingOperation =

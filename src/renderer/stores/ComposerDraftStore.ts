@@ -1,5 +1,9 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
-import type { Annotation, Attachment, FileSuggestion } from "../../ipc/session-contract";
+import type {
+  Annotation,
+  Attachment,
+  FileSuggestion,
+} from "../../contracts/conversations/session-contract";
 import { describeError } from "../lib/error-details";
 import { MAX_PASTED_TEXT_BYTES } from "../../contracts/conversations/task-input";
 import { pastedImageAttachments } from "../lib/pasted-image-attachments";

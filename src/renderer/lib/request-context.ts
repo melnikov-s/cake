@@ -1,5 +1,5 @@
 import { Predicate, Schema } from "effect";
-import { jsonObjectSchema, type JsonValue } from "../../ipc/json-contract";
+import { jsonObjectSchema, type JsonValue } from "../../contracts/serialization/json-contract";
 
 export interface RequestContextSection {
   title: string;

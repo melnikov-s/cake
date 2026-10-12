@@ -14,7 +14,10 @@ import {
 import { useOptionalStore } from "r-state-tree/react";
 import { DictationStore } from "../stores/DictationStore";
 import { flushSync } from "react-dom";
-import type { FileSuggestion, ConversationSnapshot } from "../../ipc/session-contract";
+import type {
+  FileSuggestion,
+  ConversationSnapshot,
+} from "../../contracts/conversations/session-contract";
 import { ComposerInput } from "./ai-elements/composer";
 import { NavItem } from "./ui/nav-item";
 

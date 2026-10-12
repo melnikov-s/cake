@@ -16,12 +16,12 @@ import {
   CakeChatDurable,
   makeCakeChatDurableLive,
 } from "../../src/services/pi-durable/CakeChatDurable";
-import { CAKE_CHAT_SESSION_ID } from "../../src/ipc/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-data";
 import type {
   CakeSessionRuntime,
   CakeSessionRuntimeOptions,
 } from "../../src/services/pi/runtime/cake-session-runtime";
-import type { ConversationSnapshot } from "../../src/ipc/session-contract";
+import type { ConversationSnapshot } from "../../src/contracts/conversations/session-contract";
 import { durableAnswer, durableModel } from "../fixtures/durable-chat";
 
 const cleanup: Array<() => Promise<void>> = [];

@@ -1,6 +1,9 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { ProjectError } from "../../contracts/projects/project-error";
-import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
+import {
+  cakeRpcPayloadSchemas,
+  cakeRpcSuccessSchemas,
+} from "../../contracts/application/cake-rpc-contract";
 
 const workspaceRpc = <Type extends keyof typeof cakeRpcPayloadSchemas>(
   tag: `workspaces.${Type}`,

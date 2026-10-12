@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TurnId } from "../../../src/ipc/conversation-data";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import {
   commentSelection,

@@ -1,5 +1,5 @@
-import type { DiscussionAnchor } from "../ipc/discussion-session-data";
-import type { Attachment } from "../ipc/session-contract";
+import type { DiscussionAnchor } from "../contracts/discussion-sessions/discussion-session-data";
+import type { Attachment } from "../contracts/conversations/session-contract";
 
 /** An explicit VS Code selection handed to Cake; lines and columns are zero-based. */
 export interface EditorSelection {

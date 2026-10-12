@@ -1,13 +1,16 @@
 import { Schema } from "effect";
-import type { JsonObject, JsonValue } from "../../../ipc/json-contract";
-import { editorLocationFromPath, type EditorLocation } from "../../../ipc/editor-location";
+import type { JsonObject, JsonValue } from "../../../contracts/serialization/json-contract";
+import {
+  editorLocationFromPath,
+  type EditorLocation,
+} from "../../../contracts/editor/editor-location";
 import {
   gitRevisionSchema,
   type SourceLocation,
   type SourcePosition,
-} from "../../../ipc/source-location";
+} from "../../../contracts/editor/source-location";
 import type { VscodeActionResult } from "../../vscode/VsCodeServer";
-import type { EditorSelectionOpenResult } from "../../../ipc/editor-selection";
+import type { EditorSelectionOpenResult } from "../../../contracts/editor/editor-selection";
 import { agentEditorLocation } from "../../../utils/agent-editor-location";
 import {
   createCakeVscodeSelectionOperations,

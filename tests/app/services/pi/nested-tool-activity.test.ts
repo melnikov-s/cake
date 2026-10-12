@@ -1,7 +1,10 @@
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import { uiPartSchema, type UiPart } from "../../../../src/ipc/session-contract";
+import {
+  uiPartSchema,
+  type UiPart,
+} from "../../../../src/contracts/conversations/session-contract";
 import { createCakeSessionRuntimeEventProjection } from "../../../../src/services/pi/runtime/cake-session-runtime-event-projection";
 import {
   projectNestedToolCalls,

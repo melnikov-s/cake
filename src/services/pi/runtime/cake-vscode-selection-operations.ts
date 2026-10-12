@@ -1,6 +1,9 @@
 import { Schema } from "effect";
-import { EditorSelectionId } from "../../../ipc/editor-selection";
-import type { EditorSelectionState, EditorSelectionUpdate } from "../../../ipc/editor-selection";
+import { EditorSelectionId } from "../../../contracts/editor/editor-selection";
+import type {
+  EditorSelectionState,
+  EditorSelectionUpdate,
+} from "../../../contracts/editor/editor-selection";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 import { agentEditorLocation } from "../../../utils/agent-editor-location";
 

@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, rm, writeFile, appendFile } from "node:fs/prom
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Clock, Effect, Layer, Schedule, Semaphore } from "effect";
-import type { Attachment } from "../../ipc/session-contract";
+import type { Attachment } from "../../contracts/conversations/session-contract";
 import { ClientConnections } from "../clients/ClientConnections";
 import { AttachmentUploadError } from "../../contracts/filesystem/attachment-uploads-errors";
 import { AttachmentUploads, uploadId, uploadReference } from "./AttachmentUploads";

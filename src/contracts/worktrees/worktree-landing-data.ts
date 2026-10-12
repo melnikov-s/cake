@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { worktreeStatusSchema } from "../../ipc/worktree-contract";
+import { worktreeStatusSchema } from "./worktree-contract";
 import { ResolutionCleanupFailed } from "../project-sessions/project-session-resolution";
 
 const bounded = (minimum: number, maximum: number) =>

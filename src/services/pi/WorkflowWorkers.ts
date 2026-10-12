@@ -6,9 +6,9 @@ import type {
   WorkflowWorkerActivity,
   WorkflowWorkerTarget,
 } from "../../contracts/workflows/workflow-data";
-import type { ExplicitCakeModelSelection } from "../../ipc/cake-model-selection";
-import type { JsonValue } from "../../ipc/json-contract";
-import type { SessionUsage } from "../../ipc/session-contract";
+import type { ExplicitCakeModelSelection } from "../../contracts/model-presets/cake-model-selection";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
+import type { SessionUsage } from "../../contracts/conversations/session-contract";
 
 /** Backend-only reference into Pi-owned private worker transcripts; never a sidebar session. */
 export const WorkflowWorkerReference = Schema.Struct({

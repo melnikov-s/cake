@@ -14,7 +14,7 @@ import {
 import { makeClient } from "../../../src/renderer/client/ClientLive";
 import { makeRuntime } from "../../../src/renderer/runtime";
 import type { Client } from "../../../src/renderer/client/Client";
-import type { TurnId } from "../../../src/ipc/conversation-data";
+import type { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import { ClientError } from "../../../src/renderer/client/Client";
 
 function harness(

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
 import { inputRefsSchema } from "../../../../src/contracts/conversations/task-input";
-import { jsonObjectSchema } from "../../../../src/ipc/json-contract";
+import { jsonObjectSchema } from "../../../../src/contracts/serialization/json-contract";
 import { TestClock } from "effect/testing";
 import { TaskInputStorage } from "../../../../src/services/storage/TaskInputStorage";
 import { makeTaskInputStorageLive } from "../../../../src/services/storage/TaskInputStorageLive";
@@ -13,7 +13,7 @@ import {
   prepareCoordinatorMessage,
   prepareTaskInputs,
 } from "../../../../src/domain/conversations/taskInputs";
-import type { SessionChatPromptInput } from "../../../../src/ipc/conversation-data";
+import type { SessionChatPromptInput } from "../../../../src/contracts/conversations/conversation-data";
 import {
   forwardTaskInputControl,
   safeCoordinatorProjection,
@@ -26,7 +26,7 @@ import {
   projectSessionEntries,
   createLiveMessageProjector,
 } from "../../../../src/services/pi/runtime/session-projection";
-import type { Attachment } from "../../../../src/ipc/session-contract";
+import type { Attachment } from "../../../../src/contracts/conversations/session-contract";
 import { encodeCrossSessionMessage } from "../../../../src/contracts/conversations/cross-session-message";
 
 const owner = "00000000-0000-4000-8000-000000000001";

@@ -27,13 +27,13 @@ import type {
   PiSettingUpdate,
   ThinkingLevel,
   UiPart,
-} from "../../ipc/session-contract";
-import type { JsonObject, JsonValue } from "../../ipc/json-contract";
+} from "../../contracts/conversations/session-contract";
+import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
 import type { PiPendingMessageReorder } from "../pi/conversation-data";
 import {
   CakeModelSelection,
   type ExplicitCakeModelSelection,
-} from "../../ipc/cake-model-selection";
+} from "../../contracts/model-presets/cake-model-selection";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
 import {
   createGlobalControlOperations,
@@ -67,7 +67,7 @@ import { durableChatDatabase, purgeLegacyGlobalChatHistory } from "./durable-cha
 import { coordinatorSystemPrompt } from "./coordinator-system-prompt";
 import { abortDurableActiveTurn, startDurableQueuedInput } from "./durable-chat-queue";
 import { registerAgentDirectoryExtensionProviders } from "../pi/runtime/extension-providers";
-import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
 import { SubagentResult } from "../../contracts/subagents/subagent-data";
 import { Option } from "effect";
 import {

@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCakeVscodeOperations } from "../../../src/services/pi/runtime/cake-vscode-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
-import type { EditorLocation } from "../../../src/ipc/editor-location";
+import type { EditorLocation } from "../../../src/contracts/editor/editor-location";
 import type {
   EditorSelectionId,
   EditorSelectionLocation,
   EditorSelectionState,
   EditorSelectionUpdate,
   EditorSelectionOpenResult,
-} from "../../../src/ipc/editor-selection";
-import type { JsonValue } from "../../../src/ipc/json-contract";
+} from "../../../src/contracts/editor/editor-selection";
+import type { JsonValue } from "../../../src/contracts/serialization/json-contract";
 import type { VscodeActionResult } from "../../../src/services/vscode/VsCodeServer";
 
 function state(selections: EditorSelectionState["selections"] = []): EditorSelectionState {

@@ -1,7 +1,7 @@
 import { Message, MessageLabel } from "@/components/ai-elements/message";
 import { ActionCard } from "@/components/ui/action-card";
 import { LoadingState } from "@/components/ui/loading-state";
-import type { UiPart } from "../../ipc/session-contract";
+import type { UiPart } from "../../contracts/conversations/session-contract";
 
 export function ReviewRunMessage({
   run,

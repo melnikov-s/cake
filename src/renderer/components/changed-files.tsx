@@ -2,7 +2,7 @@ import { useId } from "react";
 import { Button } from "@/components/ui/button";
 import { DisclosureTrigger } from "@/components/ui/disclosure-trigger";
 import { ChevronIcon } from "@/components/ui/icons";
-import type { UiPart } from "../../ipc/session-contract";
+import type { UiPart } from "../../contracts/conversations/session-contract";
 import { workLogChanges } from "../../utils/turn-diff";
 import { toWorkspaceRelativePath } from "../../utils/workspace-relative-path";
 

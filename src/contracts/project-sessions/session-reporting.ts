@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { ExplicitCakeModelSelection } from "../../ipc/cake-model-selection";
+import { ExplicitCakeModelSelection } from "../model-presets/cake-model-selection";
 
 /** Explicit task outcomes are never inferred from idle or successful model generation. */
 export const SessionTaskOutcome = Schema.Literals(["completed", "blocked", "failed"]);

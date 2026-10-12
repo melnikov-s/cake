@@ -16,7 +16,7 @@ import type { CakeChatRuntimeConfiguration } from "../domain/cake-chats/cakeChat
 import { makeBackendRpcServerLive } from "../ipc/server/BackendRpcServer";
 import { StandaloneSocketProtocolLive } from "../ipc/transport/StandaloneSocketProtocol";
 import { parseRendererRpcMessage } from "../ipc/transport/ElectronRpcTransport";
-import { cakeRpcPayloadSchemas } from "../ipc/cake-rpc-contract";
+import { cakeRpcPayloadSchemas } from "../contracts/application/cake-rpc-contract";
 import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import type { PreviewLeases } from "../services/browser/PreviewLeases";
 

@@ -3,7 +3,11 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { captureWidgetConversation } from "./widget-conversation";
 import { SessionPluginControls } from "../../../contracts/application/session-plugin-controls";
 import type { SessionPlugin } from "../../../contracts/application/application-data";
-import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
+import {
+  jsonObjectSchema,
+  type JsonObject,
+  type JsonValue,
+} from "../../../contracts/serialization/json-contract";
 import type { InlineWidgetGenerationRequest } from "./sidecar-runtime";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 

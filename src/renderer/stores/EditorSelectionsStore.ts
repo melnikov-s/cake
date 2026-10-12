@@ -1,5 +1,5 @@
 import { Store, observable } from "r-state-tree";
-import type { EditorLocation } from "../../ipc/editor-location";
+import type { EditorLocation } from "../../contracts/editor/editor-location";
 import type {
   EditorSelection,
   EditorSelectionId,
@@ -8,7 +8,7 @@ import type {
   EditorSelectionReveal,
   EditorSelectionState,
   EditorSelectionUpdate,
-} from "../../ipc/editor-selection";
+} from "../../contracts/editor/editor-selection";
 
 export interface EditorSelectionsStoreProps {
   sessionId: string;

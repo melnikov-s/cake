@@ -22,7 +22,7 @@ import {
   ArtifactRevisionNumber,
   type ArtifactRevision,
 } from "../../../src/contracts/artifacts/artifact-lineage";
-import type { CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
+import type { CakeArtifactV1 } from "../../../src/contracts/artifacts/artifact-contract";
 import { ArtifactProjection } from "../../../src/services/artifacts/ArtifactProjection";
 import {
   artifactProjectionContents,

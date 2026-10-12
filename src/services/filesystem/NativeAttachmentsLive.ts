@@ -2,7 +2,7 @@ import { open, readFile, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { BrowserWindow, dialog } from "electron";
 import { Effect, Layer } from "effect";
-import type { Attachment } from "../../ipc/session-contract";
+import type { Attachment } from "../../contracts/conversations/session-contract";
 import { Electron } from "../electron/Electron";
 import { NativeAttachments } from "./NativeAttachments";
 import { WorkspaceFileError } from "../../contracts/filesystem/workspace-files-errors";

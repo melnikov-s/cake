@@ -6,9 +6,9 @@ import {
   type ConversationResponseMode,
 } from "../../../contracts/conversations/response-mode-reminders";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import type { Attachment, UiPart } from "../../../ipc/session-contract";
-import type { ProjectSessionPresentationMode } from "../../../ipc/project-session-presentation";
-import { parsePiBuiltinCommand } from "../../../ipc/session-contract";
+import type { Attachment, UiPart } from "../../../contracts/conversations/session-contract";
+import type { ProjectSessionPresentationMode } from "../../../contracts/project-sessions/project-session-presentation";
+import { parsePiBuiltinCommand } from "../../../contracts/conversations/session-contract";
 import { parseCrossSessionMessage } from "../../../contracts/conversations/cross-session-message";
 import type { PiPendingMessageReorder, PiPendingMessages } from "../conversation-data";
 import { RuntimeTurnCompletion, TurnCanceledError } from "./RuntimeTurnCompletion";

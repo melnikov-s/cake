@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { CakeChatDurable } from "../../services/pi-durable/CakeChatDurable";
-import { CakeChatError, CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
+import { CakeChatError, CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
 
 /** Read-only diagnostics never acquire a runtime or prepare model context. */
 export const inspect = Effect.fn("CakeChats.requestInspection")(function* (input: {

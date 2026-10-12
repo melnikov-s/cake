@@ -4,7 +4,7 @@ import { describe, it } from "vitest";
 import {
   CakeModelSelection,
   type CakeModelPresetCatalog,
-} from "../../../src/ipc/cake-model-selection";
+} from "../../../src/contracts/model-presets/cake-model-selection";
 import { resolveCakeModelSelection } from "../../../src/domain/model-presets/cake-model-selection";
 
 const catalog: CakeModelPresetCatalog = {

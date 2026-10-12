@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { UiPart } from "../../../src/ipc/session-contract";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { changedRanges, toolSourceRange } from "../../../src/utils/source-ranges";
 
 describe("source ranges", () => {

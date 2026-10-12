@@ -4,7 +4,7 @@ import {
   cakeRpcPayloadSchemas,
   cakeRpcSuccessSchemas,
   surfaceEventSchema,
-} from "../cake-rpc-contract";
+} from "../../contracts/application/cake-rpc-contract";
 
 type ElectronOperation = keyof Pick<
   typeof cakeRpcPayloadSchemas,

@@ -3,7 +3,7 @@ import type {
   CompiledInlineWidget,
   InlineWidgetCapability,
   InlineWidgetLanguage,
-} from "../../ipc/inline-widget-contract";
+} from "../../contracts/widgets/inline-widget-contract";
 import { ClientContext } from "./context/ClientContext";
 
 export interface InlineWidgetState {

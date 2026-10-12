@@ -1,4 +1,4 @@
-import type { CakeEvent } from "../../ipc/cake-rpc-contract";
+import type { CakeEvent } from "../../contracts/application/cake-rpc-contract";
 import type { RootStore } from "../stores/RootStore";
 
 type DrawControlRequested = Extract<CakeEvent, { readonly type: "draw-control-requested" }>;

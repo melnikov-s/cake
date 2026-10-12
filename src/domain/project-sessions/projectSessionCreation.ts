@@ -1,5 +1,5 @@
 import { Cause, Effect, Exit } from "effect";
-import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
 import type { SessionRequester } from "../../contracts/project-sessions/session-reporting";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { encodeCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
@@ -8,8 +8,8 @@ import {
   SESSION_TITLE_MAX_LENGTH,
   type Attachment,
   type ChatConfiguration,
-} from "../../ipc/session-contract";
-import { ProjectSessionError } from "../../ipc/project-session-data";
+} from "../../contracts/conversations/session-contract";
+import { ProjectSessionError } from "../../contracts/project-sessions/project-session-data";
 import * as projectSessionOperations from "./projectSessionOperations";
 import * as projectSessionLocations from "./projectSessionLocations";
 import * as managedWorktrees from "../worktrees/managedWorktrees";

@@ -1,19 +1,19 @@
 import type { InterviewRecord } from "../contracts/interviews/interview";
 import { resolve } from "node:path";
 import { Effect } from "effect";
-import type { SourceLocation } from "../ipc/source-location";
-import type { UtilityModel } from "../ipc/session-contract";
-import type { CakeModelPresetCatalog } from "../ipc/cake-model-selection";
-import type { WorktreeLandingCoordinator } from "../ipc/worktree-contract";
-import type { JsonValue } from "../ipc/json-contract";
-import type { ProjectSessionControlInvocation } from "../ipc/project-session-data";
+import type { SourceLocation } from "../contracts/editor/source-location";
+import type { UtilityModel } from "../contracts/conversations/session-contract";
+import type { CakeModelPresetCatalog } from "../contracts/model-presets/cake-model-selection";
+import type { WorktreeLandingCoordinator } from "../contracts/worktrees/worktree-contract";
+import type { JsonValue } from "../contracts/serialization/json-contract";
+import type { ProjectSessionControlInvocation } from "../contracts/project-sessions/project-session-data";
 import type { VscodeActionResult } from "../services/vscode/VsCodeServer";
 import {
   parseArtifactInput,
   type ArtifactRecord,
   type CakeArtifactV1,
-} from "../ipc/artifact-contract";
-import type { CakeEvent } from "../ipc/cake-rpc-contract";
+} from "../contracts/artifacts/artifact-contract";
+import type { CakeEvent } from "../contracts/application/cake-rpc-contract";
 import { compileInlineWidget } from "../services/widgets/inline-widget-service";
 import {
   publishInlineWidget,

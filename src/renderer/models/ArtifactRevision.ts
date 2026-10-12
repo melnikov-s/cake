@@ -1,5 +1,5 @@
 import { Model, id } from "r-state-tree";
-import type { CakeArtifactV1, ArtifactRecord } from "../../ipc/artifact-contract";
+import type { CakeArtifactV1, ArtifactRecord } from "../../contracts/artifacts/artifact-contract";
 
 export class ArtifactRevision extends Model {
   @id id = "";

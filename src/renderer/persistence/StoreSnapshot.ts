@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import type { StoreSnapshot } from "r-state-tree";
-import { jsonValueSchema } from "../../ipc/json-contract";
+import { jsonValueSchema } from "../../contracts/serialization/json-contract";
 
 const storeChildSnapshotSchema: Schema.Codec<StoreSnapshot & { key?: string | number }> =
   Schema.suspend(() =>

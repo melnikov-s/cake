@@ -1,6 +1,6 @@
 import { toSnapshot } from "r-state-tree";
 import { describe, expect, it } from "vitest";
-import type { EditorSelectionReveal } from "../../../../src/ipc/editor-selection";
+import type { EditorSelectionReveal } from "../../../../src/contracts/editor/editor-selection";
 import { createSelectionCommandFixture } from "../editor-selection-ui-workflow-fixture";
 
 function gate<Value>() {

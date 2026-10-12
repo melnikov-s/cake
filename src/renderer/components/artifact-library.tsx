@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { SourceLocation } from "../../ipc/source-location";
+import type { SourceLocation } from "../../contracts/editor/source-location";
 import { observer } from "r-state-tree/react";
 import { ActionCard } from "@/components/ui/action-card";
 import { ArtifactIcon, SearchIcon } from "@/components/ui/icons";

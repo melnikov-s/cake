@@ -1,9 +1,9 @@
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VirtuosoMockContext } from "react-virtuoso";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/ipc/cake-chat-data";
-import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
-import type { UiPart } from "../../../src/ipc/session-contract";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
+import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";

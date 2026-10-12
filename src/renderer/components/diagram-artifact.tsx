@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Callout } from "@/components/ui/callout";
-import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
+import type { CakeArtifactV1 } from "../../contracts/artifacts/artifact-contract";
 import { useResolvedColorTheme } from "../lib/resolved-color-theme";
 
 export function DiagramArtifact({

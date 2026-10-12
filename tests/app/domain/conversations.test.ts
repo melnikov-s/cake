@@ -13,7 +13,7 @@ import {
   type CakeSessionHandle,
 } from "../../../src/services/pi/CakeSessionRuntimes";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
-import type { ConversationSnapshot } from "../../../src/ipc/session-contract";
+import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
 
 const snapshot = (streaming: boolean): ConversationSnapshot => ({
   workspacePath: "/project",

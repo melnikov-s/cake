@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { observer } from "r-state-tree/react";
-import type { ModelPreset } from "../../ipc/session-contract";
+import type { ModelPreset } from "../../contracts/conversations/session-contract";
 import { modelPresetDragType } from "../lib/model-preset-drag";
 import { cn } from "../lib/utils";
 import { ModelPicker, reasoningLabel } from "./model-picker";

@@ -1,6 +1,9 @@
 import type { ExtensionUIContext, Theme } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
-import type { ExtensionUiEvent, ExtensionUiIntent } from "../../../ipc/session-contract";
+import type {
+  ExtensionUiEvent,
+  ExtensionUiIntent,
+} from "../../../contracts/conversations/session-contract";
 import type { RuntimeUiRequest } from "./runtime-ui-request";
 
 export function createCakeExtensionUiContext(options: {

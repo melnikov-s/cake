@@ -1,4 +1,4 @@
-import type { UiPart } from "../../ipc/session-contract";
+import type { UiPart } from "../../contracts/conversations/session-contract";
 import {
   isCompactedWorkLogPart,
   isWorkLogPart,

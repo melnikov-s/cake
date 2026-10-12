@@ -1,5 +1,9 @@
 import { Store, computed, observable } from "r-state-tree";
-import type { Annotation, Attachment, UiPart } from "../../ipc/session-contract";
+import type {
+  Annotation,
+  Attachment,
+  UiPart,
+} from "../../contracts/conversations/session-contract";
 
 interface PendingUserMessage {
   id: string;

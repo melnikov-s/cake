@@ -1,8 +1,8 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
-import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
-import type { ChatConfiguration } from "../../ipc/session-contract";
-import type { CakeChatSummary } from "../../ipc/cake-chat-data";
-import type { JsonObject } from "../../ipc/json-contract";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
+import type { CakeChatSummary } from "../../contracts/cake-chats/cake-chat-data";
+import type { JsonObject } from "../../contracts/serialization/json-contract";
 import { PendingConversationStore } from "./PendingConversationStore";
 
 export type CakeChatSummaryProjection = CakeChatSummary & { draft?: boolean };

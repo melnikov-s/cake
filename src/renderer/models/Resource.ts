@@ -1,5 +1,5 @@
 import { Model, id } from "r-state-tree";
-import type { CompatibilityResource } from "../../ipc/session-contract";
+import type { CompatibilityResource } from "../../contracts/conversations/session-contract";
 
 /** Shared identity of a discovered skill, prompt, extension, or package. */
 export class Resource extends Model {

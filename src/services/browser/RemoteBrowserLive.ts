@@ -1,6 +1,6 @@
 import { Effect, Layer, Schema } from "effect";
-import { cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
-import type { jsonValueSchema } from "../../ipc/json-contract";
+import { cakeRpcPayloadSchemas } from "../../contracts/application/cake-rpc-contract";
+import type { jsonValueSchema } from "../../contracts/serialization/json-contract";
 import { ProjectAccess } from "../projects/ProjectAccess";
 import { RendererRequestCoordinator } from "../renderer-requests/RendererRequestCoordinator";
 import { Browser } from "./Browser";

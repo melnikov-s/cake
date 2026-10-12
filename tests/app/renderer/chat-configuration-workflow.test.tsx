@@ -1,8 +1,14 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TurnId, type ConversationSnapshot } from "../../../src/ipc/conversation-data";
-import type { ModelOption, ModelPreset } from "../../../src/ipc/session-contract";
+import {
+  TurnId,
+  type ConversationSnapshot,
+} from "../../../src/contracts/conversations/conversation-data";
+import type {
+  ModelOption,
+  ModelPreset,
+} from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import {
   configurationModel,

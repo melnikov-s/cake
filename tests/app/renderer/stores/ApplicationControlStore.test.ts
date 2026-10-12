@@ -3,10 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CAKE_CHAT_SESSION_ID,
   type CakeChatControlRequest,
-} from "../../../../src/ipc/cake-chat-data";
-import { TurnId } from "../../../../src/ipc/conversation-data";
-import type { JsonValue } from "../../../../src/ipc/json-contract";
-import type { ProjectSessionControlRequest } from "../../../../src/ipc/project-session-data";
+} from "../../../../src/contracts/cake-chats/cake-chat-data";
+import { TurnId } from "../../../../src/contracts/conversations/conversation-data";
+import type { JsonValue } from "../../../../src/contracts/serialization/json-contract";
+import type { ProjectSessionControlRequest } from "../../../../src/contracts/project-sessions/project-session-data";
 import { applyCakeChatControlUpdate } from "../../../../src/renderer/reducers/CakeChatControlReducer";
 import { fixtureTimestamp, projectRecord, sessionSummary } from "../fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "../renderer-store-fixture";

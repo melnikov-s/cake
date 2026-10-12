@@ -1,5 +1,5 @@
 import { observer } from "r-state-tree/react";
-import type { CakeEditorSettings } from "../../ipc/cake-settings-data";
+import type { CakeEditorSettings } from "../../contracts/application/cake-settings-data";
 import type { EmbeddedEditorSettingsStore } from "../stores/EmbeddedEditorSettingsStore";
 import { Select } from "./ui/select";
 

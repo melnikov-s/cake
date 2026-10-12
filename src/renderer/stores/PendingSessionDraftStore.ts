@@ -1,5 +1,5 @@
 import { Store } from "r-state-tree";
-import type { Attachment, UiPart } from "../../ipc/session-contract";
+import type { Attachment, UiPart } from "../../contracts/conversations/session-contract";
 import { shouldRenderMarkdown } from "../../utils/markdown";
 import type { WorktreeDraftChoice } from "./WorktreeCreationStore";
 import { ClientContext } from "./context/ClientContext";

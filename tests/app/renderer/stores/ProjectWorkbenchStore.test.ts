@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { workingDirectoryEditorLocation } from "../../../../src/ipc/editor-location";
-import { TurnId } from "../../../../src/ipc/conversation-data";
+import { workingDirectoryEditorLocation } from "../../../../src/contracts/editor/editor-location";
+import { TurnId } from "../../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../../src/renderer/client/Client";
 import type { DrawBoardMetadata } from "../../../../src/contracts/draw/draw-board-data";
 import type { DrawDocumentSnapshot } from "../../../../src/contracts/draw/draw-editor";

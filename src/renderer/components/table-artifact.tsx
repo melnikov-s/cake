@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
-import type { JsonValue } from "../../ipc/json-contract";
+import type { CakeArtifactV1 } from "../../contracts/artifacts/artifact-contract";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
 
 export function TableArtifact({
   artifact,

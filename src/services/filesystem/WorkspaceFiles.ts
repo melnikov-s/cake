@@ -1,5 +1,8 @@
 import { Context, type Effect } from "effect";
-import type { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../../ipc/cake-rpc-contract";
+import type {
+  cakeRpcPayloadSchemas,
+  cakeRpcSuccessSchemas,
+} from "../../contracts/application/cake-rpc-contract";
 import type { WorkspaceFileError } from "../../contracts/filesystem/workspace-files-errors";
 
 type FilesystemOperation = "suggest-files" | "read-workspace-file" | "read-workspace-image";

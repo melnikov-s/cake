@@ -1,5 +1,5 @@
 import { Context, type Effect } from "effect";
-import type { cakeRpcSuccessSchemas } from "../../ipc/cake-rpc-contract";
+import type { cakeRpcSuccessSchemas } from "../../contracts/application/cake-rpc-contract";
 import type { WorkspaceFileError } from "../../contracts/filesystem/workspace-files-errors";
 
 /** Device-local dialog. Its file paths must never be interpreted by a remote backend. */

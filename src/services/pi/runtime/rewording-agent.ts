@@ -1,5 +1,5 @@
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import type { UtilityModel } from "../../../ipc/session-contract";
+import type { UtilityModel } from "../../../contracts/conversations/session-contract";
 import { runIsolatedSession } from "./isolated-session-runner";
 import { createWorkspaceReadTools } from "./workspace-read-tools";
 

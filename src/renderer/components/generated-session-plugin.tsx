@@ -2,7 +2,7 @@ import { Option, Schema } from "effect";
 import { useEffect, useRef, useState } from "react";
 import { observer } from "r-state-tree/react";
 import type { SessionPlugin } from "../../contracts/application/application-data";
-import type { JsonObject, JsonValue } from "../../ipc/json-contract";
+import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
 import { readWidgetTheme } from "../lib/widget-theme";
 import { useResolvedColorTheme } from "../lib/resolved-color-theme";
 import { inlineWidgetMessageSchema } from "../../utils/inline-widget-message";

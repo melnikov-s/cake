@@ -7,7 +7,7 @@ import type {
   FileSuggestion,
   ConversationSnapshot,
   UiPart,
-} from "../../ipc/session-contract";
+} from "../../contracts/conversations/session-contract";
 import type { ChatConfigurationStore } from "./ChatConfigurationStore";
 import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
 import {

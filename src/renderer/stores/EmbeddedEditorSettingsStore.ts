@@ -1,5 +1,5 @@
 import { snapshot, Store } from "r-state-tree";
-import type { CakeEditorSettings } from "../../ipc/cake-settings-data";
+import type { CakeEditorSettings } from "../../contracts/application/cake-settings-data";
 
 /** Owns persisted window preferences for the embedded VS Code presentation. */
 export class EmbeddedEditorSettingsStore extends Store<Record<string, never>> {

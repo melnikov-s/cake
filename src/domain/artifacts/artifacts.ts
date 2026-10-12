@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import type { cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
+import type { cakeRpcPayloadSchemas } from "../../contracts/application/cake-rpc-contract";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { ProjectAccess } from "../../services/projects/ProjectAccess";
 import { ArtifactError } from "../../contracts/artifacts/artifact-data";

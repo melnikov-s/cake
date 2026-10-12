@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { attachmentSchema, thinkingLevelSchema } from "../../ipc/session-contract";
+import { attachmentSchema, thinkingLevelSchema } from "../conversations/session-contract";
 
 export const SavedDraftConfiguration = Schema.Struct({
   provider: Schema.String,

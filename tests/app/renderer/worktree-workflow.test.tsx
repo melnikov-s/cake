@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ResolutionCleanupFailed } from "../../../src/contracts/project-sessions/project-session-resolution";
 import { applyWorktreeOperationCatalogUpdate } from "../../../src/renderer/reducers/WorktreeOperationReducer";
 import type { WorktreeLandingOperation } from "../../../src/contracts/worktrees/worktree-landing-data";
-import type { WorktreeStatus } from "../../../src/ipc/worktree-contract";
+import type { WorktreeStatus } from "../../../src/contracts/worktrees/worktree-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { QuakeTerminal } from "../../../src/renderer/components/quake-terminal";
 import { ToastHost } from "../../../src/renderer/components/toast-host";

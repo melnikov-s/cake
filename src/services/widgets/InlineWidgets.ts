@@ -1,5 +1,8 @@
 import { Context, type Effect } from "effect";
-import type { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../../ipc/cake-rpc-contract";
+import type {
+  cakeRpcPayloadSchemas,
+  cakeRpcSuccessSchemas,
+} from "../../contracts/application/cake-rpc-contract";
 import type { InlineWidgetError } from "../../contracts/widgets/inline-widgets-errors";
 
 type CompilePayload = (typeof cakeRpcPayloadSchemas)["compile-inline-widget"]["Type"];

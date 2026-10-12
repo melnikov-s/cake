@@ -2,7 +2,7 @@ import { Option, Schema } from "effect";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { observer } from "r-state-tree/react";
-import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
+import type { CakeArtifactV1 } from "../../contracts/artifacts/artifact-contract";
 import { inlineWidgetMessageSchema } from "../../utils/inline-widget-message";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { InlineWidgetFrame } from "./inline-widget-frame";

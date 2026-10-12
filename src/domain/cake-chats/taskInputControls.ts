@@ -1,7 +1,7 @@
 import { Effect, Option, Schema } from "effect";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
-import { jsonObjectSchema, type JsonValue } from "../../ipc/json-contract";
+import { jsonObjectSchema, type JsonValue } from "../../contracts/serialization/json-contract";
 import type { AttachmentUploadError } from "../../contracts/filesystem/attachment-uploads-errors";
 
 const ForwardArguments = Schema.Struct({

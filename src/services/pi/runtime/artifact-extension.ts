@@ -5,7 +5,7 @@ import {
   parseArtifactInput,
   type ArtifactRecord,
   type CakeArtifactV1,
-} from "../../../ipc/artifact-contract";
+} from "../../../contracts/artifacts/artifact-contract";
 
 export interface ArtifactExtensionOptions {
   persistArtifact(artifact: CakeArtifactV1): Promise<ArtifactRecord>;

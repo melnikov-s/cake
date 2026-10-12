@@ -3,7 +3,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CakeEvent } from "../../../src/ipc/cake-rpc-contract";
+import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { App } from "../../../src/renderer/components/app";
 import { toStoreEvent } from "../../../src/renderer/events/StoreEvent";

@@ -9,7 +9,7 @@ import {
   applicationStateSchema,
   parsePiBuiltinCommand,
   piBuiltinSlashCommands,
-} from "../../../src/ipc/session-contract";
+} from "../../../src/contracts/conversations/session-contract";
 
 it("uses the domain-owned renderer application schema at the IPC boundary", () => {
   expect(applicationStateSchema).toBe(RendererApplicationState);

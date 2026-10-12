@@ -1,6 +1,9 @@
 import { Schema } from "effect";
 import { useEffect, useState } from "react";
-import { piSettingsSchema, type PiSettings } from "../../../ipc/session-contract";
+import {
+  piSettingsSchema,
+  type PiSettings,
+} from "../../../contracts/conversations/session-contract";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 

@@ -2,7 +2,7 @@ import { Effect, Stream } from "effect";
 import * as cakeChatMetadata from "../../domain/cake-chats/cakeChatMetadata";
 import * as cakeChatOperations from "../../domain/cake-chats/cakeChatOperations";
 import * as requestInspection from "../../domain/cake-chats/requestInspection";
-import { CakeChatError } from "../cake-chat-data";
+import { CakeChatError } from "../../contracts/cake-chats/cake-chat-data";
 import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeChatRuntime";
 import { RendererRequestCoordinator } from "../../services/renderer-requests/RendererRequestCoordinator";
 import { CakeChatRpc } from "../protocol/CakeChatRpc";

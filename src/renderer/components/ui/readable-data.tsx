@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Predicate } from "effect";
-import type { JsonValue } from "../../../ipc/json-contract";
+import type { JsonValue } from "../../../contracts/serialization/json-contract";
 import { AttachmentTile } from "./attachment-tile";
 import { DisclosureTrigger } from "./disclosure-trigger";
 import {

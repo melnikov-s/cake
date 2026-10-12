@@ -1,5 +1,5 @@
 import { Store, batch, child, createStore, effect as reactiveEffect } from "r-state-tree";
-import type { ChatConfiguration } from "../../ipc/session-contract";
+import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
 import type { StoreEvent } from "../events/StoreEvent";
 import type {
   AgentAvailabilitySnapshot,

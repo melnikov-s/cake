@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { ChangedFiles } from "@/components/changed-files";
 import { LoadingState } from "@/components/ui/loading-state";
-import type { UiPart } from "../../ipc/session-contract";
+import type { UiPart } from "../../contracts/conversations/session-contract";
 import type { ChatStore } from "../stores/ChatStore";
 import { cn } from "../lib/utils";
 import { ActivityGroup } from "./work-log-activity-group";

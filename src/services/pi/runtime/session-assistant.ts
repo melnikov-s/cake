@@ -1,4 +1,4 @@
-import { jsonObjectSchema } from "../../../ipc/json-contract";
+import { jsonObjectSchema } from "../../../contracts/serialization/json-contract";
 import type { GlobalControlTool } from "./cake-session-runtime-capabilities";
 import { CakeOperationRegistry, type CakeOperationDefinition } from "./cake-operation-registry";
 import { renderPromptTemplate } from "./prompt-template";

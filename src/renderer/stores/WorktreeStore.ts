@@ -1,7 +1,10 @@
 import { Store } from "r-state-tree";
 import type { WorktreeLandingOperation } from "../../contracts/worktrees/worktree-landing-data";
 import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
-import type { WorktreeLandRequest, WorktreeStatus } from "../../ipc/worktree-contract";
+import type {
+  WorktreeLandRequest,
+  WorktreeStatus,
+} from "../../contracts/worktrees/worktree-contract";
 import { describeError } from "../lib/error-details";
 import { ClientContext } from "./context/ClientContext";
 import type { WorkingDirectoryRetirementWorkflow } from "./WorkingDirectoryRetirementStore";

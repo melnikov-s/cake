@@ -72,8 +72,8 @@ code change.
 - Services never import Cake domain, composition, or renderer modules, even for types.
   Backend and renderer implementations never import one another. Shared schemas,
   errors, values, and pure codecs consumed across layers belong in feature-named
-  `src/contracts/` modules (or existing shared IPC data modules), not implementation
-  files or forwarding facades. `architecture/module-boundaries` enforces these
+  `src/contracts/` modules, not IPC infrastructure, implementation files, or
+  forwarding facades. `architecture/module-boundaries` enforces these
   directions in ESLint; see `docs/architecture/effect-architecture.md` for the matrix.
 - Cross-process data is untrusted until parsed by the shared runtime schemas.
 - A Cake Chat Session is an application-level Cake Session backed by Pi. Keep

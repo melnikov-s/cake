@@ -1,5 +1,5 @@
 import { Option, Schema } from "effect";
-import { jsonValueSchema } from "../ipc/json-contract";
+import { jsonValueSchema } from "../contracts/serialization/json-contract";
 import { ResolvedAgentModel as resolvedAgentModelSchema } from "../contracts/subagents/subagent-data";
 import { toolOperationName } from "./cake-tool";
 import {
@@ -7,7 +7,7 @@ import {
   uiPartSchema,
   type SessionUsage,
   type UiPart,
-} from "../ipc/session-contract";
+} from "../contracts/conversations/session-contract";
 
 const statusSchema = Schema.Literals(["queued", "running", "complete", "error", "aborted"]);
 const runPayloadFields = {

@@ -2,7 +2,7 @@ import { Option, Schema } from "effect";
 import {
   compiledInlineWidgetSchema,
   type CompiledInlineWidget,
-} from "../../ipc/inline-widget-contract";
+} from "../../contracts/widgets/inline-widget-contract";
 
 /** Map only a validated, published Cake document capability on the browser origin. */
 export function widgetDocumentUrl(

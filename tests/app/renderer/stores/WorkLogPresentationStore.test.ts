@@ -1,6 +1,6 @@
 import { createStore, mount, observable } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { UiPart } from "../../../../src/ipc/session-contract";
+import type { UiPart } from "../../../../src/contracts/conversations/session-contract";
 import { ChatStore } from "../../../../src/renderer/stores/ChatStore";
 
 type ToolState = Extract<UiPart, { kind: "tool" }>["state"];

@@ -1,5 +1,9 @@
 import { Predicate, Schema } from "effect";
-import { jsonObjectSchema, jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
+import {
+  jsonObjectSchema,
+  jsonValueSchema,
+  type JsonValue,
+} from "../../contracts/serialization/json-contract";
 
 export function parseStructuredData(raw: string): JsonValue {
   try {

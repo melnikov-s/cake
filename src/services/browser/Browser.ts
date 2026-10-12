@@ -1,5 +1,5 @@
 import { Context, type Effect } from "effect";
-import type { JsonObject, JsonValue } from "../../ipc/json-contract";
+import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
 import type { BrowserError } from "../../contracts/browser/browser-errors";
 
 export interface BrowserState {

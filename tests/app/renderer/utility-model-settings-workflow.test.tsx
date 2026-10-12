@@ -6,7 +6,10 @@ import {
   defaultApplicationState,
   type ApplicationState,
 } from "../../../src/contracts/application/application-data";
-import type { ModelOption, UtilityModel } from "../../../src/ipc/session-contract";
+import type {
+  ModelOption,
+  UtilityModel,
+} from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";
 import { createRendererStoreFixture } from "./renderer-store-fixture";

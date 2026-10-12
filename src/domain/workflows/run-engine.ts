@@ -19,9 +19,9 @@ import {
   type WorkflowRunId,
   type WorkflowStep,
 } from "../../contracts/workflows/workflow-data";
-import { jsonObjectSchema, type JsonValue } from "../../ipc/json-contract";
-import type { ExplicitCakeModelSelection } from "../../ipc/cake-model-selection";
-import type { SessionUsage } from "../../ipc/session-contract";
+import { jsonObjectSchema, type JsonValue } from "../../contracts/serialization/json-contract";
+import type { ExplicitCakeModelSelection } from "../../contracts/model-presets/cake-model-selection";
+import type { SessionUsage } from "../../contracts/conversations/session-contract";
 import { WorkflowSandbox } from "../../services/pi/WorkflowSandbox";
 import { WorkflowWorkers } from "../../services/pi/WorkflowWorkers";
 import { WorkflowSupervisor } from "../../services/workflows/WorkflowSupervisor";

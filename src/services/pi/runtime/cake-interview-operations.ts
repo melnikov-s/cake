@@ -7,7 +7,7 @@ import {
   validateInterviewResponse,
   type InterviewRecord,
 } from "../../../contracts/interviews/interview";
-import { jsonValueSchema, type JsonValue } from "../../../ipc/json-contract";
+import { jsonValueSchema, type JsonValue } from "../../../contracts/serialization/json-contract";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 
 export interface CakeInterviewOperationOptions {

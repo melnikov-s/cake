@@ -1,5 +1,5 @@
 import { Store } from "r-state-tree";
-import type { ApplicationState } from "../../ipc/session-contract";
+import type { ApplicationState } from "../../contracts/conversations/session-contract";
 import type {
   NonChatModelPreferences,
   NonChatModelReference,

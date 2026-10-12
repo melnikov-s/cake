@@ -48,7 +48,7 @@ import {
   conversationSnapshotSchema,
   type ExtensionUiIntent,
   type ConversationSnapshot,
-} from "../../../src/ipc/session-contract";
+} from "../../../src/contracts/conversations/session-contract";
 
 const temporaryDirectories: string[] = [];
 const runtimes: Array<FoundationRuntime | CakeSessionRuntime> = [];

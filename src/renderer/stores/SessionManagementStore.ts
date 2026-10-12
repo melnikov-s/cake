@@ -1,5 +1,5 @@
 import { Store, observable } from "r-state-tree";
-import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
+import { SESSION_TITLE_MAX_LENGTH } from "../../contracts/conversations/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { ClientError } from "../client/Client";
 import type { SessionCatalogStore } from "./SessionCatalogStore";

@@ -1,5 +1,8 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
+import {
+  cakeRpcPayloadSchemas,
+  cakeRpcSuccessSchemas,
+} from "../../contracts/application/cake-rpc-contract";
 import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 
 /** Device-local capture and separately authorized backend response. */

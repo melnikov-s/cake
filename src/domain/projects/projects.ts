@@ -1,6 +1,6 @@
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import { Effect, Stream } from "effect";
-import type { cakeRpcPayloadSchemas } from "../../ipc/cake-rpc-contract";
+import type { cakeRpcPayloadSchemas } from "../../contracts/application/cake-rpc-contract";
 import { ClientWorkspaces } from "../../services/clients/ClientWorkspaces";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { PiAgentResources } from "../../services/pi/PiAgentResources";

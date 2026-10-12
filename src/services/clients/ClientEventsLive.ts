@@ -1,5 +1,5 @@
 import { Effect, Layer, PubSub, Stream } from "effect";
-import type { CakeEvent } from "../../ipc/cake-rpc-contract";
+import type { CakeEvent } from "../../contracts/application/cake-rpc-contract";
 import { ClientEvents, type FocusedCakeEvent } from "./ClientEvents";
 
 /** One hub per backend Scope, shared by every transport and producer. No replay or persistence. */

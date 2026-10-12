@@ -4,7 +4,7 @@ import {
   MAX_ARTIFACT_INPUT_BYTES,
   artifactPointerSchema,
   parseArtifactInput,
-} from "../../../src/ipc/artifact-contract";
+} from "../../../src/contracts/artifacts/artifact-contract";
 
 function markdown(markdown = "Hello") {
   return {

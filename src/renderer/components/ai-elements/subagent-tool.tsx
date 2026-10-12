@@ -1,6 +1,6 @@
 import { useContext, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
-import type { UiPart } from "../../../ipc/session-contract";
+import type { UiPart } from "../../../contracts/conversations/session-contract";
 import { toolOperationName } from "../../../utils/cake-tool";
 import { historicalSubagentRuns, type SubagentRun } from "../../../utils/subagent-runs";
 import type { SubagentActivityStore } from "../../stores/SubagentActivityStore";

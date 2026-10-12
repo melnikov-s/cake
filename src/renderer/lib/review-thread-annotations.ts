@@ -2,7 +2,7 @@ import type {
   EditorAnnotation,
   EditorAnnotationSnapshot,
   EditorAnnotationStatus,
-} from "../../ipc/editor-annotation";
+} from "../../contracts/editor/editor-annotation";
 import type { ReviewThread } from "../models/ReviewThread";
 
 export function reviewThreadAnnotations(

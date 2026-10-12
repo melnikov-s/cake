@@ -1,5 +1,5 @@
 import { Model, id, modelRef, observable } from "r-state-tree";
-import type { ModelOption as ModelOptionRecord } from "../../ipc/session-contract";
+import type { ModelOption as ModelOptionRecord } from "../../contracts/conversations/session-contract";
 
 import { LlmModel } from "./LlmModel";
 

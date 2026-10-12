@@ -26,7 +26,7 @@ import {
   patchSessionPluginState,
   upsertSessionPlugin,
 } from "../application/application";
-import type { ProjectSessionLocation } from "../../ipc/project-session-data";
+import type { ProjectSessionLocation } from "../../contracts/project-sessions/project-session-data";
 import { makeSubagentControl } from "../subagents/subagentControl";
 import * as workflowControl from "../workflows/workflow-control";
 import { WorkflowSupervisor } from "../../services/workflows/WorkflowSupervisor";
@@ -63,12 +63,12 @@ import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";
 import type { Terminal } from "../../services/terminal/Terminal";
 import { toJsonValue } from "../../utils/to-json-value";
 import { agentEditorLocation } from "../../utils/agent-editor-location";
-import type { JsonObject } from "../../ipc/json-contract";
+import type { JsonObject } from "../../contracts/serialization/json-contract";
 import {
   EditorSelectionOpenResult,
   EditorSelectionState,
   EditorSelectionUpdate,
-} from "../../ipc/editor-selection";
+} from "../../contracts/editor/editor-selection";
 
 class ProjectSessionRuntimeCompositionError extends Schema.TaggedError<ProjectSessionRuntimeCompositionError>()(
   "ProjectSessionRuntimeCompositionError",

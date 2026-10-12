@@ -1,7 +1,11 @@
 import Ajv, { type ValidateFunction } from "ajv";
 import { Effect, Option, Schema } from "effect";
 import { WorkflowError, WorkflowOutputSchema } from "../../../../contracts/workflows/workflow-data";
-import { jsonValueSchema, type JsonObject, type JsonValue } from "../../../../ipc/json-contract";
+import {
+  jsonValueSchema,
+  type JsonObject,
+  type JsonValue,
+} from "../../../../contracts/serialization/json-contract";
 
 const invalidSchema = (message: string) =>
   new WorkflowError({ operation: "validateOutputSchema", reason: "invalid-input", message });

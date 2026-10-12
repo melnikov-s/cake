@@ -52,6 +52,8 @@ describe("Service dependency direction", () => {
     "@/stores/RootStore",
     "../../main/main",
     "../../ipc/server/CakeRpcServer",
+    "../../ipc/protocol/WorkspaceRpc",
+    "../../ipc/fixture",
     "../../backend/BackendLive",
   ])("rejects upper-layer dependency: %s", async (source) => {
     expect(await violations(valueImport(source), piFile)).toHaveLength(1);
@@ -59,7 +61,7 @@ describe("Service dependency direction", () => {
 
   it.each([
     "../../contracts/pi/model-data",
-    "../../ipc/session-contract",
+    "../../contracts/conversations/session-contract",
     "../storage/example",
     "../../config/CakePaths",
   ])("permits capability or value dependency: %s", async (source) => {
@@ -90,7 +92,8 @@ describe("Process and shared-contract boundaries", () => {
     ["src/utils/fixture.ts", "../domain/projects/project-error"],
     ["src/ipc/protocol/FixtureRpc.ts", "../../services/vscode/VsCodeServer"],
     ["src/ipc/client/fixture.ts", "../../domain/projects/projects"],
-    ["src/ipc/fixture.ts", "./server/CakeRpcServer"],
+    ["src/domain/projects/projects.ts", "../../ipc/fixture"],
+    ["src/contracts/projects/fixture.ts", "../../ipc/fixture"],
     ["src/preload/preload.ts", "../renderer/runtime"],
     ["src/preload/preload.ts", "../services/electron/Electron"],
     ["src/config/fixture.ts", "../services/pi/PiPaths"],
@@ -125,7 +128,7 @@ describe("Process and shared-contract boundaries", () => {
     ["src/layers/FixtureLive.ts", "../services/pi/PiSettings"],
     ["src/layers/FixtureLive.ts", "../server/NetworkListener"],
     ["src/domain/projects/fixture.ts", "../../services/storage/ApplicationStorage"],
-    ["src/contracts/projects/fixture.ts", "../../ipc/session-contract"],
+    ["src/contracts/projects/fixture.ts", "../conversations/session-contract"],
     ["src/preload/preload.ts", "../ipc/transport/ElectronRpcTransport"],
     ["src/preload/preload.ts", "electron"],
     ["src/main/main.ts", "node:fs"],
@@ -151,6 +154,26 @@ describe("Process and shared-contract boundaries", () => {
         "src/utils/fixture.ts",
       ])
         expect(await violations(valueImport(source), file)).toHaveLength(1);
+    },
+  );
+});
+
+describe("IPC source organization", () => {
+  it.each(["src/ipc/fixture.ts", "src/ipc/data/fixture.ts"])(
+    "rejects modules outside protocol, client, server, and transport: %s",
+    async (file) => {
+      const messages = await violations("export const value = 1;", file);
+      expect(messages).toHaveLength(1);
+      expect(messages[0]?.messageId).toBe("ipcLocation");
+    },
+  );
+
+  it.each(["protocol", "client", "server", "transport"])(
+    "permits IPC infrastructure in %s",
+    async (folder) => {
+      expect(await violations("export const value = 1;", `src/ipc/${folder}/fixture.ts`)).toEqual(
+        [],
+      );
     },
   );
 });

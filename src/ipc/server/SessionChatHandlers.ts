@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import * as sessionChats from "../../domain/conversations/sessionChats";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 import { SessionChatRpc } from "../protocol/SessionChatRpc";
-import { SessionChatError } from "../conversation-data";
+import { SessionChatError } from "../../contracts/conversations/conversation-data";
 import { admitTurnAttachments } from "./AttachmentUploadHandlers";
 
 const deliverFromRenderer = (

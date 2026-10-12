@@ -7,7 +7,7 @@ import {
   WorkflowStartInput,
   WorkflowWorkerTarget,
 } from "../../contracts/workflows/workflow-data";
-import type { JsonObject, JsonValue } from "../../ipc/json-contract";
+import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
 import type { ApplicationState } from "../../services/storage/ApplicationState";
 import type { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import type { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";

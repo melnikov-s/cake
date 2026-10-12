@@ -4,7 +4,7 @@ import type {
   ChatConfiguration,
   ModelOption,
   ModelPreset,
-} from "../../ipc/session-contract";
+} from "../../contracts/conversations/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 

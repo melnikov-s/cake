@@ -1,6 +1,6 @@
 import { memo } from "react";
-import type { UiPart } from "../../../ipc/session-contract";
-import type { SourceLocation } from "../../../ipc/source-location";
+import type { UiPart } from "../../../contracts/conversations/session-contract";
+import type { SourceLocation } from "../../../contracts/editor/source-location";
 import { workLogChangeChunks } from "../../../utils/turn-diff";
 import { toWorkspaceRelativePath } from "../../../utils/workspace-relative-path";
 import { useBufferedWorkLogChanges } from "../../lib/use-buffered-work-log-changes";

@@ -8,7 +8,7 @@ import type {
   PiSessionUpdate,
 } from "../../services/pi/CakeSessionRuntimes";
 import type { PiQueuedMessages } from "../../services/pi/conversation-data";
-import type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
+import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
 import type {
   Annotation,
@@ -17,7 +17,7 @@ import type {
   PiSettingUpdate,
   ConversationSnapshot as RuntimeConversationSnapshot,
   ThinkingLevel,
-} from "../../ipc/session-contract";
+} from "../../contracts/conversations/session-contract";
 import { toJsonValue } from "../../utils/to-json-value";
 import {
   TurnId,
@@ -25,9 +25,9 @@ import {
   type ConversationSnapshot,
   type ConversationUpdate,
   type QueuedConversationMessages,
-} from "../../ipc/conversation-data";
+} from "../../contracts/conversations/conversation-data";
 
-export * from "../../ipc/conversation-data";
+export * from "../../contracts/conversations/conversation-data";
 
 /** Maps Pi's transient runtime queue into Cake's conversation projection. */
 export const projectQueuedMessages = (queued: PiQueuedMessages): QueuedConversationMessages => ({

@@ -1,7 +1,7 @@
 import { BrowserWindow } from "electron";
 import { Effect, Layer, Schema, Semaphore } from "effect";
-import type { CompiledInlineWidget } from "../../ipc/inline-widget-contract";
-import type { JsonValue } from "../../ipc/json-contract";
+import type { CompiledInlineWidget } from "../../contracts/widgets/inline-widget-contract";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
 import { RenderedWidgetCapture } from "./RenderedWidgetCapture";
 import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 

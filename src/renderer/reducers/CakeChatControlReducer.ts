@@ -1,5 +1,5 @@
 import { batch } from "r-state-tree";
-import type { CakeChatControlUpdate } from "../../ipc/cake-chat-data";
+import type { CakeChatControlUpdate } from "../../contracts/cake-chats/cake-chat-data";
 import type { CakeChatControls } from "../models/CakeChatControls";
 
 export function applyCakeChatControlUpdate(model: CakeChatControls, update: CakeChatControlUpdate) {

@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import type { JsonValue } from "../ipc/json-contract";
+import type { JsonValue } from "../contracts/serialization/json-contract";
 
 /** Normalize a trusted process-local projection before it crosses a JSON boundary. */
 export const toJsonValue = <A>(value: A): JsonValue => {

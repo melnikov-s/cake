@@ -1,5 +1,5 @@
 import { onSnapshot, toSnapshot, type Store } from "r-state-tree";
-import type { JsonValue } from "../../ipc/json-contract";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
 import type { Client } from "../client/Client";
 import { extractSavedDrafts } from "../../contracts/project-sessions/saved-draft-extraction";
 

@@ -162,7 +162,7 @@ approval; an implementation may not silently change them.
 ### B owns
 
 - `src/domain/project-sessions/projectSessionLifecycle.ts`
-- `src/ipc/project-session-data.ts` and `src/ipc/protocol/ProjectSessionRpc.ts`
+- `src/contracts/project-sessions/project-session-data.ts` and `src/ipc/protocol/ProjectSessionRpc.ts`
 - `src/ipc/server/ProjectSessionHandlers.ts`
 - `src/renderer/client/Client.ts` and `src/renderer/client/ClientLive.ts`
 - `src/renderer/stores/SessionManagementStore.ts`

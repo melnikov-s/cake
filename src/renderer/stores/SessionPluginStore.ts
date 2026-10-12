@@ -4,7 +4,7 @@ import type {
   SessionPlugin,
   SessionPluginSharedState,
 } from "../../contracts/application/application-data";
-import type { JsonObject, JsonValue } from "../../ipc/json-contract";
+import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
 import { ClientContext } from "./context/ClientContext";
 
 /** Window projection and mutation boundary for durable session-bound plugins. */

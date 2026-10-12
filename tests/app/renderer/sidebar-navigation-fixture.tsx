@@ -4,7 +4,7 @@ import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
 import type { WorktreeLandingOperation } from "../../../src/contracts/worktrees/worktree-landing-data";
-import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
+import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import { App } from "../../../src/renderer/components/app";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import {

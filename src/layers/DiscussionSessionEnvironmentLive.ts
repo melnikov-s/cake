@@ -1,5 +1,5 @@
 import { Effect, FileSystem, Layer, Path } from "effect";
-import { projectReviewThread, type ReviewThreadRecord } from "../ipc/review-contract";
+import { projectReviewThread, type ReviewThreadRecord } from "../contracts/reviews/review-contract";
 import { ReviewStorage } from "../services/storage/ReviewStorage";
 import { ApplicationState } from "../services/storage/ApplicationState";
 import {

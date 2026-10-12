@@ -1,4 +1,4 @@
-import type { SessionTreeEntry } from "../../ipc/session-contract";
+import type { SessionTreeEntry } from "../../contracts/conversations/session-contract";
 import { Button } from "./ui/button";
 import { NavItem } from "./ui/nav-item";
 

@@ -4,7 +4,10 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ModelOption, PiSettings } from "../../../src/ipc/session-contract";
+import type {
+  ModelOption,
+  PiSettings,
+} from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";
 import { createRendererStoreFixture } from "./renderer-store-fixture";

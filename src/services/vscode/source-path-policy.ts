@@ -1,6 +1,6 @@
 import { realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import type { EditorLocation } from "../../ipc/editor-location";
+import type { EditorLocation } from "../../contracts/editor/editor-location";
 
 function filePathFromEditorLocation(requestedPath: string) {
   const value = requestedPath.trim();

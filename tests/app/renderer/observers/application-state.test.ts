@@ -1,7 +1,7 @@
 import { Effect, Stream } from "effect";
 import { describe, expect, it } from "vitest";
 import { CakeIpcClient, type CakeIpcClientService } from "../../../../src/ipc/client/CakeIpcClient";
-import type { ModelPreset } from "../../../../src/ipc/session-contract";
+import type { ModelPreset } from "../../../../src/contracts/conversations/session-contract";
 import { observeApplicationState } from "../../../../src/renderer/observers/application-state";
 import { observeStream } from "../../../../src/renderer/observers/observe-stream";
 import type { Runtime } from "../../../../src/renderer/runtime";

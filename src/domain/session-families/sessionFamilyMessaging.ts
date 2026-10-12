@@ -6,8 +6,11 @@ import {
 } from "../../contracts/conversations/cross-session-message";
 import { substantiveTurnResult } from "../../contracts/pi/turn-result-data";
 import { SessionTaskOutcome } from "../../contracts/project-sessions/session-reporting";
-import type { JsonValue } from "../../ipc/json-contract";
-import { ProjectSessionError, type ProjectSessionLocation } from "../../ipc/project-session-data";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
+import {
+  ProjectSessionError,
+  type ProjectSessionLocation,
+} from "../../contracts/project-sessions/project-session-data";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../services/project-sessions/ProjectSessionConfiguration";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";

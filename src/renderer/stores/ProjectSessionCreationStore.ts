@@ -1,6 +1,6 @@
 import { Store, child, createStore, effect as reactiveEffect } from "r-state-tree";
-import type { ProjectSessionStartInput } from "../../ipc/project-session-data";
-import type { ChatConfiguration } from "../../ipc/session-contract";
+import type { ProjectSessionStartInput } from "../../contracts/project-sessions/project-session-data";
+import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
 import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
 import type { ComposerDeliveryInput } from "./ConversationComposerStore";
 import { ClientContext } from "./context/ClientContext";

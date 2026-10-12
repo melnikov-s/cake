@@ -1,6 +1,6 @@
 import { memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import type { SourceLocation } from "../../../ipc/source-location";
+import type { SourceLocation } from "../../../contracts/editor/source-location";
 import { CopyFilePathButton } from "@/components/copy-file-path-button";
 import { Button } from "../ui/button";
 import { syntaxTokenStyle, useHighlightedSource } from "./code";

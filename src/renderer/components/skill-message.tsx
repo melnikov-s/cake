@@ -1,8 +1,8 @@
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Message } from "@/components/ai-elements/message";
 import { SkillIcon } from "./ui/icons";
-import type { UiPart } from "../../ipc/session-contract";
-import type { SourceLocation } from "../../ipc/source-location";
+import type { UiPart } from "../../contracts/conversations/session-contract";
+import type { SourceLocation } from "../../contracts/editor/source-location";
 
 export function SkillMessage({
   part,

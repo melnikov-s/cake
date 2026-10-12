@@ -1,5 +1,5 @@
 import { Context, type Effect } from "effect";
-import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
+import type { CakeArtifactV1 } from "../../contracts/artifacts/artifact-contract";
 import type {
   ArtifactCatalog,
   ArtifactDigest,

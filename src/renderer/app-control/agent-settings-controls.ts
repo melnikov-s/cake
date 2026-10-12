@@ -3,9 +3,9 @@ import {
   AgentSettingsInvocation,
   agentSettingsOperations,
   agentSettingsGuidance,
-} from "../../ipc/agent-settings-schema";
-import { CakeControlTool } from "../../ipc/cake-chat-data";
-import { jsonValueSchema } from "../../ipc/json-contract";
+} from "../../contracts/application/agent-settings-schema";
+import { CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
+import { jsonValueSchema } from "../../contracts/serialization/json-contract";
 import type { RegisteredControl } from "./control-definition";
 /** Shared settings schemas/discovery stay data-only. Execution uses this window's host. */
 export const agentSettingsControls: RegisteredControl[] = agentSettingsOperations.map(

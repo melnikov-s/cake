@@ -1,5 +1,5 @@
 import { computed, Store, untracked } from "r-state-tree";
-import type { ArtifactRecord } from "../../ipc/artifact-contract";
+import type { ArtifactRecord } from "../../contracts/artifacts/artifact-contract";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { ClientContext } from "./context/ClientContext";
 

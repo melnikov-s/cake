@@ -4,7 +4,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { UiPart } from "../../../src/ipc/session-contract";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import type { CanonicalTranscriptBehavior } from "../../../src/renderer/components/chat-message";
 import type { ChatStore } from "../../../src/renderer/stores/ChatStore";
 

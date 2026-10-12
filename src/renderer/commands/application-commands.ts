@@ -1,4 +1,4 @@
-import type { CakeHotkeyActionId } from "../../ipc/cake-settings-data";
+import type { CakeHotkeyActionId } from "../../contracts/application/cake-settings-data";
 import type { AppShellStore } from "../stores/AppShellStore";
 import type { CakeChatCollectionStore } from "../stores/CakeChatCollectionStore";
 import type { NavigationStore } from "../stores/NavigationStore";

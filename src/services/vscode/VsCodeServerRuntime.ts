@@ -6,11 +6,14 @@ import net from "node:net";
 import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser";
-import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
-import { EditorSelectionReveal, type EditorSelectionHighlights } from "../../ipc/editor-selection";
-import type { EditorLocation } from "../../ipc/editor-location";
-import { jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
-import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
+import type { EditorAnnotationSnapshot } from "../../contracts/editor/editor-annotation";
+import {
+  EditorSelectionReveal,
+  type EditorSelectionHighlights,
+} from "../../contracts/editor/editor-selection";
+import type { EditorLocation } from "../../contracts/editor/editor-location";
+import { jsonValueSchema, type JsonValue } from "../../contracts/serialization/json-contract";
+import type { VscodeEditorAction } from "../../contracts/vscode/vscode-editor-action";
 import {
   downloadFile,
   extractArchive,

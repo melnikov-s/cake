@@ -1,5 +1,5 @@
 import { DateTime, Effect } from "effect";
-import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
+import type { CakeArtifactV1 } from "../../contracts/artifacts/artifact-contract";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { ArtifactStorageError } from "../../contracts/storage/artifact-storage-errors";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";

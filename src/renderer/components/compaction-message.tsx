@@ -1,7 +1,7 @@
 import { Markdown } from "@/components/ai-elements/markdown";
 import { Message, MessageLabel } from "@/components/ai-elements/message";
-import type { UiPart } from "../../ipc/session-contract";
-import type { SourceLocation } from "../../ipc/source-location";
+import type { UiPart } from "../../contracts/conversations/session-contract";
+import type { SourceLocation } from "../../contracts/editor/source-location";
 
 export function CompactionMessage({
   part,

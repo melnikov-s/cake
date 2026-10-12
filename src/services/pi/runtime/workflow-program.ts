@@ -2,7 +2,7 @@ import ts from "typescript";
 import { parse } from "acorn";
 import { Schema } from "effect";
 import { WorkflowError, WorkflowMeta } from "../../../contracts/workflows/workflow-data";
-import type { JsonValue } from "../../../ipc/json-contract";
+import type { JsonValue } from "../../../contracts/serialization/json-contract";
 
 const invalid = (message: string) =>
   new WorkflowError({ operation: "parse", reason: "script", message });

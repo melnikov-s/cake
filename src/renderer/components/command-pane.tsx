@@ -4,7 +4,7 @@ import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
 import { LoadingState } from "./ui/loading-state";
 import { SessionTree } from "./session-tree";
-import type { CompatibilityResource } from "../../ipc/session-contract";
+import type { CompatibilityResource } from "../../contracts/conversations/session-contract";
 import type { ProjectWorkbenchStore } from "../stores/ProjectWorkbenchStore";
 import type { ExtensionUiStore } from "../stores/ExtensionUiStore";
 

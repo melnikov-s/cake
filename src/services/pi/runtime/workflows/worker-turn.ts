@@ -4,7 +4,10 @@ import {
   type WorkflowWorkerActivity,
 } from "../../../../contracts/workflows/workflow-data";
 import type { PiTurnResult } from "../../../../contracts/pi/turn-result-data";
-import type { ConversationSnapshot, UiPart } from "../../../../ipc/session-contract";
+import type {
+  ConversationSnapshot,
+  UiPart,
+} from "../../../../contracts/conversations/session-contract";
 import type { CakeSessionHandle } from "../../CakeSessionRuntimes";
 import type { WorkflowWorkerRequest } from "../../WorkflowWorkers";
 

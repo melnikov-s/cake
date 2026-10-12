@@ -4,15 +4,15 @@ import type {
   ConversationEvent,
   ConversationSnapshot,
   ConversationUpdate,
-} from "../../ipc/conversation-data";
-import type { DiscussionSessionUpdate } from "../../ipc/discussion-session-data";
+} from "../../contracts/conversations/conversation-data";
+import type { DiscussionSessionUpdate } from "../../contracts/discussion-sessions/discussion-session-data";
 import {
   extensionUiEventSchema,
   sessionUsageSchema,
   conversationSnapshotSchema,
   type ConversationSnapshot as RuntimeConversationSnapshot,
   uiPartSchema,
-} from "../../ipc/session-contract";
+} from "../../contracts/conversations/session-contract";
 import { projectionId } from "../../utils/projection-id";
 import { modelOptionKey } from "../../utils/model-option-key";
 import type { Conversation } from "../models/Conversation";

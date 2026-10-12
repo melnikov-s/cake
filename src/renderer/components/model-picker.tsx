@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
-import type { ModelOption, ModelPreset, ThinkingLevel } from "../../ipc/session-contract";
+import type {
+  ModelOption,
+  ModelPreset,
+  ThinkingLevel,
+} from "../../contracts/conversations/session-contract";
 import { FastModeToggle } from "./fast-mode-toggle";
 import { ChevronDownIcon, SearchIcon } from "./ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";

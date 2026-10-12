@@ -15,8 +15,8 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import { createModels } from "@earendil-works/pi-durable-ai";
 import { expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type { VisualCaptureTheme } from "./arguments.ts";
-import type { CakeArtifactV1 } from "../../src/ipc/artifact-contract.ts";
-import type { CakeEvent } from "../../src/ipc/cake-rpc-contract.ts";
+import type { CakeArtifactV1 } from "../../src/contracts/artifacts/artifact-contract.ts";
+import type { CakeEvent } from "../../src/contracts/application/cake-rpc-contract.ts";
 import {
   emitRendererEvent,
   installLocalModelHttpGuard,

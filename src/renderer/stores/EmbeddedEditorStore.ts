@@ -1,8 +1,8 @@
 import { Store } from "r-state-tree";
-import type { EditorAnnotationSnapshot } from "../../ipc/editor-annotation";
-import type { EditorLocation } from "../../ipc/editor-location";
-import type { EditorSelectionHighlights } from "../../ipc/editor-selection";
-import type { Attachment } from "../../ipc/session-contract";
+import type { EditorAnnotationSnapshot } from "../../contracts/editor/editor-annotation";
+import type { EditorLocation } from "../../contracts/editor/editor-location";
+import type { EditorSelectionHighlights } from "../../contracts/editor/editor-selection";
+import type { Attachment } from "../../contracts/conversations/session-contract";
 import type { EmbeddedEditorStateSnapshot, EmbeddedEditorStatus } from "../client/Client";
 import { ClientContext } from "./context/ClientContext";
 import { TerminalTopInsetContext } from "./context/TerminalTopInsetContext";

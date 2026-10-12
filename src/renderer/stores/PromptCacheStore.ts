@@ -1,5 +1,5 @@
 import { Store, untracked } from "r-state-tree";
-import type { UiPart } from "../../ipc/session-contract";
+import type { UiPart } from "../../contracts/conversations/session-contract";
 
 const ANTHROPIC_SHORT_TTL_MS = 5 * 60 * 1_000;
 const ANTHROPIC_LONG_TTL_MS = 60 * 60 * 1_000;

@@ -1,7 +1,10 @@
 import { Schema } from "effect";
-import { CakeModelSelection, ExplicitCakeModelSelection } from "../../ipc/cake-model-selection";
-import { sessionUsageSchema, uiPartSchema } from "../../ipc/session-contract";
-import { jsonObjectSchema } from "../../ipc/json-contract";
+import {
+  CakeModelSelection,
+  ExplicitCakeModelSelection,
+} from "../model-presets/cake-model-selection";
+import { sessionUsageSchema, uiPartSchema } from "../conversations/session-contract";
+import { jsonObjectSchema } from "../serialization/json-contract";
 
 const nonEmpty = (maximum: number) =>
   Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(maximum));

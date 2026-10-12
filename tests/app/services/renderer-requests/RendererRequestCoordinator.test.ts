@@ -7,7 +7,7 @@ import { it } from "@effect/vitest";
 import { Context, Effect, Exit, Fiber, Layer, Queue, References, Stream } from "effect";
 import { describe, expect } from "vitest";
 import { observeControls } from "../../../../src/domain/cake-chats/cakeChatOperations";
-import type { CakeEvent } from "../../../../src/ipc/cake-rpc-contract";
+import type { CakeEvent } from "../../../../src/contracts/application/cake-rpc-contract";
 import {
   RendererRequestCoordinator,
   RendererRequestCoordinatorLive,

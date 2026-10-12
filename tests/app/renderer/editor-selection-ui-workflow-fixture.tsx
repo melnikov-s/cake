@@ -2,7 +2,7 @@ import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
 import { vi } from "vitest";
-import type { JsonObject } from "../../../src/ipc/json-contract";
+import type { JsonObject } from "../../../src/contracts/serialization/json-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { App } from "../../../src/renderer/components/app";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";

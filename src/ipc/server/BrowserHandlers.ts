@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import { jsonObjectSchema } from "../json-contract";
+import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
 import { Browser } from "../../services/browser/Browser";
 import { BrowserError } from "../../contracts/browser/browser-errors";
 import { BrowserRpc } from "../protocol/BrowserRpc";

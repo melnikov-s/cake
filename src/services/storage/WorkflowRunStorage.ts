@@ -8,7 +8,7 @@ import {
   type WorkflowRunId,
   type WorkflowRunSummary,
 } from "../../contracts/workflows/workflow-data";
-import { ExplicitCakeModelSelection } from "../../ipc/cake-model-selection";
+import { ExplicitCakeModelSelection } from "../../contracts/model-presets/cake-model-selection";
 import { WorkflowWorkerReference } from "../pi/WorkflowWorkers";
 
 const WorkerAttemptReference = Schema.Struct({

@@ -7,7 +7,7 @@ import {
   TurnId,
   type ConversationEvent,
   type ConversationSnapshot,
-} from "../../../src/ipc/conversation-data";
+} from "../../../src/contracts/conversations/conversation-data";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
 import {
   applyConversationSnapshot,

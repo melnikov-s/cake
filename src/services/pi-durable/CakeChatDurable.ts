@@ -1,5 +1,8 @@
 import { Context, Effect, Layer } from "effect";
-import type { PiSessionPreview, PiSessionSummary } from "../../ipc/session-contract";
+import type {
+  PiSessionPreview,
+  PiSessionSummary,
+} from "../../contracts/conversations/session-contract";
 import type {
   CakeSessionRuntime,
   CakeSessionRuntimeOptions,

@@ -1,5 +1,5 @@
 import { Effect, Stream } from "effect";
-import { ProjectSessionError } from "../project-session-data";
+import { ProjectSessionError } from "../../contracts/project-sessions/project-session-data";
 import * as projects from "../../domain/projects/projects";
 import * as projectSessionMetadata from "../../domain/project-sessions/projectSessionMetadata";
 import * as projectSessionOperations from "../../domain/project-sessions/projectSessionOperations";

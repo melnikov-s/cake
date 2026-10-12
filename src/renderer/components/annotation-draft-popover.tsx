@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 import { IconButton } from "@/components/ui/icon-button";
 import { SendIcon } from "@/components/ui/icons";
 import { Textarea } from "@/components/ui/textarea";
-import type { Annotation } from "../../ipc/session-contract";
+import type { Annotation } from "../../contracts/conversations/session-contract";
 import type { MessageSelectionAnchor } from "../stores/MessageCommentsStore";
 import type { MessageCommentAnchorRect } from "./message-comment-anchor";
 

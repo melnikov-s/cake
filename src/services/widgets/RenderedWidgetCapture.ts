@@ -1,6 +1,6 @@
 import { Context, type Effect } from "effect";
-import type { CompiledInlineWidget } from "../../ipc/inline-widget-contract";
-import type { JsonValue } from "../../ipc/json-contract";
+import type { CompiledInlineWidget } from "../../contracts/widgets/inline-widget-contract";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
 import type { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 
 export interface RenderedWidgetCaptureResult {

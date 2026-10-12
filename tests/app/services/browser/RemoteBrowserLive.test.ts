@@ -14,7 +14,7 @@ import {
   RendererRequestCoordinator,
   RendererRequestCoordinatorLive,
 } from "../../../../src/services/renderer-requests/RendererRequestCoordinator";
-import type { CakeEvent } from "../../../../src/ipc/cake-rpc-contract";
+import type { CakeEvent } from "../../../../src/contracts/application/cake-rpc-contract";
 
 it.effect(
   "backend browser has no Chromium; project access and desktop binding gate agent requests, disconnect releases pending",

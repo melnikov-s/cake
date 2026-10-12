@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
+import { jsonValueSchema, type JsonValue } from "../../contracts/serialization/json-contract";
 import type { AppControlResult } from "./app-control-data";
 
 export function toStrictJson<T>(value: T): T {

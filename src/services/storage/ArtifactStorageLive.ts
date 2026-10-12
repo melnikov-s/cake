@@ -15,7 +15,7 @@ import {
   cakeArtifactV1Schema,
   parseArtifactInput,
   type CakeArtifactV1,
-} from "../../ipc/artifact-contract";
+} from "../../contracts/artifacts/artifact-contract";
 import {
   ArtifactPublicationConflict,
   ArtifactStorageError,

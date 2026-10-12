@@ -7,7 +7,7 @@ import {
   TurnId,
   type ConversationSnapshot,
   type SessionChatPromptInput,
-} from "../../../src/ipc/conversation-data";
+} from "../../../src/contracts/conversations/conversation-data";
 import { encodeCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import { createCakeSessionRuntimeTurnController } from "../../../src/services/pi/runtime/cake-session-runtime-turn-controller";
 import { Chat } from "../../../src/renderer/components/chat";

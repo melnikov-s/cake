@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { createSessionSendBatchOperation } from "../../../src/services/pi/runtime/cake-session-batch-send-operation";
-import type { JsonObject, JsonValue } from "../../../src/ipc/json-contract";
+import type { JsonObject, JsonValue } from "../../../src/contracts/serialization/json-contract";
 
 const context = { signal: new AbortController().signal, toolCallId: "batch", runtime: {} };
 const receipt = (sessionId: string) => ({

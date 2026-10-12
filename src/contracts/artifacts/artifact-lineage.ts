@@ -5,7 +5,7 @@ import {
   cakeArtifactV1Schema,
   idSchema,
   type ArtifactRecord,
-} from "../../ipc/artifact-contract";
+} from "./artifact-contract";
 
 export const ArtifactLineageId = idSchema.pipe(Schema.brand("ArtifactLineageId"));
 export type ArtifactLineageId = typeof ArtifactLineageId.Type;

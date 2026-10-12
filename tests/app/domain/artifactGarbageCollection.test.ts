@@ -7,7 +7,7 @@ import { Effect, Layer, Schema } from "effect";
 import { afterEach, describe, expect } from "vitest";
 import { collectGarbage } from "../../../src/domain/artifacts/artifactGarbageCollection";
 import { ArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
-import type { CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
+import type { CakeArtifactV1 } from "../../../src/contracts/artifacts/artifact-contract";
 import { makeArtifactProjectionLive } from "../../../src/services/artifacts/ArtifactProjectionLive";
 import { PiSessionError, CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";

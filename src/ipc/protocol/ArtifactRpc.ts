@@ -33,7 +33,7 @@ import {
   artifactEventSchema,
   cakeRpcPayloadSchemas,
   cakeRpcSuccessSchemas,
-} from "../cake-rpc-contract";
+} from "../../contracts/application/cake-rpc-contract";
 
 const ArtifactOperationError = Schema.Union([
   ArtifactError,

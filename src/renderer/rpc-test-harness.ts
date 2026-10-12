@@ -3,8 +3,8 @@ import { parseMermaidToExcalidraw } from "@excalidraw/mermaid-to-excalidraw";
 import { Effect, Option, Schema, Stream } from "effect";
 import { CakeIpcClient, type CakeIpcClientService } from "../ipc/client/CakeIpcClient";
 import { FoundationFailure } from "../ipc/protocol/CakeRpc";
-import type { JsonObject } from "../ipc/json-contract";
-import { cakeRpcPayloadSchemas } from "../ipc/cake-rpc-contract";
+import type { JsonObject } from "../contracts/serialization/json-contract";
+import { cakeRpcPayloadSchemas } from "../contracts/application/cake-rpc-contract";
 import { InterviewResponse } from "../contracts/interviews/interview";
 import { makeRuntime } from "./runtime";
 

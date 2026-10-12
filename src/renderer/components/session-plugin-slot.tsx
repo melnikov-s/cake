@@ -1,5 +1,5 @@
 import { observer } from "r-state-tree/react";
-import type { JsonObject, JsonValue } from "../../ipc/json-contract";
+import type { JsonObject, JsonValue } from "../../contracts/serialization/json-contract";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import type { SessionPluginStore } from "../stores/SessionPluginStore";
 import { SessionPluginContribution } from "./session-plugin-contribution";

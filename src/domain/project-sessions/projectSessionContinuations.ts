@@ -1,6 +1,6 @@
 import { inheritTaskInputProtection } from "../conversations/taskInputs";
 import { Effect, Schema, Stream } from "effect";
-import type { ArtifactPointer } from "../../ipc/artifact-contract";
+import type { ArtifactPointer } from "../../contracts/artifacts/artifact-contract";
 import {
   ArtifactLineageId,
   ArtifactRevisionNumber,
@@ -8,8 +8,11 @@ import {
 import * as artifactWorkflows from "../artifacts/artifactWorkflows";
 import * as projectSessionLocations from "./projectSessionLocations";
 import { resolutionNamespace } from "./projectSessionResolution";
-import type { ProjectSessionLocation } from "../../ipc/project-session-data";
-import { ProjectSessionError, type ProjectSessionTarget } from "../../ipc/project-session-data";
+import type { ProjectSessionLocation } from "../../contracts/project-sessions/project-session-data";
+import {
+  ProjectSessionError,
+  type ProjectSessionTarget,
+} from "../../contracts/project-sessions/project-session-data";
 import { SessionArchiveStorage } from "../../services/storage/SessionArchiveStorage";
 import { ArtifactStorage } from "../../services/storage/ArtifactStorage";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";

@@ -1,5 +1,5 @@
 import { child, createStore, Store, untracked } from "r-state-tree";
-import type { ChatConfiguration } from "../../ipc/session-contract";
+import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
 import type { SavedDraft } from "../../contracts/project-sessions/saved-draft-data";
 import type { Conversation } from "../models/Conversation";
 import { ClientError } from "../client/Client";

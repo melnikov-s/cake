@@ -1,6 +1,6 @@
 import { Context, Layer, Schema, type Effect } from "effect";
 import type { ReviewParentContext, StagedParentMessage } from "../pi/runtime/sidecar-runtime";
-import type { DiscussionAnchor } from "../../ipc/discussion-session-data";
+import type { DiscussionAnchor } from "../../contracts/discussion-sessions/discussion-session-data";
 
 export interface DiscussionSessionRecord {
   readonly id: string;

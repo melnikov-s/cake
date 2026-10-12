@@ -19,7 +19,7 @@ import {
   type ReviewAnchor,
   type ReviewSessionProjection,
   type ReviewThreadRecord,
-} from "../../ipc/review-contract";
+} from "../../contracts/reviews/review-contract";
 import { ReviewStorage, ReviewStorageError } from "./ReviewStorage";
 import { atomicWriteFile } from "./internal/atomicFile";
 

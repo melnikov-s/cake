@@ -1,11 +1,11 @@
 import { applySnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { EditorLocation } from "../../../src/ipc/editor-location";
+import type { EditorLocation } from "../../../src/contracts/editor/editor-location";
 import type {
   EditorSelectionHighlights,
   EditorSelectionReveal,
-} from "../../../src/ipc/editor-selection";
-import type { JsonObject } from "../../../src/ipc/json-contract";
+} from "../../../src/contracts/editor/editor-selection";
+import type { JsonObject } from "../../../src/contracts/serialization/json-contract";
 import { createTestClient } from "./test-client";
 import { mountRootStore } from "../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../src/renderer/models/RootProjection";

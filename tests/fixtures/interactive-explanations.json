@@ -211,7 +211,10 @@
               "path": "src/services/pi/runtime/cake-artifact-operations.ts",
               "symbol": "createCakeArtifactOperations"
             },
-            { "path": "src/ipc/artifact-contract.ts", "symbol": "parseArtifactInput" }
+            {
+              "path": "src/contracts/artifacts/artifact-contract.ts",
+              "symbol": "parseArtifactInput"
+            }
           ]
         },
         {
@@ -282,7 +285,10 @@
               "path": "src/services/storage/ArtifactStorageLive.ts",
               "symbol": "ArtifactRepository.upsert"
             },
-            { "path": "src/ipc/artifact-contract.ts", "symbol": "artifactRecordSchema" }
+            {
+              "path": "src/contracts/artifacts/artifact-contract.ts",
+              "symbol": "artifactRecordSchema"
+            }
           ]
         }
       ],

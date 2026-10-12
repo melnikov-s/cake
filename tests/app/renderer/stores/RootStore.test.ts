@@ -1,7 +1,7 @@
 import { applySnapshot } from "r-state-tree";
 import { describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../../src/renderer/client/Client";
-import { TurnId } from "../../../../src/ipc/conversation-data";
+import { TurnId } from "../../../../src/contracts/conversations/conversation-data";
 import { createTestClient as createClient, type TestClientOverrides } from "../test-client";
 import { mountRootStore } from "../../../../src/renderer/bootstrap/mount-root-store";
 import { RootProjection } from "../../../../src/renderer/models/RootProjection";

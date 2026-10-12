@@ -5,7 +5,7 @@ import { Effect, Layer } from "effect";
 import { describe } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
-import type { ProjectSessionControlInvocation } from "../../../src/ipc/project-session-data";
+import type { ProjectSessionControlInvocation } from "../../../src/contracts/project-sessions/project-session-data";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import type { ProjectSessionRuntimeIntegrations } from "../../../src/services/pi/ProjectSessionRuntimeHost";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";

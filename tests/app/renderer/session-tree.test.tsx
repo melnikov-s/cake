@@ -4,7 +4,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionTreeEntry } from "../../../src/ipc/session-contract";
+import type { SessionTreeEntry } from "../../../src/contracts/conversations/session-contract";
 import {
   flattenSessionTree,
   SessionTree,

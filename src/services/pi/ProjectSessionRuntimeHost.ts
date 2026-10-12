@@ -1,7 +1,7 @@
 import { Context, Schema, type Effect } from "effect";
 import type { CakeSessionRuntimeOptions } from "./runtime/cake-session-runtime";
-import type { ProjectSessionControlInvocation } from "../../ipc/project-session-data";
-import type { JsonValue } from "../../ipc/json-contract";
+import type { ProjectSessionControlInvocation } from "../../contracts/project-sessions/project-session-data";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
 
 export type ProjectSessionRuntimeIntegrations = Pick<
   CakeSessionRuntimeOptions,

@@ -1,26 +1,29 @@
 import {
   type SessionInspectionQuery,
   type QueuedSessionCommandReceipt,
-} from "../../ipc/session-query-data";
+} from "../../contracts/conversations/session-query-data";
 import type {
   AgentSettingsInvocation,
   agentSettingsSections,
-} from "../../ipc/agent-settings-schema";
-import { type JsonValue, type JsonObject } from "../../ipc/json-contract";
-import { type ChatConfiguration, type ProjectRecord } from "../../ipc/session-contract";
-import { type CakeChatSummary } from "../../ipc/cake-chat-data";
+} from "../../contracts/application/agent-settings-schema";
+import { type JsonValue, type JsonObject } from "../../contracts/serialization/json-contract";
+import {
+  type ChatConfiguration,
+  type ProjectRecord,
+} from "../../contracts/conversations/session-contract";
+import { type CakeChatSummary } from "../../contracts/cake-chats/cake-chat-data";
 import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
-import type { ProjectSessionPreview } from "../../ipc/project-session-data";
+import type { ProjectSessionPreview } from "../../contracts/project-sessions/project-session-data";
 import type { ScheduledMessage } from "../../contracts/scheduled-messages/scheduled-message-data";
-import { type EditorLocation } from "../../ipc/editor-location";
-import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
+import { type EditorLocation } from "../../contracts/editor/editor-location";
+import type { VscodeEditorAction } from "../../contracts/vscode/vscode-editor-action";
 import type {
   EditorSelectionId,
   EditorSelectionOpenResult,
   EditorSelectionState,
   EditorSelectionUpdate,
-} from "../../ipc/editor-selection";
+} from "../../contracts/editor/editor-selection";
 import type {
   CoordinationMessage,
   CoordinationThread,
@@ -31,19 +34,19 @@ import type {
   CrossSessionContextSnapshot,
   CrossSessionQueueSnapshot,
 } from "../../contracts/conversations/cross-session-message";
-import type { QueuedConversationMessages } from "../../ipc/conversation-data";
+import type { QueuedConversationMessages } from "../../contracts/conversations/conversation-data";
 import { type SessionActivity } from "../lib/session-activity";
 import {
   type CakeSettingsSectionId,
   type CakeSettingsSectionView,
   type CakeSettingsUpdate,
-} from "../../ipc/cake-settings-data";
+} from "../../contracts/application/cake-settings-data";
 import {
   type ProjectSettings,
   type SessionLabel,
   type SessionLabelMutation,
 } from "../../contracts/application/application-data";
-import { type ProjectSettingsChanges } from "../../ipc/project-settings-schema";
+import { type ProjectSettingsChanges } from "../../contracts/projects/project-settings-schema";
 
 export type SessionSummaryView = Pick<
   SessionSummary,

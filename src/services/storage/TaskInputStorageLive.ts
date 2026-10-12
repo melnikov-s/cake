@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { Clock, Effect, Layer, Option, Schema, Semaphore } from "effect";
-import { attachmentSchema, type Attachment } from "../../ipc/session-contract";
+import { attachmentSchema, type Attachment } from "../../contracts/conversations/session-contract";
 import {
   TaskInputReference,
   MAX_PASTED_TEXT_BYTES,

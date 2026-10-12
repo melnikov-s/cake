@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { DrawControlResponse } from "../draw-control";
+import { DrawControlResponse } from "../../contracts/draw/draw-control";
 import { DrawSessionId } from "../../contracts/draw/draw-board-data";
 
 export class DrawControlRpcError extends Schema.TaggedError<DrawControlRpcError>()(

@@ -4,7 +4,7 @@ import {
   piSettingsSchema,
   type PiSettingUpdate,
   type PiSettings as PiSettingsValue,
-} from "../../ipc/session-contract";
+} from "../../contracts/conversations/session-contract";
 import { applyPiSetting, projectPiSettings } from "./runtime/settings-translation";
 import {
   PiExtensionSetting,

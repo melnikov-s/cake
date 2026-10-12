@@ -4,7 +4,7 @@ import { constants } from "node:fs";
 import { lstat, open, realpath, rmdir, unlink } from "node:fs/promises";
 import { Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import { formatArtifactRef } from "../../contracts/artifacts/artifact-lineage";
-import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
+import type { CakeArtifactV1 } from "../../contracts/artifacts/artifact-contract";
 import { ArtifactProjection, type MaterializeArtifactProjectionInput } from "./ArtifactProjection";
 import {
   ArtifactProjectionError,

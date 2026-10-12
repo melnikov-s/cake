@@ -6,25 +6,25 @@ import {
   CaptureResult,
   ScreenCaptureSettings,
   ScreenCaptureSnapshot,
-} from "../contracts/desktop/screen-capture-data";
-import { artifactRecordSchema } from "./artifact-contract";
-import { InterviewRecord } from "../contracts/interviews/interview";
-import { WorkflowProposal } from "../contracts/workflows/workflow-data";
-import { ipcProjectionArray, ipcProjectionString } from "./projection";
-import { editorLocationSchema } from "./editor-location";
-import { editorAnnotationSnapshotSchema } from "./editor-annotation";
-import { vscodeEditorActionSchema } from "./vscode-editor-action";
-import { EditorSelectionHighlights, EditorSelectionReveal } from "./editor-selection";
+} from "../desktop/screen-capture-data";
+import { artifactRecordSchema } from "../artifacts/artifact-contract";
+import { InterviewRecord } from "../interviews/interview";
+import { WorkflowProposal } from "../workflows/workflow-data";
+import { ipcProjectionArray, ipcProjectionString } from "../serialization/projection";
+import { editorLocationSchema } from "../editor/editor-location";
+import { editorAnnotationSnapshotSchema } from "../editor/editor-annotation";
+import { vscodeEditorActionSchema } from "../vscode/vscode-editor-action";
+import { EditorSelectionHighlights, EditorSelectionReveal } from "../editor/editor-selection";
 import {
   compiledInlineWidgetSchema,
   inlineWidgetCapabilitySchema,
   inlineWidgetLanguageSchema,
   inlineWidgetSourceSchema,
-} from "./inline-widget-contract";
-import { jsonValueSchema } from "./json-contract";
-import { CakeChatPreferences, ProjectSettings } from "../contracts/application/application-data";
-import { CakePromptOverrides } from "../contracts/application/cake-prompt-data";
-import { ProjectSessionControlRequest } from "./project-session-data";
+} from "../widgets/inline-widget-contract";
+import { jsonValueSchema } from "../serialization/json-contract";
+import { CakeChatPreferences, ProjectSettings } from "./application-data";
+import { CakePromptOverrides } from "./cake-prompt-data";
+import { ProjectSessionControlRequest } from "../project-sessions/project-session-data";
 import {
   applicationStateSchema,
   attachmentSchema,
@@ -32,13 +32,13 @@ import {
   fileSuggestionSchema,
   slashCommandSchema,
   utilityModelSchema,
-} from "./session-contract";
+} from "../conversations/session-contract";
 import {
   WorktreeLandingOperation,
   WorktreeLandingSnapshot,
-} from "../contracts/worktrees/worktree-landing-data";
-import { WorktreeRecord } from "../contracts/worktrees/managed-worktree-data";
-import { DrawControlRequest } from "./draw-control";
+} from "../worktrees/worktree-landing-data";
+import { WorktreeRecord } from "../worktrees/managed-worktree-data";
+import { DrawControlRequest } from "../draw/draw-control";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));

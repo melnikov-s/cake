@@ -8,7 +8,7 @@ import {
   reviewThreadRecordSchema,
   type ReviewSessionProjection,
   type ReviewThreadRecord,
-} from "../../../../src/ipc/review-contract";
+} from "../../../../src/contracts/reviews/review-contract";
 import { ReviewStorage } from "../../../../src/services/storage/ReviewStorage";
 import { makeReviewStorageTestAdapter } from "./ReviewStorageTestAdapter";
 

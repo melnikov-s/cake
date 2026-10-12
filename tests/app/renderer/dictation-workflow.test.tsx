@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { toSnapshot, type StoreSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TurnId } from "../../../src/ipc/conversation-data";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type {
   DictationAudio,
   DictationState,

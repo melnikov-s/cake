@@ -1,5 +1,8 @@
 import { Store, observable } from "r-state-tree";
-import { stagedSessionSlashCommands, type ConversationSnapshot } from "../../ipc/session-contract";
+import {
+  stagedSessionSlashCommands,
+  type ConversationSnapshot,
+} from "../../contracts/conversations/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 

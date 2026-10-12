@@ -8,7 +8,7 @@ import {
   resourceDiagnosticSchema,
   type ExtensionCompanion,
   type ResourceDiagnostic,
-} from "../../../ipc/session-contract";
+} from "../../../contracts/conversations/session-contract";
 import {
   publishExtensionCompanionModule,
   type ExtensionCompanionModulePublication,

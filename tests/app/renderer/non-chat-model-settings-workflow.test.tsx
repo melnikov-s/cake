@@ -8,7 +8,7 @@ import { defaultApplicationState } from "../../../src/contracts/application/appl
 import type { NonChatModelPreferences } from "../../../src/contracts/models/non-chat-model-data";
 import type { PiNonChatModel } from "../../../src/contracts/pi/model-data";
 import type { Client } from "../../../src/renderer/client/Client";
-import type { ModelOption } from "../../../src/ipc/session-contract";
+import type { ModelOption } from "../../../src/contracts/conversations/session-contract";
 import { SettingsPage } from "../../../src/renderer/components/settings-page";
 import { nonChatModelChoiceValue } from "../../../src/renderer/lib/non-chat-model-choice";
 import { createRendererStoreFixture } from "./renderer-store-fixture";

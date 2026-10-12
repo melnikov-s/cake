@@ -10,7 +10,7 @@ import {
   DiscussionThread,
   SessionAssistantEnsureInput,
   SessionAssistantEnsured,
-} from "../discussion-session-data";
+} from "../../contracts/discussion-sessions/discussion-session-data";
 
 const catalogTarget = {
   workingDirectory: DiscussionSessionTarget.fields.workingDirectory,

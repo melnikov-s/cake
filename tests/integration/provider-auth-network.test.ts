@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "@effect/vitest";
 import { Context, Deferred, Effect, Fiber, Layer, Option, Queue, Stream } from "effect";
 import { expect } from "vitest";
-import type { CakeEvent } from "../../src/ipc/cake-rpc-contract";
+import type { CakeEvent } from "../../src/contracts/application/cake-rpc-contract";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { openNetworkListener } from "../../src/server/NetworkListener";
 import { PiModels, makePiModels } from "../../src/services/pi/PiModels";

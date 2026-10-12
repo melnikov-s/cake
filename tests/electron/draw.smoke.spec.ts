@@ -3,7 +3,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
-import type { DrawControlInvocation, DrawControlResponse } from "../../src/ipc/draw-control";
+import type {
+  DrawControlInvocation,
+  DrawControlResponse,
+} from "../../src/contracts/draw/draw-control";
 import type { DrawScene } from "../../src/contracts/draw/draw-editor";
 
 async function drawControl(application: ElectronApplication, invocation: DrawControlInvocation) {

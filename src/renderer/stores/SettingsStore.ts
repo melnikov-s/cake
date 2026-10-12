@@ -8,8 +8,8 @@ import type {
   CakeSettingsSectionId,
   CakeSettingsSectionView,
   CakeSettingsUpdate,
-} from "../../ipc/cake-settings-data";
-import type { ApplicationState } from "../../ipc/session-contract";
+} from "../../contracts/application/cake-settings-data";
+import type { ApplicationState } from "../../contracts/conversations/session-contract";
 import { hotkeyDefinitions } from "../lib/hotkeys";
 import { DesktopSharingSettingsStore } from "./DesktopSharingSettingsStore";
 import { AppearanceSettingsStore } from "./AppearanceSettingsStore";

@@ -3,7 +3,7 @@ import { AnnotationIcon, RemoveIcon } from "@/components/ui/icons";
 import { IconButton } from "@/components/ui/icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import type { Annotation } from "../../ipc/session-contract";
+import type { Annotation } from "../../contracts/conversations/session-contract";
 
 export const AnnotationSummary = observer(function AnnotationSummary({
   annotations,

@@ -11,7 +11,7 @@ import {
 } from "../../../src/contracts/artifacts/artifact-lineage";
 import * as artifacts from "../../../src/domain/artifacts/artifacts";
 import * as workflows from "../../../src/domain/artifacts/artifactWorkflows";
-import type { CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
+import type { CakeArtifactV1 } from "../../../src/contracts/artifacts/artifact-contract";
 import { ArtifactPublicationConflict } from "../../../src/contracts/storage/artifact-storage-errors";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../../src/services/storage/ArtifactStorageLive";

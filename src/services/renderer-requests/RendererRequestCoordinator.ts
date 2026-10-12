@@ -8,21 +8,24 @@ import {
   Stream,
   SubscriptionRef,
 } from "effect";
-import type { CakeChatControlRequest } from "../../ipc/cake-chat-data";
-import type { ProjectSessionControlInvocation } from "../../ipc/project-session-data";
+import type { CakeChatControlRequest } from "../../contracts/cake-chats/cake-chat-data";
+import type { ProjectSessionControlInvocation } from "../../contracts/project-sessions/project-session-data";
 import {
   validateInterviewResponse,
   type InterviewRecord,
   type InterviewResponse,
 } from "../../contracts/interviews/interview";
-import { cakeRpcPayloadSchemas, type CakeEvent } from "../../ipc/cake-rpc-contract";
-import type { JsonValue } from "../../ipc/json-contract";
-import { DrawControlResponse, type DrawControlInvocation } from "../../ipc/draw-control";
+import {
+  cakeRpcPayloadSchemas,
+  type CakeEvent,
+} from "../../contracts/application/cake-rpc-contract";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
+import { DrawControlResponse, type DrawControlInvocation } from "../../contracts/draw/draw-control";
 import { ClientConnections } from "../clients/ClientConnections";
 import { ClientEvents } from "../clients/ClientEvents";
 import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 import { type RenderedWidgetCaptureResult } from "../widgets/RenderedWidgetCapture";
-import type { CompiledInlineWidget } from "../../ipc/inline-widget-contract";
+import type { CompiledInlineWidget } from "../../contracts/widgets/inline-widget-contract";
 import type { WorkflowProposal } from "../../contracts/workflows/workflow-data";
 
 interface RendererUiRequest {

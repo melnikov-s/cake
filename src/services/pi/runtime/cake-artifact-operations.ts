@@ -1,13 +1,13 @@
 import { createEditTool } from "@earendil-works/pi-coding-agent";
 import { Schema } from "effect";
-import type { JsonValue } from "../../../ipc/json-contract";
+import type { JsonValue } from "../../../contracts/serialization/json-contract";
 import {
   MAX_ARTIFACT_INPUT_BYTES,
   artifactPointerSchema,
   parseArtifactInput,
   type ArtifactRecord,
   type CakeArtifactV1,
-} from "../../../ipc/artifact-contract";
+} from "../../../contracts/artifacts/artifact-contract";
 import type {
   InlineWidgetGenerationRequest,
   InlineWidgetGenerationResult,

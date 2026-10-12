@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useMemo, useState, type ComponentType } from "react";
 import { observer } from "r-state-tree/react";
-import type { JsonValue } from "../../ipc/json-contract";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
 import type { ExtensionCompanionProjection } from "../models/ExtensionUi";
 import { extensionCompanionModuleUrl } from "../lib/extension-companion-module-url";
 import { Button } from "./ui/button";

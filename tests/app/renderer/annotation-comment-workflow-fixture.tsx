@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Annotation } from "../../../src/ipc/session-contract";
+import type { Annotation } from "../../../src/contracts/conversations/session-contract";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";

@@ -7,10 +7,10 @@ import {
   CakeChatStartInput,
   CakeChatTarget,
   CakeChatControlUpdate,
-} from "../cake-chat-data";
+} from "../../contracts/cake-chats/cake-chat-data";
 import { RequestInspectionResult } from "../../contracts/conversations/request-inspection";
 import { CakeChatCatalogUpdate } from "../../contracts/application/catalog-data";
-import { TurnId } from "../conversation-data";
+import { TurnId } from "../../contracts/conversations/conversation-data";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 
 export const CakeChatRpc = RpcGroup.make(

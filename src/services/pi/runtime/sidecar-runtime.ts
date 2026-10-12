@@ -5,12 +5,12 @@ import { Effect, type FileSystem, type Path } from "effect";
 import {
   type ReviewSessionProjection,
   type ReviewThreadRecord,
-} from "../../../ipc/review-contract";
+} from "../../../contracts/reviews/review-contract";
 import { runIsolatedSession } from "./isolated-session-runner";
 import { assertSessionPath } from "./session-path";
 import { atomicWriteFile } from "../../storage/internal/atomicFile";
 import { projectSessionEntries } from "./session-projection";
-import type { JsonValue } from "../../../ipc/json-contract";
+import type { JsonValue } from "../../../contracts/serialization/json-contract";
 import type {
   WidgetConversationOrigin,
   WidgetConversationTarget,

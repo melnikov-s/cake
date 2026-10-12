@@ -5,7 +5,7 @@ import { makeClientCapabilities } from "./ClientCapabilities";
 import { makeCommandGroup } from "./command-group";
 import type { Runtime } from "../runtime";
 import { ClientError, type Client, type ClientCommandOptions } from "./Client";
-import type { Attachment } from "../../ipc/session-contract";
+import type { Attachment } from "../../contracts/conversations/session-contract";
 import type { BrowserFiles } from "./BrowserFiles";
 import { browserFileChunk } from "./BrowserFiles";
 import type { BrowserMenuStore } from "../stores/BrowserMenuStore";

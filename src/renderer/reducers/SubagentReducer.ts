@@ -4,7 +4,10 @@ import type {
   SubagentActivity as SubagentActivityValue,
   SubagentUpdate,
 } from "../../contracts/subagents/subagent-data";
-import { conversationSnapshotSchema, uiPartSchema } from "../../ipc/session-contract";
+import {
+  conversationSnapshotSchema,
+  uiPartSchema,
+} from "../../contracts/conversations/session-contract";
 import type { SubagentCatalog } from "../models/SubagentCatalog";
 import { SubagentActivity } from "../models/SubagentActivity";
 

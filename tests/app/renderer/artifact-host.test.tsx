@@ -3,7 +3,10 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import mermaid from "mermaid";
-import type { ArtifactRecord, CakeArtifactV1 } from "../../../src/ipc/artifact-contract";
+import type {
+  ArtifactRecord,
+  CakeArtifactV1,
+} from "../../../src/contracts/artifacts/artifact-contract";
 import { ArtifactHost } from "../../../src/renderer/components/artifact-host";
 import { FullscreenSurfaceFixture } from "./fullscreen-surface-fixture";
 import { createRendererStoreFixture } from "./renderer-store-fixture";

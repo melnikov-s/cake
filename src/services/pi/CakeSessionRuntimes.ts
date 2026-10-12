@@ -20,12 +20,16 @@ import type {
   PiPendingMessages,
   PiQueuedMessages,
 } from "./conversation-data";
-import type { ArtifactPointer } from "../../ipc/artifact-contract";
-import { jsonValueSchema, type JsonObject, type JsonValue } from "../../ipc/json-contract";
+import type { ArtifactPointer } from "../../contracts/artifacts/artifact-contract";
+import {
+  jsonValueSchema,
+  type JsonObject,
+  type JsonValue,
+} from "../../contracts/serialization/json-contract";
 import type {
   QueuedSessionCommandReceipt,
   SessionInspectionQuery,
-} from "../../ipc/session-query-data";
+} from "../../contracts/conversations/session-query-data";
 import type {
   Attachment,
   UiPart,
@@ -35,7 +39,7 @@ import type {
   ConversationSnapshot,
   PiSessionSummary,
   ThinkingLevel,
-} from "../../ipc/session-contract";
+} from "../../contracts/conversations/session-contract";
 import {
   createCakeSessionRuntime,
   type CakeSessionRuntime,
@@ -53,7 +57,7 @@ import {
   streamWorkspaceSessions,
 } from "./runtime/session-discovery";
 import type { ReviewParentContext } from "./runtime/sidecar-runtime";
-import type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
+import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import type { ConversationResponseMode } from "../../contracts/conversations/response-mode-reminders";
 import type { PiTurnResult } from "../../contracts/pi/turn-result-data";
 

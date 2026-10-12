@@ -1,5 +1,5 @@
 import { type Snapshot } from "r-state-tree";
-import type { uiPartSchema } from "../../ipc/session-contract";
+import type { uiPartSchema } from "../../contracts/conversations/session-contract";
 import { projectionId } from "../../utils/projection-id";
 import { Message } from "../models/Message";
 

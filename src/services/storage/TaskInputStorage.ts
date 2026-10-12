@@ -1,5 +1,5 @@
 import { Context, type Effect } from "effect";
-import type { Attachment } from "../../ipc/session-contract";
+import type { Attachment } from "../../contracts/conversations/session-contract";
 import type { TaskInputReference } from "../../contracts/conversations/task-input";
 import type { AttachmentUploadError } from "../../contracts/filesystem/attachment-uploads-errors";
 

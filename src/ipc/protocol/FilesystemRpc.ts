@@ -1,6 +1,9 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { WorkspaceFileError } from "../../contracts/filesystem/workspace-files-errors";
-import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
+import {
+  cakeRpcPayloadSchemas,
+  cakeRpcSuccessSchemas,
+} from "../../contracts/application/cake-rpc-contract";
 
 /** Workspace presentation executes only on the backend with ProjectAccess. */
 export const FilesystemRpc = RpcGroup.make(

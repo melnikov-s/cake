@@ -5,7 +5,7 @@ import {
   MAX_ARTIFACT_INPUT_BYTES,
   parseArtifactInput,
   type CakeArtifactV1,
-} from "../../ipc/artifact-contract";
+} from "../../contracts/artifacts/artifact-contract";
 
 /** Largest binary worth reading before base64 expansion can exceed the v1 input limit. */
 export const MAX_FILE_ARTIFACT_BYTES = Math.floor(MAX_ARTIFACT_INPUT_BYTES / 4) * 3;

@@ -1,7 +1,7 @@
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
-import type { DiscussionThread } from "../../../src/ipc/discussion-session-data";
+import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
+import type { DiscussionThread } from "../../../src/contracts/discussion-sessions/discussion-session-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { applySnapshot } from "r-state-tree";
 import type { TestClientOverrides } from "./test-client";

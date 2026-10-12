@@ -1,5 +1,8 @@
 import type { AgentSession, SettingsManager } from "@earendil-works/pi-coding-agent";
-import type { PiSettingUpdate, PiSettings } from "../../../ipc/session-contract";
+import type {
+  PiSettingUpdate,
+  PiSettings,
+} from "../../../contracts/conversations/session-contract";
 
 export function projectPiSettings(
   settingsManager: SettingsManager,

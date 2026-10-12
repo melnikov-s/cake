@@ -5,7 +5,7 @@ import {
   applicationEventSchema,
   cakeEventSchema,
   type CakeEvent,
-} from "../../../../src/ipc/cake-rpc-contract";
+} from "../../../../src/contracts/application/cake-rpc-contract";
 import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
 import { ClientEventsLive } from "../../../../src/services/clients/ClientEventsLive";
 

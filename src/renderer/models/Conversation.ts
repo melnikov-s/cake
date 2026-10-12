@@ -1,5 +1,9 @@
 import { Model, child, computed, id, modelRef, observable, transient } from "r-state-tree";
-import type { ConversationSnapshot, ThinkingLevel, UiPart } from "../../ipc/session-contract";
+import type {
+  ConversationSnapshot,
+  ThinkingLevel,
+  UiPart,
+} from "../../contracts/conversations/session-contract";
 import { CompatibilityResource } from "./CompatibilityResource";
 import { Message } from "./Message";
 import { LlmModel } from "./LlmModel";

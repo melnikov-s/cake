@@ -2,7 +2,7 @@ import { it } from "@effect/vitest";
 import { Effect, Fiber, Layer, Queue, Stream } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, expect, vi } from "vitest";
-import type { ProjectSessionPromptInput } from "../../../src/ipc/project-session-data";
+import type { ProjectSessionPromptInput } from "../../../src/contracts/project-sessions/project-session-data";
 import * as projectSessionOperations from "../../../src/domain/project-sessions/projectSessionOperations";
 import { parseScheduledMessage } from "../../../src/contracts/conversations/scheduled-message-envelope";
 import * as scheduledMessages from "../../../src/domain/scheduled-messages/scheduledMessages";

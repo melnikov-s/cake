@@ -1,4 +1,4 @@
-import type { SourceLocation } from "../../ipc/source-location";
+import type { SourceLocation } from "../../contracts/editor/source-location";
 import { formatSourceLocation } from "../../utils/source-location";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";

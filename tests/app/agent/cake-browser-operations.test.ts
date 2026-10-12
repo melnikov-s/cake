@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { JsonValue } from "../../../src/ipc/json-contract";
+import type { JsonValue } from "../../../src/contracts/serialization/json-contract";
 import type { BrowserActionResult } from "../../../src/services/browser/Browser";
 import { createCakeBrowserOperations } from "../../../src/services/pi/runtime/cake-browser-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";

@@ -1,7 +1,7 @@
 import { it } from "@effect/vitest";
 import { Context, Deferred, Effect, Fiber, Layer, Option, Queue, Stream } from "effect";
 import { describe, expect } from "vitest";
-import type { CakeEvent } from "../../../src/ipc/cake-rpc-contract";
+import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
 import { RendererConnection } from "../../../src/ipc/protocol/RendererConnectionMiddleware";
 import { providerAuthHandlers } from "../../../src/ipc/server/ProviderAuthHandlers";
 import { ClientConnectionsLive } from "../../../src/services/clients/ClientConnections";

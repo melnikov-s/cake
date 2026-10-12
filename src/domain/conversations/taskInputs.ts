@@ -3,9 +3,9 @@ import {
   encodeCrossSessionMessage,
   parseCrossSessionMessage,
 } from "../../contracts/conversations/cross-session-message";
-import type { Attachment } from "../../ipc/session-contract";
+import type { Attachment } from "../../contracts/conversations/session-contract";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
-import type { SessionChatPromptInput } from "../../ipc/conversation-data";
+import type { SessionChatPromptInput } from "../../contracts/conversations/conversation-data";
 
 /** Messages/assignments/forks can carry derived content even without original references. */
 export const inheritTaskInputProtection = Effect.fn("Conversations.inheritTaskInputProtection")(

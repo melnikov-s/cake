@@ -7,10 +7,10 @@ import * as families from "../../../src/domain/session-families/sessionFamilies"
 import { acquireOptions as projectOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { acquireOptions as chatOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
 import { createPrompted } from "../../../src/domain/project-sessions/projectSessionCreation";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/ipc/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
-import type { Attachment } from "../../../src/ipc/session-contract";
+import type { Attachment } from "../../../src/contracts/conversations/session-contract";
 import type { PiTurnResult } from "../../../src/contracts/pi/turn-result-data";
 import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";

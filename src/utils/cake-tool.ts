@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import type { UiPart } from "../ipc/session-contract";
+import type { UiPart } from "../contracts/conversations/session-contract";
 
 export type ToolPart = Extract<UiPart, { kind: "tool" }>;
 

@@ -1,5 +1,5 @@
-import type { SourceRange } from "../ipc/source-location";
-import type { UiPart } from "../ipc/session-contract";
+import type { SourceRange } from "../contracts/editor/source-location";
+import type { UiPart } from "../contracts/conversations/session-contract";
 import { toolDiff } from "./turn-diff";
 
 /** Resolves the new-side line blocks represented by Pi's numbered or unified diff. */

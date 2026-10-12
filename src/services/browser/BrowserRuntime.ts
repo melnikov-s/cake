@@ -1,6 +1,10 @@
 import { WebContentsView, type BrowserWindow } from "electron";
 import { Option, Schema } from "effect";
-import { jsonValueSchema, type JsonObject, type JsonValue } from "../../ipc/json-contract";
+import {
+  jsonValueSchema,
+  type JsonObject,
+  type JsonValue,
+} from "../../contracts/serialization/json-contract";
 import type { BrowserAction, BrowserBounds, BrowserState } from "./Browser";
 
 const DEFAULT_URL = "http://localhost:3000";

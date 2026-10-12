@@ -4,7 +4,7 @@ import { it } from "@effect/vitest";
 import { Context, Effect, Layer, Queue, Stream } from "effect";
 import type { MenuItemConstructorOptions } from "electron";
 import { afterEach, describe, expect, vi } from "vitest";
-import type { CakeEvent } from "../../../../src/ipc/cake-rpc-contract";
+import type { CakeEvent } from "../../../../src/contracts/application/cake-rpc-contract";
 import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
 import { ClientEventsLive } from "../../../../src/services/clients/ClientEventsLive";
 import { ClientWorkspaces } from "../../../../src/services/clients/ClientWorkspaces";

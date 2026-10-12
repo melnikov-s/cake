@@ -1,9 +1,9 @@
 import { Predicate, Schema } from "effect";
-import { jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
+import { jsonValueSchema, type JsonValue } from "../serialization/json-contract";
 import {
   inlineWidgetLanguageSchema,
   inlineWidgetSourceSchema,
-} from "../../ipc/inline-widget-contract";
+} from "../widgets/inline-widget-contract";
 
 const maxInputBytes = 1_048_576;
 const requestId = Schema.String.check(

@@ -7,7 +7,7 @@ import {
   WorkflowStartInput,
   WorkflowWorkerTarget,
 } from "../../../contracts/workflows/workflow-data";
-import type { JsonObject, JsonValue } from "../../../ipc/json-contract";
+import type { JsonObject, JsonValue } from "../../../contracts/serialization/json-contract";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 import { workflowAuthoringReference } from "./workflow-authoring";
 

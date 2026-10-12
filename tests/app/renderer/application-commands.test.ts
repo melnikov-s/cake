@@ -1,7 +1,7 @@
 import { applySnapshot, toSnapshot } from "r-state-tree";
 import { describe, expect, it } from "vitest";
-import { cakeHotkeyActionIds } from "../../../src/ipc/cake-settings-data";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/ipc/cake-chat-data";
+import { cakeHotkeyActionIds } from "../../../src/contracts/application/cake-settings-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 

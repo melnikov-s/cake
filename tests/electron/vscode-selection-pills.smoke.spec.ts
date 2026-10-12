@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
-import type { JsonObject } from "../../src/ipc/json-contract";
+import type { JsonObject } from "../../src/contracts/serialization/json-contract";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { emitRendererEvent } from "./main-harness";
 

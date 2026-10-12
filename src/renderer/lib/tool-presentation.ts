@@ -1,6 +1,6 @@
 import { Option, Predicate, Schema } from "effect";
-import { jsonObjectSchema, jsonValueSchema } from "../../ipc/json-contract";
-import type { UiPart } from "../../ipc/session-contract";
+import { jsonObjectSchema, jsonValueSchema } from "../../contracts/serialization/json-contract";
+import type { UiPart } from "../../contracts/conversations/session-contract";
 import { toolOperationName } from "../../utils/cake-tool";
 import { toWorkspaceRelativePath } from "../../utils/workspace-relative-path";
 

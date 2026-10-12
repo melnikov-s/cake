@@ -1,5 +1,5 @@
 import { observer } from "r-state-tree/react";
-import type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
+import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import type { ChatStore } from "../stores/ChatStore";
 import { WorkLogControls } from "./work-log-controls";
 import { IconButton } from "./ui/icon-button";

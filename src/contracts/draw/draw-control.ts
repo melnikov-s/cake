@@ -1,8 +1,8 @@
 /* oxlint-disable anti-slop/no-shape-in-symbol-names -- Shape is the drawing-domain entity. */
 import { Schema } from "effect";
-import { sourceRangeSchema } from "./source-location";
-import { DrawBoardId, DrawBoardMetadata } from "../contracts/draw/draw-board-data";
-import { isValidDrawSourceLink, isValidDrawSourcePath } from "../utils/draw-source-link";
+import { sourceRangeSchema } from "../editor/source-location";
+import { DrawBoardId, DrawBoardMetadata } from "./draw-board-data";
+import { isValidDrawSourceLink, isValidDrawSourcePath } from "../../utils/draw-source-link";
 
 const boundedString = (maximum: number) =>
   Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(maximum));

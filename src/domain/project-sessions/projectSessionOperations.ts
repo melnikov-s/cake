@@ -1,6 +1,6 @@
 import { Effect, Schedule, Stream } from "effect";
-import type { JsonObject } from "../../ipc/json-contract";
-import { SESSION_TITLE_MAX_LENGTH } from "../../ipc/session-contract";
+import type { JsonObject } from "../../contracts/serialization/json-contract";
+import { SESSION_TITLE_MAX_LENGTH } from "../../contracts/conversations/session-contract";
 import { setProjectSessionLabels, trustProject } from "../application/application";
 import {
   TurnId,
@@ -13,7 +13,7 @@ import {
 } from "../conversations/conversations";
 import { CakeSessionRuntimes } from "../../services/pi/CakeSessionRuntimes";
 import { prepareTaskInputs } from "../conversations/taskInputs";
-import type { ProjectSessionLocation } from "../../ipc/project-session-data";
+import type { ProjectSessionLocation } from "../../contracts/project-sessions/project-session-data";
 import * as projectSessionLocations from "./projectSessionLocations";
 import { resolutionNamespace } from "./projectSessionResolution";
 import { acquireOptions } from "./projectSessionRuntime";
@@ -23,7 +23,7 @@ import {
   type ProjectSessionPromptInput,
   type ProjectSessionStartInput,
   type ProjectSessionTarget,
-} from "../../ipc/project-session-data";
+} from "../../contracts/project-sessions/project-session-data";
 import { SessionFamilyStorage } from "../../services/storage/SessionFamilyStorage";
 import { SessionCatalogChanges } from "../../services/session-catalogs/SessionCatalogChanges";
 import { ManagedWorktrees } from "../../services/worktrees/ManagedWorktrees";

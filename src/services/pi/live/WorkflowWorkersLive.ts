@@ -4,7 +4,7 @@ import {
   type WorkflowOutputSchema,
   type WorkflowWorkerTarget,
 } from "../../../contracts/workflows/workflow-data";
-import { ExplicitCakeModelSelection } from "../../../ipc/cake-model-selection";
+import { ExplicitCakeModelSelection } from "../../../contracts/model-presets/cake-model-selection";
 import { SubagentEnvironment } from "../../subagents/SubagentEnvironment";
 import { CakeSessionRuntimes } from "../CakeSessionRuntimes";
 import { PiModels } from "../PiModels";

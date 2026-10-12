@@ -46,9 +46,13 @@ export default defineConfig({
       },
     },
     {
-      // Shared IPC schemas and preload receive untrusted cross-process values.
+      // Artifact decoding, IPC, and preload receive untrusted cross-process values.
       // They must accept and inspect unknown input before returning typed data.
-      files: ["src/ipc/**/*.{ts,tsx}", "src/preload/**/*.{ts,tsx}"],
+      files: [
+        "src/contracts/artifacts/artifact-contract.ts",
+        "src/ipc/**/*.{ts,tsx}",
+        "src/preload/**/*.{ts,tsx}",
+      ],
       rules: {
         "anti-slop/no-runtime-typeof": "off",
         "anti-slop/no-unknown-parameters": "off",

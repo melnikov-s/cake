@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { ProjectCatalogUpdate } from "../../contracts/application/catalog-data";
-import { applicationEventSchema } from "../cake-rpc-contract";
+import { applicationEventSchema } from "../../contracts/application/cake-rpc-contract";
 
 export class FoundationFailure extends Schema.TaggedError<FoundationFailure>()(
   "FoundationFailure",

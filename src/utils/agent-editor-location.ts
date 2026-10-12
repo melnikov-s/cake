@@ -1,6 +1,6 @@
-import type { EditorLocation } from "../ipc/editor-location";
-import type { EditorSelectionLocation } from "../ipc/editor-selection";
-import type { JsonObject } from "../ipc/json-contract";
+import type { EditorLocation } from "../contracts/editor/editor-location";
+import type { EditorSelectionLocation } from "../contracts/editor/editor-selection";
+import type { JsonObject } from "../contracts/serialization/json-contract";
 
 /** Agent/application-control coordinates are one-based; native coordinates are zero-based. */
 export function agentEditorLocation(

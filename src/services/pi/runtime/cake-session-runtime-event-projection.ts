@@ -1,5 +1,9 @@
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import type { SessionUsage, ToolOutputContent, UiPart } from "../../../ipc/session-contract";
+import type {
+  SessionUsage,
+  ToolOutputContent,
+  UiPart,
+} from "../../../contracts/conversations/session-contract";
 import {
   boundedProjectionKey,
   cakeOperationCommand,

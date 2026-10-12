@@ -1,12 +1,15 @@
-import { agentSettingsSections } from "../../ipc/agent-settings-schema";
-import { CakeSettingsGetInput, CakeSettingsUpdateInput } from "../../ipc/cake-settings-schema";
+import { agentSettingsSections } from "../../contracts/application/agent-settings-schema";
+import {
+  CakeSettingsGetInput,
+  CakeSettingsUpdateInput,
+} from "../../contracts/application/cake-settings-schema";
 import {
   CurrentProjectSettingsGetInput,
   CurrentProjectSettingsUpdateInput,
   ProjectSettingsGetInput,
   ProjectSettingsUpdateInput,
   type ProjectSettingsChanges,
-} from "../../ipc/project-settings-schema";
+} from "../../contracts/projects/project-settings-schema";
 import type { AppControlHost, AppControlResult } from "./app-control-data";
 import { emptyArgumentsSchema } from "./control-arguments";
 import { defineControl } from "./control-definition";

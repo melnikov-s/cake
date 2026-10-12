@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Effect, Layer, Schema } from "effect";
-import { AgentSettingsInvocation } from "../../src/ipc/agent-settings-schema";
+import { AgentSettingsInvocation } from "../../src/contracts/application/agent-settings-schema";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
 import { PiSettings } from "../../src/services/pi/PiSettings";
 import { makePiSettingsLive } from "../../src/services/pi/live/PiSettingsLive";

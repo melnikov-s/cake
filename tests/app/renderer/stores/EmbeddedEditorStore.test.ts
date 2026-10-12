@@ -1,7 +1,7 @@
 import { batch, createStore } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../../src/contracts/application/application-data";
-import type { EditorAnnotationSnapshot } from "../../../../src/ipc/editor-annotation";
+import type { EditorAnnotationSnapshot } from "../../../../src/contracts/editor/editor-annotation";
 import { EmbeddedEditorStore } from "../../../../src/renderer/stores/EmbeddedEditorStore";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { mountWithClient } from "../mount-with-client";

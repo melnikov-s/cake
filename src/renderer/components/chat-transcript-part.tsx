@@ -13,7 +13,7 @@ import { ArtifactHost } from "@/components/artifact-host";
 import { InlineArtifactPreview } from "./inline-artifact-preview";
 import { CompactionMessage } from "@/components/compaction-message";
 import { ImagePreview } from "@/components/image-preview";
-import type { UiPart } from "../../ipc/session-contract";
+import type { UiPart } from "../../contracts/conversations/session-contract";
 import {
   AssistantTextMessage,
   ChatTextMessage,

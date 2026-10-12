@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CAKE_CHAT_SESSION_ID } from "../../../../src/ipc/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../../src/contracts/cake-chats/cake-chat-data";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { createRendererStoreFixture } from "../renderer-store-fixture";
 

@@ -15,7 +15,10 @@ import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-wo
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import type { CakePrompts } from "../../../src/contracts/application/cake-prompt-data";
 import * as worktreeLandings from "../../../src/domain/worktrees/worktreeLandings";
-import type { WorktreeLandOutcome, WorktreeStatus } from "../../../src/ipc/worktree-contract";
+import type {
+  WorktreeLandOutcome,
+  WorktreeStatus,
+} from "../../../src/contracts/worktrees/worktree-contract";
 import {
   WorktreeLandingAgent,
   WorktreeLandingAgentError,

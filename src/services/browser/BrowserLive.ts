@@ -1,6 +1,6 @@
 import { BrowserWindow } from "electron";
 import { Effect, Layer, Option, Schema, Stream } from "effect";
-import { jsonValueSchema } from "../../ipc/json-contract";
+import { jsonValueSchema } from "../../contracts/serialization/json-contract";
 import { Electron } from "../electron/Electron";
 import { ClientEvents } from "../clients/ClientEvents";
 import { ProjectAccess } from "../projects/ProjectAccess";

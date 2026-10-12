@@ -1,5 +1,5 @@
 import { Schema, type Effect } from "effect";
-import { jsonValueSchema } from "../../ipc/json-contract";
+import { jsonValueSchema } from "../../contracts/serialization/json-contract";
 import type {
   CakeSessionRuntimeAcquireOptions,
   CakeSessionRuntimes,

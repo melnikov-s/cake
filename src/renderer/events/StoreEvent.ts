@@ -1,6 +1,6 @@
 import type { AgentAvailabilityEntry } from "../../contracts/pi/agent-availability-data";
 import type { InterviewRecord } from "../../contracts/interviews/interview";
-import type { CakeEvent } from "../../ipc/cake-rpc-contract";
+import type { CakeEvent } from "../../contracts/application/cake-rpc-contract";
 import type { WorkflowProposal } from "../../contracts/workflows/workflow-data";
 
 type NativePassthroughEvent = Extract<

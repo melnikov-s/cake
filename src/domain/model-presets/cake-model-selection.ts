@@ -3,7 +3,7 @@ import type {
   CakeModelSelection,
   ExplicitCakeModelSelection,
   CakeModelPresetCatalog,
-} from "../../ipc/cake-model-selection";
+} from "../../contracts/model-presets/cake-model-selection";
 
 /** Resolves one snapshot of Cake-owned preset configuration at operation execution time. */
 export function resolveCakeModelSelection(

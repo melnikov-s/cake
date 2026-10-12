@@ -1,7 +1,7 @@
 import { DateTime, Effect, Schema } from "effect";
 import { normalizeCakePromptOverrides } from "../../contracts/application/cake-prompt-defaults";
 import { type CakePromptOverrides } from "../../contracts/application/cake-prompt-data";
-import { jsonObjectSchema, type JsonObject } from "../../ipc/json-contract";
+import { jsonObjectSchema, type JsonObject } from "../../contracts/serialization/json-contract";
 import {
   ApplicationState as ApplicationStateSchema,
   type ApplicationState,

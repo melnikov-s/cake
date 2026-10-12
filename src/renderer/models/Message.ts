@@ -4,8 +4,8 @@ import {
   type NestedToolCalls,
   type ToolOutputContent,
   type UiPart,
-} from "../../ipc/session-contract";
-import type { SourceLocation } from "../../ipc/source-location";
+} from "../../contracts/conversations/session-contract";
+import type { SourceLocation } from "../../contracts/editor/source-location";
 
 type TextRole = Extract<UiPart, { kind: "text" }>["role"];
 type TextStatus = Extract<UiPart, { kind: "text" }>["status"];

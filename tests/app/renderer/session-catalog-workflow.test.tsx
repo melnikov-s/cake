@@ -3,7 +3,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TurnId } from "../../../src/ipc/conversation-data";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { SavedDraft } from "../../../src/contracts/project-sessions/saved-draft-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";

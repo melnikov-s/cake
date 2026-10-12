@@ -28,9 +28,9 @@ import {
   TreeIcon,
 } from "@/components/ui/icons";
 import { AnnotationItemPopover } from "./annotation-item-popover";
-import type { ArtifactRecord } from "../../ipc/artifact-contract";
-import type { SourceLocation } from "../../ipc/source-location";
-import type { UiPart } from "../../ipc/session-contract";
+import type { ArtifactRecord } from "../../contracts/artifacts/artifact-contract";
+import type { SourceLocation } from "../../contracts/editor/source-location";
+import type { UiPart } from "../../contracts/conversations/session-contract";
 import type { ChatStore } from "../stores/ChatStore";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import type { InterviewStore } from "../stores/InterviewStore";

@@ -1,5 +1,5 @@
 import { Context, type Effect } from "effect";
-import type { Attachment } from "../../ipc/session-contract";
+import type { Attachment } from "../../contracts/conversations/session-contract";
 import type { AttachmentUploadError } from "../../contracts/filesystem/attachment-uploads-errors";
 
 /** Backend-owned temporary uploads; only admit resolves a token into Pi-ready bytes/paths. */

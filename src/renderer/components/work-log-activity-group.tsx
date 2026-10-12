@@ -6,7 +6,7 @@ import { WorkLogDiff } from "@/components/ai-elements/work-log-diff";
 import { StatusDot } from "@/components/ui/status-dot";
 import { WorkLogActivityTrigger } from "@/components/work-log-activity-trigger";
 import { toolDisplayTitle } from "@/lib/tool-presentation";
-import type { UiPart } from "../../ipc/session-contract";
+import type { UiPart } from "../../contracts/conversations/session-contract";
 import { isCompactedWorkLogPart } from "../../utils/work-log-groups";
 import { cn } from "../lib/utils";
 import { combineSubagentWorkLogParts } from "../lib/subagent-work-log";

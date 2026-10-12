@@ -3,7 +3,7 @@ import {
   SESSION_TITLE_MAX_LENGTH,
   type Attachment,
   type ChatConfiguration,
-} from "../../ipc/session-contract";
+} from "../../contracts/conversations/session-contract";
 
 export interface PendingConversationPrompt {
   text: string;

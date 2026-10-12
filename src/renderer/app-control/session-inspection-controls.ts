@@ -1,6 +1,6 @@
 import { Schema } from "effect";
-import { SessionHistoryQuery } from "../../ipc/session-query-data";
-import { jsonObjectSchema } from "../../ipc/json-contract";
+import { SessionHistoryQuery } from "../../contracts/conversations/session-query-data";
+import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
 import type { AppControlResult } from "./app-control-data";
 import {
   getAppState,

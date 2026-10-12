@@ -1,6 +1,9 @@
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { InlineWidgetError } from "../../contracts/widgets/inline-widgets-errors";
-import { cakeRpcPayloadSchemas, cakeRpcSuccessSchemas } from "../cake-rpc-contract";
+import {
+  cakeRpcPayloadSchemas,
+  cakeRpcSuccessSchemas,
+} from "../../contracts/application/cake-rpc-contract";
 
 export const InlineWidgetRpc = RpcGroup.make(
   Rpc.make("widgets.compile-inline-widget", {

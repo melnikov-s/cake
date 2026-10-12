@@ -1,5 +1,8 @@
 import { Cause, Effect, FiberMap, Stream, SubscriptionRef } from "effect";
-import type { WorktreeLandRequest, WorktreeStatus } from "../../ipc/worktree-contract";
+import type {
+  WorktreeLandRequest,
+  WorktreeStatus,
+} from "../../contracts/worktrees/worktree-contract";
 import { ApplicationState } from "../../services/storage/ApplicationState";
 import { renderCakePrompt } from "../application/cake-prompts";
 import { resolveCakePrompts } from "../../contracts/application/cake-prompt-defaults";

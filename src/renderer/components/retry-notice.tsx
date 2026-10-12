@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Callout } from "@/components/ui/callout";
-import type { UiPart } from "../../ipc/session-contract";
+import type { UiPart } from "../../contracts/conversations/session-contract";
 
 function retryDuration(milliseconds: number) {
   const seconds = Math.ceil(Math.max(0, milliseconds) / 1_000);

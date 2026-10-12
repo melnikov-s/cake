@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
+import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { App } from "../../../src/renderer/components/app";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";

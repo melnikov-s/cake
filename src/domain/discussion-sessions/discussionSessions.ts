@@ -2,8 +2,8 @@ import * as projectSessionLocations from "../project-sessions/projectSessionLoca
 import { acquireOptions as acquireProjectSessionOptions } from "../project-sessions/projectSessionRuntime";
 import { Effect, Schema, Stream } from "effect";
 import type { DiscussionCatalogUpdate } from "../../contracts/application/catalog-data";
-import type { CakeControlTool } from "../../ipc/cake-chat-data";
-import { jsonObjectSchema } from "../../ipc/json-contract";
+import type { CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
+import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
 import { makePiCallbackExecutor } from "../../services/pi/PiCallbackAdapter";
 import {
   PiSessionError,
@@ -35,10 +35,10 @@ import {
   type SessionAssistantEnsureInput,
   type SessionAssistantEnsured,
   sessionAssistantThreadPath,
-} from "../../ipc/discussion-session-data";
+} from "../../contracts/discussion-sessions/discussion-session-data";
 import { ReviewStorage } from "../../services/storage/ReviewStorage";
 
-export * from "../../ipc/discussion-session-data";
+export * from "../../contracts/discussion-sessions/discussion-session-data";
 
 const sessionAssistantAnchor = (parentSessionId: string) => ({
   path: sessionAssistantThreadPath(parentSessionId),

@@ -1,6 +1,6 @@
 import { Schema } from "effect";
-import { jsonValueSchema, type JsonValue } from "../../ipc/json-contract";
-import type { AgentSettingsInvocation } from "../../ipc/agent-settings-schema";
+import { jsonValueSchema, type JsonValue } from "../../contracts/serialization/json-contract";
+import type { AgentSettingsInvocation } from "../../contracts/application/agent-settings-schema";
 import {
   defaultCakePrompts,
   resolveCakePrompts,

@@ -5,7 +5,7 @@ import React, { act, forwardRef, useEffect, useImperativeHandle, useRef } from "
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore, mount, observable } from "r-state-tree";
-import type { Annotation, UiPart } from "../../../src/ipc/session-contract";
+import type { Annotation, UiPart } from "../../../src/contracts/conversations/session-contract";
 import { cakeHotkeyEventName } from "../../../src/renderer/lib/hotkeys";
 import { workLogChangeChunks } from "../../../src/utils/turn-diff";
 

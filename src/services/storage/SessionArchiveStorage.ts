@@ -1,5 +1,5 @@
 import { Context, type Effect, Schema, type Stream } from "effect";
-import type { PiSessionSummary } from "../../ipc/session-contract";
+import type { PiSessionSummary } from "../../contracts/conversations/session-contract";
 
 export const SessionResolutionIndex = Schema.Struct({
   version: Schema.Literal(1),

@@ -10,7 +10,7 @@ import {
 import { useResolvedColorTheme } from "../lib/resolved-color-theme";
 import { readWidgetTheme } from "../lib/widget-theme";
 import { cn } from "@/lib/utils";
-import type { CompiledInlineWidget } from "../../ipc/inline-widget-contract";
+import type { CompiledInlineWidget } from "../../contracts/widgets/inline-widget-contract";
 import { widgetDocumentUrl } from "../lib/widget-document-url";
 
 /** Authoritative opaque-origin execution frame for compiled Cake widgets. */

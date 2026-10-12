@@ -4,7 +4,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ModelOption } from "../../../src/ipc/session-contract";
+import type { ModelOption } from "../../../src/contracts/conversations/session-contract";
 import { ModelPicker, type ModelGroup } from "../../../src/renderer/components/model-picker";
 
 function sampleModel(

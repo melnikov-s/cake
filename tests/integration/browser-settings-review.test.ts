@@ -6,7 +6,7 @@ import { chromium, expect as browserExpect } from "@playwright/test";
 import { Effect } from "effect";
 import { beforeAll, it } from "vitest";
 import { openNetworkListener } from "../../src/server/NetworkListener";
-import type { UiPart } from "../../src/ipc/session-contract";
+import type { UiPart } from "../../src/contracts/conversations/session-contract";
 import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocations";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";

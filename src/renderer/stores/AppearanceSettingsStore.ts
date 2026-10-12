@@ -1,5 +1,8 @@
 import { snapshot, Store } from "r-state-tree";
-import type { WorkLogViewMode, WorkLogsExpansion } from "../../ipc/session-contract";
+import type {
+  WorkLogViewMode,
+  WorkLogsExpansion,
+} from "../../contracts/conversations/session-contract";
 
 /** Owns window appearance and shared work-log presentation preferences. */
 export class AppearanceSettingsStore extends Store<Record<string, never>> {

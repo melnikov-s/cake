@@ -1,6 +1,6 @@
 import { Store, observable } from "r-state-tree";
-import type { JsonValue } from "../../ipc/json-contract";
-import type { ResourceDiagnostic } from "../../ipc/session-contract";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
+import type { ResourceDiagnostic } from "../../contracts/conversations/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import type { StoreEvent } from "../events/StoreEvent";
 import type { Conversation } from "../models/Conversation";

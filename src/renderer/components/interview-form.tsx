@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CheckIcon } from "@/components/ui/icons";
 import { StepProgress } from "@/components/ui/step-progress";
 import { cn } from "@/lib/utils";
-import type { JsonValue } from "../../ipc/json-contract";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
 
 const inputClassName =
   "w-full rounded-md border border-border bg-background text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";

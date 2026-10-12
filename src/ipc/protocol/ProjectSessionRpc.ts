@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { SessionCatalogUpdate } from "../../contracts/application/catalog-data";
-import { TurnId } from "../conversation-data";
+import { TurnId } from "../../contracts/conversations/conversation-data";
 import {
   ProjectSessionResolutionDomainFailure,
   WorkingDirectoryResolutionResult,
@@ -13,9 +13,9 @@ import {
   ProjectSessionPreview,
   ProjectSessionStartInput,
   ProjectSessionTarget,
-} from "../project-session-data";
-import { jsonObjectSchema, jsonValueSchema } from "../json-contract";
-import { SESSION_TITLE_MAX_LENGTH } from "../session-contract";
+} from "../../contracts/project-sessions/project-session-data";
+import { jsonObjectSchema, jsonValueSchema } from "../../contracts/serialization/json-contract";
+import { SESSION_TITLE_MAX_LENGTH } from "../../contracts/conversations/session-contract";
 
 export const ProjectSessionRpc = RpcGroup.make(
   Rpc.make("projectSessions.observeCatalog", {

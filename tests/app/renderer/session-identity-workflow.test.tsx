@@ -3,7 +3,7 @@ import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import type { StoreSnapshot } from "r-state-tree";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorktreeRecord } from "../../../src/contracts/worktrees/managed-worktree-data";
-import { TurnId } from "../../../src/ipc/conversation-data";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { Client } from "../../../src/renderer/client/Client";
 import { fixtureTimestamp } from "./fixtures/catalog-fixtures";
 import { identityProjectPath, renderSessionIdentity } from "./session-identity-workflow-fixture";

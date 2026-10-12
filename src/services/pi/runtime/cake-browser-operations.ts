@@ -1,5 +1,9 @@
 import { Option, Schema } from "effect";
-import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
+import {
+  jsonObjectSchema,
+  type JsonObject,
+  type JsonValue,
+} from "../../../contracts/serialization/json-contract";
 import type { BrowserActionResult } from "../../browser/Browser";
 import { cakeOperationImageResult, type CakeOperationDefinition } from "./cake-operation-registry";
 

@@ -1,5 +1,9 @@
 import { Schema } from "effect";
-import { jsonObjectSchema, jsonValueSchema, type JsonValue } from "../../../ipc/json-contract";
+import {
+  jsonObjectSchema,
+  jsonValueSchema,
+  type JsonValue,
+} from "../../../contracts/serialization/json-contract";
 import type { VscodeActionResult } from "../../vscode/VsCodeServer";
 import type { CakeOperationDefinition } from "./cake-operation-registry";
 

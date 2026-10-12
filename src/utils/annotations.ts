@@ -1,4 +1,4 @@
-import type { Annotation } from "../ipc/session-contract";
+import type { Annotation } from "../contracts/conversations/session-contract";
 
 /** Builds an annotation without explicit `undefined` values at RPC and persistence boundaries. */
 export function createAnnotation(id: string, input: Omit<Annotation, "id">): Annotation {

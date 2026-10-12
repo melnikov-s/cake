@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import type { InterviewRecord, InterviewResult } from "../../../src/contracts/interviews/interview";
 import type { Client } from "../../../src/renderer/client/Client";
-import { TurnId } from "../../../src/ipc/conversation-data";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import { Interview } from "../../../src/renderer/components/interview";
 import { BlockingInterviews } from "../../../src/renderer/components/blocking-interviews";
 import { TranscriptPart } from "../../../src/renderer/components/chat-transcript-part";

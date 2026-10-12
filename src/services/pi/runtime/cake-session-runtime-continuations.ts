@@ -5,9 +5,12 @@ import {
   ResolutionCleanupFailed,
   type ResolutionCleanupFailure,
 } from "../../../contracts/project-sessions/project-session-resolution";
-import type { ArtifactPointer } from "../../../ipc/artifact-contract";
-import type { JsonValue } from "../../../ipc/json-contract";
-import { SESSION_TITLE_MAX_LENGTH, type UtilityModel } from "../../../ipc/session-contract";
+import type { ArtifactPointer } from "../../../contracts/artifacts/artifact-contract";
+import type { JsonValue } from "../../../contracts/serialization/json-contract";
+import {
+  SESSION_TITLE_MAX_LENGTH,
+  type UtilityModel,
+} from "../../../contracts/conversations/session-contract";
 import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
 import { projectConversationForkDisplay } from "./conversation-display-projection";
 import {

@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { QueuedSessionCommand } from "../../ipc/session-query-data";
+import { QueuedSessionCommand } from "../../contracts/conversations/session-query-data";
 import type { AppControlResult } from "./app-control-data";
 
 import { bounded, sessionIdTargetSchema } from "./control-arguments";

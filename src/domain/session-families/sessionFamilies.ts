@@ -1,4 +1,4 @@
-import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
 import { inheritTaskInputProtection, prepareCoordinatorNotice } from "../conversations/taskInputs";
 import type { SessionCompletionReport } from "../../contracts/project-sessions/session-reporting";
 import { toJsonValue } from "../../utils/to-json-value";
@@ -8,14 +8,14 @@ import { acquireOptions as acquireProjectSessionOptions } from "../project-sessi
 import * as projectSessionLocations from "../project-sessions/projectSessionLocations";
 import * as workflowLifecycle from "../workflows/workflow-lifecycle";
 import { DateTime, Effect, Exit, Schedule } from "effect";
-import type { ChatConfiguration } from "../../ipc/session-contract";
+import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
 import { PiModels } from "../../services/pi/PiModels";
 import {
   CakeSessionRuntimes,
   type CakeSessionRuntimeAcquireOptions,
   type CakeSessionHandle,
 } from "../../services/pi/CakeSessionRuntimes";
-import type { ProjectSessionLocation } from "../../ipc/project-session-data";
+import type { ProjectSessionLocation } from "../../contracts/project-sessions/project-session-data";
 import { resolutionNamespace } from "../project-sessions/projectSessionResolution";
 import {
   SessionArchiveStorage,

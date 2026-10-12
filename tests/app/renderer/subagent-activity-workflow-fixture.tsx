@@ -6,8 +6,8 @@ import {
   type SubagentActivity,
   type SubagentUpdate,
 } from "../../../src/contracts/subagents/subagent-data";
-import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
-import type { UiPart } from "../../../src/ipc/session-contract";
+import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SideChatLayout } from "../../../src/renderer/components/side-chat-layout";
 import { applyConversationSnapshot } from "../../../src/renderer/reducers/ConversationReducer";

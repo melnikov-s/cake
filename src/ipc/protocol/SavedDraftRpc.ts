@@ -5,10 +5,10 @@ import {
   SavedDraftConfiguration,
 } from "../../contracts/project-sessions/saved-draft-data";
 import { SavedDraftError } from "../../contracts/storage/saved-draft-storage-errors";
-import { ProjectSessionError } from "../project-session-data";
+import { ProjectSessionError } from "../../contracts/project-sessions/project-session-data";
 import { ManagedWorktreeError } from "../../contracts/worktrees/managed-worktrees-errors";
 import { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
-import { attachmentSchema } from "../session-contract";
+import { attachmentSchema } from "../../contracts/conversations/session-contract";
 import { RendererConnectionMiddleware } from "./RendererConnectionMiddleware";
 
 const SessionId = SavedDraft.fields.sessionId;

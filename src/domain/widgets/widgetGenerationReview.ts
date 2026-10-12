@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
 import type { WidgetPreview } from "../../contracts/widgets/widget-preview";
-import type { JsonValue } from "../../ipc/json-contract";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
 import { extractRepairedWidget } from "../../services/widgets/inline-widget-service";
 import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 

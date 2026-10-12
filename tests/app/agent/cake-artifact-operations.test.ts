@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ArtifactRecord } from "../../../src/ipc/artifact-contract";
+import type { ArtifactRecord } from "../../../src/contracts/artifacts/artifact-contract";
 import { createCakeArtifactOperations } from "../../../src/services/pi/runtime/cake-artifact-operations";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 

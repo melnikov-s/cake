@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import type { ProjectSessionAgentPolicy } from "../../contracts/project-sessions/project-session-agent-policy";
 import type { SessionFamilyStorageError } from "../../contracts/storage/session-family-storage-errors";
-import { ProjectSessionError } from "../../ipc/project-session-data";
+import { ProjectSessionError } from "../../contracts/project-sessions/project-session-data";
 import {
   SessionFamilyStorage,
   familyChildren,

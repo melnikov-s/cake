@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import type { Attachment } from "../session-contract";
+import type { Attachment } from "../../contracts/conversations/session-contract";
 import { AttachmentUploads } from "../../services/filesystem/AttachmentUploads";
 import { AttachmentUploadRpc } from "../protocol/AttachmentUploadRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";

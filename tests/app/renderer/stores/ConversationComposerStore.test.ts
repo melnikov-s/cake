@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { TurnId } from "../../../../src/ipc/conversation-data";
+import { TurnId } from "../../../../src/contracts/conversations/conversation-data";
 import { describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../../src/renderer/client/Client";
 import { createComposerInputFixture } from "../composer-input-workflow-fixture";

@@ -7,7 +7,7 @@ import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EffectiveArtifactProjection } from "../../../src/contracts/artifacts/artifact-lineage";
 import type { Client } from "../../../src/renderer/client/Client";
-import type { UiPart } from "../../../src/ipc/session-contract";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { RendererRoot } from "../../../src/renderer/components/renderer-root";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";

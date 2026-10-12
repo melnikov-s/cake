@@ -3,7 +3,7 @@ import type {
   ConversationSnapshot,
   SessionUsage,
   UiPart,
-} from "../../../../src/ipc/session-contract";
+} from "../../../../src/contracts/conversations/session-contract";
 import { makeCakeSessionRuntimesLayer } from "../../../../src/services/pi/CakeSessionRuntimes";
 import { makePiModels } from "../../../../src/services/pi/PiModels";
 import { PiModels } from "../../../../src/services/pi/PiModels";
@@ -13,7 +13,7 @@ import type {
 } from "../../../../src/services/pi/runtime/cake-session-runtime";
 import { WorkflowWorkersLive } from "../../../../src/services/pi/live/WorkflowWorkersLive";
 import { makeSubagentEnvironmentLayer } from "../../../../src/services/subagents/SubagentEnvironment";
-import type { ExplicitCakeModelSelection } from "../../../../src/ipc/cake-model-selection";
+import type { ExplicitCakeModelSelection } from "../../../../src/contracts/model-presets/cake-model-selection";
 
 export const model: ExplicitCakeModelSelection = {
   provider: "test",

@@ -1,5 +1,5 @@
 import type { ElectronApplication } from "@playwright/test";
-import type { CakeEvent } from "../../src/ipc/cake-rpc-contract";
+import type { CakeEvent } from "../../src/contracts/application/cake-rpc-contract";
 
 /** Replace only provider HTTP, leaving secure settings, native RPC and streaming policy real. */
 export function installSpeechHttpFixture(application: ElectronApplication) {

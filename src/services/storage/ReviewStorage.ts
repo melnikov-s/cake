@@ -1,5 +1,9 @@
 import { Context, Schema, type Effect, type Stream } from "effect";
-import type { ReviewAnchor, ReviewThread, ReviewThreadRecord } from "../../ipc/review-contract";
+import type {
+  ReviewAnchor,
+  ReviewThread,
+  ReviewThreadRecord,
+} from "../../contracts/reviews/review-contract";
 
 export class ReviewStorageError extends Schema.TaggedError<ReviewStorageError>()(
   "ReviewStorageError",

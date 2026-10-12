@@ -1,9 +1,9 @@
 import { Schema } from "effect";
 import { attachmentSchema, uiPartSchema } from "./session-contract";
-import { ThinkingLevel } from "../contracts/pi/model-data";
-import { CrossSessionMessageMetadata } from "../contracts/conversations/cross-session-message";
-import { ProjectSessionPresentationMode } from "./project-session-presentation";
-import { ConversationResponseMode } from "../contracts/conversations/response-mode-reminders";
+import { ThinkingLevel } from "../pi/model-data";
+import { CrossSessionMessageMetadata } from "./cross-session-message";
+import { ProjectSessionPresentationMode } from "../project-sessions/project-session-presentation";
+import { ConversationResponseMode } from "./response-mode-reminders";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const boundedText = Schema.String.check(Schema.isMaxLength(262_144));

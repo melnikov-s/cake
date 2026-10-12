@@ -4,7 +4,7 @@ import { Effect, Layer, Stream } from "effect";
 import { describe, expect } from "vitest";
 import * as metadata from "../../../src/domain/cake-chats/cakeChatMetadata";
 import { acquireOptions } from "../../../src/domain/cake-chats/cakeChatRuntime";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/ipc/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
 import { defaultCakeChatPreferences } from "../../../src/contracts/cake-chats/cake-chat-preferences";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";

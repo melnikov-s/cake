@@ -1,12 +1,15 @@
 import { Schema } from "effect";
-import { editorLocationFromPath, type EditorLocation } from "../../ipc/editor-location";
-import type { VscodeEditorAction } from "../../ipc/vscode-editor-action";
-import { EditorSelectionId } from "../../ipc/editor-selection";
+import {
+  editorLocationFromPath,
+  type EditorLocation,
+} from "../../contracts/editor/editor-location";
+import type { VscodeEditorAction } from "../../contracts/vscode/vscode-editor-action";
+import { EditorSelectionId } from "../../contracts/editor/editor-selection";
 import {
   gitRevisionSchema,
   type SourceLocation,
   type SourcePosition,
-} from "../../ipc/source-location";
+} from "../../contracts/editor/source-location";
 import type { AppControlResult } from "./app-control-data";
 import { trimmed, emptyArgumentsSchema } from "./control-arguments";
 import { defineControl } from "./control-definition";

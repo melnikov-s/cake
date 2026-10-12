@@ -1,7 +1,7 @@
 import { Stream } from "effect";
 import * as cakeChatOperations from "../../domain/cake-chats/cakeChatOperations";
 import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeChatRuntime";
-import { SessionChatError } from "../conversation-data";
+import { SessionChatError } from "../../contracts/conversations/conversation-data";
 import * as projectSessionOperations from "../../domain/project-sessions/projectSessionOperations";
 import { ConversationRpc } from "../protocol/ConversationRpc";
 

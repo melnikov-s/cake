@@ -17,7 +17,7 @@ import {
   uiPartSchema,
   type ConversationSnapshot,
   type UtilityModel,
-} from "../../ipc/session-contract";
+} from "../../contracts/conversations/session-contract";
 import { getState } from "../application/application";
 import {
   ParallelSubagentInput,

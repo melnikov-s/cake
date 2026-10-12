@@ -1,6 +1,6 @@
 import { Effect, Stream } from "effect";
-import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
-import type { PiSessionSummary } from "../../ipc/session-contract";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import type { PiSessionSummary } from "../../contracts/conversations/session-contract";
 import { CakeSessionRuntimes, type PiSessionError } from "../../services/pi/CakeSessionRuntimes";
 import type { CakeChatLocation } from "./cakeChatLocations";
 import type { CakeChatCatalogUpdate } from "../../contracts/application/catalog-data";
@@ -13,7 +13,7 @@ import {
   type CakeChatCatalogQuery,
   type CakeChatPreview,
   type CakeChatSummary,
-} from "../../ipc/cake-chat-data";
+} from "../../contracts/cake-chats/cake-chat-data";
 
 const errorValue = (operation: string, error: unknown) =>
   new CakeChatError({ operation, message: error instanceof Error ? error.message : String(error) });

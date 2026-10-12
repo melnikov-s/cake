@@ -1,6 +1,6 @@
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
+import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
 import { Chat } from "../../../src/renderer/components/chat";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";

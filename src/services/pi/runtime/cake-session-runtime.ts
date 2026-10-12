@@ -28,12 +28,12 @@ import {
   type ThinkingLevel,
   type UiPart,
   type UtilityModel,
-} from "../../../ipc/session-contract";
+} from "../../../contracts/conversations/session-contract";
 import type {
   CakeModelPresetCatalog,
   CakeModelSelection,
   ExplicitCakeModelSelection,
-} from "../../../ipc/cake-model-selection";
+} from "../../../contracts/model-presets/cake-model-selection";
 import type { NonChatModelPreferences } from "../../../contracts/models/non-chat-model-data";
 import {
   crossSessionContextSnapshot,
@@ -43,20 +43,24 @@ import type { PiPendingMessageReorder, PiPendingMessages } from "../conversation
 import type {
   SessionInspectionQuery,
   QueuedSessionCommandReceipt,
-} from "../../../ipc/session-query-data";
+} from "../../../contracts/conversations/session-query-data";
 import { inspectSessionHistory } from "./session-inspection";
-import { piBuiltinSlashCommands } from "../../../ipc/session-contract";
+import { piBuiltinSlashCommands } from "../../../contracts/conversations/session-contract";
 import {
   SubagentResult as subagentResultSchema,
   type ParallelSubagentInput as DomainParallelSubagentInput,
   type SubagentTaskInput as DomainSubagentTaskInput,
 } from "../../../contracts/subagents/subagent-data";
-import { jsonValueSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
+import {
+  jsonValueSchema,
+  type JsonObject,
+  type JsonValue,
+} from "../../../contracts/serialization/json-contract";
 import type {
   ArtifactRecord,
   ArtifactPointer,
   CakeArtifactV1,
-} from "../../../ipc/artifact-contract";
+} from "../../../contracts/artifacts/artifact-contract";
 import type { ArtifactProjectionMetadata } from "../../../contracts/artifacts/artifact-projection-data";
 import type { ResolvedAgentArtifact } from "./cake-artifact-operations";
 import type { VscodeControl } from "./cake-vscode-operations";
@@ -65,7 +69,7 @@ import type { WorktreeLandingControl } from "./cake-worktree-operations";
 import type { WorkflowControl } from "./cake-workflow-operations";
 import type { SessionPluginControl } from "./cake-session-plugin-operations";
 import type { CakeDrawControl } from "./cake-draw-operations";
-import type { ProjectSessionPresentationMode } from "../../../ipc/project-session-presentation";
+import type { ProjectSessionPresentationMode } from "../../../contracts/project-sessions/project-session-presentation";
 import { assertSessionPath } from "./session-path";
 import { cakeWorkspaceSessionDirectory, findSessionFile } from "./session-discovery";
 import {

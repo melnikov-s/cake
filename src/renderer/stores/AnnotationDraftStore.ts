@@ -1,5 +1,5 @@
 import { observable, Store } from "r-state-tree";
-import type { Annotation } from "../../ipc/session-contract";
+import type { Annotation } from "../../contracts/conversations/session-contract";
 import { applyAnnotationUpdate, createAnnotation } from "../../utils/annotations";
 
 export interface AnnotationDraftStoreProps {

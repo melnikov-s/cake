@@ -1,6 +1,6 @@
 import { Store } from "r-state-tree";
-import type { Attachment } from "../../ipc/session-contract";
-import type { ProjectSessionPresentationMode } from "../../ipc/project-session-presentation";
+import type { Attachment } from "../../contracts/conversations/session-contract";
+import type { ProjectSessionPresentationMode } from "../../contracts/project-sessions/project-session-presentation";
 import type { BrowserStateSnapshot } from "../client/Client";
 import type { StoreEvent } from "../events/StoreEvent";
 import { describeError } from "../lib/error-details";

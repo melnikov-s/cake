@@ -9,13 +9,13 @@ import { Option, Schema } from "effect";
 import {
   type CakeModelSelection,
   type ExplicitCakeModelSelection,
-} from "../../../ipc/cake-model-selection";
+} from "../../../contracts/model-presets/cake-model-selection";
 import type {
   ChatConfiguration,
   ModelOption,
   PiSettingUpdate,
   ThinkingLevel,
-} from "../../../ipc/session-contract";
+} from "../../../contracts/conversations/session-contract";
 import {
   applyFastModePayload,
   FastModePayload,

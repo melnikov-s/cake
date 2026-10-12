@@ -14,12 +14,12 @@ import {
   type ExtensionUiIntent,
   type ResourceDiagnostic,
   type UiPart,
-} from "../../../ipc/session-contract";
+} from "../../../contracts/conversations/session-contract";
 import { compatibilityCatalog } from "../live/PiCompatibilityProjection";
 import { createCakeExtensionUiContext } from "./extension-compatibility";
 import { ReloadableResourceLoader } from "./ReloadableResourceLoader";
 import type { RuntimeUiRequest } from "./runtime-ui-request";
-import { jsonValueSchema, type JsonValue } from "../../../ipc/json-contract";
+import { jsonValueSchema, type JsonValue } from "../../../contracts/serialization/json-contract";
 import {
   cakeCompanionActionChannel,
   cakeCompanionStateChannel,

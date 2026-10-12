@@ -1,5 +1,8 @@
 import { Store, child, createStore } from "r-state-tree";
-import { workingDirectoryEditorLocation, type EditorLocation } from "../../ipc/editor-location";
+import {
+  workingDirectoryEditorLocation,
+  type EditorLocation,
+} from "../../contracts/editor/editor-location";
 import {
   discussionAnchorFromEditorSelection,
   sourceAttachmentFromEditorSelection,

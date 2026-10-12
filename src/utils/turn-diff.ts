@@ -1,5 +1,5 @@
 import { Option, Schema } from "effect";
-import type { UiPart } from "../ipc/session-contract";
+import type { UiPart } from "../contracts/conversations/session-contract";
 
 const editInputSchema = Schema.Struct({
   edits: Schema.optionalKey(

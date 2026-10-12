@@ -1,6 +1,6 @@
 import { BrowserWindow, WebContentsView } from "electron";
 import { Option, Schema } from "effect";
-import type { CakeEvent } from "../../ipc/cake-rpc-contract";
+import type { CakeEvent } from "../../contracts/application/cake-rpc-contract";
 import {
   projectSidebarVisibilityScript,
   VSCODE_BACKGROUND,

@@ -26,7 +26,8 @@ function owner(file) {
     // New privileged transports are backend-owned by default, not implicitly shared.
     return "backend";
   }
-  if (location.startsWith("src/ipc/")) return "shared";
+  // IPC contains only protocol and transport infrastructure, never shared data.
+  if (location.startsWith("src/ipc/")) return "unclassified-ipc";
   return undefined;
 }
 
@@ -81,6 +82,8 @@ const rule = {
       privileged:
         "{{from}} code cannot import privileged runtime package {{source}}. Use shared contracts and the typed RPC/preload boundary.",
       pi: "Pi SDK imports belong only beneath src/services/pi or src/services/pi-durable.",
+      ipcLocation:
+        "IPC modules belong in protocol/, client/, server/, or transport/. Move shared schemas, values, and codecs into feature-named src/contracts modules.",
     },
   },
   create(context) {
@@ -89,6 +92,8 @@ const rule = {
     const relativeFile = path.relative(cwd, file).split(path.sep).join("/");
     const from = owner(relativeFile);
     if (!from) return {};
+    if (from === "unclassified-ipc")
+      return { Program: (node) => context.report({ node, messageId: "ipcLocation" }) };
 
     function check(node, sourceNode) {
       const source = literalValue(sourceNode);

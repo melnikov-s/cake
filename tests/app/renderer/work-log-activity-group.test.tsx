@@ -5,7 +5,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore, mount } from "r-state-tree";
-import type { UiPart } from "../../../src/ipc/session-contract";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 
 const { renderWorkLogDiff } = vi.hoisted(() => ({ renderWorkLogDiff: vi.fn() }));
 

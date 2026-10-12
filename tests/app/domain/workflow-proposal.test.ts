@@ -3,7 +3,7 @@ import { describe, expect } from "vitest";
 import { Context, Effect, Fiber, FiberMap, Layer, Queue, Ref } from "effect";
 import * as workflows from "../../../src/domain/workflows/workflows";
 import * as control from "../../../src/domain/workflows/workflow-control";
-import type { CakeEvent } from "../../../src/ipc/cake-rpc-contract";
+import type { CakeEvent } from "../../../src/contracts/application/cake-rpc-contract";
 import { ClientEvents } from "../../../src/services/clients/ClientEvents";
 import { ClientConnectionsLive } from "../../../src/services/clients/ClientConnections";
 import {

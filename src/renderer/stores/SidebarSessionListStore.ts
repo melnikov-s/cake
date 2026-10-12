@@ -1,6 +1,6 @@
 import { Store, observable, snapshot, untracked } from "r-state-tree";
-import type { CakeChatCatalogQuery } from "../../ipc/cake-chat-data";
-import type { ProjectSessionCatalogQuery } from "../../ipc/project-session-data";
+import type { CakeChatCatalogQuery } from "../../contracts/cake-chats/cake-chat-data";
+import type { ProjectSessionCatalogQuery } from "../../contracts/project-sessions/project-session-data";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
 import { isActiveSessionActivity } from "../lib/session-activity";
 import type { WorktreeOperationCatalog } from "../models/WorktreeOperationCatalog";

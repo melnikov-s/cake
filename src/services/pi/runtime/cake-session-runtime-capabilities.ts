@@ -14,22 +14,35 @@ import { Effect, Option, Schema } from "effect";
 import {
   CakeModelSelection,
   type ExplicitCakeModelSelection,
-} from "../../../ipc/cake-model-selection";
+} from "../../../contracts/model-presets/cake-model-selection";
 import type { SubagentTaskInput as DomainSubagentTaskInput } from "../../../contracts/subagents/subagent-data";
 import {
   CrossSessionContextSnapshot,
   CrossSessionQueueSnapshot,
 } from "../../../contracts/conversations/cross-session-message";
-import { CakeSettingsGetInput, CakeSettingsUpdateInput } from "../../../ipc/cake-settings-schema";
+import {
+  CakeSettingsGetInput,
+  CakeSettingsUpdateInput,
+} from "../../../contracts/application/cake-settings-schema";
 import {
   CurrentProjectSettingsGetInput,
   CurrentProjectSettingsUpdateInput,
-} from "../../../ipc/project-settings-schema";
+} from "../../../contracts/projects/project-settings-schema";
 import { SessionLabelColor } from "../../../contracts/application/application-data";
-import { jsonObjectSchema, type JsonObject, type JsonValue } from "../../../ipc/json-contract";
-import { SESSION_TITLE_MAX_LENGTH } from "../../../ipc/session-contract";
-import { SessionHistoryQuery, QueuedSessionCommand } from "../../../ipc/session-query-data";
-import { artifactRecordSchema, type CakeArtifactV1 } from "../../../ipc/artifact-contract";
+import {
+  jsonObjectSchema,
+  type JsonObject,
+  type JsonValue,
+} from "../../../contracts/serialization/json-contract";
+import { SESSION_TITLE_MAX_LENGTH } from "../../../contracts/conversations/session-contract";
+import {
+  SessionHistoryQuery,
+  QueuedSessionCommand,
+} from "../../../contracts/conversations/session-query-data";
+import {
+  artifactRecordSchema,
+  type CakeArtifactV1,
+} from "../../../contracts/artifacts/artifact-contract";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import {
   createCakeArtifactOperations,

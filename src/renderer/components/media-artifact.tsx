@@ -1,4 +1,4 @@
-import type { CakeArtifactV1 } from "../../ipc/artifact-contract";
+import type { CakeArtifactV1 } from "../../contracts/artifacts/artifact-contract";
 
 export function MediaArtifact({
   artifact,

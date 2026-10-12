@@ -4,7 +4,7 @@ import type {
   WorkflowError,
   WorkflowProgram,
 } from "../../contracts/workflows/workflow-data";
-import type { JsonValue } from "../../ipc/json-contract";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
 
 /** Cake-owned capabilities injected into the standalone pi-codemode QuickJS VM. */
 export interface WorkflowScriptHost {

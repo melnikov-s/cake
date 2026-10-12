@@ -1,15 +1,15 @@
 import { Effect, Schema } from "effect";
-import { InterviewRecord, InterviewResult } from "../contracts/interviews/interview";
+import { InterviewRecord, InterviewResult } from "../interviews/interview";
 import {
   RendererApplicationState,
   UtilityModel as UtilityModelSchema,
   type ProjectRecord as ProjectRecordType,
-} from "../contracts/application/application-data";
-import { CrossSessionMessageMetadata } from "../contracts/conversations/cross-session-message";
-import { ScheduledMessageOrigin } from "../contracts/conversations/scheduled-message-envelope";
-import { ipcProjectionArray, ipcProjectionString } from "./projection";
-import { sourceLocationSchema } from "./source-location";
-import { TaskInputReference } from "../contracts/conversations/task-input";
+} from "../application/application-data";
+import { CrossSessionMessageMetadata } from "./cross-session-message";
+import { ScheduledMessageOrigin } from "./scheduled-message-envelope";
+import { ipcProjectionArray, ipcProjectionString } from "../serialization/projection";
+import { sourceLocationSchema } from "../editor/source-location";
+import { TaskInputReference } from "./task-input";
 
 export const SESSION_TITLE_MAX_LENGTH = 144;
 

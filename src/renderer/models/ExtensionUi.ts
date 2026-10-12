@@ -1,5 +1,8 @@
 import { Model, observable } from "r-state-tree";
-import type { ExtensionUiState, ResourceDiagnostic } from "../../ipc/session-contract";
+import type {
+  ExtensionUiState,
+  ResourceDiagnostic,
+} from "../../contracts/conversations/session-contract";
 
 export interface ExtensionCompanionProjection {
   id: string;

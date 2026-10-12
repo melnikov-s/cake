@@ -1,5 +1,9 @@
 import { Schema } from "effect";
-import { gitRevisionSchema, type SourceLocation, type SourceRange } from "../ipc/source-location";
+import {
+  gitRevisionSchema,
+  type SourceLocation,
+  type SourceRange,
+} from "../contracts/editor/source-location";
 
 const webReference = /^(?:(?:https?|mailto|file|data|javascript|vscode):|\/\/|#)/i;
 const sourcePath = /^(?!\.\.?$)(?:[^\s/:#]+\/)*[^\s/:#]+\.[a-z][a-z0-9._+-]*$/i;

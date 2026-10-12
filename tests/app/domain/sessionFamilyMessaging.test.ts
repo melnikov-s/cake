@@ -6,7 +6,7 @@ import { parseCrossSessionMessage } from "../../../src/contracts/conversations/c
 import { SessionFamilyStorageError } from "../../../src/contracts/storage/session-family-storage-errors";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
 import { route } from "../../../src/domain/session-families/sessionFamilyMessaging";
-import { ProjectSessionError } from "../../../src/ipc/project-session-data";
+import { ProjectSessionError } from "../../../src/contracts/project-sessions/project-session-data";
 import {
   CakeSessionRuntimes,
   makeCakeSessionRuntimesLayer,

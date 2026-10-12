@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { observer } from "r-state-tree/react";
-import type { SourceLocation } from "../../ipc/source-location";
+import type { SourceLocation } from "../../contracts/editor/source-location";
 import type { DrawStore } from "../stores/DrawStore";
 import type { DrawCanvas } from "./draw-canvas";
 import { DrawCanvasErrorBoundary } from "./draw-canvas-error-boundary";

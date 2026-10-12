@@ -1,5 +1,5 @@
 import { observer } from "r-state-tree/react";
-import type { JsonValue } from "../../ipc/json-contract";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
 import type { ExtensionCompanionProjection } from "../models/ExtensionUi";
 import { ExtensionCompanionContribution } from "./extension-companion-contribution";
 

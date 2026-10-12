@@ -8,8 +8,11 @@ import {
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { access } from "node:fs/promises";
 import { dirname } from "node:path";
-import { CAKE_CHAT_SESSION_ID } from "../../ipc/cake-chat-data";
-import type { PiSessionSummary, PiSessionPreview } from "../../ipc/session-contract";
+import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import type {
+  PiSessionSummary,
+  PiSessionPreview,
+} from "../../contracts/conversations/session-contract";
 import { ChatMetadataDoc } from "./durable-chat-metadata";
 import { readDurableOriginalPage } from "./durable-chat-history";
 import { durableChatDatabase, purgeLegacyGlobalChatHistory } from "./durable-chat-location";

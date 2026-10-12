@@ -1,5 +1,9 @@
 import { Store, observable } from "r-state-tree";
-import type { ModelOption, PiSettingUpdate, PiSettings } from "../../ipc/session-contract";
+import type {
+  ModelOption,
+  PiSettingUpdate,
+  PiSettings,
+} from "../../contracts/conversations/session-contract";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";

@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resourceDiagnosticSchema } from "../../../../src/ipc/session-contract";
+import { resourceDiagnosticSchema } from "../../../../src/contracts/conversations/session-contract";
 
 const protocol = vi.hoisted(() => ({
   release: vi.fn(),

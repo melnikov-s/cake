@@ -4,8 +4,11 @@ import {
   prepareCoordinatorMessage,
   prepareTaskInputs,
 } from "./taskInputs";
-import type { SessionInspectionQuery } from "../../ipc/session-query-data";
-import type { ChatConfiguration, PiSettingUpdate } from "../../ipc/session-contract";
+import type { SessionInspectionQuery } from "../../contracts/conversations/session-query-data";
+import type {
+  ChatConfiguration,
+  PiSettingUpdate,
+} from "../../contracts/conversations/session-contract";
 import {
   CakeSessionRuntimes,
   type CakeSessionHandle,
@@ -20,7 +23,7 @@ import {
   type SessionChatPromptInput,
   SessionChatError,
   type SessionChatTarget,
-} from "../../ipc/conversation-data";
+} from "../../contracts/conversations/conversation-data";
 import {
   abort as abortConversation,
   applyConfiguration as applyConversationConfiguration,

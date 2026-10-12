@@ -39,11 +39,14 @@ import {
 import {
   AgentSettingsInvocation,
   agentSettingsOperations,
-} from "../../../src/ipc/agent-settings-schema";
+} from "../../../src/contracts/application/agent-settings-schema";
 import type { Client } from "../../../src/renderer/client/Client";
-import { jsonObjectSchema, type JsonObject } from "../../../src/ipc/json-contract";
-import { TurnId } from "../../../src/ipc/conversation-data";
-import { slashCommandSchema } from "../../../src/ipc/session-contract";
+import {
+  jsonObjectSchema,
+  type JsonObject,
+} from "../../../src/contracts/serialization/json-contract";
+import { TurnId } from "../../../src/contracts/conversations/conversation-data";
+import { slashCommandSchema } from "../../../src/contracts/conversations/session-contract";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 import { projectRecord, sessionSummary } from "./fixtures/catalog-fixtures";
 

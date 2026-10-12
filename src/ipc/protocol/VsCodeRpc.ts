@@ -13,7 +13,7 @@ import {
   embeddedEditorEventSchema,
   cakeRpcPayloadSchemas,
   cakeRpcSuccessSchemas,
-} from "../cake-rpc-contract";
+} from "../../contracts/application/cake-rpc-contract";
 
 type VsCodeOperation = keyof Pick<
   typeof cakeRpcPayloadSchemas,

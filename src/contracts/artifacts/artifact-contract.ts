@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { WidgetPreview } from "../contracts/widgets/widget-preview";
+import { WidgetPreview } from "../widgets/widget-preview";
 
 const ARTIFACT_PROTOCOL = "cake.artifact/v1" as const;
 export const MAX_ARTIFACT_INPUT_BYTES = 1_048_576;

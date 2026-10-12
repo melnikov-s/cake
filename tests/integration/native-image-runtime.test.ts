@@ -19,7 +19,7 @@ import { createCakeMcpExtensions } from "../../src/services/pi/runtime/mcp-integ
 import { shutdownCakeSessionExtensions } from "../../src/services/pi/runtime/cake-session-runtime-resources";
 import { projectSessionEntries } from "../../src/services/pi/runtime/session-projection";
 import { createCakeSessionRuntimeEventProjection } from "../../src/services/pi/runtime/cake-session-runtime-event-projection";
-import type { UiPart } from "../../src/ipc/session-contract";
+import type { UiPart } from "../../src/contracts/conversations/session-contract";
 import {
   imageProviderResponse,
   nativeImageScript,

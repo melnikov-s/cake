@@ -1,8 +1,8 @@
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VirtuosoMockContext } from "react-virtuoso";
-import type { ConversationSnapshot } from "../../../src/ipc/conversation-data";
-import type { UiPart } from "../../../src/ipc/session-contract";
+import type { ConversationSnapshot } from "../../../src/contracts/conversations/conversation-data";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import { Chat } from "../../../src/renderer/components/chat";
 import { WorkLogControls } from "../../../src/renderer/components/work-log-controls";
 import { applyConversationUpdate } from "../../../src/renderer/reducers/ConversationReducer";

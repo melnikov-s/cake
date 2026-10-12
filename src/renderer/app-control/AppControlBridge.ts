@@ -1,4 +1,4 @@
-import type { JsonValue } from "../../ipc/json-contract";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
 import type { AgentControlSource, AppControlHost, AppControlState } from "./app-control-data";
 import { appControlRegistry } from "./app-control-registry";
 import type { ControlContext } from "./control-definition";

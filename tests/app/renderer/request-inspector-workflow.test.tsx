@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { applySnapshot } from "r-state-tree";
 import { observer } from "r-state-tree/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { CAKE_CHAT_SESSION_ID } from "../../../src/ipc/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
 import type {
   RequestInspectionEntry,
   RequestInspectionPayload,

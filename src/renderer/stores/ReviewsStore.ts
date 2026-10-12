@@ -3,8 +3,8 @@ import {
   hasSidecarConversation,
   type DiscussionAnchor,
   type DiscussionSessionStartInput,
-} from "../../ipc/discussion-session-data";
-import type { Annotation, ModelPreset } from "../../ipc/session-contract";
+} from "../../contracts/discussion-sessions/discussion-session-data";
+import type { Annotation, ModelPreset } from "../../contracts/conversations/session-contract";
 import type { ReviewThread } from "../models/ReviewThread";
 import type { Conversation } from "../models/Conversation";
 import { ClientContext } from "./context/ClientContext";
