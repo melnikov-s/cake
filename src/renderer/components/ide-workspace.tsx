@@ -132,8 +132,10 @@ export const IdeWorkspace = observer(function IdeWorkspace({
         <>
           <header
             className={cn(
-              "flex select-none items-center justify-between gap-3 border-b border-border px-3 [-webkit-app-region:drag]",
-              contextualAnchor ? "h-14" : "h-[35px]",
+              "flex select-none border-b border-border px-3 [-webkit-app-region:drag]",
+              contextualAnchor
+                ? "flex-col items-stretch gap-1 py-2"
+                : "h-[35px] items-center justify-between gap-3",
             )}
           >
             <div className="min-w-0">
@@ -146,7 +148,12 @@ export const IdeWorkspace = observer(function IdeWorkspace({
                 </span>
               ) : null}
             </div>
-            <div className="flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]">
+            <div
+              className={cn(
+                "flex shrink-0 items-center gap-1 [-webkit-app-region:no-drag]",
+                contextualAnchor && "flex-wrap justify-end",
+              )}
+            >
               {headerActions}
               {contextualAnchor ? (
                 <Button variant="ghost" size="sm" onClick={closeContext}>

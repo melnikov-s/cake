@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -10,15 +11,24 @@ test("deferred model picker opens by keyboard and mouse with catalog, search, pr
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
   const cakeHome = join(temporaryRoot, "cake-home");
+  const sessionId = "model-picker-session";
+  const timestamp = new Date(0).toISOString();
+  const sessionDirectory = cakeWorkspaceSessionDirectory(project, join(cakeHome, "pi", "sessions"));
   await Promise.all([
     mkdir(userData, { recursive: true }),
     mkdir(project, { recursive: true }),
     mkdir(join(cakeHome, "state"), { recursive: true }),
-    mkdir(join(cakeHome, "pi"), { recursive: true }),
+    mkdir(sessionDirectory, { recursive: true }),
   ]);
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({ projectPath: project, recentProjectPaths: [project], draft: "" }),
+    JSON.stringify({
+      projectPath: project,
+      selectedSessionId: sessionId,
+      activeConversation: { kind: "project-session", workspacePath: project, sessionId },
+      recentProjectPaths: [project],
+      draft: "",
+    }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),
@@ -73,6 +83,36 @@ test("deferred model picker opens by keyboard and mouse with catalog, search, pr
     }),
   );
 
+  // Restore a loaded conversation rather than racing the empty project's
+  // staged-session initialization and its deferred composer-focus request.
+  await writeFile(
+    join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+    [
+      { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+      {
+        type: "model_change",
+        id: "fixture-model",
+        parentId: null,
+        timestamp,
+        provider: "picker-fixture-provider",
+        modelId: "fixture-model",
+      },
+      {
+        type: "message",
+        id: "fixture-prompt",
+        parentId: "fixture-model",
+        timestamp,
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Model picker fixture ready" }],
+          timestamp: 0,
+        },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+  );
+
   const application = await electron.launch({
     args: [repositoryRoot],
     cwd: repositoryRoot,
@@ -87,9 +127,17 @@ test("deferred model picker opens by keyboard and mouse with catalog, search, pr
   });
   try {
     const page = await application.firstWindow();
-    const composer = page.getByLabel("Message");
+    await expect(
+      page.locator(".transcript").getByText("Model picker fixture ready", { exact: true }),
+    ).toBeVisible();
+    const composer = page.getByRole("combobox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 20_000 });
     await expect(composer).toBeFocused();
+    // Verify a real draft survives every keyboard/mouse model-picker interaction.
+    await composer.pressSequentially("Pending first prompt");
+    await expect(composer).toHaveValue("Pending first prompt");
+    await expect(composer).toBeFocused();
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     const configuration = page.getByRole("button", { name: "Model configuration" });
     await configuration.focus();
     await configuration.press("Enter");
@@ -112,7 +160,7 @@ test("deferred model picker opens by keyboard and mouse with catalog, search, pr
     await expect(dialog).toBeHidden();
     await expect(configuration).toBeFocused();
 
-    // A mouse reopen refreshes the fallback catalog; selecting and applying a
+    // A mouse reopen refreshes the catalog; selecting and applying a
     // model does not cause another open/load or lose the deferred local choice.
     await configuration.click();
     if (await change.isVisible()) await change.click();
@@ -141,8 +189,9 @@ test("deferred model picker opens by keyboard and mouse with catalog, search, pr
 
     await composer.click();
     await expect(composer).toBeFocused();
-    await composer.pressSequentially("Pending first prompt");
     await expect(composer).toHaveValue("Pending first prompt");
+    await composer.pressSequentially(" retained");
+    await expect(composer).toHaveValue("Pending first prompt retained");
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
   } finally {
     await application.close();

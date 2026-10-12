@@ -393,8 +393,45 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     await expect
       .poll(() => clickVsCodeText("Cake: Open · 0 replies"), { timeout: 20_000 })
       .toBe(true);
-    await expect(page.getByText("Chat about selection", { exact: true })).toBeVisible();
-    await expect(page.getByText("Why is this exported?", { exact: true })).toBeVisible();
+    const selectionTitle = page.getByText("Chat about selection", { exact: true });
+    const selectionSidebar = page.getByRole("complementary").filter({ has: selectionTitle });
+    const selectionHeader = selectionSidebar.locator("header").first();
+    const expectSelectionHeader = async () => {
+      await expect(selectionTitle).toBeVisible();
+      await expect(
+        selectionHeader.getByText("src/modelMeta.ts · L1", { exact: true }),
+      ).toBeVisible();
+      for (const name of [
+        "0 artifacts",
+        "Session tree",
+        "Work log display options",
+        "Open Cake Draw",
+        "Open Browser Mode",
+        "Back to agent",
+        "Terminal",
+        "Project chat",
+      ]) {
+        await expect(selectionHeader.getByRole("button", { name, exact: true })).toBeVisible();
+      }
+      await expect
+        .poll(() =>
+          selectionHeader.evaluate((element) => {
+            const header = element.getBoundingClientRect();
+            return Array.from(element.querySelectorAll("button")).every((button) => {
+              const bounds = button.getBoundingClientRect();
+              return (
+                bounds.left >= header.left &&
+                bounds.right <= header.right &&
+                bounds.top >= header.top &&
+                bounds.bottom <= header.bottom
+              );
+            });
+          }),
+        )
+        .toBe(true);
+      await expect(page.getByText("Why is this exported?", { exact: true })).toBeVisible();
+    };
+    await expectSelectionHeader();
     await page.getByRole("button", { name: "Project chat" }).click();
     expect(await clickVsCodeTitleAction("Toggle Chat Sidebar")).toBe(true);
     await expect.poll(() => hasVsCodeTitleAction("Back to Agent")).toBe(true);
@@ -578,6 +615,19 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
     expect(await clickVsCodeTitleAction("Back to Agent")).toBe(true);
     await link.click();
     await expect(page.getByRole("region", { name: "VS Code workspace" })).toBeVisible();
+
+    // The same contextual controls must wrap inside the minimum supported drawer,
+    // not consume the title's entire row or overflow the available width.
+    await expect
+      .poll(() => clickVsCodeText("Cake: Open · 0 replies"), { timeout: 20_000 })
+      .toBe(true);
+    await expect(selectionTitle).toBeVisible();
+    await resizeHandle.focus();
+    await resizeHandle.press("Home");
+    await expect(resizeHandle).toHaveAttribute("aria-valuenow", "320");
+    await expectSelectionHeader();
+    await page.getByRole("button", { name: "Project chat" }).click();
+    await expect(drawerInput).toHaveValue("Chat from the IDE drawer");
 
     await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close());
     await expect(page.getByText("Phase 4 — Model references")).toBeVisible();
