@@ -659,6 +659,20 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
         ),
     },
     artifacts: {
+      boardEntries: (input, options) =>
+        execute(
+          "artifacts.boardEntries",
+          (client) => client.artifacts.boardEntries(input),
+          options,
+        ),
+      boardBody: (input, options) =>
+        execute("artifacts.boardBody", (client) => client.artifacts.boardBody(input), options),
+      boardReceipts: (input, options) =>
+        execute(
+          "artifacts.boardReceipts",
+          (client) => client.artifacts.boardReceipts(input),
+          options,
+        ),
       respondToUi: (input, options) =>
         execute(
           "artifacts.respond-ui",

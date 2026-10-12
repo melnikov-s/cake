@@ -49,6 +49,7 @@ import { ApplicationStorage } from "../../../src/services/storage/ApplicationSto
 import { DrawBoardStorage } from "../../../src/services/storage/DrawBoardStorage";
 import { makeDrawBoardStorageLive } from "../../../src/services/storage/DrawBoardStorageLive";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
+import { MessageBoardStorage } from "../../../src/services/storage/MessageBoardStorage";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { ArtifactProjection } from "../../../src/services/artifacts/ArtifactProjection";
 import { ArtifactGarbageCollector } from "../../../src/services/artifacts/ArtifactGarbageCollector";
@@ -326,6 +327,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     }),
     Layer.mock(SubagentEnvironment, {}),
     Layer.mock(ArtifactStorage, {}),
+    Layer.mock(MessageBoardStorage, {}),
     Layer.mock(ArtifactProjection, {}),
     Layer.mock(ArtifactGarbageCollector, {}),
     options?.drawBoardsRoot

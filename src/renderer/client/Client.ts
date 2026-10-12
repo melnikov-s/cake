@@ -1,4 +1,9 @@
 import type { CommandGroup } from "./command-group";
+import type {
+  BoardDescriptionPage,
+  BoardEntry,
+  BoardEntryReceipts,
+} from "../../contracts/artifacts/message-board";
 import type { ProjectSessionResolutionDomainFailure } from "../../contracts/project-sessions/project-session-resolution";
 import type {
   CaptureDestination,
@@ -432,6 +437,18 @@ interface InterviewCommands {
 }
 
 interface ArtifactCommands {
+  boardEntries(
+    input: { lineageId: ArtifactLineageId; after?: number; limit?: number; recent?: boolean },
+    options?: ClientCommandOptions,
+  ): Promise<BoardDescriptionPage>;
+  boardBody(
+    input: { lineageId: ArtifactLineageId; sequence: number },
+    options?: ClientCommandOptions,
+  ): Promise<BoardEntry>;
+  boardReceipts(
+    input: { lineageId: ArtifactLineageId; sequence: number },
+    options?: ClientCommandOptions,
+  ): Promise<BoardEntryReceipts>;
   respondToUi(
     input: {
       operationId: string;

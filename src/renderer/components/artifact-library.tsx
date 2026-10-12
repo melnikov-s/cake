@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { SourceLocation } from "../../contracts/editor/source-location";
 import { observer } from "r-state-tree/react";
 import { ActionCard } from "@/components/ui/action-card";
-import { ArtifactIcon, SearchIcon } from "@/components/ui/icons";
+import { AnnotationIcon, ArtifactIcon, SearchIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { LoadingState } from "@/components/ui/loading-state";
 import { Select } from "@/components/ui/select";
@@ -58,6 +58,7 @@ export const ArtifactLibrary = observer(function ArtifactLibrary({
           onChange={(event) => store.setKind(event.target.value)}
         >
           <option value="all">All kinds</option>
+          <option value="message-board">Workboard</option>
           <option value="markdown">Markdown</option>
           <option value="table">Table</option>
           <option value="diagram">Diagram</option>
@@ -85,10 +86,20 @@ export const ArtifactLibrary = observer(function ArtifactLibrary({
             {store.lineages.map((lineage) => (
               <ActionCard
                 key={lineage.id}
-                icon={<ArtifactIcon />}
+                icon={
+                  lineage.latest?.kind === "message-board" ? <AnnotationIcon /> : <ArtifactIcon />
+                }
                 title={lineage.title ?? lineage.id}
-                description={`Updated ${displayDate(lineage.latest?.publishedAt ?? lineage.createdAt)} · r${lineage.latestRevision}`}
-                badge={<Badge>{lineage.latest?.kind}</Badge>}
+                description={
+                  lineage.latest?.kind === "message-board"
+                    ? (store.boardPreviews[lineage.id] ?? "Shared family coordination")
+                    : `Updated ${displayDate(lineage.latest?.publishedAt ?? lineage.createdAt)} · r${lineage.latestRevision}`
+                }
+                badge={
+                  <Badge>
+                    {lineage.latest?.kind === "message-board" ? "Workboard" : lineage.latest?.kind}
+                  </Badge>
+                }
                 aria-current={
                   store.detailStore.selectedLineageId === lineage.id ? "page" : undefined
                 }

@@ -129,6 +129,14 @@ transcript. Live turn IDs and queued input prevent duplicate delivery before
 that acknowledgement. Startup reports interrupted turns and removes reservations
 that never materialized a Pi transcript.
 
+### Shared Workboard
+
+The first child reservation creates one **Workboard** (`message-board` artifact kind) linked to the family. Within the board, participating sessions are workgroup members rather than parent/child/sibling roles. Its title uses the originating session's title when available, otherwise `Workboard`; the type label stays `Workboard`. The default audience is `workgroup`, with explicit session IDs for targeted posts. Its deterministic identity and the family creation lock preserve one board across concurrent creation, retries, descendants and isolated Working Directories. Existing families acquire their board at normal runtime intake. Members append immutable entries containing a description, body, audience, author session, timestamp and increasing sequence. Cake stamps attribution and serializes appends. This is shared coordination data, not a replacement assignment scheduler or user authorization.
+
+`boards.read-new` discovers bounded relevant unread descriptions (including previously notified but deferred entries); `boards.read` retrieves selected bodies. Family-wide and explicitly addressed descriptions are eligible for notifications; authors do not receive notices of their own posts. Audience is routing, not privacy: family members may explicitly browse any entry. Entry and session receipt queries expose independent first-notified and first-read timestamps. Read means content supplied to a tool caller, not comprehension, agreement, action or memory after compaction. Human artifact browsing never records agent receipts.
+
+Pi's awaited `turn_end` boundary coalesces up to ten descriptions into an inspectable context-only custom reminder with `triggerTurn: false`. Normal prompt start also collects notices. No board post starts an idle turn, interrupts tools, or creates steering/follow-up inputs. Notification receipts are recorded only when the description is handed to Pi's public request stream after all context transformations. A reminder persisted after a final/terminated/aborted turn may remain unnotified until another genuine request. Persisted pending notices suppress duplicate staging; ordinary compaction retains external receipts and does not imply the model still remembers an entry. Direct messages and explicit steering remain necessary for assignments, urgent corrections and blocked-child wake-ups.
+
 ## Lifecycle
 
 Only the family root owns resolution. Every child inherits its immediate parent's

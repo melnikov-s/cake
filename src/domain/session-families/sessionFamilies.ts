@@ -1,3 +1,4 @@
+import { ensureBoard } from "../artifacts/messageBoards";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
 import { inheritTaskInputProtection, prepareCoordinatorNotice } from "../conversations/taskInputs";
 import type { SessionCompletionReport } from "../../contracts/project-sessions/session-reporting";
@@ -214,6 +215,16 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
               : Effect.void,
           ),
         );
+      const originatingSession = yield* sessions
+        .catalogEntry(
+          {
+            workingDirectory: family.workingDirectory,
+            sessionDirectory: location.sessionDirectory,
+          },
+          family.parentSessionId,
+        )
+        .pipe(Effect.catchTag("PiSessionError", () => Effect.succeed(undefined)));
+      yield* ensureBoard(family, originatingSession?.title);
       const child = family.children.find((item) => item.requestId === input.requestId);
       if (!child)
         return yield* new SessionFamilyStorageError({
@@ -545,6 +556,7 @@ const deliverOutcome = Effect.fn("SessionFamilies.deliverOutcome")(function* (
       const receipt = snapshot.parts.find(
         (part) =>
           (part.kind === "context" || (part.kind === "text" && !part.deliveryState)) &&
+          "crossSession" in part &&
           part.crossSession &&
           (part.crossSession.messageId === turn.turnId ||
             (turn.outcome === "complete" &&

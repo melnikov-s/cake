@@ -43,6 +43,8 @@ import {
   artifactRecordSchema,
   type CakeArtifactV1,
 } from "../../../contracts/artifacts/artifact-contract";
+import { createMessageBoardOperations } from "./cake-message-board-operations";
+import { createMessageBoardExtension } from "./message-board-extension";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import {
   createCakeArtifactOperations,
@@ -1668,6 +1670,9 @@ export async function createCakeSessionRuntimeCapabilities(input: {
                         unlinkArtifact: options.unlinkArtifact,
                         importArtifactFile: options.importArtifactFile,
                       }),
+                      ...(options.messageBoardControl
+                        ? createMessageBoardOperations(options.messageBoardControl)
+                        : []),
                       ...createCakeInterviewOperations(pi, { requestInterview }),
                       ...(options.vscodeControl
                         ? createCakeVscodeOperations(options.vscodeControl)
@@ -1696,6 +1701,9 @@ export async function createCakeSessionRuntimeCapabilities(input: {
                   captureOperationRegistry,
                 ),
                 createCakeArtifactExtension({ persistArtifact }),
+                ...(options.messageBoardControl
+                  ? [createMessageBoardExtension(options.messageBoardControl)]
+                  : []),
                 ...(options.reviewContextPath
                   ? [
                       reviewContextExtension(

@@ -12,6 +12,8 @@ import {
 } from "../../../src/services/storage/SessionFamilyStorage";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
+import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
+import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { fakeRuntime, options } from "../helpers/piRuntimeFixture";
 
@@ -62,6 +64,7 @@ describe("Session Family creation", () => {
         assert.deepEqual((yield* storage.familyForMember("parent"))?.children, []);
         assert.equal(yield* storage.familyForMember(result.childSessionId), undefined);
       }).pipe(
+        Effect.provide(messageBoardHarness().layer),
         Effect.provide(
           Layer.mergeAll(
             familyStorageHarness().layer,
@@ -93,6 +96,7 @@ describe("Session Family creation", () => {
       assert.equal(result.launch.status, "failed");
       assert.deepEqual((yield* (yield* SessionFamilyStorage).list())[0]?.children, []);
     }).pipe(
+      Effect.provide(messageBoardHarness().layer),
       Effect.provide(
         Layer.mergeAll(
           familyStorageHarness().layer,
@@ -168,7 +172,12 @@ describe("Session Family creation", () => {
       assert.equal(family.children[0]?.parentSessionId, "parent");
       assert.equal(family.children[0]?.workingDirectory, "/child-worktree");
       assert.equal(family.children[0]?.managedWorktreePath, "/child-worktree");
+      const artifacts = yield* ArtifactStorage;
+      const lineage = (yield* artifacts.catalog()).lineages[0];
+      assert.ok(lineage);
+      assert.equal((yield* artifacts.read(lineage.id))?.snapshot.title, "Editor isolation");
     }).pipe(
+      Effect.provide(messageBoardHarness().layer),
       Effect.provide(
         Layer.mergeAll(
           familyStorageHarness().layer,
@@ -178,7 +187,18 @@ describe("Session Family creation", () => {
           makeCakeSessionRuntimesLayer({
             sessionIds: () => Stream.empty,
             catalog: () => Stream.empty,
-            catalogEntry: () => Effect.succeed(undefined),
+            catalogEntry: (query, sessionId) => {
+              assert.equal(query.workingDirectory, "/worktree");
+              assert.equal(sessionId, "parent");
+              return Effect.succeed({
+                id: sessionId,
+                title: "Editor isolation",
+                created: "2026-01-01T00:00:00.000Z",
+                modified: "2026-01-01T00:00:00.000Z",
+                messageCount: 1,
+                resolved: false,
+              });
+            },
             inspect: () => Effect.succeed(undefined),
             changelog: () => Effect.succeed(""),
             createRuntime: (runtimeOptions) =>
@@ -254,6 +274,7 @@ describe("Session Family creation", () => {
           },
         });
       }).pipe(
+        Effect.provide(messageBoardHarness().layer),
         Effect.provide(
           Layer.mergeAll(
             familyStorageHarness().layer,

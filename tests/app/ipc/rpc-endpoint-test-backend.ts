@@ -6,6 +6,7 @@ import { Dictation } from "../../../src/services/dictation/Dictation";
 import { Effect, Layer } from "effect";
 import { AgentAvailability } from "../../../src/services/pi/AgentAvailability";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
+import { MessageBoardStorage } from "../../../src/services/storage/MessageBoardStorage";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
 import { SavedDraftStorage } from "../../../src/services/storage/SavedDraftStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
@@ -59,6 +60,7 @@ export const unusedEndpointServices = Layer.mergeAll(
   Layer.mock(AgentAvailability, {}),
   Layer.mock(RendererRequestCoordinator, {}),
   Layer.mock(ArtifactStorage, {}),
+  Layer.mock(MessageBoardStorage, {}),
   Layer.mock(SavedDraftStorage, {}),
   Layer.mock(SessionFamilyStorage, {}),
   Layer.mock(ArtifactProjection, {}),

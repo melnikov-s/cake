@@ -1,4 +1,5 @@
-import { Store } from "r-state-tree";
+import { Store, child, createStore } from "r-state-tree";
+import { MessageBoardStore } from "./MessageBoardStore";
 import type {
   ArtifactLineageId,
   ArtifactRevisionNumber,
@@ -30,6 +31,16 @@ export class ArtifactDetailStore extends Store<{
   private revisionRequest = 0;
   private compareRequest = 0;
   private restoreRequest = 0;
+
+  @child
+  get messageBoardStore(): MessageBoardStore {
+    const selected = this.selectedLineage?.revision(
+      this.selectedRevision ?? this.selectedLineage.latestRevision,
+    )?.record;
+    return createStore(MessageBoardStore, {
+      boardId: selected?.artifact.kind === "message-board" ? this.selectedLineageId : undefined,
+    });
+  }
 
   get client() {
     return ClientContext.consume(this)!;

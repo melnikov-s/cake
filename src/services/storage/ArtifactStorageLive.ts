@@ -1035,6 +1035,24 @@ export const makeArtifactStorageLive = (root: string) =>
                   .readDirectory(blobDirectory)
                   .pipe(Effect.mapError((cause) => storageError("collectUnreachable", cause)))
               : [];
+            // Board entries and receipts share artifact reachability, but are not revision blobs.
+            const boardDirectory = path.join(root, "boards");
+            const retainedBoards = new Set(retainedLineages.map((lineage) => digest(lineage.id)));
+            if (
+              yield* fileSystem
+                .exists(boardDirectory)
+                .pipe(Effect.mapError((cause) => storageError("collectUnreachable", cause)))
+            ) {
+              const boards = yield* fileSystem
+                .readDirectory(boardDirectory)
+                .pipe(Effect.mapError((cause) => storageError("collectUnreachable", cause)));
+              for (const name of boards) {
+                if (!/^[a-f0-9]{64}$/.test(name) || retainedBoards.has(name)) continue;
+                yield* fileSystem
+                  .remove(path.join(boardDirectory, name), { recursive: true, force: true })
+                  .pipe(Effect.mapError((cause) => storageError("collectUnreachable", cause)));
+              }
+            }
             let blobsRemoved = 0;
             for (const name of blobNames) {
               const match = /^([a-f0-9]{64})\.json$/.exec(name);

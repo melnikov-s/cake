@@ -12,11 +12,14 @@ import { FileArtifact } from "./file-artifact";
 import { HtmlArtifact } from "./html-artifact";
 import { MediaArtifact } from "./media-artifact";
 import { TableArtifact } from "./table-artifact";
+import { MessageBoardArtifact } from "./message-board-artifact";
+import type { MessageBoardStore } from "../stores/MessageBoardStore";
 
 interface ArtifactHostProps {
   record: ArtifactRecord;
   presentation?: "workspace" | "inline";
   inlineWidgets?: InlineWidgetStore;
+  messageBoard?: MessageBoardStore;
   onOpenSourceLocation?(location: SourceLocation): void;
 }
 
@@ -24,6 +27,7 @@ export const ArtifactHost = observer(function ArtifactHost({
   record,
   presentation = "workspace",
   inlineWidgets,
+  messageBoard,
   onOpenSourceLocation,
 }: ArtifactHostProps) {
   const artifact = record.artifact;
@@ -33,6 +37,13 @@ export const ArtifactHost = observer(function ArtifactHost({
 
   const renderArtifact = (fill = false) => (
     <>
+      {artifact.kind === "message-board" ? (
+        messageBoard ? (
+          <MessageBoardArtifact store={messageBoard} />
+        ) : (
+          <Markdown>{artifact.fallback.markdown}</Markdown>
+        )
+      ) : null}
       {artifact.kind === "markdown" ? (
         <Markdown onOpenSourceLocation={onOpenSourceLocation}>{artifact.payload.markdown}</Markdown>
       ) : null}

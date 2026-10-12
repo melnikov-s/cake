@@ -7,6 +7,8 @@ import {
   parseArtifactRef,
 } from "../contracts/artifacts/artifact-lineage";
 import * as artifactWorkflows from "../domain/artifacts/artifactWorkflows";
+import * as messageBoards from "../domain/artifacts/messageBoards";
+import type { MessageBoardStorage } from "../services/storage/MessageBoardStorage";
 import { ClientEvents } from "../services/clients/ClientEvents";
 import { ArtifactStorage } from "../services/storage/ArtifactStorage";
 import { ReviewStorage } from "../services/storage/ReviewStorage";
@@ -26,6 +28,7 @@ import { ArtifactProjection } from "../services/artifacts/ArtifactProjection";
 import {
   ProjectSessionRuntimeHost,
   ProjectSessionRuntimeHostError,
+  type ProjectSessionRuntimeIntegrations,
 } from "../services/pi/ProjectSessionRuntimeHost";
 
 interface SessionIntegration {
@@ -53,6 +56,7 @@ export const makeProjectSessionRuntimeHostLive = (
   never,
   | ArtifactProjection
   | ArtifactStorage
+  | MessageBoardStorage
   | DrawBoardStorage
   | ClientEvents
   | PiModels
@@ -77,6 +81,7 @@ export const makeProjectSessionRuntimeHostLive = (
       const adapterContext = yield* Effect.context<
         | ArtifactProjection
         | ArtifactStorage
+        | MessageBoardStorage
         | DrawBoardStorage
         | PiModels
         | RendererRequestCoordinator
@@ -414,7 +419,51 @@ export const makeProjectSessionRuntimeHostLive = (
               Effect.andThen(
                 Effect.try({
                   try: () =>
-                    acquire(workingDirectory, sessionId).host.runtimeIntegrations(sessionId),
+                    ({
+                      ...acquire(workingDirectory, sessionId).host.runtimeIntegrations(sessionId),
+                      messageBoardControl: {
+                        append: (input) =>
+                          runAdapter(
+                            messageBoards.append(sessionId, input).pipe(
+                              Effect.tap((result) =>
+                                Effect.sync(() =>
+                                  clientEvents.broadcast({
+                                    type: "artifact-catalog-invalidated",
+                                    lineageId: result.boardId,
+                                  }),
+                                ),
+                              ),
+                            ),
+                          ),
+                        readNew: (input, notificationOnly, excludeEntries) =>
+                          runAdapter(
+                            Effect.gen(function* () {
+                              const family = yield* families.familyForMember(sessionId);
+                              if (!family) return undefined;
+                              // Existing families acquire their board without changing membership.
+                              yield* families.withMemberLock(
+                                sessionId,
+                                messageBoards.ensureBoard(family),
+                              );
+                              return yield* messageBoards.readNew(
+                                sessionId,
+                                input,
+                                notificationOnly,
+                                excludeEntries,
+                              );
+                            }),
+                          ),
+                        read: (sequences) => runAdapter(messageBoards.read(sessionId, sequences)),
+                        entryReceipts: (sequence) =>
+                          runAdapter(messageBoards.entryReceipts(sessionId, sequence)),
+                        sessionReceipts: (target, input) =>
+                          runAdapter(messageBoards.sessionReceipts(sessionId, target, input)),
+                        recordIntake: (boardId, sequences, kind) =>
+                          runAdapter(
+                            messageBoards.recordIntake(sessionId, boardId, sequences, kind),
+                          ),
+                      },
+                    }) satisfies ProjectSessionRuntimeIntegrations,
                   catch: (cause) => runtimeError("runtimeIntegrations", cause),
                 }),
               ),

@@ -5,6 +5,7 @@ import type { JsonValue } from "../../contracts/serialization/json-contract";
 
 export type ProjectSessionRuntimeIntegrations = Pick<
   CakeSessionRuntimeOptions,
+  | "messageBoardControl"
   | "generateInlineWidget"
   | "reviseInlineWidget"
   | "resolveArtifact"

@@ -1,5 +1,13 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import {
+  BoardBrowseInput,
+  BoardDescriptionPage,
+  BoardEntry,
+  BoardEntryReceipts,
+  BoardSequence,
+  MessageBoardError,
+} from "../../contracts/artifacts/message-board";
 import { ArtifactError } from "../../contracts/artifacts/artifact-data";
 import {
   ArtifactLineageDetail,
@@ -59,6 +67,21 @@ const LinkMutation = Schema.Struct({
 });
 
 export const ArtifactRpc = RpcGroup.make(
+  Rpc.make("artifacts.boardEntries", {
+    payload: Schema.Struct({ lineageId: ArtifactLineageId, ...BoardBrowseInput.fields }),
+    success: BoardDescriptionPage,
+    error: Schema.Union([MessageBoardError, ArtifactStorageError]),
+  }),
+  Rpc.make("artifacts.boardBody", {
+    payload: Schema.Struct({ lineageId: ArtifactLineageId, sequence: BoardSequence }),
+    success: BoardEntry,
+    error: Schema.Union([MessageBoardError, ArtifactStorageError]),
+  }),
+  Rpc.make("artifacts.boardReceipts", {
+    payload: Schema.Struct({ lineageId: ArtifactLineageId, sequence: BoardSequence }),
+    success: BoardEntryReceipts,
+    error: Schema.Union([MessageBoardError, ArtifactStorageError, SessionFamilyStorageError]),
+  }),
   Rpc.make("artifacts.respond-ui", {
     payload: cakeRpcPayloadSchemas["respond-ui"],
     success: cakeRpcSuccessSchemas["respond-ui"],

@@ -93,6 +93,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
   const content = record ? (
     <ArtifactHost
       record={record}
+      messageBoard={store.messageBoardStore}
       inlineWidgets={inlineWidgets}
       onOpenSourceLocation={onOpenSourceLocation}
     />
@@ -106,7 +107,11 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
               <h1 className="truncate font-display text-xl font-semibold">
                 {lineage.title ?? lineage.id}
               </h1>
-              <Badge>{selected?.kind ?? lineage.latest?.kind}</Badge>
+              <Badge>
+                {selected?.kind === "message-board"
+                  ? "Workboard"
+                  : (selected?.kind ?? lineage.latest?.kind)}
+              </Badge>
             </div>
             <p className="mt-1 font-mono text-[11px] text-muted-foreground">
               Revision {selectedNumber} of {lineage.latestRevision}
@@ -241,7 +246,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
               <div key={link.id} className="rounded-lg border border-border p-2">
                 <strong>
                   {link.target.type === "family"
-                    ? "Shared with family"
+                    ? "Shared with workgroup"
                     : (sessions.find(link.target.sessionId)?.title ?? link.target.sessionId)}
                 </strong>
                 <p className="mt-0.5 text-muted-foreground">

@@ -1,3 +1,7 @@
+import {
+  seedMessageBoardFixture,
+  MESSAGE_BOARD_FIXTURE_ID,
+} from "../../tests/fixtures/message-board.ts";
 import { defaultApplicationState } from "../../src/contracts/application/application-data.ts";
 import { openRequestInspectorFixture } from "./request-inspector-fixture.ts";
 import { drawMermaidArchitecture } from "../../tests/fixtures/draw-mermaid-architecture.ts";
@@ -1213,6 +1217,35 @@ export default function Visual() {
     return state === "popup" || state === "fullscreen"
       ? page.getByRole("dialog")
       : page.locator('[data-slot="artifact-disclosure"]').first();
+  },
+};
+
+const messageBoardScenario: VisualCaptureScenario = {
+  name: "family-message-board",
+  description:
+    "Shared family artifact with expandable entries and independent notification/read receipts",
+  states: ["default", "expanded", "receipts"],
+  seed: (paths, theme) => seedMessageBoardFixture(paths, theme),
+  async prepare(page, state) {
+    await page.getByRole("button", { name: "1 artifacts" }).click();
+    await page
+      .getByRole("dialog", { name: "Artifacts", exact: true })
+      .getByRole("button", { name: /Editor isolation/ })
+      .click();
+    const board = page.locator(`[data-artifact-id="${MESSAGE_BOARD_FIXTURE_ID}"]`);
+    await board.getByRole("button", { name: /^#1 · Editor isolation/ }).waitFor();
+    if (state !== "default") {
+      await board.getByRole("button", { name: /^#1 · Editor isolation/ }).click();
+      await board.getByText("Finding:", { exact: true }).waitFor();
+    }
+    if (state === "receipts") {
+      await board.getByRole("button", { name: "Agent receipts for #1" }).click();
+      await board.getByText(/Notified: .*Read: Not recorded/).waitFor();
+    }
+    await page.mouse.move(1, 1);
+  },
+  region(page) {
+    return page.locator(`[data-artifact-id="${MESSAGE_BOARD_FIXTURE_ID}"]`);
   },
 };
 
@@ -2533,6 +2566,7 @@ export const visualCaptureScenarios = [
   screenCaptureOverlayScenario,
   inlineLinks,
   requestExplanationScenario,
+  messageBoardScenario,
   inlineArtifactScenario,
   drawMermaidArchitectureScenario,
   drawCompositionScenario,

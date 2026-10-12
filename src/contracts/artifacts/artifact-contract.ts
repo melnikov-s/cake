@@ -12,6 +12,7 @@ export const artifactKindSchema = Schema.Literals([
   "html",
   "widget",
   "file",
+  "message-board",
 ]);
 export const idSchema = Schema.String.check(
   Schema.isMinLength(1),
@@ -141,7 +142,13 @@ const fileArtifactSchema = Schema.Struct({
     ),
   ),
 });
+const messageBoardArtifactSchema = Schema.Struct({
+  ...artifactBase,
+  kind: Schema.Literal("message-board"),
+  payload: Schema.Struct({ familyId: idSchema }),
+});
 export const cakeArtifactV1Schema = Schema.Union([
+  messageBoardArtifactSchema,
   markdownArtifactSchema,
   tableArtifactSchema,
   diagramArtifactSchema,

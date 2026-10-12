@@ -20,6 +20,7 @@ import { ProjectSessionRuntimeHost } from "../../../../src/services/pi/ProjectSe
 import { makeProjectSessionRuntimeHostLive } from "../../../../src/layers/ProjectSessionRuntimeHostLive";
 import { RendererRequestCoordinator } from "../../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ArtifactStorage } from "../../../../src/services/storage/ArtifactStorage";
+import { makeMessageBoardStorageLive } from "../../../../src/services/storage/MessageBoardStorageLive";
 import { makeArtifactStorageLive } from "../../../../src/services/storage/ArtifactStorageLive";
 import { makeDrawBoardStorageLive } from "../../../../src/services/storage/DrawBoardStorageLive";
 import { makeSessionArchiveStorageLive } from "../../../../src/services/storage/SessionArchiveStorageLive";
@@ -78,6 +79,7 @@ const makeHarness = async () => {
       }),
     ),
     makeArtifactStorageLive(join(root, "artifacts")).pipe(Layer.provide(platform)),
+    makeMessageBoardStorageLive(join(root, "artifacts")).pipe(Layer.provide(platform)),
     makeDrawBoardStorageLive(join(root, "draw-boards")).pipe(Layer.provide(platform)),
     makeSessionArchiveStorageLive(join(root, "resolved-project-metadata"), {
       activeRoot: join(root, "sessions"),

@@ -96,6 +96,12 @@ and widget compilation/sandbox infrastructure with artifacts.
   may pin refs visible at the fork point. Hydration reads catalog links directly
   rather than reconstructing associations from transcript content.
 
+## Message-board artifacts
+
+**Workboard** (`message-board`) is a specialized artifact kind, automatically linked to a Session Family. Board-facing language calls these sessions a workgroup and its members; this does not change the underlying session-creation hierarchy. Its immutable revision-one payload identifies the family; it is a descriptor, not a snapshot of the evolving log. Artifact stable/exact references resolve that descriptor. Ordered entries are individually persisted under the artifact repository's `boards/<lineage-hash>/entries` directory, and compact per-entry/per-session first-notified/read receipts are stored separately. Appending does not rewrite earlier entries, copy the entire log into new artifact revisions, or change content revisions when someone reads. Generic replace/restore is refused; corrections are new entries referencing an earlier sequence.
+
+The existing library shows a distinct type/icon and recent descriptions, and the artifact viewer provides ordered, paginated descriptions, expandable bodies and on-demand receipt details. Its human browsing operations do not mutate agent receipts. There is no separate chat, sidebar section or swarm dashboard. Board data shares artifact reachability and garbage collection. See the [family contract](./session-family-contract.md#shared-workboard) for tools and reminder semantics.
+
 ## Branches, forks, families, and revision selection
 
 Changing Pi branches or compacting tools does not alter artifact links or create

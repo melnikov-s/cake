@@ -17,6 +17,7 @@ export class ArtifactLibraryStore extends Store<{
   loading = false;
   error: string | undefined;
   activeSessionId: string | undefined;
+  boardPreviews: Record<string, string> = {};
   private visibleLineageIds: ReadonlyArray<string> = [];
   private request = 0;
   private controller: AbortController | undefined;
@@ -64,6 +65,28 @@ export class ArtifactLibraryStore extends Store<{
     this.kind = kind;
   }
 
+  private async loadBoardPreview(
+    lineageId: ArtifactLineageId,
+    request: number,
+    signal: AbortSignal,
+  ) {
+    try {
+      const preview = await this.client.artifacts.boardEntries(
+        { lineageId, recent: true, limit: 3 },
+        { signal: AbortSignal.any([this.signal, signal]) },
+      );
+      if (request !== this.request || signal.aborted || this.signal.aborted) return;
+      this.boardPreviews = {
+        ...this.boardPreviews,
+        [lineageId]:
+          preview.entries.map((entry) => `#${entry.sequence} · ${entry.description}`).join(" · ") ||
+          "No coordination entries yet",
+      };
+    } catch {
+      // The board itself exposes actionable errors; optional list previews must not block browsing.
+    }
+  }
+
   async load() {
     const request = ++this.request;
     this.controller?.abort();
@@ -82,6 +105,9 @@ export class ArtifactLibraryStore extends Store<{
       this.total = page.total;
       this.offset = page.offset;
       this.limit = page.limit;
+      for (const item of page.items.filter((item) => item.latest.kind === "message-board")) {
+        void this.loadBoardPreview(item.id, request, controller.signal);
+      }
     } catch (error) {
       if (request !== this.request || controller.signal.aborted || this.signal.aborted) return;
       this.error = error instanceof Error ? error.message : String(error);

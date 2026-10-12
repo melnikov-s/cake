@@ -6,6 +6,8 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
+import type { MessageBoardControl } from "../../../contracts/artifacts/message-board-control";
+import { observeMessageBoardRequests } from "./message-board-extension";
 import { createTurnResultCapture } from "./turn-result-capture";
 import type { PiTurnResult } from "../../../contracts/pi/turn-result-data";
 import type { ProjectSessionAgentPolicy } from "../../../contracts/project-sessions/project-session-agent-policy";
@@ -189,6 +191,7 @@ export interface CakeSessionRuntimeOptions {
   /** Fresh project resources/MCP with investigation-only instructions and no edit/write tools. */
   projectInvestigation?: boolean;
   workflowControl?: WorkflowControl;
+  messageBoardControl?: MessageBoardControl;
   /** Workflow workers load project context/skills, but not Cake controls or project-chat prompts. */
   auxiliaryProjectResources?: boolean;
   /** Subset of builtin slash command names to advertise; defaults to all of them. */
@@ -522,6 +525,8 @@ export async function createCakeSessionRuntime(
   const { session, extensionsResult, modelFallbackMessage } = await createAgentSession(
     options.tools ? { ...agentSessionOptions, tools: options.tools } : agentSessionOptions,
   );
+  if (options.messageBoardControl)
+    observeMessageBoardRequests(session, options.messageBoardControl);
   const cakeSessionId = session.sessionManager.getSessionId();
   configurationState.attachModel(session.model);
   capabilities.setSessionId(cakeSessionId);

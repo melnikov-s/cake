@@ -25,6 +25,7 @@ import { PiModels } from "../../../src/services/pi/PiModels";
 import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
+import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { fakeRuntime, snapshot } from "../helpers/piRuntimeFixture";
 import { projectSessionEntries } from "../../../src/services/pi/runtime/session-projection";
@@ -89,6 +90,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   const environment = Layer.mergeAll(
     WorkflowTestLive,
     makeHeadlessProjectSessionRuntimeMechanismTestLayer(),
+    messageBoardHarness().layer,
     harness.layer,
     Layer.mock(ApplicationState, {
       snapshot: () => ({

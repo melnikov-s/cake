@@ -155,6 +155,12 @@ const requireEffectiveLink = Effect.fn("Artifacts.requireEffectiveLink")(functio
 
 export const publish = Effect.fn("Artifacts.publish")(function* (input: PublishArtifactInput) {
   yield* requireEffectiveLink(input.sessionId, input.lineageId);
+  const current = yield* (yield* ArtifactStorage).read(input.lineageId);
+  if (current?.snapshot.kind === "message-board" || input.snapshot.kind === "message-board")
+    return yield* new ArtifactStorageError({
+      operation: "publish",
+      message: "Workboards use immutable entries and boards.append, not artifact replacement",
+    });
   if (
     input.snapshot.id !== input.lineageId ||
     input.snapshot.sessionId !== input.sessionId ||
@@ -189,6 +195,11 @@ export const restore = Effect.fn("Artifacts.restore")(function* (input: {
     return yield* new ArtifactNotFound({
       lineageId: input.lineageId,
       revision: input.sourceRevision,
+    });
+  if (source.snapshot.kind === "message-board")
+    return yield* new ArtifactStorageError({
+      operation: "restore",
+      message: "Message-board entries cannot be restored or replaced",
     });
   const nextRevision = input.expectedLatestRevision + 1;
   return yield* storage.publish({

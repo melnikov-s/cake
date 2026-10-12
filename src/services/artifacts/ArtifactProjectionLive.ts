@@ -66,6 +66,8 @@ const mediaExtension = (src: string) => {
 export const artifactProjectionContents = (snapshot: CakeArtifactV1): ProjectionContent[] => {
   const fallback = textContent("fallback.md", snapshot.fallback.markdown);
   switch (snapshot.kind) {
+    case "message-board":
+      return [textContent("board.json", `${JSON.stringify(snapshot.payload)}\n`), fallback];
     case "markdown":
       return [textContent("content.md", snapshot.payload.markdown), fallback];
     case "table": {

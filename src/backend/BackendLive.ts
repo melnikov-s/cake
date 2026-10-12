@@ -33,6 +33,7 @@ import { RewordingRequestsLive } from "../services/projects/RewordingRequestsLiv
 import { RendererRequestCoordinatorLive } from "../services/renderer-requests/RendererRequestCoordinator";
 import { ScheduledMessages } from "../services/scheduled-messages/ScheduledMessages";
 import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
+import { makeMessageBoardStorageLive } from "../services/storage/MessageBoardStorageLive";
 import { makeArtifactStorageLive } from "../services/storage/ArtifactStorageLive";
 import { makeDrawBoardStorageLive } from "../services/storage/DrawBoardStorageLive";
 import { ArtifactGarbageCollectorLive } from "../layers/ArtifactGarbageCollectorLive";
@@ -96,6 +97,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
       resolvedRoot: paths.piResolvedSessions,
     }),
     makeArtifactStorageLive(paths.artifacts),
+    makeMessageBoardStorageLive(paths.artifacts),
     makeDrawBoardStorageLive(paths.drawBoards),
     makeReviewStorageLive(paths.reviews, paths.piReviewSessions, (record) =>
       Effect.tryPromise(() => loadReviewSessionProjection(record, paths.piReviewSessions)),

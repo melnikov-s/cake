@@ -1,5 +1,6 @@
 import { Effect, Stream } from "effect";
 import * as artifacts from "../../domain/artifacts/artifacts";
+import * as messageBoards from "../../domain/artifacts/messageBoards";
 import { ClientEvents } from "../../services/clients/ClientEvents";
 import { ArtifactRpc } from "../protocol/ArtifactRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
@@ -14,6 +15,10 @@ export const artifactHandlers = ArtifactRpc.of({
   "artifacts.catalog": (request) => artifacts.listCatalog(request),
   "artifacts.effective": ({ sessionId }) => artifacts.listEffective(sessionId),
   "artifacts.detail": ({ lineageId }) => artifacts.detail(lineageId),
+  "artifacts.boardEntries": ({ lineageId, ...input }) => messageBoards.browse(lineageId, input),
+  "artifacts.boardBody": ({ lineageId, sequence }) => messageBoards.browseBody(lineageId, sequence),
+  "artifacts.boardReceipts": ({ lineageId, sequence }) =>
+    messageBoards.browseReceipts(lineageId, sequence),
   "artifacts.history": (request) => artifacts.history(request),
   "artifacts.readExact": (request) => artifacts.readExact(request),
   "artifacts.referenceMetadata": ({ reference }) => artifacts.referenceMetadata(reference),

@@ -465,58 +465,61 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
           });
         },
         createChildSession: async (input, signal) => {
+          if (Option.isNone(artifactStorage)) throw new Error("Artifact storage is unavailable");
           const result = await run(
             Effect.scoped(
-              sessionFamilies.createChild(
-                sessionId,
-                location,
-                input,
-                (childId, childLocation) =>
-                  inheritTaskInputProtection(sessionId, childId).pipe(
-                    Effect.mapError((error) => compositionError("createChild", error)),
-                    Effect.andThen(
-                      acquireOptions({
-                        location: childLocation,
-                        sessionId: childId,
-                        newSession: true,
+              sessionFamilies
+                .createChild(
+                  sessionId,
+                  location,
+                  input,
+                  (childId, childLocation) =>
+                    inheritTaskInputProtection(sessionId, childId).pipe(
+                      Effect.mapError((error) => compositionError("createChild", error)),
+                      Effect.andThen(
+                        acquireOptions({
+                          location: childLocation,
+                          sessionId: childId,
+                          newSession: true,
+                        }),
+                      ),
+                    ),
+                  (worktreeName) =>
+                    managedWorktrees
+                      .create({
+                        projectPath: location.projectPath,
+                        baseWorktreePath: location.workingDirectory,
+                        worktreeName,
+                        backgroundSetup: true,
+                      })
+                      .pipe(
+                        Effect.map((record) => ({
+                          ...location,
+                          workingDirectory: record.worktreePath,
+                          managedWorktree: record,
+                        })),
+                      ),
+                  (workingDirectory) =>
+                    projectSessionLocations.locations({ includeInactive: true }).pipe(
+                      Effect.flatMap((locations) => {
+                        const childLocation = locations.find(
+                          (candidate) =>
+                            candidate.projectPath === location.projectPath &&
+                            candidate.workingDirectory === workingDirectory,
+                        );
+                        return childLocation
+                          ? Effect.succeed(childLocation)
+                          : Effect.fail(
+                              compositionError(
+                                "createChild",
+                                `Child Working Directory unavailable: ${workingDirectory}`,
+                              ),
+                            );
                       }),
                     ),
-                  ),
-                (worktreeName) =>
-                  managedWorktrees
-                    .create({
-                      projectPath: location.projectPath,
-                      baseWorktreePath: location.workingDirectory,
-                      worktreeName,
-                      backgroundSetup: true,
-                    })
-                    .pipe(
-                      Effect.map((record) => ({
-                        ...location,
-                        workingDirectory: record.worktreePath,
-                        managedWorktree: record,
-                      })),
-                    ),
-                (workingDirectory) =>
-                  projectSessionLocations.locations({ includeInactive: true }).pipe(
-                    Effect.flatMap((locations) => {
-                      const childLocation = locations.find(
-                        (candidate) =>
-                          candidate.projectPath === location.projectPath &&
-                          candidate.workingDirectory === workingDirectory,
-                      );
-                      return childLocation
-                        ? Effect.succeed(childLocation)
-                        : Effect.fail(
-                            compositionError(
-                              "createChild",
-                              `Child Working Directory unavailable: ${workingDirectory}`,
-                            ),
-                          );
-                    }),
-                  ),
-                (workingDirectory) => managedWorktrees.discard(workingDirectory, false),
-              ),
+                  (workingDirectory) => managedWorktrees.discard(workingDirectory, false),
+                )
+                .pipe(Effect.provideService(ArtifactStorage, artifactStorage.value)),
             ),
             { signal },
           );

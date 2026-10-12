@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
 import { Button } from "@/components/ui/button";
-import { ArtifactIcon } from "@/components/ui/icons";
+import { AnnotationIcon, ArtifactIcon } from "@/components/ui/icons";
 import { NavItem } from "@/components/ui/nav-item";
 import {
   Popover,
@@ -82,9 +82,13 @@ export const ArtifactCatalogMenu = observer(function ArtifactCatalogMenu({
             items.map((item) => (
               <NavItem
                 key={item.id}
-                icon={<ArtifactIcon />}
+                icon={item.kind === "message-board" ? <AnnotationIcon /> : <ArtifactIcon />}
                 label={item.title ?? item.id}
-                description={item.kind}
+                description={
+                  item.kind === "message-board"
+                    ? (store.boardPreviews[item.id] ?? "Workboard")
+                    : item.kind
+                }
                 onClick={() => browse(item.id)}
               />
             ))

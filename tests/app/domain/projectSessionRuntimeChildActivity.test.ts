@@ -12,6 +12,7 @@ import { SessionArchiveStorage } from "../../../src/services/storage/SessionArch
 import { ManagedWorktrees } from "../../../src/services/worktrees/ManagedWorktrees";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { makeHeadlessProjectSessionRuntimeMechanismTestLayer } from "./projectSessionRuntimeTestLayer";
+import { messageBoardHarness } from "../helpers/messageBoardHarness";
 import { familyStorageHarness } from "../helpers/familyStorageHarness";
 import { fakeRuntime } from "../helpers/piRuntimeFixture";
 
@@ -56,6 +57,7 @@ it.effect.each([
     }),
     SessionCatalogChanges.layer,
     familyStorageHarness().layer,
+    messageBoardHarness().layer,
     Layer.mock(PiModels, { resolve: (selection) => Effect.succeed(selection) }),
     Layer.mock(ApplicationState, { snapshot: () => defaultApplicationState() }),
     Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed(undefined) }),
