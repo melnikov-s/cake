@@ -95,7 +95,9 @@ export const ChatTranscript = observer(function ChatTranscript({
   });
   const atBottom = useRef(!restoredScrollPosition || restoredScrollPosition.kind === "bottom");
   const bottomFrame = useRef<number | undefined>(undefined);
-  const allowFollowing = useRef(true);
+  const allowFollowing = useRef(
+    !restoredScrollPosition || restoredScrollPosition.kind === "bottom",
+  );
   const handleTotalHeightChange = useCallback(() => {
     if (!atBottom.current || !scroller || bottomFrame.current !== undefined) return;
     // Virtuoso's scrollToIndex retries as row measurements change, even after
