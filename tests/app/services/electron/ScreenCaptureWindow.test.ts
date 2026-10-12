@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import type { BrowserWindow } from "electron";
+import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { captureRouting } from "../../../helpers/screen-capture";
 import { ScreenCaptureWindow } from "../../../../src/services/electron/ScreenCaptureWindow";
@@ -11,6 +11,7 @@ import {
 
 const native = vi.hoisted(() => ({
   windows: [] as unknown[],
+  windowOptions: [] as BrowserWindowConstructorOptions[],
   onWindow: undefined as ((window: unknown) => void) | undefined,
   registered: new Map<string, () => void>(),
   permission: "granted",
@@ -31,8 +32,9 @@ vi.mock("electron", () => ({
     show = vi.fn();
     focus = vi.fn();
     hide = vi.fn();
-    constructor() {
+    constructor(options: BrowserWindowConstructorOptions) {
       super();
+      native.windowOptions.push(options);
       native.windows.push(this);
       const created = native.onWindow;
       native.onWindow = undefined;
@@ -87,6 +89,7 @@ import { BrowserWindow as NativeWindow } from "electron";
 
 beforeEach(() => {
   native.windows.splice(0);
+  native.windowOptions.splice(0);
   native.onWindow = undefined;
   native.registered.clear();
   native.blocked = "";
@@ -133,6 +136,36 @@ function startOverlay(
 }
 
 describe("Native screen capture lifetime", () => {
+  it("keeps fullscreen workspace behavior window-local across repeated captures", async () => {
+    const { owner, capture } = fixture();
+    try {
+      for (const outcome of ["finish", "abort", "close"] as const) {
+        const controller = new AbortController();
+        const { running, created } = startOverlay(capture, owner, controller.signal);
+        const window = await created;
+        const options = native.windowOptions.at(-1)!;
+        expect(options).toMatchObject({ show: false, alwaysOnTop: true, frame: false });
+        if (process.platform === "darwin") {
+          expect(options.type).toBe("panel");
+          // This API would transform the entire app into a UIElementApplication on macOS.
+          // Panels already join all Spaces and float above fullscreen windows themselves.
+          expect(window.setVisibleOnAllWorkspaces).not.toHaveBeenCalled();
+        } else {
+          expect(options.type).toBeUndefined();
+          expect(window.setVisibleOnAllWorkspaces).toHaveBeenCalledWith(true, {
+            visibleOnFullScreen: true,
+          });
+        }
+        if (outcome === "finish") capture.finish(window.webContents.id);
+        else if (outcome === "abort") controller.abort();
+        else window.destroy();
+        expect(await running).toEqual({});
+        expect(window.isDestroyed()).toBe(true);
+      }
+    } finally {
+      capture.stop();
+    }
+  });
   it("selects the pointer's Retina display and exposes pixels only to the overlay owner", async () => {
     const { owner, capture } = fixture();
     const { running, created } = startOverlay(capture, owner);

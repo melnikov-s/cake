@@ -123,6 +123,8 @@ export class ScreenCaptureWindow {
         ...display.bounds,
         show: false,
         frame: false,
+        // macOS panels cover fullscreen Spaces without changing the app's activation policy.
+        type: process.platform === "darwin" ? "panel" : undefined,
         resizable: false,
         movable: false,
         skipTaskbar: true,
@@ -138,7 +140,11 @@ export class ScreenCaptureWindow {
       });
       this.overlay = overlay;
       overlay.setAlwaysOnTop(true, "screen-saver");
-      overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+      // On macOS this API implicitly hides the Dock and transforms the *whole app* into a
+      // UIElementApplication, which can leave its menu bar unresponsive after capture.
+      // The panel already supplies all-Spaces/fullscreen behavior without that transition.
+      if (process.platform !== "darwin")
+        overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
       overlay.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
       overlay.webContents.on("will-navigate", (event) => event.preventDefault());
       const result = new Promise<{ capture?: CaptureResult }>((resolve) => {
