@@ -10,6 +10,7 @@ import { SessionManagementContext } from "./context/SessionManagementContext";
 import { SessionRetirementContext } from "./context/SessionRetirementContext";
 import { SessionRegistryContext } from "./context/SessionRegistryContext";
 import { SidebarSessionListStore } from "./SidebarSessionListStore";
+import { SessionSearchStore } from "./SessionSearchStore";
 
 export interface SidebarStoreProps {
   catalog: SessionCatalogStore;
@@ -75,6 +76,14 @@ export class SidebarStore extends Store<SidebarStoreProps> {
       worktreeOperations: this.props.worktreeOperations,
       cakeChat: this.props.cakeChat,
       selectedConversation: this.props.selectedConversation,
+    });
+  }
+
+  @child
+  get sessionSearchStore(): SessionSearchStore {
+    return createStore(SessionSearchStore, {
+      catalog: this.props.catalog,
+      focusedProjectPath: () => this.focusModeProjectPath,
     });
   }
 

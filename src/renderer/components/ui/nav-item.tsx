@@ -1,4 +1,10 @@
-import { forwardRef, type HTMLAttributes, type MouseEventHandler, type ReactNode } from "react";
+import {
+  forwardRef,
+  type ButtonHTMLAttributes,
+  type HTMLAttributes,
+  type MouseEventHandler,
+  type ReactNode,
+} from "react";
 import { cn } from "@/lib/utils";
 
 export interface NavItemProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick"> {
@@ -11,6 +17,11 @@ export interface NavItemProps extends Omit<HTMLAttributes<HTMLDivElement>, "onCl
   disabled?: boolean;
   /** Springy title movement on hover/selection and press; respects reduced motion. */
   motionFeedback?: boolean;
+  /** Action semantics for composite controls such as a searchable listbox. */
+  actionProps?: Pick<
+    ButtonHTMLAttributes<HTMLButtonElement>,
+    "id" | "role" | "aria-selected" | "tabIndex" | "onMouseDown"
+  >;
   onClick?: MouseEventHandler<HTMLButtonElement>;
 }
 
@@ -25,6 +36,7 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
     active = false,
     disabled = false,
     motionFeedback = false,
+    actionProps,
     onClick,
     onContextMenu,
     onMouseEnter,
@@ -49,9 +61,10 @@ export const NavItem = forwardRef<HTMLDivElement, NavItemProps>(function NavItem
       {...props}
     >
       <button
+        {...actionProps}
         type="button"
         disabled={disabled}
-        aria-current={active ? "page" : undefined}
+        aria-current={active && actionProps?.role !== "option" ? "page" : undefined}
         className="group/nav-action flex min-w-0 flex-1 items-center gap-2 text-left bg-transparent border-0 p-0 text-inherit cursor-pointer disabled:cursor-default outline-none"
         onClick={onClick}
       >

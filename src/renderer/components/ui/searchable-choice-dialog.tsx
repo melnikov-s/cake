@@ -1,4 +1,11 @@
-import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEventHandler,
+  type ReactNode,
+} from "react";
 import { cn } from "@/lib/utils";
 import { DialogBackdrop, DialogContent, DialogDescription, DialogTitle } from "./dialog";
 import { Button } from "./button";
@@ -13,14 +20,25 @@ export interface SearchableChoice {
   icon?: ReactNode;
 }
 
+export interface SearchableChoiceOptionProps {
+  id: string;
+  role: "option";
+  "aria-selected": boolean;
+  tabIndex: -1;
+  onMouseDown: MouseEventHandler<HTMLButtonElement>;
+}
+
 /** Mount while open. Filtering and selection policy belong to the caller;
  * active-option navigation, focus containment and restoration are local DOM state. */
-export function SearchableChoiceDialog({
+export function SearchableChoiceDialog<Choice extends SearchableChoice>({
   title,
   description,
   searchLabel,
+  choicesLabel = "Session destination",
+  emptyMessage = "No matching destinations.",
   query,
   choices,
+  renderChoice,
   initialActiveId,
   onQueryChange,
   onSelect,
@@ -29,8 +47,16 @@ export function SearchableChoiceDialog({
   title: string;
   description: string;
   searchLabel: string;
+  choicesLabel?: string;
+  emptyMessage?: string;
   query: string;
-  choices: readonly SearchableChoice[];
+  choices: readonly Choice[];
+  /** Compose an authoritative row instead of the default destination button. */
+  renderChoice?(
+    choice: Choice,
+    optionProps: SearchableChoiceOptionProps,
+    onSelect: () => void,
+  ): ReactNode;
   /** Preferred option when the dialog mounts; missing choices fall back to the first. */
   initialActiveId?: string;
   onQueryChange(query: string): void;
@@ -138,39 +164,57 @@ export function SearchableChoiceDialog({
         <div
           id={`${id}-choices`}
           role="listbox"
-          aria-label="Session destination"
+          aria-label={choicesLabel}
           className="mt-2 max-h-72 overflow-y-auto"
         >
-          {choices.map((choice, index) => (
-            <Button
-              key={choice.id}
-              id={optionId(index)}
-              role="option"
-              aria-selected={active?.id === choice.id}
-              tabIndex={-1}
-              variant="ghost"
-              className={cn(
-                "h-auto w-full justify-start gap-3 border border-transparent px-3 py-2.5 text-left text-foreground",
-                active?.id === choice.id && "border-primary/40 bg-primary/10 hover:bg-primary/15",
-              )}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onSelect(choice.id)}
-            >
-              {choice.icon && <span className="shrink-0 text-muted-foreground">{choice.icon}</span>}
-              <span className="grid min-w-0 gap-0.5">
-                <span className="truncate">{choice.label}</span>
-                {choice.description && (
-                  <span className="truncate text-xs font-normal text-foreground/75">
-                    {choice.description}
-                  </span>
+          {choices.map((choice, index) =>
+            renderChoice ? (
+              <div key={choice.id}>
+                {renderChoice(
+                  choice,
+                  {
+                    id: optionId(index),
+                    role: "option",
+                    "aria-selected": active?.id === choice.id,
+                    tabIndex: -1,
+                    onMouseDown: (event) => event.preventDefault(),
+                  },
+                  () => onSelect(choice.id),
                 )}
-              </span>
-            </Button>
-          ))}
+              </div>
+            ) : (
+              <Button
+                key={choice.id}
+                id={optionId(index)}
+                role="option"
+                aria-selected={active?.id === choice.id}
+                tabIndex={-1}
+                variant="ghost"
+                className={cn(
+                  "h-auto w-full justify-start gap-3 border border-transparent px-3 py-2.5 text-left text-foreground",
+                  active?.id === choice.id && "border-primary/40 bg-primary/10 hover:bg-primary/15",
+                )}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onSelect(choice.id)}
+              >
+                {choice.icon && (
+                  <span className="shrink-0 text-muted-foreground">{choice.icon}</span>
+                )}
+                <span className="grid min-w-0 gap-0.5">
+                  <span className="truncate">{choice.label}</span>
+                  {choice.description && (
+                    <span className="truncate text-xs font-normal text-foreground/75">
+                      {choice.description}
+                    </span>
+                  )}
+                </span>
+              </Button>
+            ),
+          )}
         </div>
         {choices.length === 0 && (
           <p role="status" className="px-3 py-6 text-center text-sm text-muted-foreground">
-            No matching destinations.
+            {emptyMessage}
           </p>
         )}
         <p className="px-2 pt-3 text-xs text-muted-foreground">

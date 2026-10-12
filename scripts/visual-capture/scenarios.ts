@@ -2044,6 +2044,81 @@ const newSessionScenario: VisualCaptureScenario = {
   },
 };
 
+const sessionSearchScenario: VisualCaptureScenario = {
+  name: "session-search",
+  description: "Deterministic session title picker across projects or in project focus",
+  states: ["default", "filtered", "empty", "focus", "sidebar"],
+  async seed(paths, theme) {
+    await cakePromptsSettingsScenario.seed(paths, theme);
+    const website = resolve(paths.project, "../website");
+    const timestamp = new Date(0).toISOString();
+    await mkdir(website, { recursive: true });
+    await writeFile(
+      join(paths.cakeHome, "state", "application.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        projects: [
+          { path: paths.project, name: "Cake", addedAt: timestamp, lastOpenedAt: timestamp },
+          { path: website, name: "Website", addedAt: timestamp, lastOpenedAt: timestamp },
+        ],
+        trustedProjectPaths: [],
+      }),
+    );
+    for (const [index, title] of [
+      "Session search",
+      "Search dialog keyboard",
+      "Sidebar layout",
+      "Website search",
+    ].entries()) {
+      const project = index === 3 ? website : paths.project;
+      const sessionId = `visual-session-search-${index}`;
+      const directory = workspaceSessionDirectory(project, join(paths.cakeHome, "pi", "sessions"));
+      await mkdir(directory, { recursive: true });
+      await writeFile(
+        join(directory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
+        [
+          { type: "session", version: 3, id: sessionId, timestamp, cwd: project },
+          { type: "session_info", id: "title", parentId: null, timestamp, name: title },
+          {
+            type: "message",
+            id: "user-1",
+            parentId: "title",
+            timestamp,
+            message: {
+              role: "user",
+              content: [{ type: "text", text: `Work on ${title}` }],
+              timestamp: 0,
+            },
+          },
+        ]
+          .map((entry) => JSON.stringify(entry))
+          .join("\n") + "\n",
+      );
+    }
+  },
+  async prepare(page, state) {
+    await expect(page.locator('[data-slot="sidebar"] [data-session-id]')).toHaveCount(4, {
+      timeout: 20_000,
+    });
+    if (state === "focus")
+      await page.getByRole("button", { name: "Focus on project", exact: true }).click();
+    if (state !== "sidebar") {
+      await page.getByRole("button", { name: "Search sessions", exact: true }).click();
+      const filter = page.getByRole("combobox", { name: "Search session titles" });
+      await expect(filter).toBeFocused();
+      if (state === "filtered" || state === "empty")
+        await filter.fill(state === "filtered" ? "srch dlg" : "missing");
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region(page, state) {
+    return state === "sidebar"
+      ? page.locator('[data-slot="sidebar"]')
+      : page.getByRole("dialog", { name: "Search sessions", exact: true }).locator(":scope > div");
+  },
+};
+
 const projectCustomInstructionsScenario: VisualCaptureScenario = {
   name: "project-custom-instructions",
   description: "Personal project instructions in the Project Settings dialog",
@@ -2659,6 +2734,7 @@ export const visualCaptureScenarios = [
   appearanceSettingsScenario,
   projectCustomInstructionsScenario,
   newSessionScenario,
+  sessionSearchScenario,
   cakeChatScenario,
   cakeChatArtifactScenario,
   cakeChatInspectorScenario,

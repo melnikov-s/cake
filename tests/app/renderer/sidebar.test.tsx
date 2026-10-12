@@ -47,6 +47,7 @@ function sidebarProps(store: ProjectWorkbenchStore) {
       resolvedWorktreeCount: fixture.resolvedWorktreeCount ?? (() => 0),
       resolvedLaneExpanded: fixture.resolvedLaneExpanded ?? false,
       toggleResolvedLane: fixture.toggleResolvedLane ?? vi.fn(),
+      sessionSearchStore: { open: false },
       focusModeProjectPath: fixture.focusModeProjectPath,
       focusProject: fixture.focusProject ?? vi.fn(),
       leaveProjectFocus: fixture.leaveProjectFocus ?? vi.fn(),

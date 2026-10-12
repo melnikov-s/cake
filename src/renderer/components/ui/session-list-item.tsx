@@ -13,7 +13,7 @@ import { DepthRails } from "./depth-rails";
 import { IconButton } from "./icon-button";
 import { CakeIcon, ChevronIcon, ResolveIcon, RestoreIcon } from "./icons";
 import { LabelSwatch } from "./label-swatch";
-import { NavItem } from "./nav-item";
+import { NavItem, type NavItemProps } from "./nav-item";
 
 export interface SessionListItemProps {
   session: {
@@ -50,6 +50,8 @@ export interface SessionListItemProps {
   labelIds?: readonly string[];
   availableLabels?: readonly SessionLabel[];
   renameInput?: ReactNode;
+  /** Listbox option semantics for session pickers; navigation remains the default. */
+  actionProps?: NavItemProps["actionProps"];
   onOpen(sessionId: string): void;
   onToggleFamily?(sessionId: string): void;
   onSetLabels?(sessionId: string, labelIds: readonly string[]): void;
@@ -76,6 +78,7 @@ export const SessionListItem = observer(function SessionListItem({
   labelIds = [],
   availableLabels = [],
   renameInput,
+  actionProps,
   onOpen,
   onToggleFamily,
   onSetLabels,
@@ -122,6 +125,8 @@ export const SessionListItem = observer(function SessionListItem({
         selected
           ? "active text-primary font-semibold"
           : "text-muted-foreground hover:text-foreground",
+        actionProps?.role === "option" &&
+          (selected ? "bg-sidebar-active" : "hover:bg-sidebar-hover"),
         canResolve && "can-resolve",
         selected && canResolve && "has-session-action",
       )}
@@ -201,6 +206,7 @@ export const SessionListItem = observer(function SessionListItem({
       {renameInput ?? (
         <NavItem
           ref={navigationRef}
+          actionProps={actionProps}
           motionFeedback
           className={cn(
             "session-row col-start-2 h-full bg-transparent py-0 hover:bg-transparent [&>button]:h-full",

@@ -11,6 +11,7 @@ import {
   ForwardIcon,
   PlusIcon,
   SettingsIcon,
+  SearchIcon,
   SidebarIcon,
 } from "./ui/icons";
 import { SidebarCakeChatGroup } from "./sidebar-cake-chat-group";
@@ -26,6 +27,7 @@ import type { AppShellStore } from "../stores/AppShellStore";
 import type { ProjectSettingsStore } from "../stores/ProjectSettingsStore";
 import type { AppearanceSettingsStore } from "../stores/AppearanceSettingsStore";
 import { SidebarActivityFeed } from "./sidebar-activity-feed";
+import { SessionSearchDialog } from "./session-search-dialog";
 import { SortableItem, type SortableItemDragHandleProps } from "./ui/sortable-item";
 
 export const Sidebar = observer(function Sidebar({
@@ -111,8 +113,8 @@ export const Sidebar = observer(function Sidebar({
         >
           <ForwardIcon />
         </IconButton>
-        {!focusMode && (
-          <div className="ml-auto flex items-center gap-0.5 [app-region:no-drag]">
+        <div className="ml-auto flex items-center gap-0.5 [app-region:no-drag]">
+          {!focusMode && (
             <IconButton
               data-cake-hint-key="n"
               tooltip="New session"
@@ -122,6 +124,15 @@ export const Sidebar = observer(function Sidebar({
             >
               <PlusIcon />
             </IconButton>
+          )}
+          <IconButton
+            tooltip="Search sessions"
+            ariaLabel="Search sessions"
+            onClick={() => store.sessionSearchStore.show()}
+          >
+            <SearchIcon />
+          </IconButton>
+          {!focusMode && (
             <IconButton
               className={cn(activityMode && "bg-sidebar-active text-foreground")}
               tooltip={activityMode ? "Show projects" : "Show activity"}
@@ -131,8 +142,8 @@ export const Sidebar = observer(function Sidebar({
             >
               <BellIcon />
             </IconButton>
-          </div>
-        )}
+          )}
+        </div>
       </div>
       <div className="flex min-w-0 flex-wrap gap-1.5 px-3 pb-2 empty:hidden"></div>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 pb-4 pt-2">
@@ -296,6 +307,13 @@ export const Sidebar = observer(function Sidebar({
           </Button>
         </div>
       )}
+      <SessionSearchDialog
+        sidebar={store}
+        sessionMetadata={sessionMetadata}
+        projects={projects}
+        appearance={appearance}
+        onOpenSession={onOpenSession}
+      />
       <ProjectSettingsDialog store={projectSettings} />
     </aside>
   );
