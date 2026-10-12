@@ -10,6 +10,7 @@ import { ScheduledMessageOrigin } from "./scheduled-message-envelope";
 import { ipcProjectionArray, ipcProjectionString } from "../serialization/projection";
 import { sourceLocationSchema } from "../editor/source-location";
 import { TaskInputReference } from "./task-input";
+import { SubagentReportOrigin } from "../subagents/subagent-data";
 
 export const SESSION_TITLE_MAX_LENGTH = 144;
 
@@ -306,6 +307,7 @@ export const uiPartSchema = Schema.Union([
     deliveryState: Schema.optional(Schema.Literals(["sending", "queued", "steering"])),
     draft: Schema.optional(Schema.Boolean),
     crossSession: Schema.optional(CrossSessionMessageMetadata),
+    subagentReport: Schema.optionalKey(SubagentReportOrigin),
     scheduled: Schema.optional(ScheduledMessageOrigin),
     /** Original payload and stable identity while Pi holds this input. */
     queuedInput: Schema.optionalKey(

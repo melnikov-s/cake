@@ -447,7 +447,7 @@ describe("Cake-owned conversation components", () => {
     expect(image).toContain("Tool output image 1");
   });
 
-  it("keeps completed subagent details in a compact released row", () => {
+  it("keeps completed subagent details in a compact outcome row", () => {
     const handleId = crypto.randomUUID();
     const html = renderToStaticMarkup(
       <Tool
@@ -517,7 +517,7 @@ describe("Cake-owned conversation components", () => {
     expect(html).toContain("openai-codex/gpt-5.6-sol");
     expect(html).toContain("Inspect the session boundary");
     expect(html).toContain("Last activity: read");
-    expect(html).toContain("Released");
+    expect(html).toContain('data-status="complete"');
     expect(html).not.toContain("Focus on runtime validation.");
     expect(html).not.toContain("The boundary is correctly isolated.");
   });
@@ -623,7 +623,7 @@ describe("Cake-owned conversation components", () => {
     expect(html).toContain("2/2 complete");
     expect(html).toContain("Inspect storage");
     expect(html).toContain("Review rendering");
-    expect(html).toContain("Released");
+    expect(html).toContain('data-status="complete"');
     expect(html).not.toContain("Storage is sound.");
     expect(html).not.toContain("Rendering is sound.");
   });
@@ -659,7 +659,7 @@ describe("Cake-owned conversation components", () => {
     );
 
     expect(html).toContain("Tell a joke");
-    expect(html).toContain("Released");
+    expect(html).toContain('data-status="complete"');
     expect(html).not.toContain("The delegated punchline.");
   });
 });

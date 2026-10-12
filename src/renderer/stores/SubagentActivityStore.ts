@@ -27,6 +27,9 @@ export class SubagentActivityStore extends Store<{
     const runs = new Map(
       historicalSubagentRuns(this.props.parts()).map((run) => [run.key, run] as const),
     );
+    for (const run of runs.values())
+      if (run.handleId && this.props.model.releasedHandleIds.includes(run.handleId))
+        run.released = true;
     for (const activity of this.props.model.activities) {
       runs.set(activity.handleId, {
         key: activity.handleId,
@@ -42,7 +45,9 @@ export class SubagentActivityStore extends Store<{
         parts: activity.parts,
         usage: activity.usage,
         error: activity.error,
+        failurePhase: activity.failurePhase,
         released: this.props.model.releasedHandleIds.includes(activity.handleId),
+        available: !this.props.model.releasedHandleIds.includes(activity.handleId),
       });
     }
     return [...runs.values()];
@@ -50,7 +55,7 @@ export class SubagentActivityStore extends Store<{
 
   get activeRuns() {
     return this.runs.filter(
-      (run) => !run.released && (run.status === "queued" || run.status === "running"),
+      (run) => run.available && (run.status === "queued" || run.status === "running"),
     );
   }
 
@@ -69,68 +74,70 @@ export class SubagentActivityStore extends Store<{
 
   private canMessage(key: string) {
     const run = this.run(key);
-    return Boolean(run?.handleId && !run.released && run.status !== "queued");
+    return Boolean(run?.handleId && run.available && !run.failurePhase && run.status !== "queued");
   }
 
   @child
   get chatStores(): ChatStore[] {
-    return this.runs.map((run) =>
-      createStore(ChatStore, {
-        key: run.key,
-        id: () => `subagent:${run.key}`,
-        parts: () => this.run(run.key)?.parts ?? [],
-        streaming: () => {
-          const current = this.run(run.key);
-          return Boolean(current && !current.released && current.status === "running");
-        },
-        submitting: () => false,
-        stoppable: () => {
-          const current = this.run(run.key);
-          return Boolean(
-            current &&
-            !current.released &&
-            (current.status === "queued" || current.status === "running"),
-          );
-        },
-        configuration: () => undefined,
-        commands: () => [],
-        placeholder: () =>
-          this.run(run.key)?.status === "running"
-            ? "Steer this subagent…"
-            : this.canMessage(run.key)
-              ? "Message this subagent…"
-              : "Subagent unavailable",
-        inputLabel: () => "Message subagent",
-        canSubmit: (draft) => this.canMessage(run.key) && Boolean(draft.trim()),
-        submit: async (draft) => {
-          const current = this.run(run.key);
-          if (!current?.handleId || !this.canMessage(run.key)) return false;
-          const input = {
-            parentSessionId: this.props.sessionId,
-            handleId: SubagentHandleId.make(current.handleId),
-            text: draft.trim(),
-          };
-          if (current.status === "running")
-            await this.client.subagents.steer(input, { signal: this.signal });
-          else await this.client.subagents.prompt(input, { signal: this.signal });
-          return true;
-        },
-        abort: async () => {
-          const current = this.run(run.key);
-          if (!current?.handleId || current.released) return;
-          await this.client.subagents.abort(
-            {
+    return this.runs
+      .filter((run) => run.handleId && !run.failurePhase)
+      .map((run) =>
+        createStore(ChatStore, {
+          key: run.key,
+          id: () => `subagent:${run.key}`,
+          parts: () => this.run(run.key)?.parts ?? [],
+          streaming: () => {
+            const current = this.run(run.key);
+            return Boolean(current && !current.released && current.status === "running");
+          },
+          submitting: () => false,
+          stoppable: () => {
+            const current = this.run(run.key);
+            return Boolean(
+              current &&
+              !current.released &&
+              (current.status === "queued" || current.status === "running"),
+            );
+          },
+          configuration: () => undefined,
+          commands: () => [],
+          placeholder: () =>
+            this.run(run.key)?.status === "running"
+              ? "Steer this subagent…"
+              : this.canMessage(run.key)
+                ? "Message this subagent…"
+                : "Subagent unavailable",
+          inputLabel: () => "Message subagent",
+          canSubmit: (draft) => this.canMessage(run.key) && Boolean(draft.trim()),
+          submit: async (draft) => {
+            const current = this.run(run.key);
+            if (!current?.handleId || !this.canMessage(run.key)) return false;
+            const input = {
               parentSessionId: this.props.sessionId,
               handleId: SubagentHandleId.make(current.handleId),
-            },
-            { signal: this.signal },
-          );
-        },
-        composerVisible: () => this.canMessage(run.key),
-        usage: () => this.run(run.key)?.usage,
-        error: () => ({ message: this.run(run.key)?.error }),
-      }),
-    );
+              text: draft.trim(),
+            };
+            if (current.status === "running")
+              await this.client.subagents.steer(input, { signal: this.signal });
+            else await this.client.subagents.prompt(input, { signal: this.signal });
+            return true;
+          },
+          abort: async () => {
+            const current = this.run(run.key);
+            if (!current?.handleId || current.released) return;
+            await this.client.subagents.abort(
+              {
+                parentSessionId: this.props.sessionId,
+                handleId: SubagentHandleId.make(current.handleId),
+              },
+              { signal: this.signal },
+            );
+          },
+          composerVisible: () => this.canMessage(run.key),
+          usage: () => this.run(run.key)?.usage,
+          error: () => ({ message: this.run(run.key)?.error }),
+        }),
+      );
   }
 
   chatStore(key: string) {

@@ -85,7 +85,7 @@ describe("Subagent activity workflow", () => {
     expect(steer).toHaveBeenCalledTimes(1);
 
     fixture.publish({ _tag: "Removed", revision: 3, parentSessionId, handleId });
-    expect(await within(panel).findByText("Released")).toBeDefined();
+    expect(await within(panel).findByText("complete · Resources released")).toBeDefined();
     expect(within(panel).getByText("Cancellation boundary checked.")).toBeDefined();
     expect(within(panel).queryByRole("combobox", { name: "Message subagent" })).toBeNull();
     expect(within(panel).queryByRole("button", { name: "Send" })).toBeNull();
@@ -108,7 +108,7 @@ describe("Subagent activity workflow", () => {
     using fixture = renderSubagentActivity({ parts: workerTranscript(historical) });
     const panel = await openWorkerChat(fixture.user);
     expect(await within(panel).findByText("A historical boundary report.")).toBeDefined();
-    expect(within(panel).getByText("Released")).toBeDefined();
+    expect(within(panel).getByText("complete")).toBeDefined();
     expect(within(panel).queryByRole("combobox", { name: "Message subagent" })).toBeNull();
     expect(within(panel).queryByRole("button", { name: "Stop" })).toBeNull();
     expect(within(panel).queryByRole("button", { name: "Send" })).toBeNull();

@@ -47,6 +47,7 @@ export interface SubagentHandleState {
   readonly parts: ReadonlyArray<Schema.Schema.Type<typeof Schema.Json>>;
   readonly usage?: Schema.Schema.Type<typeof Schema.Json>;
   readonly error?: string;
+  readonly failurePhase?: "start";
   readonly result?: SubagentResult;
   readonly waiters: number;
   readonly completionDisposition: "pending" | "waited" | "notifying" | "notified";
@@ -111,6 +112,7 @@ export const activityOf = (handle: SubagentHandleState): SubagentActivity => {
     parts: handle.parts,
   };
   if (handle.projectPath) Object.assign(activity, { projectPath: handle.projectPath });
+  if (handle.failurePhase) Object.assign(activity, { failurePhase: handle.failurePhase });
   if (handle.usage !== undefined) Object.assign(activity, { usage: handle.usage });
   if (handle.error !== undefined) Object.assign(activity, { error: handle.error });
   return activity;

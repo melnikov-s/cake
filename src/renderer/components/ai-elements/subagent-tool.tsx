@@ -18,12 +18,21 @@ function currentActivity(run: SubagentRun) {
       (part): part is Extract<UiPart, { kind: "tool" }> =>
         part.kind === "tool" && part.state === "running",
     );
-  if (running) return `Running ${running.name}`;
+  if (running && run.available) return `Running ${running.name}`;
   const latest = [...run.parts]
     .reverse()
     .find((part) => part.kind === "tool" || part.kind === "reasoning");
-  if (!latest) return run.status === "queued" ? "Waiting for a worker slot" : undefined;
+  if (!latest)
+    return run.available && run.status === "queued" ? "Waiting for a worker slot" : undefined;
   return latest.kind === "tool" ? `Last activity: ${latest.name}` : "Reasoning";
+}
+
+function runOutcome(run: SubagentRun) {
+  if (run.failurePhase === "start" || (!run.handleId && run.status === "error"))
+    return "failed-to-start";
+  if (!run.handleId && run.status === "running") return "starting";
+  if (!run.available && (run.status === "queued" || run.status === "running")) return "unavailable";
+  return run.status;
 }
 
 function modelLabel(run: SubagentRun) {
@@ -74,7 +83,7 @@ export const SubagentTool = observer(function SubagentTool({
         ? "Background completion"
         : "Waiting";
   const activeCount = runs.filter(
-    (run) => !run.released && (run.status === "queued" || run.status === "running"),
+    (run) => run.available && (run.status === "queued" || run.status === "running"),
   ).length;
   const completedCount = runs.filter((run) => run.status === "complete").length;
   const parallel = toolOperationName(part) === "subagents.parallel";
@@ -86,13 +95,17 @@ export const SubagentTool = observer(function SubagentTool({
           status={
             activeCount > 0
               ? "running"
-              : part.state === "success"
-                ? "complete"
-                : part.state === "error"
-                  ? "failed"
-                  : part.state === "interrupted"
-                    ? "interrupted"
-                    : "ready"
+              : runs.some((run) => run.status === "error")
+                ? "failed"
+                : runs.some((run) => runOutcome(run) === "unavailable")
+                  ? "ready"
+                  : part.state === "success"
+                    ? "complete"
+                    : part.state === "error"
+                      ? "failed"
+                      : part.state === "interrupted"
+                        ? "interrupted"
+                        : "ready"
           }
         />
         <strong className="font-mono font-semibold">
@@ -102,9 +115,9 @@ export const SubagentTool = observer(function SubagentTool({
         <span className="ml-auto text-muted-foreground">
           {parallel
             ? `${completedCount}/${runs.length} complete`
-            : runs[0]?.released
-              ? "released"
-              : (runs[0]?.status ?? part.state)}
+            : runs[0]
+              ? runOutcome(runs[0]).replaceAll("-", " ")
+              : part.state}
         </span>
       </div>
 
@@ -116,20 +129,22 @@ export const SubagentTool = observer(function SubagentTool({
             <div
               key={run.key}
               data-slot="subagent-call"
-              data-status={run.released ? "released" : run.status}
+              data-status={runOutcome(run)}
               className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-background/50 px-2.5 py-2"
             >
               <StatusDot
                 status={
-                  run.status === "running"
-                    ? "running"
-                    : run.status === "complete"
-                      ? "complete"
-                      : run.status === "aborted"
-                        ? "interrupted"
-                        : run.status === "error"
-                          ? "failed"
-                          : "pending"
+                  !run.available && (run.status === "running" || run.status === "queued")
+                    ? "ready"
+                    : run.status === "running"
+                      ? "running"
+                      : run.status === "complete"
+                        ? "complete"
+                        : run.status === "aborted"
+                          ? "interrupted"
+                          : run.status === "error"
+                            ? "failed"
+                            : "pending"
                 }
               />
               {parallel && <strong className="shrink-0 font-mono text-xs">Subagent</strong>}
@@ -142,33 +157,45 @@ export const SubagentTool = observer(function SubagentTool({
                     parallel ? undefined : protocolActivity,
                     activity,
                     modelLabel(run),
-                    released ? "Released" : undefined,
+                    released ? "Resources released" : undefined,
+                    !run.handleId || run.failurePhase === "start"
+                      ? run.status === "running"
+                        ? "Waiting for the start result"
+                        : "No worker was created"
+                      : !run.available && run.parts.length === 0
+                        ? "Detailed history was not retained"
+                        : undefined,
                   ]
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
               </div>
-              {subagents && sideChat && (
-                <IconButton
-                  tooltip="Open subagent chat"
-                  aria-label="Open subagent chat"
-                  onClick={() => {
-                    const chatStore = subagents.chatStore(run.key);
-                    if (!chatStore) return;
-                    sideChat.open({
-                      key: `subagent:${run.key}`,
-                      title: "Subagent",
-                      eyebrow: () => {
-                        const current = subagents.run(run.key);
-                        return current?.released ? "Released" : (current?.status ?? run.status);
-                      },
-                      chatStore,
-                    });
-                  }}
-                >
-                  <ChatIcon />
-                </IconButton>
-              )}
+              {run.error && <p className="text-xs text-destructive">{run.error}</p>}
+              {run.handleId &&
+                !run.failurePhase &&
+                (run.available || run.parts.length > 0) &&
+                subagents &&
+                sideChat && (
+                  <IconButton
+                    tooltip="Open subagent chat"
+                    aria-label="Open subagent chat"
+                    onClick={() => {
+                      const chatStore = subagents.chatStore(run.key);
+                      if (!chatStore) return;
+                      sideChat.open({
+                        key: `subagent:${run.key}`,
+                        title: "Subagent",
+                        eyebrow: () => {
+                          const current = subagents.run(run.key);
+                          return `${runOutcome(current ?? run).replaceAll("-", " ")}${current?.released ? " · Resources released" : ""}`;
+                        },
+                        chatStore,
+                      });
+                    }}
+                  >
+                    <ChatIcon />
+                  </IconButton>
+                )}
             </div>
           );
         })}

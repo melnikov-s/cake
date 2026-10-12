@@ -40,7 +40,7 @@ export async function readDurableOriginalPage(
                       id: String(entry.id),
                       parentId: null,
                       timestamp: new Date(message.timestamp).toISOString(),
-                      message: withoutDurableInputPresentation(message),
+                      message: withoutDurableInputPresentation(message, { display: true }),
                     },
                     ...(message.role === "user" &&
                     durableInputPresentation(
@@ -65,7 +65,26 @@ export async function readDurableOriginalPage(
             )
           : [],
       );
-    const parts = projectSessionEntries(entries);
+    const origins = new Map(
+      page.items.flatMap((entry) =>
+        (entry.model ?? []).flatMap((message) => {
+          if (entry.kind !== "pi.user" || message.role !== "user") return [];
+          const input = durableInputPresentation(
+            typeof message.content === "string"
+              ? message.content
+              : message.content
+                  .flatMap((block) => (block.type === "text" ? [block.text] : []))
+                  .join("\n"),
+          );
+          return input.subagentReport ? [[String(entry.id), input.subagentReport] as const] : [];
+        }),
+      ),
+    );
+    const parts = projectSessionEntries(entries).map((part) =>
+      part.kind === "text" && part.role === "user" && part.entryId && origins.has(part.entryId)
+        ? { ...part, subagentReport: origins.get(part.entryId), renderAs: "markdown" as const }
+        : part,
+    );
     next = page.next === undefined ? undefined : JSON.stringify(page.next);
     if (parts.length || next === undefined) return { parts, cursor: next };
   } while (next !== undefined);

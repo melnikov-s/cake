@@ -479,6 +479,13 @@ it("restart resumes a placed run and a queued worker report without resubmission
       (part) => part.kind === "text" && part.queuedInput && part.text.includes("WORKER_RESULT"),
     ),
   );
+  const queuedReport = (await first.runtime.snapshot()).parts.find(
+    (part) => part.kind === "text" && part.subagentReport?.handleId === ids.third,
+  );
+  expect(queuedReport).toMatchObject({
+    subagentReport: { handleId: ids.third, task: "Review project", status: "complete" },
+    deliveryState: "queued",
+  });
   await first.close();
   await active;
   await report;
@@ -492,11 +499,19 @@ it("restart resumes a placed run and a queued worker report without resubmission
     (snapshot) =>
       !snapshot.streaming &&
       snapshot.parts.some(
-        (part) => part.kind === "text" && part.text.includes("Worker provenance"),
+        (part) => part.kind === "text" && part.subagentReport?.handleId === ids.third,
       ),
   );
   expect(settled.parts.filter((part) => part.kind === "text" && part.role === "user")).toHaveLength(
     2,
+  );
+  expect(
+    settled.parts.filter(
+      (part) => part.kind === "text" && part.subagentReport?.handleId === ids.third,
+    ),
+  ).toHaveLength(1);
+  expect(settled.parts.find((part) => part.kind === "text" && part.subagentReport)?.kind).toBe(
+    "text",
   );
   expect(JSON.stringify(f.requests.at(-1))).toContain("WORKER_RESULT");
   expect(JSON.stringify(f.requests.at(-1))).toContain(ids.third);

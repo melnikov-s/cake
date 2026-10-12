@@ -57,6 +57,8 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
   const hasArtifactReference =
     part.kind === "text" && part.role === "user" && artifactReferenceInText.test(part.text);
   const userMessageDisplaysAsMarkdown = userMessageRendersAsMarkdown || hasArtifactReference;
+  if (part.kind === "text" && part.subagentReport)
+    return <ChatTextMessage part={part} onOpenSourceLocation={behavior.openSourceLocation} />;
   if (part.kind === "text")
     return part.role === "assistant" ? (
       <AssistantTextMessage part={part} behavior={behavior} />

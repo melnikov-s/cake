@@ -24,15 +24,22 @@ export function messageSnapshots(
 ): Snapshot<Message>[] {
   return parts.map((part): Snapshot<Message> => {
     const identity = { id: projectionId(ownerId, part.id), partKey: part.id };
-    if (part.kind === "text" || part.kind === "skill") {
-      const { entryId, ...fields } = part;
+    if (part.kind === "text") {
+      const { entryId, subagentReport, ...fields } = part;
       return {
         ...fields,
         ...identity,
         piId: entryId,
-        // Reused Models need an explicit reset when JSON omits the plain-text preference.
-        ...(part.kind === "text" ? { renderAs: part.renderAs } : null),
+        // Reused Models need an explicit reset when JSON omits presentation metadata.
+        renderAs: part.renderAs,
+        // SAFETY: runtime-validated JSON; Snapshot distributes heterogeneous
+        // JSON arrays into homogeneous arrays, but its codec preserves them.
+        subagentReport: subagentReport as Snapshot<Message>["subagentReport"],
       };
+    }
+    if (part.kind === "skill") {
+      const { entryId, ...fields } = part;
+      return { ...fields, ...identity, piId: entryId };
     }
     if (part.kind === "compaction") {
       const { firstKeptEntryId, ...fields } = part;

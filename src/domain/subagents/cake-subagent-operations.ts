@@ -26,18 +26,18 @@ export function createAgentControlOperations(
   const handleSchema = Schema.Struct({ handleId: Schema.String.check(Schema.isUUID()) });
   const guidance = [
     projectAware
-      ? "Subagents are private, hidden project investigators—not full Project Sessions. Use sessions.create for implementation in an independent Project Session, not an investigation worker."
+      ? "Subagents are private, hidden general research or project investigators—not full Project Sessions. Use sessions.create for implementation in an independent Project Session, not an investigation worker."
       : "Subagents are private, hidden, bounded workers—not full Project Sessions. A request for a child session, related session, or Session Family member is not subagent delegation; use sessions.create-child instead.",
     projectAware
-      ? "Delegate every question depending on a registered project's code, architecture, configuration or current behavior. Discover exact project paths with app.state, supply projectPath, and clarify ambiguous project identity before starting. No separate delegation permission is needed for Cake Chat investigations."
+      ? "Delegate every question depending on a registered project's code, architecture, configuration or current behavior. Discover exact project paths with app.state, supply projectPath, and clarify ambiguous project identity before starting. Omit projectPath for general research unrelated to a registered repository; never choose an arbitrary project for external research. No separate delegation permission is needed for Cake Chat investigations."
       : "Use subagents only when the user explicitly requested delegation, subagents, or parallel agent work.",
     "Use subagents.start for ordinary delegation so the parent turn remains independent and the user can continue messaging it. Start multiple handles for parallel work; Cake automatically queues each compact final report to the parent, so do not poll.",
     "Use subagents.run, subagents.parallel, or subagents.wait only when the user explicitly requires the parent turn to block on delegated work.",
     projectAware
-      ? "Project investigators use the registered project root and normal applicable instructions, skills, extensions and MCP. They omit edit/write and prohibit all mutations, including shell/MCP writes, even if their parent requests them. This is an investigation-only prompt policy, not a read-only sandbox. Implementation belongs in a normal Project Session."
+      ? "Project investigators use the registered project root and normal applicable instructions, skills, extensions and MCP. They omit edit/write and prohibit all mutations, including shell/MCP writes, even if their parent requests them. Without projectPath, general researchers receive only read, bash and message_parent, no repository instructions, skills, extensions or MCP. Public web retrieval through read-only shell requests is possible only if network access works; no browser/search tool is guaranteed. Disclose access limits and never invent retrieved evidence. Both modes prohibit mutations. This is an investigation-only prompt policy, not a read-only sandbox. Implementation belongs in a normal Project Session."
       : "Each subagent has read, bash, edit, write, and one bounded message_parent tool, but no Cake controls, project instructions, skills, or recursive delegation.",
     projectAware
-      ? "Handles are parent-owned and available for related follow-ups until explicitly closed or the backend exits. Workers are in-memory and never restored after restart. Follow-ups are asynchronous; detailed live activity is not retained in Cake Chat history."
+      ? "Handles are parent-owned and available for related follow-ups until explicitly closed, 30 minutes after creation, or the backend exits. Workers are in-memory and never restored after restart. Follow-ups are asynchronous; detailed live activity is not retained in Cake Chat history."
       : "Handles are parent-owned and remain available for follow-up until explicitly closed; parallel batches contain at most eight tasks.",
     "When model is omitted, a subagent inherits the calling session's current model, thinking level, and Fast mode setting.",
   ];
@@ -107,7 +107,7 @@ export function createAgentControlOperations(
     operation({
       command: "subagents.start",
       summary:
-        "Start one isolated parent-owned subagent asynchronously. Cake queues its compact final report to the parent without interrupting active work.",
+        "Start one parent-owned subagent asynchronously. In Cake Chat, omit projectPath for general investigation-only research or select an exact registered root for project-aware investigation. Cake queues its compact final report to the parent without interrupting active work.",
       schema: subagentTaskSchema,
       example: projectAware
         ? {

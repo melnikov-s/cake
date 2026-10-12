@@ -512,7 +512,7 @@ const makeLayer = (
     Layer.mock(SubagentEnvironment, {
       location: (workingDirectory) =>
         Effect.succeed({
-          workingDirectory,
+          workingDirectory: workingDirectory ?? "/home",
           agentDirectory: "/agent",
           sessionDirectory: "/subagents",
           trusted: true,

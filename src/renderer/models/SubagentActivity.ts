@@ -23,4 +23,5 @@ export class SubagentActivity extends Model {
   parts: UiPart[] = [];
   usage: SessionUsage | undefined;
   error: string | undefined;
+  failurePhase: "start" | undefined;
 }

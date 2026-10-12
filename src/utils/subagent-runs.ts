@@ -19,6 +19,8 @@ const runPayloadFields = {
   parts: Schema.optionalKey(Schema.Array(Schema.Unknown)),
   usage: Schema.optionalKey(sessionUsageSchema),
   error: Schema.optionalKey(Schema.String),
+  message: Schema.optionalKey(Schema.String),
+  failurePhase: Schema.optionalKey(Schema.Literal("start")),
 };
 const runPayloadSchema = Schema.Struct(runPayloadFields);
 const gatewayInputSchema = Schema.Struct({ input: Schema.Unknown });
@@ -47,6 +49,8 @@ export interface SubagentRun {
   usage?: SessionUsage;
   error?: string;
   released: boolean;
+  available: boolean;
+  failurePhase?: "start";
 }
 
 function payload(value?: string): Payload | undefined {
@@ -99,7 +103,9 @@ function runFromPayload(
     parts: projectedParts(value.parts ?? fallback?.parts),
     usage: value.usage ?? fallback?.usage,
     error: value.error ?? fallback?.error,
-    released: true,
+    released: false,
+    available: false,
+    failurePhase: value.failurePhase,
   };
 }
 
@@ -109,6 +115,26 @@ export function historicalSubagentRuns(parts: readonly UiPart[]) {
   const startByHandle = new Map<string, { part: ToolPart; request?: Payload; output?: Payload }>();
 
   for (const part of parts) {
+    if (part.kind === "text" && part.subagentReport) {
+      const run = runs.get(part.subagentReport.handleId);
+      if (run) {
+        run.status = part.subagentReport.status;
+        run.failurePhase = part.subagentReport.failurePhase;
+        run.parts =
+          run.failurePhase === "start"
+            ? []
+            : [
+                {
+                  id: part.id,
+                  kind: "text",
+                  role: "assistant",
+                  status: part.status,
+                  text: part.text,
+                },
+              ];
+        if (run.status === "error") run.error = part.text;
+      }
+    }
     if (part.kind !== "tool") continue;
     const operation = toolOperationName(part);
     if (operation === "subagents.run") {
@@ -126,6 +152,23 @@ export function historicalSubagentRuns(parts: readonly UiPart[]) {
       const source = output ?? request;
       if (!source) continue;
       const run = runFromPayload(source, part.id, part.state, request);
+      if (
+        run.handleId &&
+        part.state === "success" &&
+        (source.status === "queued" || source.status === "running")
+      )
+        run.status = source.status;
+      if (!run.handleId) {
+        run.status =
+          part.state === "error" || output?.error
+            ? "error"
+            : part.state === "running"
+              ? "running"
+              : "aborted";
+        run.parts = [];
+        run.error =
+          output?.error ?? output?.message ?? (part.state === "error" ? part.output : undefined);
+      }
       runs.set(run.key, run);
       if (run.handleId) startByHandle.set(run.handleId, { part, request, output });
       continue;
@@ -139,6 +182,12 @@ export function historicalSubagentRuns(parts: readonly UiPart[]) {
       const fallback = start?.request ?? start?.output;
       const run = runFromPayload(output, start?.part.id ?? part.id, part.state, fallback);
       runs.set(run.key, run);
+      continue;
+    }
+    if (operation === "subagents.close") {
+      const handleId = payload(part.input)?.handleId;
+      const run = handleId ? runs.get(handleId) : undefined;
+      if (run && part.state === "success") run.released = true;
       continue;
     }
     if (operation === "subagents.parallel") {

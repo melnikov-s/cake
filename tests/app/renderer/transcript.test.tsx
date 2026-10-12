@@ -1121,7 +1121,9 @@ describe("Transcript scrolling", () => {
     expect(container.textContent).toContain("openai-codex/gpt-5.6-sol");
     expect(container.textContent).toContain("Tell a joke");
     expect(container.textContent).toContain("Background · 2 waits");
-    expect(container.textContent).toContain("Released");
+    expect(
+      container.querySelector('[data-slot="subagent-call"]')?.getAttribute("data-status"),
+    ).toBe("complete");
     expect(container.textContent).not.toContain("A compact joke.");
   });
 

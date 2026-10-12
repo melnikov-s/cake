@@ -18,11 +18,13 @@ export const makeSubagentEnvironmentLive = (
       return makeSubagentEnvironmentLayer({
         location: Effect.fn("SubagentEnvironment.location")((workingDirectory) =>
           Effect.succeed({
-            workingDirectory,
+            workingDirectory: workingDirectory ?? options.homeDirectory,
             agentDirectory: options.agentDirectory,
             sessionDirectory: options.sessionDirectory,
             trusted:
-              application.snapshot().trustedProjectPaths.includes(workingDirectory) ||
+              application
+                .snapshot()
+                .trustedProjectPaths.includes(workingDirectory ?? options.homeDirectory) ||
               workingDirectory === options.homeDirectory,
           }),
         ),

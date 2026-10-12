@@ -263,6 +263,7 @@ export class ChatStore extends Store<ChatStoreProps> {
       .filter(
         (part) =>
           part.kind !== "text" ||
+          Boolean(part.subagentReport) ||
           (part.deliveryState !== "queued" && part.deliveryState !== "steering"),
       );
   }
@@ -315,7 +316,8 @@ export class ChatStore extends Store<ChatStoreProps> {
   get lastEditableUserEntryId() {
     const part = this.parts.findLast(
       (candidate) =>
-        ((candidate.kind === "text" && candidate.role === "user") || candidate.kind === "skill") &&
+        ((candidate.kind === "text" && candidate.role === "user" && !candidate.subagentReport) ||
+          candidate.kind === "skill") &&
         Boolean(candidate.entryId),
     );
     return part?.kind === "text" || part?.kind === "skill" ? part.entryId : undefined;

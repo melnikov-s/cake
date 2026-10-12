@@ -38,7 +38,10 @@ import {
   type CakeSessionRuntimeAcquireOptions,
 } from "../../services/pi/CakeSessionRuntimes";
 import { createSubagentParentTool } from "../../services/pi/subagent-parent-tool";
-import { subagentSystemPrompt } from "../../services/pi/subagent-system-prompt";
+import {
+  subagentSystemPrompt,
+  researchSystemPrompt,
+} from "../../services/pi/subagent-system-prompt";
 import {
   SubagentCoordinator,
   activityOf,
@@ -226,6 +229,12 @@ const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
   const sessions = yield* CakeSessionRuntimes;
   const coordinator = yield* SubagentCoordinator;
   const application = yield* getState();
+  const environment = yield* SubagentEnvironment;
+  const cakeChat = parent.options.profile._tag === "CakeChatSession";
+  const generalLocation =
+    cakeChat && tasks.some((task) => !task.projectPath)
+      ? yield* environment.location().pipe(asError("preflight"))
+      : undefined;
   const current = yield* SubscriptionRef.get(coordinator.state);
   const effectiveParent = parent;
   const snapshot = yield* Effect.scoped(
@@ -247,13 +256,7 @@ const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
   return yield* Effect.try({
     try: () =>
       tasks.map((input): PreparedTask => {
-        const projectAware = parent.options.profile._tag === "CakeChatSession";
-        if (projectAware && !input.projectPath)
-          throw new SubagentError({
-            operation: "preflight",
-            message:
-              "Cake Chat investigations require an explicit registered projectPath. Clarify the project when ambiguous.",
-          });
+        const projectAware = cakeChat;
         if (!projectAware && input.projectPath)
           throw new SubagentError({
             operation: "preflight",
@@ -262,7 +265,7 @@ const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
         const project = input.projectPath
           ? application.projects.find((item) => item.path === input.projectPath)
           : undefined;
-        if (projectAware && !project)
+        if (input.projectPath && !project)
           throw new SubagentError({
             operation: "preflight",
             message: "That project is not registered. Select an exact project root from app.state.",
@@ -273,12 +276,15 @@ const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
             message:
               "That project is not trusted. Authorize it in Cake before loading its extensions and MCP.",
           });
-        const workingDirectory = project?.path ?? parent.workingDirectory;
+        const workingDirectory =
+          project?.path ?? generalLocation?.workingDirectory ?? parent.workingDirectory;
         const liveInDirectory = [...current.handles.values()].filter(
           (handle) => handle.workingDirectory === workingDirectory && handle.piHandle !== undefined,
         ).length;
         const requestedInDirectory = tasks.filter(
-          (task) => (task.projectPath ?? parent.workingDirectory) === workingDirectory,
+          (task) =>
+            (task.projectPath ?? generalLocation?.workingDirectory ?? parent.workingDirectory) ===
+            workingDirectory,
         ).length;
         if (liveInDirectory + requestedInDirectory > MAX_PRIVATE_RUNTIMES_PER_WORKING_DIRECTORY)
           throw new SubagentError({
@@ -344,7 +350,7 @@ const requireHandle = Effect.fn("Subagents.requireHandle")(function* (
 
 /** Only the compact final answer may cross into Cake Chat's durable tool/report history. */
 const parentResult = (handle: SubagentHandleState, result: SubagentResult): SubagentResult => {
-  if (!handle.projectPath) return result;
+  if (!handle.runtimeOptions.runtime.ephemeral) return result;
   if (result.status !== "complete") return { ...result, parts: [] };
   const answer = result.parts
     .flatMap((part) => {
@@ -410,6 +416,7 @@ const completeHandle = Effect.fn("Subagents.completeHandle")(function* (
       parts: result.parts,
       usage: result.usage,
       error: result.error,
+      failurePhase: result.failurePhase,
       result,
       completionDisposition: current.notifyOnCompletion
         ? notify
@@ -655,7 +662,7 @@ const executeInitial = Effect.fn("Subagents.executeInitial")(function* (
       }
       if (prepared.input.fastMode) yield* piHandle.setFastMode(true).pipe(asError("start"));
       const assignment =
-        prepared.input.projectPath && prepared.input.instructions
+        prepared.parent.options.profile._tag === "CakeChatSession" && prepared.input.instructions
           ? `Assignment guidance (subject to your investigation-only system instructions):\n${prepared.input.instructions}\n\nTask:\n${prepared.input.task}`
           : prepared.input.task;
       const result = yield* observeTurn(handleId, "prompt", assignment);
@@ -684,6 +691,7 @@ const failHandle = Effect.fn("Subagents.failHandle")(function* (
     error: boundedError(aborted ? "Subagent aborted" : Cause.pretty(cause)),
   };
   if (handle.projectPath) Object.assign(result, { projectPath: handle.projectPath });
+  if (!aborted && !handle.piHandle) Object.assign(result, { failurePhase: "start" });
   yield* completeHandle(handleId, result);
 });
 
@@ -721,12 +729,17 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         newSession: true,
         sessionId: crypto.randomUUID(),
         auxiliary: true,
+        ephemeral: prepared.parent.options.profile._tag === "CakeChatSession",
         ...(prepared.input.projectPath
-          ? { ephemeral: true, projectInvestigation: true }
+          ? { projectInvestigation: true }
           : { tools: [...prepared.tools] }),
         customTools: [createSubagentParentTool({ send: parentMessage })],
         slashCommands: [],
-        isolatedSystemPrompt: prepared.input.projectPath ? undefined : systemPrompt(prepared.input),
+        isolatedSystemPrompt: prepared.input.projectPath
+          ? undefined
+          : prepared.parent.options.profile._tag === "CakeChatSession"
+            ? researchSystemPrompt
+            : systemPrompt(prepared.input),
         requestUi: async () => undefined,
         fastMode: {
           get: () => prepared.input.fastMode,
@@ -778,6 +791,19 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
       }),
     );
     yield* FiberMap.run(coordinator.fibers, handleId, worker);
+    if (prepared.parent.options.profile._tag === "CakeChatSession") {
+      const expiry = yield* Effect.sleep("30 minutes").pipe(
+        Effect.andThen(close(prepared.parent.parentSessionId, handleId)),
+        Effect.catchTag("SubagentError", () => Effect.void),
+        Effect.forkIn(coordinator.scope),
+      );
+      yield* Scope.addFinalizer(
+        scope,
+        Effect.withFiber((fiber) =>
+          fiber.id === expiry.id ? Effect.void : Fiber.interrupt(expiry),
+        ),
+      );
+    }
     const receipt: SubagentStartReceipt = {
       handleId,
       task: prepared.input.task,
@@ -906,7 +932,7 @@ export const wait = Effect.fn("Subagents.wait")(function* (
   });
   const parentActivity = (value: SubagentHandleState) => {
     const activity = activityOf(value);
-    return value.projectPath ? { ...activity, parts: [] } : activity;
+    return value.runtimeOptions.runtime.ephemeral ? { ...activity, parts: [] } : activity;
   };
   onUpdate?.(jsonValue(parentActivity(handle)));
   const observer = onUpdate

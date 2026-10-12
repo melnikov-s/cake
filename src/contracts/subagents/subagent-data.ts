@@ -90,6 +90,7 @@ export const SubagentActivity = Schema.Struct({
   parts: Schema.Array(Schema.Json).check(Schema.isMaxLength(10_000)),
   usage: Schema.optionalKey(Schema.Json),
   error: Schema.optionalKey(boundedString(16_384)),
+  failurePhase: Schema.optionalKey(Schema.Literal("start")),
 });
 export interface SubagentActivity extends Schema.Schema.Type<typeof SubagentActivity> {}
 
@@ -104,8 +105,22 @@ export const SubagentResult = Schema.Struct({
   parts: Schema.Array(Schema.Json).check(Schema.isMaxLength(10_000)),
   usage: Schema.optionalKey(Schema.Json),
   error: Schema.optionalKey(boundedString(16_384)),
+  failurePhase: Schema.optionalKey(Schema.Literal("start")),
 });
 export interface SubagentResult extends Schema.Schema.Type<typeof SubagentResult> {}
+
+/** Cake-authored presentation provenance; model-facing delivery roles remain unchanged. */
+export const SubagentReportOrigin = Schema.Struct({
+  handleId: Schema.String.check(Schema.isUUID(4)),
+  task: SubagentTask.fields.task,
+  projectPath: SubagentTask.fields.projectPath,
+  status: SubagentStatus,
+  resolvedModel: ResolvedAgentModel,
+  fastMode: Schema.Boolean,
+  usage: Schema.optionalKey(Schema.MutableJson),
+  failurePhase: Schema.optionalKey(Schema.Literal("start")),
+});
+export interface SubagentReportOrigin extends Schema.Schema.Type<typeof SubagentReportOrigin> {}
 
 export const SubagentStartReceipt = Schema.Struct({
   handleId: SubagentHandleId,

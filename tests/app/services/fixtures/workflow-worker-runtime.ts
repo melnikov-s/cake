@@ -245,7 +245,7 @@ export const makeWorkerFixture = Effect.fn("WorkflowWorkersTest.fixture")(functi
   const environment = makeSubagentEnvironmentLayer({
     location: (workingDirectory) =>
       Effect.succeed({
-        workingDirectory,
+        workingDirectory: workingDirectory ?? "/home",
         agentDirectory: options.agentPath ?? "/agent",
         sessionDirectory: "/private",
         trusted: true,

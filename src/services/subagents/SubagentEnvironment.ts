@@ -15,7 +15,7 @@ export class SubagentEnvironmentError extends Schema.TaggedError<SubagentEnviron
 
 export interface SubagentEnvironmentService {
   readonly location: (
-    workingDirectory: string,
+    workingDirectory?: string,
   ) => Effect.Effect<SubagentLocation, SubagentEnvironmentError>;
 }
 

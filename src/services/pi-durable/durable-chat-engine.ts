@@ -164,7 +164,7 @@ export async function openDurableChatEngine(options: {
         const active = await root.context(context);
         const source = options.models.streamSimple(
           model,
-          { messages: active.messages.map(withoutDurableInputPresentation) },
+          { messages: active.messages.map((message) => withoutDurableInputPresentation(message)) },
           streamOptions,
         );
         for await (const event of source) stream.push(event);

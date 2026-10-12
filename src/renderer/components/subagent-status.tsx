@@ -58,7 +58,7 @@ export const SubagentStatus = observer(function SubagentStatus({
                         title: "Subagent",
                         eyebrow: () => {
                           const current = store.run(run.key);
-                          return current?.released ? "Released" : (current?.status ?? run.status);
+                          return `${current?.status ?? run.status}${current?.released ? " · Resources released" : ""}`;
                         },
                         chatStore,
                       });

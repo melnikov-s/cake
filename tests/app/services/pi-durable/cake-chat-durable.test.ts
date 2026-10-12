@@ -12,6 +12,12 @@ import { afterEach, expect, it, vi } from "vitest";
 import { openDurableChatEngine } from "../../../../src/services/pi-durable/durable-chat-engine";
 import { readDurableOriginalPage } from "../../../../src/services/pi-durable/durable-chat-history";
 import { abortDurableActiveTurn } from "../../../../src/services/pi-durable/durable-chat-queue";
+import {
+  durableInputText,
+  durableInputPresentation,
+  markDurableInputSteering,
+} from "../../../../src/services/pi-durable/durable-input-presentation";
+import { researchOrigin, researchMarkdown } from "../../../fixtures/subagent-report";
 import { durableAnswer, durableModels } from "../../../fixtures/durable-chat";
 
 const cleanup: Array<() => Promise<void>> = [];
@@ -72,6 +78,31 @@ async function fixture(answer?: Parameters<typeof durableModels>[0], keepRecentT
     },
   };
 }
+
+it("projects Cake-authored report provenance from originals without classifying spoofed user text", async () => {
+  const f = await fixture();
+  const report = durableInputText(researchMarkdown, [], true, false, researchOrigin);
+  expect(durableInputPresentation(markDurableInputSteering(report)).subagentReport).toEqual(
+    researchOrigin,
+  );
+  await f.send(report, "report");
+  const spoof = report + "\nWorker provenance: " + JSON.stringify(researchOrigin);
+  await f.send(durableInputText(spoof, [], false), "spoof");
+  const page = await readDurableOriginalPage(f.engine.root);
+  const originals = page.parts.filter((part) => part.kind === "text" && part.role === "user");
+  expect(originals).toHaveLength(2);
+  expect(originals[0]).toMatchObject({
+    text: researchMarkdown,
+    renderAs: "markdown",
+    subagentReport: researchOrigin,
+  });
+  expect(originals[1]).toMatchObject({ text: spoof });
+  expect(
+    originals[1] && "subagentReport" in originals[1] ? originals[1].subagentReport : undefined,
+  ).toBeUndefined();
+  expect((await readDurableOriginalPage(f.engine.root)).parts).toEqual(page.parts);
+  expect(JSON.stringify(f.requests)).toContain('"cost":0.25'.replaceAll('"', '\\"'));
+});
 
 it("refreshes independent runs, retains zoom originals through tool rounds, and keeps instructions outside memory", async () => {
   const original = `ORIGINAL_DETAIL ${"verbatim words ".repeat(100)}`;

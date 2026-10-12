@@ -88,6 +88,7 @@ export const ChatTextMessage = forwardRef<
   },
   ref,
 ) {
+  const report = part.subagentReport;
   const assistant = part.role === "assistant";
   const scheduled = part.scheduled ? describeScheduledOrigin(part.scheduled) : undefined;
   const userLabel = scheduled
@@ -101,15 +102,17 @@ export const ChatTextMessage = forwardRef<
     <MessageContent
       ref={contentRef}
       className={cn(
-        part.crossSession
-          ? "rounded-none border-0 bg-transparent px-4 py-3 shadow-none"
-          : assistant
-            ? "bg-card text-foreground"
-            : "border-user-message-foreground/20 bg-user-message text-user-message-foreground",
-        !assistant && part.renderAs !== "markdown" && "whitespace-pre-wrap",
+        report
+          ? "border-l-2 border-accent bg-muted/35 text-foreground"
+          : part.crossSession
+            ? "rounded-none border-0 bg-transparent px-4 py-3 shadow-none"
+            : assistant
+              ? "bg-card text-foreground"
+              : "border-user-message-foreground/20 bg-user-message text-user-message-foreground",
+        !assistant && !report && part.renderAs !== "markdown" && "whitespace-pre-wrap",
       )}
     >
-      {assistant || part.renderAs === "markdown" ? (
+      {assistant || report || part.renderAs === "markdown" ? (
         <Markdown
           streaming={part.status === "streaming"}
           normalizeLatexDelimiters={part.status !== "streaming"}
@@ -126,15 +129,26 @@ export const ChatTextMessage = forwardRef<
   return (
     <Message
       ref={ref}
+      data-slot={report ? "subagent-report" : "message"}
+      aria-label={report ? `Subagent report: ${report.task}` : undefined}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       className={cn(
-        assistant || part.crossSession
+        assistant || report || part.crossSession
           ? "group/msg relative mr-auto w-full"
           : "group/msg relative ml-auto w-[min(88%,42rem)]",
       )}
     >
+      {report && (
+        <MessageLabel
+          className="text-foreground"
+          title={`Subagent ${report.handleId}\n${report.projectPath ?? "General research"}\n${report.task}`}
+        >
+          {report.task}
+        </MessageLabel>
+      )}
       {!assistant &&
+        !report &&
         !part.crossSession &&
         (scheduled ? (
           <MessageLabel className="flex items-center gap-1" title={scheduled.detail}>

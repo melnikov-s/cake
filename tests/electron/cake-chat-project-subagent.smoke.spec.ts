@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { researchMarkdown } from "../fixtures/subagent-report";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -48,12 +49,17 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
   await writeFile(join(project, "config.ts"), "export const limit = 7; // PRIVATE_TOOL_OUTPUT\n");
   const workerRequests: unknown[] = [];
   const coordinatorRequests: unknown[] = [];
+  const researchRequests: unknown[] = [];
+  let researchAssigned = false;
   const gate = Promise.withResolvers<void>();
   const server = createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
     const parsed: unknown = JSON.parse(body);
-    if (body.includes("## Project investigation worker")) {
+    if (body.includes("temporary general research investigator")) {
+      researchRequests.push(parsed);
+      reply(response, researchMarkdown);
+    } else if (body.includes("## Project investigation worker")) {
       workerRequests.push(parsed);
       if (workerRequests.length === 1)
         reply(response, { name: "read", arguments: { path: "config.ts" } });
@@ -76,7 +82,19 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
             input: { projectPath: project, task: "Explain the limit using config.ts evidence" },
           },
         });
-      else reply(response, "The project investigator is answering with file evidence.");
+      else if (
+        body.includes("Research Godot and Three.js without a project") &&
+        !researchAssigned
+      ) {
+        researchAssigned = true;
+        reply(response, {
+          name: "cake",
+          arguments: {
+            command: "subagents.start",
+            input: { task: "Compare Godot and Three.js game-development workflows" },
+          },
+        });
+      } else reply(response, "The investigator is answering with evidence.");
     }
   });
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
@@ -179,6 +197,31 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
       timeout: 20_000,
     });
     await panel.getByRole("button", { name: "Close Subagent" }).click();
+    await composer.click();
+    await composer.pressSequentially("Research Godot and Three.js without a project");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    const report = page
+      .locator('[data-slot="subagent-report"]')
+      .filter({ has: page.getByRole("heading", { name: "Game-development workflow comparison" }) });
+    await expect(report.locator('[data-slot="message-label"]')).toHaveText(
+      "Compare Godot and Three.js game-development workflows",
+      { timeout: 20_000 },
+    );
+    await expect(report.getByRole("listitem")).toHaveCount(2);
+    await expect(report.locator("code")).toContainText("new THREE.Scene");
+    await expect(report.getByRole("link", { name: "Godot", exact: true })).toHaveAttribute(
+      "href",
+      "https://godotengine.org/",
+    );
+    expect(JSON.stringify(researchRequests)).not.toContain("PROJECT_CONTEXT_SENTINEL");
+    expect(JSON.stringify(researchRequests)).not.toContain("PRIVATE_TOOL_OUTPUT");
+    expect(JSON.stringify(researchRequests)).toContain("no guaranteed web/search access");
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    await page.reload();
+    await expect(
+      report.getByRole("heading", { name: "Game-development workflow comparison" }),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(report).toHaveCount(1);
     const workerContext = JSON.stringify(workerRequests);
     expect(workerContext).toContain("PROJECT_CONTEXT_SENTINEL");
     expect(workerContext).toContain("PRIVATE_TOOL_OUTPUT");

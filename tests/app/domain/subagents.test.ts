@@ -12,6 +12,7 @@ import {
   SubscriptionRef,
 } from "effect";
 import { describe } from "vitest";
+import { TestClock } from "effect/testing";
 import * as subagents from "../../../src/domain/subagents/subagents";
 import {
   defaultApplicationState,
@@ -20,6 +21,7 @@ import {
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
 import {
   makeCakeSessionRuntimesLayer,
+  PiSessionError,
   type CakeSessionRuntimeAcquireOptions,
   type CakeSessionRuntimes,
   type CakeSessionRuntimesAdapter,
@@ -114,7 +116,9 @@ interface Fixture {
   readonly parentMessages: Ref.Ref<ReadonlyArray<string>>;
 }
 
-const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.fn.Return<Fixture> {
+const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (
+  failStart = false,
+): Effect.fn.Return<Fixture> {
   const childStarted = yield* Queue.unbounded<string>();
   const childGates = yield* Ref.make<ReadonlyMap<string, Deferred.Deferred<void>>>(new Map());
   const constructions = yield* Ref.make(0);
@@ -136,7 +140,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
       sessionId,
       sessionFile: options.ephemeral ? "" : `/sessions/${sessionId}.jsonl`,
       workspacePath: options.cwd,
-      parts: options.projectInvestigation
+      parts: options.ephemeral
         ? [
             {
               id: "system",
@@ -265,7 +269,16 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
             (count) => count + (options.sessionId?.startsWith("parent") ? 0 : 1),
           ),
         ),
-        Effect.as(runtime(options)),
+        Effect.andThen(() =>
+          failStart && options.auxiliary
+            ? Effect.fail(
+                new PiSessionError({
+                  operation: "create",
+                  message: "Fixture worker failed to load",
+                }),
+              )
+            : Effect.succeed(runtime(options)),
+        ),
       ),
     changelog: () => Effect.succeed("# Changelog"),
   };
@@ -276,7 +289,7 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
     makeSubagentEnvironmentLayer({
       location: (workingDirectory) =>
         Effect.succeed({
-          workingDirectory,
+          workingDirectory: workingDirectory ?? "/home",
           agentDirectory: "/agent",
           sessionDirectory: "/private-sessions",
           trusted: true,
@@ -352,11 +365,80 @@ const cakeChatParent = (fixture: Fixture): subagents.SubagentParentRuntime => ({
 });
 
 describe("Cake Chat project investigators", () => {
+  it.effect(
+    "reports a failed runtime acquisition as failed-to-start with no invented worker activity",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture(true);
+        yield* Effect.gen(function* () {
+          yield* subagents.start({ task: "Cannot start" }, cakeChatParent(fixture));
+          const report = Schema.decodeUnknownSync(subagents.SubagentResult)(
+            yield* Queue.take(fixture.reports),
+          );
+          assert.equal(report.status, "error");
+          assert.equal(report.failurePhase, "start");
+          assert.match(report.error ?? "", /Fixture worker failed to load/);
+          assert.deepEqual(report.parts, []);
+          assert.equal(yield* Queue.size(fixture.childStarted), 0);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
+  it.effect(
+    "starts project-free isolated research, delivers once, follows up on the same handle and expires",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        yield* Effect.gen(function* () {
+          const caller = { ...cakeChatParent(fixture), workingDirectory: "/unrelated-repository" };
+          const receipt = yield* subagents.start(
+            { task: "Compare Godot and Three.js", instructions: "Cite actually inspected sources" },
+            caller,
+          );
+          const sessionId = yield* Queue.take(fixture.childStarted);
+          const options = (yield* Ref.get(fixture.constructedOptions)).find(
+            (item) => item.sessionId === sessionId,
+          );
+          assert.ok(options);
+          assert.equal(options.cwd, "/home");
+          assert.equal(options.ephemeral, true);
+          assert.equal(options.projectInvestigation, undefined);
+          assert.deepEqual(options.tools, ["read", "bash", "message_parent"]);
+          assert.match(
+            options.isolatedSystemPrompt ?? "",
+            /no project instructions, skills, extensions or MCP/,
+          );
+          assert.match(options.isolatedSystemPrompt ?? "", /no guaranteed web\/search access/);
+          assert.equal(receipt.projectPath, undefined);
+          yield* completeChild(fixture, sessionId);
+          const report = Schema.decodeUnknownSync(subagents.SubagentResult)(
+            yield* Queue.take(fixture.reports),
+          );
+          assert.equal(report.status, "complete");
+          assert.equal(report.projectPath, undefined);
+          assert.equal(report.parts.length, 1);
+          yield* subagents.prompt(
+            "parent-cake-chat",
+            receipt.handleId,
+            "Compare deployment",
+            "follow-up",
+            true,
+          );
+          assert.equal(yield* Queue.take(fixture.childStarted), sessionId);
+          yield* completeChild(fixture, sessionId);
+          yield* Queue.take(fixture.reports);
+          assert.equal(yield* Queue.size(fixture.reports), 0);
+          assert.equal(yield* Ref.get(fixture.constructions), 1);
+          yield* TestClock.adjust("30 minutes");
+          const coordinator = yield* SubagentCoordinator;
+          assert.equal((yield* SubscriptionRef.get(coordinator.state)).handles.size, 0);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
   it.effect("validates registered trusted project roots before constructing a worker", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture();
       yield* Effect.gen(function* () {
-        for (const projectPath of [undefined, "/missing", "/untrusted", "/project/worktree"])
+        for (const projectPath of ["/missing", "/untrusted", "/project/worktree"])
           assert.ok(
             (yield* subagents
               .start(

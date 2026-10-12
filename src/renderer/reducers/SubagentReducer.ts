@@ -36,8 +36,8 @@ export function applySubagentUpdate(
       const releasedIndex = model.releasedHandleIds.indexOf(update.activity.handleId);
       if (releasedIndex >= 0) model.releasedHandleIds.splice(releasedIndex, 1);
     } else if (update._tag === "Removed") {
-      const index = model.activities.findIndex((activity) => activity.handleId === update.handleId);
-      if (index >= 0) model.activities.splice(index, 1);
+      // Resource disposal does not erase the last observed outcome or live history.
+      // The next authoritative snapshot drops process-local activity as usual.
       if (!model.releasedHandleIds.includes(update.handleId))
         model.releasedHandleIds.push(update.handleId);
     } else model.backgroundActive = update.active;
@@ -64,6 +64,7 @@ function upsertSubagentActivity(model: SubagentCatalog, activity: SubagentActivi
       ? undefined
       : Schema.decodeUnknownSync(conversationSnapshotSchema.fields.usage)(activity.usage);
   target.error = activity.error;
+  target.failurePhase = activity.failurePhase;
 }
 
 function assertUnique(values: readonly string[], label: string) {

@@ -35,6 +35,7 @@ export class Message extends Model {
   deliveryState: DeliveryState | undefined;
   renderAs: TextRenderAs | undefined;
   crossSession: CrossSessionMetadata | undefined;
+  subagentReport: Extract<UiPart, { kind: "text" }>["subagentReport"];
   scheduled: ScheduledOrigin | undefined;
   queuedInput: Extract<UiPart, { kind: "text" }>["queuedInput"];
   response: PromptCacheResponse | undefined;
@@ -95,6 +96,7 @@ export class Message extends Model {
         this.deliveryState = part.deliveryState;
         this.renderAs = part.renderAs;
         this.crossSession = part.crossSession;
+        this.subagentReport = part.subagentReport;
         this.scheduled = part.scheduled;
         this.queuedInput = part.queuedInput;
         this.response = part.response;
@@ -203,6 +205,7 @@ export class Message extends Model {
           deliveryState: this.deliveryState,
           renderAs: this.renderAs,
           crossSession: this.crossSession,
+          subagentReport: this.subagentReport,
           scheduled: this.scheduled,
           queuedInput: this.queuedInput,
           response: this.response,

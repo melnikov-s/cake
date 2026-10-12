@@ -71,7 +71,7 @@ function toolResult(
   };
 }
 
-test("opens a released subagent in a read-only side chat", async () => {
+test("opens completed historical subagent results in a read-only side chat", async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), "cake-subagent-work-log-smoke-"));
   const userData = join(temporaryRoot, "user-data");
   const project = join(temporaryRoot, "project");
@@ -244,7 +244,7 @@ test("opens a released subagent in a read-only side chat", async () => {
     await expect(subagent).toContainText("Tell one short programming joke");
     await expect(subagent).toContainText("Background · 2 waits");
     await expect(subagent).toContainText("openai-codex/gpt-5.6-sol");
-    await expect(subagent).toContainText("Released");
+    await expect(subagent).toHaveAttribute("data-status", "complete");
     await expect(subagent).not.toContainText(
       "The loop opened a bakery because it knew how to roll.",
     );
@@ -257,7 +257,7 @@ test("opens a released subagent in a read-only side chat", async () => {
       "data-presentation",
       "side-by-side",
     );
-    await expect(sideChat).toContainText("Released");
+    await expect(sideChat).toContainText("complete");
     await expect(sideChat).toContainText("The loop opened a bakery because it knew how to roll.");
     await expect(sideChat.locator("textarea")).toHaveCount(0);
     await sideChat.getByRole("button", { name: "Close Subagent" }).click();
@@ -357,9 +357,9 @@ test("never restores an interrupted subagent as running", async () => {
     await log.locator(":scope > summary").click();
     const subagent = log.locator('[data-slot="subagent-call"]');
     await expect(subagent).toHaveCount(1);
-    await expect(subagent).toHaveAttribute("data-status", "released");
-    await expect(subagent).toContainText("Released");
-    await expect(subagent.getByRole("button", { name: "Open subagent chat" })).toHaveCount(1);
+    await expect(subagent).toHaveAttribute("data-status", "unavailable");
+    await expect(subagent).toContainText("Detailed history was not retained");
+    await expect(subagent.getByRole("button", { name: "Open subagent chat" })).toHaveCount(0);
     await expect(log.locator(".animate-pulse")).toHaveCount(0);
   } finally {
     await application.close();

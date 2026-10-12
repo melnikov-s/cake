@@ -63,7 +63,7 @@ import { coordinatorSystemPrompt } from "./coordinator-system-prompt";
 import { abortDurableActiveTurn, startDurableQueuedInput } from "./durable-chat-queue";
 import { registerAgentDirectoryExtensionProviders } from "../pi/runtime/extension-providers";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
-import { SubagentResult } from "../../contracts/subagents/subagent-data";
+import { SubagentResult, SubagentReportOrigin } from "../../contracts/subagents/subagent-data";
 import { Option } from "effect";
 import {
   durableInputPresentation,
@@ -381,6 +381,7 @@ export async function createDurableCakeChatRuntime(
     attachments: Attachment[],
     id?: string,
     markdown = false,
+    subagentReport?: SubagentReportOrigin,
   ) => {
     // Defense in depth: no caller may submit payload-bearing attachments to the coordinator.
     if (attachments.some((attachment) => attachment.kind !== "input"))
@@ -392,7 +393,10 @@ export async function createDurableCakeChatRuntime(
       (await engine.harness.snapshot(LiveDoc, engine.root.id, BACKGROUND_CONTEXT))?.run !==
         undefined;
     const content = [
-      { type: "text" as const, text: durableInputText(text, attachments, markdown, busy) },
+      {
+        type: "text" as const,
+        text: durableInputText(text, attachments, markdown, busy, subagentReport),
+      },
       // Reference attachments have no image parts.
     ];
     return engine.root.submit(
@@ -485,6 +489,7 @@ export async function createDurableCakeChatRuntime(
               text,
               status: "complete",
               deliveryState: item.mode === "steer" ? "steering" : "queued",
+              subagentReport: presentationOf(item.content).subagentReport,
               crossSession: crossSession?.metadata,
               queuedInput: queuedInput(item, id),
             });
@@ -543,13 +548,16 @@ export async function createDurableCakeChatRuntime(
     },
     async notifySubagentCompletion(result) {
       const parsed = Schema.decodeUnknownOption(SubagentResult)(result);
-      const provenance = Option.isSome(parsed)
-        ? `\n\nWorker provenance: ${JSON.stringify({ handleId: parsed.value.handleId, projectPath: parsed.value.projectPath, status: parsed.value.status, resolvedModel: parsed.value.resolvedModel, fastMode: parsed.value.fastMode, usage: parsed.value.usage })}`
-        : "";
+      const provenance: SubagentReportOrigin | undefined = Option.isSome(parsed)
+        ? Schema.decodeUnknownSync(SubagentReportOrigin)(parsed.value)
+        : undefined;
       const submission = await admit(
-        subagentCompletionMessage(result) + provenance,
+        subagentCompletionMessage(result),
         "follow-up",
         [],
+        undefined,
+        true,
+        provenance,
       );
       await submission.wait(BACKGROUND_CONTEXT);
     },

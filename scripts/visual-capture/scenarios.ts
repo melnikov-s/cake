@@ -15,9 +15,17 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { Harness, createRegistry, UserEntry, AssistantEntry } from "@earendil-works/pi-durable";
+import {
+  Harness,
+  createRegistry,
+  UserEntry,
+  AssistantEntry,
+  ToolResultEntry,
+} from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { createModels } from "@earendil-works/pi-durable-ai";
+import { durableInputText } from "../../src/services/pi-durable/durable-input-presentation.ts";
+import { researchOrigin, researchMarkdown } from "../../tests/fixtures/subagent-report.ts";
 import { expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type { VisualCaptureTheme } from "./arguments.ts";
 import type { CakeArtifactV1 } from "../../src/contracts/artifacts/artifact-contract.ts";
@@ -1731,6 +1739,114 @@ const cakeChatScenario: VisualCaptureScenario = {
   region: (page) => page.locator("body"),
 };
 
+const subagentReportsScenario: VisualCaptureScenario = {
+  name: "subagent-reports",
+  description:
+    "Cake Chat failed start and attributed safe Markdown research report from durable originals",
+  states: ["failed-start", "completed-report"],
+  async seed(paths, theme) {
+    await cakeChatScenario.seed(paths, theme);
+    const storage = await openNodeSqliteStorage(
+      join(paths.cakeHome, "pi", "global-chat", "coordinator.sqlite"),
+    );
+    const harness = await Harness.open(
+      storage,
+      { models: createModels(), registry: createRegistry() },
+      BACKGROUND_CONTEXT,
+    );
+    try {
+      const root = await harness.root(BACKGROUND_CONTEXT);
+      await root.commit(async (tx) => {
+        await tx.appendEntry(AssistantEntry, root.id, {
+          model: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: "failed-start-call",
+                  name: "cake",
+                  arguments: {
+                    command: "subagents.start",
+                    input: { projectPath: "/missing-project", task: "Inspect a missing project" },
+                  },
+                },
+              ],
+              timestamp: 4,
+              api: "anthropic-messages",
+              provider: "anthropic",
+              model: "visual-fixture",
+              stopReason: "toolUse",
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              },
+            },
+          ],
+        });
+        await tx.appendEntry(ToolResultEntry, root.id, {
+          model: [
+            {
+              role: "toolResult",
+              toolCallId: "failed-start-call",
+              toolName: "cake",
+              content: [
+                {
+                  type: "text",
+                  text: "That project is not registered. Select an exact project root from app.state.",
+                },
+              ],
+              isError: true,
+              timestamp: 5,
+            },
+          ],
+          data: { diagnostics: [] },
+        });
+        await tx.appendEntry(UserEntry, root.id, {
+          model: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: durableInputText(researchMarkdown, [], true, false, researchOrigin),
+                },
+              ],
+              timestamp: 6,
+            },
+          ],
+        });
+      }, BACKGROUND_CONTEXT);
+    } finally {
+      await harness.close(BACKGROUND_CONTEXT);
+      await storage.close(BACKGROUND_CONTEXT);
+    }
+  },
+  async prepare(page, state) {
+    await cakeChatScenario.prepare(page, "default");
+    const report = page.locator('[data-slot="subagent-report"]');
+    await expect(
+      report.getByRole("heading", { name: "Game-development workflow comparison" }),
+    ).toBeVisible();
+    await expect(report.locator("code")).toContainText("new THREE.Scene");
+    if (state === "failed-start") {
+      const log = page.locator('[data-slot="activity-group"]').last();
+      await log.locator(":scope > summary").click();
+      await expect(log).toContainText("failed to start");
+      await expect(log).toContainText("No worker was created");
+      await expect(log.getByRole("button", { name: "Open subagent chat" })).toHaveCount(0);
+      await log.scrollIntoViewIfNeeded();
+    } else await report.scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator("body"),
+};
+
 const cakeChatArtifactScenario: VisualCaptureScenario = {
   name: "cake-chat-artifact",
   description: "Cake Chat session-scoped artifacts opening in an isolated side pane",
@@ -2736,6 +2852,7 @@ export const visualCaptureScenarios = [
   newSessionScenario,
   sessionSearchScenario,
   cakeChatScenario,
+  subagentReportsScenario,
   cakeChatArtifactScenario,
   cakeChatInspectorScenario,
   taskInputAttachmentsScenario,

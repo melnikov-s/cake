@@ -3,7 +3,10 @@ import { CakeModelSelection } from "../model-presets/cake-model-selection";
 export const subagentTaskSchema = Schema.Struct({
   task: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
   projectPath: Schema.optionalKey(
-    Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)),
+    Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)).annotate({
+      description:
+        "Cake Chat only: exact registered project root for project-aware investigation. Omit for general research without repository context.",
+    }),
   ),
   model: Schema.optionalKey(CakeModelSelection),
   instructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(32_768))),

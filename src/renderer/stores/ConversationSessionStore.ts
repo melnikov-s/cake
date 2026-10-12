@@ -319,6 +319,7 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
     return this.model.parts.flatMap((part) =>
       part.kind === "text" &&
       part.role === "user" &&
+      !part.subagentReport &&
       (part.deliveryState === "queued" || part.deliveryState === "steering")
         ? [
             {
@@ -451,7 +452,13 @@ export class ConversationSessionStore extends Store<ConversationSessionStoreProp
 
   private async editQueuedPrompt(id: string) {
     const part = this.model.parts.find((item) => item.partKey === id);
-    if (!part?.queuedInput || part.queuedInput.command || part.crossSession || part.scheduled)
+    if (
+      !part?.queuedInput ||
+      part.queuedInput.command ||
+      part.crossSession ||
+      part.scheduled ||
+      part.subagentReport
+    )
       return;
     const input = part.queuedInput;
     if (!(await this.editRuntimeQueuedPrompt(id, "remove")) || this.signal.aborted) return;
