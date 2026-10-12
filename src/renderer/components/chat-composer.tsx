@@ -40,7 +40,7 @@ export const ChatComposer = observer(function ChatComposer({
     <div
       data-slot="composer-leading-accessory"
       className={cn(
-        "absolute z-20 block transition-[opacity,transform] duration-300 ease-out @4xl/composer-dock:left-auto @4xl/composer-dock:right-full",
+        "absolute z-20 block transition-[opacity,transform] duration-300 ease-out motion-reduce:transition-none @4xl/composer-dock:left-auto @4xl/composer-dock:right-full",
         input
           ? "left-[calc(0.25rem-1px)] top-[calc(0.25rem-1px)] @4xl/composer-dock:top-[calc(1rem-1px)] @4xl/composer-dock:mr-[calc(1.5rem+1px)]"
           : "left-4 top-4 @4xl/composer-dock:top-7 @4xl/composer-dock:mr-3",

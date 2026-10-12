@@ -317,7 +317,7 @@ export const WorktreePill = observer(function WorktreePill({
             </span>
             {targetWarning && (
               <span
-                className="shrink-0 cursor-default text-amber-600 dark:text-amber-400"
+                className="shrink-0 cursor-default text-warning"
                 data-testid="worktree-target-warning"
                 role="img"
                 aria-label={targetWarning}

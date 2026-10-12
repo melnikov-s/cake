@@ -8,12 +8,11 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default: "border border-border bg-muted text-muted-foreground",
-        accent: "border border-accent/30 bg-accent/15 text-accent font-semibold",
+        accent: "border border-accent/30 bg-accent/15 text-foreground font-semibold",
         secondary: "bg-muted text-foreground",
         outline: "border border-border text-foreground",
-        destructive:
-          "border border-destructive/30 bg-destructive/15 text-destructive font-semibold",
-        success: "border border-success/30 bg-success/15 text-success font-semibold",
+        destructive: "border border-destructive/30 bg-destructive/15 text-foreground font-semibold",
+        success: "border border-success/30 bg-success/15 text-foreground font-semibold",
         mono: "font-mono border border-border/70 text-muted-foreground",
       },
       size: {

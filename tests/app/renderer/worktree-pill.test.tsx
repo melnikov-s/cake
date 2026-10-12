@@ -307,6 +307,8 @@ describe("WorktreePill", () => {
 
     const warning = container.querySelector<HTMLElement>('[data-testid="worktree-target-warning"]');
     expect(warning).not.toBeNull();
+    expect(warning!.classList.contains("text-warning")).toBe(true);
+    expect(warning!.getAttribute("aria-label")).toBe("The merge target has uncommitted changes.");
     expect(container.textContent).not.toContain("The merge target has uncommitted changes.");
 
     act(() => warning!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));

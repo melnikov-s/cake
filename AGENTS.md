@@ -11,7 +11,7 @@ Cake is Pi expressed as a desktop GUI. Pi owns the coding-agent engine and trans
 Read the matching documents before implementing; consult proportionally rather than treating exhaustive reading as a prerequisite to a focused investigation:
 
 - Architecture, feature ownership, or process boundaries: [agent architecture](docs/development/agent-architecture.md), then the relevant architecture documents it references.
-- Renderer UI, chat, or state: [renderer implementation](docs/development/renderer-implementation.md), then the authoritative architecture and component/library references.
+- Renderer UI, chat, or state: [renderer implementation](docs/development/renderer-implementation.md), then the authoritative architecture and component/library references. Before UI or styling changes, also read [Cake's visual design guide](DESIGN.md); use it for visual intent, while existing theme tokens and shared components remain authoritative for implemented values.
 - Effect workflows: `.agents/skills/effect-ts/SKILL.md`, `node_modules/effect/AGENTS.md`, and their relevant linked references. The pinned Effect source is the API authority.
 - Tests, builds, debugging, Electron interactions, or visual checks: [agent verification](docs/development/agent-verification.md), then its relevant focused guides.
 

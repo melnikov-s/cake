@@ -14,6 +14,7 @@ import { Button } from "./ui/button";
 import { IconButton } from "./ui/icon-button";
 import { NavItem } from "./ui/nav-item";
 import { Badge } from "./ui/badge";
+import { Callout } from "./ui/callout";
 import { SegmentedControlGroup, SegmentedControlButton } from "./ui/segmented-control";
 
 export interface ModelGroup {
@@ -562,7 +563,9 @@ export const ModelPicker = observer(function ModelPicker({
                 </section>
               )}
               {!draftThinkingLevel && (draftModel.availableThinkingLevels?.length ?? 0) > 0 && (
-                <p className="mt-2 text-xs text-amber-500">Choose a reasoning level to continue.</p>
+                <Callout variant="warning" className="mt-2 p-2">
+                  Choose a reasoning level to continue.
+                </Callout>
               )}
               <footer className="mt-3 flex justify-end gap-2 border-t border-border pt-2.5">
                 <Button variant="ghost" size="sm" onClick={close}>

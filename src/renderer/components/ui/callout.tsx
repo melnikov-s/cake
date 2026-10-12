@@ -9,7 +9,7 @@ const calloutVariants = cva(
       variant: {
         default: "border-l-border bg-muted/65 text-foreground",
         info: "border-l-accent bg-accent/10 text-foreground",
-        warning: "border-l-accent bg-accent/15 text-foreground",
+        warning: "border-l-warning bg-warning/15 text-foreground",
         error: "border-l-destructive bg-destructive/15 text-foreground",
       },
     },

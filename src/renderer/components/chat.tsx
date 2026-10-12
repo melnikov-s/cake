@@ -119,7 +119,7 @@ const Usage = observer(function Usage({ store }: { store: ChatStore }) {
         {percent === undefined ? "—" : `${percent}%`}
       </span>
       {context && (
-        <span className="text-muted-foreground/60 max-[640px]:hidden">
+        <span className="text-muted-foreground max-[640px]:hidden">
           ·{" "}
           {`${formatCompactTokenCount(context.tokens)}/${formatCompactTokenCount(context.contextWindow)}`}
         </span>
