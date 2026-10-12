@@ -634,15 +634,26 @@ for (const scenario of [
         await expect.poll(() => transcript.evaluate((element) => element.scrollTop)).toBe(0);
         await page.waitForTimeout(250);
 
-        await transcript.evaluate((element) => {
-          element.scrollTop = element.scrollHeight;
-          element.dispatchEvent(new Event("scroll"));
-        });
+        await transcript.hover({ position: { x: 20, y: 200 } });
+        await page.mouse.wheel(0, 10_000);
+        await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+          "First scroll fixture transcript item 47",
+        );
+        await expect
+          .poll(() =>
+            transcript.evaluate(
+              (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+            ),
+          )
+          .toBeLessThanOrEqual(1);
         await page.waitForTimeout(150);
         await secondSession.locator(".session-row").click();
         await expect(secondSession).toHaveClass(/active/);
         await firstSession.locator(".session-row").click();
         await expect(firstSession).toHaveClass(/active/);
+        await expect(transcript.locator('[data-slot="transcript-item"]').last()).toContainText(
+          "First scroll fixture transcript item 47",
+        );
         await expect
           .poll(() =>
             transcript.evaluate(
