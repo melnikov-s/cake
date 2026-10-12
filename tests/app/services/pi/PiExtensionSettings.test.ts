@@ -21,7 +21,7 @@ async function fixture(settings: object = {}) {
   );
   await writeFile(
     join(root, "settings.json"),
-    JSON.stringify({ ...settings, unrelated: { retained: true } }),
+    JSON.stringify({ defaultTools: ["+codemode"], ...settings, unrelated: { retained: true } }),
   );
   const run = <A, E>(effect: Effect.Effect<A, E, PiSettings>) =>
     Effect.runPromise(
@@ -41,6 +41,35 @@ afterEach(async () => {
 });
 
 describe("Pi extension settings", () => {
+  it("seeds missing native startup tools, restores Cake defaults, and retains unrelated settings", async () => {
+    const { root, run } = await fixture({ defaultTools: undefined });
+    const loaded = await run(Effect.flatMap(PiSettings, (service) => service.load()));
+    expect(loaded.defaultTools).toEqual(["+codemode"]);
+    const manager = SettingsManager.create(root, root, { projectTrusted: false });
+    expect(manager.getDefaultTools()).toEqual(["read", "bash", "edit", "write", "codemode"]);
+    await run(
+      Effect.flatMap(PiSettings, (service) => service.update({ key: "defaultTools", value: null })),
+    );
+    expect(JSON.parse(await readFile(join(root, "settings.json"), "utf8"))).toEqual({
+      defaultTools: ["+codemode"],
+      unrelated: { retained: true },
+    });
+    await rm(join(root, "settings.json"));
+    expect(
+      (await run(Effect.flatMap(PiSettings, (service) => service.load()))).defaultTools,
+    ).toEqual(["+codemode"]);
+  });
+
+  it.each(
+    [[], ["-codemode"], ["read"], ["+tool_search"]].map((defaultTools) => ({ defaultTools })),
+  )("preserves an explicit startup tool selection $defaultTools", async ({ defaultTools }) => {
+    const { root, run } = await fixture({ defaultTools });
+    const original = await readFile(join(root, "settings.json"), "utf8");
+    expect(
+      (await run(Effect.flatMap(PiSettings, (service) => service.load()))).defaultTools,
+    ).toEqual(defaultTools);
+    expect(await readFile(join(root, "settings.json"), "utf8")).toBe(original);
+  });
   it("discovers automatic and builtin extensions without executing them; native toggles survive Pi reload", async () => {
     const { root, list, toggle } = await fixture({
       extensions: ["-extensions/auto.ts", "-builtin:mcp"],
@@ -88,6 +117,7 @@ describe("Pi extension settings", () => {
     expect((await list()).find((entry) => entry.name === "b.ts")?.enabled).toBe(true);
     expect(JSON.parse(await readFile(join(root, "settings.json"), "utf8"))).toEqual({
       packages: [{ source: packageRoot, skills: ["!*"], prompts: [], extensions: ["-a.ts"] }],
+      defaultTools: ["+codemode"],
       unrelated: true,
     });
     await toggle(a, true);

@@ -343,7 +343,7 @@ describe("Agent Settings through the real application-control/Client/domain boun
         shellPath: "/bin/fixture",
       });
       await h.call("settings.pi.update", { key: "defaultTools", value: null });
-      expect(h.document()).not.toHaveProperty("defaultTools");
+      expect(h.document()).toHaveProperty("defaultTools", ["+codemode"]);
       const created = Schema.decodeUnknownSync(
         Schema.Struct({ presets: Schema.Array(Schema.Struct({ id: Schema.String })) }),
       )(

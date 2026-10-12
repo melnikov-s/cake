@@ -77,10 +77,17 @@ configuration or credential directory. Pi owns personal
 `mcp.json`, `mcp-auth.json`, and `mcp.log` there; project `.pi/mcp.json` loads only
 with project trust and overrides same-name personal servers.
 
-Existing tools/defaults are preserved. Discovery tools begin inactive; server
-exposure and Pi settings activate them. Configured codemode exposure opts into
-scripting, with `mode: "on"` (ordinary declarations remain visible), respecting
-`autoEnableCodemode: false`. MCP calls use Pi's tool/permission pipeline, including
+Explicit tool selections are preserved. Backend settings bootstrap seeds a missing
+Pi global `defaultTools` with `["+codemode"]`; resetting the Cake control restores
+that selection. Codemode is therefore enabled by default in eligible Project
+Sessions, with `mode: "on"` (ordinary declarations remain visible). Explicit empty
+lists, `-codemode`, project overrides and disabled extensions remain authoritative.
+Tool search still begins inactive; server exposure and Pi settings activate it.
+MCP auto-activation separately respects `autoEnableCodemode: false`.
+
+Global settings reload also refreshes the permanent Durable Cake Chat's Pi settings
+and coordinator instructions without replacing its engine, inbox or history. It is
+not a Project Session edit; the coordinator retains its restricted tool registry. MCP calls use Pi's tool/permission pipeline, including
 script-issued calls, cancellation, resources, and tool-result conversion.
 
 `/mcp`, `/mcp login`, `/mcp logout`, and `/mcp reconnect` use existing conversation

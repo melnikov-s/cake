@@ -700,7 +700,15 @@ export async function createDurableCakeChatRuntime(
       modelOptions = await projectModels();
       publish();
     },
-    reload: unsupported,
+    async reload() {
+      // Global settings reload includes Cake Chat, but is not a Project Session edit.
+      // Durable keeps its engine/history; its settings getters read this manager live.
+      await settings.reload();
+      const errors = settings.drainErrors();
+      if (errors.length) throw new Error(errors.map((error) => error.error.message).join("\n"));
+      await configureAgent();
+      publish();
+    },
     rename: unsupported,
     fork: unsupported,
     toolCompact: unsupported,

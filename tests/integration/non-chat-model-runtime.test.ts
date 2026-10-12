@@ -128,9 +128,10 @@ describe("Native non-chat model settings contract", () => {
     await fresh.prompt(script, "prompt", []);
     expect(await readFile(h.trace, "utf8")).toBe(previousCalls);
     await update("defaultTools", null);
-    expect(
-      JSON.parse(await readFile(join(h.agentDir, "settings.json"), "utf8")),
-    ).not.toHaveProperty("defaultTools");
+    expect(JSON.parse(await readFile(join(h.agentDir, "settings.json"), "utf8"))).toHaveProperty(
+      "defaultTools",
+      ["+codemode"],
+    );
   });
 
   it("projects native known/available models and non-chat-only providers without contaminating chat models", async () => {

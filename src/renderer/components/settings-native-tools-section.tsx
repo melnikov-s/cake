@@ -1,4 +1,5 @@
 import { observer } from "r-state-tree/react";
+import { cakeDefaultTools } from "../../contracts/pi/native-tool-defaults";
 import type { ProviderSettingsStore } from "../stores/ProviderSettingsStore";
 import { nativeToolSelected, updateNativeToolSelection } from "../lib/native-tool-settings";
 import { SettingsToggle } from "./settings/settings-toggle";
@@ -13,16 +14,20 @@ export const SettingsNativeToolsSection = observer(function SettingsNativeToolsS
 }) {
   const settings = providers.piSettings;
   const busy = providers.activeOperations.length > 0;
+  const usingDefaults =
+    settings?.defaultTools === null ||
+    (settings?.defaultTools?.length === cakeDefaultTools.length &&
+      settings.defaultTools.every((entry, index) => entry === cakeDefaultTools[index]));
   return (
     <section className="border-t border-border py-5" aria-labelledby="native-tools-title">
       <h3 id="native-tools-title" className="text-[15px] font-semibold text-foreground">
         Native tools & codemode
       </h3>
       <p className="my-3 text-xs leading-relaxed text-muted-foreground">
-        These backend Pi startup settings apply to eligible Project Sessions, not restricted chats.
-        Reload can enable newly added tools but does not disable removed tools in an existing
-        session. Project settings and disabled extensions may override this global list. Cake keeps
-        codemode exposure in “on” mode, preserving direct tools.
+        Codemode is enabled by default for eligible Project Sessions, not restricted chats. Reload
+        can enable newly added tools but does not disable removed tools in an existing session.
+        Project settings and disabled extensions may override this global list. Cake keeps codemode
+        exposure in “on” mode, preserving direct tools.
       </p>
       {settings ? (
         <div className="grid gap-4">
@@ -61,9 +66,9 @@ export const SettingsNativeToolsSection = observer(function SettingsNativeToolsS
           />
           <div className="flex items-center justify-between gap-4">
             <p className="text-xs text-muted-foreground" role="status">
-              {settings.defaultTools === null
-                ? "Inheriting Pi’s default tool selection"
-                : settings.defaultTools.length === 0
+              {usingDefaults
+                ? "Using Cake’s default tool selection (codemode enabled)"
+                : settings.defaultTools?.length === 0
                   ? "Explicit empty selection — built-in tools disabled"
                   : "Explicit global tool selection"}
             </p>
@@ -79,10 +84,10 @@ export const SettingsNativeToolsSection = observer(function SettingsNativeToolsS
               <Button
                 variant="outline"
                 size="sm"
-                disabled={busy || settings.defaultTools === null}
+                disabled={busy || usingDefaults}
                 onClick={() => void providers.setPiSetting({ key: "defaultTools", value: null })}
               >
-                Use Pi defaults
+                Use Cake defaults
               </Button>
             </div>
           </div>

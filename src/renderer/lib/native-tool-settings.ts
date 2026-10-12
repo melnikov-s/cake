@@ -1,6 +1,8 @@
-/** Mirrors Pi's documented list semantics for the global setting, not a session capability claim. */
+import { cakeDefaultTools } from "../../contracts/pi/native-tool-defaults";
+
+/** Mirrors Pi list semantics with Cake's unconfigured default, not a session capability claim. */
 export function nativeToolSelected(selection: readonly string[] | null, name: string): boolean {
-  const entries = selection ?? ["read", "bash", "edit", "write"];
+  const entries = selection ?? cakeDefaultTools;
   const plain = entries.filter((entry) => !entry.startsWith("+") && !entry.startsWith("-"));
   const active = new Set(
     plain.length ? plain : entries.length === 0 ? [] : ["read", "bash", "edit", "write"],
@@ -19,7 +21,9 @@ export function updateNativeToolSelection(
 ): string[] {
   // Keep plain entries: removing the last plain name would accidentally switch
   // an explicit selection back to inherited defaults. Only replace its +/- directives.
-  const entries = (selection ?? []).filter((entry) => entry !== `+${name}` && entry !== `-${name}`);
+  const entries = (selection ?? cakeDefaultTools).filter(
+    (entry) => entry !== `+${name}` && entry !== `-${name}`,
+  );
   // An explicitly empty list disables all tools; retain that basis when adding one.
   if (selection?.length === 0 && enabled) return [name];
   if (selection?.length === 0 && !enabled) return [];

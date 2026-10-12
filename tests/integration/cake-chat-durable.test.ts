@@ -3,7 +3,11 @@ import type { CakeSessionRuntimeSetup } from "../../src/services/pi/CakeSessionR
 import { mkdir, mkdtemp, readFile, rm, writeFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Deferred, Effect, ManagedRuntime } from "effect";
+import { Deferred, Effect, Layer, ManagedRuntime } from "effect";
+import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { makePiSettingsLive } from "../../src/services/pi/live/PiSettingsLive";
+import { CakeSessionRuntimes } from "../../src/services/pi/CakeSessionRuntimes";
+import { piSettingsHandlers } from "../../src/ipc/server/PiSettingsHandlers";
 import { makeTaskInputStorageLive } from "../../src/services/storage/TaskInputStorageLive";
 import { TaskInputStorage } from "../../src/services/storage/TaskInputStorage";
 import { prepareTaskInputs } from "../../src/domain/conversations/taskInputs";
@@ -172,6 +176,7 @@ async function fixture() {
   };
   return {
     directory,
+    agentDir,
     sessionDir,
     service,
     serviceRuntime,
@@ -191,6 +196,68 @@ async function fixture() {
     },
   };
 }
+
+it("saves and reloads global Pi settings while permanent Cake Chat is busy without losing its turn, queue or history", async () => {
+  const f = await fixture();
+  const { runtime } = await f.open();
+  const settingsRuntime = ManagedRuntime.make(
+    Layer.mergeAll(
+      makePiSettingsLive(f.agentDir).pipe(
+        Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+      ),
+      Layer.mock(CakeSessionRuntimes, {
+        reloadAll: () => Effect.tryPromise(() => runtime.reload!()),
+      }),
+    ),
+  );
+  cleanup.push(() => settingsRuntime.dispose());
+  f.hold(true);
+  const pending = runtime.prompt("Retain this active turn", "prompt", [], false, ids.first);
+  await Effect.runPromise(Deferred.await(f.started));
+  const queued = runtime.prompt("Retain this queued input", "follow-up", [], false, ids.second);
+  const before = await f.waitSnapshot(runtime, (snapshot) =>
+    snapshot.parts.some(
+      (part) =>
+        part.kind === "text" &&
+        part.text === "Retain this queued input" &&
+        part.deliveryState === "queued",
+    ),
+  );
+  const updated = await settingsRuntime.runPromise(
+    piSettingsHandlers["piSettings.update"]({
+      update: { key: "defaultTools", value: ["+codemode"] },
+    }),
+  );
+  expect(updated.defaultTools).toEqual(["+codemode"]);
+  await settingsRuntime.runPromise(
+    piSettingsHandlers["piSettings.update"]({
+      update: { key: "autoCompact", value: false },
+    }),
+  );
+  await settingsRuntime.runPromise(piSettingsHandlers["piSettings.reload"]());
+  const after = await runtime.snapshot();
+  expect(after.piSettings?.autoCompact).toBe(false);
+  expect(after.streaming).toBe(true);
+  expect(after.sessionFile).toBe(before.sessionFile);
+  expect(after.model).toEqual(before.model);
+  expect(after.parts).toEqual(before.parts);
+  expect(f.requests).toHaveLength(1);
+  f.hold(false);
+  f.finishes[0]!();
+  await pending;
+  await queued;
+  const settled = await f.waitSnapshot(
+    runtime,
+    (snapshot) =>
+      !snapshot.streaming &&
+      snapshot.parts.some(
+        (part) =>
+          part.kind === "text" && part.text === "Retain this queued input" && !part.deliveryState,
+      ),
+  );
+  expect(JSON.stringify(settled.parts)).toContain("Retain this active turn");
+  expect(f.requests).toHaveLength(2);
+});
 
 it("keeps attachment bytes out of provider input, originals, zoom and future memory across compaction and reopen", async () => {
   const f = await fixture();

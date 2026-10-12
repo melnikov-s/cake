@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { projectPiSettings } from "../../../src/services/pi/runtime/settings-translation";
+import { cakeDefaultTools } from "../../../src/contracts/pi/native-tool-defaults";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import type { NonChatModelPreferences } from "../../../src/contracts/models/non-chat-model-data";
 import type { PiNonChatModel } from "../../../src/contracts/pi/model-data";
@@ -91,7 +92,7 @@ async function setup(
   initial: NonChatModelPreferences = { image: reference("image-a") },
 ) {
   let entries = catalog;
-  let pi = projectPiSettings(SettingsManager.inMemory());
+  let pi = projectPiSettings(SettingsManager.inMemory({ defaultTools: [...cakeDefaultTools] }));
   const login = vi.fn<Client["models"]["login"]>(async () => {
     entries = entries.map((entry) =>
       entry.provider === "typesafe"
@@ -100,7 +101,8 @@ async function setup(
     );
   });
   const updatePi = vi.fn<Client["piSettings"]["update"]>(async (update) => {
-    if (update.key === "defaultTools") pi = { ...pi, defaultTools: update.value };
+    if (update.key === "defaultTools")
+      pi = { ...pi, defaultTools: update.value ?? [...cakeDefaultTools] };
     if (update.key === "codemodeInlineBudget") pi = { ...pi, codemodeInlineBudget: update.value };
     return pi;
   });
@@ -250,24 +252,30 @@ describe("Non-chat model settings workflow", () => {
   it("controls native codemode/tool search with additive lists, explicit empty and inherited defaults", async () => {
     using h = await setup(async () => ({}));
     await h.user.click(screen.getByRole("button", { name: "Execution & resources" }));
+    expect(screen.getByRole("switch", { name: "Codemode" }).getAttribute("aria-checked")).toBe(
+      "true",
+    );
     await h.user.click(screen.getByRole("switch", { name: "Codemode" }));
     await waitFor(() =>
       expect(h.updatePi).toHaveBeenLastCalledWith(
-        { key: "defaultTools", value: ["+codemode"] },
+        { key: "defaultTools", value: ["-codemode"] },
         expect.anything(),
       ),
     );
     await h.user.click(screen.getByRole("switch", { name: "Tool search" }));
     await waitFor(() =>
       expect(h.updatePi).toHaveBeenLastCalledWith(
-        { key: "defaultTools", value: ["+codemode", "+tool_search"] },
+        { key: "defaultTools", value: ["-codemode", "+tool_search"] },
         expect.anything(),
       ),
     );
     await h.user.click(screen.getByRole("button", { name: "Disable built-in tools" }));
     await screen.findByText("Explicit empty selection — built-in tools disabled");
-    await h.user.click(screen.getByRole("button", { name: "Use Pi defaults" }));
-    await screen.findByText("Inheriting Pi’s default tool selection");
+    await h.user.click(screen.getByRole("button", { name: "Use Cake defaults" }));
+    await screen.findByText("Using Cake’s default tool selection (codemode enabled)");
+    expect(screen.getByRole("switch", { name: "Codemode" }).getAttribute("aria-checked")).toBe(
+      "true",
+    );
     expect(h.updatePi).toHaveBeenLastCalledWith(
       { key: "defaultTools", value: null },
       expect.anything(),

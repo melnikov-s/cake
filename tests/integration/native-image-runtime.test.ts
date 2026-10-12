@@ -15,6 +15,10 @@ import {
   type AgentSession,
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { Effect, Layer } from "effect";
+import { PiSettings } from "../../src/services/pi/PiSettings";
+import { makePiSettingsLive } from "../../src/services/pi/live/PiSettingsLive";
 import { createCakeMcpExtensions } from "../../src/services/pi/runtime/mcp-integration";
 import { shutdownCakeSessionExtensions } from "../../src/services/pi/runtime/cake-session-runtime-resources";
 import { projectSessionEntries } from "../../src/services/pi/runtime/session-projection";
@@ -71,7 +75,17 @@ async function openImages(options: { authenticated?: boolean; fetch?: typeof fet
   if (options.authenticated !== false)
     await modelRuntime.setRuntimeApiKey("openrouter", "fixture-image-key");
   await modelRuntime.setRuntimeApiKey("openai", "fixture-chat-key");
-  const settingsManager = SettingsManager.inMemory({ defaultTools: ["+codemode"] });
+  // Use production bootstrap, not a fixture-only codemode opt-in.
+  await Effect.runPromise(
+    Effect.flatMap(PiSettings, (settings) => settings.load()).pipe(
+      Effect.provide(
+        makePiSettingsLive(agentDir).pipe(
+          Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+        ),
+      ),
+    ),
+  );
+  const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: true });
   const resourceLoader = new DefaultResourceLoader({
     cwd,
     agentDir,

@@ -93,7 +93,7 @@ export const agentSettingsOperations = [
     { key: "defaultTools", value: ["+codemode", "+tool_search"] },
     piSettingsSchema,
     [
-      "defaultTools: null restores Pi defaults, [] disables built-ins, plain names replace defaults, +name adds and -name removes. Both codemode and tool_search are native entries.",
+      "defaultTools: null restores Cake defaults (Pi’s ordinary tools plus codemode), [] disables built-ins, plain names replace defaults, +name adds and -name removes. Both codemode and tool_search are native entries.",
       "Reload may be queued while sessions run. Removing a tool does not disable it in an already-started session; restart that session. Enabling tools never invokes a billed model.",
     ],
   ),

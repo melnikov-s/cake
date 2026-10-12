@@ -33,8 +33,8 @@ export interface CakeMcpIntegrationOptions {
  * a mismatch rejects initialization rather than using another credential root.
  * Builtin metadata preserves Pi's disable and replacement-extension behavior.
  *
- * Tools start inactive. Pi configuration controls discovery activation; configuring
- * codemode exposure is an opt-in to scripting. Use mode "on", never "only".
+ * Discovery tools register inactive. Cake seeds Pi's unconfigured global selection
+ * with +codemode; explicit Pi configuration controls activation. Use mode "on", never "only".
  * Do not replace the session's existing tools/defaultTools selection.
  *
  * First slice uses Pi's RPC-mode /mcp status/login/logout/reconnect commands.

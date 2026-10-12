@@ -2,6 +2,7 @@ import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { Effect, FileSystem, Layer, Path, Schema } from "effect";
 import { makePiSettingsLayer, type PiExecutionSettingUpdate } from "../PiSettings";
 import { PiSettingsError } from "../../../contracts/pi/pi-settings-errors";
+import { cakeDefaultTools } from "../../../contracts/pi/native-tool-defaults";
 import { atomicWriteFile } from "../../storage/internal/atomicFile";
 import { listPiExtensionSettings, togglePiExtensionSetting } from "./PiExtensionSettings";
 
@@ -15,8 +16,7 @@ export function mergePiExecutionSetting(
 ): PiGlobalSettingsDocument {
   const next = { ...current };
   if (update.key === "defaultTools") {
-    if (update.value === null) delete next.defaultTools;
-    else next.defaultTools = [...update.value];
+    next.defaultTools = [...(update.value ?? cakeDefaultTools)];
   } else {
     const codemode =
       current.codemode === undefined
@@ -39,13 +39,9 @@ export const makePiSettingsLive = (agentDirectory: string) =>
           operation: "update",
           message: cause instanceof Error ? cause.message : String(cause),
         });
-      const writeExecutionSetting = Effect.fn("PiSettingsLive.writeExecutionSetting")(function* (
-        update: PiExecutionSettingUpdate,
-      ) {
-        // Serialized with all global Pi settings operations by PiSettings. Read/merge
-        // the original document rather than rewriting Pi's known-settings projection.
+      const readDocument = Effect.fn("PiSettingsLive.readDocument")(function* () {
         const exists = yield* fs.exists(document).pipe(Effect.mapError(error));
-        const current = exists
+        return exists
           ? yield* fs.readFileString(document).pipe(
               Effect.mapError(error),
               Effect.flatMap((text) =>
@@ -55,10 +51,10 @@ export const makePiSettingsLive = (agentDirectory: string) =>
               ),
             )
           : {};
-        const next = yield* Effect.try({
-          try: () => mergePiExecutionSetting(current, update),
-          catch: error,
-        });
+      });
+      const writeDocument = Effect.fn("PiSettingsLive.writeDocument")(function* (
+        next: PiGlobalSettingsDocument,
+      ) {
         yield* atomicWriteFile(
           fs,
           path,
@@ -67,6 +63,22 @@ export const makePiSettingsLive = (agentDirectory: string) =>
           (_stage, cause) => error(cause),
         );
       });
+      const writeExecutionSetting = Effect.fn("PiSettingsLive.writeExecutionSetting")(function* (
+        update: PiExecutionSettingUpdate,
+      ) {
+        // Serialized by PiSettings. Merge native fields without dropping extension settings.
+        const current = yield* readDocument();
+        const next = yield* Effect.try({
+          try: () => mergePiExecutionSetting(current, update),
+          catch: error,
+        });
+        yield* writeDocument(next);
+      });
+      // Bootstrap before runtimes open: Pi remains the settings/selection authority.
+      // Explicit lists (including [] and -codemode) are never overwritten.
+      const current = yield* readDocument();
+      if (current.defaultTools === undefined)
+        yield* writeDocument({ ...current, defaultTools: [...cakeDefaultTools] });
       const manager = yield* Effect.sync(() =>
         SettingsManager.create(agentDirectory, agentDirectory, { projectTrusted: false }),
       );

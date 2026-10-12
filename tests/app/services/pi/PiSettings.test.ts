@@ -44,8 +44,8 @@ describe("PiSettings", () => {
         yield* settings.update({ key: "defaultTools", value: [] });
         expect(manager.getDefaultTools()).toEqual([]);
         yield* settings.update({ key: "defaultTools", value: null });
-        expect(manager.getDefaultTools()).toBeUndefined();
-        expect((yield* settings.load()).defaultTools).toBeNull();
+        expect(manager.getDefaultTools()).toEqual(["read", "bash", "edit", "write", "codemode"]);
+        expect((yield* settings.load()).defaultTools).toEqual(["+codemode"]);
       }).pipe(
         Effect.provide(
           makePiSettingsLayer(manager, (update) =>
@@ -57,6 +57,17 @@ describe("PiSettings", () => {
       );
     },
   );
+
+  it("enables codemode in the unconfigured Cake selection and preserves opt-outs", () => {
+    expect(nativeToolSelected(null, "codemode")).toBe(true);
+    expect(nativeToolSelected(null, "tool_search")).toBe(false);
+    expect(nativeToolSelected([], "codemode")).toBe(false);
+    expect(nativeToolSelected(["-codemode"], "codemode")).toBe(false);
+    expect(updateNativeToolSelection(null, "tool_search", true)).toEqual([
+      "+codemode",
+      "+tool_search",
+    ]);
+  });
 
   it("preserves explicit replacement, inherited +/- and explicit empty tool selections when toggling", () => {
     const cases: (readonly string[] | null)[] = [

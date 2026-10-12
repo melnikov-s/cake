@@ -84,10 +84,6 @@ test("native images appear in Chat and only explicitly requested originals are s
     mkdir(join(cakeHome, "state"), { recursive: true }),
   ]);
   await writeFile(join(project, "reference.png"), original);
-  await writeFile(
-    join(project, ".pi", "settings.json"),
-    JSON.stringify({ defaultTools: ["+codemode"] }),
-  );
   // Only change the external endpoint/auth. OpenRouter's builtin native images API is retained.
   await writeFile(
     join(cakeHome, "pi", "models.json"),
