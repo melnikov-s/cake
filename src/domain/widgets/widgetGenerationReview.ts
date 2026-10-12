@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import type { WidgetPreview } from "../../contracts/widgets/widget-preview";
 import type { JsonValue } from "../../ipc/json-contract";
 import { extractRepairedWidget } from "../../services/widgets/inline-widget-service";
 import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
@@ -18,6 +19,7 @@ export interface InlineWidgetGenerationResult {
   readonly language: "react";
   readonly source: string;
   readonly generationSessionId: string;
+  readonly preview: WidgetPreview;
 }
 
 export class WidgetGenerationReviewError extends Schema.TaggedError<WidgetGenerationReviewError>()(
@@ -129,9 +131,10 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
           ),
         );
       diagnostic = [diagnostic, ...capture.diagnostics].join("\n").slice(0, 8_000);
-      return yield* dependencies
+      const review = yield* dependencies
         .review(source, diagnostic, capture.pngBase64)
         .pipe(mapFailure("review", "infrastructure"));
+      return { response: review.response, pngBase64: capture.pngBase64 };
     }).pipe(Effect.ensuring(candidate.release), Effect.result);
 
     if (outcome._tag === "Failure") {
@@ -149,7 +152,12 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
 
     const response = outcome.success.response.trim();
     if (response === "ACCEPT_CURRENT")
-      return { language: "react" as const, source, generationSessionId: generated.sessionId };
+      return {
+        language: "react" as const,
+        source,
+        generationSessionId: generated.sessionId,
+        preview: { mimeType: "image/png" as const, data: outcome.success.pngBase64 },
+      };
     if (replacements >= 2)
       return yield* fail(
         "review",

@@ -42,6 +42,7 @@ describe("Cake widget presentation operation", () => {
       language: "react" as const,
       source: "export default function Widget() { return <main>Runtime</main>; }",
       generationSessionId: "generation-1",
+      preview: { mimeType: "image/png" as const, data: "cG5n" },
     }));
     const registry = new CakeOperationRegistry(
       createCakeArtifactOperations(
@@ -75,8 +76,12 @@ describe("Cake widget presentation operation", () => {
     );
     expect(result.details).toMatchObject({
       command: "widgets.present",
-      result: { artifactId: "runtime-overview" },
+      result: { artifactId: "runtime-overview", exactRef: "cake://artifact/runtime-overview@r1" },
     });
+    expect(result.content[1]).toEqual({ type: "image", mimeType: "image/png", data: "cG5n" });
+    expect(result.text).not.toContain("export default");
+    expect(result.text).not.toContain("generation-1");
+    expect(JSON.stringify(result.details)).not.toContain("cG5n");
     expect(persistArtifact).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "widget",
@@ -94,6 +99,37 @@ describe("Cake widget presentation operation", () => {
     );
   });
 
+  it.each([
+    ["malformed preview", "not base64"],
+    ["oversized immutable snapshot", "a".repeat(1_048_576)],
+  ])("rejects %s before publication instead of dropping visual evidence", async (_name, data) => {
+    const persistArtifact = vi.fn();
+    const appendEntry = vi.fn();
+    const registry = new CakeOperationRegistry(
+      createCakeArtifactOperations(
+        { appendEntry },
+        {
+          persistArtifact,
+          generateInlineWidget: async () => ({
+            language: "react",
+            source: "export default () => null",
+            generationSessionId: "generation-1",
+            preview: { mimeType: "image/png", data },
+          }),
+        },
+      ),
+    );
+    await expect(
+      registry.invoke(widgetRequest, {
+        signal: new AbortController().signal,
+        toolCallId: "tool-1",
+        runtime,
+      }),
+    ).rejects.toThrow();
+    expect(persistArtifact).not.toHaveBeenCalled();
+    expect(appendEntry).not.toHaveBeenCalled();
+  });
+
   it("does not persist or append a pointer when cancellation wins after generation", async () => {
     const controller = new AbortController();
     const persistArtifact = vi.fn();
@@ -109,6 +145,7 @@ describe("Cake widget presentation operation", () => {
               language: "react" as const,
               source: "export default function Widget() { return null; }",
               generationSessionId: "generation-1",
+              preview: { mimeType: "image/png" as const, data: "cG5n" },
             };
           }),
         },

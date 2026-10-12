@@ -337,7 +337,7 @@ describe("ArtifactProjection", () => {
     ).rejects.toThrow();
   });
 
-  it("emits canonical files for every stored kind and excludes private widget source", () => {
+  it("emits canonical files for every stored kind with selective widget source access", () => {
     const base = {
       protocol: "cake.artifact/v1" as const,
       id: "artifact",
@@ -371,7 +371,8 @@ describe("ArtifactProjection", () => {
         kind: "widget",
         payload: {
           language: "react",
-          source: "PRIVATE GENERATED SOURCE",
+          source: "GENERATED IMPLEMENTATION",
+          preview: { mimeType: "image/png", data: "cG5n" },
           brief: "Public brief",
           generationSessionId: "generation-1",
         },
@@ -388,11 +389,20 @@ describe("ArtifactProjection", () => {
       ["content.html.txt", "fallback.md"],
       ["imported-report.txt", "fallback.md"],
       ["media.json", "media.png", "fallback.md"],
-      ["brief.json", "fallback.md"],
+      ["brief.json", "preview.png", "source.tsx.txt", "fallback.md"],
     ]);
     const widgetProjection = artifactProjectionContents(snapshots.at(-1)!);
     expect(
-      Buffer.concat(widgetProjection.map((item) => Buffer.from(item.content))).toString(),
-    ).not.toContain("PRIVATE GENERATED SOURCE");
+      Buffer.from(widgetProjection.find((item) => item.name === "preview.png")!.content).toString(),
+    ).toBe("png");
+    expect(
+      Buffer.from(
+        widgetProjection.find((item) => item.name === "source.tsx.txt")!.content,
+      ).toString(),
+    ).toBe("GENERATED IMPLEMENTATION");
+    const brief = Buffer.from(
+      widgetProjection.find((item) => item.name === "brief.json")!.content,
+    ).toString();
+    expect(JSON.parse(brief)).toEqual({ language: "react", brief: "Public brief" });
   });
 });

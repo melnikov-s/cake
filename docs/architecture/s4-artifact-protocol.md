@@ -140,7 +140,7 @@ is the Cake-home artifact repository, and the v1 inline protocol cap is
 ## Tools and interaction lifecycle
 
 The built-in `cake` gateway exposes session-contextual `artifacts.list`,
-`artifacts.search`, `artifacts.history`, `artifacts.resolve-reference`,
+`artifacts.search`, `artifacts.history`, `artifacts.resolve-reference`, `artifacts.preview`,
 `artifacts.create`, `artifacts.update`, `artifacts.replace`, `artifacts.restore`,
 `artifacts.link`, and `artifacts.unlink` operations over global lineages and their effective links.
 There is no payload-returning `artifacts.read` operation. Agents create
@@ -212,8 +212,9 @@ The primary agent creates a one-off visual explanation with the non-blocking
 `widgets.present` Cake operation. Its tool input contains a stable message-scoped ID, title,
 self-contained presentation brief, required data, and readable Markdown
 fallback. The primary agent does not author React or HTML. The brief remains in
-the Pi transcript, while the generated implementation does not enter the
-project session's model context.
+the Pi transcript. Publication supplies the accepted review PNG as a native model-visible
+image with its exact revision reference and digest. Generated implementation source is
+available selectively through exact-revision file reads; it is not automatically injected.
 
 Cake checks that the active configured model is available, authenticated and
 supports image input, then forks a hidden, persisted Pi conversation from the
@@ -244,14 +245,35 @@ including the final replacement, receives screenshot review. Cancellation and
 capture/provider infrastructure failures stop the operation rather than consuming source-repair
 attempts. Hidden windows and transient compiled tokens are released on settlement.
 
-Only accepted source reaches existing widget artifact persistence. The Pi
-pointer remains bounded metadata, while the fallback is available through the
-exact-revision projection. Generation, repair and visual review turns continue the
-same persisted restricted Pi branch with the same resolved model and inherited
-context. PNG image blocks are retained in that private Pi transcript, not in the widget
-artifact or the primary conversation. The screenshot covers a bounded preview,
-not every interaction or possible delayed update; review is visual feedback,
-not a guarantee of correctness or aesthetic quality.
+Only accepted source and its matching review capture reach existing widget artifact
+persistence. The PNG is stored as bounded base64 in the revision's `payload.preview`,
+inside the same content-addressed JSON blob as source and brief. The revision digest
+binds all of these bytes. There is no independent screenshot store or retention root.
+The existing 1 MiB serialized artifact limit still applies, including the preview;
+oversized publication fails instead of dropping the image. The Pi pointer remains
+bounded metadata. Publication (including widget replacement and restore) supplies the
+stored capture as a native image tool-result block, never base64 in text/details.
+The user sees the live interactive widget; that rendering is distinct from the image
+actually supplied to the agent.
+
+Generation, repair and visual review continue the same persisted restricted Pi branch
+with the same model and inherited context. All review image blocks, including rejected
+candidates, remain in that private Pi transcript under existing session retention.
+Publication does not copy branch history, review commentary, or rejected images into
+caller context. Native publication/preview image blocks are also retained by Pi in the
+caller's ordinary tool-result transcript under its existing session lifecycle; artifact
+blob collection does not independently delete those transcript copies. The accepted capture uses the existing hidden Electron host and bounded
+layout-settle policy; no extra capture is taken at publication or retrieval. It covers
+one bounded initial state, not every interaction, theme, viewport, or delayed update.
+Review is visual feedback, not a guarantee of correctness or aesthetic quality.
+
+The accepted PNG follows artifact retention and garbage collection: a reachable lineage
+retains every historical revision; unlinking alone is not deletion. Existing collection
+removes unreachable content-addressed blobs after permanent deletion and at startup,
+failing closed on uncertain reachability. Disposable projected PNG/source files follow
+the existing session/lineage projection cleanup and integrity/rematerialization policy.
+Cancellation, review failure, or a publication CAS conflict cannot mutate a prior
+revision or replace its capture.
 
 React source is bundled as TSX and must default-export one component. Approved
 imports are React and Cake's bundled D3 modules (`d3` or approved `d3-*`). Prefer
@@ -301,14 +323,32 @@ Each projection contains bounded metadata plus canonical public files for the
 artifact kind. It is never persistence authority, cannot publish, verifies its
 files before reuse, and is safely rematerialized from the content-addressed
 repository after modification or deletion. Artifact payloads and metadata are not
-automatically injected into prompts or transcripts. Trusted static system guidance
+automatically injected into prompts. The accepted preview is the explicit native-image
+exception at widget publication and `artifacts.preview`; lists and resolution stay
+metadata-only. Trusted static system guidance
 directs agents to discover artifacts through `artifacts.list` or `artifacts.search`
 and resolve an exact readable path through `artifacts.resolve-reference`. When the
 session has effective direct or family links, one metadata-free system line notes
-that linked artifacts exist. Widget projections contain only the public brief, metadata, and
-fallback; generated source never enters them. Pasted unlinked refs require an
-explicit link: temporary read leases are deferred until Cake has a truthful
-lifetime and persistence owner for them.
+that linked artifacts exist. Widget projections contain `brief.json`, `fallback.md`,
+`preview.png` when retained, and `source.tsx.txt` or `source.html.txt`. Source is inert
+read-only text, not executed by projection; neither it nor private generation-session
+provenance is automatically supplied to the agent. Pasted unlinked refs require an
+explicit link: temporary read leases are deferred until Cake has a truthful lifetime
+and persistence owner for them.
+
+`artifacts.preview` requires an exact `@rN` reference and uses the same effective-link
+resolver as ordinary artifact inspection. It returns exact metadata and the stored
+native PNG image. Use a direct Cake tool call for native images; codemode's text/structured
+result does not itself expose native image blocks. Alternatively resolve the exact
+reference and read `preview.png` with an image-capable file tool. Historical snapshots
+without a retained capture report an explicit unavailable error; there is no new render,
+private-transcript recovery, latest-revision substitution, or mutation of old snapshots.
+
+Before implementation, inspect the user-approved exact preview, not merely the originating
+brief. Read source selectively for ambiguous layout or dynamic behavior, without importing
+the generation conversation. After implementation, compare a real implementation screenshot
+against that same approved revision and verify relevant interactions. Approval identifies
+an artifact revision; it does not snapshot arbitrary user interaction state in a live widget.
 
 Normal artifact presentation does not expose generated Source or a renderer-local
 Repair control. User-requested repair is a durable `artifacts.replace`: a new
@@ -318,7 +358,7 @@ It retains the artifact branch's context rather than silently importing later
 parent messages. Forking leaves the previous accepted revision's transcript
 unchanged, including when a revision fails or loses a publication conflict. Cake compiles and visually reviews the
 returned source through the same boundary before publishing the next revision.
-The generated implementation never enters the primary project-session context.
+The generated implementation enters agent context only through selective source reads.
 Readable fallback remains required for explicit artifact inspection, export,
 history, and render-failure recovery, but is not automatically injected into
 transcript context or duplicated as routine viewer chrome. If a

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
@@ -108,6 +108,76 @@ const publish = Effect.fn("Test.publishArtifact")(function* (
 });
 
 describe("artifact reachability garbage collection", () => {
+  it.effect(
+    "retains accepted widget captures with revision history and deletes their existing blobs only when unreachable",
+    () =>
+      Effect.gen(function* () {
+        const { root, layer } = yield* Effect.promise(() => testLayer({ pointerIds: ["design"] }));
+        yield* Effect.gen(function* () {
+          const storage = yield* ArtifactStorage;
+          const widget = (number: number): CakeArtifactV1 => ({
+            ...snapshot("design", "author", number),
+            kind: "widget",
+            payload: {
+              language: "react",
+              source: `export default () => <main>r${number}</main>`,
+              brief: "Intent",
+              generationSessionId: "private",
+              preview: {
+                mimeType: "image/png",
+                data: Buffer.from(`png-r${number}`).toString("base64"),
+              },
+            },
+          });
+          const first = yield* storage.publishWithLink(
+            {
+              lineageId: id("design"),
+              expectedLatestRevision: 0,
+              snapshot: widget(1),
+              workingDirectory: "/project",
+            },
+            {
+              lineageId: id("design"),
+              target: { type: "session", sessionId: "author" },
+              selection: { mode: "follow-latest" },
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+          );
+          const second = yield* storage.publish({
+            lineageId: id("design"),
+            expectedLatestRevision: 1,
+            snapshot: widget(2),
+            workingDirectory: "/project",
+          });
+          yield* storage.removeTargetLinks({ type: "session", sessionId: "author" });
+          expect((yield* storage.listRevisions(id("design"))).map((item) => item.snapshot)).toEqual(
+            [widget(1), widget(2)],
+          );
+          expect((yield* collectGarbage()).lineagesRemoved).toBe(0);
+          const blobPaths = [first, second].map((value) =>
+            join(root, "artifacts", "blobs", `${value.metadata.digest}.json`),
+          );
+          for (const blob of blobPaths)
+            expect(yield* Effect.promise(() => readFile(blob, "utf8"))).toContain('"preview"');
+          const selection = yield* storage.collectionSnapshot();
+          const collected = yield* storage.collectUnreachable({
+            expectedCatalogToken: selection.token,
+            survivingSessionIds: [],
+            survivingFamilyIds: [],
+            transcriptLineageIds: [],
+          });
+          expect(collected).toMatchObject({
+            lineagesRemoved: 1,
+            revisionsRemoved: 2,
+            blobsRemoved: 2,
+          });
+          for (const blob of blobPaths)
+            yield* Effect.promise(async () => {
+              await expect(readFile(blob)).rejects.toThrow();
+            });
+        }).pipe(Effect.provide(layer));
+      }),
+  );
   it.effect(
     "retains direct, surviving-family, and transcript-pointer lineages with full history",
     () =>

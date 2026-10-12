@@ -553,15 +553,27 @@ describe("Cake artifact management operations", () => {
       language: "react" as const,
       source: "export default function Revised(){return null}",
       generationSessionId: "revision-branch",
+      preview: { mimeType: "image/png" as const, data: "cG5n" },
     }));
     callbacks.reviseInlineWidget = revise;
-    await registry.invoke(
+    const result = await registry.invoke(
       {
         command: "artifacts.replace",
         input: { lineageId: "chart", expectedRevision: 1, instructions: "Use clearer labels" },
       },
       context(),
     );
+    expect(result.content[1]).toEqual({ type: "image", mimeType: "image/png", data: "cG5n" });
+    expect(result.details).toMatchObject({ result: { exactRef: "cake://artifact/chart@r2" } });
+    await expect(
+      registry.invoke(
+        { command: "artifacts.preview", input: { reference: "chart@r1" } },
+        context(),
+      ),
+    ).rejects.toThrow("No retained rendered preview");
+    await expect(
+      registry.invoke({ command: "artifacts.preview", input: { reference: "chart" } }, context()),
+    ).rejects.toThrow();
     expect(revise).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: "session-1",

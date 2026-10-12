@@ -1,5 +1,6 @@
 import { SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import { dirname, resolve } from "node:path";
+import type { WidgetPreview } from "../../../contracts/widgets/widget-preview";
 import { Effect, type FileSystem, type Path } from "effect";
 import {
   type ReviewSessionProjection,
@@ -71,6 +72,7 @@ export interface InlineWidgetGenerationResult {
   language: "react";
   source: string;
   generationSessionId: string;
+  preview: WidgetPreview;
 }
 
 export interface InlineWidgetRevisionRequest {

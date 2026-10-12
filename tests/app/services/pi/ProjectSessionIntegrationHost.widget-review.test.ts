@@ -59,7 +59,10 @@ function host(options: {
       expect(inlineWidgetDocument(widget.token)).toMatch(/^<html>\w+<\/html>$/);
       calls.push(`capture:${widget.token.slice(-1)}`);
       if (options.captureError) throw options.captureError;
-      return { pngBase64: "cG5n", diagnostics: ["widget=560x480"] };
+      return {
+        pngBase64: Buffer.from(`png-${token}`).toString("base64"),
+        diagnostics: ["widget=560x480"],
+      };
     },
     runWidgetRepair: async (input) => {
       repairInputs.push(input);
@@ -170,6 +173,14 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     const fixture = host({ reviews: [source("Second"), "ACCEPT_CURRENT"] });
     const result = await generate(fixture.integration, request());
     expect(result.source).toContain("function Second");
+    expect(result.preview).toEqual({
+      mimeType: "image/png",
+      data: Buffer.from("png-2").toString("base64"),
+    });
+    expect(fixture.reviewInputs).toEqual([
+      expect.objectContaining({ pngBase64: Buffer.from("png-1").toString("base64") }),
+      expect.objectContaining({ pngBase64: result.preview.data }),
+    ]);
     expect(fixture.capturedTokens).toHaveLength(2);
     for (const token of fixture.capturedTokens) expect(inlineWidgetDocument(token)).toBeUndefined();
     expect(fixture.calls).toEqual([

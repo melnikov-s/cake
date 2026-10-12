@@ -15,6 +15,7 @@ import type {
 } from "./sidecar-runtime";
 import { captureWidgetConversation } from "./widget-conversation";
 import { ArtifactProjectionMetadata } from "../../../contracts/artifacts/artifact-projection-data";
+import { cakeOperationImageResult } from "./cake-operation-registry";
 import type {
   CakeOperationDefinition,
   CakeOperationExecutionContext,
@@ -250,7 +251,7 @@ export function createCakeArtifactOperations(
       topic: "artifacts",
       summary: "List bounded metadata for artifacts effectively linked to this session.",
       guidance: [
-        "Artifact payloads are never injected into context or returned by Cake operations. Inspect canonical exact-revision files with ordinary read, rg, or shell tools.",
+        "Lists return metadata, not payloads. Resolve exact-revision files and read only what you need. Widget publication and artifacts.preview supply a native image to the agent; the user's live inline rendering alone is not model-visible evidence.",
         "Stable cake://artifact/<id> references follow latest; exact @rN references are reproducible.",
       ],
       inputSchema: Schema.Struct({}),
@@ -316,6 +317,7 @@ export function createCakeArtifactOperations(
       summary: "Resolve a linked stable or exact artifact reference to an exact read-only path.",
       guidance: [
         "An unlinked pasted URI is not readable. Explicitly link it first; temporary read leases are deferred until Cake has a durable lease owner.",
+        "For approved widget designs, read preview.png or call artifacts.preview with the approved exact @rN reference before implementation. The brief describes intent, not the approved rendering. Read source.tsx.txt/source.html.txt selectively for ambiguous layout or behavior; do not import private generation history. Compare a real implementation screenshot against that same approved revision.",
       ],
       inputSchema: artifactResolveSchema,
       outputSchema: ArtifactProjectionMetadata,
@@ -325,6 +327,38 @@ export function createCakeArtifactOperations(
         // SAFETY: CakeOperationRegistry parsed input with artifactResolveSchema.
         const parsed = input as typeof artifactResolveSchema.Type;
         return (await resolveArtifact(parsed.reference)).metadata;
+      },
+    },
+    {
+      command: "artifacts.preview",
+      topic: "artifacts",
+      summary: "Inspect the retained rendered preview of an exact linked widget revision.",
+      guidance: [
+        "Use the user-approved exact @rN reference, never latest. Link an unlinked reference first. This returns the accepted review capture, not a new render or the private generation conversation.",
+        "The capture is one bounded initial-state view; inspect projected source selectively for interactions or layout details it cannot show. Compare your implementation's real screenshot against this approved preview.",
+      ],
+      inputSchema: Schema.Struct({
+        reference: artifactReferenceSchema.check(Schema.isPattern(/@r[1-9][0-9]*$/)),
+      }),
+      examples: [{ input: { reference: "cake://artifact/architecture-map@r1" } }],
+      result:
+        "Exact revision metadata plus a native PNG image supplied to the agent. No source or generation history.",
+      limitations: [
+        "Historical revisions without a retained preview report an error; Cake never substitutes latest or regenerates an approved snapshot.",
+        "Native image results require a direct cake tool call, not a structured codemode call. Alternatively read the resolved preview.png file with an image-capable read tool.",
+      ],
+      async execute(input) {
+        // SAFETY: the operation schema validates the exact reference.
+        const { reference } = input as { reference: string };
+        const resolved = await resolveArtifact(reference);
+        const artifact = resolved.record.artifact;
+        if (artifact.kind !== "widget")
+          throw new Error("Rendered previews are only available for widgets");
+        if (!artifact.payload.preview)
+          throw new Error(`No retained rendered preview for ${resolved.metadata.exactRef}`);
+        return cakeOperationImageResult(resolved.metadata, [
+          { type: "image", ...artifact.payload.preview },
+        ]);
       },
     },
     {
@@ -456,7 +490,7 @@ export function createCakeArtifactOperations(
       summary: "Replace an existing artifact or revise a widget from instructions.",
       guidance: [
         "Use this operation when the user asks to edit, fix, revise, or repair an artifact. Cake preserves its stable ID and publishes the next immutable revision.",
-        "Markdown replacements require the complete document; prefer artifacts.update for targeted text edits. File replacements snapshot a replacement workspace-relative path. Widget replacements accept revision instructions and run isolated generation, rendering, and visual review before publication.",
+        "Markdown replacements require the complete document; prefer artifacts.update for targeted text edits. File replacements snapshot a replacement workspace-relative path. Widget replacements accept revision instructions and run isolated generation, rendering, and visual review before publication, returning the new revision's accepted PNG as a native image.",
       ],
       inputSchema: artifactReplaceSchema,
       examples: [
@@ -531,6 +565,7 @@ export function createCakeArtifactOperations(
               ...current.artifact.payload,
               source: generated.source,
               generationSessionId: generated.generationSessionId,
+              preview: generated.preview,
             },
           };
           if (update.title) artifact = { ...artifact, title: update.title };
@@ -539,8 +574,14 @@ export function createCakeArtifactOperations(
         artifact = { ...artifact, sessionId };
         const record = await persist(artifact, sessionId);
         appendPointer(record, pointerOrigin(context));
-        return (await resolveArtifact(`cake://artifact/${record.artifact.id}@r${revision}`))
-          .metadata;
+        const resolved = await resolveArtifact(
+          `cake://artifact/${record.artifact.id}@r${revision}`,
+        );
+        return record.artifact.kind === "widget" && record.artifact.payload.preview
+          ? cakeOperationImageResult(resolved.metadata, [
+              { type: "image", ...record.artifact.payload.preview },
+            ])
+          : resolved.metadata;
       },
     },
     {
@@ -549,14 +590,20 @@ export function createCakeArtifactOperations(
       summary: "Publish a historical snapshot as the next immutable revision.",
       inputSchema: artifactRestoreSchema,
       examples: [{ input: { lineageId: "design-plan", sourceRevision: 1, expectedRevision: 3 } }],
-      result: "The newly published exact revision metadata and read-only path.",
+      result:
+        "The newly published exact revision metadata and read-only path, plus a native image for widgets with a retained preview.",
       async execute(input, context) {
         if (!options.restoreArtifact) throw new Error("Artifact restore is unavailable");
         // SAFETY: CakeOperationRegistry parsed input with artifactRestoreSchema.
         const parsed = input as typeof artifactRestoreSchema.Type;
         const restored = await options.restoreArtifact(parsed);
         appendPointer(restored.record, pointerOrigin(context));
-        return restored.metadata;
+        return restored.record.artifact.kind === "widget" &&
+          restored.record.artifact.payload.preview
+          ? cakeOperationImageResult(restored.metadata, [
+              { type: "image", ...restored.record.artifact.payload.preview },
+            ])
+          : restored.metadata;
       },
     },
     {
@@ -598,6 +645,7 @@ export function createCakeArtifactOperations(
       guidance: [
         "Prefer ordinary inline Markdown—including Mermaid and small tables—whenever it communicates the result clearly. Create a widget only for a substantial, reusable, or genuinely interactive/visual deliverable, especially when requested.",
         "Supply the explanation goal, audience, verified facts/source references, bounded data, and a readable Markdown fallback. Do not write the generated React source yourself.",
+        "Publication supplies the accepted rendered preview to the agent as a native image, with an immutable exact reference. The user sees a live interactive widget. Before implementing an approved design, inspect that exact preview (artifacts.preview or the resolved preview.png), not merely your original brief. Read projected source selectively when needed and compare the implementation's real screenshot against the approved revision.",
         "The specialist can combine ordinary React explanations, D3/SVG diagrams, filters and details inside one widget. Describe the intended relationships and useful interactions, not pixel coordinates or a mandatory graph DSL.",
         "The published visualization is shown once inline, expanded by default with a collapse control. Do not repeat its embed or add an Open artifact link after publication. A standalone ![Title](cake://artifact/<id>@rN) paragraph can show a saved revision without a publication surface in this conversation; duplicate embeds of published exact revisions are omitted. Ordinary [Title](cake://artifact/<id>) links stay compact. Use exact revisions for historical explanations.",
       ],
@@ -615,11 +663,12 @@ export function createCakeArtifactOperations(
         },
       ],
       result:
-        "The persisted widget artifact ID after generation, rendered screenshot review, and acceptance complete.",
+        "The persisted widget ID, revision, digest and exact reference plus its accepted review PNG as a native model-visible image; no generated source or private branch history.",
       limitations: [
+        "The immutable snapshot, including accepted PNG bytes, must fit the existing 1 MiB serialized artifact limit. Oversized publication fails rather than silently omitting the preview.",
         "Generated widgets have no filesystem, Node, Electron, parent-DOM or Cake API access. CSP blocks fetch/XHR/WebSocket; generic widgets permit passive HTTPS/data images and media. Supply local data and request self-contained output.",
         "Generation inherits the caller's ancestor context at creation time, excluding sibling branches and unfinished tool calls. Revisions follow the artifact's generation branch, not later parent messages.",
-        "Every successfully rendered candidate is reviewed from an actual Cake Electron screenshot. Review screenshots are retained in private Pi widget-session transcripts under Cake's existing session retention policy.",
+        "Every successfully rendered candidate is reviewed from an actual Cake Electron screenshot. Private review history stays private; only the accepted capture is retained in the immutable artifact snapshot and supplied to the caller. The capture covers one bounded initial state, not every interaction, theme, or viewport.",
       ],
       async execute(input, context) {
         // SAFETY: CakeOperationRegistry parsed this value with the definition's input schema.
@@ -654,6 +703,7 @@ export function createCakeArtifactOperations(
               source: generated.source,
               brief: serialized,
               generationSessionId: generated.generationSessionId,
+              preview: generated.preview,
             },
             fallback: widget.fallback,
             interaction: { mode: "present" },
@@ -661,7 +711,17 @@ export function createCakeArtifactOperations(
           sessionId,
         );
         appendPointer(record, pointerOrigin(context));
-        return { artifactId: record.artifact.id, artifactRevision: record.artifact.revision };
+        if (record.artifact.kind !== "widget" || !record.artifact.payload.preview)
+          throw new Error("Published widget is missing its accepted preview");
+        return cakeOperationImageResult(
+          {
+            artifactId: record.artifact.id,
+            artifactRevision: record.artifact.revision,
+            exactRef: `cake://artifact/${record.artifact.id}@r${record.artifact.revision}`,
+            digest: record.digest,
+          },
+          [{ type: "image", ...record.artifact.payload.preview }],
+        );
       },
     });
 

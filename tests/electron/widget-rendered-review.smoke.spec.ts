@@ -10,6 +10,9 @@ type CaptureResult = {
   diagnostics: string[];
   persistedBeforeCapture: boolean;
   persistedAfterCapture: boolean;
+  publishedImage: { type: "image"; mimeType: "image/png"; data: string };
+  retainedImage: { type: "image"; mimeType: "image/png"; data: string };
+  exactRef: string;
 };
 
 test("production widget review captures settled sandbox pixels before persistence", async () => {
@@ -127,6 +130,13 @@ export default function DelayedReviewFixture() {
     await expect.poll(captureWindowCount).toBe(0);
     expect(result.persistedBeforeCapture).toBe(false);
     expect(result.persistedAfterCapture).toBe(true);
+    expect(result.publishedImage).toEqual({
+      type: "image",
+      mimeType: "image/png",
+      data: result.pngBase64,
+    });
+    expect(result.retainedImage).toEqual(result.publishedImage);
+    expect(result.exactRef).toBe("cake://artifact/delayed-review@r1");
     expect(result.diagnostics).toContain("verticalOverflow=false");
     await expect(page.getByRole("dialog")).toHaveCount(0);
 

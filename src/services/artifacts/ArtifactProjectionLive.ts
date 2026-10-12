@@ -62,7 +62,7 @@ const mediaExtension = (src: string) => {
   return "bin";
 };
 
-/** Canonical public files only. Widget implementation source is deliberately unreachable here. */
+/** Canonical revision files. Source is opt-in through ordinary file reads, never injected. */
 export const artifactProjectionContents = (snapshot: CakeArtifactV1): ProjectionContent[] => {
   const fallback = textContent("fallback.md", snapshot.fallback.markdown);
   switch (snapshot.kind) {
@@ -123,11 +123,17 @@ export const artifactProjectionContents = (snapshot: CakeArtifactV1): Projection
             {
               language: snapshot.payload.language,
               brief: snapshot.payload.brief,
-              generationSessionId: snapshot.payload.generationSessionId,
             },
             null,
             2,
           )}\n`,
+        ),
+        ...(snapshot.payload.preview
+          ? [byteContent("preview.png", Buffer.from(snapshot.payload.preview.data, "base64"))]
+          : []),
+        textContent(
+          snapshot.payload.language === "react" ? "source.tsx.txt" : "source.html.txt",
+          snapshot.payload.source,
         ),
         fallback,
       ];

@@ -41,11 +41,26 @@ describe.each([
 
   it("shares readable revisions across sessions rather than assuming shared files or context", () => {
     expect(prompt).toContain("Share artifact references with other sessions");
-    expect(prompt).toContain("recipients must discover or link the artifact and read");
+    expect(prompt).toContain(
+      "recipients must discover or link the artifact and inspect the relevant exact revision",
+    );
     expect(prompt).toContain("Revise the same artifact");
     expect(prompt).toContain("use an exact revision for an approved spec or assignment baseline");
     expect(prompt).toContain("If your tools cannot publish artifacts");
     expect(prompt).toContain("have the owning Project Session publish the document");
+  });
+
+  it("requires approved visual evidence while keeping dynamic behavior and private history distinct", () => {
+    expect(prompt).toContain("accepted review PNG as a native image to the caller");
+    expect(prompt).toContain("live interactive rendering shown to the user is a separate surface");
+    expect(prompt).toContain("inspect the approved exact @rN preview");
+    expect(prompt).toContain("The brief describes intent; it is not the approved visual design");
+    expect(prompt).toContain("source.tsx.txt/source.html.txt selectively");
+    expect(prompt).toContain("do not import private generation conversation history");
+    expect(prompt).toContain(
+      "Compare the implementation's real screenshot against the same approved revision",
+    );
+    expect(prompt).toContain("verify relevant interactions");
   });
 
   it("preserves ordinary chat, maintained project docs, and requested files", () => {

@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { WidgetPreview } from "../contracts/widgets/widget-preview";
 
 const ARTIFACT_PROTOCOL = "cake.artifact/v1" as const;
 export const MAX_ARTIFACT_INPUT_BYTES = 1_048_576;
@@ -96,6 +97,8 @@ const widgetArtifactSchema = Schema.Struct({
     source: textSchema,
     brief: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
     generationSessionId: idSchema,
+    // Historical snapshots predate retained captures; never synthesize their preview.
+    preview: Schema.optionalKey(WidgetPreview),
   }),
 });
 const fileNameSchema = Schema.String.check(

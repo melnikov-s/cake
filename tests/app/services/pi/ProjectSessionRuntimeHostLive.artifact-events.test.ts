@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
@@ -8,6 +8,9 @@ import * as artifactWorkflows from "../../../../src/domain/artifacts/artifactWor
 import { ArtifactLineageId } from "../../../../src/contracts/artifacts/artifact-lineage";
 import type { CakeArtifactV1 } from "../../../../src/ipc/artifact-contract";
 import type { CakeEvent } from "../../../../src/ipc/cake-rpc-contract";
+import { ArtifactProjection } from "../../../../src/services/artifacts/ArtifactProjection";
+import { CakeOperationRegistry } from "../../../../src/services/pi/runtime/cake-operation-registry";
+import { createCakeArtifactOperations } from "../../../../src/services/pi/runtime/cake-artifact-operations";
 import { makeArtifactProjectionLive } from "../../../../src/services/artifacts/ArtifactProjectionLive";
 import { WorkspaceFileExport } from "../../../../src/services/filesystem/WorkspaceFileExport";
 import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
@@ -143,6 +146,115 @@ const effectiveLineageIds = (
   );
 
 describe("ProjectSessionRuntimeHostLive artifact events", () => {
+  it("hands off an accepted image and retrieves the pinned revision in an independent session after replacement", async () => {
+    const { host, root, runtime } = await makeHarness();
+    const parent = await runtime.runPromise(host.runtimeIntegrations(root, "parent"));
+    const independent = await runtime.runPromise(host.runtimeIntegrations(root, "independent"));
+    const makeRegistry = (integration: ProjectSessionRuntimeIntegrations) =>
+      new CakeOperationRegistry(
+        createCakeArtifactOperations(
+          { appendEntry: () => undefined },
+          {
+            ...integration,
+            persistArtifact: requireArtifactOperations(integration).persistArtifact,
+            generateInlineWidget: async () => ({
+              language: "react",
+              source: "export default function First(){return <main>Approved</main>}",
+              generationSessionId: "private-generation",
+              preview: {
+                mimeType: "image/png",
+                data: Buffer.from("accepted-r1").toString("base64"),
+              },
+            }),
+          },
+        ),
+      );
+    const context = (sessionId: string) => ({
+      signal: new AbortController().signal,
+      toolCallId: "handoff",
+      runtime: {
+        sessionManager: {
+          getSessionId: () => sessionId,
+          getSessionFile: () => "/sessions/parent.jsonl",
+          getLeafId: () => "assistant",
+        },
+      },
+    });
+    const published = await makeRegistry(parent).invoke(
+      {
+        command: "widgets.present",
+        input: {
+          widget: {
+            id: "approved-design",
+            title: "Approved",
+            brief: "Intent only",
+            fallback: { markdown: "Fallback" },
+          },
+        },
+      },
+      context("parent"),
+    );
+    expect(published.content[1]).toEqual({
+      type: "image",
+      mimeType: "image/png",
+      data: Buffer.from("accepted-r1").toString("base64"),
+    });
+    expect(published.details).toMatchObject({
+      result: { exactRef: "cake://artifact/approved-design@r1" },
+    });
+
+    const resolved = await parent.resolveArtifact!("cake://artifact/approved-design@r1");
+    if (resolved.record.artifact.kind !== "widget") throw new Error("Expected widget");
+    await parent.persistArtifact!({
+      ...resolved.record.artifact,
+      revision: 2,
+      payload: {
+        ...resolved.record.artifact.payload,
+        source: "export default function Second(){return <main>Different</main>}",
+        preview: { mimeType: "image/png", data: Buffer.from("accepted-r2").toString("base64") },
+      },
+    });
+    const registry = makeRegistry(independent);
+    const request = {
+      command: "artifacts.preview",
+      input: { reference: "cake://artifact/approved-design@r1" },
+    };
+    await expect(registry.invoke(request, context("independent"))).rejects.toThrow();
+    await independent.linkArtifact!(request.input.reference);
+    const preview = await registry.invoke(request, context("independent"));
+    expect(preview.content[1]).toEqual(published.content[1]);
+    expect(preview.details).toMatchObject({
+      result: {
+        selectedRevision: 1,
+        latestRevision: 2,
+        linkMode: "pinned",
+        exactRef: request.input.reference,
+      },
+    });
+    expect(preview.text).not.toContain("private-generation");
+    expect(preview.text).not.toContain("export default");
+    const pinned = await independent.resolveArtifact!(request.input.reference);
+    expect(await readFile(join(pinned.metadata.exactPath, "preview.png"), "utf8")).toBe(
+      "accepted-r1",
+    );
+    expect(await readFile(join(pinned.metadata.exactPath, "source.tsx.txt"), "utf8")).toContain(
+      "function First",
+    );
+    expect(pinned.record.digest).toBe(resolved.record.digest);
+    // Disposable cache removal must not lose the stored capture or change revision selection.
+    await runtime.runPromise(
+      Effect.flatMap(ArtifactProjection, (projection) => projection.cleanupSession("independent")),
+    );
+    expect((await registry.invoke(request, context("independent"))).content[1]).toEqual(
+      published.content[1],
+    );
+    const second = await parent.resolveArtifact!("cake://artifact/approved-design@r2");
+    expect(await readFile(join(second.metadata.exactPath, "preview.png"), "utf8")).toBe(
+      "accepted-r2",
+    );
+    await independent.unlinkArtifact!("approved-design");
+    await parent.unlinkArtifact!("approved-design");
+  });
   it("invalidates successful agent family links and unlinks but not failed mutations", async () => {
     const { artifacts, families, host, events, root, runtime } = await makeHarness();
     await runtime.runPromise(
