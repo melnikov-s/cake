@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Effect } from "effect";
-import { CAKE_CHAT_SESSION_ID } from "../../src/ipc/cake-chat-data";
+import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-data";
 import {
   CakeChatDurable,
   makeCakeChatDurableLive,
