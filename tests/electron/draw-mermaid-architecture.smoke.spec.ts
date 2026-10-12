@@ -97,7 +97,21 @@ test("authors and restores a readable named Mermaid diagram in Electron", async 
     const boardDirectory = join(paths.cakeHome, "state", "draw-boards", "boards");
     const boardFiles = await readdir(boardDirectory);
     expect(boardFiles).toHaveLength(1);
-    const persisted = JSON.parse(await readFile(join(boardDirectory, boardFiles[0]!), "utf8"));
+    const boardFile = join(boardDirectory, boardFiles[0]!);
+    // Restoration canonicalizes linear origins before the native onChange is
+    // persisted. Wait for that lifecycle, rather than reading the prior scene.
+    await expect
+      .poll(async () => {
+        const snapshot = JSON.parse(await readFile(boardFile, "utf8"));
+        const documentElements: typeof elements = snapshot.data.snapshot.elements;
+        const arrows = documentElements.filter(({ type }) => type === "arrow");
+        return (
+          arrows.length > 0 &&
+          arrows.every(({ points }) => points?.[0]?.[0] === 0 && points[0][1] === 0)
+        );
+      })
+      .toBe(true);
+    const persisted = JSON.parse(await readFile(boardFile, "utf8"));
     expect(persisted.data.snapshot.appState).toMatchObject({
       scrollX: expect.any(Number),
       scrollY: expect.any(Number),
@@ -147,8 +161,9 @@ test("authors and restores a readable named Mermaid diagram in Electron", async 
       new Set(["group", "node", "edge"]),
     );
 
-    // The reference is the official converter + native skeleton conversion in a real Electron
-    // renderer, without Cake's ID mapping, placement, or Mermaid layout transforms.
+    // Compare the official converter + native conversion and restore binding repair,
+    // matching Excalidraw's persisted-document normalization in a real Electron renderer.
+    // The reference does not use Cake's ID mapping, placement, or layout transforms.
     await page.goto(`file://${join(repositoryRoot, "out", "renderer", "rpc-test-harness.html")}`);
     await page.locator("html[data-rpc-ready=true]").waitFor();
     const reference = await page.evaluate(

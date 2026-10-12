@@ -1,4 +1,4 @@
-import { convertToExcalidrawElements } from "@excalidraw/excalidraw";
+import { convertToExcalidrawElements, exportToCanvas, restore } from "@excalidraw/excalidraw";
 import { parseMermaidToExcalidraw } from "@excalidraw/mermaid-to-excalidraw";
 import { Effect, Option, Schema, Stream } from "effect";
 import { CakeIpcClient, type CakeIpcClientService } from "../ipc/client/CakeIpcClient";
@@ -349,7 +349,18 @@ const harness = {
       themeVariables: { fontSize: "20px" },
     });
     if (files) throw new Error("Reference diagram must have native elements");
-    return convertToExcalidrawElements(elements, { regenerateIds: false });
+    // The official exporter loads the same locally bundled drawing fonts as
+    // the native canvas. Convert again once those font metrics are available.
+    await exportToCanvas({
+      elements: convertToExcalidrawElements(elements, { regenerateIds: false }),
+      files: {},
+    });
+    return restore(
+      { elements: convertToExcalidrawElements(elements, { regenerateIds: false }) },
+      null,
+      null,
+      { repairBindings: true },
+    ).elements;
   },
 };
 
