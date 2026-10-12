@@ -9,7 +9,10 @@ import { resolve } from "node:path";
 import { observeMessageBoardRequests } from "./message-board-extension";
 import { createTurnResultCapture } from "./turn-result-capture";
 import type { PiTurnResult } from "../../../contracts/pi/turn-result-data";
-import type { CakeOperationOptions } from "../../../contracts/agent/cake-operation-options";
+import type { CurrentSessionControl } from "../../../contracts/agent/cake-operation-options";
+import type { CakeArtifactOperationOptions } from "../../../contracts/artifacts/artifact-agent-control";
+import type { MessageBoardControl } from "../../../contracts/artifacts/message-board-control";
+import type { CakeModelPresetCatalog } from "../../../contracts/model-presets/cake-model-selection";
 import type { CakeChatMemoryOptions } from "../cake-chat-memory-options";
 import { Option, Schema } from "effect";
 import {
@@ -82,7 +85,10 @@ import {
   type ConversationResponseMode,
 } from "../../../contracts/conversations/response-mode-reminders";
 import { createCakeSessionRuntimeCapabilities } from "./cake-session-runtime-capabilities";
-import type { CakeOperationProviders } from "../../../contracts/agent/cake-operation-api";
+import type {
+  ProjectCakeOperations,
+  CoordinatorCakeOperations,
+} from "../../../contracts/agent/cake-operation-api";
 import { createPromptCacheLineage } from "./prompt-cache-lineage";
 import { projectCakeOperationRuntime } from "./cake-operation-context";
 import {
@@ -129,7 +135,21 @@ export type CakeSessionRuntimeEvent =
   | { type: "usage-updated"; sessionId: string; usage: SessionUsage }
   | { type: "extension-ui"; sessionId: string; event: ExtensionUiEvent };
 
-export interface CakeSessionRuntimeOptions extends CakeOperationOptions {
+export interface CakeSessionRuntimeOptions {
+  cwd: string;
+  tools?: string[];
+  auxiliary?: boolean;
+  operations?: ProjectCakeOperations;
+  coordinator?: {
+    operations: CoordinatorCakeOperations;
+    modelPresets?(): CakeModelPresetCatalog;
+  };
+  /** Live hooks used by Pi-backed continuation and metadata operations. */
+  currentSessionControl?: CurrentSessionControl;
+  persistArtifact?: CakeArtifactOperationOptions["persistArtifact"];
+  messageBoardControl?: MessageBoardControl;
+  /** Child runtimes report their own costs separately. */
+  partialPricingCoverage?: boolean;
   trusted: boolean;
   agentDir: string;
   sessionDir: string;
@@ -255,10 +275,8 @@ export interface CakeSessionRuntime {
 
 export async function createCakeSessionRuntime(
   options: CakeSessionRuntimeOptions,
-  providers: CakeOperationProviders,
 ): Promise<CakeSessionRuntime> {
-  if (options.globalControl)
-    throw new Error("Cake Chat is owned by the Durable coordinator service");
+  if (options.coordinator) throw new Error("Cake Chat is owned by the Durable coordinator service");
   const agentDir = options.agentDir;
   // Check the backend root before acquiring any Pi resources.
   const mcpExtensions = createCakeMcpExtensions({ runtime: options });
@@ -272,20 +290,9 @@ export async function createCakeSessionRuntime(
   });
   const configurationState = createCakeSessionRuntimeConfigurationState(options.fastMode);
   const promptCacheLineage = createPromptCacheLineage();
-  const requestInterview = options.requestInterview;
   const capabilities = await createCakeSessionRuntimeCapabilities({
-    providers,
-    options: {
-      ...options,
-      requestInterview: requestInterview
-        ? async (record, signal) => {
-            // The operation just appended Pi-owned interview metadata. Publish it
-            // before asking for an answer so the live transcript owns its view.
-            await emitSnapshot();
-            return requestInterview(record, signal);
-          }
-        : undefined,
-    },
+    options,
+    publishSnapshot: () => emitSnapshot(),
     agentDir,
     settingsManager,
     modelRuntime,
@@ -626,7 +633,11 @@ export async function createCakeSessionRuntime(
         cacheReadTokens: stats.tokens.cacheRead,
         cacheWriteTokens: stats.tokens.cacheWrite,
         reportedCostUsd: stats.cost,
-        pricingCoverage: options.agentControl ? "partial" : session.model ? "complete" : "unknown",
+        pricingCoverage: options.partialPricingCoverage
+          ? "partial"
+          : session.model
+            ? "complete"
+            : "unknown",
       });
     },
     contextStatus() {

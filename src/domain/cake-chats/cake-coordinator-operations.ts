@@ -1,10 +1,10 @@
 import { Schema } from "effect";
 import { CakeModelSelection } from "../../contracts/model-presets/cake-model-selection";
-import type { CakeOperationProviders } from "../../contracts/agent/cake-operation-api";
+import type { CoordinatorCakeOperations } from "../../contracts/agent/cake-operation-api";
 import type { CakeOperationDefinition } from "../../contracts/agent/cake-operation";
 
 export function createCoordinatorOperations(
-  bridge: Parameters<CakeOperationProviders["coordinator"]>[1],
+  bridge: Parameters<CoordinatorCakeOperations>[0],
 ): CakeOperationDefinition[] {
   return [
     ...[

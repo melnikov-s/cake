@@ -1,4 +1,4 @@
-import { cakeOperationProviders } from "../../../src/layers/CakeOperations";
+import { createCoordinatorRuntime } from "../../../src/layers/CakeOperations";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { projectPiSettings } from "../../../src/services/pi/runtime/settings-translation";
 import { makeCakeChatDurableLive } from "../../../src/services/pi-durable/CakeChatDurable";
@@ -287,7 +287,7 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     coordinator,
     host,
     runtimes,
-    makeCakeChatDurableLive(cakeOperationProviders),
+    makeCakeChatDurableLive(createCoordinatorRuntime),
     SessionCatalogChanges.layer,
     SubagentCoordinatorLive,
     AgentAvailability.layer,

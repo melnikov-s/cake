@@ -35,7 +35,6 @@ import type {
   ExplicitCakeModelSelection,
 } from "../../contracts/model-presets/cake-model-selection";
 import { parseCrossSessionMessage } from "../../contracts/conversations/cross-session-message";
-import type { CakeOperationProviders } from "../../contracts/agent/cake-operation-api";
 import {
   CakeOperationRegistry,
   cakeToolDescription,
@@ -113,14 +112,9 @@ const unsupported = async () => {
 /** The shared Cake conversation contract, backed solely by Pi Durable for the coordinator. */
 export async function createDurableCakeChatRuntime(
   options: CakeSessionRuntimeOptions,
-  providers: CakeOperationProviders,
   inspection?: RequestInspection,
 ): Promise<CakeSessionRuntime> {
-  if (
-    !options.globalControl ||
-    !options.cakeChatMemory ||
-    options.sessionId !== CAKE_CHAT_SESSION_ID
-  )
+  if (!options.coordinator || !options.cakeChatMemory || options.sessionId !== CAKE_CHAT_SESSION_ID)
     throw new Error("Durable Cake Chat requires the coordinator capability profile");
   const preferences = options.cakeChatMemory;
   const sessionId = options.sessionId;
@@ -139,7 +133,7 @@ export async function createDurableCakeChatRuntime(
   );
   const models = durableModels(catalogRuntime, () => fastMode, inspection);
   const available = await catalogRuntime.getAvailable();
-  const presets = options.modelPresets?.();
+  const presets = options.coordinator.modelPresets?.();
   const preset = presets?.presets.find((entry) => entry.id === presets.defaultPresetId);
   const defaultModel = preset
     ? catalogRuntime.getModel(preset.provider, preset.modelId)
@@ -178,7 +172,7 @@ export async function createDurableCakeChatRuntime(
     return { ...(selection ?? inherited) };
   };
   const operations = new CakeOperationRegistry(
-    providers.coordinator(options, {
+    options.coordinator.operations({
       sessionId,
       resolveModel,
       info: async () => ({ sessionId, kind: "cake-chat", sessionFile, streaming }),

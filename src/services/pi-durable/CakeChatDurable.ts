@@ -1,15 +1,12 @@
 import { Context, Effect, Layer } from "effect";
-import type { CakeOperationProviders } from "../../contracts/agent/cake-operation-api";
+import type { CakeSessionRuntimeSetup } from "../pi/CakeSessionRuntimes";
 import type {
   PiSessionPreview,
   PiSessionSummary,
 } from "../../contracts/conversations/session-contract";
-import type {
-  CakeSessionRuntime,
-  CakeSessionRuntimeOptions,
-} from "../pi/runtime/cake-session-runtime";
+import type { CakeSessionRuntime } from "../pi/runtime/cake-session-runtime";
 import { DurableChatError } from "./durable-chat-data";
-import { createDurableCakeChatRuntime } from "./durable-chat-runtime";
+import type { RequestInspection } from "./request-inspection";
 import { readDurableChatPreview, readDurableChatSummary } from "./durable-chat-catalog";
 import { createRequestInspectionHistory } from "./request-inspection";
 import type {
@@ -28,7 +25,7 @@ export class CakeChatDurable extends Context.Service<
     ) => Effect.Effect<RequestInspectionPayload, DurableChatError>;
     readonly clearRequestHistory: () => Effect.Effect<void>;
     readonly createRuntime: (
-      options: CakeSessionRuntimeOptions,
+      options: CakeSessionRuntimeSetup,
     ) => Effect.Effect<CakeSessionRuntime, DurableChatError>;
     readonly catalogEntry: (
       directory: string,
@@ -50,7 +47,12 @@ const operation = <A>(name: string, evaluate: () => Promise<A>) =>
       }),
   });
 
-export const makeCakeChatDurableLive = (providers: CakeOperationProviders) =>
+export const makeCakeChatDurableLive = (
+  createRuntime: (
+    options: CakeSessionRuntimeSetup,
+    inspection: RequestInspection,
+  ) => Promise<CakeSessionRuntime>,
+) =>
   Layer.sync(CakeChatDurable, () => {
     const inspection = createRequestInspectionHistory();
     return CakeChatDurable.of({
@@ -67,9 +69,7 @@ export const makeCakeChatDurableLive = (providers: CakeOperationProviders) =>
         Effect.sync(inspection.clear),
       ),
       createRuntime: (options) =>
-        operation("createRuntime", () =>
-          createDurableCakeChatRuntime(options, providers, inspection),
-        ),
+        operation("createRuntime", () => createRuntime(options, inspection)),
       catalogEntry: (directory) =>
         operation("catalogEntry", () => readDurableChatSummary(directory)),
       inspect: (directory, sessionId) =>

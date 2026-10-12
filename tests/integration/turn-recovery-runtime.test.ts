@@ -1,4 +1,4 @@
-import { cakeOperationProviders } from "../../src/layers/CakeOperations";
+import { createProjectSessionRuntime as createCakeSessionRuntime } from "../../src/layers/CakeOperations";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { createServer, type Server, type ServerResponse } from "node:http";
@@ -6,10 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TURN_RECOVERY_NOTICE_PART_ID } from "../../src/services/pi/runtime/turn-recovery";
-import {
-  createCakeSessionRuntime,
-  type CakeSessionRuntime,
-} from "../../src/services/pi/runtime/cake-session-runtime";
+import { type CakeSessionRuntime } from "../../src/services/pi/runtime/cake-session-runtime";
 
 const temporaryDirectories: string[] = [];
 const servers: Server[] = [];
@@ -86,18 +83,15 @@ async function registerFixtureProvider(
 
 async function createFixtureRuntime(directory: string, onEvent = vi.fn()) {
   vi.stubEnv("PI_CODING_AGENT_DIR", join(directory, "agent"));
-  const runtime = await createCakeSessionRuntime(
-    {
-      cwd: directory,
-      agentDir: join(directory, "agent"),
-      sessionDir: join(directory, "sessions"),
-      trusted: true,
-      newSession: true,
-      requestUi: async () => undefined,
-      onEvent,
-    },
-    cakeOperationProviders,
-  );
+  const runtime = await createCakeSessionRuntime({
+    cwd: directory,
+    agentDir: join(directory, "agent"),
+    sessionDir: join(directory, "sessions"),
+    trusted: true,
+    newSession: true,
+    requestUi: async () => undefined,
+    onEvent,
+  });
   runtimes.push(runtime);
   await runtime.setModel("fixture-provider", "fixture-model");
   return { runtime, onEvent };

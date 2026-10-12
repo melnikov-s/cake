@@ -8,7 +8,18 @@ import { createSessionFamilyOperations } from "../domain/session-families/cake-s
 import { createScheduledMessageOperations } from "../domain/scheduled-messages/cake-scheduled-message-operations";
 import { createSessionWorktreeOperations } from "../domain/worktrees/cake-session-worktree-operations";
 import { Schema } from "effect";
-import type { CakeOperationProviders } from "../contracts/agent/cake-operation-api";
+import type {
+  ProjectCakeOperations,
+  CoordinatorCakeOperations,
+} from "../contracts/agent/cake-operation-api";
+import type { CakeOperationOptions } from "../contracts/agent/cake-operation-options";
+import {
+  createCakeSessionRuntime,
+  type CakeSessionRuntimeOptions,
+} from "../services/pi/runtime/cake-session-runtime";
+import { createDurableCakeChatRuntime } from "../services/pi-durable/durable-chat-runtime";
+import type { RequestInspection } from "../services/pi-durable/request-inspection";
+import type { CakeSessionRuntimeSetup } from "../services/pi/CakeSessionRuntimes";
 import {
   artifactRecordSchema,
   type CakeArtifactV1,
@@ -28,8 +39,8 @@ import { createCakeSessionPluginOperations } from "../domain/session-plugins/cak
 import { createCakeWorktreeOperations } from "../domain/worktrees/cake-worktree-operations";
 import { createCakeVscodeOperations } from "../domain/editor/cake-vscode-operations";
 
-export const cakeOperationProviders: CakeOperationProviders = {
-  project(options, bridge) {
+export function projectCakeOperations(options: CakeOperationOptions): ProjectCakeOperations {
+  return (bridge) => {
     // Capture a lazy resolver: the SDK loads extensions before the session API is ready.
     const resolveApiModel = (selection: CakeModelSelection | undefined) =>
       bridge.api().resolveModelSelection(selection);
@@ -91,7 +102,13 @@ export const cakeOperationProviders: CakeOperationProviders = {
         ? createMessageBoardOperations(options.messageBoardControl)
         : []),
       ...createCakeInterviewOperations(bridge.host, {
-        requestInterview: options.requestInterview ?? (async () => undefined),
+        requestInterview: options.requestInterview
+          ? async (record, signal) => {
+              // Publish Pi-owned interview metadata before requesting the answer.
+              await bridge.publishSnapshot();
+              return options.requestInterview?.(record, signal);
+            }
+          : async () => undefined,
       }),
       ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
       ...(options.browserControl ? createCakeBrowserOperations(options.browserControl) : []),
@@ -117,11 +134,17 @@ export const cakeOperationProviders: CakeOperationProviders = {
         ? createGlobalControlOperations(options.sessionControl, resolveApiModel)
         : []),
     ];
-  },
-  coordinator(options, bridge) {
-    if (!options.globalControl) throw new Error("The coordinator control is unavailable");
+  };
+}
+
+export function coordinatorCakeOperations(
+  options: CakeOperationOptions,
+): CoordinatorCakeOperations {
+  const control = options.globalControl;
+  if (!control) throw new Error("The coordinator control is unavailable");
+  return (bridge) => {
     return [
-      ...createGlobalControlOperations(options.globalControl, bridge.resolveModel),
+      ...createGlobalControlOperations(control, bridge.resolveModel),
       ...createCakeModelOperations(options.modelPresets ?? (() => ({ presets: [] }))),
       ...(options.agentControl
         ? createAgentControlOperations(
@@ -136,5 +159,84 @@ export const cakeOperationProviders: CakeOperationProviders = {
       (operation) =>
         !options.allowedCakeOperations || options.allowedCakeOperations.includes(operation.command),
     );
-  },
-};
+  };
+}
+
+export const createProjectSessionRuntime = (options: CakeSessionRuntimeSetup) =>
+  createCakeSessionRuntime(configureCakeSessionRuntime(options));
+
+export const createCoordinatorRuntime = (
+  options: CakeSessionRuntimeSetup,
+  inspection?: RequestInspection,
+) => createDurableCakeChatRuntime(configureCakeSessionRuntime(options), inspection);
+
+/** Consume feature controls at composition, never forward their bundle into Pi. */
+export function configureCakeSessionRuntime(
+  options: CakeSessionRuntimeSetup,
+): CakeSessionRuntimeOptions {
+  const {
+    allowedCakeOperations,
+    workflowControl,
+    requestInterview,
+    sessionPluginControl,
+    modelPresets,
+    nonChatModelPreferences,
+    vscodeControl,
+    browserControl,
+    drawControl,
+    worktreeLandingControl,
+    globalControl,
+    sessionControl,
+    agentControl,
+    generateInlineWidget,
+    reviseInlineWidget,
+    resolveArtifact,
+    hasLinkedArtifacts,
+    listArtifactMetadata,
+    historyArtifact,
+    restoreArtifact,
+    linkArtifact,
+    unlinkArtifact,
+    importArtifactFile,
+    ...runtime
+  } = options;
+  const featureOptions: CakeOperationOptions = {
+    cwd: runtime.cwd,
+    tools: runtime.tools,
+    auxiliary: runtime.auxiliary,
+    currentSessionControl: runtime.currentSessionControl,
+    persistArtifact: runtime.persistArtifact,
+    messageBoardControl: runtime.messageBoardControl,
+    allowedCakeOperations,
+    workflowControl,
+    requestInterview,
+    sessionPluginControl,
+    modelPresets,
+    nonChatModelPreferences,
+    vscodeControl,
+    browserControl,
+    drawControl,
+    worktreeLandingControl,
+    globalControl,
+    sessionControl,
+    agentControl,
+    generateInlineWidget,
+    reviseInlineWidget,
+    resolveArtifact,
+    hasLinkedArtifacts,
+    listArtifactMetadata,
+    historyArtifact,
+    restoreArtifact,
+    linkArtifact,
+    unlinkArtifact,
+    importArtifactFile,
+  };
+  return {
+    ...runtime,
+    operations: globalControl ? undefined : projectCakeOperations(featureOptions),
+    coordinator: globalControl
+      ? { operations: coordinatorCakeOperations(featureOptions), modelPresets }
+      : undefined,
+    partialPricingCoverage: agentControl !== undefined,
+  };
+}

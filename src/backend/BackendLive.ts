@@ -25,7 +25,7 @@ import { makeMcpSettingsLayer } from "../services/pi/McpSettings";
 import { makePiSettingsLive } from "../services/pi/live/PiSettingsLive";
 import { makeCakeChatDurableLive } from "../services/pi-durable/CakeChatDurable";
 import { makeCakeSessionRuntimesLive } from "../services/pi/CakeSessionRuntimes";
-import { cakeOperationProviders } from "../layers/CakeOperations";
+import { createProjectSessionRuntime, createCoordinatorRuntime } from "../layers/CakeOperations";
 import { makeProjectSessionRuntimeHostLive } from "../layers/ProjectSessionRuntimeHostLive";
 import { ProjectSessionConfiguration } from "../services/project-sessions/ProjectSessionConfiguration";
 import { makeProjectAccessLive } from "../services/projects/ProjectAccessLive";
@@ -116,8 +116,8 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
     makePiSettingsLive(paths.piAgent).pipe(Layer.provide(BootstrapLive)),
     makeMcpSettingsLayer(paths.piAgent),
     makePiAgentResourcesLive(paths.piAgent),
-    makeCakeSessionRuntimesLive(cakeOperationProviders).pipe(
-      Layer.provideMerge(makeCakeChatDurableLive(cakeOperationProviders)),
+    makeCakeSessionRuntimesLive(createProjectSessionRuntime).pipe(
+      Layer.provideMerge(makeCakeChatDurableLive(createCoordinatorRuntime)),
     ),
     AgentAvailability.layer,
   );

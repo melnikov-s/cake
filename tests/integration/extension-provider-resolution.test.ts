@@ -1,4 +1,7 @@
-import { cakeOperationProviders } from "../../src/layers/CakeOperations";
+import {
+  createCoordinatorRuntime,
+  createProjectSessionRuntime as createCakeSessionRuntime,
+} from "../../src/layers/CakeOperations";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,10 +12,7 @@ import {
   CakeChatDurable,
   makeCakeChatDurableLive,
 } from "../../src/services/pi-durable/CakeChatDurable";
-import {
-  createCakeSessionRuntime,
-  type CakeSessionRuntime,
-} from "../../src/services/pi/runtime/cake-session-runtime";
+import { type CakeSessionRuntime } from "../../src/services/pi/runtime/cake-session-runtime";
 
 const directories: string[] = [];
 const runtimes: CakeSessionRuntime[] = [];
@@ -91,15 +91,12 @@ async function openRuntime(
               summarize: async () => "Unused: no turn is submitted",
             },
           }),
-        ).pipe(Effect.provide(makeCakeChatDurableLive(cakeOperationProviders))),
+        ).pipe(Effect.provide(makeCakeChatDurableLive(createCoordinatorRuntime))),
       )
-    : await createCakeSessionRuntime(
-        {
-          ...runtimeOptions,
-          ...(options.auxiliary ? { auxiliary: true, tools: ["read"] } : {}),
-        },
-        cakeOperationProviders,
-      );
+    : await createCakeSessionRuntime({
+        ...runtimeOptions,
+        ...(options.auxiliary ? { auxiliary: true, tools: ["read"] } : {}),
+      });
   runtimes.push(runtime);
   return runtime;
 }

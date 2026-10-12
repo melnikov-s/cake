@@ -24,10 +24,8 @@ import {
   type CakeSessionRuntimes,
   type CakeSessionRuntimesAdapter,
 } from "../../../src/services/pi/CakeSessionRuntimes";
-import type {
-  CakeSessionRuntime,
-  CakeSessionRuntimeOptions,
-} from "../../../src/services/pi/runtime/cake-session-runtime";
+import type { CakeSessionRuntimeSetup } from "../../../src/services/pi/CakeSessionRuntimes";
+import type { CakeSessionRuntime } from "../../../src/services/pi/runtime/cake-session-runtime";
 import { subagentSystemPrompt } from "../../../src/services/pi/subagent-system-prompt";
 import {
   SubagentCoordinator,
@@ -108,7 +106,7 @@ interface Fixture {
   readonly childStarted: Queue.Queue<string>;
   readonly childGates: Ref.Ref<ReadonlyMap<string, Deferred.Deferred<void>>>;
   readonly constructions: Ref.Ref<number>;
-  readonly constructedOptions: Ref.Ref<ReadonlyArray<CakeSessionRuntimeOptions>>;
+  readonly constructedOptions: Ref.Ref<ReadonlyArray<CakeSessionRuntimeSetup>>;
   readonly active: Ref.Ref<number>;
   readonly maximumActive: Ref.Ref<number>;
   readonly completions: Ref.Ref<ReadonlyArray<unknown>>;
@@ -120,14 +118,14 @@ const makeFixture = Effect.fn("SubagentsTest.makeFixture")(function* (): Effect.
   const childStarted = yield* Queue.unbounded<string>();
   const childGates = yield* Ref.make<ReadonlyMap<string, Deferred.Deferred<void>>>(new Map());
   const constructions = yield* Ref.make(0);
-  const constructedOptions = yield* Ref.make<ReadonlyArray<CakeSessionRuntimeOptions>>([]);
+  const constructedOptions = yield* Ref.make<ReadonlyArray<CakeSessionRuntimeSetup>>([]);
   const active = yield* Ref.make(0);
   const maximumActive = yield* Ref.make(0);
   const completions = yield* Ref.make<ReadonlyArray<unknown>>([]);
   const reports = yield* Queue.unbounded<unknown>();
   const parentMessages = yield* Ref.make<ReadonlyArray<string>>([]);
 
-  const runtime = (options: CakeSessionRuntimeOptions): CakeSessionRuntime => {
+  const runtime = (options: CakeSessionRuntimeSetup): CakeSessionRuntime => {
     const sessionId = options.sessionId ?? "parent";
     const isParent = sessionId.startsWith("parent");
     let streaming = false;

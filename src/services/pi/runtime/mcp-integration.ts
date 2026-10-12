@@ -14,7 +14,7 @@ import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
 export interface CakeMcpIntegrationOptions {
   readonly runtime: Pick<
     CakeSessionRuntimeOptions,
-    "agentDir" | "auxiliary" | "globalControl" | "tools" | "projectInvestigation"
+    "agentDir" | "auxiliary" | "coordinator" | "tools" | "projectInvestigation"
   >;
   /** Test boundary only; production uses Pi's standard configuration loader. */
   readonly loadConfig?: McpExtensionOptions["loadConfig"];
@@ -46,7 +46,7 @@ export function createCakeMcpExtensions(options: CakeMcpIntegrationOptions) {
   const { runtime } = options;
   if (
     (runtime.auxiliary && !runtime.projectInvestigation) ||
-    runtime.globalControl ||
+    runtime.coordinator ||
     runtime.tools !== undefined
   )
     return [];

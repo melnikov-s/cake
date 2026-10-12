@@ -1,4 +1,3 @@
-import { cakeOperationProviders } from "../../../src/layers/CakeOperations";
 import { it } from "@effect/vitest";
 import { describe, expect, vi } from "vitest";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
@@ -73,7 +72,7 @@ describe("Workflow workers", () => {
       if (!options) return;
       const capabilities = yield* Effect.promise(() =>
         createCakeSessionRuntimeCapabilities({
-          providers: cakeOperationProviders,
+          publishSnapshot: async () => undefined,
           options,
           agentDir: options.agentDir,
           settingsManager: SettingsManager.inMemory(),
@@ -109,14 +108,13 @@ describe("Workflow workers", () => {
         expect(options?.tools).toEqual(["read", "bash", "edit", "write"]);
         expect(options?.customTools).toEqual([]);
         expect(options?.auxiliaryProjectResources).toBe(true);
-        expect(options?.agentControl).toBeUndefined();
-        expect(options?.sessionControl).toBeUndefined();
+        expect(options?.operations).toBeUndefined();
         expect(options?.currentSessionControl).toBeUndefined();
         expect(options?.isolatedSystemPrompt).toBeUndefined();
         if (!options) return;
         const capabilities = yield* Effect.promise(() =>
           createCakeSessionRuntimeCapabilities({
-            providers: cakeOperationProviders,
+            publishSnapshot: async () => undefined,
             options: {
               ...options,
               cwd: resolve("tests/app/services/fixtures/workflow-project"),

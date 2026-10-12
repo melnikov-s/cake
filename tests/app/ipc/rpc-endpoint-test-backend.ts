@@ -1,4 +1,4 @@
-import { cakeOperationProviders } from "../../../src/layers/CakeOperations";
+import { createCoordinatorRuntime } from "../../../src/layers/CakeOperations";
 import { makeCakeChatDurableLive } from "../../../src/services/pi-durable/CakeChatDurable";
 import { ClientConnectionsLive } from "../../../src/services/clients/ClientConnections";
 import { DesktopHost } from "../../../src/services/electron/DesktopHost";
@@ -54,7 +54,7 @@ const unexpectedCapability = (): never => {
 // capabilities fail if called; the tests supply real ApplicationState/ClientEvents authorities.
 export const unusedEndpointServices = Layer.mergeAll(
   ClientConnectionsLive,
-  makeCakeChatDurableLive(cakeOperationProviders),
+  makeCakeChatDurableLive(createCoordinatorRuntime),
   Layer.mock(DesktopHost, { current: () => ({ kind: "local" }) }),
   Layer.mock(DesktopSharing, { keepsProcessAlive: () => false }),
   Layer.mock(Dictation, {}),

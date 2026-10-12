@@ -26,7 +26,7 @@ export interface ProjectSessionLivePolicyControl {
   resolveDeferredStandalone(): Promise<void>;
 }
 
-interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
+export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
   resolved(): boolean;
   canResolve?(): boolean;
   setResolved(resolved: boolean): Promise<void>;

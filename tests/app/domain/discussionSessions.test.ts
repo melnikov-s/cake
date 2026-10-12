@@ -12,11 +12,9 @@ import {
 import {
   makeCakeSessionRuntimesLayer,
   type CakeSessionRuntimesAdapter,
+  type CakeSessionRuntimeSetup,
 } from "../../../src/services/pi/CakeSessionRuntimes";
-import type {
-  CakeSessionRuntime,
-  CakeSessionRuntimeOptions,
-} from "../../../src/services/pi/runtime/cake-session-runtime";
+import type { CakeSessionRuntime } from "../../../src/services/pi/runtime/cake-session-runtime";
 import { makeProjectSessionRuntimeTestLayer } from "./projectSessionRuntimeTestLayer";
 import type { ConversationSnapshot } from "../../../src/contracts/conversations/session-contract";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
@@ -82,7 +80,7 @@ const makeLayer = (options: { readonly assistant?: boolean } = {}) => {
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
-  const runtimeOptions: CakeSessionRuntimeOptions[] = [];
+  const runtimeOptions: CakeSessionRuntimeSetup[] = [];
   const modelSelections: Array<{ provider: string; modelId: string }> = [];
   const controlInvocations: unknown[] = [];
   let stagedProjections = 0;
@@ -90,7 +88,7 @@ const makeLayer = (options: { readonly assistant?: boolean } = {}) => {
   const queueOperations: string[] = [];
   let preparedContexts = 0;
   let parentIndexRefreshes = 0;
-  const runtime = (options: CakeSessionRuntimeOptions): CakeSessionRuntime => {
+  const runtime = (options: CakeSessionRuntimeSetup): CakeSessionRuntime => {
     const sessionId = options.sessionId ?? "generated";
     const sessionFile = options.auxiliary
       ? `/reviews/${sessionId}.jsonl`

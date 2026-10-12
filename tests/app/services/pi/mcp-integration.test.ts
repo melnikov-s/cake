@@ -51,7 +51,7 @@ describe("Cake native MCP integration contract", () => {
   });
   it.each([
     { auxiliary: true },
-    { globalControl: { tools: [], invoke: async () => ({ ok: true }) } },
+    { coordinator: { operations: () => [] } },
     { tools: ["read"] },
     { tools: [] },
   ])("omits native factories from restricted runtimes: %j", (restriction) => {

@@ -1,4 +1,5 @@
-import { cakeOperationProviders } from "../../src/layers/CakeOperations";
+import { createCoordinatorRuntime } from "../../src/layers/CakeOperations";
+import type { CakeSessionRuntimeSetup } from "../../src/services/pi/CakeSessionRuntimes";
 import { mkdir, mkdtemp, readFile, rm, writeFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,10 +19,7 @@ import {
   makeCakeChatDurableLive,
 } from "../../src/services/pi-durable/CakeChatDurable";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-data";
-import type {
-  CakeSessionRuntime,
-  CakeSessionRuntimeOptions,
-} from "../../src/services/pi/runtime/cake-session-runtime";
+import type { CakeSessionRuntime } from "../../src/services/pi/runtime/cake-session-runtime";
 import type { ConversationSnapshot } from "../../src/contracts/conversations/session-contract";
 import { durableAnswer, durableModel } from "../fixtures/durable-chat";
 
@@ -99,7 +97,7 @@ async function fixture() {
   });
   await legacy.setRuntimeApiKey("openai", "fixture-key");
   vi.spyOn(ModelRuntime, "create").mockResolvedValue(legacy);
-  const serviceRuntime = ManagedRuntime.make(makeCakeChatDurableLive(cakeOperationProviders));
+  const serviceRuntime = ManagedRuntime.make(makeCakeChatDurableLive(createCoordinatorRuntime));
   cleanup.push(() => serviceRuntime.dispose());
   const service = await serviceRuntime.runPromise(CakeChatDurable);
   const summarize = vi.fn<(input: { signal: AbortSignal }) => Promise<string>>(
@@ -123,7 +121,7 @@ async function fixture() {
       watchers.delete(listener);
     }
   };
-  const open = async (globalControl?: CakeSessionRuntimeOptions["globalControl"]) => {
+  const open = async (globalControl?: CakeSessionRuntimeSetup["globalControl"]) => {
     const runtime = await serviceRuntime.runPromise(
       service.createRuntime({
         cwd: directory,
@@ -520,14 +518,14 @@ it("does not replay a session-creation mutation interrupted after its external s
   const f = await fixture();
   const invoked = Deferred.makeUnsafe<void>();
   const blocked = Deferred.makeUnsafe<never>();
-  const invoke = vi.fn<NonNullable<CakeSessionRuntimeOptions["globalControl"]>["invoke"]>(
+  const invoke = vi.fn<NonNullable<CakeSessionRuntimeSetup["globalControl"]>["invoke"]>(
     (_input, signal) => {
       // The worker exists externally, but its tool result has not reached SQLite yet.
       Effect.runSync(Deferred.succeed(invoked, undefined));
       return Effect.runPromise(Deferred.await(blocked), { signal });
     },
   );
-  const control: NonNullable<CakeSessionRuntimeOptions["globalControl"]> = {
+  const control: NonNullable<CakeSessionRuntimeSetup["globalControl"]> = {
     tools: [
       {
         command: "sessions.create",

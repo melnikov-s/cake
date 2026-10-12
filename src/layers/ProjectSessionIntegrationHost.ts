@@ -34,6 +34,7 @@ import type {
   WidgetGenerationReviewDependencies,
 } from "../domain/widgets/widgetGenerationReview";
 import type { CakeSessionRuntimeOptions } from "../services/pi/runtime/cake-session-runtime";
+import type { CakeOperationOptions } from "../contracts/agent/cake-operation-options";
 import type { RuntimeUiRequest } from "../services/pi/runtime/runtime-ui-request";
 import type { ImportWorkspaceFileInput } from "../services/artifacts/importWorkspaceFile";
 import type { ArtifactProjectionMetadata } from "../contracts/artifacts/artifact-projection-data";
@@ -110,7 +111,7 @@ export interface ProjectSessionIntegrationHostOptions {
     invocation: ProjectSessionControlInvocation,
     signal: AbortSignal,
   ) => Promise<JsonValue>;
-  readonly drawControl?: CakeSessionRuntimeOptions["drawControl"];
+  readonly drawControl?: CakeOperationOptions["drawControl"];
   readonly runWidgetGeneration?: typeof runInlineWidgetGeneration;
   readonly runWidgetRepair?: typeof runInlineWidgetRepair;
   readonly runWidgetVisualReview?: typeof runInlineWidgetVisualReview;
@@ -167,7 +168,7 @@ export class ProjectSessionIntegrationHost {
   private readonly requestUiFromRenderer: ProjectSessionIntegrationHostOptions["requestUi"];
   private readonly requestInterviewFromRenderer: ProjectSessionIntegrationHostOptions["requestInterview"];
   private readonly requestApplicationControlFromRenderer: ProjectSessionIntegrationHostOptions["requestApplicationControl"];
-  private readonly drawControl: CakeSessionRuntimeOptions["drawControl"];
+  private readonly drawControl: CakeOperationOptions["drawControl"];
   private readonly runWidgetGeneration: typeof runInlineWidgetGeneration;
   private readonly runWidgetRepair: typeof runInlineWidgetRepair;
   private readonly runWidgetVisualReview: typeof runInlineWidgetVisualReview;

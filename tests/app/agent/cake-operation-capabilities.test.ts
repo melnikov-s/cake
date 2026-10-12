@@ -1,18 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cakeOperationProviders } from "../../../src/layers/CakeOperations";
+import { projectCakeOperations } from "../../../src/layers/CakeOperations";
 import * as projectSessionOperations from "../../../src/domain/project-sessions/cake-session-operations";
 import { createConversationOperations } from "../../../src/domain/conversations/cake-conversation-operations";
 import type { CakeOperationOptions } from "../../../src/contracts/agent/cake-operation-options";
-import type { CakeOperationProviders } from "../../../src/contracts/agent/cake-operation-api";
+import type { ProjectCakeOperations } from "../../../src/contracts/agent/cake-operation-api";
 
 type CurrentSessionControl = NonNullable<CakeOperationOptions["currentSessionControl"]>;
 
-const bridge: Parameters<CakeOperationProviders["project"]>[1] = {
+const bridge: Parameters<ProjectCakeOperations>[0] = {
   host: { appendEntry: () => undefined },
   api: () => {
     throw new Error("Operation registration must not access the lazy runtime API");
   },
   sessionId: () => "session-1",
+  publishSnapshot: async () => undefined,
   getAvailableOfType: async () => [],
 };
 
@@ -27,13 +28,7 @@ function control(overrides: Partial<CurrentSessionControl> = {}): CurrentSession
 }
 
 function operations(overrides: Partial<CakeOperationOptions> = {}) {
-  return cakeOperationProviders.project(
-    {
-      cwd: "/project",
-      ...overrides,
-    },
-    bridge,
-  );
+  return projectCakeOperations({ cwd: "/project", ...overrides })(bridge);
 }
 
 function commands(overrides: Partial<CakeOperationOptions> = {}) {

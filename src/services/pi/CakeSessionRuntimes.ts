@@ -1,4 +1,4 @@
-import type { CakeOperationProviders } from "../../contracts/agent/cake-operation-api";
+import type { CakeOperationOptions } from "../../contracts/agent/cake-operation-options";
 import {
   Context,
   Deferred,
@@ -42,7 +42,6 @@ import type {
   ThinkingLevel,
 } from "../../contracts/conversations/session-contract";
 import {
-  createCakeSessionRuntime,
   type CakeSessionRuntime,
   type CakeSessionRuntimeEvent,
   type CakeSessionRuntimeOptions,
@@ -112,13 +111,16 @@ export type PiSessionUpdate =
   | { readonly _tag: "Snapshot"; readonly snapshot: ConversationSnapshot }
   | { readonly _tag: "Event"; readonly event: PiSessionEvent };
 
+/** Cake composition inputs. The constructor consumes controls before entering the Pi runtime. */
+export type CakeSessionRuntimeSetup = CakeSessionRuntimeOptions & CakeOperationOptions;
+
 /**
  * Runtime construction is a Pi adapter concern. The semantic profile is
  * mandatory so callers cannot assemble Pi extension/tool policy ad hoc.
  */
 export interface CakeSessionRuntimeAcquireOptions {
   readonly profile: Schema.Schema.Type<typeof PiSessionCapabilityProfile>;
-  readonly runtime: Omit<CakeSessionRuntimeOptions, "onEvent" | "onTurnResult">;
+  readonly runtime: Omit<CakeSessionRuntimeSetup, "onEvent" | "onTurnResult">;
   /** Finalizes Cake-owned integrations when the final shared runtime lease is released. */
   readonly onRelease?: Effect.Effect<void, unknown>;
   readonly admitTurn?: (
@@ -268,7 +270,7 @@ export interface CakeSessionRuntimesAdapter {
     target: PiSessionTarget,
   ) => Effect.Effect<PiSessionPreview | undefined, unknown>;
   readonly createRuntime: (
-    options: CakeSessionRuntimeOptions,
+    options: CakeSessionRuntimeSetup,
   ) => Effect.Effect<CakeSessionRuntime, unknown>;
   readonly changelog: () => Effect.Effect<string, unknown>;
   readonly durableArtifactReferences?: (
@@ -1201,7 +1203,7 @@ const coordinatorDirectory = (directory: string) =>
   /(?:^|[/\\])global-chat[/\\]sessions$/.test(directory);
 
 export const makeCakeSessionRuntimesLive = (
-  providers: CakeOperationProviders,
+  createRuntime: (options: CakeSessionRuntimeSetup) => Promise<CakeSessionRuntime>,
 ): Layer.Layer<CakeSessionRuntimes, never, CakeChatDurable> =>
   Layer.unwrap(
     Effect.gen(function* () {
@@ -1261,7 +1263,7 @@ export const makeCakeSessionRuntimesLive = (
           options.globalControl
             ? durable.createRuntime(options)
             : Effect.tryPromise({
-                try: () => createCakeSessionRuntime(options, providers),
+                try: () => createRuntime(options),
                 catch: (cause) => cause,
               }),
         changelog: () => Effect.sync(loadPiChangelog),

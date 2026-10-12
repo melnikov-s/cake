@@ -11,7 +11,6 @@ import type { ProjectSessionCreateInput } from "../project-sessions/agent-sessio
 import type { CakeOperationHost } from "./cake-operation-context";
 import type { NonChatModelType } from "../models/non-chat-model-data";
 import type { CakeOperationDefinition } from "./cake-operation";
-import type { CakeOperationOptions } from "./cake-operation-options";
 
 export interface RuntimeOperationApi {
   info(): Promise<JsonValue>;
@@ -61,31 +60,25 @@ export interface RuntimeOperationApi {
   setResolved(resolved: boolean): Promise<JsonValue>;
 }
 
-/** Backend composition supplies product operations; the Pi adapter supplies only live capabilities. */
-export interface CakeOperationProviders {
-  project(
-    options: CakeOperationOptions,
-    bridge: {
-      host: CakeOperationHost;
-      api(): RuntimeOperationApi;
-      sessionId(): string | undefined;
-      getAvailableOfType(
-        type: NonChatModelType,
-        filter: undefined,
-        options: { signal: AbortSignal },
-      ): Promise<ReadonlyArray<{ provider: string; id: string }>>;
-    },
-  ): CakeOperationDefinition[];
-  coordinator(
-    options: CakeOperationOptions,
-    bridge: {
-      sessionId: string;
-      resolveModel(selection: CakeModelSelection | undefined): ExplicitCakeModelSelection;
-      info(): Promise<JsonValue>;
-      usage(): Promise<JsonValue>;
-      contextStatus(): Promise<JsonValue>;
-      compact(): Promise<JsonValue>;
-      setModel(model: ExplicitCakeModelSelection): Promise<void>;
-    },
-  ): CakeOperationDefinition[];
-}
+/** Live Pi capabilities supplied to the already-configured product operations. */
+export type ProjectCakeOperations = (bridge: {
+  host: CakeOperationHost;
+  api(): RuntimeOperationApi;
+  sessionId(): string | undefined;
+  getAvailableOfType(
+    type: NonChatModelType,
+    filter: undefined,
+    options: { signal: AbortSignal },
+  ): Promise<ReadonlyArray<{ provider: string; id: string }>>;
+  publishSnapshot(): Promise<void>;
+}) => CakeOperationDefinition[];
+
+export type CoordinatorCakeOperations = (bridge: {
+  sessionId: string;
+  resolveModel(selection: CakeModelSelection | undefined): ExplicitCakeModelSelection;
+  info(): Promise<JsonValue>;
+  usage(): Promise<JsonValue>;
+  contextStatus(): Promise<JsonValue>;
+  compact(): Promise<JsonValue>;
+  setModel(model: ExplicitCakeModelSelection): Promise<void>;
+}) => CakeOperationDefinition[];

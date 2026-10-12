@@ -29,10 +29,7 @@ import {
   cakeToolEnvelopeSchema,
 } from "./cake-operation-registry";
 import type { CakeOperationDefinition } from "../../../contracts/agent/cake-operation";
-import type {
-  CakeOperationProviders,
-  RuntimeOperationApi,
-} from "../../../contracts/agent/cake-operation-api";
+import type { RuntimeOperationApi } from "../../../contracts/agent/cake-operation-api";
 import { loadCakeSessionRuntimeResourceLoader } from "./cake-session-runtime-resources";
 import { detectGitWorktree, worktreeSystemPrompt } from "./worktree-system-prompt";
 import { cakeAgentDocumentationDirectory } from "./cake-agent-documentation";
@@ -142,14 +139,14 @@ export interface CakeSessionRuntimeCapabilities {
 
 export async function createCakeSessionRuntimeCapabilities(input: {
   options: CakeSessionRuntimeOptions;
-  providers: CakeOperationProviders;
+  publishSnapshot(): Promise<void>;
   agentDir: string;
   settingsManager: SettingsManager;
   modelRuntime: Pick<ModelRuntime, "getAvailableOfType">;
   /** Cake-owned in-process extensions that shape provider requests. */
   requestExtensions: readonly InlineExtension[];
 }): Promise<CakeSessionRuntimeCapabilities> {
-  const { options, providers, agentDir, settingsManager, requestExtensions } = input;
+  const { options, agentDir, settingsManager, requestExtensions } = input;
   const persistArtifact =
     options.persistArtifact ??
     (async (artifact: CakeArtifactV1) =>
@@ -252,8 +249,9 @@ export async function createCakeSessionRuntimeCapabilities(input: {
                 createCakeSystemPromptExtension(),
                 createCakeGatewayExtension(
                   (pi) =>
-                    providers.project(options, {
+                    options.operations?.({
                       host: pi,
+                      publishSnapshot: input.publishSnapshot,
                       api: () => {
                         if (!operationApi.current) throw new Error("The Cake session is not ready");
                         return operationApi.current;
@@ -263,7 +261,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
                         (await input.modelRuntime.getAvailableOfType(type, filter, options)).map(
                           ({ provider, id }) => ({ provider, id }),
                         ),
-                    }),
+                    }) ?? [],
                   captureOperationRegistry,
                 ),
                 createCakeArtifactExtension({ persistArtifact }),
