@@ -325,44 +325,61 @@ for (const scenario of [
           ),
         ).toBeGreaterThan(100);
 
-        await transcript.hover({ position: { x: 20, y: 200 } });
-        await page.mouse.wheel(0, 10_000);
-        await expect
-          .poll(() =>
-            transcript.evaluate(
-              (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
-            ),
-          )
-          .toBeLessThanOrEqual(1);
-        const scrollbar = await transcript.evaluate((element) => {
-          const rect = element.getBoundingClientRect();
-          const gutter = rect.width - element.clientWidth - element.clientLeft;
-          const thumbHeight = element.clientHeight ** 2 / element.scrollHeight;
-          return { x: rect.right - gutter / 2, y: rect.bottom - thumbHeight / 2 };
+        // Overlay scrollbars reserve no gutter, so the thumb geometry below needs
+        // a deterministic native scrollbar only for this drag fixture.
+        const scrollbarStyle = await page.addStyleTag({
+          content: ".transcript::-webkit-scrollbar { width: 14px; }",
         });
-        await page.mouse.move(scrollbar.x, scrollbar.y);
-        await page.mouse.down();
-        await page.mouse.move(scrollbar.x, scrollbar.y - 180, { steps: 5 });
-        await page.mouse.up();
-        await expect
-          .poll(() =>
-            transcript.evaluate(
+        try {
+          await expect
+            .poll(() =>
+              transcript.evaluate(
+                (element) =>
+                  element.getBoundingClientRect().width - element.clientWidth - element.clientLeft,
+              ),
+            )
+            .toBeGreaterThan(0);
+          await transcript.hover({ position: { x: 20, y: 200 } });
+          await page.mouse.wheel(0, 10_000);
+          await expect
+            .poll(() =>
+              transcript.evaluate(
+                (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+              ),
+            )
+            .toBeLessThanOrEqual(1);
+          const scrollbar = await transcript.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            const gutter = rect.width - element.clientWidth - element.clientLeft;
+            const thumbHeight = element.clientHeight ** 2 / element.scrollHeight;
+            return { x: rect.right - gutter / 2, y: rect.bottom - thumbHeight / 2 };
+          });
+          await page.mouse.move(scrollbar.x, scrollbar.y);
+          await page.mouse.down();
+          await page.mouse.move(scrollbar.x, scrollbar.y - 180, { steps: 5 });
+          await page.mouse.up();
+          await expect
+            .poll(() =>
+              transcript.evaluate(
+                (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+              ),
+            )
+            .toBeGreaterThan(100);
+          await transcript
+            .locator('[data-slot="transcript-item"]')
+            .last()
+            .evaluate((element) => {
+              element.style.minHeight = "1200px";
+            });
+          await page.waitForTimeout(250);
+          expect(
+            await transcript.evaluate(
               (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
             ),
-          )
-          .toBeGreaterThan(100);
-        await transcript
-          .locator('[data-slot="transcript-item"]')
-          .last()
-          .evaluate((element) => {
-            element.style.minHeight = "1200px";
-          });
-        await page.waitForTimeout(250);
-        expect(
-          await transcript.evaluate(
-            (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
-          ),
-        ).toBeGreaterThan(100);
+          ).toBeGreaterThan(100);
+        } finally {
+          await scrollbarStyle.evaluate((element) => element.remove());
+        }
         return;
       }
 
