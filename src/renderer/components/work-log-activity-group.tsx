@@ -3,6 +3,7 @@ import { useStickToBottom } from "use-stick-to-bottom";
 import { observer } from "r-state-tree/react";
 import { VirtualizedConversation } from "@/components/ai-elements/conversation";
 import { WorkLogDiff } from "@/components/ai-elements/work-log-diff";
+import { ImagePreview } from "@/components/image-preview";
 import { StatusDot } from "@/components/ui/status-dot";
 import { WorkLogActivityTrigger } from "@/components/work-log-activity-trigger";
 import { toolDisplayTitle } from "@/lib/tool-presentation";
@@ -179,7 +180,7 @@ export const ActivityGroup = observer(function ActivityGroup({
             : "Reasoning details not exposed"}
       </div>
     );
-  return (
+  const workLog = (
     <details
       data-slot="activity-group"
       data-origin={compacted ? "compacted" : "current"}
@@ -280,5 +281,31 @@ export const ActivityGroup = observer(function ActivityGroup({
           </div>
         ))}
     </details>
+  );
+  return (
+    <>
+      {workLog}
+      {/* Images are conversation results, not execution details. Keep their Pi part identity. */}
+      {toolParts.flatMap(
+        (part) =>
+          part.outputContent?.flatMap((item, index) =>
+            item.type === "image"
+              ? [
+                  <figure
+                    key={`${part.id}-image-${index}`}
+                    data-part-id={part.id}
+                    data-slot="tool-output-image"
+                    className="mt-3 overflow-hidden rounded-xl border border-border bg-card"
+                  >
+                    <ImagePreview
+                      src={`data:${item.mimeType};base64,${item.data}`}
+                      alt={`Tool output image ${index + 1}`}
+                    />
+                  </figure>,
+                ]
+              : [],
+          ) ?? [],
+      )}
+    </>
   );
 });

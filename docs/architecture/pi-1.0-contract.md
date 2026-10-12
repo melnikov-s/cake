@@ -114,6 +114,16 @@ releases that transient runtime, so a follow-up command in that draft can fail
 with "has not been assembled". This is a separate draft-lifecycle gap; MCP does
 not synthesize user or assistant entries to force persistence.
 
+## Native image presentation
+
+Native image blocks in ordinary tool results appear directly in the shared Chat
+transcript beneath their work-log group, even when the log is collapsed. Script,
+arguments and text output remain inspectable in the log; opening it does not
+duplicate the images. Fullscreen preview uses the existing shared image surface.
+This is a renderer presentation of Pi-owned tool output, retaining the original
+part identity for selection and replay—not a second transcript or an automatic
+workspace save.
+
 ## Service ownership
 
 - `CakeSessionRuntimes` owns list, inspect, keyed scoped runtime acquisition, session

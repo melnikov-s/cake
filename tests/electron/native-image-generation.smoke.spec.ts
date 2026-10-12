@@ -169,13 +169,18 @@ test("native images appear in Chat and only explicitly requested originals are s
     });
     expect(images).toHaveLength(1);
     expect(await readdir(project)).toEqual([".pi", "reference.png"]);
-    await page.getByRole("button", { name: "Work log display options" }).click();
-    await page.getByRole("button", { name: "Full work logs" }).click();
-    await page.keyboard.press("Escape");
+    const workLog = page.locator('[data-slot="activity-group"]').first();
+    await expect(workLog).not.toHaveAttribute("open");
     const preview = page
       .getByRole("button", { name: /View Tool output image .* enlarged/ })
       .first();
-    await expect(preview).toBeVisible();
+    await expect(preview).toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.getByRole("button", { name: /View Tool output image .* enlarged/ }),
+    ).toHaveCount(1);
+    expect(
+      await preview.evaluate((element) => Boolean(element.closest('[data-slot="activity-group"]'))),
+    ).toBe(false);
     await preview.click();
     const fullscreen = page.getByRole("dialog", { name: /Tool output image/ });
     await expect(fullscreen).toBeVisible();
@@ -183,6 +188,21 @@ test("native images appear in Chat and only explicitly requested originals are s
     await page.keyboard.press("Escape");
     await expect(fullscreen).toBeHidden();
     await expect(preview).toBeFocused();
+    await workLog.locator("summary").click();
+    await page.getByRole("button", { name: /^codemode/ }).click();
+    await expect(page.getByText("Script", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /View Tool output image .* enlarged/ }),
+    ).toHaveCount(1);
+    await workLog.locator("summary").click();
+    await expect(preview).toBeVisible();
+
+    // Saved Pi results replay inline too, without another generation request.
+    await page.reload();
+    await expect(page.getByText("Preview ready; no file saved.", { exact: true })).toBeVisible();
+    await expect(preview).toBeVisible();
+    await expect(workLog).not.toHaveAttribute("open");
+    expect(images).toHaveLength(1);
 
     await composer.click();
     await composer.pressSequentially("Generate native and save fox.png using reference.png");
@@ -194,6 +214,9 @@ test("native images appear in Chat and only explicitly requested originals are s
     });
     expect(await readFile(join(project, "fox.png"))).toEqual(original);
     expect(images).toHaveLength(2);
+    await expect(
+      page.getByRole("button", { name: /View Tool output image .* enlarged/ }),
+    ).toHaveCount(2);
     expect(images[1]).toMatchObject({
       messages: [
         {

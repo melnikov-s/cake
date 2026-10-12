@@ -218,6 +218,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
         subagents={behavior.subagents}
         live={live}
         omitDiff={omitToolDiff}
+        omitOutputImages={workLogItem}
         workspacePath={behavior.workspacePath}
         nestedExpansion={
           workLogItem

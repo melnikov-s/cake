@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { UiPart } from "../../../src/contracts/conversations/session-contract";
 import {
   addedFile,
   readFile,
@@ -21,6 +22,50 @@ afterEach(() => {
 });
 
 describe("Work-log presentation workflow", () => {
+  it("reveals native image results as a tool settles and keeps them visible across log disclosure and replay", async () => {
+    const tool: Extract<UiPart, { kind: "tool" }> = {
+      id: "generate-image",
+      kind: "tool",
+      name: "codemode",
+      input: "image(result.output[0]);",
+      state: "running",
+    };
+    using fixture = renderWorkLog([tool], { streaming: true });
+    expect(workLog().group.open).toBe(false);
+    expect(screen.queryByRole("img")).toBeNull();
+    const completed: Extract<UiPart, { kind: "tool" }> = {
+      ...tool,
+      state: "success",
+      output: "Script completed",
+      outputContent: [
+        { type: "text", text: "Script completed" },
+        { type: "image", mimeType: "image/png", data: "AA==" },
+        { type: "image", mimeType: "image/jpeg", data: "AQ==" },
+      ],
+    };
+    fixture.publish([completed]);
+    const previews = screen.getAllByRole("img");
+    expect(previews.map((preview) => preview.getAttribute("src"))).toEqual([
+      "data:image/png;base64,AA==",
+      "data:image/jpeg;base64,AQ==",
+    ]);
+    for (const preview of previews) {
+      expect(preview.closest("[data-part-id]")?.getAttribute("data-part-id")).toBe(tool.id);
+      expect(preview.closest("[data-slot=activity-group]")).toBeNull();
+    }
+    const { summary, group } = workLog();
+    expect(group.open).toBe(false);
+    expect(screen.queryByText("Script completed")).toBeNull();
+    await fixture.user.click(summary);
+    await fixture.user.click(screen.getByRole("button", { name: /^codemode/ }));
+    expect(await screen.findByText("Script completed")).toBeDefined();
+    expect(screen.getAllByRole("img")).toHaveLength(2);
+    await fixture.user.click(summary);
+    expect(screen.getAllByRole("img")).toHaveLength(2);
+    fixture.publish([completed]);
+    expect(workLog().group.open).toBe(false);
+    expect(screen.getAllByRole("img")).toHaveLength(2);
+  });
   it("summarizes added and removed files without counting reads or inventing elapsed history", async () => {
     using fixture = renderWorkLog([addedFile(), readFile("read-only"), removedFile()]);
     const { summary, group } = workLog();

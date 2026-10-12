@@ -54,6 +54,7 @@ function toolOutputContent(
   className: string,
   language: string,
   streaming: boolean,
+  omitImages: boolean,
 ) {
   return content.map((item, index) =>
     item.type === "text" ? (
@@ -65,7 +66,7 @@ function toolOutputContent(
       >
         {fencedCode(item.text, language)}
       </Markdown>
-    ) : (
+    ) : omitImages ? null : (
       <figure
         className="my-2 overflow-hidden rounded-[10px] border border-border bg-background"
         key={`image-${index}`}
@@ -84,16 +85,27 @@ function toolOutput(
   className: string,
   language: string,
   streaming: boolean,
+  omitImages: boolean,
 ) {
   if (part.outputContent && part.outputContent.length > 0)
-    return toolOutputContent(part.outputContent, className, language, streaming);
+    return toolOutputContent(part.outputContent, className, language, streaming, omitImages);
   if (part.output === undefined) return null;
   return toolText(part.output, className, language, streaming);
 }
 
-function readToolCode(part: Extract<UiPart, { kind: "tool" }>, streaming: boolean) {
+function readToolCode(
+  part: Extract<UiPart, { kind: "tool" }>,
+  streaming: boolean,
+  omitImages: boolean,
+) {
   const path = toolPath(part);
-  return toolOutput(part, "mt-3 text-xs", path ? languageForSource(path) : "text", streaming);
+  return toolOutput(
+    part,
+    "mt-3 text-xs",
+    path ? languageForSource(path) : "text",
+    streaming,
+    omitImages,
+  );
 }
 
 function editorLocation(part: Extract<UiPart, { kind: "tool" }>): SourceLocation | undefined {
@@ -138,6 +150,7 @@ export const Tool = observer(function Tool({
   subagents,
   live = false,
   omitDiff,
+  omitOutputImages = false,
   workspacePath,
   activity,
   nestedExpansion,
@@ -154,6 +167,8 @@ export const Tool = observer(function Tool({
   /** True while this conversation's runtime may still be producing subagent work. */
   live?: boolean;
   omitDiff?: boolean;
+  /** The conversation renders these images outside the collapsed work log. */
+  omitOutputImages?: boolean;
   /** Project root used only to shorten displayed in-project paths. */
   workspacePath?: string;
   /** Child metadata is separate from an ordinary transcript tool result. */
@@ -258,7 +273,7 @@ export const Tool = observer(function Tool({
             </p>
           )}
           {read && !activity ? (
-            readToolCode(part, part.state === "running")
+            readToolCode(part, part.state === "running", omitOutputImages)
           ) : diff ? (
             <DiffView
               diff={diff}
@@ -297,6 +312,7 @@ export const Tool = observer(function Tool({
               "mt-3 border-t border-border pt-3 text-xs",
               "text",
               part.state === "running",
+              omitOutputImages,
             )}
           {activity?.errorSummary && (
             <div className="mt-3 text-xs">
