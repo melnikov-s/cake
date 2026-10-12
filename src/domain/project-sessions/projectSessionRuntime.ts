@@ -286,6 +286,13 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       workingDirectory: location.workingDirectory,
       resolved: false,
     }),
+    onTurnActivityChanged: catalogs.publish({
+      _tag: "ProjectSessionActivityChanged",
+      sessionId,
+      projectPath: location.projectPath,
+      workingDirectory: location.workingDirectory,
+      sessionDirectory: location.sessionDirectory,
+    }),
     admitTurn: (input, accept) =>
       sessionFamilies
         .admitTurn(

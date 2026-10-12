@@ -362,7 +362,11 @@ export class SidebarSessionListStore extends Store<{
   }
 
   private activeLaneMemberships() {
-    const activeSessionIds = new Set<string>();
+    const activeSessionIds = new Set(
+      this.props.catalog.sessions
+        .filter((session) => session.running)
+        .map((session) => session.sessionId),
+    );
     for (const session of this.sessions.sessions) {
       if (isActiveSessionActivity(session.activity)) activeSessionIds.add(session.sessionId);
     }

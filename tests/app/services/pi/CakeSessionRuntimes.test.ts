@@ -133,6 +133,7 @@ describe("CakeSessionRuntimes", () => {
       const release = yield* Deferred.make<void>();
       const returned = yield* Deferred.make<void>();
       const outcomes: string[] = [];
+      const activity: boolean[] = [];
       let executingTurnIds: string[] = [];
       const layer = makeCakeSessionRuntimesLayer({
         sessionIds: () => Stream.empty,
@@ -162,6 +163,17 @@ describe("CakeSessionRuntimes", () => {
       const sessions = Context.get(context, CakeSessionRuntimes);
       const handle = yield* sessions.acquire({
         ...options(),
+        onTurnActivityChanged: sessions
+          .currentTurnIds({
+            workingDirectory: "/project",
+            sessionDirectory: "/sessions",
+            sessionId: "session-1",
+          })
+          .pipe(
+            Effect.map((turnIds) => {
+              activity.push(turnIds.length > 0);
+            }),
+          ),
         onTurnSettled: (event) =>
           Effect.sync(() => {
             outcomes.push(event.outcome);
@@ -172,6 +184,7 @@ describe("CakeSessionRuntimes", () => {
       yield* handle.abort();
       yield* Deferred.await(returned);
       assert.deepEqual(outcomes, ["aborted"]);
+      assert.deepEqual(activity, [true, false]);
     }),
   );
 

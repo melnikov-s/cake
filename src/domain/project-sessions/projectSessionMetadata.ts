@@ -64,6 +64,7 @@ const summary = (
   location: ProjectSessionLocation,
   resolved: boolean,
   unreadIds: ReadonlySet<string>,
+  running: boolean,
   family?: SessionFamily,
 ): ProjectSessionSummary => {
   const projected: ProjectSessionSummary = {
@@ -74,6 +75,7 @@ const summary = (
     messageCount: item.messageCount,
     resolved,
     unread: unreadIds.has(item.id),
+    running,
     projectPath: location.projectPath,
     projectName: location.projectName,
     workingDirectory: location.workingDirectory,
@@ -140,6 +142,7 @@ const archivedSummary = (
     messageCount: 0,
     resolved: true,
     unread: unreadIds.has(entry.sessionId),
+    running: false,
     projectPath: entry.projectPath,
     projectName: entry.projectName,
     workingDirectory: entry.workingDirectory,
@@ -276,7 +279,10 @@ const familyCatalog = Effect.fn("ProjectSessions.familyCatalog")(function* (
           sessionId,
         )
         .pipe(asError("catalog"));
-      return item ? summary(item, location, resolved, unread, family) : undefined;
+      const turnIds = yield* sessions.currentTurnIds({ ...location, sessionId });
+      return item
+        ? summary(item, location, resolved, unread, turnIds.length > 0, family)
+        : undefined;
     }),
   );
   return {
@@ -378,7 +384,13 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
         );
         return source.pipe(
           Stream.filter((item) => !familyByMember.has(item.id)),
-          Stream.map((item) => summary(item, location, false, unread)),
+          Stream.mapEffect((item) =>
+            sessions
+              .currentTurnIds({ ...location, sessionId: item.id })
+              .pipe(
+                Effect.map((turnIds) => summary(item, location, false, unread, turnIds.length > 0)),
+              ),
+          ),
           Stream.catch(() => Stream.empty),
         );
       },
@@ -435,10 +447,18 @@ const catalogEventForSessionChange = Effect.fn("ProjectSessions.catalogEventForS
       },
       change.sessionId,
     );
+    const turnIds = yield* sessions.currentTurnIds({ ...location, sessionId: change.sessionId });
     return item
       ? ({
           _tag: "Upserted",
-          session: summary(item, location, false, new Set(state.unreadSessionIds), family),
+          session: summary(
+            item,
+            location,
+            false,
+            new Set(state.unreadSessionIds),
+            turnIds.length > 0,
+            family,
+          ),
         } as const)
       : ({ _tag: "Removed", sessionId: change.sessionId } as const);
   },
@@ -448,6 +468,15 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
   query: ProjectSessionCatalogQuery,
   change: SessionCatalogChange,
 ) {
+  if (change._tag === "ProjectSessionActivityChanged") {
+    if (change.projectPath !== query.projectPath || query.resolved) return undefined;
+    const turnIds = yield* (yield* CakeSessionRuntimes).currentTurnIds(change);
+    return {
+      _tag: "ActivityChanged",
+      sessionId: change.sessionId,
+      running: turnIds.length > 0,
+    } as const;
+  }
   if (change._tag === "ProjectSessionRemoved")
     return { _tag: "Removed", sessionId: change.sessionId } as const;
   if (change._tag === "ProjectSessionTitleChanged")

@@ -73,6 +73,11 @@ lifecycle, Project, and catalog sources update only their own Models. None of
 those updates rebuilds a Project Session-shaped payload or replaces the
 Conversation projection.
 
+The lightweight Project Session catalog also projects whether the runtime has
+accepted turns. Its initial snapshot and activity events update sidebar indicators
+without demanding a Conversation observation or selecting the session. Activity
+is runtime-derived and is not persisted as session metadata.
+
 ## Relationship language
 
 - A Project Session **has a primary Conversation**.

@@ -5,6 +5,8 @@ import { applySnapshot } from "r-state-tree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnId } from "../../../src/contracts/conversations/conversation-data";
 import type { SavedDraft } from "../../../src/contracts/project-sessions/saved-draft-data";
+import type { SessionCatalogUpdate } from "../../../src/contracts/application/catalog-data";
+import { applySessionCatalogGroupUpdate } from "../../../src/renderer/reducers/CatalogReducer";
 import type { Client } from "../../../src/renderer/client/Client";
 import { Chat } from "../../../src/renderer/components/chat";
 import { SidebarProjectGroup } from "../../../src/renderer/components/sidebar-project-group";
@@ -90,6 +92,15 @@ async function renderCatalog(
         applySnapshot(fixture.models.sessionCatalog, { sessions, resolvedHasMoreByProject: {} }),
       );
     },
+    async publishUpdate(update: SessionCatalogUpdate) {
+      await act(async () =>
+        applySessionCatalogGroupUpdate(
+          fixture.models.sessionCatalog,
+          { projectPath, resolved: false },
+          update,
+        ),
+      );
+    },
     [Symbol.dispose]() {
       view.unmount();
       fixture[Symbol.dispose]();
@@ -102,6 +113,77 @@ function sidebar() {
 afterEach(cleanup);
 
 describe("Session catalog lifecycle workflows", () => {
+  it("shows background child activity without opening it, then clears it on settlement", async () => {
+    const child = summary("child", {
+      title: "Background worker",
+      familyId: "family",
+      familyParentSessionId: "parent",
+      familyDepth: 1,
+    });
+    const parent = summary("parent", {
+      title: "Parent",
+      familyId: "family",
+      familyParentSessionId: "parent",
+      familyChildSessionIds: ["child"],
+      familyDepth: 0,
+    });
+    using fixture = await renderCatalog({ sessions: [parent] });
+    // The child arrives after the sidebar is mounted, already accepted by the backend.
+    await fixture.publishUpdate({
+      _tag: "Event",
+      revision: 2,
+      event: {
+        _tag: "UpsertedBatch",
+        sessions: [parent, { ...child, running: true }],
+      },
+    });
+    const row = () =>
+      sidebar()
+        .getByRole("button", { name: /^Background worker / })
+        .closest<HTMLElement>(".session-item")!;
+    expect(within(row()).getByRole("img", { name: "Running" })).toBeTruthy();
+    expect(
+      within(
+        sidebar()
+          .getByRole("button", { name: /^Parent / })
+          .closest<HTMLElement>(".session-item")!,
+      ).queryByRole("img", {
+        name: "Running",
+      }),
+    ).toBeNull();
+    await fixture.publishUpdate({
+      _tag: "Event",
+      revision: 3,
+      event: {
+        _tag: "ActivityChanged",
+        sessionId: "child",
+        running: false,
+      },
+    });
+    expect(within(row()).queryByRole("img", { name: "Running" })).toBeNull();
+    await fixture.publishUpdate({
+      _tag: "Event",
+      revision: 4,
+      event: {
+        _tag: "StatusChanged",
+        sessionId: "child",
+        resolved: false,
+        unread: true,
+      },
+    });
+    expect(within(row()).getByRole("img", { name: "Ready, unread" })).toBeTruthy();
+    await fixture.publishUpdate({
+      _tag: "Event",
+      revision: 5,
+      event: {
+        _tag: "ActivityChanged",
+        sessionId: "child",
+        running: true,
+      },
+    });
+    expect(within(row()).getByRole("img", { name: "Running" })).toBeTruthy();
+  });
+
   it.each(["before", "after"] as const)(
     "replaces the submitted title with authority arriving %s start completes, without resurrecting it on removal",
     async (timing) => {

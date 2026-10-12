@@ -85,6 +85,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
           messageCount: conversation.messageCount,
           resolved: conversation.resolved,
           unread: false,
+          running: false,
           projectPath,
           projectName: this.props.projectName(projectPath),
           workingDirectory: session.workspacePath,

@@ -31,6 +31,7 @@ export const ProjectSessionSummary = Schema.Struct({
   parentSessionId: Schema.optionalKey(boundedId),
   resolved: Schema.Boolean,
   unread: Schema.Boolean,
+  running: Schema.Boolean,
   projectPath: boundedPath,
   projectName: Schema.String,
   workingDirectory: boundedPath,

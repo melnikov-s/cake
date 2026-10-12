@@ -8,6 +8,7 @@ export class SessionSummary extends Model {
   parentSessionId: string | undefined;
   resolved = false;
   unread = false;
+  running = false;
   projectPath = "";
   projectName = "";
   workingDirectory = "";

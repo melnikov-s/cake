@@ -70,7 +70,8 @@ export class SessionMetadataStore extends Store<{
 
   sessionActivity(sessionId: string): SessionActivity | undefined {
     const activity = this.props.sessions.findSession(sessionId)?.activity;
-    if (activity) return activity;
+    if (activity === "waiting" || activity === "running") return activity;
+    if (this.props.catalog.find(sessionId)?.running) return "running";
     const waitingToMerge = this.props.worktreeOperations?.operations.some(
       (operation) =>
         operation.sessionId === sessionId &&
@@ -78,6 +79,6 @@ export class SessionMetadataStore extends Store<{
         (operation.phase === "waiting" || operation.phase === "queued"),
     );
     if (waitingToMerge) return "running";
-    return this.props.catalog.find(sessionId)?.unread ? "unread" : undefined;
+    return activity ?? (this.props.catalog.find(sessionId)?.unread ? "unread" : undefined);
   }
 }

@@ -15,6 +15,7 @@ export interface SessionSummaryFixture {
   readonly messageCount: number;
   readonly resolved: boolean;
   readonly unread: boolean;
+  readonly running: boolean;
   readonly projectPath: string;
   readonly projectName: string;
   readonly workingDirectory: string;
@@ -62,6 +63,7 @@ export function sessionSummary(
     messageCount: input.messageCount ?? 0,
     resolved: input.resolved ?? false,
     unread: input.unread ?? false,
+    running: input.running ?? false,
     projectPath: input.projectPath,
     projectName: input.projectName ?? input.projectPath.split("/").at(-1) ?? input.projectPath,
     workingDirectory: input.workingDirectory ?? input.projectPath,

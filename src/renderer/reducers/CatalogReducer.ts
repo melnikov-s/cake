@@ -126,6 +126,9 @@ export function applySessionCatalogGroupUpdate(
         if (removedIds.has(session.sessionId) && belongsToGroup(session))
           model.sessions.splice(index, 1);
       }
+    } else if (event._tag === "ActivityChanged") {
+      const existing = model.find(event.sessionId);
+      if (existing && belongsToGroup(existing)) existing.running = event.running;
     } else if (event._tag === "TitleChanged") {
       const existing = model.find(event.sessionId);
       if (existing && belongsToGroup(existing)) existing.title = event.title;

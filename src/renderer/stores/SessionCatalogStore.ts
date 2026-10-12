@@ -14,6 +14,7 @@ export interface PendingSessionSummary {
   parentSessionId?: string;
   resolved: boolean;
   unread: boolean;
+  running: boolean;
   projectPath: string;
   projectName: string;
   workingDirectory: string;

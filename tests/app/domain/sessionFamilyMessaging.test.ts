@@ -206,6 +206,13 @@ it.effect.each([
         );
         assert.deepEqual(changes, [
           {
+            _tag: "ProjectSessionActivityChanged",
+            sessionId: "child",
+            projectPath: "/project",
+            workingDirectory: "/project",
+            sessionDirectory: "/cake/sessions",
+          },
+          {
             _tag: "ProjectSessionChanged",
             sessionId: "child",
             projectPath: "/project",

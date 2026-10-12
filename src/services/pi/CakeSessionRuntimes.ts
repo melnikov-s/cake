@@ -135,6 +135,8 @@ export interface CakeSessionRuntimeAcquireOptions {
     readonly result?: PiTurnResult;
     readonly message?: string;
   }) => Effect.Effect<void, unknown>;
+  /** Publishes lightweight activity after accepted turns start or settle. */
+  readonly onTurnActivityChanged?: Effect.Effect<void>;
   /** Publishes kind-specific catalog metadata after shared conversation mutations. */
   readonly onSessionChanged?: Effect.Effect<void, unknown>;
 }
@@ -683,6 +685,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               };
               if (message !== undefined) Object.assign(event, { message });
               yield* PubSub.publish(retained.events, event);
+              yield* key.options.onTurnActivityChanged ?? Effect.void;
               if (key.options.onTurnSettled)
                 yield* key.options.onTurnSettled({
                   sessionId: retained.runtime.sessionId,
@@ -728,6 +731,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               turnId,
               delivery,
             });
+            yield* options.onTurnActivityChanged ?? Effect.void;
             yield* run.pipe(Effect.forkIn(layerScope));
           });
           yield* (
@@ -769,6 +773,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                   turnId,
                   outcome: "aborted",
                 });
+                yield* options.onTurnActivityChanged ?? Effect.void;
                 if (options.onTurnSettled)
                   yield* options
                     .onTurnSettled({

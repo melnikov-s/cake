@@ -17,6 +17,7 @@ import * as projectSessionOperations from "../../../src/domain/project-sessions/
 import * as projectSessionContinuations from "../../../src/domain/project-sessions/projectSessionContinuations";
 import * as projectSessionLifecycle from "../../../src/domain/project-sessions/projectSessionLifecycle";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
+import { TurnCanceledError } from "../../../src/services/pi/runtime/RuntimeTurnCompletion";
 import { createCakeSessionRuntimeContinuations } from "../../../src/services/pi/runtime/cake-session-runtime-continuations";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
@@ -2034,6 +2035,82 @@ describe("Project Sessions domain", () => {
     },
   );
 
+  it.effect.each(["complete", "failed", "aborted"] as const)(
+    "projects unopened family child activity through the catalog until %s settlement",
+    (outcome) =>
+      Effect.gen(function* () {
+        const finished = yield* Deferred.make<void, Error>();
+        const started = yield* Deferred.make<void>();
+        const layer = makeLayer(undefined, {
+          family: {
+            familyId: "family",
+            parentSessionId: "parent",
+            projectPath: "/project",
+            workingDirectory: "/project",
+            createdAt: "2026-01-01",
+            children: [{ sessionId: "session-1", requestId: "child", createdAt: "2026-01-01" }],
+          },
+          catalog: () => Stream.make(sessionSummary("parent"), sessionSummary("session-1")),
+          prompt: () =>
+            Effect.runPromise(
+              Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(finished))),
+            ),
+        });
+        yield* Effect.gen(function* () {
+          const query = { projectPath: "/project", resolved: false };
+          const updates = yield* projectSessionMetadata.observeCatalog(query);
+          const received = yield* Queue.unbounded<SessionCatalogUpdate>();
+          yield* updates.pipe(
+            Stream.runForEach((update) => Queue.offer(received, update)),
+            Effect.forkChild,
+          );
+          const catalog = SessionCatalog.create();
+          const initial = yield* Queue.take(received);
+          applySessionCatalogGroupUpdate(catalog, query, initial);
+          assert.equal(catalog.find("session-1")?.running, false);
+          const runtimes = yield* CakeSessionRuntimes;
+          const options = yield* acquireOptions({
+            sessionId: "session-1",
+            newSession: false,
+            location: {
+              projectPath: "/project",
+              projectName: "Project",
+              workingDirectory: "/project",
+              sessionDirectory: "/sessions",
+              resolvedSessionDirectory: "/resolved",
+            },
+          });
+          const handle = yield* runtimes.acquire(options);
+          yield* handle.prompt("Work in the background");
+          const accepted = yield* Queue.take(received);
+          applySessionCatalogGroupUpdate(catalog, query, accepted);
+          assert.equal(catalog.find("session-1")?.running, true);
+          assert.equal(catalog.find("parent")?.running, false);
+          // A reconnect while the child is already active must have the same indicator.
+          const reconnect = yield* (yield* projectSessionMetadata.observeCatalog(query)).pipe(
+            Stream.take(1),
+            Stream.runCollect,
+          );
+          assert.equal(
+            reconnect[0]?._tag === "Snapshot" &&
+              reconnect[0].sessions.find((session) => session.sessionId === "session-1")?.running,
+            true,
+          );
+          yield* Deferred.await(started);
+          if (outcome === "complete") yield* Deferred.succeed(finished, undefined);
+          else
+            yield* Deferred.fail(
+              finished,
+              outcome === "aborted" ? new TurnCanceledError("Canceled") : new Error("Model failed"),
+            );
+          const settled = yield* Queue.take(received);
+          applySessionCatalogGroupUpdate(catalog, query, settled);
+          assert.equal(catalog.find("session-1")?.running, false);
+          catalog[Symbol.dispose]();
+        }).pipe(Effect.provide(layer));
+      }),
+  );
+
   it.effect("streams Project and Working Directory metadata above CakeSessionRuntimes", () =>
     Effect.gen(function* () {
       const updates = yield* projectSessionMetadata.observeCatalog({
@@ -3378,6 +3455,7 @@ describe("Project Sessions domain", () => {
         Stream.tap((update) =>
           update.revision === 1 ? Deferred.succeed(ready, undefined) : Effect.void,
         ),
+        Stream.filter((update) => update._tag === "Snapshot" || update.event._tag === "Upserted"),
         Stream.take(2),
         Stream.runCollect,
         Effect.forkChild,

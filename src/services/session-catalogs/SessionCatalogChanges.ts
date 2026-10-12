@@ -13,6 +13,13 @@ export type SessionCatalogChange =
       readonly projectPath: string;
       readonly title: string;
     }
+  | {
+      readonly _tag: "ProjectSessionActivityChanged";
+      readonly sessionId: string;
+      readonly projectPath: string;
+      readonly workingDirectory: string;
+      readonly sessionDirectory: string;
+    }
   | { readonly _tag: "ProjectSessionRemoved"; readonly sessionId: string }
   | {
       readonly _tag: "ProjectSessionsTransitioned";
