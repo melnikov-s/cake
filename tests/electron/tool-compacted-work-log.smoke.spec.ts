@@ -282,7 +282,7 @@ test("shows compacted historical work in place, muted and expandable", async () 
     SessionManager.open(join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`)),
   );
   expect(
-    fixtureParts.filter((part) => part.kind === "context" && part.title === "System prompt"),
+    fixtureParts.filter((part) => part.kind === "context" && part.title === "Pi system prompt"),
   ).toEqual([
     expect.objectContaining({ origin: "compacted" }),
     expect.objectContaining({ text: expect.stringContaining("Genuinely changed instructions") }),
@@ -368,8 +368,8 @@ test("shows compacted historical work in place, muted and expandable", async () 
     // The genuine instruction change stays inspectable even if the runtime
     // materializes its current prompt while this initially passive preview is open.
     const systemChange = page
-      .locator('[data-part-id="entry-changed-system-system-prompt"]')
-      .getByRole("button", { name: "System prompt", exact: true });
+      .locator('[data-part-id="entry-changed-system-system-prompt-pi"]')
+      .getByRole("button", { name: "Pi system prompt", exact: true });
     await expect(systemChange).toHaveCount(1);
     await systemChange.click();
     await expect(

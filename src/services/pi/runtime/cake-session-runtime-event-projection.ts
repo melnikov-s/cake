@@ -16,6 +16,7 @@ import {
 } from "./session-projection";
 import type { ResponseRetryNotice } from "./response-retry";
 import { createNestedToolActivityProjection } from "./nested-tool-activity-projection";
+import { projectRuntimeSystemPrompt } from "./system-context-projection";
 
 export type RuntimeProjectionEvent =
   | { type: "part-updated"; sessionId: string; part: UiPart }
@@ -91,6 +92,9 @@ export function createCakeSessionRuntimeEventProjection(input: {
     emit({ type: "part-updated", sessionId, part }),
   );
   const pendingUserPresentations: PendingUserPresentation[] = [];
+  let runtimePromptIds = new Set(
+    projectRuntimeSystemPrompt(session.systemPrompt).map((part) => part.id),
+  );
   const projectLiveMessage = createLiveMessageProjector({
     deferProviderErrors: true,
     suppressAbort: input.suppressAbort,
@@ -216,16 +220,12 @@ export function createCakeSessionRuntimeEventProjection(input: {
     if (event.type === "agent_start") {
       emit({ type: "streaming", sessionId, streaming: true });
       // before_agent_start extensions may have changed the effective prompt for this run.
-      emit({
-        type: "part-updated",
-        sessionId,
-        part: {
-          id: "runtime-system-prompt",
-          kind: "context",
-          title: "System prompt",
-          text: session.systemPrompt,
-        },
-      });
+      const promptParts = projectRuntimeSystemPrompt(session.systemPrompt);
+      const nextIds = new Set(promptParts.map((part) => part.id));
+      for (const partId of runtimePromptIds)
+        if (!nextIds.has(partId)) emit({ type: "part-removed", sessionId, partId });
+      for (const part of promptParts) emit({ type: "part-updated", sessionId, part });
+      runtimePromptIds = nextIds;
     }
     if (event.type === "message_update" && event.message.role === "assistant") {
       scheduleAssistantUpdate(event);

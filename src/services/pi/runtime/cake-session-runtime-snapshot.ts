@@ -16,7 +16,10 @@ import { piBuiltinSlashCommands, slashCommandSchema } from "../../../ipc/session
 import { supportsFastMode } from "../fast-mode";
 import { projectConversationDisplay } from "./conversation-display-projection";
 import { projectTree } from "./session-projection";
-import { withoutRuntimeSystemPrompt } from "./system-context-projection";
+import {
+  projectRuntimeSystemPrompt,
+  withoutRuntimeSystemPrompt,
+} from "./system-context-projection";
 import { projectPiSettings } from "./settings-translation";
 
 export interface CakeSessionRuntimeSnapshotInput {
@@ -52,16 +55,7 @@ export function projectCakeSessionRuntimeSnapshot(
     sessionFile: session.sessionFile ?? "",
     sessionListed: input.sessionListed,
     parts: [
-      ...(session.systemPrompt
-        ? [
-            {
-              id: "runtime-system-prompt",
-              kind: "context" as const,
-              title: "System prompt",
-              text: session.systemPrompt,
-            },
-          ]
-        : []),
+      ...projectRuntimeSystemPrompt(session.systemPrompt),
       ...withoutRuntimeSystemPrompt(branchParts, session.systemPrompt),
       ...input.queuedParts,
       ...input.transientParts,

@@ -255,7 +255,7 @@ describe("tool compaction", () => {
     );
     const parts = projectConversationDisplay(session);
     expect(
-      parts.filter((part) => part.kind === "context" && part.title === "System prompt"),
+      parts.filter((part) => part.kind === "context" && part.title === "Pi system prompt"),
     ).toHaveLength(2);
     expect(
       parts.filter((part) => part.kind === "context").every((part) => part.origin === "compacted"),
@@ -268,7 +268,7 @@ describe("tool compaction", () => {
     ).toEqual([checkpoint]);
     expect(
       projectConversationDisplay(session).filter(
-        (part) => part.kind === "context" && part.title === "System prompt",
+        (part) => part.kind === "context" && part.title === "Pi system prompt",
       ),
     ).toHaveLength(2);
     // A genuine post-compaction change is still visible, not mistaken for the checkpoint.
@@ -281,7 +281,7 @@ describe("tool compaction", () => {
     expect(projectConversationDisplay(session)).toContainEqual(
       expect.objectContaining({
         kind: "context",
-        title: "System prompt",
+        title: "Pi system prompt",
         text: expect.stringContaining("Changed rules"),
       }),
     );

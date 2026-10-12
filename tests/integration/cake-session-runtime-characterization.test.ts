@@ -242,8 +242,8 @@ describe("CakeSessionRuntime characterization", () => {
         (event) =>
           event.type === "part-updated" &&
           event.part.kind === "context" &&
-          event.part.title === "System prompt" &&
-          event.part.id !== "runtime-system-prompt",
+          event.part.id.includes("-system-prompt") &&
+          !event.part.id.startsWith("runtime-"),
       );
     const requestSystems = (body: Record<string, unknown>) =>
       (body.messages as Array<{ role: string; content: string }>).filter(
@@ -260,15 +260,15 @@ describe("CakeSessionRuntime characterization", () => {
     await runtime.toolCompact(selectedId);
     const compacted = await runtime.snapshot();
     expect(
-      before.parts.filter((part) => part.kind === "context" && part.title === "System prompt"),
+      before.parts.filter((part) => part.kind === "context" && part.title === "Pi system prompt"),
     ).toHaveLength(1);
     expect(
       compacted.parts.filter((part) => part.kind === "context" && part.origin !== "compacted"),
-    ).toEqual([expect.objectContaining({ id: "runtime-system-prompt", title: "System prompt" })]);
+    ).toEqual(before.parts.filter((part) => part.id.startsWith("runtime-system-prompt")));
     expect(compacted.parts).toContainEqual(
       expect.objectContaining({
         kind: "context",
-        title: "System prompt",
+        title: "Additional instructions",
         origin: "compacted",
         text: expect.stringContaining("REQUIRED_CANONICAL_INSTRUCTION"),
       }),
@@ -310,14 +310,22 @@ describe("CakeSessionRuntime characterization", () => {
     await runtime.reload!();
     events.length = 0;
     await runtime.prompt("After an instruction change", "prompt", []);
-    expect(injections()).toHaveLength(1);
+    expect(injections()).toEqual([
+      expect.objectContaining({
+        part: expect.objectContaining({
+          title: "Additional instructions",
+          text: expect.stringContaining("CHANGED_CANONICAL_INSTRUCTION"),
+        }),
+      }),
+      expect.objectContaining({ part: expect.objectContaining({ title: "Cake system prompt" }) }),
+    ]);
     expect(requestSystems(bodies[5]!)[0]!.content).toContain("CHANGED_CANONICAL_INSTRUCTION");
     expect(requestSystems(bodies[5]!)[0]!.content).not.toContain("REQUIRED_CANONICAL_INSTRUCTION");
     const settled = await runtime.snapshot();
     expect(settled.parts).toContainEqual(
       expect.objectContaining({
         kind: "context",
-        title: "System prompt",
+        title: "Additional instructions",
         text: expect.stringContaining("CHANGED_CANONICAL_INSTRUCTION"),
       }),
     );

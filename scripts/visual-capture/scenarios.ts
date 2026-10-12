@@ -360,9 +360,13 @@ const contextPillsScenario: VisualCaptureScenario = {
   name: "context-pills",
   description:
     "Inspectable injected reminders and hidden Cake/extension context in horizontal pills",
-  states: ["default", "expanded"],
+  states: ["default", "expanded", "sources"],
   async seed(paths, theme) {
     await assistantMarkdownCode.seed(paths, theme);
+    await writeFile(
+      join(paths.project, "AGENTS.md"),
+      "## Project instructions\n\nUse shared UI primitives and keep the conversation primary.",
+    );
     const timestamp = new Date(0).toISOString();
     const file = join(
       workspaceSessionDirectory(paths.project, join(paths.cakeHome, "pi", "sessions")),
@@ -416,21 +420,34 @@ const contextPillsScenario: VisualCaptureScenario = {
     await expect(
       page.locator('[data-slot="context-group"]').last().locator('[data-slot="context-pill"]'),
     ).toHaveCount(4, { timeout: 20_000 });
-    const systemPrompt = page.getByRole("button", { name: "System prompt", exact: true });
-    await expect(systemPrompt).toBeVisible();
-    await systemPrompt.click();
-    await expect(page.locator('[data-part-id="runtime-system-prompt"]')).toContainText(
+    const piPrompt = page.getByRole("button", { name: "Pi system prompt", exact: true });
+    await expect(piPrompt).toBeVisible();
+    await piPrompt.click();
+    await expect(page.locator('[data-part-id="runtime-system-prompt-pi"]')).toContainText(
       "coding assistant",
     );
-    await systemPrompt.click();
+    await piPrompt.click();
+    const cakePrompt = page.getByRole("button", { name: "Cake system prompt", exact: true });
+    await cakePrompt.click();
+    await expect(
+      page.getByRole("heading", { name: "Cake desktop environment", exact: true }),
+    ).toBeVisible();
+    await cakePrompt.click();
+    if (state === "sources") {
+      await page.getByRole("button", { name: /^AGENTS\.md ·/ }).click();
+      await expect(
+        page.getByRole("heading", { name: "Project instructions", exact: true }),
+      ).toBeVisible();
+    }
     if (state === "expanded") {
       await page.getByRole("button", { name: "Cake reminder", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Session guidance" })).toBeVisible();
     }
     await page.waitForFunction(() => document.fonts.status === "loaded");
   },
-  region(page) {
-    return page.locator('[data-slot="context-group"]').last();
+  region(page, state) {
+    const groups = page.locator('[data-slot="context-group"]');
+    return state === "sources" ? groups.first() : groups.last();
   },
 };
 

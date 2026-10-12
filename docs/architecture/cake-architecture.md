@@ -87,8 +87,10 @@ projections needed by a surface. References do not transfer ownership.
   Cake/extension messages, regardless of Pi's `display` flag. Disclose them as
   inspectable context pills; group consecutive pills horizontally with wrapping,
   not separate rows. Expose
-  the live runtime's system prompt too. Presentation does not create another
-  transcript authority.
+  the live runtime's system prompt too, separating Pi's base instructions, Cake
+  guidance, individual loaded instruction files (with their paths), skills, and
+  other additions into independently inspectable pills. Presentation does not
+  create another transcript authority.
 - Project Session Tool Compact replays only user-authored input and assistant text as dialogue.
   Preserve Pi's canonical system prompt/tool baseline as a folded checkpoint, not
   a new instruction injection. Strip injected reminders (including embedded ones),

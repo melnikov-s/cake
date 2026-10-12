@@ -1590,10 +1590,22 @@ export async function createCakeSessionRuntimeCapabilities(input: {
             ? []
             : [
                 ...base,
-                ...(options.auxiliaryProjectResources ? [] : [cakeProjectSystemPrompt]),
-                ...(options.additionalSystemPrompt ? [options.additionalSystemPrompt] : []),
-                ...(detectedWorktreePrompt ? [detectedWorktreePrompt] : []),
-                ...(options.projectInvestigation ? [projectInvestigationPrompt] : []),
+                ...(options.auxiliaryProjectResources
+                  ? []
+                  : [`<cake_system_prompt>\n${cakeProjectSystemPrompt}\n</cake_system_prompt>`]),
+                ...(options.additionalSystemPrompt
+                  ? [
+                      `<session_instructions>\n${options.additionalSystemPrompt}\n</session_instructions>`,
+                    ]
+                  : []),
+                ...(detectedWorktreePrompt
+                  ? [`<worktree_instructions>\n${detectedWorktreePrompt}\n</worktree_instructions>`]
+                  : []),
+                ...(options.projectInvestigation
+                  ? [
+                      `<project_investigation>\n${projectInvestigationPrompt}\n</project_investigation>`,
+                    ]
+                  : []),
               ],
         additionalSkillPaths: [],
         additionalPromptTemplatePaths: [],
