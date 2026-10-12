@@ -5,8 +5,10 @@ feature catalog or roadmap. Read feature behavior only when the task touches it;
 [focused references](#focused-references) route to those contracts and tests.
 [The vocabulary](./cake-vocabulary.md) defines canonical terms;
 [Effect architecture](./effect-architecture.md) defines runtime implementation
-rules. The [documentation map](./README.md) explains maintained-guide and task-artifact
-responsibilities.
+rules. This document is the single authority for renderer-state ownership,
+Model/Store organization, and shared-chat contracts; `AGENTS.md` links here rather
+than maintaining parallel rules. The [documentation map](./README.md) explains
+maintained-guide and task-artifact responsibilities.
 
 ## Product identity
 
@@ -81,16 +83,20 @@ projections needed by a surface. References do not transfer ownership.
   `SessionManager.getBranch()`, not compacted model input from
   `buildContextEntries()`. Permanent Cake Chat presents original-history pages
   and a live projection, not its derived summary nodes or context resets.
-- Model-facing reminders and custom messages remain inspectable, regardless of
-  Pi's `display` flag; expose the live system prompt too. Presentation does not
-  create another transcript authority.
+- Never silently hide model-facing system reminders or custom messages, including
+  Cake/extension messages, regardless of Pi's `display` flag. Disclose them as
+  inspectable context pills; group consecutive pills horizontally with wrapping,
+  not separate rows. Expose
+  the live runtime's system prompt too. Presentation does not create another
+  transcript authority.
 - Project Session Tool Compact replays only user-authored input and assistant text as dialogue.
   Preserve Pi's canonical system prompt/tool baseline as a folded checkpoint, not
   a new instruction injection. Strip injected reminders (including embedded ones),
   reasoning, tools, custom messages, and cross-session coordination. Keep
   orientation/provenance in non-context Pi metadata and the original transcript
-  tree inspectable. The checkpoint does not add a new context pill; genuine later
-  instruction changes do.
+  tree inspectable. Mark removed historical context after Tool Compact; preserve
+  literal user-authored reminder tags as user content. The checkpoint does not
+  add a new context pill; genuine later instruction changes do.
 - Waiting user and cross-session inputs use the owning Pi backend's admission
   and queue mechanism. Regular-Pi queue metadata is transient; permanent Cake
   Chat's inbox is Pi Durable-owned. Cake does not persist a competing runtime
@@ -151,8 +157,7 @@ that guarantee belongs to its engine or focused workflow contract.
 Chat's Durable SDK adapter lives in `src/services/pi-durable`, with runtime leases
 still owned by `CakeSessionRuntimes`. Each Cake Session Runtime wraps one Pi-owned
 runtime and returns a scoped Handle. Raw SDK objects and events stop at their
-adapter boundary. Legacy focused adapters may remain in `src/agent` during
-migration, but no new Pi integration belongs there.
+adapter boundary.
 
 ### Preload and transport
 
@@ -194,7 +199,10 @@ Before adding state, identify its authority, cohesive owner, lifetime, persisten
 boundary, and concurrency policy. Stores compose as stateful behavioral components,
 just as views compose presentation components. A complex application can require
 many Stores; count and tree depth are not quality metrics. Judge encapsulation,
-cohesive responsibility, and ownership rather than seeking fewer Stores.
+cohesive responsibility, and ownership rather than seeking fewer Stores. If an
+owner can only be described as "everything in this window" or a list of unrelated
+surfaces, use a focused Store instead. Existing concentration of unrelated state
+is a refactoring signal, not precedent.
 
 - **Models** are validated reactive projections, not durable authorities. The
   window-owned Model observer applies authoritative snapshots with `applySnapshot`
@@ -202,27 +210,43 @@ cohesive responsibility, and ownership rather than seeking fewer Stores.
   It owns observation demand and cancellation; Models know nothing about transport.
 - **Stores** are cohesive behavioral components for named product surfaces. They
   read Models and invoke semantic Promise operations on `Client`; workflow timers,
-  cancellation, repeated-call policy, and UI persistence belong here. Main domain
-  modules retain authoritative business rules.
+  cancellation, repeated-call policy, and UI persistence belong here. Give named
+  surfaces named Stores, such as navigation/sidebar, project selection, active
+  session/chat, changes, reviews, browse, and settings. Compose by ownership and
+  lifetime: put shared Stores near the root; nest them only when one parent surface
+  truly owns their lifetime and behavior. Main domain modules retain authoritative
+  business rules.
 - **RootStore** composes window dependencies; **NavigationStore** owns cross-Store
   navigation intents and coordinates focused workflow owners. Window lifetime does
   not make either the owner of every workflow. Parent Stores coordinate without
   copying child state or publishing one-for-one forwarding facades. Provider scopes
-  are lookup scopes, not ownership scopes.
+  are lookup scopes, not ownership scopes. Renderer bootstrap attaches focused
+  event-routing observers, synchronization, and persistence infrastructure to the
+  mounted Root Store; observers use the common Stream observation primitive and
+  own their cancellation handles.
 - **React** retains only tiny DOM, focus, hover, measurement, animation, or isolated
   input state. Dispose external resources with their actual owner.
 - **Window persistence** is infrastructure outside the Store tree: load a versioned
   snapshot before mounting, then save mounted snapshots through `Client`. Never
-  reapply storage into an already-mounted Store tree.
-- **Every chat surface** renders the authoritative `Chat` with the shared
-  `ChatStore`. Contextual framing may wrap it; no parallel transcript, message
-  renderer, composer, input, or chat-specific control set is allowed.
+  reapply storage into an already-mounted Store tree. One-way window snapshot
+  transport is renderer infrastructure outside that tree.
+- **Every chat surface**—project-session, Cake Chat, pop-up, selection, comment,
+  review, inline, modal, secondary, and future surfaces—renders the authoritative
+  `Chat` from `src/renderer/components/chat.tsx` with an instance of the shared
+  `ChatStore` from `src/renderer/stores/ChatStore.ts`. Extend these abstractions
+  when new behavior is needed. Contextual framing may wrap them, but must not
+  replace conversation behavior or controls. No parallel chat component,
+  transcript, message renderer, composer, input, Store contract, or chat-specific
+  control set is allowed.
 
-Every Model and Store lives in its own file. Projection Models target
-`src/renderer/models/` with PascalCase names not ending in `Model`; Stores live in
-`src/renderer/stores/` with PascalCase names ending in `Store`. Main-owned storage
-is ordinary Effect Schema data, not a renderer Model. Supporting utilities belong
-outside Model/Store directories.
+Every r-state-tree Model and Store lives in its own file; never colocate multiple
+Models or Stores or mix them with utilities or unrelated code. Projection Models
+live in `src/renderer/models/`, which contains only Model files, with PascalCase
+names and filenames not ending in `Model`. Stores live in `src/renderer/stores/`,
+which contains only Store files, with PascalCase names and filenames ending in
+`Store`. Main-owned application/storage data is ordinary Effect Schema data, not a
+renderer Model. Supporting utilities belong in `src/utils/` or the appropriate
+service/domain directory, never in Model/Store directories.
 
 ## Trust and extensibility
 

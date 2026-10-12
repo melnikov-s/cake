@@ -37,10 +37,11 @@ code change.
   of `docs/architecture/cake-architecture.md`,
   `docs/architecture/cake-vocabulary.md`, and
   `docs/architecture/effect-architecture.md` before finalizing the design.
-- For renderer-state changes, inspect the existing Cake Models/Stores and consult
-  the relevant r-state-tree `README.md`, skill, or references for the APIs and
-  ownership decisions being changed. Classify authority, owner, lifetime,
-  persistence, and concurrency as part of the implementation.
+- For renderer-state or chat changes, read the authoritative
+  [renderer state ownership](docs/architecture/cake-architecture.md#renderer-state-ownership)
+  and [conversation invariants](docs/architecture/cake-architecture.md#conversation-invariants).
+  Inspect the existing Models/Stores and relevant r-state-tree `README.md`, skill,
+  or API references. Keep these contracts in the architecture doc, not duplicated here.
 - For Effect code, use `.agents/skills/effect-ts/SKILL.md`, the installed
   `node_modules/effect/AGENTS.md`, and their relevant linked references as
   targeted guidance. Cake architecture decides ownership and process boundaries;
@@ -61,10 +62,8 @@ code change.
   GUI-specific persistence. Never create a second Cake-owned copy of
   a Pi transcript.
 - `src/services/pi` is the regular-Pi Service boundary; `src/services/pi-durable`
-  contains the permanent coordinator's Durable adapter. During migration, focused
-  legacy adapters may remain in `src/agent`, but no new Pi integration belongs
-  there. Other Cake modules use Cake-owned values and domain operations rather
-  than raw SDK objects.
+  contains the permanent coordinator's Durable adapter. Other Cake modules use
+  Cake-owned values and domain operations rather than raw SDK objects.
 - The shared backend owns Pi runtimes, filesystem access, and persistence.
   Electron main hosts it locally and adds native capabilities; remote Electron
   does not acquire a shadow backend. Preload exposes one narrow validated bridge.
@@ -81,15 +80,6 @@ code change.
   it separate from Project Session lists and use curated Cake control intents
   for application navigation and coordination.
 - Model-presented artifacts are data and remain validated or sandboxed.
-- Tool Compact must replay only user-authored input and assistant text. Strip injected
-  reminders (including reminders embedded in user input), custom/context messages,
-  cross-session coordination, reasoning, and tool activity. Orientation/provenance
-  must be non-context Pi metadata; keep the original transcript tree inspectable.
-- Never silently hide model-facing system reminders or Cake/extension messages in
-  Chat. Disclose them as inspectable context pills, regardless of Pi's `display`
-  flag. Group consecutive pills horizontally with wrapping, not separate rows.
-  Expose the live runtime's system prompt too. Mark removed historical context
-  after Tool Compact; preserve literal user-authored reminder tags as user content.
 
 ## Greenfield compatibility policy
 
@@ -112,10 +102,9 @@ Before implementing renderer UI:
 2. Identify the existing primitive, product component, Store, and Model that
    own the behavior. Existing one-off implementations are migration debt, not
    precedent.
-3. If the work touches application state, classify every state value by
-   authority, owner, lifetime, persistence boundary, and concurrency policy.
-   Keep Effect and transport mechanics behind renderer client and projection
-   infrastructure rather than importing them into ordinary Stores.
+3. Follow the architecture doc's
+   [renderer state ownership](docs/architecture/cake-architecture.md#renderer-state-ownership)
+   contract for state, Model/Store organization, and every chat surface.
 
 ### Tailwind and styling
 
@@ -162,15 +151,6 @@ Before implementing renderer UI:
   Independently meaningful subcomponents belong in separate files. Exceptions
   are cohesive compound primitive APIs, the centralized icon catalog, and tiny
   private render helpers with no independent responsibility.
-- Every chat of every kind—project-session, Cake Chat, pop-up, selection,
-  comment, review, inline, modal, secondary, and any future
-  chat surface—must render the authoritative `Chat` component from
-  `src/renderer/components/chat.tsx` and supply an instance of the shared
-  `ChatStore` from `src/renderer/stores/ChatStore.ts`. Extend those shared
-  abstractions when a chat needs new behavior; never build a parallel chat
-  component, transcript, input, composer, message renderer, Store contract, or
-  chat-specific control set. Surface-specific framing and context may wrap the
-  shared chat, but must not replace its conversation behavior or controls.
 
 ### Icons
 
@@ -180,34 +160,6 @@ Before implementing renderer UI:
   the shared catalog and reuse it.
 - Decorative icons must be `aria-hidden`. Icon-only actions must use the shared
   `IconButton` and provide a tooltip and accessible name.
-
-## Renderer state architecture
-
-- Treat each Store as a stateful behavioral component with one cohesive product or workflow responsibility. Many well-isolated Stores can accurately reflect a complex application; count and tree depth are not quality metrics or reasons to consolidate independent owners.
-- `RootStore` is the renderer composition root. Bootstrap attaches focused event-routing observers; `NavigationStore` coordinates cross-Store navigation intents. A window-scoped lifetime does not make Root or a shell Store the owner of every workflow in that window.
-- Give named product surfaces named Stores: navigation/sidebar, project selection, active session/chat, changes, reviews, browse, settings, and similar independently evolving workflows.
-- Compose Stores according to ownership and lifetime. Put a shared Store near the root; nest it only when its lifetime and behavior are truly owned by one parent surface.
-- Parent Stores coordinate cross-Store work. They must not duplicate child state or expose one-for-one forwarding facades for a child's API.
-- Existing concentration of unrelated state is a refactoring signal, not precedent for adding the next field or method there.
-- Keep only tiny DOM, focus, hover, measurement, or isolated input state in React. Workflow state, async policy, persistence policy, and workflow timers belong to a Store. Focused window-owned observers consume authoritative RPC Streams through the renderer runtime's common observation primitive and own their cancellation handles. The Model observer applies authoritative snapshots with `applySnapshot` and reduces ordered events transactionally, using direct, batched Model mutations for incremental entity changes. One-way window snapshot transport is renderer infrastructure outside the Store tree.
-- Ordinary Stores and Models do not import Effect, Effect RPC, Layers, Fibers, raw transport contracts, the Model observer, or window snapshot transport. Stores invoke the typed Promise-based `Client` and read Models. Renderer bootstrap attaches synchronization and persistence infrastructure to the mounted Root Store.
-
-Before adding state, identify its authority, cohesive owner, lifetime, persistence boundary, and concurrency policy. If the proposed owner cannot be described without saying "everything in this window" or listing unrelated surfaces, introduce or use a focused Store instead.
-
-## Strict Model and Store organization
-
-- Every r-state-tree Model and Store lives in its own file. Never colocate
-  multiple Models or Stores or mix them with utilities or unrelated code.
-- Renderer projection Models target `src/renderer/models/`, which contains only
-  r-state-tree Model files. Model names and filenames are PascalCase and never
-  end in `Model`. Existing files may remain in `src/models/` until their vertical
-  ownership move; do not convert their state framework while relocating them.
-- Stores live in `src/renderer/stores/`, which contains only Store files. Store
-  names and filenames are PascalCase and end in `Store`.
-- Main-owned application/storage data is ordinary Effect Schema data and must
-  not be represented as a renderer Model.
-- Relocate utilities and supporting code to `src/utils/` or the appropriate
-  service/domain directory; do not place them in Model or Store directories.
 
 ## Review proportionality
 
