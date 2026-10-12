@@ -227,7 +227,12 @@ is a refactoring signal, not precedent.
   are lookup scopes, not ownership scopes. Renderer bootstrap attaches focused
   event-routing observers, synchronization, and persistence infrastructure to the
   mounted Root Store; observers use the common Stream observation primitive and
-  own their cancellation handles.
+  own their cancellation handles. **SessionCatalogStore** owns the single derived
+  Project Session index joining authoritative and renderer-pending summaries, with
+  authority winning by session ID. Lookup, global ordering, and Project groups
+  consume that index; surface-specific ordering remains with its surface Store.
+  **ScreenCaptureAttachmentStore** owns capture destination presentation and routing,
+  including unsent pane identities that intentionally remain outside sidebar lists.
 - **React** retains only tiny DOM, focus, hover, measurement, animation, or isolated
   input state. Dispose external resources with their actual owner.
 - **Window persistence** is infrastructure outside the Store tree: load a versioned

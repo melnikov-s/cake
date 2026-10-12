@@ -1,6 +1,5 @@
 import { DictationStore } from "./DictationStore";
 import { ScreenCaptureAttachmentStore } from "./ScreenCaptureAttachmentStore";
-import type { CaptureSessionOption } from "../../contracts/desktop/screen-capture-data";
 import { microphone, type Microphone } from "../dictation/microphone";
 import { createSpeechPlayback, type SpeechPlayback } from "../speech/playback";
 import { ConversationModeStore, ConversationModeContext } from "./ConversationModeStore";
@@ -105,142 +104,16 @@ export class RootStore extends Store<{
   get screenCaptureStore(): ScreenCaptureAttachmentStore {
     return createStore(ScreenCaptureAttachmentStore, {
       client: this.client.electron,
-      currentTarget: () => this.appShellStore.activeConversation,
-      destinations: () => ({
-        appearance: {
-          theme: this.settingsStore.appearance.theme,
-          sessionAvatarsEnabled: this.settingsStore.appearance.sessionAvatarsEnabled,
-          sidebarCharactersEnabled: this.settingsStore.appearance.sidebarCharactersEnabled,
-        },
-        projects: this.projectCatalogStore.orderedProjectPaths.map((path) => {
-          // Keep real sidebar rows in their exact order. Unsent pane identities that are
-          // intentionally absent from the sidebar remain valid destinations after those rows.
-          const listed = this.sidebarStore.sessionListStore.projectSessions(path, false, true);
-          const listedIds = new Set(listed.map((session) => session.sessionId));
-          const unsent = this.sessionRegistry.sessions
-            .filter(
-              (session) =>
-                this.sessionRegistry.pendingSessions.isTemporary(session.sessionId) &&
-                !listedIds.has(session.sessionId) &&
-                (this.sessionCatalogStore.projectOfManagedWorktree(session.workspacePath) ??
-                  session.workspacePath) === path,
-            )
-            .map((session) => {
-              const conversation = this.sessionRegistry.pendingSessions.conversation(
-                session.sessionId,
-              )!;
-              return {
-                sessionId: session.sessionId,
-                title: conversation.title || "New chat",
-                modifiedAt: conversation.modifiedAt,
-                workingDirectory: session.workspacePath,
-                draft: true,
-                familyParentSessionId: undefined,
-                familyChildSessionIds: undefined,
-                familyDepth: undefined,
-              };
-            });
-          return {
-            path,
-            name: this.projectCatalogStore.nameForPath(path),
-            // Include collapsed descendants so the picker can expand them independently.
-            sessions: [...listed, ...unsent].map((session) => {
-              const worktree = this.sidebarStore.managedWorktree(session.workingDirectory);
-              const activity =
-                this.sidebarStore.sessionListStore.sessionActivityForDisplay(session);
-              const worktreeName = "worktreeName" in session ? session.worktreeName : undefined;
-              const option: CaptureSessionOption = {
-                sessionId: session.sessionId,
-                title: session.title || "New chat",
-                modifiedAt: session.modifiedAt,
-                activityTime: this.sidebarStore.sessionActivityTime(session.modifiedAt),
-                labels: this.sessionMetadataStore.sessionLabels(session.sessionId),
-                draft: session.draft ?? false,
-                familyCollapsed: this.sidebarStore.sessionListStore.isFamilyCollapsed(
-                  session.sessionId,
-                ),
-              };
-              if (activity !== undefined) Object.assign(option, { activity });
-              if (worktreeName !== undefined) Object.assign(option, { worktreeName });
-              if (session.familyParentSessionId !== undefined)
-                Object.assign(option, { familyParentSessionId: session.familyParentSessionId });
-              if (session.familyChildSessionIds !== undefined)
-                Object.assign(option, { familyChildSessionIds: session.familyChildSessionIds });
-              if (session.familyDepth !== undefined)
-                Object.assign(option, { familyDepth: session.familyDepth });
-              if (worktree)
-                Object.assign(option, {
-                  managedWorktree: {
-                    branch: worktree.branch,
-                    baseBranch: worktree.baseBranch,
-                    parentWorktreePath: worktree.parentWorktreePath,
-                    state: worktree.state,
-                  },
-                });
-              return option;
-            }),
-          };
-        }),
-        cakeChats: this.sidebarStore.sessionListStore.cakeChatSessions().map((session) => {
-          const option: CaptureSessionOption = {
-            sessionId: session.sessionId,
-            title: session.title,
-            modifiedAt: session.modifiedAt,
-            activityTime: this.sidebarStore.sessionActivityTime(session.modifiedAt),
-            labels: [],
-            familyCollapsed: false,
-          };
-          if (this.cakeChatCollectionStore.registry.find(session.sessionId)?.streaming)
-            Object.assign(option, { activity: "running" });
-          else if (session.unread) Object.assign(option, { activity: "unread" });
-          return option;
-        }),
-      }),
-      prepareDestination: async (destination) => {
-        if (destination.kind === "new-session") {
-          if (
-            !this.projectCatalogStore.projects.some(
-              (project) => project.path === destination.projectPath,
-            )
-          )
-            throw new Error("The destination Project is no longer available.");
-          const sessionId = crypto.randomUUID();
-          this.sessionRegistry.pendingSessions.prepareStaged(destination.projectPath, sessionId);
-          if (!(await this.navigationStore.openSession(sessionId)))
-            throw new Error("Cake could not create the destination session.");
-          return { kind: "project-session", sessionId };
-        }
-        if (destination.kind === "project-session") {
-          if (this.sessionCatalogStore.find(destination.sessionId)?.resolved)
-            throw new Error("The destination chat is no longer editable.");
-          const loaded = this.sessionRegistry.findSession(destination.sessionId);
-          if (
-            !loaded ||
-            (!loaded.model.sessionFile &&
-              !this.sessionRegistry.pendingSessions.isTemporary(destination.sessionId))
-          ) {
-            if (!(await this.navigationStore.openSession(destination.sessionId)))
-              throw new Error("Cake could not open the destination session.");
-          } else {
-            this.navigationStore.showLoadedProjectSession(destination.sessionId);
-          }
-        } else {
-          if (this.cakeChatCatalogModel.find(destination.sessionId)?.resolved)
-            throw new Error("The destination chat is no longer editable.");
-          await this.navigationStore.openCakeChat(destination.sessionId);
-        }
-        return destination;
-      },
-      findDraft: (target) => {
-        if (target.kind === "project-session") {
-          if (this.sessionMetadataStore.isResolved(target.sessionId)) return undefined;
-          return this.sessionRegistry.findSession(target.sessionId)?.conversationSessionStore
-            .composerStore.draftStore;
-        }
-        if (this.cakeChatCatalogModel.find(target.sessionId)?.resolved) return undefined;
-        return this.cakeChatCollectionStore.registry.find(target.sessionId)
-          ?.conversationSessionStore.composerStore.draftStore;
-      },
+      shell: this.appShellStore,
+      projects: this.projectCatalogStore,
+      catalog: this.sessionCatalogStore,
+      registry: this.sessionRegistry,
+      sidebar: () => this.sidebarStore,
+      metadata: () => this.sessionMetadataStore,
+      settings: () => this.settingsStore.appearance,
+      cakeChat: () => this.cakeChatCollectionStore,
+      cakeChatCatalog: this.cakeChatCatalogModel,
+      navigation: () => this.navigationStore,
     });
   }
 

@@ -4,10 +4,19 @@ import {
   DEFAULT_CAPTURE_SHORTCUT,
   type CaptureDestination,
   type CaptureRouting,
+  type CaptureSessionOption,
 } from "../../contracts/desktop/screen-capture-data";
 import type { Client } from "../client/Client";
-import type { WindowConversationSelection } from "./AppShellStore";
-import type { ComposerDraftStore } from "./ComposerDraftStore";
+import type { AppShellStore, WindowConversationSelection } from "./AppShellStore";
+import type { AppearanceSettingsStore } from "./AppearanceSettingsStore";
+import type { CakeChatCatalog } from "../models/CakeChatCatalog";
+import type { CakeChatCollectionStore } from "./CakeChatCollectionStore";
+import type { NavigationStore } from "./NavigationStore";
+import type { ProjectCatalogStore } from "./ProjectCatalogStore";
+import type { SessionCatalogStore } from "./SessionCatalogStore";
+import type { SessionMetadataStore } from "./SessionMetadataStore";
+import type { SessionRegistryStore } from "./SessionRegistryStore";
+import type { SidebarStore } from "./SidebarStore";
 import { ToastContext } from "./context/ToastContext";
 
 /** Owns native capture preferences and destination routing, not chat or transcript state.
@@ -17,10 +26,16 @@ import { ToastContext } from "./context/ToastContext";
  */
 export class ScreenCaptureAttachmentStore extends Store<{
   client: Client["electron"];
-  currentTarget(): WindowConversationSelection | undefined;
-  destinations(): Omit<CaptureRouting, "defaultDestination">;
-  prepareDestination(destination: CaptureDestination): Promise<WindowConversationSelection>;
-  findDraft(target: WindowConversationSelection): ComposerDraftStore | undefined;
+  shell: AppShellStore;
+  projects: ProjectCatalogStore;
+  catalog: SessionCatalogStore;
+  registry: SessionRegistryStore;
+  sidebar(): SidebarStore;
+  metadata(): SessionMetadataStore;
+  settings(): AppearanceSettingsStore;
+  cakeChat(): CakeChatCollectionStore;
+  cakeChatCatalog: CakeChatCatalog;
+  navigation(): NavigationStore;
 }> {
   @snapshot shortcut = DEFAULT_CAPTURE_SHORTCUT;
   @snapshot maxDimension = DEFAULT_CAPTURE_MAX_DIMENSION;
@@ -33,7 +48,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
   constructor(props: ScreenCaptureAttachmentStore["props"]) {
     super(props);
     this.reaction(
-      () => this.props.currentTarget(),
+      () => this.props.shell.activeConversation,
       (target, previous) => {
         const remembered = target ?? previous;
         if (remembered)
@@ -42,6 +57,142 @@ export class ScreenCaptureAttachmentStore extends Store<{
           });
       },
     );
+  }
+
+  private get destinations(): Omit<CaptureRouting, "defaultDestination"> {
+    const sidebar = this.props.sidebar();
+    const settings = this.props.settings();
+    return {
+      appearance: {
+        theme: settings.theme,
+        sessionAvatarsEnabled: settings.sessionAvatarsEnabled,
+        sidebarCharactersEnabled: settings.sidebarCharactersEnabled,
+      },
+      projects: this.props.projects.orderedProjectPaths.map((path) => {
+        // Preserve sidebar ordering, including collapsed descendants. Unsent pane
+        // identities are valid destinations but intentionally not sidebar rows.
+        const listed = sidebar.sessionListStore.projectSessions(path, false, true);
+        const listedIds = new Set(listed.map((session) => session.sessionId));
+        const unsent = this.props.registry.sessions
+          .filter(
+            (session) =>
+              this.props.registry.pendingSessions.isTemporary(session.sessionId) &&
+              !listedIds.has(session.sessionId) &&
+              (this.props.catalog.projectOfManagedWorktree(session.workspacePath) ??
+                session.workspacePath) === path,
+          )
+          .map((session) => {
+            const conversation = this.props.registry.pendingSessions.conversation(
+              session.sessionId,
+            )!;
+            return {
+              sessionId: session.sessionId,
+              title: conversation.title || "New chat",
+              modifiedAt: conversation.modifiedAt,
+              workingDirectory: session.workspacePath,
+              draft: true,
+              familyParentSessionId: undefined,
+              familyChildSessionIds: undefined,
+              familyDepth: undefined,
+            };
+          });
+        return {
+          path,
+          name: this.props.projects.nameForPath(path),
+          sessions: [...listed, ...unsent].map((session) => {
+            const worktree = sidebar.managedWorktree(session.workingDirectory);
+            const activity = sidebar.sessionListStore.sessionActivityForDisplay(session);
+            const worktreeName = "worktreeName" in session ? session.worktreeName : undefined;
+            const option: CaptureSessionOption = {
+              sessionId: session.sessionId,
+              title: session.title || "New chat",
+              modifiedAt: session.modifiedAt,
+              activityTime: sidebar.sessionActivityTime(session.modifiedAt),
+              labels: this.props.metadata().sessionLabels(session.sessionId),
+              draft: session.draft ?? false,
+              familyCollapsed: sidebar.sessionListStore.isFamilyCollapsed(session.sessionId),
+            };
+            if (activity !== undefined) Object.assign(option, { activity });
+            if (worktreeName !== undefined) Object.assign(option, { worktreeName });
+            if (session.familyParentSessionId !== undefined)
+              Object.assign(option, { familyParentSessionId: session.familyParentSessionId });
+            if (session.familyChildSessionIds !== undefined)
+              Object.assign(option, { familyChildSessionIds: session.familyChildSessionIds });
+            if (session.familyDepth !== undefined)
+              Object.assign(option, { familyDepth: session.familyDepth });
+            if (worktree)
+              Object.assign(option, {
+                managedWorktree: {
+                  branch: worktree.branch,
+                  baseBranch: worktree.baseBranch,
+                  parentWorktreePath: worktree.parentWorktreePath,
+                  state: worktree.state,
+                },
+              });
+            return option;
+          }),
+        };
+      }),
+      cakeChats: sidebar.sessionListStore.cakeChatSessions().map((session) => {
+        const option: CaptureSessionOption = {
+          sessionId: session.sessionId,
+          title: session.title,
+          modifiedAt: session.modifiedAt,
+          activityTime: sidebar.sessionActivityTime(session.modifiedAt),
+          labels: [],
+          familyCollapsed: false,
+        };
+        if (this.props.cakeChat().registry.find(session.sessionId)?.streaming)
+          Object.assign(option, { activity: "running" });
+        else if (session.unread) Object.assign(option, { activity: "unread" });
+        return option;
+      }),
+    };
+  }
+
+  private async prepareDestination(
+    destination: CaptureDestination,
+  ): Promise<WindowConversationSelection> {
+    if (destination.kind === "new-session") {
+      if (!this.props.projects.find(destination.projectPath))
+        throw new Error("The destination Project is no longer available.");
+      const sessionId = crypto.randomUUID();
+      this.props.registry.pendingSessions.prepareStaged(destination.projectPath, sessionId);
+      if (!(await this.props.navigation().openSession(sessionId)))
+        throw new Error("Cake could not create the destination session.");
+      return { kind: "project-session", sessionId };
+    }
+    if (destination.kind === "project-session") {
+      if (this.props.catalog.find(destination.sessionId)?.resolved)
+        throw new Error("The destination chat is no longer editable.");
+      const loaded = this.props.registry.findSession(destination.sessionId);
+      if (
+        !loaded ||
+        (!loaded.model.sessionFile &&
+          !this.props.registry.pendingSessions.isTemporary(destination.sessionId))
+      ) {
+        if (!(await this.props.navigation().openSession(destination.sessionId)))
+          throw new Error("Cake could not open the destination session.");
+      } else {
+        this.props.navigation().showLoadedProjectSession(destination.sessionId);
+      }
+    } else {
+      if (this.props.cakeChatCatalog.find(destination.sessionId)?.resolved)
+        throw new Error("The destination chat is no longer editable.");
+      await this.props.navigation().openCakeChat(destination.sessionId);
+    }
+    return destination;
+  }
+
+  private findDraft(target: WindowConversationSelection) {
+    if (target.kind === "project-session") {
+      if (this.props.metadata().isResolved(target.sessionId)) return undefined;
+      return this.props.registry.findSession(target.sessionId)?.conversationSessionStore
+        .composerStore.draftStore;
+    }
+    if (this.props.cakeChatCatalog.find(target.sessionId)?.resolved) return undefined;
+    return this.props.cakeChat().registry.find(target.sessionId)?.conversationSessionStore
+      .composerStore.draftStore;
   }
 
   private get toast() {
@@ -90,8 +241,8 @@ export class ScreenCaptureAttachmentStore extends Store<{
 
   async capture() {
     if (this.busy || this.recordingShortcut) return;
-    const choices = this.props.destinations();
-    const remembered = this.props.currentTarget() ?? this.lastTarget;
+    const choices = this.destinations;
+    const remembered = this.props.shell.activeConversation ?? this.lastTarget;
     const available =
       remembered &&
       (remembered.kind === "cake-chat"
@@ -121,9 +272,9 @@ export class ScreenCaptureAttachmentStore extends Store<{
         { signal: this.signal },
       );
       if (this.signal.aborted || !result) return;
-      const target = await this.props.prepareDestination(result.destination);
+      const target = await this.prepareDestination(result.destination);
       if (this.signal.aborted) return;
-      const draft = this.props.findDraft(target);
+      const draft = this.findDraft(target);
       if (!draft) throw new Error("The destination chat is no longer editable.");
       if (draft.attachments.length >= 20)
         throw new Error("The destination draft already has 20 attachments.");

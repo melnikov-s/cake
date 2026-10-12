@@ -53,13 +53,7 @@ export class SessionCatalogStore extends Store<{
 
   @computed
   get sessions(): ReadonlyArray<SessionSummary | PendingSessionSummary> {
-    const authoritativeIds = new Set(this.props.model.sessions.map((session) => session.sessionId));
-    return [
-      ...this.props.model.sessions,
-      ...(this.props.pendingSessions?.() ?? []).filter(
-        (session) => !authoritativeIds.has(session.sessionId),
-      ),
-    ].sort((left, right) => {
+    return [...this.sessionIndex.values()].sort((left, right) => {
       if (left.resolved !== right.resolved) return left.resolved ? 1 : -1;
       return compareSessionSummariesForSidebar(left, right);
     });
@@ -87,18 +81,14 @@ export class SessionCatalogStore extends Store<{
     let group = this.projectSessionGroups.get(projectPath);
     if (!group) {
       group = computed(() => {
-        const authoritative = this.props.model.sessions.filter(
-          (session) => session.projectPath === projectPath,
-        );
-        const authoritativeIds = new Set(authoritative.map((session) => session.sessionId));
-        const pending = (this.props.pendingSessions?.() ?? []).filter(
-          (session) =>
-            session.projectPath === projectPath && !authoritativeIds.has(session.sessionId),
-        );
-        return [...authoritative, ...pending].sort((left, right) => {
-          if (left.resolved !== right.resolved) return left.resolved ? 1 : -1;
-          return compareSessionSummariesForSidebar(left, right);
-        });
+        // Read membership from the shared index, not the globally sorted list: metadata
+        // changes in another Project must not invalidate this group's ordering.
+        return [...this.sessionIndex.values()]
+          .filter((session) => session.projectPath === projectPath)
+          .sort((left, right) => {
+            if (left.resolved !== right.resolved) return left.resolved ? 1 : -1;
+            return compareSessionSummariesForSidebar(left, right);
+          });
       });
       this.projectSessionGroups.set(projectPath, group);
     }

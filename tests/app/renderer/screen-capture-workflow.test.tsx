@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { applySnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Schema } from "effect";
@@ -197,6 +198,45 @@ describe("Screen capture attachment workflow", () => {
         activityTime: fixture.root.sidebarStore.sessionActivityTime(projectRows[0]!.modifiedAt),
       }),
     );
+  });
+
+  it("includes collapsed family descendants before unsent pane destinations", async () => {
+    const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => undefined);
+    using fixture = renderCapture(start);
+    act(() => {
+      applySnapshot(fixture.models.sessionCatalog, {
+        sessions: [
+          sessionSummary({
+            sessionId: "beta",
+            title: "Parent",
+            projectPath: "/project",
+            familyChildSessionIds: ["alpha"],
+            familyDepth: 0,
+          }),
+          sessionSummary({
+            sessionId: "alpha",
+            title: "Child",
+            projectPath: "/project",
+            familyParentSessionId: "beta",
+            familyDepth: 1,
+          }),
+        ],
+      });
+      fixture.root.sidebarStore.sessionListStore.toggleFamilyCollapsed("beta");
+      fixture.root.sessionRegistry.pendingSessions.prepareStaged("/project", "unsent");
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
+    const routing = start.mock.calls[0]![0];
+    expect(() => Schema.decodeUnknownSync(CaptureRouting)(routing)).not.toThrow();
+    const sessions = routing.projects.find((project) => project.path === "/project")!.sessions;
+    expect(sessions.map((session) => session.sessionId)).toEqual(["beta", "alpha", "unsent"]);
+    expect(sessions[0]).toEqual(
+      expect.objectContaining({ familyCollapsed: true, familyChildSessionIds: ["alpha"] }),
+    );
+    expect(sessions[1]).toEqual(
+      expect.objectContaining({ familyParentSessionId: "beta", familyDepth: 1 }),
+    );
+    expect(sessions[2]).toEqual(expect.objectContaining({ title: "New chat", draft: true }));
   });
 
   it("offers catalog sessions, defaults to the last chat, and routes to a different chosen session", async () => {
