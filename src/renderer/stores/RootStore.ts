@@ -317,9 +317,7 @@ export class RootStore extends Store<{
     const workingDirectory = this.sessionMetadataStore.workingDirectory(sessionId);
     const projectPath =
       summary?.projectPath ??
-      (workingDirectory
-        ? (this.sessionCatalogStore.projectOfManagedWorktree(workingDirectory) ?? workingDirectory)
-        : undefined);
+      (workingDirectory ? this.sessionCatalogStore.projectPathFor(workingDirectory) : undefined);
     return {
       kind: "project-session",
       sessionId,
@@ -813,8 +811,7 @@ export class RootStore extends Store<{
           projectPath:
             catalogSession?.projectPath ??
             (sourceWorkingDirectory
-              ? (this.sessionCatalogStore.projectOfManagedWorktree(sourceWorkingDirectory) ??
-                sourceWorkingDirectory)
+              ? this.sessionCatalogStore.projectPathFor(sourceWorkingDirectory)
               : undefined),
         };
       },

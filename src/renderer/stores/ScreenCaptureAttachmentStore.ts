@@ -72,30 +72,7 @@ export class ScreenCaptureAttachmentStore extends Store<{
         // Preserve sidebar ordering, including collapsed descendants. Unsent pane
         // identities are valid destinations but intentionally not sidebar rows.
         const listed = sidebar.sessionListStore.projectSessions(path, false, true);
-        const listedIds = new Set(listed.map((session) => session.sessionId));
-        const unsent = this.props.registry.sessions
-          .filter(
-            (session) =>
-              this.props.registry.pendingSessions.isTemporary(session.sessionId) &&
-              !listedIds.has(session.sessionId) &&
-              (this.props.catalog.projectOfManagedWorktree(session.workspacePath) ??
-                session.workspacePath) === path,
-          )
-          .map((session) => {
-            const conversation = this.props.registry.pendingSessions.conversation(
-              session.sessionId,
-            )!;
-            return {
-              sessionId: session.sessionId,
-              title: conversation.title || "New chat",
-              modifiedAt: conversation.modifiedAt,
-              workingDirectory: session.workspacePath,
-              draft: true,
-              familyParentSessionId: undefined,
-              familyChildSessionIds: undefined,
-              familyDepth: undefined,
-            };
-          });
+        const unsent = this.props.registry.unsentSessionsForProject(path, listed);
         return {
           path,
           name: this.props.projects.nameForPath(path),

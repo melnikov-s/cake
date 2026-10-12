@@ -492,9 +492,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
         if (!ready || this.signal.aborted || revision !== this.sessionOpenRevision) return;
         this.activateLoadedSession(sessionId);
       }
-      this.props.projects.register(
-        this.props.catalog.projectOfManagedWorktree(workspacePath) ?? workspacePath,
-      );
+      this.props.projects.register(this.props.catalog.projectPathFor(workspacePath));
     } catch (error) {
       if (!this.signal.aborted && revision === this.sessionOpenRevision)
         this.setError(error, "Opening Project Session", this.activeSessionId ?? sessionId);
@@ -616,8 +614,7 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       projectPath:
         summary?.projectPath ??
         managedWorktree?.projectPath ??
-        this.props.catalog.projectOfManagedWorktree(this.projectOpenStore.projectPath) ??
-        this.projectOpenStore.projectPath,
+        this.props.catalog.projectPathFor(this.projectOpenStore.projectPath),
       sessionId: this.session.sessionId,
       canBranchFromCurrentWorktree:
         managedWorktree !== undefined &&

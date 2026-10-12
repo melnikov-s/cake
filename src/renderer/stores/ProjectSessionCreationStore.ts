@@ -174,16 +174,14 @@ export class ProjectSessionCreationStore extends Store<ProjectSessionCreationSto
   candidates(sessionId: string) {
     const session = this.props.registry.findSession(sessionId);
     if (!session) return [];
-    const projectPath =
-      this.props.catalog.projectOfManagedWorktree(session.workspacePath) ?? session.workspacePath;
+    const projectPath = this.props.catalog.projectPathFor(session.workspacePath);
     return this.worktrees.candidates(projectPath);
   }
 
   private async prepare(sessionId: string, firstUserMessage: string) {
     const session = this.props.registry.findSession(sessionId);
     if (!session || !this.pending.isTemporary(sessionId)) return true;
-    const projectPath =
-      this.props.catalog.projectOfManagedWorktree(session.workspacePath) ?? session.workspacePath;
+    const projectPath = this.props.catalog.projectPathFor(session.workspacePath);
     return this.worktrees.prepare(
       sessionId,
       projectPath,

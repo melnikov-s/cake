@@ -110,8 +110,8 @@ export class SessionCatalogStore extends Store<{
     );
   }
 
-  projectOfManagedWorktree(workingDirectory: string) {
-    return this.managedWorktree(workingDirectory)?.projectPath;
+  projectPathFor(workingDirectory: string) {
+    return this.managedWorktree(workingDirectory)?.projectPath ?? workingDirectory;
   }
 
   managedWorktreesForProject(projectPath: string) {

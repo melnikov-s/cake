@@ -23,8 +23,7 @@ export class ProjectCatalogStore extends Store<{
   }
 
   nameForPath(path: string) {
-    const managedProject = this.props.sessions.projectOfManagedWorktree(path);
-    return this.nameForRegisteredPath(managedProject ?? path);
+    return this.nameForRegisteredPath(this.props.sessions.projectPathFor(path));
   }
 
   private nameForRegisteredPath(path: string) {

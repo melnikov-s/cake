@@ -184,6 +184,32 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
     );
   }
 
+  /** Unsent pane identities not already represented by a surface's Project list. */
+  unsentSessionsForProject(projectPath: string, listedSessions: readonly { sessionId: string }[]) {
+    const listedIds = new Set(listedSessions.map((session) => session.sessionId));
+    return this.sessions
+      .filter(
+        (session) =>
+          this.pendingSessions.isTemporary(session.sessionId) &&
+          !listedIds.has(session.sessionId) &&
+          (this.props.catalog?.projectPathFor(session.workspacePath) ?? session.workspacePath) ===
+            projectPath,
+      )
+      .map((session) => {
+        const conversation = this.pendingSessions.conversation(session.sessionId)!;
+        return {
+          sessionId: session.sessionId,
+          title: conversation.title,
+          modifiedAt: conversation.modifiedAt,
+          workingDirectory: session.workspacePath,
+          draft: true,
+          familyParentSessionId: undefined,
+          familyChildSessionIds: undefined,
+          familyDepth: undefined,
+        };
+      });
+  }
+
   findModel(sessionId: string) {
     return this.findSession(sessionId)?.model;
   }

@@ -166,6 +166,61 @@ describe("Screen capture attachment workflow", () => {
     expect(await screen.findByRole("button", { name: /^View Screenshot-/ })).toBeDefined();
     expectExistingDraft();
   });
+  it.each(["projected", "pending"] as const)(
+    "groups unsent destinations by their %s Managed Worktree Project without duplicating listed sessions",
+    async (source) => {
+      const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => undefined);
+      using fixture = renderCapture(start);
+      const worktree = {
+        projectPath: "/project",
+        worktreePath: "/worktree",
+        branch: "agent/capture",
+        baseBranch: "main",
+        state: "active" as const,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      };
+      act(() => {
+        if (source === "projected")
+          applySnapshot(fixture.models.worktrees, { worktrees: [worktree] });
+        else fixture.root.sessionCatalogStore.notePendingManagedWorktree(worktree);
+        fixture.root.sessionRegistry.pendingSessions.prepareStaged("/worktree", "unsent");
+        fixture.root.sessionRegistry.pendingSessions.prepareStaged("/other", "other-unsent");
+        fixture.root.sessionRegistry.load("loaded-only", "/project");
+      });
+      await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
+      const routing = start.mock.calls[0]![0];
+      expect(() => Schema.decodeUnknownSync(CaptureRouting)(routing)).not.toThrow();
+      expect(
+        routing.projects
+          .find((project) => project.path === "/project")!
+          .sessions.map((session) => session.sessionId),
+      ).toEqual(["alpha", "beta", "unsent"]);
+      expect(
+        routing.projects
+          .find((project) => project.path === "/other")!
+          .sessions.map((session) => session.sessionId),
+      ).toEqual(["gamma", "other-unsent"]);
+      expect(routing.projects[0]!.sessions[2]).toEqual(
+        expect.objectContaining({
+          title: "New chat",
+          draft: true,
+          managedWorktree: expect.objectContaining({ branch: "agent/capture" }),
+        }),
+      );
+
+      // Submission makes the same temporary identity a catalog/sidebar row.
+      act(() =>
+        fixture.root.sessionRegistry.pendingSessions.projectSubmission("unsent", "Capture plan"),
+      );
+      await fixture.user.click(screen.getByRole("button", { name: "Capture screenshot" }));
+      const submitted = start.mock.calls[1]![0].projects.find(
+        (project) => project.path === "/project",
+      )!.sessions.filter((session) => session.sessionId === "unsent");
+      expect(submitted).toHaveLength(1);
+      expect(submitted[0]).toEqual(expect.objectContaining({ title: "Capture plan" }));
+    },
+  );
+
   it("uses sidebar Project order and session order with the same identity presentation facts", async () => {
     const start = vi.fn<Client["electron"]["startScreenCapture"]>(async () => undefined);
     using fixture = renderCapture(start);

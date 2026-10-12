@@ -135,8 +135,7 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     const projectPath =
       session?.projectPath ??
       (pendingSession
-        ? (this.props.catalog.projectOfManagedWorktree(pendingSession.workspacePath) ??
-          pendingSession.workspacePath)
+        ? this.props.catalog.projectPathFor(pendingSession.workspacePath)
         : undefined);
     if (!projectPath || session?.resolved || this.signal.aborted) return false;
     if (this.props.registry.pendingSessions.savedRecord(sessionId)?.status === "activating")

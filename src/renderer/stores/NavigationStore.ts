@@ -70,8 +70,7 @@ export class NavigationStore extends Store<{
       if (!this.props.registry.pendingSessions.isStaged(candidateId)) return false;
       const session = this.props.registry.findSession(candidateId);
       if (!session) return false;
-      const candidateProjectPath =
-        this.props.catalog.projectOfManagedWorktree(session.workspacePath) ?? session.workspacePath;
+      const candidateProjectPath = this.props.catalog.projectPathFor(session.workspacePath);
       return candidateProjectPath === projectPath;
     });
     if (!sessionId) return undefined;
@@ -123,9 +122,7 @@ export class NavigationStore extends Store<{
     const workingDirectory = this.props.metadata().workingDirectory(entry.sessionId);
     const entryProjectPath =
       summary?.projectPath ??
-      (workingDirectory
-        ? (this.props.catalog.projectOfManagedWorktree(workingDirectory) ?? workingDirectory)
-        : undefined);
+      (workingDirectory ? this.props.catalog.projectPathFor(workingDirectory) : undefined);
     return entryProjectPath === projectPath;
   }
 

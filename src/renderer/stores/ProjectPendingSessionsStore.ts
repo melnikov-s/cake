@@ -74,8 +74,8 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
       const conversation = this.conversation(sessionId);
       if (!session || !conversation) return [];
       const metadata = this.summaryMetadataBySession[sessionId];
-      const managedWorktree = this.props.catalog?.managedWorktree(session.workspacePath);
-      const projectPath = managedWorktree?.projectPath ?? session.workspacePath;
+      const projectPath =
+        this.props.catalog?.projectPathFor(session.workspacePath) ?? session.workspacePath;
       return [
         {
           sessionId,
@@ -217,7 +217,7 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     const session = this.props.session(sessionId);
     if (!session) throw new Error("Cake could not find that new session");
     const projectPath =
-      this.props.catalog?.projectOfManagedWorktree(session.workspacePath) ?? session.workspacePath;
+      this.props.catalog?.projectPathFor(session.workspacePath) ?? session.workspacePath;
     const conversation = this.ensureConversation(sessionId);
     const record = await this.authority.create(
       {

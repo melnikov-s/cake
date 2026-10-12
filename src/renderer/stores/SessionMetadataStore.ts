@@ -40,8 +40,7 @@ export class SessionMetadataStore extends Store<{
     const projectPath =
       session?.projectPath ??
       (pendingSession
-        ? (this.props.catalog.projectOfManagedWorktree(pendingSession.workspacePath) ??
-          pendingSession.workspacePath)
+        ? this.props.catalog.projectPathFor(pendingSession.workspacePath)
         : undefined);
     return projectPath ? this.projectLabels(projectPath) : [];
   }
