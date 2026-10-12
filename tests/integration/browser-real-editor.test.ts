@@ -250,7 +250,15 @@ it.skipIf(!existsSync("/opt/homebrew/bin/code-server"))(
         await expect.poll(visibleFirstLine).toMatch(/qualification\s+line\s+1[0-9][0-9]/);
         await reveal.click();
         await expect.poll(visibleFirstLine).toContain("original");
-        await editor.locator("body").evaluate(() => location.reload());
+        // Wait for this leased iframe's new document, not visibility in the old workbench.
+        const workbenchFrame = await (await frame.elementHandle())?.contentFrame();
+        if (!workbenchFrame) throw new Error("Missing leased workbench frame");
+        await Promise.all([
+          page.waitForEvent("framenavigated", {
+            predicate: (navigated) => navigated === workbenchFrame,
+          }),
+          workbenchFrame.evaluate(() => location.reload()),
+        ]);
         try {
           await expect(editor.locator(".monaco-workbench")).toBeVisible({ timeout: 30_000 });
           // Explicitly reopen through Quick Open; Explorer expansion and restored tabs
@@ -262,8 +270,8 @@ it.skipIf(!existsSync("/opt/homebrew/bin/code-server"))(
           await quickOpen.fill("qualification.ts");
           await editor
             .locator(".quick-input-list")
-            .getByText("qualification.ts", { exact: true })
-            .first()
+            .getByRole("option")
+            .filter({ has: editor.getByText("qualification.ts", { exact: true }) })
             .click();
           await expect(editor.locator(".tab.active")).toContainText("qualification.ts", {
             timeout: 20_000,
