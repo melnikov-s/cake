@@ -2,6 +2,8 @@
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Client } from "../../../src/renderer/client/Client";
+import { defaultApplicationState } from "../../../src/contracts/application/application-data";
+import { sessionSummary } from "./fixtures/catalog-fixtures";
 import {
   deferredEditorOpen,
   editorLease,
@@ -51,7 +53,243 @@ function backToAgentButton() {
   return screen.getAllByRole("button", { name: "Back to agent" })[0]!;
 }
 
+function deferredCompletion<Value>() {
+  let resolve!: (value: Value) => void;
+  const promise = new Promise<Value>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
+function bootstrapBoundary() {
+  const inspection = deferredCompletion<Awaited<ReturnType<Client["workspaces"]["inspect"]>>>();
+  const registration = deferredCompletion<ReturnType<typeof defaultApplicationState>>();
+  const mainOpen = deferredCompletion<void>();
+  const inspect = vi.fn<Client["workspaces"]["inspect"]>(() => inspection.promise);
+  const registerProject = vi.fn<Client["workspaces"]["registerProject"]>(
+    () => registration.promise,
+  );
+  const openSession = vi.fn<Client["projectSessions"]["open"]>(() => mainOpen.promise);
+  return {
+    client: {
+      workspaces: { inspect, registerProject },
+      projectSessions: { open: openSession },
+    },
+    openSession,
+    mainOpen,
+    async accept() {
+      await act(async () =>
+        inspection.resolve({ ...inspect.mock.calls[0]![0], trustRequired: false }),
+      );
+      await waitFor(() => expect(registerProject).toHaveBeenCalledTimes(1));
+      await act(async () => registration.resolve(defaultApplicationState()));
+    },
+  };
+}
+
+async function hydrateBootstrap(
+  boundary: ReturnType<typeof bootstrapBoundary>,
+  fixture: ReturnType<typeof renderEmbeddedEditor>,
+) {
+  await waitFor(() => expect(boundary.openSession).toHaveBeenCalledTimes(1));
+  fixture.hydrate();
+  await act(async () => {
+    boundary.mainOpen.resolve();
+    await fixture.initialization;
+  });
+}
+
+const sourceControlButton = () =>
+  screen.getByRole("button", { name: "Open workspace changes in VS Code" });
+
 describe("Embedded editor workflow", () => {
+  it("preserves one pending Source Control open through same-target bootstrap reauthorization and hydration", async () => {
+    const boundary = bootstrapBoundary();
+    const pending = deferredEditorOpen();
+    const lease = editorLease("a");
+    const open = vi.fn<Client["vscode"]["open"]>(() => pending.promise);
+    const openSourceControl = vi.fn<Client["vscode"]["openSourceControl"]>(async () => undefined);
+    using fixture = renderEmbeddedEditor(
+      { ...boundary.client, vscode: { open, openSourceControl } },
+      { bootstrap: true },
+    );
+
+    await fixture.user.click(sourceControlButton());
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(openSourceControl).not.toHaveBeenCalled();
+    await boundary.accept();
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(openSourceControl).not.toHaveBeenCalled();
+    await hydrateBootstrap(boundary, fixture);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(openSourceControl).not.toHaveBeenCalled();
+    await act(async () => {
+      pending.resolve(lease);
+      await pending.promise;
+    });
+    await waitFor(() => expect(workspaceFrame()?.getAttribute("src")).toBe(lease.endpoint));
+    await waitFor(() => expect(openSourceControl).toHaveBeenCalledTimes(1));
+    expect(openSourceControl).toHaveBeenCalledWith(
+      editorWorkingDirectory,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the current editor when hydration precedes accepted same-target reauthorization", async () => {
+    const boundary = bootstrapBoundary();
+    const pending = deferredEditorOpen();
+    const lease = editorLease("b");
+    const open = vi.fn<Client["vscode"]["open"]>(() => pending.promise);
+    const openSourceControl = vi.fn<Client["vscode"]["openSourceControl"]>(async () => undefined);
+    using fixture = renderEmbeddedEditor(
+      { ...boundary.client, vscode: { open, openSourceControl } },
+      { bootstrap: true },
+    );
+    await fixture.user.click(sourceControlButton());
+    fixture.hydrate();
+    await boundary.accept();
+    await act(async () => fixture.initialization);
+    expect(boundary.openSession).not.toHaveBeenCalled();
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(openSourceControl).not.toHaveBeenCalled();
+    await act(async () => {
+      pending.resolve(lease);
+      await pending.promise;
+    });
+    await waitFor(() => expect(workspaceFrame()?.getAttribute("src")).toBe(lease.endpoint));
+    await waitFor(() => expect(openSourceControl).toHaveBeenCalledTimes(1));
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores an initially saved IDE preference when no editor is visible yet", async () => {
+    const boundary = bootstrapBoundary();
+    const lease = editorLease("b");
+    const open = vi.fn<Client["vscode"]["open"]>(async () => lease);
+    const openSourceControl = vi.fn<Client["vscode"]["openSourceControl"]>(async () => undefined);
+    using fixture = renderEmbeddedEditor(
+      { ...boundary.client, vscode: { open, openSourceControl } },
+      { bootstrap: true, savedIde: true },
+    );
+    expect(open).not.toHaveBeenCalled();
+    await boundary.accept();
+    await hydrateBootstrap(boundary, fixture);
+    await waitFor(() => expect(workspaceFrame()?.getAttribute("src")).toBe(lease.endpoint));
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(openSourceControl).not.toHaveBeenCalled();
+  });
+
+  it.each(["hide", "disconnect"] as const)(
+    "does not revive a pending Source Control intent after explicit %s during reauthorization",
+    async (cancellation) => {
+      const boundary = bootstrapBoundary();
+      const pending = deferredEditorOpen();
+      const lease = editorLease("c");
+      const open = vi.fn<Client["vscode"]["open"]>(() => pending.promise);
+      const openSourceControl = vi.fn<Client["vscode"]["openSourceControl"]>(async () => undefined);
+      const release = vi.fn<Client["vscode"]["release"]>(async () => undefined);
+      using fixture = renderEmbeddedEditor(
+        { ...boundary.client, vscode: { open, openSourceControl, release } },
+        { bootstrap: true },
+      );
+      await fixture.user.click(sourceControlButton());
+      if (cancellation === "hide") await fixture.user.click(backToAgentButton());
+      else fixture.disconnected();
+      await boundary.accept();
+      await hydrateBootstrap(boundary, fixture);
+      await act(async () => {
+        pending.resolve(lease);
+        await pending.promise;
+      });
+      await waitFor(() => expect(release).toHaveBeenCalledWith(lease.id));
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(openSourceControl).not.toHaveBeenCalled();
+      expect(workspaceFrame()).toBeNull();
+      if (cancellation === "disconnect")
+        expect(screen.getByText(/Connection lost\. Return to agent/)).toBeDefined();
+      else expect(screen.getByRole("button", { name: "Open VS Code" })).toBeDefined();
+    },
+  );
+
+  it.each(["hide", "disconnect"] as const)(
+    "drops the older SCM intent when it settles while the reopened editor is pending after %s",
+    async (cancellation) => {
+      const boundary = bootstrapBoundary();
+      const oldOpen = deferredEditorOpen();
+      const reopened = deferredEditorOpen();
+      const stale = editorLease("d");
+      const current = editorLease("e");
+      const open = vi
+        .fn<Client["vscode"]["open"]>()
+        .mockImplementationOnce(() => oldOpen.promise)
+        .mockImplementationOnce(() => reopened.promise);
+      const openSourceControl = vi.fn<Client["vscode"]["openSourceControl"]>(async () => undefined);
+      const release = vi.fn<Client["vscode"]["release"]>(async () => undefined);
+      using fixture = renderEmbeddedEditor(
+        { ...boundary.client, vscode: { open, openSourceControl, release } },
+        { bootstrap: true },
+      );
+      await fixture.user.click(sourceControlButton());
+      if (cancellation === "disconnect") fixture.disconnected();
+      await fixture.user.click(backToAgentButton());
+      await fixture.user.click(screen.getByRole("button", { name: "Open VS Code" }));
+      expect(open).toHaveBeenCalledTimes(2);
+      await boundary.accept();
+      await hydrateBootstrap(boundary, fixture);
+      await act(async () => {
+        oldOpen.resolve(stale);
+        await oldOpen.promise;
+      });
+      await waitFor(() => expect(release).toHaveBeenCalledWith(stale.id));
+      expect(openSourceControl).not.toHaveBeenCalled();
+      await act(async () => {
+        reopened.resolve(current);
+        await reopened.promise;
+      });
+      await waitFor(() => expect(workspaceFrame()?.getAttribute("src")).toBe(current.endpoint));
+      expect(open).toHaveBeenCalledTimes(2);
+      expect(openSourceControl).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([editorWorkingDirectory, "/other"])(
+    "cancels the old SCM intent when selecting another session in %s",
+    async (workingDirectory) => {
+      const pending = deferredEditorOpen();
+      const stale = editorLease("f");
+      const open = vi.fn<Client["vscode"]["open"]>(() => pending.promise);
+      const openSourceControl = vi.fn<Client["vscode"]["openSourceControl"]>(async () => undefined);
+      const release = vi.fn<Client["vscode"]["release"]>(async () => undefined);
+      using fixture = renderEmbeddedEditor(
+        { vscode: { open, openSourceControl, release } },
+        {
+          additionalSessions: [
+            sessionSummary({
+              sessionId: "other-session",
+              title: "Other conversation",
+              projectPath: workingDirectory,
+              workingDirectory,
+            }),
+          ],
+        },
+      );
+      await fixture.user.click(sourceControlButton());
+      await fixture.user.click(screen.getByRole("button", { name: /^Other conversation / }));
+      await act(async () => {
+        pending.resolve(stale);
+        await pending.promise;
+      });
+      await waitFor(() => expect(release).toHaveBeenCalledWith(stale.id));
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(openSourceControl).not.toHaveBeenCalled();
+      expect(workspaceFrame()).toBeNull();
+      expect(
+        screen.getByPlaceholderText(
+          `Ask Cake to work in ${workingDirectory === editorWorkingDirectory ? "Project" : "Other"}…`,
+        ),
+      ).toBeDefined();
+    },
+  );
   it("offers backend setup when missing, displays a failed download and retries before explicitly reopening", async () => {
     // Only the viewing-device capability is controlled; no editor implementation is mocked.
     vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Linux");

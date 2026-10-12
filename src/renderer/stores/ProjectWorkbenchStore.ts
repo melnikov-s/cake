@@ -457,8 +457,9 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       (this.sessionRegistry.pendingSessions.isTemporary(sessionId) ||
         Boolean(existingSession?.model.sessionFile))
     ) {
+      const preserveEditor = this.hasCurrentVisibleEditor(sessionId, workspacePath);
       this.props.selectSession(sessionId);
-      this.presentationStore.restore();
+      if (!preserveEditor) this.presentationStore.restore();
       return;
     }
     if (existingSession && this.sessionRegistry.pendingSessions.isTemporary(sessionId)) {
@@ -503,10 +504,23 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     }
   }
 
+  private hasCurrentVisibleEditor(sessionId: string, workingDirectory: string) {
+    return (
+      this.activeSessionId === sessionId &&
+      this.projectOpenStore.projectPath === workingDirectory &&
+      this.activeSession?.presentationMode === "vscode" &&
+      this.presentationStore.embeddedEditorStore.visible
+    );
+  }
+
   private activateLoadedSession(sessionId: string) {
+    const session = this.sessionRegistry.findSession(sessionId);
+    // Capture the source identity before selection makes the target appear current.
+    const preserveEditor =
+      session !== undefined && this.hasCurrentVisibleEditor(sessionId, session.workspacePath);
     batch(() => {
       this.props.selectSession(sessionId);
-      this.showLoadedSessionTarget(sessionId, true);
+      this.showLoadedSessionTarget(sessionId, true, preserveEditor);
       this.markSessionRead(sessionId);
     });
   }
@@ -540,18 +554,22 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   }
 
   showLoadedSession(sessionId: string) {
-    return this.showLoadedSessionTarget(sessionId, false);
+    return this.showLoadedSessionTarget(sessionId, false, false);
   }
 
-  private showLoadedSessionTarget(sessionId: string, acceptedProjectOpen: boolean) {
+  private showLoadedSessionTarget(
+    sessionId: string,
+    acceptedProjectOpen: boolean,
+    preserveEditor: boolean,
+  ) {
     const session = this.sessionRegistry.findSession(sessionId);
     // An identity-only registry entry must not replace the visible session.
     if (!session) return false;
     if (!acceptedProjectOpen) this.projectOpenStore.cancelPending();
     this.sessionRegistry.observationRetention.retain(sessionId);
-    this.presentationStore.suspend();
+    if (!preserveEditor) this.presentationStore.suspend();
     this.projectOpenStore.activate(session.workspacePath);
-    this.presentationStore.restore();
+    if (!preserveEditor) this.presentationStore.restore();
     this.extensionUi.clear();
     this.commandPaneStore.dismiss();
     session.conversationSessionStore.composerStore.draftStore.requestFocus();
@@ -561,7 +579,15 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   private async acceptProjectOpen(result: ProjectOpenResult) {
     if (this.signal.aborted) return;
     this.commandPaneStore.dismiss();
-    this.presentationStore.suspend();
+    const targetSessionId =
+      result.kind === "project"
+        ? (result.sessionId ??
+          this.props.catalog.projectSessions(result.path).find((session) => !session.resolved)
+            ?.sessionId)
+        : undefined;
+    // Reauthorizing the retained target must not cancel an editor the user already opened.
+    if (!targetSessionId || !this.hasCurrentVisibleEditor(targetSessionId, result.path))
+      this.presentationStore.suspend();
     if (result.kind === "new-session") {
       this.showTemporarySession(
         result.path,
@@ -571,10 +597,6 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
       );
       return;
     }
-    const targetSessionId =
-      result.sessionId ??
-      this.props.catalog.projectSessions(result.path).find((session) => !session.resolved)
-        ?.sessionId;
     if (targetSessionId) await this.openSessionTarget(targetSessionId, true);
     else this.showTemporarySession(result.path, crypto.randomUUID(), true, true);
   }

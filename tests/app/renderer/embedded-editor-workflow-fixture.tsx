@@ -26,17 +26,28 @@ export function deferredEditorOpen() {
   return { promise, resolve, reject };
 }
 
-export function renderEmbeddedEditor(client: TestClientOverrides) {
+export function renderEmbeddedEditor(
+  client: TestClientOverrides,
+  options: {
+    bootstrap?: boolean;
+    savedIde?: boolean;
+    additionalSessions?: ReturnType<typeof sessionSummary>[];
+  } = {},
+) {
+  const sessions = [
+    sessionSummary({
+      sessionId: editorSessionId,
+      title: "Editor conversation",
+      projectPath: editorWorkingDirectory,
+      workingDirectory: editorWorkingDirectory,
+    }),
+    ...(options.additionalSessions ?? []),
+  ];
   const fixture = createRendererStoreFixture({
-    projects: [projectRecord({ path: editorWorkingDirectory, name: "Project" })],
-    sessions: [
-      sessionSummary({
-        sessionId: editorSessionId,
-        title: "Editor conversation",
-        projectPath: editorWorkingDirectory,
-        workingDirectory: editorWorkingDirectory,
-      }),
-    ],
+    projects: [...new Set(sessions.map((session) => session.projectPath))].map((path) =>
+      projectRecord({ path, name: path === editorWorkingDirectory ? "Project" : "Other" }),
+    ),
+    sessions,
     client: {
       ...client,
       projectSessions: { open: async () => undefined, ...client.projectSessions },
@@ -51,30 +62,38 @@ export function renderEmbeddedEditor(client: TestClientOverrides) {
       },
     },
   });
-  fixture.root.sessionRegistry.load(editorSessionId, editorWorkingDirectory);
-  applyConversationUpdate(
-    fixture.models.projectConversation(editorSessionId, editorWorkingDirectory),
-    {
-      _tag: "Snapshot",
-      revision: 1,
-      snapshot: {
-        sessionId: editorSessionId,
-        sessionFile: `/sessions/${editorSessionId}.jsonl`,
-        parts: [],
-        models: [],
-        thinkingLevel: "off",
-        availableThinkingLevels: ["off"],
-        streaming: false,
-        diagnostics: [],
-        commands: [],
-        compatibility: { resources: [], diagnostics: [] },
-        extensionUi: { statuses: [] },
-        tree: [],
+  const hydrate = (sessionId: string) => {
+    const summary = sessions.find((session) => session.sessionId === sessionId)!;
+    applyConversationUpdate(
+      fixture.models.projectConversation(sessionId, summary.workingDirectory),
+      {
+        _tag: "Snapshot",
+        revision: 1,
+        snapshot: {
+          sessionId,
+          sessionFile: `/sessions/${sessionId}.jsonl`,
+          parts: [],
+          models: [],
+          thinkingLevel: "off",
+          availableThinkingLevels: ["off"],
+          streaming: false,
+          diagnostics: [],
+          commands: [],
+          compatibility: { resources: [], diagnostics: [] },
+          extensionUi: { statuses: [] },
+          tree: [],
+        },
       },
-    },
-  );
+    );
+  };
+  for (const summary of sessions) {
+    fixture.root.sessionRegistry.load(summary.sessionId, summary.workingDirectory);
+    if (!options.bootstrap || summary.sessionId !== editorSessionId) hydrate(summary.sessionId);
+  }
   fixture.root.appShellStore.selectProjectSession(editorSessionId);
   fixture.root.projectWorkbenchStore.showLoadedSession(editorSessionId);
+  if (options.savedIde)
+    fixture.root.sessionRegistry.findSession(editorSessionId)!.showPresentation("vscode");
   fixture.root.sessionLayoutStore.ensureSession(editorSessionId);
   const editor = fixture.root.projectWorkbenchStore.presentationStore.embeddedEditorStore;
   // Match vscode-state.ts's authoritative state subscription, not a user operation.
@@ -84,8 +103,19 @@ export function renderEmbeddedEditor(client: TestClientOverrides) {
       <App />
     </StoreProvider>,
   );
+  // Bootstrap reauthorizes the retained target; tests control only its external boundaries.
+  const initialization = options.bootstrap
+    ? fixture.root.projectWorkbenchStore.initialize({
+        workspacePath: editorWorkingDirectory,
+        sessionId: editorSessionId,
+      })
+    : Promise.resolve();
   return {
     user: userEvent.setup(),
+    initialization,
+    hydrate() {
+      act(() => hydrate(editorSessionId));
+    },
     disconnected() {
       // The transport connection callback in main.ts/browser-main.ts owns this routing.
       act(() => editor.disconnected());
