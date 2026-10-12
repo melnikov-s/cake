@@ -1,9 +1,5 @@
 import { Store, batch, child, createStore, observable, snapshot, updateStore } from "r-state-tree";
-import type {
-  ChatConfiguration,
-  ModelPreset,
-} from "../../contracts/conversations/session-contract";
-import type { ComposerDeliveryInput } from "./ConversationComposerStore";
+import type { ModelPreset } from "../../contracts/conversations/session-contract";
 import type { CakeControlTool } from "../../contracts/cake-chats/cake-chat-data";
 import type { Conversation } from "../models/Conversation";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
@@ -20,9 +16,7 @@ import { SessionObservationRetentionStore } from "./SessionObservationRetentionS
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import type { WorktreeStoreProps } from "./WorktreeStore";
 import type { WorktreeLandingOperation } from "../../contracts/worktrees/worktree-landing-data";
-import type { ExistingWorktreeCandidate, WorktreeDraftChoice } from "./WorktreeCreationStore";
-import type { EditorLocation } from "../../contracts/editor/editor-location";
-import type { EditorSelectionReveal } from "../../contracts/editor/editor-selection";
+import type { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import { ToastContext } from "./context/ToastContext";
 
@@ -37,40 +31,27 @@ export interface SessionRegistryStoreProps {
   artifactModel: ArtifactCatalog;
   operations: SessionOperationCoordinatorStore;
   reviews(): ReviewsStore;
-  canSubmit(sessionId: string): boolean;
+  /** Lazy because the workbench also coordinates this registry. */
+  workbench(): ProjectWorkbenchStore;
   isActive(sessionId: string): boolean;
   isVisible?(sessionId: string): boolean;
   worktreeOperation(workspacePath: string): typeof WorktreeLandingOperation.Encoded | undefined;
-  openCommandPane(pane: "changelog" | "tree" | "resources"): Promise<void>;
   persistNow(): Promise<void>;
-  renameSession(sessionId: string, name: string): Promise<void>;
-  toolCompactSession(entryId: string, prompt?: string): Promise<boolean>;
   modelPresets?(): readonly ModelPreset[];
   assistantTools?(): readonly CakeControlTool[];
   openModelPresetSettings?(): void;
-  newSessionConfiguration?(sessionId: string): ChatConfiguration | undefined;
-  startNewSession?(sessionId: string, input: ComposerDeliveryInput): Promise<boolean>;
-  activateSavedDraft?(sessionId: string, choice?: WorktreeDraftChoice): Promise<boolean>;
-  ensureSessionActive?(sessionId: string): boolean | Promise<boolean>;
-  configureDraftActivation?(sessionId: string, choice: WorktreeDraftChoice): void;
-  sessionCreationChoice?(sessionId: string): WorktreeDraftChoice;
-  draftActivationCandidates?(sessionId: string): ExistingWorktreeCandidate[];
-  onWorktreeDiscarded: WorktreeStoreProps["onDiscarded"];
   retirement: WorktreeStoreProps["retirement"];
-  onResolveWorktree: WorktreeStoreProps["onResolveWorkspace"];
   settings?(): AppearanceSettingsStore | undefined;
-  openEditorLocation(
-    sessionId: string,
-    location: EditorLocation,
-    signal: AbortSignal,
-  ): Promise<EditorSelectionReveal>;
-  refreshEditorHighlights(): Promise<void>;
 }
 
 /** Owns the keyed collection and stable identity of loaded Project Session Stores for a window. */
 export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
   @snapshot readonly targets: SessionTarget[] = observable([]);
   private readonly sessionsById = new Map<string, ProjectSessionStore>();
+
+  private get workbench() {
+    return this.props.workbench();
+  }
 
   private get projects() {
     return ProjectCatalogContext.consume(this)!;
@@ -122,31 +103,36 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
         pendingSessions: this.pendingSessions,
         operations: this.props.operations,
         reviews: this.props.reviews,
-        canSubmit: () => this.props.canSubmit(target.sessionId),
+        canSubmit: () => this.workbench.canSubmitSession(target.sessionId),
         isActive: () => this.props.isActive(target.sessionId),
         worktreeOperation: () => this.props.worktreeOperation(target.workspacePath),
-        openCommandPane: this.props.openCommandPane,
+        openCommandPane: (pane) => this.workbench.commandPaneStore.open(pane),
         projectName: () => this.projects.nameForPath(target.workspacePath),
         familyId: () =>
           this.props.catalog?.find(target.sessionId)?.familyId ??
           this.pendingSessions.familyId(target.sessionId),
-        renameSession: (name) => this.props.renameSession(target.sessionId, name),
-        toolCompactSession: this.props.toolCompactSession,
+        renameSession: (name) =>
+          this.workbench.sessionManagementStore.renameSession(target.sessionId, name),
+        toolCompactSession: (entryId, prompt) =>
+          this.workbench.sessionContinuationStore.toolCompactAt(entryId, prompt),
         modelPresets: () => this.props.modelPresets?.() ?? [],
         assistantTools: () => this.props.assistantTools?.() ?? [],
         openModelPresetSettings: () => this.props.openModelPresetSettings?.(),
-        newSessionConfiguration: () => this.props.newSessionConfiguration?.(target.sessionId),
+        newSessionConfiguration: () =>
+          this.workbench.sessionCreationStore.request(target.sessionId)?.configuration,
         startNewSession: (input) =>
-          this.props.startNewSession?.(target.sessionId, input) ?? Promise.resolve(false),
+          this.workbench.sessionCreationStore.start(target.sessionId, input),
         activateSavedDraft: (choice) =>
-          this.props.activateSavedDraft?.(target.sessionId, choice) ?? Promise.resolve(false),
-        ensureSessionActive: () => this.props.ensureSessionActive?.(target.sessionId) ?? true,
+          this.workbench.sessionCreationStore.activateSavedDraft(target.sessionId, choice),
+        ensureSessionActive: () =>
+          this.props.catalog?.find(target.sessionId)?.resolved === true
+            ? this.workbench.sessionManagementStore.resolveSession(target.sessionId, false)
+            : true,
         configureDraftActivation: (choice) =>
-          this.props.configureDraftActivation?.(target.sessionId, choice),
-        sessionCreationChoice: () =>
-          this.props.sessionCreationChoice?.(target.sessionId) ?? { kind: "current" },
+          this.workbench.sessionCreationStore.configureDraftActivation(target.sessionId, choice),
+        sessionCreationChoice: () => this.workbench.sessionCreationStore.choice(target.sessionId),
         draftActivationCandidates: () =>
-          this.props.draftActivationCandidates?.(target.sessionId) ?? [],
+          this.workbench.sessionCreationStore.candidates(target.sessionId),
         onWorktreeLanded: (_record, result) => {
           this.toast.show(
             result.resolved
@@ -162,13 +148,19 @@ export class SessionRegistryStore extends Store<SessionRegistryStoreProps> {
                 },
           );
         },
-        onWorktreeDiscarded: this.props.onWorktreeDiscarded,
+        onWorktreeDiscarded: () => undefined,
         retirement: this.props.retirement,
-        onResolveWorktree: this.props.onResolveWorktree,
+        onResolveWorktree: (workspacePath, options) =>
+          this.workbench.resolveWorktreeWorkspace(workspacePath, options),
         settings: () => this.props.settings?.(),
         openEditorLocation: (location, signal) =>
-          this.props.openEditorLocation(target.sessionId, location, signal),
-        refreshEditorHighlights: () => this.props.refreshEditorHighlights(),
+          this.workbench.presentationStore.openSelectionLocation(
+            target.sessionId,
+            location,
+            signal,
+          ),
+        refreshEditorHighlights: () =>
+          this.workbench.presentationStore.embeddedEditorStore.syncSelectionHighlights(),
       }),
     );
   }

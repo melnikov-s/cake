@@ -14,7 +14,6 @@ import type { SessionRegistryStore } from "../stores/SessionRegistryStore";
 import type { SettingsStore } from "../stores/SettingsStore";
 import type { ToastStore } from "../stores/ToastStore";
 import type { SessionMetadataStore } from "../stores/SessionMetadataStore";
-import type { ProjectSessionCreationStore } from "../stores/ProjectSessionCreationStore";
 import type { SessionRetirementStore } from "../stores/SessionRetirementStore";
 import type { NavigationStore } from "../stores/NavigationStore";
 import { defaultProjectSettings } from "../../contracts/application/application-data";
@@ -40,7 +39,6 @@ export interface RootApplicationControlCapabilities {
   requireProjectSessionWorkingDirectory(sessionId: string): string;
   prepareProjectSessionChat(sessionId: string): Promise<void>;
   navigationStore: NavigationStore;
-  sessionCreationStore: ProjectSessionCreationStore;
   sessionRetirementStore: SessionRetirementStore;
 }
 
@@ -239,8 +237,10 @@ export function createRootApplicationControlHost(
         capabilities.client.projectSessions.inspect({ sessionId }, { signal: capabilities.signal }),
       open: (sessionId, messageId) =>
         capabilities.navigationStore.openSession(sessionId, messageId),
-      create: (input) => capabilities.sessionCreationStore.createPromptedSession(input),
-      createDraft: (input) => capabilities.sessionCreationStore.createDraftSession(input),
+      create: (input) =>
+        capabilities.projectWorkbenchStore.sessionCreationStore.createPromptedSession(input),
+      createDraft: (input) =>
+        capabilities.projectWorkbenchStore.sessionCreationStore.createDraftSession(input),
       sendMessage: (sessionId, text, delivery, crossSession, inputRefs) =>
         capabilities.applicationControlStore().runOperation(async () => {
           await capabilities.prepareProjectSessionChat(sessionId);

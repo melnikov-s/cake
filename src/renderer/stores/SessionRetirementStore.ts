@@ -2,7 +2,7 @@ import { Store } from "r-state-tree";
 import type { AppShellStore, SessionHistoryEntry } from "./AppShellStore";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionLayoutStore } from "./SessionLayoutStore";
-import type { SessionManagementStore } from "./SessionManagementStore";
+import type { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
 
 export interface SessionRetirementStoreProps {
@@ -10,7 +10,7 @@ export interface SessionRetirementStoreProps {
   catalog: SessionCatalogStore;
   registry: SessionRegistryStore;
   layout: SessionLayoutStore;
-  projectSessions: SessionManagementStore;
+  workbench(): ProjectWorkbenchStore;
   navigate(target: SessionHistoryEntry): Promise<void>;
   createProjectSession(projectPath: string): Promise<void>;
 }
@@ -23,21 +23,25 @@ export interface SessionRetirementStoreProps {
 export class SessionRetirementStore extends Store<SessionRetirementStoreProps> {
   async setProjectSessionResolved(sessionId: string, resolved: boolean) {
     const rendererDraft = this.props.registry.pendingSessions.isDraft(sessionId);
-    return this.props.projectSessions.resolveSession(sessionId, resolved, async (ids) => {
-      if (!this.signal.aborted && !rendererDraft) await this.forgetProjectSessions(ids);
-    });
+    return this.props
+      .workbench()
+      .sessionManagementStore.resolveSession(sessionId, resolved, async (ids) => {
+        if (!this.signal.aborted && !rendererDraft) await this.forgetProjectSessions(ids);
+      });
   }
 
   async setProjectSessionsResolved(sessionIds: readonly string[], resolved: boolean) {
-    return this.props.projectSessions.resolveSessionsById(sessionIds, resolved, async (ids) => {
-      if (!this.signal.aborted) await this.forgetProjectSessions(ids);
-    });
+    return this.props
+      .workbench()
+      .sessionManagementStore.resolveSessionsById(sessionIds, resolved, async (ids) => {
+        if (!this.signal.aborted) await this.forgetProjectSessions(ids);
+      });
   }
 
   async deleteProjectSession(sessionId: string) {
     const session = this.props.catalog.find(sessionId);
     const wasSelected = this.props.shell.activeConversation?.sessionId === sessionId;
-    await this.props.projectSessions.deleteSession(sessionId);
+    await this.props.workbench().sessionManagementStore.deleteSession(sessionId);
     if (!this.props.catalog.find(sessionId))
       await this.forgetSessions([sessionId], wasSelected ? session?.workingDirectory : undefined);
   }

@@ -120,8 +120,7 @@ export class RootStore extends Store<{
   @child
   get drawControlStore(): DrawControlStore {
     return createStore(DrawControlStore, {
-      activeSessionId: () => this.projectWorkbenchStore.activeSessionId,
-      openActiveDraw: () => this.projectWorkbenchStore.presentationStore.openDraw(),
+      workbench: () => this.projectWorkbenchStore,
     });
   }
 
@@ -349,7 +348,7 @@ export class RootStore extends Store<{
       catalog: this.sessionCatalogStore,
       registry: this.sessionRegistry,
       layout: this.sessionLayoutStore,
-      projectSessions: this.projectWorkbenchStore.sessionManagementStore,
+      workbench: () => this.projectWorkbenchStore,
       navigate: (target) => this.navigationStore.navigateToHistoryEntry(target),
       createProjectSession: (projectPath) => this.navigationStore.createSession(projectPath),
     });
@@ -361,12 +360,11 @@ export class RootStore extends Store<{
       catalog: this.sessionCatalogStore,
       registry: this.sessionRegistry,
       shell: this.appShellStore,
-      clearOpenProject: (path) => this.projectWorkbenchStore.projectOpenStore.clear(path),
+      workbench: () => this.projectWorkbenchStore,
       focusedProjectPath: () => this.sidebarStore.focusedProjectPath,
       leaveProjectFocus: () => this.sidebarStore.leaveProjectFocus(),
       navigate: (target) => this.navigationStore.navigateToHistoryEntry(target),
       showEmptyWorkbench: () => this.navigationStore.showEmptyWorkbench(),
-      reportError: (error) => this.projectWorkbenchStore.setError(error),
     });
   }
 
@@ -382,14 +380,7 @@ export class RootStore extends Store<{
       savedDrafts: this.client.savedDrafts,
       operations: this.sessionOperationCoordinator,
       reviews: () => this.reviewsStore,
-      openEditorLocation: (sessionId, location, signal) =>
-        this.projectWorkbenchStore.presentationStore.openSelectionLocation(
-          sessionId,
-          location,
-          signal,
-        ),
-      refreshEditorHighlights: () =>
-        this.projectWorkbenchStore.presentationStore.embeddedEditorStore.syncSelectionHighlights(),
+      workbench: () => this.projectWorkbenchStore,
       sessionModel: (sessionId, workingDirectory) =>
         this.props.projection.projectConversation(sessionId, workingDirectory),
       discussionCatalog: (sessionId) => this.props.projection.discussionCatalog(sessionId),
@@ -398,41 +389,17 @@ export class RootStore extends Store<{
       scheduledMessageCatalog: (sessionId) =>
         this.props.projection.scheduledMessageCatalog(sessionId),
       artifactModel: this.props.projection.artifacts,
-      canSubmit: (sessionId) => this.projectWorkbenchStore.canSubmitSession(sessionId),
+
       isActive: (sessionId) =>
         this.appShellStore.selection.kind === "project-session" &&
         this.appShellStore.selection.sessionId === sessionId,
       isVisible: (sessionId) => this.sessionLayoutStore.hasSession(sessionId),
       worktreeOperation: (workspacePath) => this.worktreeOperation(workspacePath),
-      openCommandPane: (pane) => this.projectWorkbenchStore.commandPaneStore.open(pane),
       persistNow: () => this.props.flushWindowState(),
-      renameSession: (sessionId, name) =>
-        this.projectWorkbenchStore.sessionManagementStore.renameSession(sessionId, name),
-      toolCompactSession: (entryId, prompt) =>
-        this.projectWorkbenchStore.sessionContinuationStore.toolCompactAt(entryId, prompt),
       modelPresets: () => this.settingsStore.modelPresets.presets,
       assistantTools: () => this.applicationControlStore.sessionAssistantTools(),
       openModelPresetSettings: () => this.navigationStore.showModelPresetSettings(),
-      newSessionConfiguration: (sessionId) =>
-        this.projectWorkbenchStore.sessionCreationStore.request(sessionId)?.configuration,
-      startNewSession: (sessionId, input) =>
-        this.projectWorkbenchStore.sessionCreationStore.start(sessionId, input),
-      activateSavedDraft: (sessionId, choice) =>
-        this.projectWorkbenchStore.sessionCreationStore.activateSavedDraft(sessionId, choice),
-      ensureSessionActive: (sessionId) => {
-        if (!this.sessionMetadataStore.isResolved(sessionId)) return true;
-        return this.projectWorkbenchStore.sessionManagementStore.resolveSession(sessionId, false);
-      },
-      configureDraftActivation: (sessionId, choice) =>
-        this.projectWorkbenchStore.sessionCreationStore.configureDraftActivation(sessionId, choice),
-      sessionCreationChoice: (sessionId) =>
-        this.projectWorkbenchStore.sessionCreationStore.choice(sessionId),
-      draftActivationCandidates: (sessionId) =>
-        this.projectWorkbenchStore.sessionCreationStore.candidates(sessionId),
-      onWorktreeDiscarded: () => undefined,
       retirement: this.workingDirectoryRetirementStore,
-      onResolveWorktree: (workspacePath, options) =>
-        this.projectWorkbenchStore.resolveWorktreeWorkspace(workspacePath, options),
       settings: () => this.settingsStore.appearance,
     });
   }
@@ -511,9 +478,10 @@ export class RootStore extends Store<{
 
   /** Project Session targets currently eligible for Model observation. */
   get projectSessionObservationTargets() {
-    const blockedPath = this.projectWorkbenchStore.projectOpenStore.pendingAuthorizationPath;
     return this.sessionRegistry.observationRetention.sessions
-      .filter((session) => session.workspacePath !== blockedPath)
+      .filter((session) =>
+        this.projectWorkbenchStore.canObserveWorkingDirectory(session.workspacePath),
+      )
       .map((session) => ({
         sessionId: session.sessionId,
         workingDirectory: session.workspacePath,
@@ -565,15 +533,8 @@ export class RootStore extends Store<{
       setSessionResolved: async (sessionId, resolved) => {
         await this.sessionRetirementStore.setProjectSessionResolved(sessionId, resolved);
       },
-      setSessionLabels: async (sessionId, labelIds) => {
-        await this.projectWorkbenchStore.sessionManagementStore.setSessionLabels(
-          sessionId,
-          labelIds,
-        );
-      },
+      workbench: () => this.projectWorkbenchStore,
       deleteSession: (sessionId) => this.sessionRetirementStore.deleteProjectSession(sessionId),
-      setSessionUnread: (sessionId, unread) =>
-        this.projectWorkbenchStore.sessionManagementStore.setSessionUnread(sessionId, unread),
       embeddedEditorSettings: this.settingsStore.embeddedEditor,
     });
   }
@@ -795,7 +756,6 @@ export class RootStore extends Store<{
           this.requireProjectSessionWorkingDirectory(sessionId),
         prepareProjectSessionChat: (sessionId) => this.prepareProjectSessionChat(sessionId),
         navigationStore: this.navigationStore,
-        sessionCreationStore: this.projectWorkbenchStore.sessionCreationStore,
         sessionRetirementStore: this.sessionRetirementStore,
       }),
       operations: this.sessionOperationCoordinator,

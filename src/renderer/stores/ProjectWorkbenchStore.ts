@@ -213,6 +213,11 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     return title ?? "New chat";
   }
 
+  /** A Working Directory awaiting authorization must not materialize executable resources. */
+  canObserveWorkingDirectory(workingDirectory: string) {
+    return workingDirectory !== this.projectOpenStore.pendingAuthorizationPath;
+  }
+
   canSubmitSession(sessionId: string) {
     if (!this.isActiveSession(sessionId)) return false;
     const session = this.sessionRegistry.findSession(sessionId);

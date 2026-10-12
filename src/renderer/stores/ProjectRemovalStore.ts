@@ -3,17 +3,17 @@ import type { AppShellStore, SessionHistoryEntry } from "./AppShellStore";
 import { ClientContext } from "./context/ClientContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
 import type { SessionRegistryStore } from "./SessionRegistryStore";
+import type { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
 
 export interface ProjectRemovalStoreProps {
   catalog: SessionCatalogStore;
   registry: SessionRegistryStore;
   shell: AppShellStore;
-  clearOpenProject(path: string): void;
+  workbench(): ProjectWorkbenchStore;
   focusedProjectPath(): string | undefined;
   leaveProjectFocus(): void;
   navigate(target: SessionHistoryEntry): Promise<void>;
   showEmptyWorkbench(): void;
-  reportError(error: unknown): void;
 }
 
 /**
@@ -32,11 +32,11 @@ export class ProjectRemovalStore extends Store<ProjectRemovalStoreProps> {
       await this.client.workspaces.removeProject(path, deleteSessions, { signal: this.signal });
       if (this.signal.aborted) return false;
     } catch (error) {
-      if (!this.signal.aborted) this.props.reportError(error);
+      if (!this.signal.aborted) this.props.workbench().setError(error);
       return false;
     }
 
-    this.props.clearOpenProject(path);
+    this.props.workbench().projectOpenStore.clear(path);
     if (this.props.focusedProjectPath() === path) this.props.leaveProjectFocus();
     const target = this.props.shell.removeSessionsFromHistory(sessionIds);
     if (deleteSessions)

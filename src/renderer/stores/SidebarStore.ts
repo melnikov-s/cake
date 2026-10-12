@@ -6,6 +6,7 @@ import { ClientContext } from "./context/ClientContext";
 import type { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
 import { ProjectCatalogContext } from "./context/ProjectCatalogContext";
 import type { SessionCatalogStore } from "./SessionCatalogStore";
+import type { ProjectWorkbenchStore } from "./ProjectWorkbenchStore";
 import { SessionRegistryContext } from "./context/SessionRegistryContext";
 import { SidebarSessionListStore } from "./SidebarSessionListStore";
 
@@ -15,9 +16,8 @@ export interface SidebarStoreProps {
   cakeChat(): CakeChatCollectionStore;
   selectedConversation?(): { kind: "project-session" | "cake-chat"; sessionId: string } | undefined;
   setSessionResolved(sessionId: string, resolved: boolean): Promise<void>;
-  setSessionLabels(sessionId: string, labelIds: readonly string[]): Promise<void>;
+  workbench(): ProjectWorkbenchStore;
   deleteSession(sessionId: string): Promise<void>;
-  setSessionUnread(sessionId: string, unread: boolean): Promise<void>;
   embeddedEditorSettings: EmbeddedEditorSettingsStore;
 }
 
@@ -201,7 +201,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
   }
 
   setSessionLabels(sessionId: string, labelIds: readonly string[]) {
-    return this.props.setSessionLabels(sessionId, labelIds);
+    return this.props.workbench().sessionManagementStore.setSessionLabels(sessionId, labelIds);
   }
 
   deleteSession(sessionId: string) {
@@ -210,7 +210,7 @@ export class SidebarStore extends Store<SidebarStoreProps> {
 
   setSessionUnread(sessionId: string, unread: boolean) {
     if (!unread) this.sessions.findSession(sessionId)?.markRead();
-    return this.props.setSessionUnread(sessionId, unread);
+    return this.props.workbench().sessionManagementStore.setSessionUnread(sessionId, unread);
   }
 
   sessionActivityTime(modified: string) {
