@@ -53,6 +53,9 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
         element.setSelectionRange(caret, caret);
         insertion.current = { ...range, value, caret };
         flushSync(() => element.dispatchEvent(new Event("input", { bubbles: true })));
+        // Programmatic value/selection updates do not reveal the tail like native typing.
+        // Measure after React commits so content-sized inputs have their final height.
+        element.scrollTop = element.scrollHeight;
       } finally {
         inserting.current = false;
       }

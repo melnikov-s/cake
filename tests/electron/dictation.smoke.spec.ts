@@ -209,6 +209,27 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
       };
     });
     expect(mirrored.mirror).toEqual(mirrored.native);
+    // Utility-mode provisional text must stay aligned with the scrolled native input.
+    const provisionalSpeech = "Provisional speech that fills the writing field. ".repeat(80);
+    await configure({ ready: true, text: provisionalSpeech });
+    await expect(sample).toHaveValue("Typed while loading. " + provisionalSpeech.trim());
+    await expect
+      .poll(() =>
+        sample.evaluate((element: HTMLTextAreaElement) => {
+          const content = element.parentElement!.querySelector(
+            '[data-slot="textarea-provisional-overlay"]',
+          )!.firstElementChild!;
+          return {
+            atBottom:
+              element.scrollTop > 0 &&
+              Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop) <= 1,
+            aligned: new DOMMatrix(getComputedStyle(content).transform).m42 === -element.scrollTop,
+          };
+        }),
+      )
+      .toEqual({ atBottom: true, aligned: true });
+    await configure({ ready: true, text: "Dictation is ready" });
+    await expect(sample).toHaveValue("Typed while loading. Dictation is ready");
     const meter = page.locator(
       '[data-slot="dictation-field"]:has(textarea[aria-label="Try dictation"]) [data-slot="voice-meter"]',
     );
@@ -343,6 +364,28 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     expect((await composerControl.boundingBox())!.y).toBeGreaterThanOrEqual(
       (await composer.boundingBox())!.y + (await composer.boundingBox())!.height,
     );
+    // Growing recognition must follow the tail after the composer reaches its height cap.
+    const longSpeech = "A long dictated sentence that wraps across the input. ".repeat(180);
+    for (const text of [longSpeech, longSpeech + "\nThe newest dictated words."]) {
+      await configure({ ready: true, text });
+      await expect(composer).toHaveValue("Typed first. " + text.trim());
+      await expect(composer).toBeFocused();
+      await expect
+        .poll(() =>
+          composer.evaluate((element: HTMLTextAreaElement) => {
+            const overflow = element.scrollHeight - element.clientHeight;
+            return overflow > 0 && Math.abs(overflow - element.scrollTop) <= 1;
+          }),
+        )
+        .toBe(true);
+    }
+    // Typing while dictation is enabled must still follow the native caret, not the tail.
+    await configure({ ready: true, hold: true });
+    await composer.press("Meta+ArrowUp");
+    await composer.pressSequentially("Manual edit. ");
+    await expect(composer).toHaveValue(/^Manual edit\. Typed first\./);
+    expect(await composer.evaluate((element) => element.scrollTop)).toBe(0);
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     // Check Chromium's actual textarea rendering: both soft wraps and explicit
     // newlines start at the same normal text inset.
     await configure({ ready: true, hold: true });
