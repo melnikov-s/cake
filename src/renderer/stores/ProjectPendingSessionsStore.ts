@@ -10,6 +10,7 @@ import type { SessionCatalogStore, PendingSessionSummary } from "./SessionCatalo
 
 export type SavedDraftClient = Client["savedDrafts"];
 import { PendingConversationStore } from "./PendingConversationStore";
+import { ClientContext } from "./context/ClientContext";
 
 export interface ProjectPendingSessionsStoreProps {
   catalog?: SessionCatalogStore;
@@ -219,6 +220,8 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     const projectPath =
       this.props.catalog?.projectPathFor(session.workspacePath) ?? session.workspacePath;
     const conversation = this.ensureConversation(sessionId);
+    // Capture explicit naming before hydration puts the saved placeholder into conversation.name.
+    const automaticTitle = !conversation.name && Boolean(text.trim());
     const record = await this.authority.create(
       {
         sessionId,
@@ -234,6 +237,25 @@ export class ProjectPendingSessionsStore extends Store<ProjectPendingSessionsSto
     this.relocate(sessionId, projectPath);
     this.applySavedRecord(record);
     removeValue(this.stagedSessionIds, sessionId);
+    if (automaticTitle)
+      void ClientContext.consume(this)!
+        .workspaces.generateSessionTitle(text, { signal: this.signal })
+        .then(async (title) => {
+          const current = this.savedRecords[sessionId];
+          // Never overwrite a manual rename, edited prompt, or activation while naming ran.
+          if (
+            !title?.trim() ||
+            this.signal.aborted ||
+            current?.status !== "saved" ||
+            current.revision !== record.revision
+          )
+            return;
+          await this.updateSavedMetadata(sessionId, {
+            title: title.trim().slice(0, SESSION_TITLE_MAX_LENGTH),
+          });
+        })
+        // Naming is advisory: a failed request or revision conflict must not undo saving.
+        .catch(() => undefined);
   }
 
   async updateSavedMetadata(

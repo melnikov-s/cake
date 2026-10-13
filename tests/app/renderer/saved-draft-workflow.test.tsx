@@ -200,6 +200,129 @@ afterEach(() => {
 });
 
 describe("Saved Draft workflows", () => {
+  it("persists an automatic draft title and restores it in a fresh window", async () => {
+    const drafts = fakeSavedDrafts();
+    const generated = deferred<string>();
+    const generate = vi.fn<Client["workspaces"]["generateSessionTitle"]>(() => generated.promise);
+    const update = vi.fn(drafts.client.update);
+    {
+      using fixture = await renderDrafts(drafts, {
+        savedDrafts: { update },
+        workspaces: { generateSessionTitle: generate },
+      });
+      await fixture.user.click(screen.getByRole("button", { name: "Draft" }));
+      await fixture.user.type(input(), "Investigate draft naming");
+      await fixture.user.click(screen.getByRole("button", { name: "Create draft" }));
+      await screen.findByRole("button", { name: "Activate draft" });
+      await waitFor(() => expect(generate).toHaveBeenCalledOnce());
+      await act(async () => generated.resolve("Fix draft titles"));
+      expect(await sidebar().findByText("Fix draft titles")).toBeDefined();
+      expect(drafts.records.get(sessionId)).toMatchObject({
+        title: "Fix draft titles",
+        revision: 2,
+      });
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId, title: "Fix draft titles" }),
+        1,
+        expect.anything(),
+      );
+    }
+    using restored = await renderDrafts(drafts);
+    expect(sidebar().getByText("Fix draft titles")).toBeDefined();
+    await restored.user.click(screen.getByRole("button", { name: "Activate draft" }));
+    await waitFor(() =>
+      expect(drafts.records.get(sessionId)).toMatchObject({
+        title: "Fix draft titles",
+        status: "activated",
+      }),
+    );
+  });
+
+  it("preserves a name explicitly entered before saving a draft", async () => {
+    const drafts = fakeSavedDrafts();
+    const generate = vi.fn<Client["workspaces"]["generateSessionTitle"]>(
+      async () => "Unwanted title",
+    );
+    using fixture = await renderDrafts(drafts, {
+      workspaces: { generateSessionTitle: generate },
+    });
+    await fixture.user.type(input(), "/name My explicit name{Enter}");
+    await waitFor(() => expect(input()).toHaveProperty("value", ""));
+    await fixture.user.click(screen.getByRole("button", { name: "Draft" }));
+    await fixture.user.type(input(), "Investigate draft naming");
+    await fixture.user.click(screen.getByRole("button", { name: "Create draft" }));
+    await screen.findByRole("button", { name: "Activate draft" });
+    expect(sidebar().getByText("My explicit name")).toBeDefined();
+    expect(drafts.records.get(sessionId)).toMatchObject({ title: "My explicit name", revision: 1 });
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it.each(["manual rename", "remote rename", "prompt edit", "activation"])(
+    "discards an automatic draft title after %s",
+    async (change) => {
+      const drafts = fakeSavedDrafts();
+      const generated = deferred<string>();
+      const generate = vi.fn<Client["workspaces"]["generateSessionTitle"]>(() => generated.promise);
+      using fixture = await renderDrafts(drafts, {
+        workspaces: { generateSessionTitle: generate },
+        electron: { showSessionContextMenu: async () => ({ action: "rename" }) },
+      });
+      await fixture.user.click(screen.getByRole("button", { name: "Draft" }));
+      await fixture.user.type(input(), "Investigate draft naming");
+      await fixture.user.click(screen.getByRole("button", { name: "Create draft" }));
+      await screen.findByRole("button", { name: "Activate draft" });
+      await waitFor(() => expect(generate).toHaveBeenCalledOnce());
+      if (change === "manual rename") {
+        await fixture.user.pointer({
+          target: sidebar().getByText("New chat"),
+          keys: "[MouseRight]",
+        });
+        const name = await screen.findByRole("textbox", { name: "Session name" });
+        await fixture.user.clear(name);
+        await fixture.user.type(name, "My explicit name{Enter}");
+        await sidebar().findByText("My explicit name");
+      } else if (change === "remote rename") {
+        // The authority changed before its pushed snapshot reached this window.
+        const current = drafts.records.get(sessionId)!;
+        drafts.records.set(sessionId, {
+          ...current,
+          title: "Named in another window",
+          revision: 2,
+        });
+      } else if (change === "prompt edit") {
+        await fixture.user.click(screen.getByRole("button", { name: "Edit latest prompt" }));
+        await fixture.user.clear(input());
+        await fixture.user.type(input(), "A different task");
+        await fixture.user.click(screen.getByRole("button", { name: "Save draft" }));
+        await screen.findByText("A different task");
+      } else {
+        await fixture.user.click(screen.getByRole("button", { name: "Activate draft" }));
+        await waitFor(() => expect(drafts.records.get(sessionId)?.status).toBe("activated"));
+      }
+      const record = drafts.records.get(sessionId);
+      await act(async () => generated.resolve("Unwanted title"));
+      expect(drafts.records.get(sessionId)).toEqual(record);
+      expect(sidebar().queryByText("Unwanted title")).toBeNull();
+      if (change === "remote rename")
+        expect(await sidebar().findByText("Named in another window")).toBeDefined();
+    },
+  );
+
+  it("keeps a draft saved when automatic naming fails", async () => {
+    const drafts = fakeSavedDrafts();
+    const generated = deferred<string>();
+    using fixture = await renderDrafts(drafts, {
+      workspaces: { generateSessionTitle: () => generated.promise },
+    });
+    await fixture.user.click(screen.getByRole("button", { name: "Draft" }));
+    await fixture.user.type(input(), "Investigate draft naming");
+    await fixture.user.click(screen.getByRole("button", { name: "Create draft" }));
+    await screen.findByRole("button", { name: "Activate draft" });
+    await act(async () => generated.reject(new Error("Naming failed")));
+    expect(drafts.records.get(sessionId)).toMatchObject({ status: "saved", revision: 1 });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("saves an attachment-only draft, restores it in a fresh window, and activates the same identity", async () => {
     const drafts = fakeSavedDrafts();
     const create = vi.fn(drafts.client.create);

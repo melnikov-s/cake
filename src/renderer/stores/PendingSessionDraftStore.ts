@@ -52,7 +52,7 @@ export class PendingSessionDraftStore extends Store<PendingSessionDraftStoreProp
     if (!text && attachments.length === 0) return false;
     if ((await this.props.create(sessionId, text, attachments)) === false) return false;
     this.props.configureActivation?.({ kind: "current" });
-    if (text)
+    if (text && this.props.applyGeneratedName)
       void this.client.workspaces
         .generateSessionTitle(text, { signal: this.signal })
         .then((title) => {

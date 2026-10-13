@@ -402,8 +402,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
             ? { text: record.text, attachments: [...record.attachments], resolved: record.resolved }
             : undefined;
         },
-        applyGeneratedDraftName: (sessionId, title) =>
-          pending.conversation(sessionId)?.applyGeneratedDraftName(title),
         configureDraftActivation: (choice) =>
           creation.configureDraftActivation(this.sessionId, choice),
         sessionCreationChoice: () => creation.choice(this.sessionId),
