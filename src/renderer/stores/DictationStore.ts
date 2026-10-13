@@ -9,6 +9,7 @@ import { speechRecognitionSettings } from "../../utils/speech-input-settings";
 import type { Client } from "../client/Client";
 import { encodePcm, type Microphone, type MicrophoneCapture } from "../dictation/microphone";
 import { openSpeechCapture } from "../dictation/speech-capture";
+import { createReusableMicrophone } from "../dictation/reusable-microphone";
 import type { ProvisionalTextSpan } from "../dictation/provisional-text";
 
 export interface DictationTarget {
@@ -39,6 +40,7 @@ interface Utterance {
 }
 export type DictationPhase = "off" | "paused" | "preparing" | "listening" | "finishing" | "error";
 const CLEANUP_SILENCE_SAMPLES = 3 * 16_000;
+const MICROPHONE_HANDOFF_MS = 500;
 
 /** Window-owned voice-input workflow. Focus is take-latest; drafts retain their existing owners.
  * Main owns installation. This window persists enablement, microphone and cleanup choice (last
@@ -72,9 +74,12 @@ export class DictationStore extends Store<{
   private utterance: Utterance | undefined;
   private installation: AbortController | undefined;
   private modeRevision = 0;
+  private readonly microphone: ReturnType<typeof createReusableMicrophone>;
+  private microphoneReleaseTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(props: DictationStore["props"]) {
     super(props);
+    this.microphone = createReusableMicrophone(props.microphone);
     this.effect(() => {
       // Hydration restores intent, not a recording or an in-flight preparation.
       untracked(() => {
@@ -118,7 +123,9 @@ export class DictationStore extends Store<{
     this.error = error instanceof Error ? error.message : String(error);
     this.phase = "error";
   }
-  private endUtterance() {
+  private endUtterance(retainMicrophone = false) {
+    clearTimeout(this.microphoneReleaseTimer);
+    this.microphoneReleaseTimer = undefined;
     const run = this.utterance;
     this.utterance = undefined;
     this.provisionalText = undefined;
@@ -126,6 +133,7 @@ export class DictationStore extends Store<{
     run?.cleanupController.abort();
     run?.controller.abort();
     run?.capture?.stop();
+    if (!retainMicrophone) this.microphone.release();
     if (run) {
       run.chunks = [];
       run.samples = 0;
@@ -161,7 +169,7 @@ export class DictationStore extends Store<{
   }
   focus(target: DictationTarget) {
     if (this.target === target) return;
-    this.endUtterance();
+    this.endUtterance(true);
     this.target = target;
     if (!this.enabled || this.muted || this.busy) return;
     if (this.state?.status === "error")
@@ -170,7 +178,12 @@ export class DictationStore extends Store<{
   }
   blur(id: string) {
     if (this.target?.id !== id) return;
-    this.endUtterance();
+    this.endUtterance(true);
+    // Brief field/chat transitions reuse the device; no target means no audio is retained.
+    this.microphoneReleaseTimer = setTimeout(() => {
+      this.microphoneReleaseTimer = undefined;
+      this.microphone.release();
+    }, MICROPHONE_HANDOFF_MS);
     this.target = undefined;
     if (this.enabled) this.phase = "paused";
   }
@@ -204,7 +217,7 @@ export class DictationStore extends Store<{
   }
   private async start(target: DictationTarget) {
     if (!this.enabled || this.muted || this.busy || this.signal.aborted) return;
-    this.endUtterance();
+    this.endUtterance(true);
     const run: Utterance = {
       settings: speechRecognitionSettings(this.props.preferences.values),
       id: crypto.randomUUID(),
@@ -231,7 +244,7 @@ export class DictationStore extends Store<{
       await this.props.client.prepare({ signal: this.signal });
       if (this.utterance !== run) return;
       const capture = await openSpeechCapture(
-        this.props.microphone,
+        this.microphone,
         // Focus cancellation drops capture-local results, not the shared warm worker.
         (audio) =>
           this.props.client.detectSpeech(

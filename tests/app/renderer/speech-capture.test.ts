@@ -17,7 +17,7 @@ function microphone() {
   const device: Microphone = {
     open: async (onAudio) => {
       callback = onAudio;
-      return { stop, finish };
+      return { stop, finish, discardPending: async () => {} };
     },
     devices: async () => [],
   };

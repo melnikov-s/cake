@@ -76,7 +76,7 @@ export function useDictationInput(enabled: boolean, input: RefObject<HTMLTextAre
       )
         store.focus(field);
     };
-    const blur = () => store.blur(id);
+    const blur = () => store.pauseCapture();
     window.addEventListener("blur", blur);
     window.addEventListener("focus", focused);
     focused();

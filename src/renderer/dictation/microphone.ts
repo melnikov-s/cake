@@ -5,13 +5,17 @@ export interface MicrophoneCapture {
   finish(): Promise<void>;
   stop(): void;
 }
+export interface MicrophoneSession extends MicrophoneCapture {
+  /** Drain queued worklet messages before handing the device to a new insertion. */
+  discardPending(): Promise<void>;
+}
 export interface Microphone {
   open(
     onAudio: (samples: Float32Array) => void,
     signal: AbortSignal,
     deviceId: string,
     onEnded: () => void,
-  ): Promise<MicrophoneCapture>;
+  ): Promise<MicrophoneSession>;
   devices(): Promise<ReadonlyArray<{ id: string; label: string }>>;
 }
 
@@ -39,11 +43,14 @@ export const microphone: Microphone = {
     }
     const context = new AudioContext({ sampleRate: 16000 });
     let stopped = false;
+    const flushes: Array<() => void> = [];
     const stop = () => {
       if (stopped) return;
       stopped = true;
       stream.getTracks().forEach((track) => track.stop());
       void context.close();
+      for (const resolve of flushes) resolve();
+      flushes.length = 0;
       signal.removeEventListener("abort", stop);
     };
     signal.addEventListener("abort", stop, { once: true });
@@ -54,10 +61,16 @@ export const microphone: Microphone = {
       const processor = new AudioWorkletNode(context, "cake-dictation-pcm");
       const silent = context.createGain();
       silent.gain.value = 0;
-      let flushed: (() => void) | undefined;
+      const discardPending = () =>
+        new Promise<void>((resolve) => {
+          if (stopped) return resolve();
+          flushes.push(resolve);
+          processor.port.postMessage("flush");
+        });
       processor.port.onmessage = (event: MessageEvent<unknown>) => {
-        if (event.data === "flushed") flushed?.();
-        else if (!stopped && event.data instanceof Float32Array) onAudio(event.data);
+        if (event.data === "flushed") {
+          flushes.shift()?.();
+        } else if (!stopped && event.data instanceof Float32Array) onAudio(event.data);
       };
       for (const track of stream.getAudioTracks())
         track.addEventListener("ended", onEnded, { once: true });
@@ -66,15 +79,11 @@ export const microphone: Microphone = {
       signal.throwIfAborted();
       return {
         stop,
+        discardPending,
         async finish() {
           if (stopped) return;
           source.disconnect();
-          await new Promise<void>((resolve) => {
-            flushed = resolve;
-            // Aborting focus also releases a pending flush.
-            signal.addEventListener("abort", () => resolve(), { once: true });
-            processor.port.postMessage("flush");
-          });
+          await discardPending();
           stop();
         },
       };

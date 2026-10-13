@@ -320,6 +320,14 @@ const reply = value => process.stdout.write(JSON.stringify(value) + '\\n');
     await expect(indicator).toHaveText("Listening");
     await expect(composer).toHaveValue("");
     const captures = await page.evaluate(() => Reflect.get(window, "dictationCaptures"));
+    // A real DOM focus handoff must not reopen the device or rebuild its worklet.
+    await composer.evaluate((element: HTMLTextAreaElement) => {
+      element.blur();
+      element.focus();
+    });
+    await expect(composer).toBeFocused();
+    await expect(indicator).toHaveText("Listening");
+    expect(await page.evaluate(() => Reflect.get(window, "dictationCaptures"))).toBe(captures);
     const starts = await readFile(join(model, "starts.jsonl"), "utf8");
     await composer.press("Enter");
     await expect(indicator).toHaveText("Listening");

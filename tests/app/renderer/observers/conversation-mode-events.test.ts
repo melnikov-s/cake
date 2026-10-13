@@ -39,7 +39,7 @@ async function workflow(events: ClientEvents["Service"], initialDraft = "") {
   const microphone: Microphone = {
     open: vi.fn(async (onAudio) => {
       audio = onAudio;
-      return { stop: stopCapture, finish: async () => {} };
+      return { stop: stopCapture, finish: async () => {}, discardPending: async () => {} };
     }),
     devices: async () => [],
   };

@@ -35,7 +35,11 @@ function deferred<T>() {
 }
 
 /** Browser audio boundary only: the real microphone adapter and dictation hook stay in use. */
-function browserAudio(options: { permission?: Promise<void>; microphoneReady?: Promise<void> }) {
+function browserAudio(options: {
+  permission?: Promise<void>;
+  microphoneReady?: Promise<void>;
+  flushReady?: Promise<void>;
+}) {
   class Track extends EventTarget {
     stop = vi.fn();
   }
@@ -86,7 +90,10 @@ function browserAudio(options: { permission?: Promise<void>; microphoneReady?: P
     port: WorkletPort = {
       onmessage: null,
       postMessage: (message) => {
-        if (message === "flush") this.emit("flushed");
+        if (message === "flush") {
+          if (options.flushReady) void options.flushReady.then(() => this.emit("flushed"));
+          else this.emit("flushed");
+        }
       },
     };
     constructor() {
@@ -129,6 +136,7 @@ function renderDictation(
     composerFocusEnabled?: boolean;
     permission?: Promise<void>;
     microphoneReady?: Promise<void>;
+    flushReady?: Promise<void>;
     snapshot?: StoreSnapshot;
     state?: DictationState;
     client?: TestClientOverrides;
@@ -296,11 +304,14 @@ describe("Dictation writing-field workflow", () => {
     await waitFor(() => expect(f.requests).toHaveLength(1));
     await f.recognize(0, "");
     await waitFor(() => expect(f.prompt).toHaveBeenCalledOnce());
+    vi.useFakeTimers();
     await act(async () => submission.resolve());
-    await waitFor(() => expect(document.activeElement).toBe(message().parentElement));
+    expect(document.activeElement).toBe(message().parentElement);
     expect(message().value).toBe("");
     expect(f.root.dictationStore.activeTargetId).toBeUndefined();
+    await act(async () => vi.advanceTimersByTimeAsync(500));
     expect(f.audio.tracks.every((track) => track.stop.mock.calls.length > 0)).toBe(true);
+    vi.useRealTimers();
     const captures = f.audio.getUserMedia.mock.calls.length;
     await f.user.tab();
     expect(document.activeElement).toBe(message());
@@ -844,7 +855,9 @@ describe("Dictation writing-field workflow", () => {
     expect(message().value).toBe("Keep this sentence");
     await fixture.audio.push(new Float32Array(12_800));
     await fixture.user.click(trial());
-    expect(fixture.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
+    expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce();
+    expect(fixture.audio.processors).toHaveLength(1);
+    expect(fixture.audio.tracks[0]!.stop).not.toHaveBeenCalled();
     await fixture.recognize(2, "Old unfinished tail");
     expect(message().value).toBe("Keep this sentence");
     expect(trial().value).toBe("");
@@ -852,6 +865,101 @@ describe("Dictation writing-field workflow", () => {
     await fixture.recognize(3, "New field");
     expect(trial().value).toBe("New field");
     expect(fixture.requests[3]!.audio.utteranceId).not.toBe(fixture.requests[0]!.audio.utteranceId);
+  });
+
+  it("reuses a microphone across a short focus gap, drops gap audio, and releases it after idle", async () => {
+    using fixture = renderDictation();
+    await fixture.user.click(mode());
+    await fixture.user.click(trial());
+    listening();
+    vi.useFakeTimers();
+    act(() =>
+      screen.getByRole<HTMLButtonElement>("button", { name: "Refresh microphones" }).focus(),
+    );
+    await fixture.audio.push(new Float32Array(16_384).fill(0.1));
+    expect(fixture.requests).toHaveLength(0);
+    await act(async () => vi.advanceTimersByTimeAsync(499));
+    expect(fixture.audio.tracks[0]!.stop).not.toHaveBeenCalled();
+    await act(async () => message().focus());
+    listening();
+    expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce();
+    expect(fixture.audio.processors).toHaveLength(1);
+    await fixture.audio.push(new Float32Array(12_800));
+    await fixture.recognize(0, "Only new speech");
+    expect(trial().value).toBe("");
+    expect(message().value).toBe("Only new speech");
+    act(() =>
+      screen.getByRole<HTMLButtonElement>("button", { name: "Refresh microphones" }).focus(),
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(500));
+    expect(fixture.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+    await fixture.user.click(message());
+    listening();
+    expect(fixture.audio.getUserMedia).toHaveBeenCalledTimes(2);
+  });
+
+  it("drains queued worklet audio before a reused device can feed a new field", async () => {
+    const flush = deferred<void>();
+    using fixture = renderDictation({ flushReady: flush.promise });
+    await fixture.user.click(mode());
+    await fixture.user.click(trial());
+    listening();
+    await fixture.user.click(message());
+    expect(fixture.root.dictationStore.phase).toBe("preparing");
+    await fixture.audio.push(new Float32Array(16_384).fill(0.1));
+    expect(fixture.requests).toHaveLength(0);
+    await act(async () => flush.resolve());
+    listening();
+    await fixture.audio.push(new Float32Array(12_800));
+    await fixture.recognize(0, "After the fence");
+    expect(message().value).toBe("After the fence");
+    expect(trial().value).toBe("");
+    expect(fixture.audio.getUserMedia).toHaveBeenCalledOnce();
+  });
+
+  it("cancels a pending worklet finish before opening a fresh device for the next field", async () => {
+    const flush = deferred<void>();
+    using fixture = renderDictation({ flushReady: flush.promise });
+    await fixture.user.type(message(), "Keep draft");
+    await fixture.user.click(mode());
+    await fixture.user.click(message());
+    await fixture.user.keyboard("{Enter}");
+    expect(fixture.root.dictationStore.phase).toBe("finishing");
+    await fixture.user.click(trial());
+    listening();
+    expect(fixture.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
+    expect(fixture.audio.getUserMedia).toHaveBeenCalledTimes(2);
+    await act(async () => flush.resolve());
+    await fixture.audio.push(new Float32Array(12_800));
+    await fixture.recognize(0, "Fresh field speech");
+    expect(message().value).toBe("Keep draft");
+    expect(trial().value).toBe("Fresh field speech");
+    expect(fixture.prompt).not.toHaveBeenCalled();
+  });
+
+  it("releases the microphone immediately on app blur, including during a focus gap", async () => {
+    using fixture = renderDictation();
+    await fixture.user.click(mode());
+    await fixture.user.click(trial());
+    listening();
+    await fixture.user.click(screen.getByRole("button", { name: "Refresh microphones" }));
+    expect(fixture.audio.tracks[0]!.stop).not.toHaveBeenCalled();
+    act(() => fireEvent(window, new Event("blur")));
+    expect(fixture.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
+    expect(fixture.root.dictationStore.activeTargetId).toBeUndefined();
+    await fixture.audio.push(new Float32Array(16_384).fill(0.1));
+    expect(fixture.requests).toHaveLength(0);
+  });
+
+  it("releases a retained microphone when dictation is disabled", async () => {
+    using fixture = renderDictation();
+    await fixture.user.click(mode());
+    await fixture.user.click(trial());
+    listening();
+    await fixture.user.click(mode());
+    expect(fixture.audio.tracks[0]!.stop).toHaveBeenCalledOnce();
+    expect(fixture.release).toHaveBeenCalledOnce();
   });
 
   it("replaces punctuation revisions without duplicating or stripping recognizer punctuation", async () => {

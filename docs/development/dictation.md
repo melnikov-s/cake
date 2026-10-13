@@ -30,6 +30,10 @@ or when a new insertion starts.
 
 Focus determines the destination. Blurring, typing or moving the caret seals the
 current spoken span; late recognition must not replace manually edited text.
+The recognition model stays warm while dictation is enabled. The microphone and
+audio worklet are reused across field/chat switches with a gap of up to 500 ms;
+audio during that gap and queued audio from the old field are discarded. Longer
+idle gaps, muting, disabling dictation, and leaving the app release the microphone.
 [Conversation mode](conversation-mode.md) uses the same recognizer but submits the
 normal composer and can speak replies. It temporarily suppresses dictation in its
 composer without changing the Dictation preference.

@@ -80,7 +80,7 @@ function fixture(
       onAudio = callback;
       if (options.openMicrophone)
         return options.openMicrophone(callback, signal, deviceId, onEnded);
-      return { stop: stopCapture, finish: async () => {} };
+      return { stop: stopCapture, finish: async () => {}, discardPending: async () => {} };
     }),
     devices: async () => [],
   };
@@ -1423,9 +1423,9 @@ describe("Project Session conversation mode", () => {
           if (++calls === 2) {
             signal = captureSignal;
             await gate.promise;
-            return { stop, finish: async () => {} };
+            return { stop, finish: async () => {}, discardPending: async () => {} };
           }
-          return { stop: vi.fn(), finish: async () => {} };
+          return { stop: vi.fn(), finish: async () => {}, discardPending: async () => {} };
         },
       });
       await f.enter();
