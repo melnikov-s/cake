@@ -13,6 +13,13 @@ import * as cakeChatLocations from "../../src/domain/cake-chats/cakeChatLocation
 import { openNetworkListener } from "../../src/server/NetworkListener";
 import { ArtifactStorage } from "../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../src/services/storage/ArtifactStorageLive";
+import { InlineWidgets } from "../../src/services/widgets/InlineWidgets";
+import { makeInlineWidgetsLive } from "../../src/services/widgets/InlineWidgetsLive";
+import { WidgetBrowserOutputs } from "../../src/services/widgets/WidgetBrowserOutputs";
+import { makeWidgetBrowserOutputsLive } from "../../src/services/widgets/WidgetBrowserOutputsLive";
+import { WidgetPackages } from "../../src/services/widgets/WidgetPackages";
+import { compileInlineWidget } from "../../src/services/widgets/inline-widget-service";
+import { publishInlineWidget } from "../../src/services/widgets/inline-widget-document-registry";
 import { browserBackendAdapter, browserTestModel } from "./fixtures/browser-backend";
 import { makeNetworkTestBackend } from "./fixtures/network-backend";
 
@@ -37,6 +44,22 @@ it("selects published widget and HTML artifacts through the real library project
         ),
       );
       const storage = Context.get(storageContext, ArtifactStorage);
+      const browserOutputsLayer = makeWidgetBrowserOutputsLive(join(directory, "browser-outputs"));
+      const widgetContext = yield* Layer.build(
+        makeInlineWidgetsLive({ publish: publishInlineWidget }).pipe(
+          Layer.provide(
+            Layer.merge(
+              browserOutputsLayer,
+              Layer.mock(WidgetPackages, { directory: join(directory, "packages") }),
+            ),
+          ),
+        ),
+      );
+      const source = `<h1>Projected widget</h1><a href="#visited">Navigate widget</a><script>try { parent.document.body.dataset.widgetEscape = "yes"; } catch (error) { document.body.dataset.parentDenied = error.name; }</script>`;
+      const compiled = yield* Effect.promise(() => compileInlineWidget("html", source, "artifact"));
+      const browser = yield* Effect.flatMap(WidgetBrowserOutputs, (outputs) =>
+        outputs.retain(compiled),
+      ).pipe(Effect.provide(browserOutputsLayer));
       const controlled = browserBackendAdapter();
       const backend = yield* makeNetworkTestBackend({
         adapter: controlled.adapter,
@@ -67,7 +90,8 @@ it("selects published widget and HTML artifacts through the real library project
         title: "Browser widget fixture",
         payload: {
           language: "html",
-          source: `<h1>Projected widget</h1><a href="#visited">Navigate widget</a><script>try { parent.document.body.dataset.widgetEscape = "yes"; } catch (error) { document.body.dataset.parentDenied = error.name; }</script>`,
+          source,
+          browser,
           brief: "Fixture",
           generationSessionId: "generated",
         },
@@ -100,7 +124,15 @@ it("selects published widget and HTML artifacts through the real library project
             }),
           },
         },
-      ).pipe(Effect.provideContext(Context.add(backend.context, ArtifactStorage, storage)));
+      ).pipe(
+        Effect.provideContext(
+          Context.add(
+            Context.add(backend.context, ArtifactStorage, storage),
+            InlineWidgets,
+            Context.get(widgetContext, InlineWidgets),
+          ),
+        ),
+      );
       assert.equal(listener.address._tag, "TcpAddress");
       const port = listener.address.port;
       yield* Effect.promise(async () => {
@@ -121,7 +153,7 @@ it("selects published widget and HTML artifacts through the real library project
             "SecurityError",
           );
           const widgetFrame = page.locator('iframe[title="Browser widget fixture"]');
-          expect(await widgetFrame.getAttribute("sandbox")).toBe("allow-scripts");
+          expect(await widgetFrame.getAttribute("sandbox")).toBe("allow-scripts allow-downloads");
           const widgetUrl = new URL((await widgetFrame.getAttribute("src")) ?? "");
           expect(`${widgetUrl.origin}${widgetUrl.pathname}`).toMatch(
             new RegExp(`^http://127\\.0\\.0\\.1:${port}/widget-assets/document/[0-9a-f-]{36}$`),

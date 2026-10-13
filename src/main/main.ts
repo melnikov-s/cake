@@ -10,15 +10,12 @@ import type { JsonValue } from "../contracts/serialization/json-contract";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
 import { createCakeArtifactOperations } from "../domain/artifacts/cake-artifact-operations";
-import { createCakeArtifactStateOperations } from "../domain/artifacts/cake-artifact-state-operations";
 import { CakeOperationRegistry } from "../services/pi/runtime/cake-operation-registry";
 import { WorkflowSandbox } from "../services/pi/WorkflowSandbox";
 import { WorkflowProgram } from "../contracts/workflows/workflow-data";
 import { ClientEvents } from "../services/clients/ClientEvents";
-import {
-  registerInlineWidgetScheme,
-  handleInlineWidgetScheme,
-} from "../services/electron/inline-widget-protocol";
+import { handleInlineWidgetScheme } from "../services/electron/inline-widget-protocol";
+import { registerRichContentSchemes } from "../services/electron/rich-content-protocols";
 import {
   publishInlineWidget,
   revokeInlineWidget,
@@ -34,10 +31,7 @@ import { ArtifactStorage } from "../services/storage/ArtifactStorage";
 import { MessageBoardStorage } from "../services/storage/MessageBoardStorage";
 import { SessionFamilyStorage } from "../services/storage/SessionFamilyStorage";
 import { ArtifactProjection } from "../services/artifacts/ArtifactProjection";
-import {
-  registerExtensionCompanionScheme,
-  handleExtensionCompanionScheme,
-} from "../services/electron/extension-companion-protocol";
+import { handleExtensionCompanionScheme } from "../services/electron/extension-companion-protocol";
 import { resolveCakePaths } from "../config/CakePaths";
 import { piAgentDirectory } from "../services/pi/PiPaths";
 import { MainApplication } from "./MainApplication";
@@ -50,8 +44,7 @@ import chatMenuIconPath from "../assets/menu-chat.png?asset";
 installStdioErrorHandlers(process.stdout, process.stderr);
 
 app.setName("Cake");
-registerInlineWidgetScheme();
-registerExtensionCompanionScheme();
+registerRichContentSchemes();
 if (process.env.CAKE_ELECTRON_USER_DATA)
   app.setPath("userData", process.env.CAKE_ELECTRON_USER_DATA);
 
@@ -214,6 +207,7 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
       source: string;
       pluginState?: JsonValue;
       artifactState?: JsonValue;
+      capability?: "artifact";
       expectedRevision?: number;
       cancelAfterMs?: number;
     }) {
@@ -253,7 +247,7 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
             compileInlineWidget(
               "react",
               input.source,
-              input.artifactState !== undefined
+              input.artifactState !== undefined || input.capability === "artifact"
                 ? "artifact"
                 : input.pluginState === undefined
                   ? "display"
@@ -370,6 +364,7 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
           return {
             pngBase64: capture.pngBase64,
             diagnostics: capture.diagnostics,
+            stateVersion: (yield* artifacts.readState(lineageId)).version,
             persistedBeforeCapture: before !== undefined,
             persistedAfterCapture:
               record?.snapshot.kind === "widget" && record.snapshot.payload.source === input.source,
@@ -427,10 +422,9 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
           if (!integration.persistArtifact)
             return yield* Effect.die("Missing artifact persistence");
           const options = { ...integration, persistArtifact: integration.persistArtifact };
-          const registry = new CakeOperationRegistry([
-            ...createCakeArtifactOperations({ appendEntry: () => undefined }, options),
-            ...createCakeArtifactStateOperations(options),
-          ]);
+          const registry = new CakeOperationRegistry(
+            createCakeArtifactOperations({ appendEntry: () => undefined }, options),
+          );
           return yield* Effect.promise(() =>
             registry.invoke(
               { command: input.command, input: input.input },

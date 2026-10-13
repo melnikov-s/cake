@@ -55,6 +55,16 @@ test("executes compiled React in the sandboxed document origin", async () => {
 
     const iframe = page.locator('iframe[title="CSP React widget"]');
     await expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
+    // Real Chromium fetch from the opaque sandbox catches lost custom-scheme privileges.
+    const localFetch = await iframe
+      .contentFrame()
+      .locator("body")
+      .evaluate(async () => {
+        const response = await fetch(location.href.split("#")[0]!);
+        return { status: response.status, source: await response.text() };
+      });
+    expect(localFetch.status).toBe(200);
+    expect(localFetch.source).toContain("React widget executed");
 
     const expanding = await callRpcHarness<{
       widget: { token: string; url: string };
@@ -110,11 +120,25 @@ export default function ExpandingWidget() {
         type: "compile-inline-widget",
         language: "react",
         capability: "artifact",
-        source: `import { useArtifactState } from "@cake/artifact-sdk";
+        source: `import { useRef, useState } from "react";
+import { useArtifact, useArtifactState } from "@cake/artifact-sdk";
 export default function Editor() {
   const state = useArtifactState({count: 0});
+  const artifact = useArtifact();
+  const queued = useRef(null);
+  const [notice, setNotice] = useState("");
+  if (state.hydrated && !queued.current) queued.current = {save: state.save, replace: artifact.replace};
+  const replay = (method) => queued.current[method]({count: 999}).then(
+    () => setNotice("OVERWROTE NEWER DATA"),
+    () => {
+      const snapshot = globalThis.__cakeArtifactBridge.getSnapshot();
+      setNotice(method + " rejected after refresh " + snapshot.version + ":" + snapshot.error);
+    },
+  );
   if (!state.hydrated) return <p>Hydrating artifact</p>;
-  return <button onClick={() => state.save({count: state.value.count + 1})}>Saved count {state.value.count}</button>;
+  return <main><button onClick={() => state.save({count: state.value.count + 1})}>Saved count {state.value.count}</button>
+    <button onClick={() => replay("save")}>Replay stale save</button>
+    <button onClick={() => replay("replace")}>Replay stale replace</button><output>{notice}</output></main>;
 }`,
       },
     );
@@ -122,6 +146,17 @@ export default function Editor() {
       const frame = document.querySelector<HTMLIFrameElement>('iframe[title="CSP React widget"]');
       if (!frame) throw new Error("Widget frame is unavailable");
       let state = { version: 1, value: { count: 2 } };
+      const staleVersions: number[] = [];
+      Object.assign(window, {
+        __cakeArtifactStaleVersions: staleVersions,
+        __cakeArtifactRemote() {
+          state = { version: 3, value: { count: 8 } };
+          frame.contentWindow?.postMessage(
+            { source: "cake-artifact-host", token, type: "state", value: state },
+            "*",
+          );
+        },
+      });
       window.addEventListener("message", (event) => {
         if (event.source !== frame.contentWindow) return;
         // SAFETY: Fixed fixture's protocol fields are checked before processing any state request.
@@ -138,8 +173,19 @@ export default function Editor() {
         )
           return;
         if (message.type === "artifact-state-replace") {
-          if (message.value.expectedVersion !== state.version || !message.value.value)
-            throw new Error("Unexpected state CAS");
+          if (message.value.expectedVersion !== state.version || !message.value.value) {
+            staleVersions.push(message.value.expectedVersion!);
+            frame.contentWindow?.postMessage(
+              {
+                source: "cake-artifact-host",
+                token,
+                type: "state-result",
+                value: { id: message.value.id, ok: false, error: "Stale state version" },
+              },
+              "*",
+            );
+            return;
+          }
           state = { version: state.version + 1, value: message.value.value };
           Object.assign(window, { __cakeArtifactSmokeSaved: state });
         }
@@ -165,18 +211,7 @@ export default function Editor() {
       value: { count: 3 },
     });
     // The mounted widget responds to an agent/host invalidation without reloading its frame.
-    await page.evaluate(({ token }) => {
-      const frame = document.querySelector<HTMLIFrameElement>('iframe[title="CSP React widget"]');
-      frame?.contentWindow?.postMessage(
-        {
-          source: "cake-artifact-host",
-          token,
-          type: "state",
-          value: { version: 3, value: { count: 8 } },
-        },
-        "*",
-      );
-    }, artifact.widget);
+    await page.evaluate(() => Reflect.get(window, "__cakeArtifactRemote")());
     await expect(artifactFrame.getByRole("button", { name: "Saved count 8" })).toBeVisible();
     await page.evaluate(() => {
       document
@@ -192,6 +227,16 @@ export default function Editor() {
         );
     });
     await expect(artifactFrame.getByRole("button", { name: "Saved count 8" })).toBeVisible();
+
+    // Old rendered callbacks must use their original CAS version, not the bridge\'s latest version.
+    await artifactFrame.getByRole("button", { name: "Replay stale save" }).click();
+    await expect(artifactFrame.getByText("save rejected after refresh 3:null")).toBeVisible();
+    await artifactFrame.getByRole("button", { name: "Replay stale replace" }).click();
+    await expect(artifactFrame.getByText("replace rejected after refresh 3:null")).toBeVisible();
+    await expect(artifactFrame.getByRole("button", { name: "Saved count 8" })).toBeVisible();
+    expect(await page.evaluate(() => Reflect.get(window, "__cakeArtifactStaleVersions"))).toEqual([
+      1, 1,
+    ]);
 
     const plugin = await callRpcHarness<{
       widget: { token: string; url: string };

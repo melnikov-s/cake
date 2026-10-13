@@ -289,7 +289,7 @@ export default function RemoteWidget() {
       await expect(
         page
           .frameLocator('iframe[title="Revoked remote widget"]')
-          .getByText("Widget document not found"),
+          .getByText("Widget resource not found"),
       ).toBeVisible();
       const pixels = await application.evaluate((_electron, widget) => {
         const capture = (

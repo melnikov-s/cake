@@ -23,7 +23,10 @@ export type ProjectSessionRuntimeIntegrations = Pick<
   | "persistArtifact"
   | "requestInterview"
 > &
-  Pick<CakeSessionRuntimeOptions, "requestUi" | "emitExtensionUiIntent" | "reviewContextPath"> & {
+  Pick<
+    CakeSessionRuntimeOptions,
+    "requestUi" | "emitExtensionUiIntent" | "reviewContextPath" | "compileArtifactBrowser"
+  > & {
     readonly requestApplicationControl: (
       invocation: ProjectSessionControlInvocation,
       signal: AbortSignal,

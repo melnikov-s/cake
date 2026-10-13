@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import {
-  CaptureUpdateAction,
-  Excalidraw,
-  exportToBlob,
-  exportToSvg,
-  restoreElements,
-  serializeAsJSON,
-} from "@excalidraw/excalidraw";
+import type * as NativeLibrary from "@excalidraw/excalidraw";
+type ExcalidrawLibrary = typeof NativeLibrary;
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
@@ -22,6 +16,10 @@ declare global {
 // Ordinary skill code, not a Cake library integration. The generic compiler
 // retains CSS, fonts, and runtime resources with the accepted browser output.
 window.EXCALIDRAW_ASSET_PATH = assetBase;
+// Native font descriptors capture their URLs during module evaluation. A static
+// value import would initialize them before this assignment and leak CDN URLs
+// into SVG export even though the editor CSS fonts loaded locally.
+const nativeLibrary = import("@excalidraw/excalidraw");
 
 type Scene = {
   type: "excalidraw";
@@ -81,6 +79,7 @@ function snapshot(
   elements: readonly ExcalidrawElement[],
   appState: Partial<AppState>,
   files: BinaryFiles,
+  serializeAsJSON: ExcalidrawLibrary["serializeAsJSON"],
 ): Scene {
   const native = JSON.parse(serializeAsJSON(elements, appState, files, "local"));
   // The file-export serializer intentionally drops tombstones and unused image
@@ -125,7 +124,37 @@ function download(blob: Blob, filename: string): void {
 }
 
 export default function ExcalidrawArtifact() {
-  const { value, hydrated, version, save, error } = useArtifactState(initialScene);
+  const [library, setLibrary] = useState<ExcalidrawLibrary | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    nativeLibrary.then(
+      (loaded) => {
+        if (mounted) setLibrary(loaded);
+      },
+      (cause) => {
+        if (mounted) setLoadError(String(cause));
+      },
+    );
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  if (loadError) return <p role="alert">Cannot load drawing editor: {loadError}</p>;
+  if (!library) return <p role="status">Loading drawing editor…</p>;
+  return <ExcalidrawEditor library={library} />;
+}
+
+function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
+  const {
+    CaptureUpdateAction,
+    Excalidraw,
+    exportToBlob,
+    exportToSvg,
+    restoreElements,
+    serializeAsJSON,
+  } = library;
+  const { value, hydrated, version, save, error, reload } = useArtifactState(initialScene);
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -252,7 +281,7 @@ export default function ExcalidrawArtifact() {
     const files = { ...api.getFiles(), ...value.files };
     // Set the expected normalized echo BEFORE calling the API. Both synchronous
     // and later onChange notifications of hydration/agent edits are not saves.
-    current.lastScene = signature(snapshot(value, elements, appState, files));
+    current.lastScene = signature(snapshot(value, elements, appState, files, serializeAsJSON));
     current.applying = true;
     try {
       api.addFiles(Object.values(value.files || {}));
@@ -267,7 +296,7 @@ export default function ExcalidrawArtifact() {
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
       const current = state.current;
       if (!current.ready || current.applying) return;
-      const scene = snapshot(current.base, elements, appState, files);
+      const scene = snapshot(current.base, elements, appState, files, serializeAsJSON);
       const nextSignature = signature(scene);
       if (nextSignature === current.lastScene) return;
       current.lastScene = nextSignature;
@@ -325,9 +354,29 @@ export default function ExcalidrawArtifact() {
     }
   };
 
-  if (!hydrated)
+  const reconnect = async () => {
+    try {
+      await reload();
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
+  // Gate the first mount, but do not destroy a user's unsaved native scene when
+  // an established connection temporarily fails. Same-version reload leaves
+  // it intact; a newer authoritative version follows the external-update path.
+  if (!hydrated && !state.current.ready)
     return (
-      <p role="status">{error ? `Could not load drawing: ${String(error)}` : "Loading drawing…"}</p>
+      <main>
+        <p role="status">
+          {error ? `Could not load drawing: ${String(error)}` : "Loading drawing…"}
+        </p>
+        {error && (
+          <button type="button" onClick={() => void reconnect()}>
+            Retry loading drawing
+          </button>
+        )}
+      </main>
     );
   return (
     <main>
@@ -346,7 +395,11 @@ export default function ExcalidrawArtifact() {
           UIOptions={{ canvasActions: { export: { saveFileToDisk: true } } }}
         />
       </div>
-      <button type="button" disabled={saving} onClick={() => void flush()}>
+      <button
+        type="button"
+        disabled={saving || !hydrated || Boolean(error)}
+        onClick={() => void flush()}
+      >
         {saving ? "Saving drawing…" : saveError ? "Retry saving drawing" : "Save drawing"}
       </button>
       <button type="button" disabled={!api || exporting} onClick={() => void exportDrawing("png")}>
@@ -377,6 +430,11 @@ export default function ExcalidrawArtifact() {
                 ? "New drawing (not yet saved)"
                 : `Saved version ${version}`}
       </p>
+      {(!hydrated || error) && (
+        <button type="button" onClick={() => void reconnect()}>
+          Reconnect drawing
+        </button>
+      )}
       {exportError && <p role="alert">Could not export drawing: {exportError}</p>}
       {notice && <p role="status">{notice}</p>}
       {(error || saveError) && (

@@ -13,6 +13,7 @@ type CaptureResult = {
   publishedImage: { type: "image"; mimeType: "image/png"; data: string };
   retainedImage: { type: "image"; mimeType: "image/png"; data: string };
   exactRef: string;
+  stateVersion: number;
 };
 
 test("production widget review captures settled sandbox pixels before persistence", async () => {
@@ -75,6 +76,8 @@ test("production widget review captures settled sandbox pixels before persistenc
       artifactId: string;
       source: string;
       pluginState?: { topic: string };
+      capability?: "artifact";
+      expectedRevision?: number;
       cancelAfterMs?: number;
     }) =>
       application.evaluate((_electron, value) => {
@@ -194,6 +197,31 @@ export default function StateReviewFixture() {
       return [...bitmap.subarray(center, center + 3)];
     }, plugin.pngBase64);
     expect(pluginPixel).toEqual([220, 220, 0]);
+
+    // Absent storage (including a source-only revision) must hydrate the SDK seed, not null.
+    const defaultSource = `import { useArtifactState } from "@cake/artifact-sdk";
+export default function DefaultStateReview() {
+  const state = useArtifactState({ topic: "Default" });
+  return <main style={{ height: 430, background: state.hydrated && state.value.topic === "Default" ? "rgb(0, 220, 220)" : "rgb(255, 0, 255)" }}>Default state</main>;
+}`;
+    for (const expectedRevision of [undefined, 1]) {
+      const defaultState = await capture({
+        sessionId: "widget-review-session",
+        workingDirectory: project,
+        artifactId: "default-state-review",
+        capability: "artifact",
+        source: defaultSource,
+        expectedRevision,
+      });
+      expect(defaultState.stateVersion).toBe(0);
+      const center = await application.evaluate(({ nativeImage }, base64) => {
+        const image = nativeImage.createFromBuffer(Buffer.from(base64, "base64"));
+        const { width, height } = image.getSize();
+        const index = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4;
+        return [...image.toBitmap().subarray(index, index + 3)];
+      }, defaultState.pngBase64);
+      expect(center).toEqual([220, 220, 0]);
+    }
 
     await expect(
       capture({

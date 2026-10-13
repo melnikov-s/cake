@@ -168,8 +168,7 @@ Use native Excalidraw export for PNG, SVG, and editable `.excalidraw` files. The
 template provides Export PNG / Export SVG / Export drawing controls using native
 `exportToBlob`, `exportToSvg`, and `serializeAsJSON`, plus a generic Blob download.
 Native menu export remains enabled. PNG and SVG may optionally embed the editable
-scene through Excalidraw's export
-settings. Exporting a file is not an artifact save and does not publish a source
+scene through Excalidraw's export settings. Exporting a file is not an artifact save and does not publish a source
 revision. The host must support generic sandbox file downloads/Blob URLs; if it
 does not, report the capability blocker rather than hiding export or inventing a
 library-specific Cake tool. Images must use retained local/data assets, not remote
@@ -181,12 +180,16 @@ The template waits for SDK hydration, normalizes external-update echoes, debounc
 changes, and runs one save at a time. It distinguishes its own acknowledgment
 from a newer external version. A newer external state cancels pending stale
 writes and is shown with a notice; a storage/network failure keeps the latest
-local snapshot for explicit retry. The SDK must refresh its authoritative value
-on a CAS conflict before another save can be allowed. Do not remove those guards
-when adapting the template.
+local snapshot for explicit retry. The native editor stays mounted through a
+transient disconnect, and the generic SDK `reload()` backs Reconnect drawing.
+Reloading an unchanged version preserves unsaved edits; loading a newer version
+follows the external-update path. The SDK save closure binds its rendered storage
+version and refreshes authoritative state on rejection before another save can be
+allowed. Do not remove those guards when adapting the template.
 
 Check loading/error state, drag/text edits, repeated save acknowledgments, edits
-during a save, failed-save retry, external edits during a pending/in-flight save,
-selection, bound arrows/labels, frames, undo/redo, clear, fonts, and each export
+during a save, failed-save retry, disconnect/reconnect with an unchanged or newer
+version, external edits during a pending/in-flight save, cross-instance Saved
+version status, selection, bound arrows/labels, frames, undo/redo, clear, fonts, and each export
 format. Save before closing if persistence is important: the 200 ms debounce and
 best-effort close flush cannot guarantee a reply after frame/application teardown.

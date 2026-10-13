@@ -71,10 +71,10 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
   const isWorkboard = kind === "message-board";
   const record = selected?.record;
   const activeSummary = activeSessionId ? sessions.find(activeSessionId) : undefined;
-  const target: ArtifactLinkTarget | undefined = activeSummary
-    ? activeSummary.familyId
+  const target: ArtifactLinkTarget | undefined = activeSessionId
+    ? activeSummary?.familyId
       ? { type: "family", familyId: activeSummary.familyId }
-      : { type: "session", sessionId: activeSummary.sessionId }
+      : { type: "session", sessionId: activeSessionId }
     : undefined;
   const currentLink = target
     ? store.selectedLinks.find((link) => {

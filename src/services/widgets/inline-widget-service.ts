@@ -153,7 +153,7 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
     read: () => requestState("artifact-state-read", {}),
     replace(value, expectedVersion = stateSnapshot.version) {
       if (!stateSnapshot.hydrated || stateSnapshot.error) return Promise.reject(new Error("Artifact state is not hydrated; read before saving"));
-      return requestState("artifact-state-replace", { value, expectedVersion });
+      return requestState("artifact-state-replace", { value, expectedVersion }).catch(async (error) => { await requestState("artifact-state-read", {}).catch(() => undefined); throw error; });
     },
   });
   addEventListener("DOMContentLoaded", () => { globalThis.__cakeArtifactBridge.read().catch(() => undefined); });
@@ -256,10 +256,10 @@ function widgetModulePlugin(source: string): Plugin {
           'import { useCallback, useSyncExternalStore } from "react";',
           "const bridge = globalThis.__cakeArtifactBridge;",
           'if (!bridge) throw new Error("@cake/artifact-sdk is only available in artifact widgets");',
-          "export function useArtifact() { const snapshot = useSyncExternalStore(bridge.subscribe, bridge.getSnapshot, bridge.getSnapshot); return { ...snapshot, read: bridge.read, replace: bridge.replace }; }",
+          "export function useArtifact() { const snapshot = useSyncExternalStore(bridge.subscribe, bridge.getSnapshot, bridge.getSnapshot); const replace = useCallback((value, expectedVersion = snapshot.version) => bridge.replace(value, expectedVersion), [snapshot.version]); return { ...snapshot, read: bridge.read, replace }; }",
           "export function useArtifactState(initialValue = null) {",
           "  const snapshot = useSyncExternalStore(bridge.subscribe, bridge.getSnapshot, bridge.getSnapshot);",
-          "  const save = useCallback((value) => bridge.replace(value), []);",
+          "  const save = useCallback((value) => bridge.replace(value, snapshot.version), [snapshot.version]);",
           "  return { value: snapshot.version === 0 ? initialValue : snapshot.value, hydrated: snapshot.hydrated, version: snapshot.version, error: snapshot.error, save, reload: bridge.read };",
           "}",
         ].join("\n"),

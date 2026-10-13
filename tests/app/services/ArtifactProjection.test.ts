@@ -375,6 +375,7 @@ describe("ArtifactProjection", () => {
           preview: { mimeType: "image/png", data: "cG5n" },
           brief: "Public brief",
           generationSessionId: "generation-1",
+          browser: { digest: "b".repeat(64) },
         },
       },
     ];

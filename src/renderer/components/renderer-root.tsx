@@ -26,10 +26,7 @@ export const RendererRoot = observer(function RendererRoot({
   openExternalUrl,
   openSession,
 }: RendererRootProps) {
-  const activeSessionId =
-    rootStore.appShellStore.activeConversation?.kind === "project-session"
-      ? rootStore.appShellStore.activeConversation.sessionId
-      : undefined;
+  const activeSessionId = rootStore.appShellStore.activeConversation?.sessionId;
   const activeWorkingDirectory = activeSessionId
     ? rootStore.sessionCatalogStore.find(activeSessionId)?.workingDirectory
     : undefined;

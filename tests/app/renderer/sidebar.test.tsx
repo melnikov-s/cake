@@ -375,7 +375,7 @@ describe("Sidebar projects", () => {
     const runningStatus = container.querySelector(
       '[data-session-id="running"] [aria-label="Running"]',
     );
-    expect(runningStatus?.classList.contains("animate-pulse")).toBe(true);
+    expect(runningStatus?.classList.contains("motion-safe:animate-pulse")).toBe(true);
     expect(runningStatus?.classList.contains("bg-accent")).toBe(true);
     expect(
       container.querySelector('[data-session-id="ready"] [aria-label="Ready, unread"]'),

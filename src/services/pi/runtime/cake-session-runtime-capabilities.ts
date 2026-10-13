@@ -15,10 +15,6 @@ import {
   CrossSessionContextSnapshot,
   CrossSessionQueueSnapshot,
 } from "../../../contracts/conversations/cross-session-message";
-import {
-  artifactRecordSchema,
-  type CakeArtifactV1,
-} from "../../../contracts/artifacts/artifact-contract";
 import type { CakeOperationHost } from "../../../contracts/agent/cake-operation-context";
 import type { JsonObject, JsonValue } from "../../../contracts/serialization/json-contract";
 import { createMessageBoardExtension } from "./message-board-extension";
@@ -152,14 +148,14 @@ export async function createCakeSessionRuntimeCapabilities(input: {
   const { options, agentDir, settingsManager, requestExtensions } = input;
   const persistArtifact =
     options.persistArtifact ??
-    (async (artifact: CakeArtifactV1) =>
-      Schema.decodeUnknownSync(artifactRecordSchema)({
-        artifact,
-        workspacePath: options.cwd,
-        digest: "0".repeat(64),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }));
+    (async () => {
+      throw new Error("Artifact persistence is unavailable in this runtime");
+    });
+  const compileArtifactBrowser =
+    options.compileArtifactBrowser ??
+    (async () => {
+      throw new Error("Durable artifact browser compilation is unavailable in this runtime");
+    });
   const operationApi: RuntimeOperationApiReference = {};
   const operationRegistry: RuntimeOperationRegistryReference = {};
   const captureOperationRegistry = (registry: CakeOperationRegistry) => {
@@ -271,7 +267,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
                   captureOperationRegistry,
                   options.sessionReferences?.project,
                 ),
-                createCakeArtifactExtension({ persistArtifact }),
+                createCakeArtifactExtension({ persistArtifact, compileArtifactBrowser }),
                 ...(options.messageBoardControl
                   ? [createMessageBoardExtension(options.messageBoardControl)]
                   : []),

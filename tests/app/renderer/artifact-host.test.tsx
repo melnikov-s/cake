@@ -141,11 +141,11 @@ describe("ArtifactHost", () => {
     expect(screen.getByRole("dialog").textContent).toContain("Shipped");
   });
 
-  it("compiles delegated widget artifacts and presents fullscreen without exposing their private source", async () => {
+  it("opens retained widget artifacts and presents fullscreen without exposing their private source", async () => {
     const token = "00000000-0000-4000-8000-000000000002";
     const source = "export default () => <strong>Generated</strong>";
-    const compile = vi.fn(async () => ({ token, url: `cake-widget://document/${token}` }));
-    using fixture = createRendererStoreFixture({ client: { inlineWidgets: { compile } } });
+    const open = vi.fn(async () => ({ token, url: `cake-widget://document/${token}` }));
+    using fixture = createRendererStoreFixture({ client: { inlineWidgets: { open } } });
     const view = render(
       <FullscreenSurfaceFixture>
         <ArtifactHost
@@ -158,6 +158,7 @@ describe("ArtifactHost", () => {
               source,
               brief: "Compare",
               generationSessionId: "generation-1",
+              browser: { digest: "b".repeat(64) },
             },
           })}
           inlineWidgets={fixture.root.inlineWidgetStore}
@@ -166,15 +167,15 @@ describe("ArtifactHost", () => {
     );
     try {
       await waitFor(() => expect(view.container.querySelector("iframe")).not.toBeNull());
-      expect(compile).toHaveBeenCalledWith("react", source, "artifact");
+      expect(open).toHaveBeenCalledWith({ digest: "b".repeat(64) });
       const frame = view.container.querySelector("iframe")!;
-      expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
+      expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-downloads");
       expect(view.container.textContent).not.toContain(source);
       await userEvent
         .setup()
         .click(screen.getByRole("button", { name: "View Comparison fullscreen" }));
       expect(screen.getByRole("dialog").querySelector("iframe")?.getAttribute("sandbox")).toBe(
-        "allow-scripts",
+        "allow-scripts allow-downloads",
       );
       await userEvent.setup().keyboard("{Escape}");
       act(() =>
@@ -191,11 +192,11 @@ describe("ArtifactHost", () => {
     }
   });
 
-  it("recompiles a mounted widget after backend reconnect and ignores an old completion", async () => {
+  it("reopens a mounted widget after backend reconnect and ignores an old completion", async () => {
     const firstToken = "00000000-0000-4000-8000-000000000003";
     const nextToken = "00000000-0000-4000-8000-000000000004";
     let finishOld!: (value: { token: string; url: string }) => void;
-    const compile = vi
+    const open = vi
       .fn()
       .mockResolvedValueOnce({ token: firstToken, url: `cake-widget://document/${firstToken}` })
       .mockImplementationOnce(
@@ -205,7 +206,7 @@ describe("ArtifactHost", () => {
           }),
       )
       .mockResolvedValueOnce({ token: nextToken, url: `cake-widget://document/${nextToken}` });
-    using fixture = createRendererStoreFixture({ client: { inlineWidgets: { compile } } });
+    using fixture = createRendererStoreFixture({ client: { inlineWidgets: { open } } });
     const widgets = fixture.root.inlineWidgetStore;
     const view = render(
       <ArtifactHost
@@ -217,6 +218,7 @@ describe("ArtifactHost", () => {
             source: "<p>Still here</p>",
             brief: "Test",
             generationSessionId: "generation",
+            browser: { digest: "b".repeat(64) },
           },
         })}
         inlineWidgets={widgets}
@@ -236,7 +238,7 @@ describe("ArtifactHost", () => {
         finishOld({ token: firstToken, url: `cake-widget://document/${firstToken}` }),
       );
       expect(view.container.querySelector("iframe")?.getAttribute("src")).toContain(nextToken);
-      expect(compile).toHaveBeenCalledTimes(3);
+      expect(open).toHaveBeenCalledTimes(3);
     } finally {
       view.unmount();
     }

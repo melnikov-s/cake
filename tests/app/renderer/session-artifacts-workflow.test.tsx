@@ -202,6 +202,7 @@ const visual = (revision: number) => {
           source: `<strong>Explanation r${revision}</strong>`,
           brief: "A visual explanation",
           generationSessionId: "generation-session",
+          browser: { digest: "b".repeat(64) },
         },
         fallback: { markdown: `Explanation r${revision}` },
       },
@@ -243,8 +244,8 @@ describe("Session artifact workflows", () => {
       .mockImplementation(async (_id, revision) => visual(revision).revision);
     // A controlled compiler failure exercises the readable fallback. Actual
     // script execution and theme/size changes are verified in Electron.
-    const compile = vi
-      .fn<Client["inlineWidgets"]["compile"]>()
+    const open = vi
+      .fn<Client["inlineWidgets"]["open"]>()
       .mockRejectedValue(new Error("Compiler unavailable"));
     using fixture = renderSessionArtifacts(
       {
@@ -254,7 +255,7 @@ describe("Session artifact workflows", () => {
       },
       [visual(2)],
       [visualPart],
-      { compile },
+      { open },
     );
     await screen.findByRole("button", { name: "Visual explanation Collapse" });
     expect(await screen.findByText("Read temporarily unavailable")).toBeDefined();
@@ -264,7 +265,7 @@ describe("Session artifact workflows", () => {
     );
     expect(readExact).toHaveBeenLastCalledWith("visual", 1, expect.anything());
     expect(await screen.findByText("Explanation r1")).toBeDefined();
-    expect(compile).toHaveBeenCalledWith("html", "<strong>Explanation r1</strong>", "display");
+    expect(open).toHaveBeenCalledWith({ digest: "b".repeat(64) });
     await fixture.user.click(screen.getByRole("button", { name: "Visual explanation Collapse" }));
     expect(screen.queryByText("Explanation r1")).toBeNull();
     await fixture.user.click(screen.getByRole("button", { name: "Visual explanation Expand" }));
@@ -320,7 +321,7 @@ describe("Session artifact workflows", () => {
           },
         ],
         {
-          compile: async () => {
+          open: async () => {
             throw new Error("Compiler unavailable");
           },
         },
@@ -355,7 +356,7 @@ describe("Session artifact workflows", () => {
         },
       ],
       {
-        compile: async () => {
+        open: async () => {
           throw new Error("Compiler unavailable");
         },
       },
@@ -385,7 +386,7 @@ describe("Session artifact workflows", () => {
     expect(screen.getByRole("button", { name: "Visual explanation Expand" })).toBeDefined();
     expect(screen.queryByText("Explanation r1")).toBeNull();
   });
-  it("lists a sole artifact, opens the shared library, and returns to the popup after closing and reopening", async () => {
+  it("opens a sole linked artifact in the detail pane and reopens its catalog after closing", async () => {
     using fixture = renderSessionArtifacts();
     await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
     const popup = await screen.findByRole("dialog", { name: "Artifacts" });
@@ -393,8 +394,9 @@ describe("Session artifact workflows", () => {
     expect(within(list).getAllByRole("button")).toHaveLength(1);
     await fixture.user.click(within(list).getByRole("button", { name: /Family report/ }));
     expect(await screen.findByText("Family report content r2")).toBeDefined();
-    expect(screen.getByRole("textbox", { name: "Search artifact library" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Close all artifacts" }));
+    expect(screen.getByRole("complementary", { name: "Artifact" })).toBeDefined();
+    expect(screen.queryByRole("textbox", { name: "Search artifact library" })).toBeNull();
+    await fixture.user.click(screen.getByRole("button", { name: "Close Artifact" }));
     await fixture.user.click(screen.getByRole("button", { name: "1 artifacts" }));
     const reopenedPopup = await screen.findByRole("dialog", { name: "Artifacts" });
     const reopenedList = within(reopenedPopup).getByRole("navigation", { name: "Artifact list" });

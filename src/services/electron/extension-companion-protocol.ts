@@ -4,20 +4,6 @@ import {
   extensionCompanionScheme,
 } from "../pi/runtime/extension-companion-module-registry";
 
-export function registerExtensionCompanionScheme() {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: extensionCompanionScheme,
-      privileges: {
-        standard: true,
-        secure: true,
-        supportFetchAPI: true,
-        corsEnabled: true,
-      },
-    },
-  ]);
-}
-
 export function handleExtensionCompanionScheme(remoteEndpoint?: string) {
   protocol.handle(extensionCompanionScheme, (request) => {
     const url = new URL(request.url);

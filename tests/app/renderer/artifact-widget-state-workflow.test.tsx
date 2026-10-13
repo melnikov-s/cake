@@ -21,6 +21,7 @@ const record: ArtifactRecord = {
       source: "<p>Editor</p>",
       brief: "Editor",
       generationSessionId: "private",
+      browser: { digest: "b".repeat(64) },
     },
     fallback: { markdown: "Editor fallback" },
   },
@@ -56,7 +57,7 @@ describe("artifact widget state renderer workflow", () => {
     });
     using fixture = createRendererStoreFixture({
       client: {
-        inlineWidgets: { compile: async () => ({ token, url: `cake-widget://document/${token}` }) },
+        inlineWidgets: { open: async () => ({ token, url: `cake-widget://document/${token}` }) },
         artifacts: { stateRead, stateReplace },
       },
     });
@@ -123,7 +124,7 @@ describe("artifact widget state renderer workflow", () => {
     });
     using fixture = createRendererStoreFixture({
       client: {
-        inlineWidgets: { compile: async () => ({ token, url: `cake-widget://document/${token}` }) },
+        inlineWidgets: { open: async () => ({ token, url: `cake-widget://document/${token}` }) },
         artifacts: { stateRead, stateReplace },
       },
     });
@@ -178,7 +179,7 @@ describe("artifact widget state renderer workflow", () => {
     const stateReplace = vi.fn();
     using fixture = createRendererStoreFixture({
       client: {
-        inlineWidgets: { compile: async () => ({ token, url: `cake-widget://document/${token}` }) },
+        inlineWidgets: { open: async () => ({ token, url: `cake-widget://document/${token}` }) },
         artifacts: { stateRead, stateReplace },
       },
     });

@@ -505,6 +505,7 @@ export function createCakeArtifactOperations(
             fallback: current.artifact.fallback.markdown,
             instructions: update.instructions,
             initialState: latestState.value,
+            initialStateVersion: latestState.version,
             model: runtime.model,
             signal: context.signal,
           });

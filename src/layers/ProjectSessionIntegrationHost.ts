@@ -6,7 +6,6 @@ import type { UtilityModel } from "../contracts/conversations/session-contract";
 import type { CakeModelPresetCatalog } from "../contracts/model-presets/cake-model-selection";
 import type { WorktreeLandingCoordinator } from "../contracts/worktrees/worktree-contract";
 import type { JsonValue } from "../contracts/serialization/json-contract";
-import type { ArtifactStagedState } from "../contracts/artifacts/artifact-state";
 import type { WidgetCandidate } from "../contracts/widgets/widget-candidate";
 import type { WidgetBrowserOutput } from "../contracts/widgets/widget-browser-output";
 import type { CompiledInlineWidgetDocument } from "../services/widgets/inline-widget-service";
@@ -299,6 +298,8 @@ export class ProjectSessionIntegrationHost {
         this.emit({ type: "extension-ui-intent", sessionId, intent }),
       persistArtifact: (artifact, stagedState) =>
         this.execute(this.persistArtifact(artifact, sessionId, stagedState)),
+      compileArtifactBrowser: async (language, source) =>
+        this.retainWidgetBrowser(await this.compileWidget(language, source, "artifact")),
       requestInterview: (record, signal) => this.requestInterviewFromRenderer(record, signal),
       generateInlineWidget: (input) => this.execute(this.generateInlineWidget(input), input.signal),
       reviseInlineWidget: (input) => this.execute(this.reviseInlineWidget(input), input.signal),
@@ -386,7 +387,7 @@ export class ProjectSessionIntegrationHost {
       sessionId: input.sessionId,
       brief: input.brief,
       fallback: input.fallback,
-      initialState: input.initialState,
+      initialState: input.initialStateVersion === 0 ? undefined : input.initialState,
       model: input.model,
       signal: input.signal,
     };
@@ -476,7 +477,11 @@ export class ProjectSessionIntegrationHost {
             input.sessionId,
             widget,
             signal,
-            input.surface === "session-plugin" ? (input.initialState ?? null) : candidate.state,
+            input.surface === "session-plugin"
+              ? (input.initialState ?? null)
+              : input.initialState === undefined && candidate.state === null
+                ? undefined
+                : candidate.state,
           ),
         ),
       review: (source, diagnostic, pngBase64) => {

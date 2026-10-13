@@ -46,12 +46,20 @@ import { useArtifactState } from "@cake/artifact-sdk";
 
 The generic assets import retains the package's fonts and runtime resources.
 Set `window.EXCALIDRAW_ASSET_PATH = assetBase` before mounting the editor.
+Keep the template’s asset-root assignment before its dynamic native-library import:
+font descriptors capture URLs during initialization. Static native value imports can
+leave SVG exports with CDN font URLs even when editor CSS fonts loaded locally.
+Native SVG export embeds local font data; if CSP blocks its optional glyph-subsetting
+optimizer, the library embeds the complete font instead. Never enable JavaScript
+`unsafe-eval` just to suppress vendor warnings.
+
 Use a fixed-size responsive container, not an unbounded viewport-height root.
 
 The generic SDK contract is
 `useArtifactState(initialValue) => { value, hydrated, version, save, error }`,
-where `save(value)` returns a Promise of the saved state/version. Wait for
-hydration before mounting; a saved document wins over the seed. Persist native
+where `save(value)` returns a Promise of the saved state/version. The SDK also
+provides `reload()` for reconnect/recovery. Wait for initial hydration before
+mounting; a saved document wins over the seed. Persist native
 elements, bindings, files, useful app-state settings, and selection context. Do
 not save DOM nodes, Maps, imperative APIs, hover state, or an unfiltered runtime
 appState. The template uses the native serializer for export-safe settings but
@@ -60,7 +68,10 @@ retains deletion tombstones, files, and unrelated metadata in live state for und
 Keep its single-flight/debounce and acknowledgment guards: hydration and remote
 updates must not become save loops. A newer external state cancels stale pending
 writes; failed saves retain the latest local edit for explicit retry, with a
-visible error. Do not claim the drawing is saved before the SDK Promise succeeds.
+visible error. Keep an established editor mounted during transient disconnection;
+use Reconnect drawing to reload authoritative state before retrying the save.
+An unchanged-version reconnect must preserve unsaved edits. Do not claim the
+drawing is saved before the SDK Promise succeeds.
 The host/SDK must refresh state after a stale-version rejection. Do not blindly
 retry an older whole scene against a refreshed storage version.
 

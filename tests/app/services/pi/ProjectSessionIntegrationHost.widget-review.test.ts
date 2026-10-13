@@ -126,6 +126,67 @@ const generate = (
 };
 
 describe("ProjectSessionIntegrationHost widget rendered review", () => {
+  it("compiles and retains built-in diagnostic browser output without generation or visual review", async () => {
+    const fixture = host({ reviews: [] });
+    const compile =
+      fixture.integration.runtimeIntegrations("project-session").compileArtifactBrowser;
+    if (!compile) throw new Error("Missing diagnostic browser integration");
+    await expect(compile("html", "<strong>Diagnostic</strong>")).resolves.toEqual({
+      digest: "a".repeat(64),
+    });
+    expect(fixture.calls).toEqual(["compile:unknown", "retain:1"]);
+    expect(fixture.generationInputs).toEqual([]);
+    expect(fixture.reviewInputs).toEqual([]);
+    expect(fixture.captureStates).toEqual([]);
+  });
+
+  it("does not publish a diagnostic browser reference when retention fails", async () => {
+    const fixture = host({ reviews: [], retainError: "disk full" });
+    const compile =
+      fixture.integration.runtimeIntegrations("project-session").compileArtifactBrowser;
+    if (!compile) throw new Error("Missing diagnostic browser integration");
+    await expect(compile("html", "<strong>Diagnostic</strong>")).rejects.toThrow("disk full");
+    expect(fixture.calls).toEqual(["compile:unknown", "retain:1"]);
+  });
+  it("reviews absent storage with SDK defaults rather than persisted null", async () => {
+    const created = host({ reviews: ["ACCEPT_CURRENT"] });
+    await generate(created.integration, request());
+    expect(created.captureStates).toEqual([undefined]);
+    const revised = host({ reviews: ["ACCEPT_CURRENT"] });
+    const revise = revised.integration.runtimeIntegrations("project-session").reviseInlineWidget!;
+    await revise({
+      sessionId: "project-session",
+      generationSessionId: "existing",
+      source: "existing",
+      brief: "defaults",
+      fallback: "defaults",
+      instructions: "contrast",
+      initialState: null,
+      initialStateVersion: 0,
+      model: request().model,
+    });
+    expect(revised.captureStates).toEqual([undefined]);
+  });
+
+  it("reviews explicitly saved null without substituting SDK defaults", async () => {
+    const fixture = host({ reviews: ["ACCEPT_CURRENT"] });
+    await generate(fixture.integration, { ...request(), initialState: null });
+    expect(fixture.captureStates).toEqual([null]);
+    const revise = fixture.integration.runtimeIntegrations("project-session").reviseInlineWidget!;
+    await revise({
+      sessionId: "project-session",
+      generationSessionId: "existing",
+      source: "existing",
+      brief: "null",
+      fallback: "null",
+      instructions: "contrast",
+      initialState: null,
+      initialStateVersion: 1,
+      model: request().model,
+    });
+    expect(fixture.captureStates).toEqual([null, null]);
+  });
+
   it("generates, captures and reviews plugins with their actual durable state", async () => {
     const fixture = host({ reviews: ["ACCEPT_CURRENT"] });
     const initialState = { topic: "Cake and Pi", step: 1 };
@@ -157,6 +218,7 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
       brief: "Show the flow",
       fallback: "Readable fallback",
       instructions: "Increase contrast",
+      initialStateVersion: 0,
       model: { provider: "fixture", id: "vision" },
     });
 
@@ -287,6 +349,7 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
       fallback: "scene",
       instructions: "edit scene",
       initialState,
+      initialStateVersion: 7,
       model: request().model,
     });
     expect(accepted.state).toEqual({ scene: "revised-scene" });

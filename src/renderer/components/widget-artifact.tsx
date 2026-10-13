@@ -31,19 +31,11 @@ export const WidgetArtifact = observer(function WidgetArtifact({
   const iframe = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(220);
   useEffect(() => {
-    if (inlineWidgets)
-      inlineWidgets.prepare(id, artifact.payload.language, artifact.payload.source, "artifact");
+    if (inlineWidgets) inlineWidgets.prepareBrowser(id, artifact.payload.browser);
     if (inlineWidgets && stateSessionId)
       inlineWidgets.bindArtifactState(id, stateSessionId, decodeArtifactLineageId(artifact.id));
     return () => inlineWidgets?.releaseArtifactState(id);
-  }, [
-    artifact.id,
-    artifact.payload.language,
-    artifact.payload.source,
-    id,
-    inlineWidgets,
-    stateSessionId,
-  ]);
+  }, [artifact.id, artifact.payload.browser, id, inlineWidgets, stateSessionId]);
   useEffect(() => {
     if (!state?.compiled) return;
     if (liveState?.error)
@@ -138,6 +130,7 @@ export const WidgetArtifact = observer(function WidgetArtifact({
       className={fill ? "h-full" : undefined}
       title={artifact.title ?? artifact.id}
       compiled={state.compiled}
+      downloads
       presentation={presentation}
       style={fill ? undefined : { height }}
     />

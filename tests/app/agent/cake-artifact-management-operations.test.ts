@@ -74,6 +74,7 @@ const widgetArtifact = (): CakeArtifactV1 => ({
   payload: {
     language: "react",
     source: "export default function Chart(){return null}",
+    browser: { digest: "b".repeat(64) },
     brief: "Verified chart",
     generationSessionId: "accepted-generation",
   },

@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import type { InlineExtension } from "@earendil-works/pi-coding-agent";
+import type { WidgetBrowserOutput } from "../../../contracts/widgets/widget-browser-output";
 import {
   artifactPointerSchema,
   parseArtifactInput,
@@ -9,6 +10,7 @@ import {
 
 export interface ArtifactExtensionOptions {
   persistArtifact(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
+  compileArtifactBrowser(language: "html" | "react", source: string): Promise<WidgetBrowserOutput>;
 }
 
 export function createCakeArtifactExtension(options: ArtifactExtensionOptions): InlineExtension {
@@ -80,6 +82,8 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
           fallback: { markdown: "**Isolated HTML**" },
           interaction: { mode: "present" },
         });
+        const widgetSource = "<strong>Repairable widget</strong>";
+        const browser = await options.compileArtifactBrowser("html", widgetSource);
         await present({
           protocol: "cake.artifact/v1",
           id: "cake-s4-widget",
@@ -89,7 +93,8 @@ export function createCakeArtifactExtension(options: ArtifactExtensionOptions): 
           title: "S4 widget",
           payload: {
             language: "html",
-            source: "<strong>Repairable widget</strong>",
+            source: widgetSource,
+            browser,
             brief: "A compact repairable artifact demo widget",
             generationSessionId: "s4-widget-generation",
           },

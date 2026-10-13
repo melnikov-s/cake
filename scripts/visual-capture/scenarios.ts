@@ -28,6 +28,10 @@ import { researchOrigin, researchMarkdown } from "../../tests/fixtures/subagent-
 import { expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type { VisualCaptureTheme } from "./arguments.ts";
 import type { CakeArtifactV1 } from "../../src/contracts/artifacts/artifact-contract.ts";
+import { Effect } from "effect";
+import { compileInlineWidget } from "../../src/services/widgets/inline-widget-service.ts";
+import { WidgetBrowserOutputs } from "../../src/services/widgets/WidgetBrowserOutputs.ts";
+import { makeWidgetBrowserOutputsLive } from "../../src/services/widgets/WidgetBrowserOutputsLive.ts";
 import {
   emitRendererEvent,
   installLocalModelHttpGuard,
@@ -987,6 +991,21 @@ const inlineLinks: VisualCaptureScenario = {
   },
 };
 
+async function retainArtifactBrowser(
+  paths: ScenarioFixturePaths,
+  language: "html" | "react",
+  source: string,
+) {
+  const compiled = await compileInlineWidget(language, source, "artifact");
+  return Effect.runPromise(
+    Effect.flatMap(WidgetBrowserOutputs, (outputs) => outputs.retain(compiled)).pipe(
+      Effect.provide(
+        makeWidgetBrowserOutputsLive(join(paths.cakeHome, "state", "artifacts", "browser-outputs")),
+      ),
+    ),
+  );
+}
+
 async function seedArtifactScenario(
   paths: ScenarioFixturePaths,
   theme: "light" | "dark",
@@ -1175,21 +1194,7 @@ const inlineArtifactScenario: VisualCaptureScenario = {
   description: "One saved visualization, expanded inline by default with collapse and fullscreen",
   states: ["default", "collapsed", "fullscreen", "popup", "pane"],
   async seed(paths, theme) {
-    await seedArtifactScenario(
-      paths,
-      theme,
-      {
-        protocol: "cake.artifact/v1",
-        id: "inline-visual",
-        sessionId: "visual-inline-artifact",
-        revision: 1,
-        kind: "widget",
-        title: "Inline visualization",
-        payload: {
-          language: "react",
-          brief: "An interactive comparison using Cake's theme tokens",
-          generationSessionId: "visual-inline-generation",
-          source: `import React, { useState } from "react";
+    const source = `import React, { useState } from "react";
 export default function Visual() {
   const [expanded, setExpanded] = useState(false);
   return <main style={{ color: "var(--foreground,CanvasText)", fontFamily: "var(--font-sans,system-ui)" }}>
@@ -1205,7 +1210,23 @@ export default function Visual() {
     </button>
     {expanded && <section style={{ minHeight: 480, paddingTop: 16 }}>Expanded detail stays in this view.</section>}
   </main>;
-}`,
+}`;
+    await seedArtifactScenario(
+      paths,
+      theme,
+      {
+        protocol: "cake.artifact/v1",
+        id: "inline-visual",
+        sessionId: "visual-inline-artifact",
+        revision: 1,
+        kind: "widget",
+        title: "Inline visualization",
+        payload: {
+          language: "react",
+          brief: "An interactive comparison using Cake's theme tokens",
+          generationSessionId: "visual-inline-generation",
+          source,
+          browser: await retainArtifactBrowser(paths, "react", source),
         },
         fallback: {
           markdown: "One durable artifact can appear in the conversation and in the library.",
@@ -1316,6 +1337,7 @@ const requestExplanationScenario: VisualCaptureScenario = {
         brief:
           "Explain the current Electron process and authority boundaries. Manually authored visual prototype; not a generated call trace.",
         generationSessionId: "manual-visual-prototype",
+        browser: await retainArtifactBrowser(paths, "react", source),
       },
       fallback: {
         markdown:

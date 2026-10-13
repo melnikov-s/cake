@@ -36,6 +36,8 @@ const within = (root: string, target: string) => {
 
 function widgetAssetContentType(path: string): string {
   switch (extname(path).toLowerCase()) {
+    case ".wasm":
+      return "application/wasm";
     case ".woff2":
       return "font/woff2";
     case ".woff":

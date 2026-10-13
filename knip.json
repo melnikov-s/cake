@@ -10,6 +10,7 @@
     "tests/integration/fixtures/headless-backend.ts",
     "tests/integration/fixtures/workflow-sandbox-backend.ts"
   ],
+  "ignore": [".agents/skills/**/assets/**"],
   "ignoreDependencies": ["vscode"],
   "ignoreBinaries": ["swift"],
   "ignoreExportsUsedInFile": false

@@ -104,7 +104,7 @@ describe("Cake-owned conversation components", () => {
       </Reasoning>,
     );
     expect(completed).toContain("bg-success");
-    expect(active).toContain("bg-accent animate-pulse");
+    expect(active).toContain("bg-accent motion-safe:animate-pulse");
   });
 
   it("shows work-log paths relative to the project root and keeps outside paths absolute", () => {
@@ -277,7 +277,7 @@ describe("Cake-owned conversation components", () => {
         part={{ id: "tool-error", kind: "tool", name: "bash", input: "exit 1", state: "error" }}
       />,
     );
-    expect(running).toContain("bg-accent animate-pulse");
+    expect(running).toContain("bg-accent motion-safe:animate-pulse");
     expect(success).toContain("bg-success");
     expect(error).toContain("bg-destructive");
     expect(running).not.toContain("<small>running</small>");

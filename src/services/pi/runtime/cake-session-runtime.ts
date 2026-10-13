@@ -14,6 +14,7 @@ import type {
   SessionReferenceControl,
 } from "../../../contracts/agent/cake-operation-options";
 import type { CakeArtifactOperationOptions } from "../../../contracts/artifacts/artifact-agent-control";
+import type { ArtifactExtensionOptions } from "./artifact-extension";
 import type { MessageBoardControl } from "../../../contracts/artifacts/message-board-control";
 import type { CakeModelPresetCatalog } from "../../../contracts/model-presets/cake-model-selection";
 import type { CakeChatMemoryOptions } from "../cake-chat-memory-options";
@@ -151,6 +152,8 @@ export interface CakeSessionRuntimeOptions {
   currentSessionControl?: CurrentSessionControl;
   sessionReferences?: SessionReferenceControl;
   persistArtifact?: CakeArtifactOperationOptions["persistArtifact"];
+  /** Provider-free compilation and retention for built-in artifact diagnostics. */
+  compileArtifactBrowser?: ArtifactExtensionOptions["compileArtifactBrowser"];
   messageBoardControl?: MessageBoardControl;
   /** Child runtimes report their own costs separately. */
   partialPricingCoverage?: boolean;

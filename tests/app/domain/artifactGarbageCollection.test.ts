@@ -148,6 +148,7 @@ describe("artifact reachability garbage collection", () => {
               source: `export default () => <main>r${number}</main>`,
               brief: "Intent",
               generationSessionId: "private",
+              browser: { digest: "b".repeat(64) },
               preview: {
                 mimeType: "image/png",
                 data: Buffer.from(`png-r${number}`).toString("base64"),

@@ -43,8 +43,8 @@ const initialScene = {
       type: "text",
       x: 110,
       y: 120,
-      width: 180,
-      height: 25,
+      width: 220,
+      height: 30,
       text: "Shared authority",
       originalText: "Shared authority",
       fontSize: 24,
@@ -310,17 +310,77 @@ test("installed Excalidraw edits shared live state and reopens retained output w
     });
     for (const frame of [drawing, fullscreenDrawing])
       await expect(frame.getByRole("status")).toContainText(`version ${synchronized.version}`);
-    for (const name of ["Export PNG", "Export SVG", "Export drawing"]) {
-      const downloaded = page.waitForEvent("download");
+    const exportsDirectory = join(root, "exports");
+    await mkdir(exportsDirectory);
+    await application.evaluate(({ session }, directory) => {
+      const downloads: { name: string; state: string }[] = [];
+      Object.assign(globalThis, { __cakeNativeDownloads: downloads });
+      // Real Electron download authority; choose paths deterministically instead of an OS dialog.
+      session.defaultSession.on("will-download", (_event, item) => {
+        const record = { name: item.getFilename(), state: "progressing" };
+        downloads.push(record);
+        item.setSavePath(`${directory}/${record.name}`);
+        item.once("done", (_event, state) => {
+          record.state = state;
+        });
+      });
+    }, exportsDirectory);
+    for (const [name, filename] of [
+      ["Export PNG", "drawing.png"],
+      ["Export SVG", "drawing.svg"],
+      ["Export drawing", "drawing.excalidraw"],
+    ]) {
       await fullscreenDrawing.getByRole("button", { name, exact: true }).click();
-      const download = await downloaded;
-      expect(await download.failure()).toBeNull();
-      const file = (await download.path())!;
-      await test.info().attach(download.suggestedFilename(), { path: file });
+      await expect
+        .poll(
+          () =>
+            application!.evaluate((_electron, expected) => {
+              const downloads = Reflect.get(globalThis, "__cakeNativeDownloads") as {
+                name: string;
+                state: string;
+              }[];
+              return downloads.find((download) => download.name === expected)?.state;
+            }, filename),
+          { timeout: 15_000 },
+        )
+        .toBe("completed");
+      const file = join(exportsDirectory, filename);
+      await test.info().attach(filename, { path: file });
+      if (name === "Export PNG")
+        expect((await readFile(file)).subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+      if (name === "Export SVG") {
+        const svg = await readFile(file, "utf8");
+        expect(svg).toContain("<svg");
+        expect(svg).toMatch(/@font-face[^}]*src:\s*url\(data:/);
+        expect(svg).not.toContain("https://esm.sh");
+        const svgPixels = await fullscreenDrawing
+          .locator("body")
+          .evaluate(async (_body, source) => {
+            const url = `data:image/svg+xml,${encodeURIComponent(source)}`;
+            try {
+              const image = new Image();
+              image.src = url;
+              await image.decode();
+              const canvas = document.createElement("canvas");
+              canvas.width = image.naturalWidth;
+              canvas.height = image.naturalHeight;
+              const context = canvas.getContext("2d")!;
+              context.drawImage(image, 0, 0);
+              return [...context.getImageData(canvas.width / 2, canvas.height / 4, 1, 1).data];
+            } finally {
+              URL.revokeObjectURL(url);
+            }
+          }, svg);
+        expect(svgPixels).toEqual([165, 216, 255, 255]);
+      }
       if (name === "Export drawing") {
         const scene = JSON.parse(await readFile(file, "utf8")) as Scene;
         expect(scene.elements.find((element) => element.id === "authority-box")?.x).toBe(160);
-        expect(scene.elements.find((element) => element.id === manualShape.id)).toEqual(unrelated);
+        // Native export restores nullable empty bindings to [], without altering document geometry/data.
+        expect(scene.elements.find((element) => element.id === manualShape.id)).toEqual({
+          ...unrelated,
+          boundElements: unrelated.boundElements ?? [],
+        });
       }
     }
     await page.getByRole("button", { name: "Exit fullscreen Captured widget fixture" }).click();
@@ -349,6 +409,12 @@ test("installed Excalidraw edits shared live state and reopens retained output w
       unrelated,
     );
     expect(reopened.value.elements.find((element) => element.id === "authority-box")?.x).toBe(160);
+    await iframe
+      .contentFrame()
+      .locator(".excalidraw")
+      .screenshot({
+        path: join(repositoryRoot, ".visual-captures", "excalidraw-artifact-reopened.png"),
+      });
     expect(
       await application.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows().every((window) => !window.isVisible() && !window.isFocused()),

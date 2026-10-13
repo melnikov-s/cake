@@ -41,6 +41,7 @@ const widget = (revision = 1): CakeArtifactV1 => ({
     source: "<p>Editable</p>",
     brief: "Editable",
     generationSessionId: "private",
+    browser: { digest: "b".repeat(64) },
   },
   fallback: { markdown: "Editable" },
 });

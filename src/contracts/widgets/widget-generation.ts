@@ -33,6 +33,8 @@ export interface InlineWidgetRevisionRequest {
   fallback: string;
   instructions: string;
   initialState?: JsonValue;
+  /** Distinguishes empty storage from an explicitly saved null document during review. */
+  initialStateVersion: number;
   model?: { provider: string; id: string };
   signal?: AbortSignal;
 }

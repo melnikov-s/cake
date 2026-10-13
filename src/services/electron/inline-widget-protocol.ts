@@ -5,15 +5,6 @@ import {
 } from "../widgets/inline-widget-document-registry";
 import { inlineWidgetContentSecurityPolicy } from "./inline-widget-policy";
 
-export function registerInlineWidgetScheme() {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: inlineWidgetScheme,
-      privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
-    },
-  ]);
-}
-
 export function handleInlineWidgetScheme(remoteEndpoint?: string) {
   protocol.handle(inlineWidgetScheme, async (request) => {
     const url = new URL(request.url);

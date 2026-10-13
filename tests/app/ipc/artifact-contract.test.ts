@@ -154,7 +154,7 @@ describe("cake.artifact/v1 contract", () => {
     },
   );
 
-  it("accepts delegated widget source as Cake-owned artifact payload", () => {
+  it("accepts delegated widget source with retained browser output as Cake-owned artifact payload", () => {
     const artifact = parseArtifactInput({
       protocol: "cake.artifact/v1",
       id: "widget-1",
@@ -165,6 +165,7 @@ describe("cake.artifact/v1 contract", () => {
       payload: {
         language: "react",
         source: "export default () => <strong>Hello</strong>",
+        browser: { digest: "b".repeat(64) },
         brief: "Compare the options",
         generationSessionId: "generation-1",
       },
@@ -175,6 +176,7 @@ describe("cake.artifact/v1 contract", () => {
     expect(artifact.payload).toMatchObject({
       language: "react",
       generationSessionId: "generation-1",
+      browser: { digest: "b".repeat(64) },
     });
   });
 });

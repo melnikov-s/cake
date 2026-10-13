@@ -338,7 +338,12 @@ use browser system-color defaults, not another Cake palette.
 The widget runs in an `allow-scripts` iframe without same-origin privilege.
 Artifact frames additionally allow downloads so ordinary library-owned controls can
 export local PNG, SVG, or editable documents; interviews and session plugins do not
-receive that download grant.
+receive that download grant. Retained assets are served with explicit MIME types,
+CORS headers, and `nosniff`. Both native content schemes are registered together
+before Electron readiness; separate registrations overwrite fetch privileges.
+Libraries may compile WebAssembly under `wasm-unsafe-eval`, without granting
+JavaScript eval. Native exporters can embed complete local fonts when an optional
+optimizer requires forbidden JavaScript eval.
 CSP blocks external fetch/XHR/WebSocket (including library network helpers), while
 allowing local retained widget-resource loads and passive HTTPS/data image and media
 loads. Specialist instructions
@@ -415,10 +420,13 @@ sessions and open instances, including views of older source revisions; restorin
 source does not restore old document data. Unrelated lineages remain isolated.
 
 `@cake/artifact-sdk` exposes `useArtifactState(initialValue)` returning
-`{ value, hydrated, version, save, error }`, and a narrow read/replace API through
+`{ value, hydrated, version, save, error, reload }`, and a narrow read/replace API through
 `useArtifact()`. The host authenticates messages by frame source and compilation
 token and scopes access to the displayed lineage. Display widgets cannot acquire
-persistence. Hooks wait for hydration; saves before hydration reject. The widget
+persistence. Hooks wait for hydration; saves before hydration reject. Version 0
+means no stored document and uses the hook seed, while explicitly saved `null`
+has a nonzero version. Save callbacks retain the version of their rendered state;
+a rejected CAS refreshes authoritative state before rejecting to the widget. The widget
 owns serialization, debounce, explicit-save controls, and error handling. Current
 state updates notify other open instances without reloading their browser output.
 No save is promised for abrupt application termination before a pending debounce.
