@@ -226,7 +226,29 @@ test("reorders both lanes, cancels one item, hands off without an error, and lin
     await page.getByRole("button", { name: "Cancel steering: Second user" }).click();
     await expect.poll(labels).toEqual(["First user", "Agent follow-up"]);
     await send("Keep queued");
-    await page.getByRole("button", { name: "Stop and send now: Agent follow-up" }).click();
+    const stopAndSend = page.getByRole("button", { name: "Stop and send now: Agent follow-up" });
+    await expect(stopAndSend).toHaveCount(0);
+    await page.getByRole("button", { name: "Send now as steering: Agent follow-up" }).click();
+    await expect(stopAndSend).toBeVisible();
+    await expect(page.getByRole("button", { name: "Stop and send now: Keep queued" })).toHaveCount(
+      0,
+    );
+    expect(responses.length).toBe(1);
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate((value) => {
+        document.documentElement.dataset.theme = value;
+      }, theme);
+      await expect(stopAndSend).toHaveCSS(
+        "color",
+        theme === "light" ? "oklch(0.67 0.16 55)" : "oklch(0.75 0.17 60)",
+      );
+      await stopAndSend.hover();
+      await expect(stopAndSend).toHaveCSS(
+        "color",
+        theme === "light" ? "oklch(0.67 0.16 55)" : "oklch(0.75 0.17 60)",
+      );
+    }
+    await stopAndSend.click();
     await expect.poll(() => responses.length).toBeGreaterThan(1);
     await expect(queue).toContainText("Keep queued");
     await expect(page.getByText("Model request failed", { exact: true })).toHaveCount(0);

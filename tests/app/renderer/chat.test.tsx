@@ -284,9 +284,7 @@ describe("Chat", () => {
       '[aria-label="Send now as steering: Do this next"]',
     );
     expect(steerButton).not.toBeNull();
-    expect(
-      container.querySelector('[aria-label="Stop and send now: Do this next"]'),
-    ).not.toBeNull();
+    expect(container.querySelector('[aria-label="Stop and send now: Do this next"]')).toBeNull();
     expect(
       container.querySelector('[aria-label="Edit queued prompt: Do this next"]'),
     ).not.toBeNull();

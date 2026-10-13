@@ -234,11 +234,19 @@ describe("Prompt queue workflow", () => {
     expect(queuedTexts()).toEqual(["Existing steer"]);
   });
 
-  it("sends any queued item immediately without promoting or dropping the rest", async () => {
+  it("reveals stop-and-send only after steering and aborts without dropping the other messages", async () => {
     using fixture = renderQueue({
       steering: ["Keep steering"],
       followUp: ["Keep queued", encodeCrossSessionMessage("Send agent now", metadata)],
     });
+    expect(screen.queryByRole("button", { name: "Stop and send now: Send agent now" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Stop and send now: Keep queued" })).toBeNull();
+    await fixture.user.click(
+      screen.getByRole("button", { name: "Send now as steering: Send agent now" }),
+    );
+    expect(fixture.pi.abort).not.toHaveBeenCalled();
+    expect(queuedTexts()).toEqual(["Keep steering", "Send agent now", "Keep queued"]);
+    expect(screen.queryByRole("button", { name: "Stop and send now: Keep queued" })).toBeNull();
     await fixture.user.click(
       screen.getByRole("button", { name: "Stop and send now: Send agent now" }),
     );
