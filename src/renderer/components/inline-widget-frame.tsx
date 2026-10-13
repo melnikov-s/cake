@@ -22,9 +22,11 @@ export const InlineWidgetFrame = forwardRef<
     className?: string;
     style?: CSSProperties;
     presentation?: "inline" | "workspace";
+    /** Artifact-owned export controls may download generated local files. */
+    downloads?: boolean;
   }
 >(function InlineWidgetFrame(
-  { title, compiled, className, style, presentation = "workspace" },
+  { title, compiled, className, style, presentation = "workspace", downloads = false },
   ref,
 ) {
   const colorScheme = useResolvedColorTheme();
@@ -55,7 +57,7 @@ export const InlineWidgetFrame = forwardRef<
       ref={frame}
       onLoad={postPresentation}
       title={title}
-      sandbox="allow-scripts"
+      sandbox={downloads ? "allow-scripts allow-downloads" : "allow-scripts"}
       referrerPolicy="no-referrer"
       src={src}
       className={cn("w-full border-none", className)}

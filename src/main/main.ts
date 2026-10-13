@@ -10,6 +10,7 @@ import type { JsonValue } from "../contracts/serialization/json-contract";
 import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ProjectSessionRuntimeHost } from "../services/pi/ProjectSessionRuntimeHost";
 import { createCakeArtifactOperations } from "../domain/artifacts/cake-artifact-operations";
+import { createCakeArtifactStateOperations } from "../domain/artifacts/cake-artifact-state-operations";
 import { CakeOperationRegistry } from "../services/pi/runtime/cake-operation-registry";
 import { WorkflowSandbox } from "../services/pi/WorkflowSandbox";
 import { WorkflowProgram } from "../contracts/workflows/workflow-data";
@@ -20,8 +21,15 @@ import {
   registerInlineWidgetScheme,
   handleInlineWidgetScheme,
 } from "../services/electron/inline-widget-protocol";
-import { revokeInlineWidget } from "../services/widgets/inline-widget-document-registry";
-import { InlineWidgets } from "../services/widgets/InlineWidgets";
+import {
+  publishInlineWidget,
+  revokeInlineWidget,
+} from "../services/widgets/inline-widget-document-registry";
+import { compileInlineWidget } from "../services/widgets/inline-widget-service";
+import type { InlineWidgetGenerationResult } from "../contracts/widgets/widget-generation";
+import { WidgetBrowserOutputs } from "../services/widgets/WidgetBrowserOutputs";
+import { WidgetPackages } from "../services/widgets/WidgetPackages";
+import { WidgetPackageName, WidgetPackageSpecifier } from "../contracts/widgets/widget-packages";
 import { RenderedWidgetCapture } from "../services/widgets/RenderedWidgetCapture";
 import { ArtifactLineageId } from "../contracts/artifacts/artifact-lineage";
 import { ArtifactStorage } from "../services/storage/ArtifactStorage";
@@ -226,11 +234,13 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
       artifactId: string;
       source: string;
       pluginState?: JsonValue;
+      artifactState?: JsonValue;
+      expectedRevision?: number;
       cancelAfterMs?: number;
     }) {
       return mainRuntime.runPromise(
         Effect.gen(function* () {
-          const widgets = yield* Effect.serviceOption(InlineWidgets).pipe(
+          const packages = yield* Effect.serviceOption(WidgetPackages).pipe(
             Effect.flatMap((service) =>
               service._tag === "Some"
                 ? Effect.succeed(service.value)
@@ -253,26 +263,47 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
           );
           const lineageId = yield* Schema.decodeUnknownEffect(ArtifactLineageId)(input.artifactId);
           const before = yield* artifacts.read(lineageId);
-          const compiled = yield* widgets.compile({
-            language: "react",
-            capability: input.pluginState === undefined ? "display" : "session-plugin",
-            source: input.source,
-          });
+          const outputs = yield* Effect.serviceOption(WidgetBrowserOutputs).pipe(
+            Effect.flatMap((service) =>
+              service._tag === "Some"
+                ? Effect.succeed(service.value)
+                : Effect.die("Local-only smoke hook"),
+            ),
+          );
+          const compiled = yield* Effect.promise(() =>
+            compileInlineWidget(
+              "react",
+              input.source,
+              input.artifactState !== undefined
+                ? "artifact"
+                : input.pluginState === undefined
+                  ? "display"
+                  : "session-plugin",
+              { packageDirectory: packages.directory },
+            ),
+          );
+          const widget = publishInlineWidget(compiled);
           const controller = new AbortController();
           const cancelTimer =
             input.cancelAfterMs === undefined
               ? undefined
               : setTimeout(() => controller.abort(), input.cancelAfterMs);
           const capture = yield* captures
-            .capture(input.sessionId, compiled.widget, controller.signal, input.pluginState)
+            .capture(
+              input.sessionId,
+              widget,
+              controller.signal,
+              input.artifactState ?? input.pluginState,
+            )
             .pipe(
               Effect.ensuring(
                 Effect.sync(() => {
                   if (cancelTimer) clearTimeout(cancelTimer);
-                  revokeInlineWidget(compiled.widget.token);
+                  revokeInlineWidget(widget.token);
                 }),
               ),
             );
+          const browser = yield* outputs.retain(compiled);
           const host = yield* Effect.serviceOption(ProjectSessionRuntimeHost).pipe(
             Effect.flatMap((service) =>
               service._tag === "Some"
@@ -286,21 +317,27 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
           );
           if (!integration.persistArtifact)
             return yield* Effect.die("Missing artifact persistence");
+          // Deterministic model boundary; compilation, pixels, repository CAS and linking are real.
+          const generated = async (): Promise<InlineWidgetGenerationResult> => ({
+            language: "react",
+            source: input.source,
+            generationSessionId: "smoke-review",
+            browser,
+            state: input.artifactState,
+            preview: { mimeType: "image/png", data: capture.pngBase64 },
+          });
           const registry = new CakeOperationRegistry(
             createCakeArtifactOperations(
               { appendEntry: () => undefined },
               {
                 ...integration,
                 persistArtifact: integration.persistArtifact,
-                generateInlineWidget: async () => ({
-                  language: "react",
-                  source: input.source,
-                  generationSessionId: "smoke-review",
-                  preview: { mimeType: "image/png", data: capture.pngBase64 },
-                }),
+                generateInlineWidget: generated,
+                reviseInlineWidget: generated,
               },
             ),
           );
+          const exactRef = `cake://artifact/${input.artifactId}@r${(input.expectedRevision ?? 0) + 1}`;
           const context = {
             signal: controller.signal,
             toolCallId: "smoke-publication",
@@ -312,17 +349,27 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
           };
           const publication = yield* Effect.promise(() =>
             registry.invoke(
-              {
-                command: "widgets.present",
-                input: {
-                  widget: {
-                    id: input.artifactId,
-                    title: "Captured widget fixture",
-                    brief: "Electron rendered-review fixture",
-                    fallback: { markdown: "Captured widget fixture." },
+              input.expectedRevision === undefined
+                ? {
+                    command: "widgets.present",
+                    input: {
+                      widget: {
+                        id: input.artifactId,
+                        title: "Captured widget fixture",
+                        brief: "Electron rendered-review fixture",
+                        fallback: { markdown: "Captured widget fixture." },
+                      },
+                    },
+                  }
+                : {
+                    command: "artifacts.replace",
+                    input: {
+                      lineageId: input.artifactId,
+                      expectedRevision: input.expectedRevision,
+                      instructions:
+                        "Surgically update the staged fixture scene, preserving unrelated manual edits.",
+                    },
                   },
-                },
-              },
               context,
             ),
           );
@@ -330,7 +377,7 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
             registry.invoke(
               {
                 command: "artifacts.preview",
-                input: { reference: `cake://artifact/${input.artifactId}@r1` },
+                input: { reference: exactRef },
               },
               context,
             ),
@@ -349,8 +396,76 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
               record?.snapshot.kind === "widget" && record.snapshot.payload.source === input.source,
             publishedImage: publication.content.find((block) => block.type === "image"),
             retainedImage: retained.content.find((block) => block.type === "image"),
-            exactRef: `cake://artifact/${input.artifactId}@r1`,
+            exactRef,
           };
+        }),
+      );
+    },
+    async cakeSmokeWidgetPackage(input: {
+      operation: "list" | "install" | "remove";
+      value?: string;
+    }) {
+      return mainRuntime.runPromise(
+        Effect.gen(function* () {
+          const packages = yield* Effect.serviceOption(WidgetPackages).pipe(
+            Effect.flatMap((service) =>
+              service._tag === "Some"
+                ? Effect.succeed(service.value)
+                : Effect.die("Local-only smoke hook"),
+            ),
+          );
+          if (input.operation === "install")
+            return yield* packages.install(
+              yield* Schema.decodeUnknownEffect(WidgetPackageSpecifier)(input.value),
+            );
+          if (input.operation === "remove")
+            return yield* packages.remove(
+              yield* Schema.decodeUnknownEffect(WidgetPackageName)(input.value),
+            );
+          return yield* packages.list();
+        }),
+      );
+    },
+    async cakeSmokeInvokeArtifact(input: {
+      sessionId: string;
+      workingDirectory: string;
+      command: string;
+      input?: Record<string, JsonValue>;
+    }) {
+      return mainRuntime.runPromise(
+        Effect.gen(function* () {
+          const host = yield* Effect.serviceOption(ProjectSessionRuntimeHost).pipe(
+            Effect.flatMap((service) =>
+              service._tag === "Some"
+                ? Effect.succeed(service.value)
+                : Effect.die("Local-only smoke hook"),
+            ),
+          );
+          const integration = yield* host.runtimeIntegrations(
+            input.workingDirectory,
+            input.sessionId,
+          );
+          if (!integration.persistArtifact)
+            return yield* Effect.die("Missing artifact persistence");
+          const options = { ...integration, persistArtifact: integration.persistArtifact };
+          const registry = new CakeOperationRegistry([
+            ...createCakeArtifactOperations({ appendEntry: () => undefined }, options),
+            ...createCakeArtifactStateOperations(options),
+          ]);
+          return yield* Effect.promise(() =>
+            registry.invoke(
+              { command: input.command, input: input.input },
+              {
+                signal: new AbortController().signal,
+                toolCallId: "smoke-artifact-operation",
+                runtime: {
+                  sessionId: input.sessionId,
+                  sessionFile: "/smoke/parent.jsonl",
+                  entryId: "smoke-assistant",
+                },
+              },
+            ),
+          );
         }),
       );
     },

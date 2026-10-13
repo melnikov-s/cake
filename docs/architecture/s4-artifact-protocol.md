@@ -182,7 +182,7 @@ persistent visual explanations, including architecture and dependency views. Its
 input is a semantic brief with audience, verified facts and relationships,
 source references, bounded data, and a readable Markdown fallback. A restricted
 specialist chooses the visual form and may combine prose and controls with
-SVG/D3 inside the generated widget. Small diagrams remain inline
+SVG or user-installed libraries inside the generated widget. Small diagrams remain inline
 Mermaid when they are clearest in the conversation. User-requested widget edits
 use `artifacts.replace`; Cake privately applies the requested delta to stored source
 and publishes only after compilation, rendering, and review succeed.
@@ -230,13 +230,16 @@ supports image input, then forks a hidden, persisted Pi conversation from the
 caller's captured ancestor path. The fork excludes sibling branches and later
 parent messages, retains Pi's compaction/context edits, and cuts before an
 unfinished assistant/tool-result batch. The explicit widget assignment is appended
-to that complete prefix. Executable tools, discovered extensions, resource loading
-and project trust remain disabled; inherited instructions do not grant capabilities.
+to that complete prefix. General coding tools, discovered extensions, and project trust remain disabled;
+inherited instructions do not grant capabilities. Restricted tools read discovered
+skill resources and inspect or surgically edit the candidate's staged source and JSON
+state. They cannot access arbitrary files, execute commands, or call Cake controls.
 Cake-owned inline hooks preserve inherited prompt sections, append restricted task
 instructions, and reuse the existing fork-lineage provider cache-key policy across
 the explicitly allowed project/widget session roots. Transcript and transport
 identities stay independent; actual cache hits remain provider/prefix-dependent.
-That agent returns one React component from the untrusted brief. Electron main compile-checks it and
+That agent stages one React component and optional JSON document state from the
+untrusted brief and skill resources. Electron main compile-checks it and
 loads the compiled sandbox document in a fixed-size, main-owned hidden offscreen
 `BrowserWindow` with deterministic artifact-panel dimensions. The host waits for
 the same bounded ready/runtime protocol used by normal widget display, then captures
@@ -254,8 +257,10 @@ including the final replacement, receives screenshot review. Cancellation and
 capture/provider infrastructure failures stop the operation rather than consuming source-repair
 attempts. Hidden windows and transient compiled tokens are released on settlement.
 
-Only accepted source and its matching review capture reach existing widget artifact
-persistence. The PNG is stored as bounded base64 in the revision's `payload.preview`,
+Only accepted source, retained browser output, and its matching review capture reach
+widget artifact persistence. Candidate state is isolated during generation and capture.
+Changed candidate state commits atomically with publication using its observed live
+state version; an unchanged candidate preserves concurrent live saves. The PNG is stored as bounded base64 in the revision's `payload.preview`,
 inside the same content-addressed JSON blob as source and brief. The revision digest
 binds all of these bytes. There is no independent screenshot store or retention root.
 The existing 1 MiB serialized artifact limit still applies, including the preview;
@@ -284,13 +289,26 @@ the existing session/lineage projection cleanup and integrity/rematerialization 
 Cancellation, review failure, or a publication CAS conflict cannot mutate a prior
 revision or replace its capture.
 
-React source is bundled as TSX and must default-export one component. Approved
-imports are React and Cake's bundled D3 modules (`d3` or approved `d3-*`). Prefer
-D3 submodule imports for smaller bundles; `import * as d3 from "d3"` is supported
-for convenience. Generated source must not import CSS files.
+React source is bundled as TSX and must default-export one component. React is the
+core runtime; other libraries are explicitly installed by the user in Cake's shared
+widget-package environment, outside Cake's application dependencies and the user's
+project. Settings and agent package operations manage this environment. Installation,
+upgrade, removal, and subsequent runtime compilation require no application rebuild
+or restart. Library knowledge belongs to ordinary Pi skills, not Cake tool catalogs.
+An explicit dependency request authorizes installation; otherwise the agent asks first.
+
+The compiler resolves installed packages and their transitive dependencies, keeping
+React a singleton. Static CSS and media/font imports are bundled. The generic
+`@cake/assets/<package>/<package-relative-directory>/` import exports a token-bound
+URL base and retains that directory's resources for libraries that load assets at
+runtime. Accepted output is a small digest reference to file-backed HTML and assets
+under the artifact repository's browser-output store, not inline compiled bytes in
+the 1 MiB tool/source payload. Opening accepted output binds a fresh token without
+recompilation or an installed dependency. Referenced outputs follow artifact
+reachability; package removal cannot invalidate an accepted revision.
 
 These are capabilities of the same React widget, not a separate flow-widget
-artifact type. The specialist can compose SVG/D3 diagrams with ordinary React
+artifact type. The specialist can compose SVG or installed diagram libraries with ordinary React
 explanations, filters, source details, and accessible controls, or choose another
 visual form entirely. Diagram geometry belongs inside an explicitly sized canvas;
 surrounding content remains responsive normal-flow layout. Generation, repair and
@@ -306,7 +324,7 @@ stay in the shared Artifact Catalog Model. Metadata resolution freezes stable em
 references to an exact revision for that mount. Reads deduplicate while active, ignore
 stale/disposed results, and expose retry; collapse never changes artifact links or library
 selection. Separate inline, library, and fullscreen mounts have independent ephemeral
-React interaction state. Compiler/runtime failures retain the readable fallback.
+React interaction state, but share the lineage's live document state. Compiler/runtime failures retain the readable fallback.
 
 Every widget receives the host's semantic color/font tokens before first paint through
 a URL fragment, and live theme changes through a source- and token-bound message.
@@ -318,12 +336,17 @@ pages must not use viewport-dependent root heights. Review hosts without app tok
 use browser system-color defaults, not another Cake palette.
 
 The widget runs in an `allow-scripts` iframe without same-origin privilege.
-CSP blocks fetch/XHR/WebSocket (including D3's network helpers), while generic
-widgets permit passive HTTPS/data image and media loads. Specialist instructions
+Artifact frames additionally allow downloads so ordinary library-owned controls can
+export local PNG, SVG, or editable documents; interviews and session plugins do not
+receive that download grant.
+CSP blocks external fetch/XHR/WebSocket (including library network helpers), while
+allowing local retained widget-resource loads and passive HTTPS/data image and media
+loads. Specialist instructions
 require self-contained output with local data and no remote resources. The
 sandbox exposes no Cake, Node, Electron, filesystem or parent-DOM access.
 Runtime errors and frame height cross a token-tagged `postMessage` channel;
-no general bridge is exposed.
+no general bridge is exposed. Artifact-capable widgets receive only the scoped
+`@cake/artifact-sdk` state bridge described below.
 
 For agent inspection, main derives disposable read-only exact-revision filesystem
 projections beneath
@@ -381,6 +404,39 @@ they do not expose Cake, IPC, credentials, files, or the parent DOM. The host
 accepts messages only from its own frame and active compilation token, settles
 at most once, and validates the submitted value against the request's declared
 JSON Schema.
+
+## Live editable artifact state
+
+Each lineage has one current JSON state, independent of immutable source revisions
+and Pi transcript history. It has only a compare-and-swap version, not document
+history, snapshots, patches, or an event log. The repository atomically overwrites
+current state in its private catalog envelope. State is shared across linked
+sessions and open instances, including views of older source revisions; restoring
+source does not restore old document data. Unrelated lineages remain isolated.
+
+`@cake/artifact-sdk` exposes `useArtifactState(initialValue)` returning
+`{ value, hydrated, version, save, error }`, and a narrow read/replace API through
+`useArtifact()`. The host authenticates messages by frame source and compilation
+token and scopes access to the displayed lineage. Display widgets cannot acquire
+persistence. Hooks wait for hydration; saves before hydration reject. The widget
+owns serialization, debounce, explicit-save controls, and error handling. Current
+state updates notify other open instances without reloading their browser output.
+No save is promised for abrupt application termination before a pending debounce.
+
+Generic `artifacts.state.read`, `artifacts.state.replace`, and
+`artifacts.state.update` operations inspect and modify the current JSON document.
+Writes require the observed `expectedVersion`; update applies bounded JSON-pointer
+set/remove operations. A conflict requires rereading and reapplying the intended
+delta, never blindly overwriting newer manual edits. Data-only changes create no
+source revision. Library-specific schemas, element identity, selection context,
+exports, and surgical editing rules belong to the skill and widget, not these tools.
+
+Source edits continue the existing private Pi artifact branch. Its candidate starts
+from current live state, reads skill resources, and stages edits without touching the
+live document. Compilation and capture hydrate an isolated in-memory candidate.
+Acceptance publishes source/browser/capture and changed state atomically; cancellation,
+review failure, or a stale changed-state version publishes nothing. Unchanged state
+is omitted from the publication transaction so unrelated live saves survive.
 
 ## Verification
 
