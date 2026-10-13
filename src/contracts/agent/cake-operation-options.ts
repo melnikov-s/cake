@@ -26,6 +26,13 @@ export interface ProjectSessionLivePolicyControl {
   resolveDeferredStandalone(): Promise<void>;
 }
 
+/** Agent boundary only; internal operations continue to receive canonical identities. */
+export interface SessionReferenceControl {
+  resolve(reference: string, signal: AbortSignal): Promise<string>;
+  project(value: JsonValue, signal: AbortSignal): Promise<JsonValue>;
+  ids(signal: AbortSignal): Promise<readonly string[]>;
+}
+
 export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
   resolved(): boolean;
   canResolve?(): boolean;
