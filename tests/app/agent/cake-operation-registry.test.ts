@@ -82,7 +82,7 @@ describe("Cake operation registry", () => {
 
   it("advertises topic discovery before prose without eagerly disclosing operations", () => {
     expect(cakeToolDescription).toContain(
-      "app, sessions, context, models, settings, interview, artifacts, widgets, plugins, vscode, browser, draw, subagents, notifications, and worktrees",
+      "app, sessions, context, models, settings, interview, artifacts, widgets, plugins, vscode, browser, subagents, notifications, and worktrees",
     );
     expect(cakeToolDescription).toContain("Before defaulting to prose");
     expect(cakeToolDescription).toContain("even when unsure");

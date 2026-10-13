@@ -23,7 +23,6 @@ export interface ClientEventsService {
       | "provider-auth-notice"
       | "extension-ui-intent"
       | "project-session-control-requested"
-      | "draw-control-requested"
       | "browser-native-requested"
       | "widget-capture-requested"
       | "screen-capture-requested"

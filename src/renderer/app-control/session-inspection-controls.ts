@@ -121,7 +121,7 @@ export const sessionInspectionControls = [
       summary:
         "Discover or invoke any Cake capability registered on the target Project Session, using that session's own authority and scope.",
       guidance: [
-        "This exposes the parent's full live Cake catalog, including artifacts, draw, browser, models, plugins, worktrees, session configuration, forks and family operations when available.",
+        "This exposes the parent's full live Cake catalog, including artifacts, browser, models, plugins, worktrees, session configuration, forks and family operations when available.",
         "Use command: help for the topic index, a topic name for its protocol, or <operation>.help for one exact schema. Then invoke that command with input containing only its operation arguments.",
         "Singular session.*, context.* and other session-scoped operations apply to the targeted parent, never to the assistant's side chat. Do not claim success without checking the operation result.",
       ],

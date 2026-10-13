@@ -14,7 +14,6 @@ import { AgentAvailability } from "../services/pi/AgentAvailability";
 import { ClientConnectionsLive } from "../services/clients/ClientConnections";
 import { ClientEventsLive } from "../services/clients/ClientEventsLive";
 import { ClientWorkspacesLive } from "../services/clients/ClientWorkspacesLive";
-import { WorkspaceFileExportLive } from "../services/filesystem/WorkspaceFileExport";
 import { makeWorkspaceFilesLive } from "../services/filesystem/WorkspaceFilesLive";
 import { makeAttachmentUploadsLive } from "../services/filesystem/AttachmentUploadsLive";
 import { makeTaskInputStorageLive } from "../services/storage/TaskInputStorageLive";
@@ -36,7 +35,6 @@ import { ScheduledMessages } from "../services/scheduled-messages/ScheduledMessa
 import { SessionCatalogChanges } from "../services/session-catalogs/SessionCatalogChanges";
 import { makeMessageBoardStorageLive } from "../services/storage/MessageBoardStorageLive";
 import { makeArtifactStorageLive } from "../services/storage/ArtifactStorageLive";
-import { makeDrawBoardStorageLive } from "../services/storage/DrawBoardStorageLive";
 import { ArtifactGarbageCollectorLive } from "../layers/ArtifactGarbageCollectorLive";
 import { makeArtifactProjectionLive } from "../services/artifacts/ArtifactProjectionLive";
 import { makeApplicationStorageLive } from "../services/storage/ApplicationStorage";
@@ -99,7 +97,6 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
     }),
     makeArtifactStorageLive(paths.artifacts),
     makeMessageBoardStorageLive(paths.artifacts),
-    makeDrawBoardStorageLive(paths.drawBoards),
     makeReviewStorageLive(paths.reviews, paths.piReviewSessions, (record) =>
       Effect.tryPromise(() => loadReviewSessionProjection(record, paths.piReviewSessions)),
     ),
@@ -154,7 +151,6 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
       Layer.mergeAll(
         makeTerminalLive(),
         makeVsCodeServerLive({ root: join(paths.cache, "vscode-editor"), ...companionAssets }),
-        WorkspaceFileExportLive,
         makeWorkspaceFilesLive(paths.piAgent).pipe(Layer.provide(FoundationLive)),
         makeAttachmentUploadsLive(paths.cache, paths.state).pipe(Layer.provide(FoundationLive)),
         makeTaskInputStorageLive(paths.state),

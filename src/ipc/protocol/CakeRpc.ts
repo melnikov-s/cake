@@ -10,8 +10,6 @@ import { BrowserRpc, BrowserResponseRpc } from "./BrowserRpc";
 import { CakeChatRpc } from "./CakeChatRpc";
 import { DiscussionRpc } from "./DiscussionRpc";
 import { ConversationRpc } from "./ConversationRpc";
-import { DrawRpc } from "./DrawRpc";
-import { DrawControlRpc } from "./DrawControlRpc";
 import { DesktopSharingRpc } from "./DesktopSharingRpc";
 import { ElectronRpc } from "./ElectronRpc";
 import { FoundationRpc } from "./FoundationRpc";
@@ -52,8 +50,6 @@ export const CakeRpc = ApplicationRpc.merge(
   CakeChatRpc,
   ConversationRpc,
   DiscussionRpc,
-  DrawRpc,
-  DrawControlRpc,
   ElectronRpc,
   DesktopSharingRpc,
   FoundationRpc,

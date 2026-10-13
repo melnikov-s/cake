@@ -34,7 +34,6 @@ import type {
   WidgetGenerationReviewDependencies,
 } from "../domain/widgets/widgetGenerationReview";
 import type { CakeSessionRuntimeOptions } from "../services/pi/runtime/cake-session-runtime";
-import type { CakeOperationOptions } from "../contracts/agent/cake-operation-options";
 import type { RuntimeUiRequest } from "../services/pi/runtime/runtime-ui-request";
 import type { ImportWorkspaceFileInput } from "../services/artifacts/importWorkspaceFile";
 import type { ArtifactProjectionMetadata } from "../contracts/artifacts/artifact-projection-data";
@@ -111,7 +110,6 @@ export interface ProjectSessionIntegrationHostOptions {
     invocation: ProjectSessionControlInvocation,
     signal: AbortSignal,
   ) => Promise<JsonValue>;
-  readonly drawControl?: CakeOperationOptions["drawControl"];
   readonly runWidgetGeneration?: typeof runInlineWidgetGeneration;
   readonly runWidgetRepair?: typeof runInlineWidgetRepair;
   readonly runWidgetVisualReview?: typeof runInlineWidgetVisualReview;
@@ -168,7 +166,6 @@ export class ProjectSessionIntegrationHost {
   private readonly requestUiFromRenderer: ProjectSessionIntegrationHostOptions["requestUi"];
   private readonly requestInterviewFromRenderer: ProjectSessionIntegrationHostOptions["requestInterview"];
   private readonly requestApplicationControlFromRenderer: ProjectSessionIntegrationHostOptions["requestApplicationControl"];
-  private readonly drawControl: CakeOperationOptions["drawControl"];
   private readonly runWidgetGeneration: typeof runInlineWidgetGeneration;
   private readonly runWidgetRepair: typeof runInlineWidgetRepair;
   private readonly runWidgetVisualReview: typeof runInlineWidgetVisualReview;
@@ -198,7 +195,6 @@ export class ProjectSessionIntegrationHost {
     this.requestUiFromRenderer = options.requestUi;
     this.requestInterviewFromRenderer = options.requestInterview;
     this.requestApplicationControlFromRenderer = options.requestApplicationControl;
-    this.drawControl = options.drawControl;
     this.runWidgetGeneration = options.runWidgetGeneration ?? runInlineWidgetGeneration;
     this.runWidgetRepair = options.runWidgetRepair ?? runInlineWidgetRepair;
     this.runWidgetVisualReview = options.runWidgetVisualReview ?? runInlineWidgetVisualReview;
@@ -261,7 +257,6 @@ export class ProjectSessionIntegrationHost {
         this.requestApplicationControlFromRenderer(invocation, signal),
       emitExtensionUiIntent: (intent) =>
         this.emit({ type: "extension-ui-intent", sessionId, intent }),
-      drawControl: this.drawControl,
       persistArtifact: (artifact) => this.execute(this.persistArtifact(artifact, sessionId)),
       requestInterview: (record, signal) => this.requestInterviewFromRenderer(record, signal),
       generateInlineWidget: (input) => this.execute(this.generateInlineWidget(input), input.signal),

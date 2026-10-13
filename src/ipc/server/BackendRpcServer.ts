@@ -9,7 +9,6 @@ import { dynamicWorkflowHandlers } from "./DynamicWorkflowHandlers";
 import { discussionHandlers } from "./DiscussionHandlers";
 import { managedWorktreeHandlers } from "./ManagedWorktreeHandlers";
 import { terminalHandlers } from "./TerminalHandlers";
-import { drawHandlers } from "./DrawHandlers";
 import { backendConnectionHandlers } from "./BackendConnectionHandlers";
 import { Layer } from "effect";
 import { RpcServer } from "effect/unstable/rpc";
@@ -17,7 +16,6 @@ import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeC
 import { BackendRpc } from "../protocol/BackendRpc";
 import { RendererConnectionMiddlewareLive } from "../protocol/RendererConnectionMiddleware";
 import { applicationStateHandlers } from "./ApplicationStateHandlers";
-import { drawControlHandlers } from "./DrawControlHandlers";
 import { artifactHandlers } from "./ArtifactHandlers";
 import { interviewHandlers } from "./InterviewHandlers";
 import { makeCakeChatHandlers } from "./CakeChatHandlers";
@@ -47,7 +45,6 @@ export const makeBackendRpcServerLive = (
     ...inlineWidgetHandlers,
     ...widgetCaptureResponseHandlers,
     ...browserResponseHandlers,
-    ...drawHandlers,
     ...filesystemHandlers,
     ...attachmentUploadHandlers,
     ...terminalHandlers,
@@ -59,7 +56,6 @@ export const makeBackendRpcServerLive = (
     ...applicationStateHandlers,
     ...artifactHandlers,
     ...interviewHandlers,
-    ...drawControlHandlers,
     ...makeCakeChatHandlers(cakeChatConfiguration),
     ...makeConversationHandlers(cakeChatConfiguration),
     ...makeFoundationHandlers(homeDirectory),

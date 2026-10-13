@@ -91,12 +91,6 @@ function renderSessionArtifacts(
       projectSessions: { open: async () => undefined },
       workspaces: { loadStagedSlashCommands: async () => [] },
       inlineWidgets,
-      draw: {
-        list: async () => [],
-        create: async () => {
-          throw new Error("Board unavailable in fixture");
-        },
-      },
       artifacts: {
         effective: async () => [effective()],
         catalog: async () => ({
@@ -422,17 +416,6 @@ describe("Session artifact workflows", () => {
     popup = await screen.findByRole("dialog", { name: "Artifacts" });
     expect(within(popup).getAllByRole("button")).toHaveLength(2);
     expect(within(popup).getByRole("button", { name: /Family report/ })).toBeDefined();
-  });
-
-  it("opens the shared library from the Draw workspace's artifact popup", async () => {
-    using fixture = renderSessionArtifacts();
-    await fixture.user.click(await screen.findByRole("button", { name: "Open Cake Draw" }));
-    await fixture.user.click(await screen.findByRole("button", { name: "1 artifacts" }));
-    await fixture.user.click(await screen.findByRole("button", { name: /Family report/ }));
-    expect(await screen.findByText("Family report content r2")).toBeDefined();
-    expect(screen.getByRole("textbox", { name: "Search artifact library" })).toBeDefined();
-    await fixture.user.click(screen.getByRole("button", { name: "Close all artifacts" }));
-    expect(screen.getByRole("region", { name: "Cake Draw whiteboard" })).toBeDefined();
   });
 
   it("opens the session's pinned revision in the shared library", async () => {

@@ -49,8 +49,6 @@ import {
 } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { ApplicationStorage } from "../../../src/services/storage/ApplicationStorage";
-import { DrawBoardStorage } from "../../../src/services/storage/DrawBoardStorage";
-import { makeDrawBoardStorageLive } from "../../../src/services/storage/DrawBoardStorageLive";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import { MessageBoardStorage } from "../../../src/services/storage/MessageBoardStorage";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
@@ -79,7 +77,6 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
   models?: ReadonlyArray<typeof PiModel.Type>;
   onPrompt?: (text: string, attachments: ReadonlyArray<Attachment>) => void;
   projectPath?: string;
-  drawBoardsRoot?: string;
   vscode?: Partial<VsCodeServer["Service"]>;
   terminal?: Partial<Terminal["Service"]>;
 }) {
@@ -336,11 +333,6 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     Layer.mock(MessageBoardStorage, {}),
     Layer.mock(ArtifactProjection, {}),
     Layer.mock(ArtifactGarbageCollector, {}),
-    options?.drawBoardsRoot
-      ? makeDrawBoardStorageLive(options.drawBoardsRoot).pipe(
-          Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
-        )
-      : Layer.mock(DrawBoardStorage, {}),
     Layer.mock(ReviewStorage, {
       changes: () => Stream.concat(Stream.succeed(0), Stream.never),
       agentSessionDirectory: () => {

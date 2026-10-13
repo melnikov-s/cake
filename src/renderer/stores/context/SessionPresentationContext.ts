@@ -6,10 +6,6 @@ export const SessionPresentationContext =
   createContext<
     Pick<
       SessionPresentationStore,
-      | "openDraw"
-      | "restore"
-      | "tryBackToAgent"
-      | "openSelectionLocation"
-      | "refreshEditorHighlights"
+      "restore" | "tryBackToAgent" | "openSelectionLocation" | "refreshEditorHighlights"
     >
   >();

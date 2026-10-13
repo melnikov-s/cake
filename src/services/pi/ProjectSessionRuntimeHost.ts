@@ -19,7 +19,6 @@ export type ProjectSessionRuntimeIntegrations = Pick<
   | "importArtifactFile"
   | "persistArtifact"
   | "requestInterview"
-  | "drawControl"
 > &
   Pick<CakeSessionRuntimeOptions, "requestUi" | "emitExtensionUiIntent" | "reviewContextPath"> & {
     readonly requestApplicationControl: (

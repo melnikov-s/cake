@@ -26,7 +26,6 @@ import { WorktreeStore, type WorktreeStoreProps } from "./WorktreeStore";
 import { StagedSessionCommandStore } from "./StagedSessionCommandStore";
 import { SessionAssistantStore } from "./SessionAssistantStore";
 import { ClientContext } from "./context/ClientContext";
-import { DrawStore } from "./DrawStore";
 import { EditorSelectionsStore } from "./EditorSelectionsStore";
 import { SessionManagementContext } from "./context/SessionManagementContext";
 import { ProjectSessionCreationContext } from "./context/ProjectSessionCreationContext";
@@ -145,11 +144,6 @@ export class ProjectSessionStore extends Store<ProjectSessionStoreProps> {
 
   setWorkspaceChatSidebarWidth(width: number) {
     this.workspaceChatSidebarWidth = width;
-  }
-
-  @child
-  get drawStore(): DrawStore {
-    return createStore(DrawStore, { sessionId: this.sessionId });
   }
 
   get model() {

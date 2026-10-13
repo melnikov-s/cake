@@ -12,7 +12,6 @@ export default defineConfig({
     coverage: { reporter: ["text", "html"] },
     include: ["tests/app/**/*.test.{ts,tsx}"],
     setupFiles: ["./tests/setup.ts"],
-    server: { deps: { inline: [/@excalidraw\//] } },
     reporters: [new QuietReporter()],
   },
 });

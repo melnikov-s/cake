@@ -17,19 +17,9 @@ export const browserVisualScenarios = [
     states: ["default"],
   },
   {
-    name: "browser-draw",
-    description: "Chromium editable Cake Draw canvas and shared workspace",
-    states: ["default"],
-  },
-  {
     name: "browser-vscode",
     description:
       "Chromium leased, installed code-server inside Cake (requires /opt/homebrew/bin/code-server)",
-    states: ["default"],
-  },
-  {
-    name: "browser-mode-hidden",
-    description: "Chromium Draw toolbar without desktop-only Browser Mode control",
     states: ["default"],
   },
 ] as const;
@@ -116,7 +106,7 @@ export async function seedBrowserVisual(paths: BrowserPaths) {
         },
       },
       assistant(
-        "Yes. Project sessions, Cake Chat, Draw, and VS Code share the Cake interface. Open [qualification.ts](qualification.ts#L1-L4) in the editor to inspect this project.",
+        "Yes. Project sessions, Cake Chat and VS Code share the Cake interface. Open [qualification.ts](qualification.ts#L1-L4) in the editor to inspect this project.",
         "answer",
         "user",
       ),
@@ -139,10 +129,9 @@ export async function prepareBrowserVisual(page: Page, scenario: string) {
     page.getByText("Can I use the same Cake workspace in my browser?", { exact: true }).last(),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      "Yes. Project sessions, Cake Chat, Draw, and VS Code share the Cake interface.",
-      { exact: false },
-    ),
+    page.getByText("Yes. Project sessions, Cake Chat and VS Code share the Cake interface.", {
+      exact: false,
+    }),
   ).toBeVisible();
   if (scenario === "browser-vscode") {
     if (!existsSync("/opt/homebrew/bin/code-server"))
@@ -163,32 +152,6 @@ export async function prepareBrowserVisual(page: Page, scenario: string) {
     const trust = frame.contentFrame().locator(".monaco-dialog-modal-block");
     if (await trust.isVisible())
       await trust.getByRole("button", { name: /Yes, I trust the authors/ }).click();
-  } else if (scenario === "browser-draw") {
-    await page.getByRole("button", { name: "Open Cake Draw" }).click();
-    const canvas = page.locator(".excalidraw__canvas.interactive");
-    await expect(canvas).toBeVisible();
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("Draw canvas has no bounds");
-    await page.getByRole("radio", { name: "Rectangle" }).click({ force: true });
-    await page.mouse.move(box.x + 180, box.y + 130);
-    await page.mouse.down();
-    await page.mouse.move(box.x + 440, box.y + 280, { steps: 8 });
-    await page.mouse.up();
-    await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
-  } else if (scenario === "browser-mode-hidden") {
-    await expect(page.getByRole("button", { name: /Browser Mode/ })).toHaveCount(0);
-    await page.getByRole("button", { name: "Open Cake Draw" }).click();
-    const canvas = page.locator(".excalidraw__canvas.interactive");
-    await expect(canvas).toBeVisible();
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("Draw canvas has no bounds");
-    await page.getByRole("radio", { name: "Rectangle" }).click({ force: true });
-    await page.mouse.move(box.x + 180, box.y + 130);
-    await page.mouse.down();
-    await page.mouse.move(box.x + 440, box.y + 280, { steps: 8 });
-    await page.mouse.up();
-    await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
-    await expect(page.getByRole("button", { name: /Browser Mode/ })).toHaveCount(0);
   } else {
     await expect(page.locator('[data-slot="workspace"] textarea').first()).toBeVisible();
   }

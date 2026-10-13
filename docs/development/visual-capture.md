@@ -13,7 +13,7 @@ pnpm visual:capture appearance-settings --state characters
 pnpm visual:capture assistant-markdown-code --state hover --theme light
 pnpm visual:capture inline-links --state hover --theme dark
 pnpm visual:capture browser-shared-chat --width 1440 --height 900
-pnpm visual:capture browser-draw --width 1440 --height 900
+pnpm visual:capture browser-shared-chat --width 1440 --height 900
 pnpm visual:capture browser-vscode --width 1440 --height 900
 pnpm visual:capture vscode-terminal --state top --capture window --width 1440 --height 1000
 pnpm visual:capture vscode-terminal --state bottom --capture window --width 1440 --height 1000

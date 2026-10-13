@@ -39,7 +39,6 @@ import {
   WorktreeLandingSnapshot,
 } from "../worktrees/worktree-landing-data";
 import { WorktreeRecord } from "../worktrees/managed-worktree-data";
-import { DrawControlRequest } from "../draw/draw-control";
 
 const bounded = (minimum: number, maximum: number) =>
   Schema.String.check(Schema.isMinLength(minimum), Schema.isMaxLength(maximum));
@@ -188,9 +187,6 @@ const cakeEventSchemas = {
   "project-session-control-requested": ProjectSessionControlRequest.pipe(
     Schema.fieldsAssign({ type: Schema.Literal("project-session-control-requested") }),
   ),
-  "draw-control-requested": DrawControlRequest.pipe(
-    Schema.fieldsAssign({ type: Schema.Literal("draw-control-requested") }),
-  ),
   "widget-capture-requested": Schema.Struct({
     type: Schema.Literal("widget-capture-requested"),
     requestId: uuid,
@@ -305,7 +301,6 @@ export const applicationEventSchema = Schema.Union([
   cakeEventSchemas["provider-auth-notice"],
   cakeEventSchemas["extension-ui-intent"],
   cakeEventSchemas["project-session-control-requested"],
-  cakeEventSchemas["draw-control-requested"],
   cakeEventSchemas["widget-capture-requested"],
   cakeEventSchemas["application-hotkey-input"],
   cakeEventSchemas["browser-native-requested"],
@@ -366,7 +361,6 @@ export const cakeEventSchema = Schema.Union([
   cakeEventSchemas["provider-auth-notice"],
   cakeEventSchemas["extension-ui-intent"],
   cakeEventSchemas["project-session-control-requested"],
-  cakeEventSchemas["draw-control-requested"],
   cakeEventSchemas["widget-capture-requested"],
   cakeEventSchemas["terminal-data"],
   cakeEventSchemas["terminal-exited"],
@@ -401,11 +395,6 @@ export const cakeRpcPayloadSchemas = {
     ),
   }),
   "choose-project": Schema.Struct({}),
-  "save-draw-export": Schema.Struct({
-    format: Schema.Literals(["png", "svg", "excalidraw"]),
-    suggestedName: bounded(1, 240),
-    data: bounded(1, 12_000_000),
-  }),
   "open-external-url": Schema.Struct({
     url: stringMax(8_192),
   }),
@@ -734,9 +723,6 @@ const cakeRpcResultSchemas = {
   "project-chosen": Schema.Struct({
     path: Schema.optional(stringMax(4_096)),
   }),
-  "draw-export-saved": Schema.Struct({
-    path: Schema.optional(stringMax(8_192)),
-  }),
   "external-url-opened": Schema.Struct({}),
   "notification-shown": Schema.Struct({}),
   "transcript-selection-context-menu-closed": Schema.Struct({
@@ -854,7 +840,6 @@ export const cakeRpcSuccessSchemas = {
   "screen-capture-state": ScreenCaptureSnapshot,
   "finish-screen-capture": Schema.Struct({}),
   "choose-project": cakeRpcResultSchemas["project-chosen"],
-  "save-draw-export": cakeRpcResultSchemas["draw-export-saved"],
   "open-external-url": cakeRpcResultSchemas["external-url-opened"],
   "show-notification": cakeRpcResultSchemas["notification-shown"],
   "show-transcript-selection-context-menu":

@@ -23,11 +23,12 @@ const subscribe = Effect.fn("ClientEvents.test.subscribe")(function* (
   return { received, fiber, ready };
 });
 
-const draw: CakeEvent = {
-  type: "draw-control-requested",
+const browserRequest: CakeEvent = {
+  type: "browser-native-requested",
   sessionId: "session-1",
-  drawRequestId: "request-1",
-  invocation: { _tag: "Read", scope: "viewport" },
+  requestId: "00000000-0000-4000-8000-000000000001",
+  operation: "enter",
+  workspacePath: "/project",
 };
 const notification: CakeEvent = {
   type: "notification",
@@ -87,13 +88,13 @@ describe("ClientEvents", () => {
       const events = yield* ClientEvents;
       const first = yield* subscribe(events.application(1));
       const second = yield* subscribe(events.application(2));
-      expect(events.sendTo(1, draw)).toBe(true);
+      expect(events.sendTo(1, browserRequest)).toBe(true);
       events.broadcast(notification);
-      expect(yield* Queue.take(first.received)).toEqual(draw);
+      expect(yield* Queue.take(first.received)).toEqual(browserRequest);
       expect(yield* Queue.take(first.received)).toEqual(notification);
       // A broadcast acts as an ordered barrier: no targeted event preceded it here.
       expect(yield* Queue.take(second.received)).toEqual(notification);
-      expect(events.sendTo(99, draw)).toBe(false);
+      expect(events.sendTo(99, browserRequest)).toBe(false);
     }).pipe(Effect.provide(ClientEventsLive)),
   );
 
@@ -141,9 +142,9 @@ describe("ClientEvents", () => {
       events.broadcast(notification);
       const first = yield* subscribe(events.application(1));
       const second = yield* subscribe(events.application(2));
-      events.broadcast(draw);
-      expect(yield* Queue.take(first.received)).toEqual(draw);
-      expect(yield* Queue.take(second.received)).toEqual(draw);
+      events.broadcast(browserRequest);
+      expect(yield* Queue.take(first.received)).toEqual(browserRequest);
+      expect(yield* Queue.take(second.received)).toEqual(browserRequest);
       // No replay for a subscriber joining after publication.
       const late = yield* subscribe(events.application(3));
       events.broadcast(notification);
@@ -158,15 +159,15 @@ describe("ClientEvents", () => {
       const sameClient = yield* subscribe(events.application(1));
       const second = yield* subscribe(events.application(2));
       yield* Fiber.interrupt(first.fiber);
-      expect(events.sendTo(1, draw)).toBe(true);
-      expect(yield* Queue.take(sameClient.received)).toEqual(draw);
+      expect(events.sendTo(1, browserRequest)).toBe(true);
+      expect(yield* Queue.take(sameClient.received)).toEqual(browserRequest);
       yield* Fiber.interrupt(sameClient.fiber);
-      expect(events.sendTo(1, draw)).toBe(false);
+      expect(events.sendTo(1, browserRequest)).toBe(false);
       events.broadcast(notification);
       expect(yield* Queue.take(second.received)).toEqual(notification);
       const reconnected = yield* subscribe(events.application(1));
-      expect(events.sendTo(1, draw)).toBe(true);
-      expect(yield* Queue.take(reconnected.received)).toEqual(draw);
+      expect(events.sendTo(1, browserRequest)).toBe(true);
+      expect(yield* Queue.take(reconnected.received)).toEqual(browserRequest);
     }).pipe(Effect.provide(ClientEventsLive)),
   );
 
@@ -175,12 +176,12 @@ describe("ClientEvents", () => {
       const events = yield* ClientEvents;
       const terminals = yield* subscribe(events.terminals(1));
       const otherClient = yield* subscribe(events.application(2));
-      expect(events.sendTo(1, draw)).toBe(false);
+      expect(events.sendTo(1, browserRequest)).toBe(false);
       const application = yield* subscribe(events.application(1));
-      expect(events.sendTo(1, draw)).toBe(true);
-      expect(yield* Queue.take(application.received)).toEqual(draw);
+      expect(events.sendTo(1, browserRequest)).toBe(true);
+      expect(yield* Queue.take(application.received)).toEqual(browserRequest);
       yield* Fiber.interrupt(application.fiber);
-      expect(events.sendTo(1, draw)).toBe(false);
+      expect(events.sendTo(1, browserRequest)).toBe(false);
       expect(events.sendTo(1, { type: "terminal-toggle-requested" })).toBe(true);
       expect((yield* Queue.take(terminals.received)).type).toBe("terminal-toggle-requested");
       events.broadcast(notification);
@@ -205,14 +206,14 @@ describe("ClientEvents", () => {
       ] as const)
         expect(subscription.ready).toEqual({ type: "renderer-events-ready", channel });
       events.sendTo(1, { type: "terminal-toggle-requested" });
-      events.sendTo(1, draw);
+      events.sendTo(1, browserRequest);
       events.broadcast({
         type: "artifact-catalog-invalidated",
         lineageId: "00000000-0000-4000-8000-000000000001",
       });
       events.sendTo(1, { type: "embedded-editor-toggle-mode-requested" });
       events.sendTo(1, { type: "fullscreen-surface-close-requested", surfaceId: "surface-1" });
-      expect(yield* Queue.take(application.received)).toEqual(draw);
+      expect(yield* Queue.take(application.received)).toEqual(browserRequest);
       expect((yield* Queue.take(artifacts.received)).type).toBe("artifact-catalog-invalidated");
       events.broadcast({
         type: "message-board-invalidated",

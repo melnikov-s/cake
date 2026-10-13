@@ -41,8 +41,8 @@ export function createCakeSessionPluginOperations(
         "Mount prebuilt session controls, or generate custom UI, above this session's composer.",
       guidance: [
         "Use Session Plugins for task-specific controls that should remain attached to this session, such as Previous/Next guided-tour navigation.",
-        "Prefer preset: action-bar with initialState: { label, actions: [{ id, label, message, primary?, disabled? }], progress?: { current, total } }. No generation is needed. Use Previous/Next/Done actions for guided navigation, or Continue/Explain this/Done for Draw.",
-        "Actions send their exact message visibly to the owning session. They do not advance progress, undo a board, or remove the plugin automatically. Update state after completing a step; a Done message can request plugins.delete while preserving the board.",
+        "Prefer preset: action-bar with initialState: { label, actions: [{ id, label, message, primary?, disabled? }], progress?: { current, total } }. No generation is needed. Use Previous/Next/Done actions for guided navigation, or Continue/Explain this/Done for explanations.",
+        "Actions send their exact message visibly to the owning session. They do not advance progress, revise an artifact, or remove the plugin automatically. Update state after completing a step; a Done message can request plugins.delete while preserving the artifact.",
         "For genuinely custom UI, supply brief instead of preset. A private builder writes React using useCake, usePluginState, useSharedState and Cake semantic theme tokens.",
         "Presenting the same ID replaces the implementation while preserving creation time and the user's hidden preference. Users can Hide/Show controls without messaging the agent. Ordinary chat remains available.",
       ],
@@ -51,8 +51,8 @@ export function createCakeSessionPluginOperations(
         {
           input: {
             plugin: {
-              id: "draw-guide",
-              title: "Draw guide",
+              id: "explanation-guide",
+              title: "Explanation guide",
               preset: "action-bar",
               initialState: {
                 label: "Current topic",
@@ -62,18 +62,18 @@ export function createCakeSessionPluginOperations(
                     label: "Continue",
                     primary: true,
                     message:
-                      "Continue with one meaningful Draw step, then update draw-guide's topic.",
+                      "Continue with one meaningful explanation step, then update explanation-guide's topic.",
                   },
                   {
                     id: "explain",
                     label: "Explain this",
-                    message: "Clarify the current Draw point or selection.",
+                    message: "Clarify the current explanation point.",
                   },
                   {
                     id: "done",
                     label: "Done",
                     message:
-                      "Remove the draw-guide plugin using plugins.delete. Preserve the Draw board.",
+                      "Remove the explanation-guide plugin using plugins.delete. Preserve the artifact.",
                   },
                 ],
               },
@@ -180,7 +180,7 @@ export function createCakeSessionPluginOperations(
       examples: [
         {
           input: {
-            id: "draw-guide",
+            id: "explanation-guide",
             patch: { label: "Next point", progress: { current: 2, total: 5 } },
           },
         },

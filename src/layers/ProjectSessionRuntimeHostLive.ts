@@ -12,9 +12,6 @@ import type { MessageBoardStorage } from "../services/storage/MessageBoardStorag
 import { ClientEvents } from "../services/clients/ClientEvents";
 import { ArtifactStorage } from "../services/storage/ArtifactStorage";
 import { ReviewStorage } from "../services/storage/ReviewStorage";
-import type { DrawBoardStorage } from "../services/storage/DrawBoardStorage";
-import * as drawBoards from "../domain/draw/drawBoards";
-import { WorkspaceFileExport } from "../services/filesystem/WorkspaceFileExport";
 import { SessionFamilyStorage } from "../services/storage/SessionFamilyStorage";
 import type { SessionArchiveStorage } from "../services/storage/SessionArchiveStorage";
 import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
@@ -57,14 +54,12 @@ export const makeProjectSessionRuntimeHostLive = (
   | ArtifactProjection
   | ArtifactStorage
   | MessageBoardStorage
-  | DrawBoardStorage
   | ClientEvents
   | PiModels
   | RendererRequestCoordinator
   | ReviewStorage
   | SessionArchiveStorage
   | SessionFamilyStorage
-  | WorkspaceFileExport
 > =>
   Layer.effect(
     ProjectSessionRuntimeHost,
@@ -77,17 +72,14 @@ export const makeProjectSessionRuntimeHostLive = (
       const rendererRequests = yield* RendererRequestCoordinator;
       const models = yield* PiModels;
       const widgetCapture = yield* Effect.serviceOption(RenderedWidgetCapture);
-      const workspaceFileExport = yield* WorkspaceFileExport;
       const adapterContext = yield* Effect.context<
         | ArtifactProjection
         | ArtifactStorage
         | MessageBoardStorage
-        | DrawBoardStorage
         | PiModels
         | RendererRequestCoordinator
         | SessionArchiveStorage
         | SessionFamilyStorage
-        | WorkspaceFileExport
       >();
       const runAdapter = Effect.runPromiseWith(adapterContext);
       const provideArtifactServices = <A, E>(
@@ -144,20 +136,6 @@ export const makeProjectSessionRuntimeHostLive = (
         },
       );
       const sessions = new Map<string, SessionIntegration>();
-      const requestDraw = (
-        sessionId: string,
-        invocation: Parameters<typeof rendererRequests.requestDrawControl>[1],
-        signal: AbortSignal,
-      ) =>
-        rendererRequests.requestDrawControl(sessionId, invocation, signal).pipe(
-          Effect.catch((error) =>
-            Effect.succeed({
-              ok: false as const,
-              code: "SESSION_NOT_VISIBLE" as const,
-              message: `${error.message}. Open this Project Session in a Cake window, then retry.`,
-            }),
-          ),
-        );
 
       const disposeHost = (sessionId: string) => {
         const integration = sessions.get(sessionId);
@@ -195,27 +173,6 @@ export const makeProjectSessionRuntimeHostLive = (
             runAdapter(rendererRequests.requestInterview(sessionId, record, signal)),
           requestApplicationControl: (invocation, signal) =>
             runAdapter(rendererRequests.requestProjectControl(sessionId, invocation, signal)),
-          drawControl: {
-            list: (signal) => runAdapter(drawBoards.list({ sessionId }), { signal }),
-            create: (title, signal) =>
-              runAdapter(drawBoards.create({ sessionId, title }), { signal }),
-            open: async (boardId, signal) => {
-              await runAdapter(drawBoards.read({ sessionId, boardId }), { signal });
-              return runAdapter(requestDraw(sessionId, { _tag: "Open", boardId }, signal), {
-                signal,
-              });
-            },
-            request: (invocation, signal) =>
-              runAdapter(
-                requestDraw(sessionId, invocation, signal),
-                invocation._tag === "Apply" ? undefined : { signal },
-              ),
-            exportFile: (path, content, signal) =>
-              runAdapter(workspaceFileExport.write({ workingDirectory, path, content }, signal), {
-                signal,
-              }),
-            canMutate: () => true,
-          },
           runReviewedWidget: generateReviewedWidget,
           captureWidget: (targetSessionId, widget, signal, pluginState) =>
             runAdapter(

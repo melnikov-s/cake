@@ -82,8 +82,8 @@ describe("Cake Session Plugin operations", () => {
       .execute(
         {
           plugin: {
-            id: "draw-guide",
-            title: "Draw guide",
+            id: "explanation-guide",
+            title: "Explanation guide",
             preset: "action-bar",
             initialState: {
               label: "Current topic",
@@ -106,7 +106,7 @@ describe("Cake Session Plugin operations", () => {
     expect(present).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: "session-1",
-        id: "draw-guide",
+        id: "explanation-guide",
         preset: "action-bar",
         state: {
           label: "Current topic",

@@ -30,7 +30,7 @@ const sessionSummary = (sessionId: string, workingDirectory: string) => ({
 });
 
 // Retained transport/composition contracts: agent-originated Project Session
-// controls enter through ApplicationControlStore/DrawControlStore, not React
+// controls enter through ApplicationControlStore, not React
 // actions. Keep real Root and typed external Client fakes for correlation,
 // registration rollback and background focus policy; do not invent GUI controls.
 // Product navigation/retirement/removal journeys moved to root-app-workflow;

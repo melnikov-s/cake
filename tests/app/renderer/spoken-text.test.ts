@@ -70,7 +70,7 @@ describe("spoken assistant prose", () => {
     const raw = addPresentationModeReminder(
       "**Read** [the guide](https://example.com) now.\n",
       "normal",
-      "draw",
+      "browser",
     );
     expect(takeSpokenPhrases(raw, 0, true).phrases.join(" ")).toBe("Read the guide now.");
   });

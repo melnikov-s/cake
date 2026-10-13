@@ -63,7 +63,6 @@ import { UiHintModeStore } from "./UiHintModeStore";
 import { ArtifactLibraryStore } from "./ArtifactLibraryStore";
 import { ArtifactPaneStore } from "./ArtifactPaneStore";
 import { ArtifactReferencePreviewStore } from "./ArtifactReferencePreviewStore";
-import { DrawControlStore } from "./DrawControlStore";
 import { ProjectSessionPlacementStore } from "./ProjectSessionPlacementStore";
 import { SessionRetirementStore } from "./SessionRetirementStore";
 import { ProjectRemovalStore } from "./ProjectRemovalStore";
@@ -125,11 +124,6 @@ export class RootStore extends Store<{
       cakeChatCatalog: this.cakeChatCatalogModel,
       navigation: () => this.navigationStore,
     });
-  }
-
-  @child
-  get drawControlStore(): DrawControlStore {
-    return createStore(DrawControlStore);
   }
 
   get desktopConnection() {

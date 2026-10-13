@@ -22,13 +22,11 @@ export const App = observer(function App({ browserMode = false }: { browserMode?
   const presentation = workbench.presentationStore;
   const mode =
     root.appShellStore.surface === "workbench" && session && !workbench.activeSessionResolved
-      ? session.presentationMode === "draw"
-        ? "draw"
-        : session.presentationMode === "browser" && presentation.browserStore.visible
-          ? "browser"
-          : session.presentationMode === "vscode" && presentation.embeddedEditorStore.visible
-            ? "vscode"
-            : undefined
+      ? session.presentationMode === "browser" && presentation.browserStore.visible
+        ? "browser"
+        : session.presentationMode === "vscode" && presentation.embeddedEditorStore.visible
+          ? "vscode"
+          : undefined
       : undefined;
   const overlays = <AppOverlayHost workspaceMode={Boolean(mode)} fullscreen={fullscreen} />;
 

@@ -16,8 +16,6 @@ import type { CakeChatRuntimeConfiguration } from "../../domain/cake-chats/cakeC
 import { makeCakeChatHandlers } from "./CakeChatHandlers";
 import { makeConversationHandlers } from "./ConversationHandlers";
 import { discussionHandlers } from "./DiscussionHandlers";
-import { drawHandlers } from "./DrawHandlers";
-import { drawControlHandlers } from "./DrawControlHandlers";
 import { desktopSharingHandlers } from "./DesktopSharingHandlers";
 import { electronHandlers } from "./ElectronHandlers";
 import { makeFoundationHandlers } from "./FoundationHandlers";
@@ -110,8 +108,6 @@ export const makeCakeRpcServerLive = (
     ...browserResponseHandlers,
     ...makeConversationHandlers(cakeChatConfiguration),
     ...discussionHandlers,
-    ...drawHandlers,
-    ...drawControlHandlers,
     ...electronHandlers,
     ...desktopSharingHandlers,
     ...makeFoundationHandlers(homeDirectory),

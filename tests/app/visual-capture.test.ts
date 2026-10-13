@@ -70,12 +70,10 @@ describe("visual capture arguments", () => {
 });
 
 describe("browser visual scenarios", () => {
-  it("advertises the four browser proof surfaces as named deterministic scenarios", () => {
+  it("advertises browser proof surfaces as named deterministic scenarios", () => {
     expect(browserVisualScenarios.map(({ name, states }) => [name, states])).toEqual([
       ["browser-shared-chat", ["default"]],
-      ["browser-draw", ["default"]],
       ["browser-vscode", ["default"]],
-      ["browser-mode-hidden", ["default"]],
     ]);
   });
 });

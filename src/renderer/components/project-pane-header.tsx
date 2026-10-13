@@ -7,7 +7,6 @@ import {
   TerminalIcon,
   TreeIcon,
   VsCodeIcon,
-  WhiteboardIcon,
 } from "@/components/ui/icons";
 import { WorkLogControls } from "@/components/work-log-controls";
 import { SideChatsMenu } from "@/components/side-chats-menu";
@@ -90,15 +89,6 @@ export const ProjectPaneHeader = observer(function ProjectPaneHeader({
       <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
       <WorkLogControls store={paneSession.conversationSessionStore.chatStore} />
       <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
-      <IconButton
-        tooltip="Open Cake Draw"
-        onClick={() => {
-          focusPane();
-          void store.presentationStore.openDraw();
-        }}
-      >
-        <WhiteboardIcon />
-      </IconButton>
       {!browserMode && (
         <IconButton
           tooltip="Open Browser Mode"

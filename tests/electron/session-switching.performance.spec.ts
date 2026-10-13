@@ -74,7 +74,6 @@ async function fixture(additionalChild = false) {
         ...Object.fromEntries(
           [
             "editorSelectionsStore",
-            "drawStore",
             "sessionAssistantStore",
             "worktreeStore",
             "subagentActivityStore",

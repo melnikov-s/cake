@@ -275,37 +275,6 @@ test("remote Electron uses the full shell and only the server owns agent state",
         .poll(() => readFile(join(project, "remote-pty-proof.txt"), "utf8"))
         .toBe("REMOTE_PTY");
       await toggleTerminal();
-      await page.getByRole("button", { name: "Open Cake Draw", exact: true }).click();
-      await expect(page.getByRole("region", { name: "Cake Draw whiteboard" })).toBeVisible();
-      await expect
-        .poll(() => readdir(join(home, "state", "draw-boards", "boards")))
-        .toHaveLength(1);
-      await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { client } = yield* connectClient(url);
-            const [board] = yield* client["draw.list"]({ sessionId: id });
-            if (!board) throw new Error("Missing remote Draw board");
-            const target = { sessionId: id, boardId: board.id };
-            const saved = yield* client["draw.save"]({
-              ...target,
-              expectedRevision: board.revision,
-              snapshot: { elements: [] },
-            });
-            expect(saved.revision).toBe(board.revision + 1);
-            const conflict = yield* client["draw.save"]({
-              ...target,
-              expectedRevision: board.revision,
-              snapshot: {},
-            }).pipe(Effect.flip);
-            expect(conflict).toMatchObject({ _tag: "DrawBoardError", code: "revision-conflict" });
-            const current = yield* client["draw.read"](target);
-            expect(current.snapshot).toEqual({ elements: [] });
-          }),
-        ),
-      );
-      await page.getByRole("button", { name: "Back to agent", exact: true }).click();
-      await expect(input).toBeVisible();
       // Drop only the accepted prompt receipt. The server keeps the turn; the client never replays it.
       await page.evaluate(() => Reflect.set(window, "dropNextPromptReceipt", true));
       await input.fill("Lost receipt remote prompt");

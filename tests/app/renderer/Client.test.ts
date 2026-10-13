@@ -18,7 +18,6 @@ function controlledRuntime(execute: Runtime["execute"]): Pick<Runtime, "execute"
 const browserDevices = () => ({
   files: new BrowserFiles(),
   menus: mount(createStore(BrowserMenuStore)),
-  saveDrawExport: vi.fn(async () => "board.svg"),
   showNotification: vi.fn(async () => undefined),
   setFullscreenSurfaceOpen: vi.fn(async () => undefined),
 });
@@ -209,12 +208,9 @@ describe("Client", () => {
     await client.electron.openExternalUrl("https://example.com");
     expect(openExternalUrl).toHaveBeenCalledWith("https://example.com");
     expect(execute).not.toHaveBeenCalled();
-    for (const command of [
-      () => client.filesystem.readImage("/project", "image.png"),
-      () => client.draw.list({ sessionId: "session" }),
-    ])
+    for (const command of [() => client.filesystem.readImage("/project", "image.png")])
       await expect(command()).rejects.toMatchObject({ kind: "unexpected" });
-    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 
   it("browser editor refuses malformed or same-origin leases and releases each acquired capability", async () => {
@@ -362,8 +358,6 @@ describe("Client", () => {
       "mcpSettings",
       "piSettings",
       "modelPresets",
-      "draw",
-      "drawControl",
       "savedDrafts",
       "scheduledMessages",
       "projectWorkflow",

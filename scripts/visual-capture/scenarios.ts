@@ -5,7 +5,6 @@ import {
 import { defaultApplicationState } from "../../src/contracts/application/application-data.ts";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-data.ts";
 import { openRequestInspectorFixture } from "./request-inspector-fixture.ts";
-import { drawMermaidArchitecture } from "../../tests/fixtures/draw-mermaid-architecture.ts";
 import { addResponseModeReminder } from "../../src/contracts/conversations/response-mode-reminders.ts";
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message.ts";
 import { addPresentationModeReminder } from "../../src/contracts/conversations/presentation-mode-reminders.ts";
@@ -29,7 +28,6 @@ import { researchOrigin, researchMarkdown } from "../../tests/fixtures/subagent-
 import { expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type { VisualCaptureTheme } from "./arguments.ts";
 import type { CakeArtifactV1 } from "../../src/contracts/artifacts/artifact-contract.ts";
-import type { CakeEvent } from "../../src/contracts/application/cake-rpc-contract.ts";
 import {
   emitRendererEvent,
   installLocalModelHttpGuard,
@@ -403,7 +401,7 @@ const contextPillsScenario: VisualCaptureScenario = {
             addPresentationModeReminder(
               "Show me everything being added to my context.",
               "normal",
-              "draw",
+              "browser",
             ),
             "text",
           ),
@@ -1348,162 +1346,6 @@ const requestExplanationScenario: VisualCaptureScenario = {
   },
 };
 
-const drawMermaidArchitectureScenario: VisualCaptureScenario = {
-  name: "draw-mermaid-architecture",
-  description: "Named native editable Mermaid architecture diagram in Cake Draw",
-  states: ["default"],
-  async seed(paths, theme) {
-    const sessionId = "visual-draw-mermaid-architecture";
-    const timestamp = new Date(0).toISOString();
-    const sessionDirectory = workspaceSessionDirectory(
-      paths.project,
-      join(paths.cakeHome, "pi", "sessions"),
-    );
-    await Promise.all([
-      mkdir(paths.userData, { recursive: true }),
-      mkdir(paths.project, { recursive: true }),
-      mkdir(sessionDirectory, { recursive: true }),
-      mkdir(join(paths.cakeHome, "state"), { recursive: true }),
-    ]);
-    await writeFile(
-      join(paths.userData, "window-state.json"),
-      JSON.stringify({
-        projectPath: paths.project,
-        selectedSessionId: sessionId,
-        activeConversation: {
-          kind: "project-session",
-          workspacePath: paths.project,
-          sessionId,
-        },
-        recentProjectPaths: [paths.project],
-        draft: "",
-        draftsBySession: {},
-        theme,
-      }),
-    );
-    await writeFile(
-      join(paths.cakeHome, "state", "application.json"),
-      JSON.stringify({
-        schemaVersion: 1,
-        projects: [
-          {
-            path: paths.project,
-            name: "Cake Draw architecture",
-            addedAt: timestamp,
-            lastOpenedAt: timestamp,
-          },
-        ],
-        trustedProjectPaths: [],
-      }),
-    );
-    await writeFile(
-      join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`),
-      `${[
-        { type: "session", version: 3, id: sessionId, timestamp, cwd: paths.project },
-        {
-          type: "message",
-          id: "user-draw",
-          parentId: null,
-          timestamp,
-          message: {
-            role: "user",
-            content: [{ type: "text", text: "Diagram Cake's desktop architecture." }],
-            timestamp: 0,
-          },
-        },
-      ]
-        .map((entry) => JSON.stringify(entry))
-        .join("\n")}\n`,
-    );
-  },
-  async prepare(page, _state, application) {
-    if (!application) throw new Error("The Draw visual scenario requires its Electron application");
-    await page.getByRole("combobox", { name: "Message", exact: true }).waitFor({
-      state: "visible",
-      timeout: 20_000,
-    });
-    await page.getByRole("button", { name: "Open Cake Draw" }).click();
-    await page.getByRole("region", { name: "Cake Draw whiteboard" }).waitFor({
-      state: "visible",
-      timeout: 20_000,
-    });
-    await page.locator(".excalidraw__canvas.interactive").waitFor({
-      state: "visible",
-      timeout: 20_000,
-    });
-    const event: CakeEvent = {
-      type: "draw-control-requested",
-      sessionId: "visual-draw-mermaid-architecture",
-      drawRequestId: "00000000-0000-4000-8000-000000000099",
-      invocation: {
-        _tag: "Mermaid",
-        id: "cake-desktop-architecture",
-        replace: true,
-        diagram: drawMermaidArchitecture,
-      },
-    };
-    await application.evaluate((_electron, input) => {
-      const emit = (
-        globalThis as typeof globalThis & {
-          cakeSmokeEmitRendererEvent?: (event: CakeEvent) => void;
-        }
-      ).cakeSmokeEmitRendererEvent;
-      if (!emit) throw new Error("Cake smoke event source is unavailable");
-      emit(input);
-    }, event);
-    try {
-      await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled({ timeout: 20_000 });
-    } catch (cause) {
-      const body = (await page.locator("body").innerText()).replaceAll(/\s+/g, " ").slice(0, 2_000);
-      throw new Error(`Mermaid diagram insertion did not complete. Visible Cake UI: ${body}`, {
-        cause,
-      });
-    }
-    await page.waitForFunction(() => document.fonts.status === "loaded");
-    await page.waitForTimeout(500);
-    await page.mouse.move(1, 1);
-  },
-  region(page) {
-    return page.getByRole("region", { name: "Cake Draw whiteboard" });
-  },
-};
-
-const drawCompositionScenario: VisualCaptureScenario = {
-  name: "draw-composition",
-  description: "Compact authoring flow with a native frame and measured node labels",
-  states: ["default"],
-  seed: drawMermaidArchitectureScenario.seed,
-  async prepare(page, _state, application) {
-    if (!application) throw new Error("The Draw scenario requires Electron");
-    await page.getByRole("combobox", { name: "Message", exact: true }).waitFor({ timeout: 20_000 });
-    await page.getByRole("button", { name: "Open Cake Draw" }).click();
-    await page.locator(".excalidraw__canvas.interactive").waitFor({ timeout: 20_000 });
-    const response = await application.evaluate(async () => {
-      const control = Reflect.get(globalThis, "cakeSmokeDrawControl") as (
-        sessionId: string,
-        invocation: unknown,
-      ) => Promise<{ ok: boolean; message?: string }>;
-      return control("visual-draw-mermaid-architecture", {
-        _tag: "Apply",
-        operations: [
-          {
-            type: "flow",
-            nodes: [
-              { id: "shape:cake", text: "Cake\nDesktop + UI" },
-              { id: "shape:pi", text: "Pi\nAgent + history" },
-            ],
-            frame: { id: "shape:application", title: "Cake application" },
-          },
-        ],
-      });
-    });
-    if (!response.ok) throw new Error(response.message);
-    await page.waitForFunction(() => document.fonts.status === "loaded");
-    await page.mouse.move(1, 1);
-  },
-  region: drawMermaidArchitectureScenario.region,
-};
-
 const cakePromptsSettingsScenario: VisualCaptureScenario = {
   name: "cake-prompts-settings",
   description: "Editable Cake workflow prompts in Settings",
@@ -2430,28 +2272,28 @@ export default function Plugin() { const cake = useCake(); const [state, setStat
             },
             {
               sessionId: "visual-assistant-markdown-code",
-              id: "draw-guide",
-              title: "Draw guide",
+              id: "explanation-guide",
+              title: "Explanation guide",
               slot: "composer.above",
               preset: "action-bar",
               state: {
-                label: "One meaningful Draw step",
+                label: "One meaningful explanation step",
                 actions: [
                   {
                     id: "continue",
                     label: "Continue",
                     primary: true,
-                    message: "Continue with one meaningful Draw step.",
+                    message: "Continue with one meaningful explanation step.",
                   },
                   {
                     id: "explain",
                     label: "Explain this",
-                    message: "Clarify the current Draw point or selection.",
+                    message: "Clarify the current explanation point.",
                   },
                   {
                     id: "done",
                     label: "Done",
-                    message: "Remove draw-guide with plugins.delete; preserve the board.",
+                    message: "Remove explanation-guide with plugins.delete; preserve the artifact.",
                   },
                 ],
               },
@@ -2843,8 +2685,6 @@ export const visualCaptureScenarios = [
   requestExplanationScenario,
   messageBoardScenario,
   inlineArtifactScenario,
-  drawMermaidArchitectureScenario,
-  drawCompositionScenario,
   cakePromptsSettingsScenario,
   mcpSettingsScenario,
   appearanceSettingsScenario,

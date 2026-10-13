@@ -107,7 +107,7 @@ test("Session Plugins follow live Cake themes, own hide/show, and persist SDK st
       )
       .toEqual({ topic: "Selection clarified" });
 
-    for (const title of ["Custom controls", "Draw guide", "Guided steps"]) {
+    for (const title of ["Custom controls", "Explanation guide", "Guided steps"]) {
       const hide = page.getByRole("button", { name: `Hide ${title}`, exact: true });
       await hide.focus();
       await hide.press("Enter");

@@ -2,7 +2,7 @@ import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { cn } from "../lib/utils";
 import { ResizeHandle } from "./ui/resize-handle";
 
-/** Shared VS Code/Draw shell: project navigation, primary workspace, and authoritative chat drawer. */
+/** Shared VS Code/browser shell: project navigation, primary workspace, and authoritative chat drawer. */
 export function WorkspaceChatLayout({
   workspace,
   workspaceLabel,

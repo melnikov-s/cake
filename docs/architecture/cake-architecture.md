@@ -25,7 +25,7 @@ also manages the user's collection of Projects and Cake Sessions. Cake Chat is a
 separate Pi-backed application coordinator, not a transcript authority for Project
 Sessions.
 
-The conversation remains primary. Files, reviews, Draw boards, and artifacts
+The conversation remains primary. Files, reviews, and artifacts
 support the work rather than turning Cake into a general-purpose IDE. Embedded
 VS Code owns source browsing, editing, Source Control, and native Git diffs.
 
@@ -61,7 +61,6 @@ projection lifetime are distinct.
 | Cross-session coordination                                               | Cake                                        | Own routing, correlation, and closure, not message text                           |
 | Discussion/review scope and anchors                                      | Cake                                        | Replies remain in independent Pi sidecar sessions                                 |
 | Pending scheduled delivery                                               | Cake                                        | Own cancellable intent until Pi accepts the ordinary message                      |
-| Draw boards                                                              | Cake main-owned board storage               | Excalidraw owns the editable document; no second graph or transcript              |
 | Artifacts                                                                | Cake global lineage repository              | Immutable revisions with explicit session/family links; caches are disposable     |
 | Session Plugins                                                          | Cake application metadata and JSON state    | Session-bound controls with user-owned visibility                                 |
 | Window selection, layout, unsent composer input, workflow presentation   | Cake renderer/window storage                | Presentation state is separate from domain facts                                  |

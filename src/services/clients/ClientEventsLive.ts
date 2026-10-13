@@ -85,7 +85,6 @@ export const ClientEventsLive = Layer.effect(
           "interview-requested",
           "extension-ui-intent",
           "project-session-control-requested",
-          "draw-control-requested",
           "widget-capture-requested",
           "browser-native-requested",
           "screen-capture-requested",

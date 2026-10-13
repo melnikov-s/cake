@@ -33,7 +33,6 @@ export const ProjectWorkspaceControls = observer(function ProjectWorkspaceContro
           });
         }}
         onBackToAgent={() => void store.presentationStore.backToAgent()}
-        onOpenDraw={() => void store.presentationStore.openDraw()}
         onOpenBrowser={() => void store.presentationStore.openBrowser()}
         onOpenIde={() => void store.presentationStore.openIde()}
         onToggleTerminal={() => void terminal.toggle()}

@@ -12,7 +12,6 @@ import { ArtifactProjection } from "../../../../src/services/artifacts/ArtifactP
 import { CakeOperationRegistry } from "../../../../src/services/pi/runtime/cake-operation-registry";
 import { createCakeArtifactOperations } from "../../../../src/domain/artifacts/cake-artifact-operations";
 import { makeArtifactProjectionLive } from "../../../../src/services/artifacts/ArtifactProjectionLive";
-import { WorkspaceFileExport } from "../../../../src/services/filesystem/WorkspaceFileExport";
 import { ClientEvents } from "../../../../src/services/clients/ClientEvents";
 import { PiModels } from "../../../../src/services/pi/PiModels";
 import type { ProjectSessionRuntimeIntegrations } from "../../../../src/services/pi/ProjectSessionRuntimeHost";
@@ -22,7 +21,6 @@ import { RendererRequestCoordinator } from "../../../../src/services/renderer-re
 import { ArtifactStorage } from "../../../../src/services/storage/ArtifactStorage";
 import { makeMessageBoardStorageLive } from "../../../../src/services/storage/MessageBoardStorageLive";
 import { makeArtifactStorageLive } from "../../../../src/services/storage/ArtifactStorageLive";
-import { makeDrawBoardStorageLive } from "../../../../src/services/storage/DrawBoardStorageLive";
 import { makeSessionArchiveStorageLive } from "../../../../src/services/storage/SessionArchiveStorageLive";
 import { ReviewStorage } from "../../../../src/services/storage/ReviewStorage";
 import {
@@ -72,15 +70,8 @@ const makeHarness = async () => {
   const events: CakeEvent[] = [];
   const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
   const dependencies = Layer.mergeAll(
-    Layer.succeed(
-      WorkspaceFileExport,
-      WorkspaceFileExport.of({
-        write: (input) => Effect.succeed({ path: input.path, bytes: input.content.byteLength }),
-      }),
-    ),
     makeArtifactStorageLive(join(root, "artifacts")).pipe(Layer.provide(platform)),
     makeMessageBoardStorageLive(join(root, "artifacts")).pipe(Layer.provide(platform)),
-    makeDrawBoardStorageLive(join(root, "draw-boards")).pipe(Layer.provide(platform)),
     makeSessionArchiveStorageLive(join(root, "resolved-project-metadata"), {
       activeRoot: join(root, "sessions"),
       resolvedRoot: join(root, "resolved-sessions"),

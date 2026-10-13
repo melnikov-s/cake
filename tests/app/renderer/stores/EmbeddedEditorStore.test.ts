@@ -13,7 +13,7 @@ function createHarness(
   annotations?: EditorAnnotationSnapshot,
   terminalTopInset: () => number = () => 0,
 ) {
-  let presentationMode: "normal" | "vscode" | "draw" | "browser" = "normal";
+  let presentationMode: "normal" | "vscode" | "browser" = "normal";
   let chatSidebarVisible = true;
   let chatSidebarWidth = 420;
   const client = {

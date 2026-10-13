@@ -308,7 +308,7 @@ describe("CakeSessionRuntime turn controller", () => {
   });
   it("display, editable queue payloads and user-message projection exclude exact response-mode reminders", async () => {
     const { controller } = createFixture({ isStreaming: true, isCompacting: true });
-    await controller.prompt("Visible voice", "prompt", [], false, undefined, "draw", "voice");
+    await controller.prompt("Visible voice", "prompt", [], false, undefined, "browser", "voice");
     const [part] = controller.queuedParts();
     expect(part).toMatchObject({
       kind: "text",
@@ -322,9 +322,17 @@ describe("CakeSessionRuntime turn controller", () => {
   });
   it("voice decoration preserves built-in commands, attachments, cross-session provenance and presentation guidance", async () => {
     const { controller, session } = createFixture();
-    await controller.prompt("/compact preserve", "prompt", [], false, undefined, "draw", "voice");
+    await controller.prompt(
+      "/compact preserve",
+      "prompt",
+      [],
+      false,
+      undefined,
+      "browser",
+      "voice",
+    );
     expect(session.compact).toHaveBeenCalledWith("preserve");
-    await controller.prompt("!pwd", "prompt", [], false, undefined, "draw", "voice");
+    await controller.prompt("!pwd", "prompt", [], false, undefined, "browser", "voice");
     expect(session.executeBash).toHaveBeenCalledWith(
       "pwd",
       expect.any(Function),
@@ -350,12 +358,12 @@ describe("CakeSessionRuntime turn controller", () => {
       [{ kind: "image", name: "a.png", mimeType: "image/png", data: "AAA=" }],
       false,
       undefined,
-      "draw",
+      "browser",
       "voice",
     );
     const call = vi.mocked(session.prompt).mock.calls.at(-1)!;
     expect(call[0]).toContain(text);
-    expect(call[0]).toContain("entered Draw");
+    expect(call[0]).toContain("entered Browser Mode");
     expect(call[0]).toContain(responseModeReminders.voice);
     expect(call[1]?.images).toEqual([{ type: "image", data: "AAA=", mimeType: "image/png" }]);
     expect(stripResponseModeReminder(call[0])).not.toContain("Cake response mode");

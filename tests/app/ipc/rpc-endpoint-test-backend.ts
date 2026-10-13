@@ -28,7 +28,6 @@ import { PiModels } from "../../../src/services/pi/PiModels";
 import { Terminal } from "../../../src/services/terminal/Terminal";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import { DiscussionSessionEnvironment } from "../../../src/services/discussion-sessions/DiscussionSessionEnvironment";
-import { DrawBoardStorage } from "../../../src/services/storage/DrawBoardStorage";
 import { WindowStateStorage } from "../../../src/services/storage/WindowStateStorage";
 import { InlineWidgets } from "../../../src/services/widgets/InlineWidgets";
 import { WorktreeLandingCoordinatorLive } from "../../../src/services/worktrees/WorktreeLandingCoordinator";
@@ -96,7 +95,6 @@ export const unusedEndpointServices = Layer.mergeAll(
     discussionParentContextPath: unexpectedCapability,
   }),
   Layer.mock(DiscussionSessionEnvironment, {}),
-  Layer.mock(DrawBoardStorage, {}),
   Layer.mock(WindowStateStorage, {}),
   Layer.mock(InlineWidgets, {}),
   WorktreeLandingCoordinatorLive,

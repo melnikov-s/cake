@@ -170,7 +170,7 @@ describe("Application domain", () => {
           const actions = [{ id: "next", label: "Continue", message: "Continue one step" }];
           yield* upsertSessionPlugin({
             sessionId: "session-1",
-            id: "draw-guide",
+            id: "explanation-guide",
             title: "Guide",
             slot: "composer.above",
             preset: "action-bar",
@@ -181,8 +181,8 @@ describe("Application domain", () => {
           });
           yield* Effect.all(
             [
-              patchSessionPluginState("session-1", "draw-guide", { label: "Second" }),
-              patchSessionPluginState("session-1", "draw-guide", {
+              patchSessionPluginState("session-1", "explanation-guide", { label: "Second" }),
+              patchSessionPluginState("session-1", "explanation-guide", {
                 progress: { current: 2, total: 3 },
               }),
             ],
@@ -198,13 +198,13 @@ describe("Application domain", () => {
           assert.equal(plugin.hidden, true);
           assert.equal(plugin.createdAt, timestamp);
           // A shallow nested patch cannot silently drop required progress fields.
-          yield* patchSessionPluginState("session-1", "draw-guide", {
+          yield* patchSessionPluginState("session-1", "explanation-guide", {
             progress: { current: 3 },
           }).pipe(Effect.flip);
-          yield* patchSessionPluginState("session-1", "draw-guide", { actions: [] }).pipe(
+          yield* patchSessionPluginState("session-1", "explanation-guide", { actions: [] }).pipe(
             Effect.flip,
           );
-          yield* patchSessionPluginState("other-session", "draw-guide", {
+          yield* patchSessionPluginState("other-session", "explanation-guide", {
             label: "Wrong owner",
           }).pipe(Effect.flip);
           assert.deepEqual((yield* owner.current()).sessionPlugins[0], plugin);

@@ -12,7 +12,6 @@ import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessi
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
 import { SessionCatalogChanges } from "../../../src/services/session-catalogs/SessionCatalogChanges";
 import { ArtifactStorage } from "../../../src/services/storage/ArtifactStorage";
-import { DrawBoardStorage } from "../../../src/services/storage/DrawBoardStorage";
 import { ReviewStorage } from "../../../src/services/storage/ReviewStorage";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
@@ -137,7 +136,6 @@ describe("portable Project operations", () => {
         }),
         SessionCatalogChanges.layer,
         Layer.mock(ArtifactStorage, {}),
-        Layer.mock(DrawBoardStorage, {}),
         Layer.mock(ReviewStorage, {
           agentSessionDirectory: () => {
             throw new Error("Unexpected review directory lookup");

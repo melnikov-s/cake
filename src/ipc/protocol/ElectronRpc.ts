@@ -13,7 +13,6 @@ type ElectronOperation = keyof Pick<
   | "screen-capture-state"
   | "finish-screen-capture"
   | "choose-project"
-  | "save-draw-export"
   | "open-external-url"
   | "show-notification"
   | "show-transcript-selection-context-menu"
@@ -36,7 +35,6 @@ export const ElectronRpc = RpcGroup.make(
   electronRpc("screen-capture-state"),
   electronRpc("finish-screen-capture"),
   electronRpc("choose-project"),
-  electronRpc("save-draw-export"),
   electronRpc("open-external-url"),
   electronRpc("show-notification"),
   electronRpc("show-transcript-selection-context-menu"),

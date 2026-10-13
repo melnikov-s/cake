@@ -30,7 +30,7 @@ export interface SessionPresentationStoreProps {
   projectSidebarWidth(): number;
 }
 
-/** Coordinates Agent, embedded VS Code, browser, and Draw presentation for the active session. */
+/** Coordinates Agent, embedded VS Code, and browser presentation for the active session. */
 export class SessionPresentationStore extends Store<SessionPresentationStoreProps> {
   private get session() {
     return this.props.activeSession();
@@ -95,20 +95,8 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
     this.session?.conversationSessionStore.composerStore.draftStore.setEditorContextAttachment(
       undefined,
     );
-    if (this.session?.presentationMode === "draw")
-      void this.session.drawStore.flush().catch(() => undefined);
     this.embeddedEditorStore.suspend();
     this.browserStore.suspend();
-  }
-
-  private async flushDrawBeforeLeaving(session = this.session) {
-    if (session?.presentationMode !== "draw") return true;
-    try {
-      await session.drawStore.flush();
-      return true;
-    } catch {
-      return false;
-    }
   }
 
   /** Escape dismisses only a visible native editor, not another session's retained mode. */
@@ -120,7 +108,6 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
 
   async backToAgent() {
     const session = this.session;
-    if (!(await this.flushDrawBeforeLeaving())) return;
     session?.conversationSessionStore.composerStore.draftStore.setEditorContextAttachment(
       undefined,
     );
@@ -133,12 +120,11 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
   restore() {
     if (this.props.activeSessionResolved() || !this.session) return;
     if (this.session.presentationMode === "vscode") void this.embeddedEditorStore.restore();
-    else if (this.session.presentationMode === "draw") void this.session.drawStore.initialize();
     else if (this.session.presentationMode === "browser") void this.browserStore.restore();
   }
 
   async openWorkspaceChanges() {
-    if (!this.canOpen() || !(await this.flushDrawBeforeLeaving())) return;
+    if (!this.canOpen()) return;
     this.props.dismissCommandPane();
     this.reviews.clearActiveThread();
     await this.embeddedEditorStore.showSourceControl();
@@ -173,7 +159,7 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
   }
 
   async openIde() {
-    if (!this.canOpen() || !(await this.flushDrawBeforeLeaving())) return;
+    if (!this.canOpen()) return;
     this.props.dismissCommandPane();
     this.reviews.clearActiveThread();
     this.browserStore.suspend();
@@ -186,21 +172,10 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
       await this.browserStore.show();
       return;
     }
-    if (!(await this.flushDrawBeforeLeaving())) return;
     this.props.dismissCommandPane();
     this.reviews.clearActiveThread();
     this.embeddedEditorStore.suspend();
     await this.browserStore.show();
-  }
-
-  async openDraw() {
-    if (!this.canOpen()) return;
-    this.props.dismissCommandPane();
-    this.reviews.clearActiveThread();
-    this.embeddedEditorStore.suspend();
-    this.browserStore.suspend();
-    this.session!.showPresentation("draw");
-    await this.session!.drawStore.initialize();
   }
 
   async toggleIde() {
@@ -220,8 +195,7 @@ export class SessionPresentationStore extends Store<SessionPresentationStoreProp
 
   async openFile(location: EditorLocation) {
     const session = this.session;
-    if (!session || !this.canOpen() || !(await this.flushDrawBeforeLeaving(session))) return;
-    if (this.session !== session || !this.canOpen()) return;
+    if (!session || !this.canOpen()) return;
     this.props.dismissCommandPane();
     this.browserStore.suspend();
     await session.editorSelectionsStore.open(location);

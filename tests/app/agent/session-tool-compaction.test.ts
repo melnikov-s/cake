@@ -135,7 +135,7 @@ describe("tool compaction", () => {
     });
     const literal = "<system-reminder>User-authored guidance.</system-reminder>";
     const decorate = (text: string) =>
-      addResponseModeReminder(addPresentationModeReminder(text, "normal", "draw"), "voice");
+      addResponseModeReminder(addPresentationModeReminder(text, "normal", "browser"), "voice");
     session.appendMessage({
       role: "user",
       content: decorate(`Question\n\n${literal}`),
@@ -176,7 +176,7 @@ describe("tool compaction", () => {
     });
     expect(messages[3]).toMatchObject({ content: [{ type: "text", text: "Answer" }] });
     expect(JSON.stringify(messages)).not.toContain("Cake response mode");
-    expect(JSON.stringify(messages)).not.toContain("entered Draw");
+    expect(JSON.stringify(messages)).not.toContain("entered Browser Mode");
     expect(JSON.stringify(messages)).not.toContain("injected context");
     expect(JSON.stringify(messages)).toContain("Required canonical instructions");
     expect(JSON.stringify(messages)).not.toContain("tool-compacted continuation");

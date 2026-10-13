@@ -63,7 +63,7 @@ interface ProjectReply {
 // Agent-control transport is externally initiated, not an ordinary GUI workflow.
 // Exercise its real Root/Models/Stores, host adapter and protocol bridge with typed
 // external Client services. Do not invent buttons or replace collaborating Stores
-// with callbacks. Existing root-app/app-shell/navigation/workbench/browser/Draw/
+// with callbacks. Existing root-app/app-shell/navigation/workbench/browser/
 // Cake Chat workflows own GUI transitions; RootStore's transport suite owns pane
 // placement. These regressions specifically cover correlation, accepted-request
 // replay, failed delivery and disposal rather than repeating those GUI journeys.

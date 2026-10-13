@@ -120,14 +120,6 @@ interface ElectronCommands {
     options?: ClientCommandOptions,
   ): Promise<void>;
   chooseProject(options?: ClientCommandOptions): Promise<string | undefined>;
-  saveDrawExport(
-    input: {
-      format: "png" | "svg" | "excalidraw";
-      suggestedName: string;
-      data: string;
-    },
-    options?: ClientCommandOptions,
-  ): Promise<string | undefined>;
   openExternalUrl(url: string, options?: ClientCommandOptions): Promise<void>;
   showNotification(
     input: {
@@ -570,8 +562,6 @@ export interface Client {
   readonly scheduledMessages: CommandGroup<CakeIpcClientService["scheduledMessages"]>;
   readonly cakeChats: CommandGroup<CakeIpcClientService["cakeChats"]>;
   readonly discussionSessions: CommandGroup<CakeIpcClientService["discussionSessions"]>;
-  readonly draw: CommandGroup<CakeIpcClientService["draw"]>;
-  readonly drawControl: CommandGroup<CakeIpcClientService["drawControl"]>;
   readonly subagents: CommandGroup<CakeIpcClientService["subagents"]>;
   readonly workflows: CommandGroup<CakeIpcClientService["workflows"]>;
   readonly electron: ElectronCommands;

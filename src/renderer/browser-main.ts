@@ -78,25 +78,6 @@ const client = makeClient(runtime, {
   kind: "browser",
   files,
   menus,
-  saveDrawExport: async ({ format, suggestedName, data }) => {
-    const name = `${suggestedName.replace(/[<>:"/\\|?*]/g, "-").replace(/\p{Cc}/gu, "-")}.${format}`;
-    if (format === "png" && !data.startsWith("data:image/png;base64,"))
-      throw new Error("Draw export is not a PNG data URL");
-    const blob =
-      format === "png"
-        ? await (await fetch(data)).blob()
-        : new Blob([data], { type: format === "svg" ? "image/svg+xml" : "application/json" });
-    const url = URL.createObjectURL(blob);
-    try {
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = name;
-      link.click();
-      return name;
-    } finally {
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    }
-  },
   setFullscreenSurfaceOpen: async (surfaceId, open) => {
     if (open) {
       fullscreenSurfaces.add(surfaceId);

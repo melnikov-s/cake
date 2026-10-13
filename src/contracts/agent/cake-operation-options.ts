@@ -7,7 +7,6 @@ import type {
   PiPendingMessages,
   PiPendingMessageReorder,
 } from "../conversations/pending-message-data";
-import type { CakeDrawControl } from "../draw/draw-agent-control";
 import type { VscodeControl } from "../editor/vscode-agent-control";
 import type { InterviewRecord } from "../interviews/interview";
 import type { CakeModelPresetCatalog } from "../model-presets/cake-model-selection";
@@ -151,7 +150,6 @@ export interface CakeOperationOptions extends Partial<CakeArtifactOperationOptio
   currentSessionControl?: CurrentSessionControl;
   vscodeControl?: VscodeControl;
   browserControl?: BrowserControl;
-  drawControl?: CakeDrawControl;
   worktreeLandingControl?: WorktreeLandingControl;
   globalControl?: GlobalOperationControl;
   /** Parent Project Session gateway granted to an auxiliary runtime, not coordinator authority. */

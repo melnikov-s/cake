@@ -14,8 +14,6 @@ import { createCakeArtifactStateOperations } from "../domain/artifacts/cake-arti
 import { CakeOperationRegistry } from "../services/pi/runtime/cake-operation-registry";
 import { WorkflowSandbox } from "../services/pi/WorkflowSandbox";
 import { WorkflowProgram } from "../contracts/workflows/workflow-data";
-import { DrawControlInvocation } from "../contracts/draw/draw-control";
-import { RendererRequestCoordinator } from "../services/renderer-requests/RendererRequestCoordinator";
 import { ClientEvents } from "../services/clients/ClientEvents";
 import {
   registerInlineWidgetScheme,
@@ -174,25 +172,6 @@ if (process.env.CAKE_ELECTRON_SMOKE === "1" && selectedHost.kind === "local") {
             });
           }),
         ),
-      );
-    },
-    cakeSmokeDrawControl(sessionId: string, invocation: DrawControlInvocation) {
-      return mainRuntime.runPromise(
-        Effect.gen(function* () {
-          const request = yield* Schema.decodeUnknownEffect(DrawControlInvocation)(invocation);
-          const coordinator = yield* Effect.serviceOption(RendererRequestCoordinator).pipe(
-            Effect.flatMap((service) =>
-              service._tag === "Some"
-                ? Effect.succeed(service.value)
-                : Effect.die("Local-only smoke hook"),
-            ),
-          );
-          return yield* coordinator.requestDrawControl(
-            sessionId,
-            request,
-            new AbortController().signal,
-          );
-        }),
       );
     },
     cakeSmokeAppendBoard(sessionId: string, input: BoardAppendInput) {

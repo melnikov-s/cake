@@ -135,29 +135,6 @@ describe("session-owned VS Code selection workflow", () => {
     await h.a.editorSelectionsStore.remove(first!.id);
     expect(h.a.editorSelectionsStore.selections).toEqual([second]);
   });
-  it("does not route a source link into the new session when Draw flush finishes after a switch", async () => {
-    const h = harness();
-    h.a.showPresentation("draw");
-    let release!: () => void;
-    let started!: () => void;
-    const began = new Promise<void>((resolve) => (started = resolve));
-    vi.spyOn(h.a.drawStore, "flush").mockImplementation(async () => {
-      started();
-      await new Promise<void>((resolve) => (release = resolve));
-    });
-    const opening = h.root.projectWorkbenchStore.presentationStore.openFile({
-      kind: "working-directory",
-      path: "src/a.ts",
-      range: { start: { line: 1 } },
-    });
-    await began;
-    h.select("b");
-    release();
-    await opening;
-    expect(h.reveal).not.toHaveBeenCalled();
-    expect(h.a.editorSelectionsStore.selections).toEqual([]);
-    expect(h.b.editorSelectionsStore.selections).toEqual([]);
-  });
   it("does not register a stale selection when native reveal finishes after a session switch", async () => {
     const h = harness();
     await h.enter();

@@ -20,7 +20,7 @@ beforeAll(async () => {
   );
 }, 60_000);
 
-it("keeps desktop-only Browser Mode out of browser chat and Draw controls", async () => {
+it("keeps desktop-only Browser Mode out of browser chat", async () => {
   await Effect.runPromise(
     Effect.gen(function* () {
       const path = yield* Effect.acquireRelease(
@@ -34,7 +34,6 @@ it("keeps desktop-only Browser Mode out of browser chat and Draw controls", asyn
         adapter: controlled.adapter,
         models: [browserTestModel],
         projectPath,
-        drawBoardsRoot: join(path, "boards"),
       });
       const listener = yield* openNetworkListener(
         { port: 0, browserAssetsDirectory: resolve("out/browser") },
@@ -67,9 +66,6 @@ it("keeps desktop-only Browser Mode out of browser chat and Draw controls", asyn
           await browserExpect(
             page.locator('[data-slot="workspace"] textarea').first(),
           ).toBeVisible();
-          await page.getByRole("button", { name: "Open Cake Draw" }).click();
-          await browserExpect(page.locator(".excalidraw__canvas.interactive")).toBeVisible();
-          await browserExpect(page.getByRole("button", { name: /Browser Mode/ })).toHaveCount(0);
           await browserExpect(page.getByLabel("Browser viewport")).toHaveCount(0);
         } finally {
           await browser.close();

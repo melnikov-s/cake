@@ -5,7 +5,6 @@ import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-wid
 import { cakeNativeHotkeyInputEventName } from "../lib/hotkeys";
 import type { Runtime } from "../runtime";
 import type { RootStore } from "../stores/RootStore";
-import { handleDrawControlRequest } from "./draw-control-events";
 
 /** Routes window-focused application events to their Store owners. */
 export const observeApplicationEvents = (
@@ -128,12 +127,6 @@ export const observeApplicationEvents = (
             }),
           )
           .catch((error) => root.projectWorkbenchStore.setError(error, "Widget capture response"));
-        return;
-      }
-      if (event.type === "draw-control-requested") {
-        void handleDrawControlRequest(root, event).catch((error) =>
-          root.projectWorkbenchStore.setError(error, "Cake Draw control response"),
-        );
         return;
       }
       if (event.type === "application-hotkey-input") {

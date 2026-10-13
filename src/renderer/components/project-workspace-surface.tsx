@@ -5,7 +5,6 @@ import { projectTranscriptBehaviorFor } from "../lib/project-transcript-behavior
 import { AppSidebar } from "./app-sidebar";
 import { BlockingInterviews } from "./blocking-interviews";
 import { BrowserWorkspace } from "./browser-workspace";
-import { DrawWorkspace } from "./draw-workspace";
 import { IdeWorkspace } from "./ide-workspace";
 import { ProjectComposerAccessory } from "./project-composer-accessory";
 import { ProjectComposerHeader } from "./project-composer-header";
@@ -26,7 +25,6 @@ export const ProjectWorkspaceSurface = observer(function ProjectWorkspaceSurface
   const workbench = root.projectWorkbenchStore;
   const sidebar = root.sidebarStore;
   const terminal = root.terminalStore;
-  const shell = root.appShellStore;
   const commonProps = {
     projectSidebar: <AppSidebar />,
     projectSidebarVisible: sidebar.visible,
@@ -53,22 +51,7 @@ export const ProjectWorkspaceSurface = observer(function ProjectWorkspaceSurface
     transcriptBehavior: projectTranscriptBehaviorFor(root, session),
   };
   const workspace =
-    mode === "draw" ? (
-      <DrawWorkspace
-        {...commonProps}
-        draw={session.drawStore}
-        sidebarCollapsed={!sidebar.visible}
-        canGoBack={shell.canGoBack}
-        canGoForward={shell.canGoForward}
-        onToggleSidebar={() => sidebar.toggle()}
-        onGoBack={() => root.navigationStore.navigateBack()}
-        onGoForward={() => root.navigationStore.navigateForward()}
-        chatSidebarVisible={session.workspaceChatSidebarVisible}
-        chatSidebarWidth={session.workspaceChatSidebarWidth}
-        onChatSidebarWidthChange={(width) => session.setWorkspaceChatSidebarWidth(width)}
-        onToggleChatSidebar={() => session.toggleWorkspaceChatSidebar()}
-      />
-    ) : mode === "browser" ? (
+    mode === "browser" ? (
       <BrowserWorkspace
         {...commonProps}
         browser={workbench.presentationStore.browserStore}

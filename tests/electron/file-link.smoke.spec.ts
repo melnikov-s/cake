@@ -405,7 +405,6 @@ test("a file-path link opens IDE mode with VS Code and the shared Cake chat draw
         "0 artifacts",
         "Session tree",
         "Work log display options",
-        "Open Cake Draw",
         "Open Browser Mode",
         "Back to agent",
         "Terminal",

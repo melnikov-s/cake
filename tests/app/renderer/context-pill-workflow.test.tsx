@@ -29,7 +29,7 @@ describe("Context visibility through the authoritative projection and shared Cha
     pi.appendMessage({
       role: "user",
       content: addResponseModeReminder(
-        addPresentationModeReminder("Question", "normal", "draw"),
+        addPresentationModeReminder("Question", "normal", "vscode"),
         "text",
       ),
       timestamp: 1,

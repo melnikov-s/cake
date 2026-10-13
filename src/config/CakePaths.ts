@@ -15,7 +15,6 @@ export interface CakePaths {
   sessionFamilies: string;
   resolvedProjectMetadata: string;
   artifacts: string;
-  drawBoards: string;
   reviews: string;
   worktrees: string;
   cache: string;
@@ -50,7 +49,6 @@ export function resolveCakePaths(options: ResolveCakePathsOptions): CakePaths {
     sessionFamilies: join(state, "session-families.json"),
     resolvedProjectMetadata: join(state, "resolved-project-metadata"),
     artifacts: join(state, "artifacts"),
-    drawBoards: join(state, "draw-boards"),
     reviews: join(state, "reviews"),
     worktrees: join(state, "worktrees.json"),
     cache: join(home, "cache"),

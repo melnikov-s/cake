@@ -12,7 +12,6 @@ import { Electron } from "../../../src/services/electron/Electron";
 import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntimes";
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
-import { RendererRequestCoordinator } from "../../../src/services/renderer-requests/RendererRequestCoordinator";
 import { VsCodeServer } from "../../../src/services/vscode/VsCodeServer";
 import { RenderedWidgetCapture } from "../../../src/services/widgets/RenderedWidgetCapture";
 import {
@@ -140,15 +139,6 @@ try {
           /Rendered widget capture is unavailable in this host/,
         );
       });
-      const coordinator = yield* RendererRequestCoordinator;
-      const result = yield* coordinator
-        .requestDrawControl(
-          options.runtime.sessionId ?? "",
-          { _tag: "Open", boardId: "board" },
-          new AbortController().signal,
-        )
-        .pipe(Effect.result);
-      assert.equal(result._tag, "Failure");
       const first = yield* Scope.make();
       const second = yield* Scope.make();
       const runtimeOptions = {

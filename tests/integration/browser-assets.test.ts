@@ -18,25 +18,6 @@ it("serves only the bounded browser build with HTTP authority checks and correct
     await writeFile(join(directory, "assets", "chat-123.js"), "export {};");
     await writeFile(join(directory, "assets", "chat-123.js.map"), "secret map");
     await writeFile(join(directory, "secret.json"), "secret data");
-    await mkdir(join(directory, "excalidraw", "fonts", "Excalifont"), { recursive: true });
-    await writeFile(
-      join(directory, "excalidraw", "configure-fonts.js"),
-      "window.EXCALIDRAW_ASSET_PATH = '/excalidraw/';",
-    );
-    await writeFile(
-      join(directory, "excalidraw", "fonts", "Excalifont", "regular.woff2"),
-      "font bytes",
-    );
-    await writeFile(join(directory, "excalidraw", "configure-fonts.js.map"), "private source map");
-    await writeFile(join(directory, "excalidraw", "unrelated.js"), "private script");
-    await writeFile(
-      join(directory, "excalidraw", "fonts", "Excalifont", "private.js"),
-      "private script",
-    );
-    await symlink(
-      join(directory, "secret.json"),
-      join(directory, "excalidraw", "fonts", "linked.woff2"),
-    );
     await symlink(join(directory, "secret.json"), join(directory, "assets", "symlink.js"));
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -101,16 +82,6 @@ it("serves only the bounded browser build with HTTP authority checks and correct
             type: "text/javascript; charset=utf-8",
             body: "export {};",
           });
-          expect(await get("/excalidraw/configure-fonts.js")).toMatchObject({
-            status: 200,
-            type: "text/javascript; charset=utf-8",
-            body: "window.EXCALIDRAW_ASSET_PATH = '/excalidraw/';",
-          });
-          expect(await get("/excalidraw/fonts/Excalifont/regular.woff2")).toMatchObject({
-            status: 200,
-            type: "font/woff2",
-            body: "font bytes",
-          });
           expect(await get("/", {}, "HEAD")).toMatchObject({ status: 200, body: "" });
           expect((await get("/", {}, "POST")).status).toBe(405);
           for (const path of [
@@ -121,14 +92,6 @@ it("serves only the bounded browser build with HTTP authority checks and correct
             "/secret.json",
             "/assets/chat-123.js.map",
             "/assets/symlink.js",
-            "/excalidraw/configure-fonts.js.map",
-            "/excalidraw/unrelated.js",
-            "/excalidraw/fonts/Excalifont/private.js",
-            "/excalidraw/fonts/linked.woff2",
-            "/excalidraw/fonts/../configure-fonts.js",
-            "/excalidraw/fonts/%2e%2e/configure-fonts.js",
-            "/excalidraw/fonts/%2fExcalifont/regular.woff2",
-            "/excalidraw/fonts/Excalifont/regular.woff2?file=secret.json",
             "/missing",
             "/?file=secret.json",
           ])
@@ -155,41 +118,6 @@ it("serves only the bounded browser build with HTTP authority checks and correct
         yield* listener.close();
         expect(backend.stats.backendClosed).toBe(false);
       }).pipe(Effect.scoped),
-    );
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
-
-it("rejects an Excalidraw asset directory escaping the browser build", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "cake-browser-asset-escape-"));
-  const outside = await mkdtemp(join(tmpdir(), "cake-browser-outside-"));
-  try {
-    await mkdir(join(directory, "assets"));
-    await writeFile(join(directory, "index.html"), "Cake");
-    await writeFile(join(outside, "configure-fonts.js"), "private external bytes");
-    await symlink(outside, join(directory, "excalidraw"));
-    await expect(Effect.runPromise(loadBrowserAssets(directory))).rejects.toThrow(
-      "Browser asset escapes its build directory",
-    );
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-    await rm(outside, { recursive: true, force: true });
-  }
-});
-
-it("applies the existing per-asset bound to nested Excalidraw fonts", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "cake-browser-font-bound-"));
-  try {
-    await mkdir(join(directory, "assets"));
-    await mkdir(join(directory, "excalidraw", "fonts", "Excalifont"), { recursive: true });
-    await writeFile(join(directory, "index.html"), "Cake");
-    await writeFile(
-      join(directory, "excalidraw", "fonts", "Excalifont", "large.woff2"),
-      Buffer.alloc(32 * 1024 * 1024 + 1),
-    );
-    await expect(Effect.runPromise(loadBrowserAssets(directory))).rejects.toThrow(
-      "Browser build exceeds asset limits",
     );
   } finally {
     await rm(directory, { recursive: true, force: true });

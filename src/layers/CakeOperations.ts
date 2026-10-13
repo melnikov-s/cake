@@ -30,7 +30,6 @@ import { createAgentControlOperations } from "../domain/subagents/cake-subagent-
 import { createCoordinatorOperations } from "../domain/cake-chats/cake-coordinator-operations";
 import { createCakeArtifactOperations } from "../domain/artifacts/cake-artifact-operations";
 import { createCakeBrowserOperations } from "../domain/browser/cake-browser-operations";
-import { createCakeDrawOperations } from "../domain/draw/cake-draw-operations";
 import { createCakeInterviewOperations } from "../domain/interviews/cake-interview-operations";
 import { createMessageBoardOperations } from "../domain/artifacts/cake-message-board-operations";
 import { createCakeModelOperations } from "../domain/model-presets/cake-model-operations";
@@ -54,15 +53,6 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }));
-    const configuredDrawControl = options.drawControl;
-    const drawControl = configuredDrawControl
-      ? {
-          ...configuredDrawControl,
-          canMutate: () =>
-            configuredDrawControl.canMutate() &&
-            !(options.currentSessionControl?.resolved() ?? false),
-        }
-      : undefined;
     const readOnlyAuxiliary =
       Boolean(options.auxiliary) &&
       !(options.tools ?? []).some((tool) => tool === "bash" || tool === "edit" || tool === "write");
@@ -112,7 +102,6 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
       }),
       ...(options.vscodeControl ? createCakeVscodeOperations(options.vscodeControl) : []),
       ...(options.browserControl ? createCakeBrowserOperations(options.browserControl) : []),
-      ...(drawControl ? createCakeDrawOperations(drawControl) : []),
       ...(options.worktreeLandingControl
         ? createCakeWorktreeOperations(options.worktreeLandingControl)
         : []),
@@ -183,7 +172,6 @@ export function configureCakeSessionRuntime(
     nonChatModelPreferences,
     vscodeControl,
     browserControl,
-    drawControl,
     worktreeLandingControl,
     globalControl,
     sessionControl,
@@ -215,7 +203,6 @@ export function configureCakeSessionRuntime(
     nonChatModelPreferences,
     vscodeControl,
     browserControl,
-    drawControl,
     worktreeLandingControl,
     globalControl,
     sessionControl,

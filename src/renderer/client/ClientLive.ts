@@ -119,7 +119,6 @@ export function makeClient(
         openExternalUrl(url: string): Promise<void>;
         files: BrowserFiles;
         menus: BrowserMenuStore;
-        saveDrawExport(input: Parameters<Client["electron"]["saveDrawExport"]>[0]): Promise<string>;
         showNotification(
           input: Parameters<Client["electron"]["showNotification"]>[0],
         ): Promise<void>;
@@ -362,7 +361,6 @@ export function makeClient(
       );
     capabilities.vscode.updateBounds = async () => undefined;
     capabilities.electron.openExternalUrl = (url) => host.openExternalUrl(url);
-    capabilities.electron.saveDrawExport = (input) => host.saveDrawExport(input);
     capabilities.electron.showNotification = (input) => host.showNotification(input);
     capabilities.filesystem.chooseAttachments = () => host.files.choose();
     Object.assign(capabilities.electron, browserMenus(host.menus));
@@ -442,8 +440,6 @@ export function makeClient(
     mcpSettings: commands("mcpSettings"),
     piSettings: commands("piSettings"),
     modelPresets: commands("modelPresets"),
-    draw: commands("draw"),
-    drawControl: commands("drawControl"),
     savedDrafts: commands("savedDrafts"),
     scheduledMessages: commands("scheduledMessages"),
     projectWorkflow: commands("projectWorkflow"),

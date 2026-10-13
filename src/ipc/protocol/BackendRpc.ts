@@ -5,7 +5,6 @@ import { BrowserResponseRpc } from "./BrowserRpc";
 import { FilesystemRpc } from "./FilesystemRpc";
 import { AttachmentUploadRpc } from "./AttachmentUploadRpc";
 import { BackendConnectionRpc } from "./BackendConnectionRpc";
-import { DrawRpc } from "./DrawRpc";
 import { TerminalRpc } from "./TerminalRpc";
 import { ManagedWorktreeRpc } from "./ManagedWorktreeRpc";
 import { DiscussionRpc } from "./DiscussionRpc";
@@ -16,7 +15,6 @@ import { ArtifactRpc } from "./ArtifactRpc";
 import { InterviewRpc } from "./InterviewRpc";
 import { CakeChatRpc } from "./CakeChatRpc";
 import { ConversationRpc } from "./ConversationRpc";
-import { DrawControlRpc } from "./DrawControlRpc";
 import { FoundationRpc } from "./FoundationRpc";
 import { ModelRpc } from "./ModelRpc";
 import { McpSettingsRpc } from "./McpSettingsRpc";
@@ -37,7 +35,6 @@ export const BackendRpc = ApplicationRpc.merge(
   InlineWidgetRpc,
   WidgetCaptureResponseRpc,
   BrowserResponseRpc,
-  DrawRpc,
   FilesystemRpc,
   AttachmentUploadRpc,
   TerminalRpc,
@@ -51,7 +48,6 @@ export const BackendRpc = ApplicationRpc.merge(
   CakeChatRpc,
   ConversationRpc,
   FoundationRpc,
-  DrawControlRpc,
   ModelRpc,
   PiSettingsRpc,
   McpSettingsRpc,

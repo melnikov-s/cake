@@ -1,5 +1,3 @@
-import { convertToExcalidrawElements, exportToCanvas, restore } from "@excalidraw/excalidraw";
-import { parseMermaidToExcalidraw } from "@excalidraw/mermaid-to-excalidraw";
 import { Effect, Option, Schema, Stream } from "effect";
 import { CakeIpcClient, type CakeIpcClientService } from "../ipc/client/CakeIpcClient";
 import { FoundationFailure } from "../ipc/protocol/CakeRpc";
@@ -341,27 +339,6 @@ const harness = {
     void runningStream.catch(() => {});
   },
   activeRequests: () => run(withClient((client) => client.foundation.activeRequests())),
-  async mermaidReference(diagram: string) {
-    const { elements, files } = await parseMermaidToExcalidraw(diagram, {
-      flowchart: { curve: "linear" },
-      maxEdges: 500,
-      maxTextSize: 50_000,
-      themeVariables: { fontSize: "20px" },
-    });
-    if (files) throw new Error("Reference diagram must have native elements");
-    // The official exporter loads the same locally bundled drawing fonts as
-    // the native canvas. Convert again once those font metrics are available.
-    await exportToCanvas({
-      elements: convertToExcalidrawElements(elements, { regenerateIds: false }),
-      files: {},
-    });
-    return restore(
-      { elements: convertToExcalidrawElements(elements, { regenerateIds: false }) },
-      null,
-      null,
-      { repairBindings: true },
-    ).elements;
-  },
 };
 
 Reflect.set(globalThis, "cakeRpcHarness", harness);

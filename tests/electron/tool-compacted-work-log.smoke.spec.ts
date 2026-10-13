@@ -84,7 +84,7 @@ test("shows compacted historical work in place, muted and expandable", async () 
       message: {
         role: "user",
         content: addResponseModeReminder(
-          addPresentationModeReminder("Inspect it", "normal", "draw"),
+          addPresentationModeReminder("Inspect it", "normal", "browser"),
           "text",
         ),
         timestamp: 0,

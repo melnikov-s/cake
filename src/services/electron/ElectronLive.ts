@@ -1,5 +1,3 @@
-import { writeFile } from "node:fs/promises";
-import { basename, extname } from "node:path";
 import { Effect, Layer, Queue, Stream } from "effect";
 import {
   BrowserWindow,
@@ -14,7 +12,6 @@ import {
   type MenuItemConstructorOptions,
   type WebContents,
 } from "electron";
-import { decodeDrawExportData, drawExportExtension, drawExportFilters } from "./DrawExportFile";
 import { ScreenCaptureWindow } from "./ScreenCaptureWindow";
 import { shouldAllowNavigation } from "./navigation-policy";
 import { CAKE_TITLE_BAR_HEIGHT, Electron, type ElectronWindowLifecycle } from "./Electron";
@@ -436,38 +433,6 @@ const makeElectronService = (
       });
       if (path) yield* lifecycle().allowProjectPath(path);
       return { path };
-    }),
-    saveDrawExport: Effect.fn("Electron.saveDrawExport")(function* (connectionId, request) {
-      const sender = yield* Effect.try({
-        try: () => requireRendererConnection(connectionId),
-        catch: electronError,
-      });
-      const owner = BrowserWindow.fromWebContents(sender);
-      if (!owner) return {};
-      const content = yield* Effect.try({
-        try: () => decodeDrawExportData(request.format, request.data),
-        catch: electronError,
-      });
-      return yield* Effect.tryPromise({
-        try: async () => {
-          const extension = drawExportExtension(request.format);
-          const safeName = basename(request.suggestedName);
-          const defaultPath = safeName.toLowerCase().endsWith(extension)
-            ? safeName
-            : `${safeName}${extension}`;
-          const result = await dialog.showSaveDialog(owner, {
-            title: "Export Cake Draw board",
-            defaultPath,
-            filters: drawExportFilters(request.format),
-          });
-          if (result.canceled || !result.filePath) return {};
-          if (extname(result.filePath).toLowerCase() !== extension)
-            throw new Error(`Draw export filename must end in ${extension}`);
-          await writeFile(result.filePath, content);
-          return { path: result.filePath };
-        },
-        catch: electronError,
-      });
     }),
     openExternalUrl: Effect.fn("Electron.openExternalUrl")(function* (_connectionId, request) {
       return yield* Effect.tryPromise({

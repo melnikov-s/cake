@@ -75,8 +75,8 @@ describe("conversation response-mode contract", () => {
       expect(stripResponseModeReminder(altered)).toBe(altered);
     }
   });
-  it("response style remains independent of normal, VS Code, Draw and browser presentation modes", () => {
-    for (const mode of ["normal", "vscode", "draw", "browser"] as const) {
+  it("response style remains independent of normal, VS Code and browser presentation modes", () => {
+    for (const mode of ["normal", "vscode", "browser"] as const) {
       const text = addResponseModeReminder(
         addPresentationModeReminder("Hello", "browser", mode),
         "voice",

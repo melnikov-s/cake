@@ -3,14 +3,7 @@ import type { ProjectSessionPresentationMode } from "../../contracts/project-ses
 import type { ChatStore } from "../stores/ChatStore";
 import { WorkLogControls } from "./work-log-controls";
 import { IconButton } from "./ui/icon-button";
-import {
-  BrowserIcon,
-  CakeIcon,
-  TerminalIcon,
-  TreeIcon,
-  VsCodeIcon,
-  WhiteboardIcon,
-} from "./ui/icons";
+import { BrowserIcon, CakeIcon, TerminalIcon, TreeIcon, VsCodeIcon } from "./ui/icons";
 
 export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   mode,
@@ -21,7 +14,6 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   browserHost = false,
   onToggleTree,
   onBackToAgent,
-  onOpenDraw,
   onOpenBrowser,
   onOpenIde,
   onToggleTerminal,
@@ -34,7 +26,6 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
   browserHost?: boolean;
   onToggleTree(): void;
   onBackToAgent(): void;
-  onOpenDraw(): void;
   onOpenBrowser(): void;
   onOpenIde(): void;
   onToggleTerminal(): void;
@@ -44,13 +35,6 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
       return (
         <IconButton key={target} tooltip="Back to agent" onClick={onBackToAgent}>
           <CakeIcon />
-        </IconButton>
-      );
-
-    if (target === "draw")
-      return (
-        <IconButton key={target} tooltip="Open Cake Draw" onClick={onOpenDraw}>
-          <WhiteboardIcon />
         </IconButton>
       );
 
@@ -88,7 +72,7 @@ export const WorkspaceModeControls = observer(function WorkspaceModeControls({
       <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
       <WorkLogControls store={chat} />
       <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden="true" />
-      {(["draw", "browser", "vscode"] as const).map(modeControl)}
+      {(["browser", "vscode"] as const).map(modeControl)}
       <IconButton
         data-cake-hint-key="t"
         tooltip="Terminal"

@@ -1071,8 +1071,7 @@ live in `contracts/conversations/`; coordination delivery workflows remain in
 domain. Model selection tool schemas and preset input/projection/error schemas
 live in `contracts/model-presets/` and preset
 resolution remains domain policy supplied to Pi through a resolver callback.
-The callback reads current application configuration at execution time. Artifact,
-Draw, and widget workflow callbacks are composed in
+The callback reads current application configuration at execution time. Artifact and widget workflow callbacks are composed in
 `layers/ProjectSessionRuntimeHostLive.ts`; the Pi Service contract does not import
 the composition implementation.
 

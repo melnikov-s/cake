@@ -19,7 +19,6 @@ const chat = {
 const callbacks = {
   onToggleTree: vi.fn(),
   onBackToAgent: vi.fn(),
-  onOpenDraw: vi.fn(),
   onOpenBrowser: vi.fn(),
   onOpenIde: vi.fn(),
   onToggleTerminal: vi.fn(),
@@ -42,7 +41,7 @@ describe("WorkspaceModeControls", () => {
     vi.clearAllMocks();
   });
 
-  function render(mode: "draw" | "browser" | "vscode") {
+  function render(mode: "browser" | "vscode") {
     act(() =>
       root.render(
         <WorkspaceModeControls
@@ -61,9 +60,8 @@ describe("WorkspaceModeControls", () => {
   }
 
   it.each([
-    ["draw", ["Back to agent", "Open Browser Mode", "Open VS Code"]],
-    ["browser", ["Open Cake Draw", "Back to agent", "Open VS Code"]],
-    ["vscode", ["Open Cake Draw", "Open Browser Mode", "Back to agent"]],
+    ["browser", ["Back to agent", "Open VS Code"]],
+    ["vscode", ["Open Browser Mode", "Back to agent"]],
   ] as const)("replaces the active %s mode with the Agent action", (mode, expectedModes) => {
     const labels = render(mode);
 
