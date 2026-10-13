@@ -3,11 +3,15 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { observer } from "r-state-tree/react";
 import type { CakeArtifactV1 } from "../../contracts/artifacts/artifact-contract";
-import { inlineWidgetMessageSchema } from "../../utils/inline-widget-message";
+import {
+  artifactStateRequestEnvelope,
+  inlineWidgetMessageSchema,
+} from "../../utils/inline-widget-message";
 import type { InlineWidgetStore } from "../stores/InlineWidgetStore";
 import { InlineWidgetFrame } from "./inline-widget-frame";
 import { decodeArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
 import { ArtifactState } from "../../contracts/artifacts/artifact-state";
+import { artifactStateWireError } from "../../contracts/widgets/artifact-state-wire";
 
 const detachedState = Schema.decodeUnknownSync(Schema.fromJsonString(ArtifactState));
 
@@ -62,14 +66,36 @@ export const WidgetArtifact = observer(function WidgetArtifact({
   useLayoutEffect(() => {
     if (!inlineWidgets) return;
     const receive = (event: MessageEvent) => {
+      if (event.source !== iframe.current?.contentWindow || !state?.compiled) return;
+      const envelope = Schema.decodeUnknownOption(artifactStateRequestEnvelope)(event.data);
       const parsed = Schema.decodeUnknownOption(inlineWidgetMessageSchema)(event.data);
+      const wireError =
+        Option.isSome(envelope) && envelope.value.type === "artifact-state-replace"
+          ? artifactStateWireError(envelope.value.value.value)
+          : undefined;
       if (
-        event.source !== iframe.current?.contentWindow ||
-        !state?.compiled ||
-        Option.isNone(parsed) ||
-        parsed.value.token !== state.compiled.token
-      )
+        (Option.isNone(parsed) || wireError) &&
+        Option.isSome(envelope) &&
+        envelope.value.token === state.compiled.token
+      ) {
+        iframe.current?.contentWindow?.postMessage(
+          {
+            source: "cake-artifact-host",
+            token: state.compiled.token,
+            type: "state-result",
+            value: {
+              id: envelope.value.value.id,
+              ok: false,
+              error: wireError
+                ? `Invalid artifact state: ${wireError}`
+                : "Invalid artifact state request: value must be JSON and expectedVersion a nonnegative integer",
+            },
+          },
+          "*",
+        );
         return;
+      }
+      if (Option.isNone(parsed) || parsed.value.token !== state.compiled.token) return;
       if (parsed.value.type === "height")
         setHeight(Math.max(120, Math.min(1_200, Math.ceil(parsed.value.value))));
       if (parsed.value.type === "error")

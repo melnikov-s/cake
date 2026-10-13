@@ -18,6 +18,8 @@ export interface CompiledInlineWidgetDocument {
   assets?: ReadonlyArray<WidgetBrowserAsset>;
 }
 
+import { artifactStateWireError } from "../../contracts/widgets/artifact-state-wire";
+
 const cakeModuleResolveDirectory = dirname(fileURLToPath(import.meta.url));
 
 const maximumSourceBytes = 1_048_576;
@@ -108,6 +110,7 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
   ${
     capability === "artifact"
       ? `
+  const stateWireError = ${artifactStateWireError.toString()};
   const stateListeners = new Set();
   const statePending = new Map();
   let stateRequestId = 0;
@@ -122,7 +125,8 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
       reject(new Error(error));
     }, 15000);
     statePending.set(id, { resolve, reject, timeout });
-    send(type, { id, ...value });
+    try { send(type, { id, ...value }); }
+    catch (error) { clearTimeout(timeout); statePending.delete(id); reject(error); }
   });
   addEventListener("message", (event) => {
     const message = event.data;
@@ -153,6 +157,8 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
     subscribe(listener) { stateListeners.add(listener); return () => stateListeners.delete(listener); },
     read: () => requestState("artifact-state-read", {}),
     replace(value, expectedVersion = stateSnapshot.version) {
+      const invalid = stateWireError(value);
+      if (invalid) return Promise.reject(new Error("Invalid artifact state: " + invalid));
       if (!stateSnapshot.hydrated || stateSnapshot.error) return Promise.reject(new Error("Artifact state is not hydrated; read before saving"));
       return requestState("artifact-state-replace", { value, expectedVersion }).catch(async (error) => { await requestState("artifact-state-read", {}).catch(() => undefined); throw error; });
     },

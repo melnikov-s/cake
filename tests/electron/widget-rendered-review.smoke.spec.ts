@@ -96,6 +96,29 @@ test("production widget review captures settled sandbox pixels before persistenc
             (window) => window.getTitle() === "Cake Widget Review Capture",
           ).length,
       );
+    // Bypass the SDK to exercise the capture HOST boundary, exactly as a retained
+    // older widget would. Structured clone preserves this own undefined property.
+    await expect(
+      capture({
+        sessionId: "widget-review-session",
+        workingDirectory: project,
+        artifactId: "malformed-state",
+        capability: "artifact",
+        source: `import { useEffect } from "react";
+export default function InvalidState() {
+  useEffect(() => {
+    const receive = (event) => {
+      if (event.data?.type === "state-result" && event.data.value.id === "malformed")
+        throw new Error(event.data.value.ok ? "Malformed save accepted" : event.data.value.error);
+    };
+    addEventListener("message", receive);
+    parent.postMessage({ source: "cake-inline-widget", token: new URL(location.href).pathname.slice(1), type: "artifact-state-replace", value: { id: "malformed", expectedVersion: 0, value: { elements: [{ customData: undefined }] } } }, "*");
+    return () => removeEventListener("message", receive);
+  }, []);
+  return <p>Initializing drawing</p>;
+}`,
+      }),
+    ).rejects.toThrow(/value\/elements\/0\/customData must be JSON/);
     const source = `import React, { useEffect, useState } from "react";
 export default function DelayedReviewFixture() {
   const [settled, setSettled] = useState(false);

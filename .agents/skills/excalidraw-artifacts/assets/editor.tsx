@@ -154,7 +154,10 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
     restoreElements,
     serializeAsJSON,
   } = library;
-  const { value, hydrated, version, save, error, reload } = useArtifactState(initialScene);
+  // Native converters can leave own customData: undefined. postMessage preserves
+  // it; normalize the seed as well as snapshots before crossing the JSON boundary.
+  const [jsonInitialScene] = useState<Scene>(() => JSON.parse(JSON.stringify(initialScene)));
+  const { value, hydrated, version, save, error, reload } = useArtifactState(jsonInitialScene);
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -164,7 +167,7 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
   const [exportError, setExportError] = useState<string | null>(null);
   const saveRef = useRef(save);
   const state = useRef<EditorState>({
-    base: initialScene,
+    base: jsonInitialScene,
     observedVersion: -1,
     epoch: 0,
     ready: false,
@@ -415,21 +418,7 @@ function ExcalidrawEditor({ library }: { library: ExcalidrawLibrary }) {
       >
         Export drawing
       </button>
-      <p>
-        Exports use the current drawing and native export settings. Export drawing produces an
-        editable .excalidraw file.
-      </p>
-      <p role="status">
-        {saving
-          ? `Saving drawing… (last saved version ${version})`
-          : error || saveError
-            ? `Save failed (last saved version ${version})`
-            : dirty
-              ? `Unsaved changes (last saved version ${version})`
-              : version === 0
-                ? "New drawing (not yet saved)"
-                : `Saved version ${version}`}
-      </p>
+      {(saving || dirty) && <p role="status">{saving ? "Saving…" : "Unsaved changes"}</p>}
       {(!hydrated || error) && (
         <button type="button" onClick={() => void reconnect()}>
           Reconnect drawing

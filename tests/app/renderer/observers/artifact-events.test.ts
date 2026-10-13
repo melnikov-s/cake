@@ -103,7 +103,7 @@ describe("observeArtifactEvents", () => {
     } as unknown as RootStore;
     const cancel = observeArtifactEvents(runtimeFor(client), root);
 
-    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(3));
     expect(refresh).toHaveBeenNthCalledWith(1);
     expect(refresh).toHaveBeenNthCalledWith(2);
     await vi.waitFor(() =>
@@ -116,7 +116,7 @@ describe("observeArtifactEvents", () => {
     expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(2, "shared");
     expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(3, "shared");
     expect(root.artifactPaneStore.receiveBoardChange).toHaveBeenNthCalledWith(4);
-    expect(root.artifactLibraryStore.load).toHaveBeenCalledTimes(2);
+    expect(root.artifactLibraryStore.load).toHaveBeenCalledTimes(3);
     cancel();
     projection[Symbol.dispose]();
   });

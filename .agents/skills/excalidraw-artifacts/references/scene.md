@@ -78,6 +78,12 @@ const elements = convertToExcalidrawElements(
 );
 ```
 
+Before using converter output as an initial seed or staged state, JSON-roundtrip
+the complete selected persistent scene: `JSON.parse(JSON.stringify(scene))`.
+Native elements may have own `customData: undefined`; postMessage does not remove
+it. Apply the same normalization to every save, preserving JSON metadata, deletion
+tombstones and files. The native export serializer alone drops undo data.
+
 The converter creates native defaults and reciprocal container/text/arrow
 bindings. Verify the resulting IDs, text bounds, arrows, and ordering; the
 converter may create additional bound label objects. Do not pass an entire
@@ -189,7 +195,6 @@ allowed. Do not remove those guards when adapting the template.
 
 Check loading/error state, drag/text edits, repeated save acknowledgments, edits
 during a save, failed-save retry, disconnect/reconnect with an unchanged or newer
-version, external edits during a pending/in-flight save, cross-instance Saved
-version status, selection, bound arrows/labels, frames, undo/redo, clear, fonts, and each export
+version, external edits during a pending/in-flight save, cross-instance scene synchronization, selection, bound arrows/labels, frames, undo/redo, clear, fonts, and each export
 format. Save before closing if persistence is important: the 200 ms debounce and
 best-effort close flush cannot guarantee a reply after frame/application teardown.

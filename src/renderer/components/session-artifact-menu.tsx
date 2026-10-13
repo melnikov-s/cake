@@ -22,7 +22,7 @@ export const SessionArtifactMenu = observer(function SessionArtifactMenu({
           lineageId,
           session.sessionArtifactsStore.associations.find(
             (association) => association.lineage?.id === lineageId,
-          )?.selectedRevision,
+          )?.link?.pinnedRevision,
         )
       }
       onOpenLibrary={() => root.navigationStore.showArtifactLibrary(session.sessionId)}

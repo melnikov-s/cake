@@ -1,5 +1,15 @@
 import { Schema } from "effect";
 
+export const artifactStateRequestEnvelope = Schema.Struct({
+  source: Schema.Literal("cake-inline-widget"),
+  token: Schema.String,
+  type: Schema.Literals(["artifact-state-read", "artifact-state-replace"]),
+  value: Schema.Struct({
+    id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+    value: Schema.optionalKey(Schema.Unknown),
+  }),
+});
+
 const inlineWidgetMessageBase = {
   source: Schema.Literal("cake-inline-widget"),
   token: Schema.String,

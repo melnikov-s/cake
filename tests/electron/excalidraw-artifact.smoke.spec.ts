@@ -4,6 +4,8 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
 import { CAKE_CHAT_SESSION_ID } from "../../src/contracts/cake-chats/cake-chat-data";
 
+import { seedCakeChatHistory } from "./durable-chat-fixture";
+
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const artifactId = "editable-excalidraw";
 const stateScope = { lineageId: artifactId };
@@ -82,6 +84,10 @@ test("installed Excalidraw edits shared live state and reopens retained output w
     join(cakeHome, "state", "application.json"),
     JSON.stringify({ schemaVersion: 1, projects: [], trustedProjectPaths: [] }),
   );
+  await seedCakeChatHistory(
+    cakeHome,
+    `cake://artifact/${artifactId}\n\n![Live drawing](cake://artifact/${artifactId})`,
+  );
   const launch = () =>
     electron.launch({
       args: [repositoryRoot],
@@ -134,10 +140,24 @@ test("installed Excalidraw edits shared live state and reopens retained output w
       version: "0.18.1",
     });
     expect(installed.directory.startsWith(cakeHome)).toBe(true);
-    const source = await readFile(
+    const template = await readFile(
       join(repositoryRoot, ".agents/skills/excalidraw-artifacts/assets/editor.tsx"),
       "utf8",
     );
+    // Real native converter output (including own undefined defaults), not staged
+    // JSON storage: both review and the first chat mount must initialize themselves.
+    const source = template
+      .replace(
+        "  const [jsonInitialScene]",
+        `  initialScene.elements = library.convertToExcalidrawElements(${JSON.stringify(initialScene.elements)}, { regenerateIds: false });
+  if (!initialScene.elements.some(element => Object.hasOwn(element, "customData") && element.customData === undefined)) throw new Error("Fixture must exercise native own undefined defaults");
+  const [jsonInitialScene]`,
+      )
+      .replace(
+        "  const [api, setApi]",
+        `  useEffect(() => { if (hydrated && version === 0) void save(value); }, [hydrated, version]);
+  const [api, setApi]`,
+      );
     const capture = await application.evaluate(
       async (_electron, input) => {
         const operation = Reflect.get(globalThis, "cakeSmokeCaptureInlineWidget") as (
@@ -150,7 +170,7 @@ test("installed Excalidraw edits shared live state and reopens retained output w
         workingDirectory: project,
         artifactId,
         source,
-        artifactState: initialScene,
+        capability: "artifact",
       },
     );
     expect(capture.persistedAfterCapture).toBe(true);
@@ -186,9 +206,14 @@ test("installed Excalidraw edits shared live state and reopens retained output w
         .getByRole("dialog", { name: "Artifacts", exact: true })
         .getByRole("button", { name: /Captured widget fixture/ })
         .click();
-      return page.locator(`[data-artifact-id="${artifactId}"] iframe`).first();
+      return page
+        .getByRole("complementary", { name: "Artifact", exact: true })
+        .locator(`[data-artifact-id="${artifactId}"] iframe`)
+        .first();
     };
-    let iframe = await openArtifact();
+    let iframe = page
+      .locator(`[data-slot="artifact-disclosure"] [data-artifact-id="${artifactId}"] iframe`)
+      .first();
     const drawing = iframe.contentFrame();
     await expect(drawing.locator(".excalidraw canvas").first()).toBeVisible();
     await expect(iframe).toHaveAttribute("sandbox", "allow-scripts allow-downloads");
@@ -215,6 +240,32 @@ test("installed Excalidraw edits shared live state and reopens retained output w
         .locator(".excalidraw")
         .evaluate((element) => getComputedStyle(element).position),
     ).toBe("relative");
+
+    const malformed = await drawing.locator("body").evaluate(
+      () =>
+        new Promise<string>((resolve) => {
+          const receive = (event: MessageEvent) => {
+            if (event.data?.type !== "state-result" || event.data.value.id !== "malformed") return;
+            removeEventListener("message", receive);
+            resolve(event.data.value.ok ? "Unexpectedly saved" : event.data.value.error);
+          };
+          addEventListener("message", receive);
+          parent.postMessage(
+            {
+              source: "cake-inline-widget",
+              token: new URL(location.href).pathname.slice(1),
+              type: "artifact-state-replace",
+              value: {
+                id: "malformed",
+                expectedVersion: 1,
+                value: { elements: [{ customData: undefined }] },
+              },
+            },
+            "*",
+          );
+        }),
+    );
+    expect(malformed).toContain("value/elements/0/customData must be JSON");
 
     // Real pointer interaction creates a native editable shape, not a test-side state replacement.
     await drawing
@@ -260,8 +311,22 @@ test("installed Excalidraw edits shared live state and reopens retained output w
       customData: { preserve: "unrelated user data" },
     });
 
-    const staged = structuredClone(edited.value);
-    staged.elements[index] = { ...staged.elements[index]!, y: 110 };
+    // Open another ordinary instance BEFORE publishing; neither may need manual revision selection.
+    const paneIframe = await openArtifact();
+    await expect(paneIframe.contentFrame().locator(".excalidraw canvas").first()).toBeVisible();
+    // Chat, pane and fullscreen are all already open when r2 publishes.
+    await page
+      .getByRole("complementary", { name: "Artifact", exact: true })
+      .getByRole("button", { name: "View Captured widget fixture fullscreen" })
+      .click();
+    await expect(page.locator('iframe[title="Captured widget fixture"]')).toHaveCount(3);
+    const fullscreenDrawing = page
+      .getByRole("dialog", { name: "Captured widget fixture", exact: true })
+      .locator("iframe")
+      .contentFrame();
+    await expect(
+      fullscreenDrawing.getByRole("button", { name: "Save drawing", exact: true }),
+    ).toBeVisible();
     const revision = await application.evaluate(
       async (_electron, input) => {
         const operation = Reflect.get(globalThis, "cakeSmokeCaptureInlineWidget") as (
@@ -274,11 +339,16 @@ test("installed Excalidraw edits shared live state and reopens retained output w
         workingDirectory: project,
         artifactId,
         expectedRevision: 1,
-        source,
-        artifactState: staged,
+        source: source.replaceAll("<main>", '<main data-source-revision="2">'),
+        capability: "artifact",
       },
     );
     expect(revision.exactRef).toBe(`cake://artifact/${artifactId}@r2`);
+    // Source-only publication must not replace or re-seed the mutable document.
+    expect(await invoke<State>("artifacts.state.read", stateScope)).toEqual(edited);
+    await expect(fullscreenDrawing.locator('main[data-source-revision="2"]')).toBeVisible();
+    for (const instance of [iframe, paneIframe])
+      await expect(instance.contentFrame().locator('main[data-source-revision="2"]')).toBeVisible();
     expect(
       (await invoke<State>("artifacts.state.read", stateScope)).value.elements.find(
         (element) => element.id === manualShape.id,
@@ -292,24 +362,13 @@ test("installed Excalidraw edits shared live state and reopens retained output w
       }),
     ).rejects.toThrow(/version|conflict/i);
 
-    // Library and fullscreen views keep two live SDK instances attached to the same lineage.
-    await page.getByRole("button", { name: "View Captured widget fixture fullscreen" }).click();
-    await expect(page.locator('iframe[title="Captured widget fixture"]')).toHaveCount(2);
-    const fullscreenDrawing = page
-      .getByRole("dialog", { name: "Captured widget fixture", exact: true })
-      .locator("iframe")
-      .contentFrame();
-    await expect(
-      fullscreenDrawing.getByRole("button", { name: "Save drawing", exact: true }),
-    ).toBeVisible();
     const latest = await invoke<State>("artifacts.state.read", stateScope);
     const synchronized = await invoke<State>("artifacts.state.update", {
       ...stateScope,
       expectedVersion: latest.version,
       edits: [{ op: "set", path: `/elements/${index}/x`, value: 160 }],
     });
-    for (const frame of [drawing, fullscreenDrawing])
-      await expect(frame.getByRole("status")).toContainText(`version ${synchronized.version}`);
+    expect(synchronized.value.elements[index]?.x).toBe(160);
     const exportsDirectory = join(root, "exports");
     await mkdir(exportsDirectory);
     await application.evaluate(({ session }, directory) => {
@@ -366,12 +425,17 @@ test("installed Excalidraw edits shared live state and reopens retained output w
               canvas.height = image.naturalHeight;
               const context = canvas.getContext("2d")!;
               context.drawImage(image, 0, 0);
-              return [...context.getImageData(canvas.width / 2, canvas.height / 4, 1, 1).data];
+              const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+              let blue = 0;
+              for (let index = 0; index < pixels.length; index += 4)
+                if (pixels[index] === 165 && pixels[index + 1] === 216 && pixels[index + 2] === 255)
+                  blue += 1;
+              return blue;
             } finally {
               URL.revokeObjectURL(url);
             }
           }, svg);
-        expect(svgPixels).toEqual([165, 216, 255, 255]);
+        expect(svgPixels).toBeGreaterThan(1_000);
       }
       if (name === "Export drawing") {
         const scene = JSON.parse(await readFile(file, "utf8")) as Scene;

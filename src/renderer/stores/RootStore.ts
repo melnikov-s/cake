@@ -228,6 +228,9 @@ export class RootStore extends Store<{
   }
 
   refreshSessionArtifacts() {
+    void this.inlineArtifactPreviewStore.receive();
+    void this.artifactPaneStore.detailStore.receive();
+    void this.artifactLibraryStore.detailStore.receive();
     for (const session of this.sessionRegistry.sessions) session.sessionArtifactsStore.receive();
     for (const session of this.cakeChatCollectionStore.registry.sessions)
       session.sessionArtifactsStore.receive();

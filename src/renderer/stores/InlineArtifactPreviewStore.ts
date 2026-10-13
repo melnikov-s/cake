@@ -1,11 +1,11 @@
-import { observable, Store } from "r-state-tree";
+import { observable, Store, untracked } from "r-state-tree";
 import type { ArtifactStableRef } from "../../contracts/artifacts/artifact-lineage";
 import { parseArtifactRef } from "../../contracts/artifacts/artifact-lineage";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
 import { ClientContext } from "./context/ClientContext";
 
 /** Window-local inline disclosures. Payloads remain in the shared artifact Model;
- * references freeze to an exact revision on resolution. Independent mounts have
+ * stable references follow publication; explicit @rN references stay pinned. Independent mounts have
  * independent expansion state. Reads deduplicate per mount and ignore stale or
  * disposed results; nothing here is persisted or changes session links. */
 export class InlineArtifactPreviewStore extends Store<{ model: ArtifactCatalog }> {
@@ -15,6 +15,7 @@ export class InlineArtifactPreviewStore extends Store<{ model: ArtifactCatalog }
       {
         reference: ArtifactStableRef;
         exactRef?: ArtifactStableRef;
+        targetRef?: ArtifactStableRef;
         expanded: boolean;
         loading: boolean;
         error?: string;
@@ -22,8 +23,35 @@ export class InlineArtifactPreviewStore extends Store<{ model: ArtifactCatalog }
     >
   >({});
 
+  constructor(props: InlineArtifactPreviewStore["props"]) {
+    super(props);
+    this.effect(() => {
+      for (const [key, state] of Object.entries(this.states)) {
+        const parsed = parseArtifactRef(state.reference);
+        const latest = this.props.model.find(parsed.lineageId)?.latestRevision;
+        if (!parsed.revision && latest) {
+          untracked(() => {
+            const reference: ArtifactStableRef = `cake://artifact/${parsed.lineageId}@r${latest}`;
+            if (state.targetRef === reference) return;
+            state.targetRef = reference;
+            void this.load(key);
+          });
+        }
+      }
+    });
+  }
+
   get client() {
     return ClientContext.consume(this)!;
+  }
+
+  publicationReference(lineageId: string, sessionId: string): ArtifactStableRef {
+    const association = this.props.model
+      .associationsFor(sessionId)
+      .find((item) => item.lineage?.id === lineageId);
+    return association?.link?.mode === "pinned"
+      ? `cake://artifact/${lineageId}@r${association.selectedRevision}`
+      : `cake://artifact/${lineageId}`;
   }
 
   revision(key: string) {
@@ -46,6 +74,31 @@ export class InlineArtifactPreviewStore extends Store<{ model: ArtifactCatalog }
     void this.load(key);
   }
 
+  async receive(lineageId?: string) {
+    const references = new Set(Object.values(this.states).map((state) => state.reference));
+    await Promise.all(
+      [...references].map(async (reference) => {
+        const parsed = parseArtifactRef(reference);
+        if (parsed.revision || (lineageId && parsed.lineageId !== lineageId)) return;
+        try {
+          const metadata = await this.client.artifacts.referenceMetadata(reference, {
+            signal: this.signal,
+          });
+          if (!this.signal.aborted) {
+            this.props.model.upsertSummary(metadata.lineage);
+            for (const [key, state] of Object.entries(this.states))
+              if (state.reference === reference) void this.load(key);
+          }
+        } catch (error) {
+          if (!this.signal.aborted)
+            for (const state of Object.values(this.states))
+              if (state.reference === reference)
+                state.error = error instanceof Error ? error.message : String(error);
+        }
+      }),
+    );
+  }
+
   release(key: string) {
     delete this.states[key];
   }
@@ -64,10 +117,11 @@ export class InlineArtifactPreviewStore extends Store<{ model: ArtifactCatalog }
     state.error = undefined;
     const current = () => !this.signal.aborted && this.states[key] === state;
     try {
-      if (!state.exactRef) {
+      if (!state.targetRef) {
         const parsed = parseArtifactRef(state.reference);
-        if (parsed.revision && this.props.model.find(parsed.lineageId)?.revision(parsed.revision)) {
-          state.exactRef = state.reference;
+        const known = parsed.revision ?? this.props.model.find(parsed.lineageId)?.latestRevision;
+        if (known) {
+          state.targetRef = `cake://artifact/${parsed.lineageId}@r${known}`;
         } else {
           const metadata = await this.client.artifacts.referenceMetadata(state.reference, {
             signal: this.signal,
@@ -75,19 +129,31 @@ export class InlineArtifactPreviewStore extends Store<{ model: ArtifactCatalog }
           if (!current()) return;
           this.props.model.upsertSummary(metadata.lineage);
           this.props.model.applyHistory(metadata.lineage.id, [metadata.revision]);
-          state.exactRef = metadata.exactRef;
+          state.targetRef = parsed.revision
+            ? metadata.exactRef
+            : `cake://artifact/${parsed.lineageId}@r${this.props.model.find(parsed.lineageId)!.latestRevision}`;
         }
       }
-      if (!state.expanded || this.revision(key)?.record) return;
-      const parsed = parseArtifactRef(state.exactRef);
-      const revision = await this.client.artifacts.readExact(parsed.lineageId, parsed.revision!, {
-        signal: this.signal,
-      });
-      if (current()) this.props.model.upsertRevision(revision);
+      if (!state.expanded) return;
+      const target = state.targetRef;
+      const parsed = parseArtifactRef(target);
+      if (!this.props.model.find(parsed.lineageId)?.revision(parsed.revision!)?.record) {
+        const revision = await this.client.artifacts.readExact(parsed.lineageId, parsed.revision!, {
+          signal: this.signal,
+        });
+        if (current()) this.props.model.upsertRevision(revision);
+      }
+      // Keep the existing host (including fullscreen) mounted until its replacement is ready.
+      if (current() && state.targetRef === target) state.exactRef = target;
     } catch (error) {
       if (current()) state.error = error instanceof Error ? error.message : String(error);
     } finally {
-      if (current()) state.loading = false;
+      if (current()) {
+        state.loading = false;
+        // A publication may have advanced the target while this exact read was pending.
+        if (!state.error && state.expanded && state.targetRef !== state.exactRef)
+          void this.load(key);
+      }
     }
   }
 }

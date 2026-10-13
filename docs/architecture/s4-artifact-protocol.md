@@ -28,8 +28,9 @@ This policy does not restrict non-text visual artifacts or explicitly requested
 file deliverables. Maintained project documentation still belongs in the repository.
 
 Full artifacts are global lineages linked to a Cake Session or Session Family.
-The originating assistant publication renders one exact-revision artifact surface
-inline, expanded by default, with a Collapse/Expand control and no separate
+The originating assistant publication renders one linked artifact surface inline,
+following latest unless the effective session/family link is pinned. It is expanded
+by default, with a Collapse/Expand control and no separate
 `Open artifact` action. All artifact kinds use their existing `ArtifactHost` renderer.
 Creating or updating an artifact refreshes the catalog without opening a browsing
 surface. Cake Chat and Project Session headers use the same `ArtifactCatalogMenu`
@@ -40,10 +41,9 @@ when space permits. The pane belongs to that conversation and closes on navigati
 The explicit `Browse all artifacts` action opens the shared Artifact Library.
 Browsing never opens automatically on publication.
 Ordinary Markdown artifact links remain prose links. A standalone
-`![Title](cake://artifact/<id>@rN)` paragraph renders an expanded inline artifact
-when that exact revision has no publication surface in the conversation. If the
-publication already renders that exact revision, the redundant embed is omitted;
-other revisions remain distinct. The isolated pane and shared library reuse the same
+`![Title](cake://artifact/<id>@rN)` paragraph renders an explicitly pinned inline
+artifact, distinct from ordinary publication surfaces. Stable embeds without `@rN`
+follow latest; a redundant stable embed next to a publication is omitted. The isolated pane and shared library reuse the same
 artifact detail workflow for revision history, references, link management, and fullscreen presentation. The durable pointer records the originating assistant entry
 and tool call, so the reference appears only while that assistant message is on the
 active Pi branch. Readable fallbacks remain in Cake's artifact repository and
@@ -320,8 +320,11 @@ review policy.
 
 Inline disclosures mount a live renderer only while expanded. A focused window-owned
 `InlineArtifactPreviewStore` owns per-mount expansion and read status; exact payloads
-stay in the shared Artifact Catalog Model. Metadata resolution freezes stable embed
-references to an exact revision for that mount. Reads deduplicate while active, ignore
+stay in the shared Artifact Catalog Model. Stable embeds and ordinary publication
+cards follow the latest published source, including already-open mounts. Publication
+revision metadata is provenance, not a display pin. Explicit `@rN` embeds, pinned
+session/family links, and deliberate history selections retain their selected source.
+Source reloads hydrate the same lineage document; they do not reset persisted edits. Reads deduplicate while active, ignore
 stale/disposed results, and expose retry; collapse never changes artifact links or library
 selection. Separate inline, library, and fullscreen mounts have independent ephemeral
 React interaction state, but share the lineage's live document state. Compiler/runtime failures retain the readable fallback.
@@ -411,6 +414,13 @@ at most once, and validates the submitted value against the request's declared
 JSON Schema.
 
 ## Live editable artifact state
+
+The SDK, live host and isolated review host reject non-JSON saves rather than
+silently normalizing them. In particular, own `undefined` properties survive
+structured clone. Widgets normalize their selected persistent data before saving;
+well-addressed malformed requests receive a correlated error identifying the bad
+value instead of timing out as a disconnected host. Retained older browser outputs
+still receive host-side validation; changing their source requires a new revision.
 
 Each lineage has one current JSON state, independent of immutable source revisions
 and Pi transcript history. It has only a compare-and-swap version, not document

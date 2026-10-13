@@ -186,11 +186,10 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
     if (part.artifactId && behavior.inlineArtifactPreviews && behavior.inlineWidgets)
       return (
         <InlineArtifactPreview
-          reference={
-            part.artifactRevision
-              ? `cake://artifact/${part.artifactId}@r${part.artifactRevision}`
-              : `cake://artifact/${part.artifactId}`
-          }
+          reference={behavior.inlineArtifactPreviews.publicationReference(
+            part.artifactId,
+            behavior.store.id,
+          )}
           stateSessionId={behavior.store.id}
           store={behavior.inlineArtifactPreviews}
           inlineWidgets={behavior.inlineWidgets}

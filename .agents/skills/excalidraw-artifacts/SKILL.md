@@ -65,6 +65,17 @@ not save DOM nodes, Maps, imperative APIs, hover state, or an unfiltered runtime
 appState. The template uses the native serializer for export-safe settings but
 retains deletion tombstones, files, and unrelated metadata in live state for undo.
 
+Normalize both the **initial seed** and **every save** with
+`JSON.parse(JSON.stringify(scene))` after selecting persistent fields. Native
+converter output can contain own `undefined` properties (notably `customData`);
+structured-clone/postMessage preserves them, but artifact storage requires JSON.
+Keep the template’s `jsonInitialScene` boundary as well as its snapshot normalization.
+A successful seeded preview does not prove empty-storage initialization: check the
+real chat embed with no saved state, edit, save, and reopen.
+
+Keep ordinary UI quiet: no storage-version counters, permanent “Saved” banners,
+or demo instructions. Retain unobtrusive actionable loading/save/reconnect errors.
+
 Keep its single-flight/debounce and acknowledgment guards: hydration and remote
 updates must not become save loops. A newer external state cancels stale pending
 writes; failed saves retain the latest local edit for explicit retry, with a
@@ -92,6 +103,11 @@ retry an older whole scene against a refreshed storage version.
 5. Preserve all unrelated elements, IDs, positions, styles, files, frames,
    groups, and connector bindings. Locate elements by ID, not presumed array
    index. Preserve editable objects instead of replacing the canvas with an image.
+
+Use the stable `cake://artifact/<id>` reference for ordinary live embeds. Reserve
+`@rN` for deliberate historical/approved-source references; publication cards follow
+the effective link automatically. A source revision reloads the same current document,
+not a historical snapshot of its mutable state.
 
 Live saves do not create artifact revisions. Source publication remains separate
 from document saves. The same linked artifact has the same saved state across

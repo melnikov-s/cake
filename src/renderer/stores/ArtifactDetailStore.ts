@@ -1,4 +1,5 @@
 import { Store, child, createStore } from "r-state-tree";
+import { decodeArtifactRevisionNumber } from "../../contracts/artifacts/artifact-lineage";
 import { MessageBoardStore } from "./MessageBoardStore";
 import type {
   ArtifactLineageId,
@@ -26,11 +27,25 @@ export class ArtifactDetailStore extends Store<{
   selectedRevision: ArtifactRevisionNumber | undefined;
   pendingRestoreRevision: ArtifactRevisionNumber | undefined;
   comparison: ArtifactTextComparison | undefined;
+  private followLatest = true;
   private selectionRequest = 0;
   private historyRequest = 0;
   private revisionRequest = 0;
   private compareRequest = 0;
   private restoreRequest = 0;
+
+  constructor(props: ArtifactDetailStore["props"]) {
+    super(props);
+    this.reaction(
+      () =>
+        this.followLatest && !this.detailLoading ? this.selectedLineage?.latestRevision : undefined,
+      (latest) => {
+        const id = this.selectedLineageId;
+        if (id && latest && this.selectedRevision !== latest)
+          void this.selectRevision(id, decodeArtifactRevisionNumber(latest), true);
+      },
+    );
+  }
 
   @child
   get messageBoardStore(): MessageBoardStore {
@@ -56,6 +71,19 @@ export class ArtifactDetailStore extends Store<{
       : [];
   }
 
+  async receive(lineageId?: string) {
+    const id = this.selectedLineageId;
+    if (!id || (lineageId && id !== lineageId)) return;
+    const request = this.selectionRequest;
+    try {
+      const detail = await this.client.artifacts.detail(id, { signal: this.signal });
+      if (this.isCurrentSelection(request, id)) this.props.model.applyDetail(detail);
+    } catch (error) {
+      if (this.isCurrentSelection(request, id))
+        this.error = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   async select(lineageId: ArtifactLineageId, initialRevision?: ArtifactRevisionNumber) {
     this.props.clearReferenceOperationError();
     const selectionRequest = ++this.selectionRequest;
@@ -65,6 +93,7 @@ export class ArtifactDetailStore extends Store<{
     this.restoreRequest += 1;
     this.selectedLineageId = lineageId;
     this.selectedRevision = undefined;
+    this.followLatest = initialRevision === undefined;
     this.pendingRestoreRevision = undefined;
     this.comparison = undefined;
     this.error = undefined;
@@ -82,7 +111,8 @@ export class ArtifactDetailStore extends Store<{
         const value = await this.client.artifacts.detail(lineageId, { signal: this.signal });
         if (!this.isCurrentSelection(selectionRequest, lineageId)) return;
         this.props.model.applyDetail(value);
-        const targetRevision = initialRevision ?? value.lineage.latestRevision;
+        const targetRevision =
+          initialRevision ?? decodeArtifactRevisionNumber(this.selectedLineage!.latestRevision);
         this.selectedRevision = targetRevision;
         revisionRequest = ++this.revisionRequest;
         const revision = await this.client.artifacts.readExact(lineageId, targetRevision, {
@@ -107,14 +137,19 @@ export class ArtifactDetailStore extends Store<{
     await Promise.all([detail, history]);
   }
 
-  async selectRevision(lineageId: ArtifactLineageId, revision: ArtifactRevisionNumber) {
+  async selectRevision(
+    lineageId: ArtifactLineageId,
+    revision: ArtifactRevisionNumber,
+    followLatest = false,
+  ) {
     if (this.selectedLineageId !== lineageId) return undefined;
     this.props.clearReferenceOperationError(lineageId);
     const selectionRequest = this.selectionRequest;
     const revisionRequest = ++this.revisionRequest;
     this.compareRequest += 1;
     this.restoreRequest += 1;
-    this.selectedRevision = revision;
+    if (!followLatest) this.selectedRevision = revision;
+    this.followLatest = followLatest;
     this.pendingRestoreRevision = undefined;
     this.comparison = undefined;
     this.operationError = undefined;
@@ -125,10 +160,11 @@ export class ArtifactDetailStore extends Store<{
       if (
         !this.isCurrentSelection(selectionRequest, lineageId) ||
         revisionRequest !== this.revisionRequest ||
-        this.selectedRevision !== revision
+        (!followLatest && this.selectedRevision !== revision)
       )
         return undefined;
       this.props.model.upsertRevision(value);
+      this.selectedRevision = revision;
       return value;
     } catch (error) {
       if (

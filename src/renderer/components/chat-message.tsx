@@ -391,8 +391,8 @@ export const AssistantTextMessage = observer(function AssistantTextMessage({
   // mount a second iframe for the same exact revision; prose links are unaffected.
   const publishedArtifactReferences = behavior.inlineArtifactPreviews
     ? behavior.store.parts.flatMap((candidate) =>
-        candidate.kind === "tool" && candidate.artifactId && candidate.artifactRevision
-          ? [`cake://artifact/${candidate.artifactId}@r${candidate.artifactRevision}`]
+        candidate.kind === "tool" && candidate.artifactId
+          ? [`cake://artifact/${candidate.artifactId}`]
           : [],
       )
     : undefined;

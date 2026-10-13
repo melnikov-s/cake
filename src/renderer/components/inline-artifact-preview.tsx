@@ -52,7 +52,6 @@ export const InlineArtifactPreview = observer(function InlineArtifactPreview({
       {error ??
         (record ? (
           <ArtifactHost
-            key={exactRef}
             record={record}
             stateSessionId={stateSessionId}
             inlineWidgets={inlineWidgets}

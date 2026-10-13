@@ -155,6 +155,21 @@ describe("artifact widget state renderer workflow", () => {
     expect(stateReplace).not.toHaveBeenCalled();
     act(() => {
       request(frame, "artifact-state-replace", {
+        id: "malformed",
+        expectedVersion: 1,
+        value: { elements: [{ customData: undefined }] },
+      });
+    });
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "state-result",
+        value: { id: "malformed", ok: false, error: expect.stringContaining("must be JSON") },
+      }),
+      "*",
+    );
+    expect(stateReplace).not.toHaveBeenCalled();
+    act(() => {
+      request(frame, "artifact-state-replace", {
         id: "stale",
         expectedVersion: 0,
         value: "obsolete",

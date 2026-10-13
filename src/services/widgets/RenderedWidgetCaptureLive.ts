@@ -5,6 +5,8 @@ import type { JsonValue } from "../../contracts/serialization/json-contract";
 import { RenderedWidgetCapture } from "./RenderedWidgetCapture";
 import { RenderedWidgetCaptureError } from "../../contracts/widgets/rendered-widget-capture-errors";
 
+import { artifactStateWireError } from "../../contracts/widgets/artifact-state-wire";
+
 const CAPTURE_WIDTH = 560;
 const CAPTURE_HEIGHT = 480;
 const MAX_CAPTURE_BYTES = 8_000_000;
@@ -25,6 +27,7 @@ const prepareScript = (
 ) => `(() => new Promise((resolve) => {
   const token = ${JSON.stringify(widget.token)};
   const diagnostics = [];
+  const stateWireError = ${artifactStateWireError.toString()};
   // Candidate captures get an ephemeral scope, never a linked artifact capability.
   let artifactState = { version: ${pluginState === undefined ? 0 : 1}, value: ${JSON.stringify(pluginState ?? null)} };
   let contentHeight;
@@ -47,11 +50,10 @@ const prepareScript = (
       if (!request || typeof request.id !== "string") return;
       let error;
       if (value.type === "artifact-state-replace") {
-        if (request.expectedVersion !== artifactState.version) error = "Stale candidate capture state";
-        else {
-          try { artifactState = { version: artifactState.version + 1, value: JSON.parse(JSON.stringify(request.value)) }; }
-          catch { error = "Candidate state must be JSON"; }
-        }
+        error = stateWireError(request.value);
+        if (!Number.isInteger(request.expectedVersion) || request.expectedVersion < 0) error = "expectedVersion must be a nonnegative integer";
+        if (!error && request.expectedVersion !== artifactState.version) error = "Stale candidate capture state";
+        if (!error) artifactState = { version: artifactState.version + 1, value: request.value };
       }
       frame.contentWindow.postMessage({ source: "cake-artifact-host", token, type: "state-result", value: { id: request.id, ok: !error, ...(error ? { error } : { state: artifactState }) } }, "*");
       return;

@@ -65,8 +65,10 @@ export class ArtifactCatalog extends Model {
         this.lineages.push(lineage);
       } else {
         lineage.createdAt = summary.createdAt;
-        lineage.latestRevision = summary.latestRevision;
-        lineage.title = summary.title;
+        if (summary.latestRevision >= lineage.latestRevision) {
+          lineage.latestRevision = summary.latestRevision;
+          lineage.title = summary.title;
+        }
         lineage.stableRef = summary.stableRef;
       }
       const existing = lineage.revision(summary.latest.revision);
