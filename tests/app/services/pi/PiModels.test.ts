@@ -226,6 +226,39 @@ describe("PiModels", () => {
     });
   });
 
+  vitestIt.each(["openai", "openai-codex"])(
+    "projects Fast support for current Sol and Astra models from %s",
+    async (provider) => {
+      const ids = ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.3-codex-spark"];
+      const projected = await projectModelCatalog(
+        {
+          getProviders: () => [
+            {
+              id: provider,
+              name: provider,
+              auth: { oauth: {} },
+              getModels: () =>
+                ids.map((id) => ({
+                  id,
+                  name: id,
+                  reasoning: true,
+                  input: ["text"] as const,
+                })),
+            },
+          ],
+          checkAuth: async () => ({ source: "OAuth" }),
+          getAvailable: async () => ids.map((id) => ({ id })),
+          getProviderAuthStatus: () => ({ source: "stored", label: "OAuth" }),
+        },
+        () => ["high"],
+      );
+      assert.deepEqual(
+        projected.map(({ id, fastMode }) => ({ id, fastMode })),
+        ids.map((id) => ({ id, fastMode: id !== "gpt-5.3-codex-spark" })),
+      );
+    },
+  );
+
   it.effect("shares successful runtime acquisition and immediately evicts failures", () =>
     Effect.gen(function* () {
       const attempts = yield* Ref.make(0);

@@ -9,7 +9,7 @@ import type {
   PiModel,
   PiNonChatModel,
 } from "../../../contracts/pi/model-data";
-import { CODEX_FAST_MODE_SERVICE_TIER, supportsFastMode } from "../fast-mode";
+import { OPENAI_FAST_MODE_SERVICE_TIER, supportsFastMode } from "../fast-mode";
 import { registerAgentDirectoryExtensionProviders } from "../runtime/extension-providers";
 
 interface CatalogModel {
@@ -304,7 +304,7 @@ export const makePiModelsLive = (agentDirectory: string) =>
                 Math.max(2_048, Math.ceil(input.maximumOutputCharacters / 2)),
               ),
               signal,
-              serviceTier: input.selection.fastMode ? CODEX_FAST_MODE_SERVICE_TIER : undefined,
+              serviceTier: input.selection.fastMode ? OPENAI_FAST_MODE_SERVICE_TIER : undefined,
             };
             const capture = observeRequest?.(model, {
               reasoning: options.reasoning,
