@@ -315,7 +315,34 @@ test("Browser Mode embeds persistent Chromium, navigates, and attaches inspected
       }, `${origin}/second`);
     await expect.poll(nativeBrowserVisible).toBe(true);
     const table = page.locator('.transcript [data-streamdown="table-wrapper"]');
-    await table.getByRole("button", { name: "View table fullscreen" }).click({ force: true });
+    const tableActions = table.locator(":scope > div").first();
+    const tableCopy = table.getByRole("button", { name: "Copy table", exact: true });
+    const tableExpand = table.getByRole("button", { name: "View table fullscreen" });
+    await expect(tableCopy).toHaveCount(1);
+    await expect(tableExpand).toHaveCount(1);
+    await composer.hover();
+    await expect(tableActions).toHaveCSS("opacity", "0");
+    await table.hover();
+    await expect(tableActions).toHaveCSS("opacity", "1");
+    await composer.hover();
+    await expect(tableActions).toHaveCSS("opacity", "0");
+
+    // Pointer focus after using Copy must not pin either control on screen.
+    await table.hover();
+    await tableCopy.click();
+    await table.getByRole("button", { name: "Markdown", exact: true }).click();
+    await composer.hover();
+    await expect(tableActions).toHaveCSS("opacity", "0");
+
+    // Keyboard users can still reveal and operate the otherwise hidden controls.
+    await tableCopy.focus();
+    await page.keyboard.press("Tab");
+    await expect(tableExpand).toBeFocused();
+    await expect(tableActions).toHaveCSS("opacity", "1");
+    await composer.click();
+    await expect(tableActions).toHaveCSS("opacity", "0");
+    await table.hover();
+    await tableExpand.click();
     const tableFullscreen = page.getByRole("dialog", { name: "Table", exact: true });
     await expect(tableFullscreen).toBeVisible();
     await expect.poll(nativeBrowserVisible).toBe(false);
