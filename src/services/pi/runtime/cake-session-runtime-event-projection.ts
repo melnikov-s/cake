@@ -81,6 +81,7 @@ export function createCakeSessionRuntimeEventProjection(input: {
   readonly isDisposed: () => boolean;
 }): RuntimeEventProjection {
   const { session, sessionId, emit } = input;
+  const isFork = Boolean(session.sessionManager.getHeader()?.parentSession);
   const activeToolCalls = new Map<
     string,
     {
@@ -97,14 +98,15 @@ export function createCakeSessionRuntimeEventProjection(input: {
   );
   const pendingUserPresentations: PendingUserPresentation[] = [];
   let runtimePromptIds = new Set(
-    projectRuntimeSystemPrompt(session.systemPrompt, "runtime", runtimeSystemTools(session)).map(
-      (part) => part.id,
-    ),
+    (isFork
+      ? []
+      : projectRuntimeSystemPrompt(session.systemPrompt, "runtime", runtimeSystemTools(session))
+    ).map((part) => part.id),
   );
   const projectLiveMessage = createLiveMessageProjector({
     deferProviderErrors: true,
     suppressAbort: input.suppressAbort,
-    currentSystemPrompt: () => session.systemPrompt,
+    currentSystemPrompt: isFork ? undefined : () => session.systemPrompt,
     currentSystemTools: () => runtimeSystemTools(session),
     renderUserMessageAsMarkdown: (message) => {
       if (typeof message !== "object" || message === null) return false;
@@ -227,11 +229,9 @@ export function createCakeSessionRuntimeEventProjection(input: {
     if (event.type === "agent_start") {
       emit({ type: "streaming", sessionId, streaming: true });
       // before_agent_start extensions may have changed the effective prompt for this run.
-      const promptParts = projectRuntimeSystemPrompt(
-        session.systemPrompt,
-        "runtime",
-        runtimeSystemTools(session),
-      );
+      const promptParts = isFork
+        ? []
+        : projectRuntimeSystemPrompt(session.systemPrompt, "runtime", runtimeSystemTools(session));
       const nextIds = new Set(promptParts.map((part) => part.id));
       for (const partId of runtimePromptIds)
         if (!nextIds.has(partId)) emit({ type: "part-removed", sessionId, partId });

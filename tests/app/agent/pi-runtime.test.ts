@@ -24,6 +24,7 @@ import {
 } from "../../../src/services/pi/runtime/foundation-runtime";
 import {
   cakeWorkspaceSessionDirectory,
+  forkWorkspaceSession,
   inspectWorkspace,
   loadPiChangelog,
   loadWorkspacePiSessionPreview,
@@ -2632,10 +2633,16 @@ describe("S1 Pi runtime", () => {
     );
 
     try {
+      await writeFile(join(directory, "AGENTS.md"), "Unchanged repository instructions");
+      const fixtureSkill =
+        "---\nname: fork-fixture\ndescription: Unchanged skill catalog entry\n---\nFixture instructions\n";
+      await mkdir(join(directory, ".agents/skills/fork-fixture"), { recursive: true });
+      await writeFile(join(directory, ".agents/skills/fork-fixture/SKILL.md"), fixtureSkill);
       const source = await createCakeSessionRuntime({
         cwd: directory,
         agentDir,
         sessionDir,
+        additionalSystemPrompt: "Unchanged session guidance",
         trusted: true,
         newSession: true,
         requestUi: async () => undefined,
@@ -2655,12 +2662,20 @@ describe("S1 Pi runtime", () => {
         agentDir,
         sessionDir,
         sessionId: fork.sessionId,
+        additionalSystemPrompt: "Unchanged session guidance",
         trusted: true,
         requestUi: async () => undefined,
         onEvent: () => undefined,
       });
       runtimes.push(forked);
       expect(forked.sessionId).toBe(fork.sessionId);
+      const inheritedParts = (await forked.snapshot()).parts;
+      expect(
+        inheritedParts.filter((part) => part.kind === "context" && part.title === "AGENTS.md"),
+      ).toHaveLength(1);
+      expect(inheritedParts.some((part) => part.id.startsWith("runtime-system-prompt-"))).toBe(
+        false,
+      );
 
       // The fork's first request shares its whole prefix with the source, so it
       // must land on the same provider cache shard: same key as the source.
@@ -2668,11 +2683,73 @@ describe("S1 Pi runtime", () => {
       expect(requestBodies).toHaveLength(2);
       expect(requestBodies[1]?.prompt_cache_key).toBe(source.sessionId);
       expect(requestBodies[1]?.prompt_cache_key).not.toBe(fork.sessionId);
+      const sameCheckout = SessionManager.open(forked.sessionFile!);
+      expect(
+        sameCheckout
+          .getBranch()
+          .filter((entry) => entry.type === "message" && entry.message.role === "system"),
+      ).toHaveLength(1);
+
+      // Moving the same conversation to another checkout must not redeclare unchanged
+      // instructions just because their source paths changed.
+      const destination = await mkdtemp(join(tmpdir(), "cake-relocated-fork-"));
+      temporaryDirectories.push(destination);
+      await writeFile(join(destination, "AGENTS.md"), "Unchanged repository instructions");
+      await mkdir(join(destination, ".agents/skills/fork-fixture"), { recursive: true });
+      await writeFile(join(destination, ".agents/skills/fork-fixture/SKILL.md"), fixtureSkill);
+      const relocated = forkWorkspaceSession(
+        source.sessionFile!,
+        directory,
+        forkPoint,
+        destination,
+        sessionDir,
+        "Relocated fork",
+      );
+      const relocatedRuntime = await createCakeSessionRuntime({
+        cwd: destination,
+        agentDir,
+        sessionDir,
+        sessionId: relocated.sessionId,
+        trusted: true,
+        additionalSystemPrompt:
+          "Unchanged session guidance\n\n<worktree_instructions>\nUse this checkout only\n</worktree_instructions>",
+        requestUi: async () => undefined,
+        onEvent: () => undefined,
+      });
+      runtimes.push(relocatedRuntime);
+      expect(
+        (await relocatedRuntime.snapshot()).parts.filter(
+          (part) => part.kind === "context" && part.title === "AGENTS.md",
+        ),
+      ).toHaveLength(1);
+      await relocatedRuntime.prompt("Continue after moving", "prompt", []);
+      const relocatedManager = SessionManager.open(relocatedRuntime.sessionFile!);
+      const patches = relocatedManager
+        .getBranch()
+        .filter((entry) => entry.type === "message" && entry.message.role === "system");
+      expect(patches).toHaveLength(2);
+      const patch = patches.at(-1);
+      if (patch?.type !== "message" || patch.message.role !== "system")
+        throw new Error("Missing relocation patch");
+      expect(Object.keys(patch.message.sections ?? {}).sort()).toEqual([
+        "cwd",
+        "fork_paths",
+        "fork_worktree",
+      ]);
+      expect(JSON.stringify(patch.message)).not.toContain("Unchanged repository instructions");
+      expect(JSON.stringify(patch.message)).not.toContain("Unchanged session guidance");
+      expect(JSON.stringify(patch.message)).not.toContain("Unchanged skill catalog entry");
+      await relocatedRuntime.prompt("Continue again", "prompt", []);
+      expect(
+        SessionManager.open(relocatedRuntime.sessionFile!)
+          .getBranch()
+          .filter((entry) => entry.type === "message" && entry.message.role === "system"),
+      ).toHaveLength(2);
 
       // The source itself is unaffected and keeps its own key.
       await source.prompt("Continue in the source", "prompt", []);
-      expect(requestBodies).toHaveLength(3);
-      expect(requestBodies[2]?.prompt_cache_key).toBe(source.sessionId);
+      expect(requestBodies).toHaveLength(5);
+      expect(requestBodies[4]?.prompt_cache_key).toBe(source.sessionId);
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));

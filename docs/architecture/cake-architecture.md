@@ -90,8 +90,12 @@ projections needed by a surface. References do not transfer ownership.
   session guidance, working directory, and other additions), **Tools** (usage
   descriptions and complete declarations), **Skills**, **Worktree** only when
   applicable, and **AGENTS.md** (all loaded instruction files, retaining their
-  paths and contents). Genuine instruction/tool changes remain inspectable in
-  the timeline. Presentation does not create another transcript authority.
+  paths and contents). Forks display inherited instruction history in place, not a
+  synthetic fresh runtime baseline. Checkout relocation preserves equivalent
+  instruction-file and skill sections; a small path mapping and replacement
+  worktree guidance carry the move instead of redeclaring unchanged sources.
+  Genuine instruction/tool changes remain inspectable in the timeline.
+  Presentation does not create another transcript authority.
 - Project Session Tool Compact replays only user-authored input and assistant text as dialogue.
   Preserve Pi's canonical system prompt/tool baseline as a folded checkpoint, not
   a new instruction injection. Strip injected reminders (including embedded ones),

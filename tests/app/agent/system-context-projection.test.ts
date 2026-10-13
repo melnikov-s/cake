@@ -155,8 +155,44 @@ describe("system instruction source projection", () => {
     expect(part.text).toContain('"name": "write"');
   });
 
+  it("shows only actual system messages, not synthetic fresh baselines, in forks", () => {
+    const events: RuntimeProjectionEvent[] = [];
+    const session = {
+      systemPrompt: prompt,
+      agent: { state: { tools } },
+      sessionManager: { getHeader: () => ({ parentSession: "/source.jsonl" }) },
+    } as unknown as AgentSession;
+    const projection = createCakeSessionRuntimeEventProjection({
+      session,
+      sessionId: "fork",
+      emit: (event) => events.push(event),
+      compactionQueuedMessages: () => [],
+      queuedParts: () => [],
+      isDisposed: () => false,
+    });
+    try {
+      projection.projectEvent({ type: "agent_start" });
+      expect(events).toEqual([{ type: "streaming", sessionId: "fork", streaming: true }]);
+      projection.projectEvent({
+        type: "message_start",
+        message: { role: "system", content: "", sections: { rules: sections.rules }, timestamp: 0 },
+      });
+      expect(events.filter((event) => event.type === "part-updated")).toEqual([
+        expect.objectContaining({
+          part: expect.objectContaining({ title: "System", text: sections.rules }),
+        }),
+      ]);
+    } finally {
+      projection.dispose();
+    }
+  });
+
   it("refreshes live groups and removes absent Skills/AGENTS.md when the next run replaces the prompt", () => {
-    const session = { systemPrompt: prompt, agent: { state: { tools } } };
+    const session = {
+      sessionManager: { getHeader: () => undefined },
+      systemPrompt: prompt,
+      agent: { state: { tools } },
+    };
     const events: RuntimeProjectionEvent[] = [];
     const projection = createCakeSessionRuntimeEventProjection({
       session: session as unknown as AgentSession,

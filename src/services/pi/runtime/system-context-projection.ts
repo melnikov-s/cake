@@ -47,7 +47,8 @@ function splitPrompt(prompt: string) {
 
 function sourceGroup(name: string): SourceGroup {
   if (name === "tools" || name === "skills") return name;
-  if (name === "worktree_instructions") return "worktree";
+  if (name === "worktree_instructions" || name === "fork_worktree" || name === "fork_paths")
+    return "worktree";
   if (name === "project_context") return "instructions";
   return "system";
 }

@@ -49,6 +49,7 @@ it("renders live nested events and metadata-only saved history in the real proje
   // Pi is the only external boundary. The real adapter/schema/reducer and real
   // Root/Conversation/ChatStore deliver activity to the authoritative Chat.
   const pi = {
+    sessionManager: { getHeader: () => undefined },
     systemPrompt: "",
     agent: { state: { tools: [] } },
     getSteeringMessages: () => [],

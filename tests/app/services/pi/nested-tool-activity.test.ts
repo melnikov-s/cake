@@ -36,6 +36,7 @@ function harness() {
   };
   // SAFETY: only the prompt, queue accessors and Pi's authoritative statistics are read.
   const session = {
+    sessionManager: { getHeader: () => undefined },
     systemPrompt: "",
     agent: { state: { tools: [] } },
     getSteeringMessages: () => [],

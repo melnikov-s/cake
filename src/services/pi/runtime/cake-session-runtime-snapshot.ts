@@ -60,8 +60,14 @@ export function projectCakeSessionRuntimeSnapshot(
     sessionFile: session.sessionFile ?? "",
     sessionListed: input.sessionListed,
     parts: [
-      ...projectRuntimeSystemPrompt(session.systemPrompt, "runtime", tools),
-      ...withoutRuntimeSystemPrompt(branchParts, session.systemPrompt, tools),
+      // Forks already contain their source's instruction history. Do not prepend a
+      // synthetic fresh baseline or suppress genuine deltas against that preview.
+      ...(session.sessionManager.getHeader()?.parentSession
+        ? branchParts
+        : [
+            ...projectRuntimeSystemPrompt(session.systemPrompt, "runtime", tools),
+            ...withoutRuntimeSystemPrompt(branchParts, session.systemPrompt, tools),
+          ]),
       ...input.queuedParts,
       ...input.transientParts,
     ],

@@ -73,6 +73,7 @@ describe("Cake runtime streaming projection", () => {
     vi.useFakeTimers();
     const events: RuntimeProjectionEvent[] = [];
     const session = {
+      sessionManager: { getHeader: () => undefined },
       agent: { state: { tools: [] } },
       systemPrompt: "",
       getSteeringMessages: () => [],
@@ -120,6 +121,7 @@ describe("Cake runtime streaming projection", () => {
     vi.useFakeTimers();
     const events: RuntimeProjectionEvent[] = [];
     const session = {
+      sessionManager: { getHeader: () => undefined },
       agent: { state: { tools: [] } },
       systemPrompt: "",
       getSteeringMessages: () => [],
@@ -170,6 +172,7 @@ describe("Cake runtime queued-part projection", () => {
     const events: RuntimeProjectionEvent[] = [];
     // @ts-expect-error -- SAFETY: this focused test reads only the prompt, tool state and queue accessors supplied.
     const session = {
+      sessionManager: { getHeader: () => undefined },
       agent: { state: { tools: [] } },
       systemPrompt: "",
       getSteeringMessages: () => steering,
