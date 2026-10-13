@@ -283,7 +283,11 @@ export function SlashCommandCombobox({
     pendingCursor.current = nextCursor;
     setCursor(nextCursor);
     commitValue(nextValue);
-    requestAnimationFrame(requestFocus);
+    // Completing a slash command is an explicit writing action, even with dictation.
+    // Keep convenience autofocus parked, but let the user continue entering arguments.
+    requestAnimationFrame(() => {
+      if (focusEnabledRef.current) inputRef.current?.focus();
+    });
     return nextValue;
   };
 

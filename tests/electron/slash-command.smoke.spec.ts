@@ -196,6 +196,28 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
       await page.keyboard.press("Tab");
       await expect(composer).toBeFocused();
       await expect(page.locator('[data-slot="dictation-indicator"]')).toHaveText("Listening");
+      // Slash completion is an explicit writing action, not convenience autofocus.
+      for (const key of ["Tab", "ArrowLeft", "ArrowRight"]) {
+        await composer.fill("/skill:desktop");
+        await expect(page.getByRole("listbox", { name: "Slash commands" })).toBeVisible();
+        await page.keyboard.press(key);
+        await expect(composer).toHaveValue("/skill:desktop-fixture ");
+        await expect(composer).toBeFocused();
+        await page.keyboard.type("command argument");
+        await expect(composer).toHaveValue("/skill:desktop-fixture command argument");
+        await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+      }
+      await composer.fill("/skill:desktop");
+      await page
+        .getByRole("option", { name: /skill:desktop-fixture Desktop fixture skill/ })
+        .click();
+      await expect(composer).toHaveValue("/skill:desktop-fixture ");
+      await expect(composer).toBeFocused();
+      await page.keyboard.type("clicked command argument");
+      await expect(composer).toHaveValue("/skill:desktop-fixture clicked command argument");
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+
+      await composer.fill("");
       await page.keyboard.type("Send without restarting dictation");
       await expect(composer).toHaveValue("Send without restarting dictation");
       await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
