@@ -43,7 +43,26 @@ import type { ImportWorkspaceFileInput } from "../services/artifacts/importWorks
 import type { ArtifactProjectionMetadata } from "../contracts/artifacts/artifact-projection-data";
 import type { ResolvedAgentArtifact } from "../contracts/artifacts/artifact-agent-control";
 
+import type {
+  ArtifactState,
+  ArtifactStateReplacement,
+  ArtifactStateUpdate,
+  ArtifactStagedState,
+} from "../contracts/artifacts/artifact-state";
+
 interface ArtifactRepositoryPort {
+  readonly readState: (
+    sessionId: string,
+    lineageId: string,
+  ) => Effect.Effect<ArtifactState, unknown, never>;
+  readonly replaceState: (
+    sessionId: string,
+    input: ArtifactStateReplacement,
+  ) => Effect.Effect<ArtifactState, unknown, never>;
+  readonly updateState: (
+    sessionId: string,
+    input: ArtifactStateUpdate,
+  ) => Effect.Effect<ArtifactState, unknown, never>;
   readonly upsert: (
     workingDirectory: string,
     artifact: CakeArtifactV1,
@@ -238,6 +257,9 @@ export class ProjectSessionIntegrationHost {
         throw new Error("Workspace file artifact import is unavailable");
       });
     this.artifactRepository = options.artifactRepository ?? {
+      readState: () => Effect.die(new Error("Artifact state is unavailable")),
+      replaceState: () => Effect.die(new Error("Artifact state is unavailable")),
+      updateState: () => Effect.die(new Error("Artifact state is unavailable")),
       upsert: (workingDirectory, artifact) =>
         Effect.sync(() => {
           const now = new Date().toISOString();
@@ -280,6 +302,12 @@ export class ProjectSessionIntegrationHost {
       requestInterview: (record, signal) => this.requestInterviewFromRenderer(record, signal),
       generateInlineWidget: (input) => this.execute(this.generateInlineWidget(input), input.signal),
       reviseInlineWidget: (input) => this.execute(this.reviseInlineWidget(input), input.signal),
+      readArtifactState: (lineageId) =>
+        this.execute(this.artifactRepository.readState(sessionId, lineageId)),
+      replaceArtifactState: (input) =>
+        this.execute(this.artifactRepository.replaceState(sessionId, input)),
+      updateArtifactState: (input) =>
+        this.execute(this.artifactRepository.updateState(sessionId, input)),
       resolveArtifact: (reference) =>
         this.execute(this.artifactRepository.resolve(sessionId, reference)),
       hasLinkedArtifacts: () => this.execute(this.artifactRepository.hasAnyLinked(sessionId)),

@@ -25,6 +25,8 @@ const prepareScript = (
 ) => `(() => new Promise((resolve) => {
   const token = ${JSON.stringify(widget.token)};
   const diagnostics = [];
+  // Candidate captures get an ephemeral scope, never a linked artifact capability.
+  let artifactState = { version: ${pluginState === undefined ? 0 : 1}, value: ${JSON.stringify(pluginState ?? null)} };
   let contentHeight;
   let settled = false;
   let timeout;
@@ -40,6 +42,20 @@ const prepareScript = (
     const value = event.data;
     if (event.source !== frame.contentWindow || !value || typeof value !== "object" ||
         value.source !== "cake-inline-widget" || value.token !== token) return;
+    if (value.type === "artifact-state-read" || value.type === "artifact-state-replace") {
+      const request = value.value;
+      if (!request || typeof request.id !== "string") return;
+      let error;
+      if (value.type === "artifact-state-replace") {
+        if (request.expectedVersion !== artifactState.version) error = "Stale candidate capture state";
+        else {
+          try { artifactState = { version: artifactState.version + 1, value: JSON.parse(JSON.stringify(request.value)) }; }
+          catch { error = "Candidate state must be JSON"; }
+        }
+      }
+      frame.contentWindow.postMessage({ source: "cake-artifact-host", token, type: "state-result", value: { id: request.id, ok: !error, ...(error ? { error } : { state: artifactState }) } }, "*");
+      return;
+    }
     if (value.type === "height" && typeof value.value === "number") {
       contentHeight = value.value;
       return;

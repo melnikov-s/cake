@@ -5,6 +5,9 @@ import type {
   InlineWidgetLanguage,
 } from "../../contracts/widgets/inline-widget-contract";
 import { ClientContext } from "./context/ClientContext";
+import type { ArtifactState } from "../../contracts/artifacts/artifact-state";
+import type { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
+import type { JsonValue } from "../../contracts/serialization/json-contract";
 
 export interface InlineWidgetState {
   language: InlineWidgetLanguage;
@@ -19,6 +22,77 @@ export interface InlineWidgetState {
 export class InlineWidgetStore extends Store {
   get inlineWidgets() {
     return ClientContext.consume(this)!.inlineWidgets;
+  }
+
+  readonly artifactStates = observable<
+    Record<
+      string,
+      {
+        sessionId: string;
+        lineageId: ArtifactLineageId;
+        current?: ArtifactState;
+        error?: string;
+        loading: boolean;
+      }
+    >
+  >({});
+  bindArtifactState(id: string, sessionId: string, lineageId: ArtifactLineageId) {
+    const current = this.artifactStates[id];
+    if (current?.sessionId === sessionId && current.lineageId === lineageId) return;
+    this.artifactStates[id] = observable({ sessionId, lineageId, loading: false });
+    void this.readArtifactState(id).catch(() => undefined);
+  }
+  releaseArtifactState(id: string) {
+    delete this.artifactStates[id];
+  }
+  refreshArtifactState(lineageId?: string) {
+    for (const [id, state] of Object.entries(this.artifactStates))
+      if (!lineageId || state.lineageId === lineageId)
+        void this.readArtifactState(id).catch(() => undefined);
+  }
+  async readArtifactState(id: string) {
+    const binding = this.artifactStates[id];
+    if (!binding) throw new Error("This widget has no linked artifact state scope");
+    binding.loading = true;
+    try {
+      const state = await ClientContext.consume(this)!.artifacts.stateRead(
+        { sessionId: binding.sessionId, lineageId: binding.lineageId },
+        { signal: this.signal },
+      );
+      if (!this.signal.aborted && this.artifactStates[id] === binding) {
+        if (!binding.current || binding.current.version <= state.version) binding.current = state;
+        binding.error = undefined;
+      }
+      return state;
+    } catch (error) {
+      if (!this.signal.aborted && this.artifactStates[id] === binding)
+        binding.error = error instanceof Error ? error.message : String(error);
+      throw error;
+    } finally {
+      if (!this.signal.aborted && this.artifactStates[id] === binding) binding.loading = false;
+    }
+  }
+  async saveArtifactState(id: string, value: JsonValue, expectedVersion: number) {
+    const binding = this.artifactStates[id];
+    if (!binding?.current || binding.error)
+      throw new Error("Artifact state is not hydrated; read before saving");
+    try {
+      const state = await ClientContext.consume(this)!.artifacts.stateReplace(
+        { sessionId: binding.sessionId, lineageId: binding.lineageId, expectedVersion, value },
+        { signal: this.signal },
+      );
+      if (
+        !this.signal.aborted &&
+        this.artifactStates[id] === binding &&
+        (!binding.current || binding.current.version <= state.version)
+      )
+        binding.current = state;
+      return state;
+    } catch (error) {
+      // Refresh after conflicts; never retry an obsolete value over the user's/agent's newer state.
+      void this.readArtifactState(id).catch(() => undefined);
+      throw error;
+    }
   }
 
   readonly states: Record<string, InlineWidgetState> = observable({});

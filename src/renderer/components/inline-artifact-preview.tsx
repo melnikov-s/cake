@@ -17,11 +17,13 @@ export const InlineArtifactPreview = observer(function InlineArtifactPreview({
   label,
   store,
   inlineWidgets,
+  stateSessionId,
 }: {
   reference: ArtifactStableRef;
   label?: string;
   store: InlineArtifactPreviewStore;
   inlineWidgets: InlineWidgetStore;
+  stateSessionId?: string;
 }) {
   const key = useId();
   useEffect(() => {
@@ -52,6 +54,7 @@ export const InlineArtifactPreview = observer(function InlineArtifactPreview({
           <ArtifactHost
             key={exactRef}
             record={record}
+            stateSessionId={stateSessionId}
             inlineWidgets={inlineWidgets}
             presentation="inline"
           />

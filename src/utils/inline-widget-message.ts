@@ -27,5 +27,21 @@ export const inlineWidgetMessageSchema = Schema.Union([
       input: Schema.Record(Schema.String, Schema.Json),
     }),
   }),
+  Schema.Struct({
+    ...inlineWidgetMessageBase,
+    type: Schema.Literal("artifact-state-read"),
+    value: Schema.Struct({
+      id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+    }),
+  }),
+  Schema.Struct({
+    ...inlineWidgetMessageBase,
+    type: Schema.Literal("artifact-state-replace"),
+    value: Schema.Struct({
+      id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+      expectedVersion: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+      value: Schema.Json,
+    }),
+  }),
   Schema.Struct({ ...inlineWidgetMessageBase, type: Schema.Literal("cancel") }),
 ]);

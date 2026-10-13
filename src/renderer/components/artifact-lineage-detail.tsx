@@ -99,6 +99,7 @@ export const ArtifactLineageDetail = observer(function ArtifactLineageDetail({
   const content = record ? (
     <ArtifactHost
       record={record}
+      stateSessionId={currentLink ? activeSessionId : undefined}
       messageBoard={store.messageBoardStore}
       inlineWidgets={inlineWidgets}
       onOpenSourceLocation={onOpenSourceLocation}

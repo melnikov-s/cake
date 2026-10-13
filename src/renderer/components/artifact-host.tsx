@@ -19,6 +19,7 @@ interface ArtifactHostProps {
   record: ArtifactRecord;
   presentation?: "workspace" | "inline";
   inlineWidgets?: InlineWidgetStore;
+  stateSessionId?: string;
   messageBoard?: MessageBoardStore;
   onOpenSourceLocation?(location: SourceLocation): void;
 }
@@ -27,6 +28,7 @@ export const ArtifactHost = observer(function ArtifactHost({
   record,
   presentation = "workspace",
   inlineWidgets,
+  stateSessionId,
   messageBoard,
   onOpenSourceLocation,
 }: ArtifactHostProps) {
@@ -60,6 +62,7 @@ export const ArtifactHost = observer(function ArtifactHost({
       {artifact.kind === "widget" ? (
         <WidgetArtifact
           artifact={artifact}
+          stateSessionId={stateSessionId}
           inlineWidgets={inlineWidgets}
           fill={fill}
           presentation={fill ? "workspace" : presentation}

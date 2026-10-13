@@ -186,6 +186,9 @@ export function configureCakeSessionRuntime(
     linkArtifact,
     unlinkArtifact,
     importArtifactFile,
+    readArtifactState,
+    replaceArtifactState,
+    updateArtifactState,
     ...runtime
   } = options;
   const featureOptions: CakeOperationOptions = {
@@ -217,6 +220,9 @@ export function configureCakeSessionRuntime(
     linkArtifact,
     unlinkArtifact,
     importArtifactFile,
+    readArtifactState,
+    replaceArtifactState,
+    updateArtifactState,
   };
   return {
     ...runtime,

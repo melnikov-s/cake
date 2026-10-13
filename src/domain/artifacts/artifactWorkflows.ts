@@ -20,7 +20,10 @@ import {
   ArtifactNotLinked,
 } from "../../contracts/artifacts/artifact-workflow-errors";
 
+import type { ArtifactStagedState } from "../../contracts/artifacts/artifact-state";
+
 export interface CreateArtifactInput {
+  readonly stagedState?: ArtifactStagedState;
   readonly sessionId: string;
   readonly lineageId: ArtifactLineageId;
   readonly snapshot: CakeArtifactV1;
@@ -99,6 +102,7 @@ export const create = Effect.fn("Artifacts.create")(function* (input: CreateArti
           expectedLatestRevision: 0,
           snapshot: input.snapshot,
           workingDirectory: input.workingDirectory,
+          stagedState: input.stagedState,
         },
         {
           lineageId: input.lineageId,
@@ -175,6 +179,7 @@ export const publish = Effect.fn("Artifacts.publish")(function* (input: PublishA
     expectedLatestRevision: input.expectedLatestRevision,
     snapshot: input.snapshot,
     workingDirectory: input.workingDirectory,
+    stagedState: input.stagedState,
     ...(input.restoredFromRevision === undefined
       ? null
       : { restoredFromRevision: input.restoredFromRevision }),

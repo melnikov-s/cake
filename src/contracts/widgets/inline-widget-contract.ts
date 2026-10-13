@@ -3,6 +3,7 @@ import { Schema } from "effect";
 export const inlineWidgetLanguageSchema = Schema.Literals(["html", "react"]);
 export const inlineWidgetCapabilitySchema = Schema.Literals([
   "display",
+  "artifact",
   "request",
   "session-plugin",
 ]);

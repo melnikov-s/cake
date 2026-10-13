@@ -43,7 +43,17 @@ import {
   cakeRpcSuccessSchemas,
 } from "../../contracts/application/cake-rpc-contract";
 
+import {
+  ArtifactState,
+  ArtifactStateReplacement,
+  ArtifactStateUpdate,
+  ArtifactStateConflict,
+  ArtifactStateError,
+} from "../../contracts/artifacts/artifact-state";
+
 const ArtifactOperationError = Schema.Union([
+  ArtifactStateConflict,
+  ArtifactStateError,
   ArtifactError,
   ArtifactNotFound,
   ArtifactNotLinked,
@@ -67,6 +77,21 @@ const LinkMutation = Schema.Struct({
 });
 
 export const ArtifactRpc = RpcGroup.make(
+  Rpc.make("artifacts.stateRead", {
+    payload: Schema.Struct({ sessionId: SessionId, lineageId: ArtifactLineageId }),
+    success: ArtifactState,
+    error: ArtifactOperationError,
+  }),
+  Rpc.make("artifacts.stateReplace", {
+    payload: Schema.Struct({ sessionId: SessionId, ...ArtifactStateReplacement.fields }),
+    success: ArtifactState,
+    error: ArtifactOperationError,
+  }),
+  Rpc.make("artifacts.stateUpdate", {
+    payload: Schema.Struct({ sessionId: SessionId, ...ArtifactStateUpdate.fields }),
+    success: ArtifactState,
+    error: ArtifactOperationError,
+  }),
   Rpc.make("artifacts.boardEntries", {
     payload: Schema.Struct({ lineageId: ArtifactLineageId, ...BoardBrowseInput.fields }),
     success: BoardDescriptionPage,

@@ -28,6 +28,21 @@ describe("inline widget service", () => {
     expect(inlineWidgetLayoutRequirements).toContain("No text or interactive control may overlap");
   });
 
+  it("bundles the narrow artifact SDK only in artifact widgets", async () => {
+    const source =
+      'import { useArtifactState, useArtifact } from "@cake/artifact-sdk"; export default function Widget(){ const state = useArtifactState({items: []}); const artifact = useArtifact(); return <p>{state.hydrated ? JSON.stringify(state.value) : "Loading"}</p>; }';
+    const compiled = await compileInlineWidget("react", source, "artifact");
+    expect(compiled.document).toContain("__cakeArtifactBridge");
+    expect(compiled.document).toContain("artifact-state-replace");
+    expect(compiled.document).toContain("Artifact state is not hydrated");
+    await expect(compileInlineWidget("react", source, "display")).rejects.toThrow(
+      "available only to artifact widgets",
+    );
+    await expect(compileInlineWidget("react", source, "session-plugin")).rejects.toThrow(
+      "available only to artifact widgets",
+    );
+  });
+
   it("extracts a repaired fence without surrounding agent prose", () => {
     expect(
       extractRepairedWidget("Here is the fix:\n```cake-html\n<strong>Fixed</strong>\n```", "html"),

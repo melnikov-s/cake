@@ -1,11 +1,15 @@
 import { Effect, Stream } from "effect";
 import * as artifacts from "../../domain/artifacts/artifacts";
+import * as artifactState from "../../domain/artifacts/artifactState";
 import * as messageBoards from "../../domain/artifacts/messageBoards";
 import { ClientEvents } from "../../services/clients/ClientEvents";
 import { ArtifactRpc } from "../protocol/ArtifactRpc";
 import { RendererConnection } from "../protocol/RendererConnectionMiddleware";
 
 export const artifactHandlers = ArtifactRpc.of({
+  "artifacts.stateRead": (request) => artifactState.read(request),
+  "artifacts.stateReplace": (request) => artifactState.replace(request),
+  "artifacts.stateUpdate": (request) => artifactState.update(request),
   "artifacts.respond-ui": (request) =>
     Effect.flatMap(RendererConnection, ({ connectionId }) =>
       artifacts.respondUi(connectionId, request),

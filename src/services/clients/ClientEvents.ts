@@ -38,6 +38,7 @@ export interface ClientEventsService {
     connectionId: number,
   ) => Stream.Stream<
     FocusedCakeEvent<
+      | "artifact-state-invalidated"
       | "artifact-updated"
       | "artifact-catalog-invalidated"
       | "message-board-invalidated"

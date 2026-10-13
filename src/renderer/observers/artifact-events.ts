@@ -8,12 +8,17 @@ export const observeArtifactEvents = (runtime: Runtime, root: RootStore) =>
     (client) => client.events.artifacts(),
     (event) => {
       try {
+        if (event.type === "artifact-state-invalidated") {
+          root.inlineWidgetStore.refreshArtifactState(event.lineageId);
+          return;
+        }
         if (event.type === "message-board-invalidated") {
           root.artifactLibraryStore.receiveBoardChange(event.lineageId);
           root.artifactPaneStore.receiveBoardChange(event.lineageId);
           return;
         }
         if (event.type === "renderer-events-ready") {
+          root.inlineWidgetStore.refreshArtifactState();
           // Reconcile content after stream subscription/reconnection, not only after opening.
           root.artifactLibraryStore.receiveBoardChange();
           root.artifactPaneStore.receiveBoardChange();

@@ -23,8 +23,18 @@ import {
 import { ArtifactStorage, type ArtifactCollectionInput } from "./ArtifactStorage";
 import { atomicWriteFile } from "./internal/atomicFile";
 
-const CATALOG_VERSION = 2;
+import {
+  ArtifactState,
+  ArtifactStateConflict,
+  ArtifactStateReplacement,
+} from "../../contracts/artifacts/artifact-state";
+
+const CATALOG_VERSION = 3;
 const CatalogEnvelope = Schema.Struct({ version: Schema.Int, data: Schema.Unknown });
+const CurrentCatalogData = Schema.Struct({
+  ...ArtifactCatalog.fields,
+  states: Schema.Array(ArtifactState),
+});
 const LegacyCatalogV1 = Schema.Struct({
   lineages: ArtifactCatalog.fields.lineages,
   links: Schema.Array(
@@ -176,6 +186,21 @@ export const makeArtifactStorageLive = (root: string) =>
       const path = yield* Path.Path;
       const lock = yield* Semaphore.make(1);
       const catalogPath = path.join(root, "catalog.json");
+      // Transaction scratch, refreshed from disk under the same repository lock on every load.
+      // The envelope is replaced atomically; it contains only the current value, never state history.
+      let currentStates: ReadonlyArray<ArtifactState> = [];
+      const stateFor = (lineageId: ArtifactLineageId): ArtifactState =>
+        currentStates.find((state) => state.lineageId === lineageId) ?? {
+          lineageId,
+          version: 0,
+          value: null,
+        };
+      const replaceCurrentState = (next: ArtifactState) => {
+        currentStates = [
+          ...currentStates.filter((state) => state.lineageId !== next.lineageId),
+          next,
+        ];
+      };
       const blobDirectory = path.join(root, "blobs");
       const blobPath = (value: string) => path.join(blobDirectory, `${value}.json`);
 
@@ -201,7 +226,7 @@ export const makeArtifactStorageLive = (root: string) =>
         yield* writeText(
           "save",
           catalogPath,
-          `${JSON.stringify({ version: CATALOG_VERSION, data: encoded }, null, 2)}\n`,
+          `${JSON.stringify({ version: CATALOG_VERSION, data: { ...encoded, states: currentStates.filter((state) => catalog.lineages.some((lineage) => lineage.id === state.lineageId)) } }, null, 2)}\n`,
         );
       });
 
@@ -694,6 +719,7 @@ export const makeArtifactStorageLive = (root: string) =>
           .exists(catalogPath)
           .pipe(Effect.mapError((cause) => storageError("load", cause)));
         if (!exists) {
+          currentStates = [];
           const migrated = yield* migrateLegacyUnlocked();
           yield* saveUnlocked(migrated);
           return migrated;
@@ -703,6 +729,7 @@ export const makeArtifactStorageLive = (root: string) =>
           Effect.mapError((cause) => storageError("load", cause)),
         );
         let current: ArtifactCatalog;
+        currentStates = [];
         if (envelope.version === 1) {
           const legacy = yield* Schema.decodeUnknownEffect(LegacyCatalogV1)(envelope.data).pipe(
             Effect.mapError((cause) => storageError("migrate", cause)),
@@ -717,10 +744,24 @@ export const makeArtifactStorageLive = (root: string) =>
             })),
           };
           yield* saveUnlocked(current);
-        } else if (envelope.version === CATALOG_VERSION) {
+        } else if (envelope.version === 2) {
           current = yield* Schema.decodeUnknownEffect(ArtifactCatalog)(envelope.data).pipe(
             Effect.mapError((cause) => storageError("load", cause)),
           );
+          yield* saveUnlocked(current);
+        } else if (envelope.version === CATALOG_VERSION) {
+          const decoded = yield* Schema.decodeUnknownEffect(CurrentCatalogData)(envelope.data).pipe(
+            Effect.mapError((cause) => storageError("load", cause)),
+          );
+          current = { lineages: decoded.lineages, links: decoded.links };
+          currentStates = decoded.states;
+          if (
+            new Set(currentStates.map((state) => state.lineageId)).size !== currentStates.length ||
+            currentStates.some(
+              (state) => !current.lineages.some((lineage) => lineage.id === state.lineageId),
+            )
+          )
+            return yield* storageError("load", "Invalid artifact current-state collection");
         } else {
           return yield* storageError(
             "load",
@@ -781,6 +822,22 @@ export const makeArtifactStorageLive = (root: string) =>
             expectedLatestRevision: input.expectedLatestRevision,
             actualLatestRevision,
           });
+        const stagedState =
+          input.stagedState === undefined
+            ? undefined
+            : yield* Schema.decodeUnknownEffect(ArtifactStateReplacement)({
+                lineageId: input.lineageId,
+                ...input.stagedState,
+              }).pipe(Effect.mapError((cause) => storageError("publishState", cause)));
+        const previousState = stateFor(input.lineageId);
+        if (stagedState && previousState.version !== stagedState.expectedVersion)
+          return yield* new ArtifactStateConflict({
+            lineageId: input.lineageId,
+            expectedVersion: stagedState.expectedVersion,
+            actualVersion: previousState.version,
+          });
+        if (stagedState && input.snapshot.kind !== "widget")
+          return yield* storageError("publishState", "Only widgets own mutable state");
         const nextRevision = actualLatestRevision + 1;
         if (input.snapshot.id !== input.lineageId || input.snapshot.revision !== nextRevision)
           return yield* storageError(
@@ -843,6 +900,12 @@ export const makeArtifactStorageLive = (root: string) =>
               latestRevision: revision,
               revisions: [metadata],
             };
+        if (stagedState)
+          replaceCurrentState({
+            lineageId: input.lineageId,
+            version: previousState.version + 1,
+            value: stagedState.value,
+          });
         yield* saveUnlocked({
           lineages: lineage
             ? catalog.lineages.map((candidate) =>
@@ -1100,7 +1163,56 @@ export const makeArtifactStorageLive = (root: string) =>
         ),
       );
 
+      const readState = Effect.fn("ArtifactStorage.readState")((lineageId: ArtifactLineageId) =>
+        lock.withPermits(1)(
+          Effect.gen(function* () {
+            const catalog = yield* loadUnlocked();
+            const lineage = catalog.lineages.find((item) => item.id === lineageId);
+            if (!lineage || lineage.revisions.at(-1)?.kind !== "widget")
+              return yield* storageError(
+                "readState",
+                "Mutable state requires an existing widget artifact",
+              );
+            return stateFor(lineageId);
+          }),
+        ),
+      );
+      const replaceState = Effect.fn("ArtifactStorage.replaceState")(
+        (input: ArtifactStateReplacement) =>
+          lock.withPermits(1)(
+            Effect.gen(function* () {
+              const decoded = yield* Schema.decodeUnknownEffect(ArtifactStateReplacement)(
+                input,
+              ).pipe(Effect.mapError((cause) => storageError("replaceState", cause)));
+              const catalog = yield* loadUnlocked();
+              const lineage = catalog.lineages.find((item) => item.id === decoded.lineageId);
+              if (!lineage || lineage.revisions.at(-1)?.kind !== "widget")
+                return yield* storageError(
+                  "replaceState",
+                  "Mutable state requires an existing widget artifact",
+                );
+              const previous = stateFor(decoded.lineageId);
+              if (previous.version !== decoded.expectedVersion)
+                return yield* new ArtifactStateConflict({
+                  lineageId: decoded.lineageId,
+                  expectedVersion: decoded.expectedVersion,
+                  actualVersion: previous.version,
+                });
+              const next: ArtifactState = {
+                lineageId: decoded.lineageId,
+                version: previous.version + 1,
+                value: decoded.value,
+              };
+              replaceCurrentState(next);
+              yield* saveUnlocked(catalog);
+              return next;
+            }),
+          ),
+      );
+
       return ArtifactStorage.of({
+        readState,
+        replaceState,
         publish,
         publishWithLink,
         read,

@@ -59,6 +59,7 @@ export const RendererRoot = observer(function RendererRoot({
                     <InlineArtifactPreview
                       reference={formatArtifactRef(parseArtifactRef(reference))}
                       label={label}
+                      stateSessionId={activeSessionId}
                       store={rootStore.inlineArtifactPreviewStore}
                       inlineWidgets={rootStore.inlineWidgetStore}
                     />

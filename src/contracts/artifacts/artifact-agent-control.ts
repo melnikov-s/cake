@@ -4,7 +4,12 @@ import type {
   InlineWidgetRevisionRequest,
 } from "../widgets/widget-generation";
 
-import type { ArtifactStagedState } from "./artifact-state";
+import type {
+  ArtifactStagedState,
+  ArtifactState,
+  ArtifactStateReplacement,
+  ArtifactStateUpdate,
+} from "./artifact-state";
 import type { ArtifactRecord, CakeArtifactV1 } from "./artifact-contract";
 import type { ArtifactProjectionMetadata } from "./artifact-projection-data";
 
@@ -14,6 +19,9 @@ export interface ResolvedAgentArtifact {
 }
 
 export interface CakeArtifactOperationOptions {
+  readArtifactState?(lineageId: string): Promise<ArtifactState>;
+  replaceArtifactState?(input: ArtifactStateReplacement): Promise<ArtifactState>;
+  updateArtifactState?(input: ArtifactStateUpdate): Promise<ArtifactState>;
   persistArtifact(
     artifact: CakeArtifactV1,
     stagedState?: ArtifactStagedState,

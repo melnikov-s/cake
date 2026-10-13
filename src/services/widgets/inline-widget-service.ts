@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { build, type Message, type Plugin } from "esbuild";
 
 export type InlineWidgetLanguage = "html" | "react";
-export type InlineWidgetCapability = "display" | "request" | "session-plugin";
+export type InlineWidgetCapability = "display" | "artifact" | "request" | "session-plugin";
 
 export interface CompiledInlineWidgetDocument {
   document: string;
@@ -148,6 +148,62 @@ function runtimeBridge(token: string, capability: InlineWidgetCapability) {
   });`
       : ""
   }
+  ${
+    capability === "artifact"
+      ? `
+  const stateListeners = new Set();
+  const statePending = new Map();
+  let stateRequestId = 0;
+  let stateSnapshot = Object.freeze({ hydrated: false, version: 0, value: null, error: null });
+  const publishState = (next) => { stateSnapshot = Object.freeze(next); for (const listener of stateListeners) listener(); };
+  const requestState = (type, value) => new Promise((resolve, reject) => {
+    const id = String(++stateRequestId);
+    const timeout = setTimeout(() => {
+      statePending.delete(id);
+      const error = "Artifact state host is disconnected";
+      publishState({ ...stateSnapshot, hydrated: false, error });
+      reject(new Error(error));
+    }, 15000);
+    statePending.set(id, { resolve, reject, timeout });
+    send(type, { id, ...value });
+  });
+  addEventListener("message", (event) => {
+    const message = event.data;
+    if (event.source !== parent || message?.source !== "cake-artifact-host" || message.token !== token) return;
+    if (message.type === "state") {
+      const state = message.value;
+      if (state.version < stateSnapshot.version) return;
+      publishState({ hydrated: true, version: state.version, value: state.value, error: null });
+    }
+    if (message.type === "state-error") publishState({ ...stateSnapshot, hydrated: false, error: message.value });
+    if (message.type === "state-result") {
+      const operation = statePending.get(message.value.id);
+      if (!operation) return;
+      clearTimeout(operation.timeout);
+      statePending.delete(message.value.id);
+      if (message.value.ok) {
+        const state = message.value.state;
+        if (state.version >= stateSnapshot.version) publishState({ hydrated: true, version: state.version, value: state.value, error: null });
+        operation.resolve(state);
+      } else {
+        publishState({ ...stateSnapshot, error: message.value.error || "Artifact state operation failed" });
+        operation.reject(new Error(message.value.error || "Artifact state operation failed"));
+      }
+    }
+  });
+  globalThis.__cakeArtifactBridge = Object.freeze({
+    getSnapshot: () => stateSnapshot,
+    subscribe(listener) { stateListeners.add(listener); return () => stateListeners.delete(listener); },
+    read: () => requestState("artifact-state-read", {}),
+    replace(value, expectedVersion = stateSnapshot.version) {
+      if (!stateSnapshot.hydrated || stateSnapshot.error) return Promise.reject(new Error("Artifact state is not hydrated; read before saving"));
+      return requestState("artifact-state-replace", { value, expectedVersion });
+    },
+  });
+  addEventListener("DOMContentLoaded", () => { globalThis.__cakeArtifactBridge.read().catch(() => undefined); });
+  `
+      : ""
+  }
   addEventListener("DOMContentLoaded", () => {
     const startedAt = performance.now();
     let changedAt = startedAt;
@@ -234,6 +290,25 @@ function widgetModulePlugin(source: string): Plugin {
         path: "widget.tsx",
         namespace: "cake-widget",
       }));
+      builder.onResolve({ filter: /^@cake\/artifact-sdk$/ }, () => ({
+        path: "artifact-sdk.ts",
+        namespace: "cake-artifact-sdk",
+      }));
+      builder.onLoad({ filter: /.*/, namespace: "cake-artifact-sdk" }, () => ({
+        loader: "ts",
+        contents: [
+          'import { useCallback, useSyncExternalStore } from "react";',
+          "const bridge = globalThis.__cakeArtifactBridge;",
+          'if (!bridge) throw new Error("@cake/artifact-sdk is only available in artifact widgets");',
+          "export function useArtifact() { const snapshot = useSyncExternalStore(bridge.subscribe, bridge.getSnapshot, bridge.getSnapshot); return { ...snapshot, read: bridge.read, replace: bridge.replace }; }",
+          "export function useArtifactState(initialValue = null) {",
+          "  const snapshot = useSyncExternalStore(bridge.subscribe, bridge.getSnapshot, bridge.getSnapshot);",
+          "  const save = useCallback((value) => bridge.replace(value), []);",
+          "  return { value: snapshot.version === 0 ? initialValue : snapshot.value, hydrated: snapshot.hydrated, version: snapshot.version, error: snapshot.error, save, reload: bridge.read };",
+          "}",
+        ].join("\n"),
+        resolveDir: cakeModuleResolveDirectory,
+      }));
       builder.onResolve({ filter: /^@cake\/plugin-sdk$/ }, () => ({
         path: "plugin-sdk.ts",
         namespace: "cake-plugin-sdk",
@@ -269,7 +344,11 @@ function widgetModulePlugin(source: string): Plugin {
         resolveDir: process.cwd(),
       }));
       builder.onResolve({ filter: /.*/, namespace: "cake-widget" }, (args) => {
-        if (!inlineWidgetSharedModules.has(args.path) && args.path !== "@cake/plugin-sdk") {
+        if (
+          !inlineWidgetSharedModules.has(args.path) &&
+          args.path !== "@cake/plugin-sdk" &&
+          args.path !== "@cake/artifact-sdk"
+        ) {
           return {
             errors: [
               {
@@ -315,6 +394,8 @@ export async function compileInlineWidget(
   ].join("\n");
   if (capability !== "session-plugin" && source.includes("@cake/plugin-sdk"))
     throw new Error("@cake/plugin-sdk is available only to Session Plugins");
+  if (capability !== "artifact" && source.includes("@cake/artifact-sdk"))
+    throw new Error("@cake/artifact-sdk is available only to artifact widgets");
   const widgetModules = widgetModulePlugin(source);
   const result = await build({
     stdin: {

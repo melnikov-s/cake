@@ -103,6 +103,96 @@ export default function ExpandingWidget() {
       expandingFrame.getByRole("button", { name: "Reachable late control" }),
     ).toBeVisible();
 
+    const artifact = await callRpcHarness<{ widget: { token: string; url: string } }>(
+      harness,
+      "invokeNative",
+      {
+        type: "compile-inline-widget",
+        language: "react",
+        capability: "artifact",
+        source: `import { useArtifactState } from "@cake/artifact-sdk";
+export default function Editor() {
+  const state = useArtifactState({count: 0});
+  if (!state.hydrated) return <p>Hydrating artifact</p>;
+  return <button onClick={() => state.save({count: state.value.count + 1})}>Saved count {state.value.count}</button>;
+}`,
+      },
+    );
+    await page.evaluate(({ url, token }) => {
+      const frame = document.querySelector<HTMLIFrameElement>('iframe[title="CSP React widget"]');
+      if (!frame) throw new Error("Widget frame is unavailable");
+      let state = { version: 1, value: { count: 2 } };
+      window.addEventListener("message", (event) => {
+        if (event.source !== frame.contentWindow) return;
+        // SAFETY: Fixed fixture's protocol fields are checked before processing any state request.
+        const message = event.data as {
+          source?: string;
+          token?: string;
+          type?: string;
+          value?: { id?: string; expectedVersion?: number; value?: { count: number } };
+        };
+        if (
+          message.source !== "cake-inline-widget" ||
+          message.token !== token ||
+          !message.value?.id
+        )
+          return;
+        if (message.type === "artifact-state-replace") {
+          if (message.value.expectedVersion !== state.version || !message.value.value)
+            throw new Error("Unexpected state CAS");
+          state = { version: state.version + 1, value: message.value.value };
+          Object.assign(window, { __cakeArtifactSmokeSaved: state });
+        }
+        if (message.type === "artifact-state-read" || message.type === "artifact-state-replace")
+          frame.contentWindow?.postMessage(
+            {
+              source: "cake-artifact-host",
+              token,
+              type: "state-result",
+              value: { id: message.value.id, ok: true, state },
+            },
+            "*",
+          );
+      });
+      frame.src = url;
+    }, artifact.widget);
+    const artifactFrame = iframe.contentFrame();
+    await expect(artifactFrame.getByRole("button", { name: "Saved count 2" })).toBeVisible();
+    await artifactFrame.getByRole("button", { name: "Saved count 2" }).click();
+    await expect(artifactFrame.getByRole("button", { name: "Saved count 3" })).toBeVisible();
+    expect(await page.evaluate(() => Reflect.get(window, "__cakeArtifactSmokeSaved"))).toEqual({
+      version: 2,
+      value: { count: 3 },
+    });
+    // The mounted widget responds to an agent/host invalidation without reloading its frame.
+    await page.evaluate(({ token }) => {
+      const frame = document.querySelector<HTMLIFrameElement>('iframe[title="CSP React widget"]');
+      frame?.contentWindow?.postMessage(
+        {
+          source: "cake-artifact-host",
+          token,
+          type: "state",
+          value: { version: 3, value: { count: 8 } },
+        },
+        "*",
+      );
+    }, artifact.widget);
+    await expect(artifactFrame.getByRole("button", { name: "Saved count 8" })).toBeVisible();
+    await page.evaluate(() => {
+      document
+        .querySelector<HTMLIFrameElement>('iframe[title="CSP React widget"]')
+        ?.contentWindow?.postMessage(
+          {
+            source: "cake-artifact-host",
+            token: "wrong-token",
+            type: "state",
+            value: { version: 4, value: { count: 999 } },
+          },
+          "*",
+        );
+    });
+    await expect(artifactFrame.getByRole("button", { name: "Saved count 8" })).toBeVisible();
+
     const plugin = await callRpcHarness<{
       widget: { token: string; url: string };
     }>(harness, "invokeNative", {

@@ -73,6 +73,10 @@ describe("RenderedWidgetCaptureLive", () => {
       expect(script).toContain("value.token !== token");
       expect(script).toContain(widget.url);
       expect(script).toContain('pluginState: {"count":1}');
+      expect(script).toContain('let artifactState = { version: 1, value: {"count":1} }');
+      expect(script).toContain('value.type === "artifact-state-read"');
+      expect(script).toContain('source: "cake-artifact-host"');
+      expect(script).toContain("request.expectedVersion !== artifactState.version");
       expect(native.destroy).toHaveBeenCalledOnce();
     }).pipe(Effect.provide(RenderedWidgetCaptureLive)),
   );

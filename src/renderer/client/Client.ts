@@ -428,7 +428,25 @@ interface InterviewCommands {
   ): Promise<void>;
 }
 
+import type {
+  ArtifactState,
+  ArtifactStateReplacement,
+  ArtifactStateUpdate,
+} from "../../contracts/artifacts/artifact-state";
+
 interface ArtifactCommands {
+  stateRead(
+    input: { sessionId: string; lineageId: ArtifactLineageId },
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactState>;
+  stateReplace(
+    input: ArtifactStateReplacement & { sessionId: string },
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactState>;
+  stateUpdate(
+    input: ArtifactStateUpdate & { sessionId: string },
+    options?: ClientCommandOptions,
+  ): Promise<ArtifactState>;
   boardEntries(
     input: { lineageId: ArtifactLineageId; after?: number; limit?: number; recent?: boolean },
     options?: ClientCommandOptions,

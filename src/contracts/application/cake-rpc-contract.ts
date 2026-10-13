@@ -97,6 +97,10 @@ const cakeEventSchemas = {
     type: Schema.Literal("message-board-invalidated"),
     lineageId: ArtifactLineageId,
   }),
+  "artifact-state-invalidated": Schema.Struct({
+    type: Schema.Literal("artifact-state-invalidated"),
+    lineageId: ArtifactLineageId,
+  }),
   "artifact-catalog-invalidated": Schema.Struct({
     type: Schema.Literal("artifact-catalog-invalidated"),
     lineageId: stringMax(256),
@@ -310,6 +314,7 @@ export const applicationEventSchema = Schema.Union([
 ]);
 
 export const artifactEventSchema = Schema.Union([
+  cakeEventSchemas["artifact-state-invalidated"],
   cakeEventSchemas["renderer-events-ready"],
   cakeEventSchemas["message-board-invalidated"],
   cakeEventSchemas["artifact-updated"],
@@ -344,6 +349,7 @@ export const surfaceEventSchema = Schema.Union([
 ]);
 
 export const cakeEventSchema = Schema.Union([
+  cakeEventSchemas["artifact-state-invalidated"],
   cakeEventSchemas["screen-capture-requested"],
   cakeEventSchemas["window-blurred"],
   cakeEventSchemas["renderer-events-ready"],

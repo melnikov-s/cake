@@ -191,6 +191,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
               ? `cake://artifact/${part.artifactId}@r${part.artifactRevision}`
               : `cake://artifact/${part.artifactId}`
           }
+          stateSessionId={behavior.store.id}
           store={behavior.inlineArtifactPreviews}
           inlineWidgets={behavior.inlineWidgets}
         />
@@ -199,6 +200,7 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       return (
         <ArtifactHost
           record={record}
+          stateSessionId={behavior.store.id}
           inlineWidgets={behavior.inlineWidgets}
           onOpenSourceLocation={behavior.openSourceLocation}
           presentation="inline"

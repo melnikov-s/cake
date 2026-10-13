@@ -1,6 +1,7 @@
 import type { CakeArtifactOperationOptions } from "../../contracts/artifacts/artifact-agent-control";
 import type { CakeOperationHost } from "../../contracts/agent/cake-operation-context";
 import { editText } from "../../services/pi/edit-text";
+import { createCakeArtifactStateOperations } from "./cake-artifact-state-operations";
 import { Schema } from "effect";
 import { jsonValueSchema } from "../../contracts/serialization/json-contract";
 
@@ -198,6 +199,7 @@ export function createCakeArtifactOperations(
     });
 
   const operations: CakeOperationDefinition[] = [
+    ...createCakeArtifactStateOperations(options),
     {
       command: "artifacts.list",
       topic: "artifacts",

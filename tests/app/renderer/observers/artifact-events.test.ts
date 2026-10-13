@@ -96,6 +96,7 @@ describe("observeArtifactEvents", () => {
     const refresh = vi.fn();
     const root = {
       refreshSessionArtifacts: refresh,
+      inlineWidgetStore: { refreshArtifactState: vi.fn() },
       artifactLibraryStore: { load: vi.fn(async () => undefined), receiveBoardChange: vi.fn() },
       artifactPaneStore: { receiveBoardChange: vi.fn() },
       projectWorkbenchStore: { setError: vi.fn() },
@@ -158,6 +159,7 @@ describe("observeArtifactEvents", () => {
 
     const projection = RootProjection.create();
     const root = {
+      inlineWidgetStore: { refreshArtifactState: vi.fn() },
       refreshSessionArtifacts: () => {
         parent.subject.receive();
         child.subject.receive();

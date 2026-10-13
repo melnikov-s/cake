@@ -369,7 +369,7 @@ describe("ArtifactStorage", () => {
         }),
       ]),
     );
-    expect(JSON.parse(await readFile(join(root, "catalog.json"), "utf8")).version).toBe(2);
+    expect(JSON.parse(await readFile(join(root, "catalog.json"), "utf8")).version).toBe(3);
 
     await rm(join(root, "sessions"), { recursive: true });
     const reloaded = await makeStorage(root);

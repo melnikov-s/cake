@@ -166,7 +166,7 @@ describe("ArtifactHost", () => {
     );
     try {
       await waitFor(() => expect(view.container.querySelector("iframe")).not.toBeNull());
-      expect(compile).toHaveBeenCalledWith("react", source, "display");
+      expect(compile).toHaveBeenCalledWith("react", source, "artifact");
       const frame = view.container.querySelector("iframe")!;
       expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
       expect(view.container.textContent).not.toContain(source);

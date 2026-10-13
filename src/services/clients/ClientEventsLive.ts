@@ -98,6 +98,7 @@ export const ClientEventsLive = Layer.effect(
         focused(
           connectionId,
           "artifacts",
+          "artifact-state-invalidated",
           "artifact-updated",
           "artifact-catalog-invalidated",
           "message-board-invalidated",

@@ -7,6 +7,7 @@ import {
   parseArtifactRef,
 } from "../contracts/artifacts/artifact-lineage";
 import * as artifactWorkflows from "../domain/artifacts/artifactWorkflows";
+import * as artifactState from "../domain/artifacts/artifactState";
 import * as messageBoards from "../domain/artifacts/messageBoards";
 import type { MessageBoardStorage } from "../services/storage/MessageBoardStorage";
 import { ClientEvents } from "../services/clients/ClientEvents";
@@ -213,7 +214,28 @@ export const makeProjectSessionRuntimeHostLive = (
           },
           importWorkspaceFile: (input) => runAdapter(importWorkspaceFile(input)),
           artifactRepository: {
-            upsert: (workingDirectory, artifact) =>
+            readState: (targetSessionId, lineageId) =>
+              provideArtifactServices(
+                Effect.gen(function* () {
+                  return yield* artifactState.read({
+                    sessionId: targetSessionId,
+                    lineageId: yield* Schema.decodeUnknownEffect(ArtifactLineageId)(lineageId),
+                  });
+                }),
+              ),
+            replaceState: (targetSessionId, input) =>
+              provideArtifactServices(
+                artifactState
+                  .replace({ ...input, sessionId: targetSessionId })
+                  .pipe(Effect.provideService(ClientEvents, clientEvents)),
+              ),
+            updateState: (targetSessionId, input) =>
+              provideArtifactServices(
+                artifactState
+                  .update({ ...input, sessionId: targetSessionId })
+                  .pipe(Effect.provideService(ClientEvents, clientEvents)),
+              ),
+            upsert: (workingDirectory, artifact, stagedState) =>
               Effect.gen(function* () {
                 const lineageId = yield* Schema.decodeUnknownEffect(ArtifactLineageId)(artifact.id);
                 const revision =
@@ -224,6 +246,7 @@ export const makeProjectSessionRuntimeHostLive = (
                           lineageId,
                           snapshot: artifact,
                           workingDirectory,
+                          stagedState,
                         }),
                       )
                     : yield* provideArtifactServices(
@@ -233,8 +256,11 @@ export const makeProjectSessionRuntimeHostLive = (
                           expectedLatestRevision: artifact.revision - 1,
                           snapshot: artifact,
                           workingDirectory,
+                          stagedState,
                         }),
                       );
+                if (stagedState)
+                  clientEvents.broadcast({ type: "artifact-state-invalidated", lineageId });
                 return artifactRevisionToRecord(revision);
               }),
             get: (_workingDirectory, sessionId, artifactId) =>

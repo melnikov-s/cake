@@ -14,7 +14,15 @@ import type {
   ArtifactPublicationConflict,
 } from "../../contracts/storage/artifact-storage-errors";
 
+import type {
+  ArtifactState,
+  ArtifactStateReplacement,
+  ArtifactStagedState,
+  ArtifactStateConflict,
+} from "../../contracts/artifacts/artifact-state";
+
 interface PublishArtifactRevision {
+  readonly stagedState?: ArtifactStagedState;
   readonly lineageId: ArtifactLineageId;
   readonly expectedLatestRevision: number;
   readonly snapshot: CakeArtifactV1;
@@ -43,14 +51,26 @@ interface ArtifactCollectionStats {
 }
 
 export interface ArtifactStorageService {
+  readonly readState: (
+    lineageId: ArtifactLineageId,
+  ) => Effect.Effect<ArtifactState, ArtifactStorageError>;
+  readonly replaceState: (
+    input: ArtifactStateReplacement,
+  ) => Effect.Effect<ArtifactState, ArtifactStorageError | ArtifactStateConflict>;
   readonly publish: (
     input: PublishArtifactRevision,
-  ) => Effect.Effect<ArtifactRevision, ArtifactStorageError | ArtifactPublicationConflict>;
+  ) => Effect.Effect<
+    ArtifactRevision,
+    ArtifactStorageError | ArtifactPublicationConflict | ArtifactStateConflict
+  >;
   /** Publishes revision one and its initial reachability link in one catalog mutation. */
   readonly publishWithLink: (
     input: PublishArtifactRevision,
     link: ArtifactLink,
-  ) => Effect.Effect<ArtifactRevision, ArtifactStorageError | ArtifactPublicationConflict>;
+  ) => Effect.Effect<
+    ArtifactRevision,
+    ArtifactStorageError | ArtifactPublicationConflict | ArtifactStateConflict
+  >;
   readonly read: (
     lineageId: ArtifactLineageId,
     revision?: ArtifactRevisionNumber,

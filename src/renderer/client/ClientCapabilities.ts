@@ -653,6 +653,16 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
         ),
     },
     artifacts: {
+      stateRead: (input, options) =>
+        execute("artifacts.stateRead", (client) => client.artifacts.stateRead(input), options),
+      stateReplace: (input, options) =>
+        execute(
+          "artifacts.stateReplace",
+          (client) => client.artifacts.stateReplace(input),
+          options,
+        ),
+      stateUpdate: (input, options) =>
+        execute("artifacts.stateUpdate", (client) => client.artifacts.stateUpdate(input), options),
       boardEntries: (input, options) =>
         execute(
           "artifacts.boardEntries",
