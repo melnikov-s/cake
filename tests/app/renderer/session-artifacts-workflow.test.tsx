@@ -238,6 +238,29 @@ const visualMetadata = () => ({
 });
 
 describe("Session artifact workflows", () => {
+  it("renders repeated inline presentations as independent surfaces and preserves selected source through the Message projection", async () => {
+    using fixture = renderSessionArtifacts(
+      {},
+      [effective(2)],
+      [
+        { ...visualPart, artifactId: "shared", artifactRevision: 2 },
+        ...["first", "second"].map((id): UiPart => ({
+          ...visualPart,
+          id,
+          command: "artifacts.present",
+          artifactId: "shared",
+          artifactRevision: 1,
+          artifactReference: "cake://artifact/shared@r1",
+        })),
+      ],
+    );
+    await waitFor(() => expect(screen.getAllByText("Family report content r1")).toHaveLength(2));
+    expect(screen.getAllByText("Family report content r2")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Family report Collapse" })).toHaveLength(3);
+    await fixture.user.click(screen.getAllByRole("button", { name: "Family report Collapse" })[1]!);
+    expect(screen.getAllByText("Family report content r1")).toHaveLength(1);
+  });
+
   it("updates already-open publication and pane instances while keeping an explicit historical embed and history selection pinned", async () => {
     let latest = 1;
     const summary = () => ({

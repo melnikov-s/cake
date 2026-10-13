@@ -164,6 +164,7 @@ export function createCakeArtifactOperations(
   const appendPointer = (
     record: ArtifactRecord,
     origin: { assistantEntryId: string; toolCallId: string },
+    presentation?: "selected-revision",
   ) => {
     pi.appendEntry(
       "cake.artifact/v1",
@@ -177,6 +178,7 @@ export function createCakeArtifactOperations(
         stableRef: `cake://artifact/${record.artifact.id}`,
         exactRef: `cake://artifact/${record.artifact.id}@r${record.artifact.revision}`,
         origin,
+        ...(presentation === undefined ? null : { presentation }),
       }),
     );
   };
@@ -281,6 +283,30 @@ export function createCakeArtifactOperations(
         // SAFETY: CakeOperationRegistry parsed input with artifactResolveSchema.
         const parsed = input as typeof artifactResolveSchema.Type;
         return (await resolveArtifact(parsed.reference)).metadata;
+      },
+    },
+    {
+      command: "artifacts.present",
+      topic: "artifacts",
+      summary: "Show an existing linked artifact again inline at this tool call.",
+      guidance: [
+        "Use this when the user wants to see an existing artifact again, including after state-only edits. Do not regenerate it with widgets.present, replace it, or repeat a Markdown embed.",
+        "Stable references resolve the current source; exact @rN references select that immutable source revision. Widgets hydrate current lineage state in either case.",
+        "Each successful call adds a new inline surface, even if the same revision was already published or presented. No artifact revision, link, or mutable state is changed. All artifact kinds use their existing renderer and sandbox.",
+        "This presents to the user, not a new model-visible screenshot. Use artifacts.preview for the retained review image.",
+      ],
+      inputSchema: artifactResolveSchema,
+      outputSchema: ArtifactProjectionMetadata,
+      examples: [{ input: { reference: "cake://artifact/architecture-map" } }],
+      result: "Selected exact-revision metadata; the artifact renders inline in the conversation.",
+      async execute(input, context) {
+        // SAFETY: CakeOperationRegistry parsed input with artifactResolveSchema.
+        const { reference } = input as typeof artifactResolveSchema.Type;
+        const origin = pointerOrigin(context);
+        const resolved = await resolveArtifact(reference);
+        if (context.signal.aborted) throw new Error("Artifact presentation was cancelled");
+        appendPointer(resolved.record, origin, "selected-revision");
+        return resolved.metadata;
       },
     },
     {
@@ -607,7 +633,7 @@ export function createCakeArtifactOperations(
         "Supply the explanation goal, audience, verified facts/source references, bounded data, and a readable Markdown fallback. Do not write the generated React source yourself.",
         "Publication supplies the accepted rendered preview to the agent as a native image, with an immutable exact reference. The user sees a live interactive widget. Before implementing an approved design, inspect that exact preview (artifacts.preview or the resolved preview.png), not merely your original brief. Read projected source selectively when needed and compare the implementation's real screenshot against the approved revision.",
         "The specialist can read domain skills and combine React, installed widget libraries, editable canvases, filters and details. Supply initialState for artifact-scoped JSON data; the widget owns its format and save timing. Describe intended relationships and useful interactions, not pixel coordinates or a mandatory graph DSL.",
-        "The published visualization is shown once inline, expanded by default with a collapse control. Do not repeat its embed or add an Open artifact link after publication. A standalone ![Title](cake://artifact/<id>@rN) paragraph can show a saved revision without a publication surface in this conversation; duplicate embeds of published exact revisions are omitted. Ordinary [Title](cake://artifact/<id>) links stay compact. Use exact revisions for historical explanations.",
+        "The published visualization is shown inline, expanded by default with a collapse control. Do not add a redundant embed or Open artifact link after publication. To show an existing artifact again on demand, use artifacts.present with its stable or exact reference, not widgets.present regeneration or duplicate Markdown embeds. Ordinary [Title](cake://artifact/<id>) links stay compact. Use exact revisions for historical explanations.",
       ],
       inputSchema: Schema.Struct({ widget: widgetSchema }),
       examples: [

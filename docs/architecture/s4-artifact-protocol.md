@@ -149,7 +149,7 @@ is the Cake-home artifact repository, and the v1 inline protocol cap is
 ## Tools and interaction lifecycle
 
 The built-in `cake` gateway exposes session-contextual `artifacts.list`,
-`artifacts.search`, `artifacts.history`, `artifacts.resolve-reference`, `artifacts.preview`,
+`artifacts.search`, `artifacts.history`, `artifacts.resolve-reference`, `artifacts.present`, `artifacts.preview`,
 `artifacts.create`, `artifacts.update`, `artifacts.replace`, `artifacts.restore`,
 `artifacts.link`, and `artifacts.unlink` operations over global lineages and their effective links.
 There is no payload-returning `artifacts.read` operation. Agents create
@@ -176,6 +176,29 @@ path with old content and `restoredFromRevision` metadata, producing `N+1`
 rather than moving latest. Link and unlink append no transcript pointers.
 Create, update, replace, and restore each append one bounded exact-revision pointer without
 payload or fallback content.
+
+`artifacts.present({ reference })` shows an existing effectively linked artifact
+at the current assistant tool call. It resolves through the same linked-reference
+validation as agent reads and appends a metadata-only `cake.artifact/v1` Pi
+pointer with `presentation: "selected-revision"`. Each call is an independent
+inline surface, including repeated calls for an already-published exact revision.
+The renderer pins that surface to the resolved exact source; stable input resolves
+current source and exact input respects `@rN`. Widget instances still hydrate
+current mutable lineage state, never a historical state snapshot. No generation,
+publication, link mutation, or state write occurs. All kinds reuse `ArtifactHost`
+and existing sandbox boundaries. This is user presentation, not a new screenshot
+for the model; retained review images remain `artifacts.preview`'s responsibility.
+Use this operation rather than regeneration or duplicate Markdown embeds when
+the user wants to see an existing artifact again.
+
+Catalog listing, detail, reference metadata, and paginated history use revision
+metadata, not payload decoding. Publication records the optional title in revision
+metadata. Catalog version four backfills titles from validated immutable blob
+headers, verifying digests and identities without rewriting blobs or interpreting
+historical payloads. In particular, unrelated pre-browser-output widget snapshots
+must not make an ordinary link to a valid widget fail while loading the library.
+Selected payloads still pass the full current artifact schema; unsupported
+payloads are not reinterpreted or given a compatibility rendering fallback.
 
 The `widgets.present` path remains the creation operation for substantial,
 persistent visual explanations, including architecture and dependency views. Its

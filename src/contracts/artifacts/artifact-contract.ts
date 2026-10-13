@@ -193,6 +193,8 @@ export const artifactPointerSchema = Schema.Struct({
   stableRef: artifactStableRefSchema,
   exactRef: artifactExactRefSchema,
   origin: Schema.optionalKey(artifactPointerOriginSchema),
+  // Explicit re-presentation selects this pointer's resolved immutable source.
+  presentation: Schema.optionalKey(Schema.Literal("selected-revision")),
 }).check(
   Schema.makeFilter((pointer) =>
     pointer.stableRef === `cake://artifact/${pointer.lineageId}` &&

@@ -49,6 +49,7 @@ export const ArtifactRevisionMetadata = Schema.Struct({
   revision: ArtifactRevisionNumber,
   digest: ArtifactDigest,
   kind: Schema.Union([artifactKindSchema, Schema.Literal("architecture")]),
+  title: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))),
   publishedAt: Schema.String,
   publishedBySessionId: BoundedId,
   workingDirectory: BoundedPath,

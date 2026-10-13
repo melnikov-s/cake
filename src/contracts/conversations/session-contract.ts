@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 import { InterviewRecord, InterviewResult } from "../interviews/interview";
+import { ArtifactStableRef } from "../artifacts/artifact-lineage";
 import {
   RendererApplicationState,
   UtilityModel as UtilityModelSchema,
@@ -355,6 +356,7 @@ export const uiPartSchema = Schema.Union([
     interview: Schema.optional(InterviewRecord),
     interviewResult: Schema.optional(InterviewResult),
     artifactId: Schema.optional(stringRange(1, 256)),
+    artifactReference: Schema.optional(ArtifactStableRef),
     artifactRevision: Schema.optional(
       Schema.Int.check(
         Schema.isGreaterThan(0),

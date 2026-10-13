@@ -353,24 +353,20 @@ export const searchGlobalLineages = Effect.fn("Artifacts.searchGlobalLineages")(
   const search = input?.search?.trim().toLocaleLowerCase();
   const offset = Math.max(0, input?.offset ?? 0);
   const limit = Math.min(100, Math.max(1, input?.limit ?? 50));
-  const storage = yield* ArtifactStorage;
-  const summaries = (yield* Effect.forEach(
-    catalog.lineages,
-    Effect.fn("Artifacts.summarizeLineage")(function* (lineage) {
+  const summaries = catalog.lineages
+    .map((lineage) => {
       const latest = lineage.revisions.find(
         (revision) => revision.revision === lineage.latestRevision,
       )!;
-      const value = yield* storage.read(lineage.id, lineage.latestRevision);
       return {
         id: lineage.id,
         createdAt: lineage.createdAt,
         latestRevision: lineage.latestRevision,
         latest,
-        ...(value?.snapshot.title === undefined ? null : { title: value.snapshot.title }),
+        ...(latest.title === undefined ? null : { title: latest.title }),
         stableRef: formatArtifactRef({ lineageId: lineage.id }),
       };
-    }),
-  ))
+    })
     .filter((summary) => {
       if (!search) return true;
       return (
@@ -401,14 +397,13 @@ export const lineageDetail = Effect.fn("Artifacts.lineageDetail")(function* (
   const latest = lineage.revisions.find(
     (revision) => revision.revision === lineage.latestRevision,
   )!;
-  const value = yield* (yield* ArtifactStorage).read(lineage.id, lineage.latestRevision);
   return {
     lineage: {
       id: lineage.id,
       createdAt: lineage.createdAt,
       latestRevision: lineage.latestRevision,
       latest,
-      ...(value?.snapshot.title === undefined ? null : { title: value.snapshot.title }),
+      ...(latest.title === undefined ? null : { title: latest.title }),
       stableRef: formatArtifactRef({ lineageId }),
     },
     links: catalog.links.filter((link) => link.lineageId === lineageId),
@@ -421,13 +416,15 @@ export const paginatedHistory = Effect.fn("Artifacts.paginatedHistory")(function
   offset = 0,
   requestedLimit = 50,
 ) {
-  const revisions = [...(yield* history(lineageId))].toSorted(
-    (left, right) => right.metadata.revision - left.metadata.revision,
+  const catalog = yield* (yield* ArtifactStorage).catalog();
+  const lineage = yield* requireLineage(catalog, lineageId);
+  const revisions = [...lineage.revisions].toSorted(
+    (left, right) => right.revision - left.revision,
   );
   const boundedOffset = Math.max(0, offset);
   const limit = Math.min(100, Math.max(1, requestedLimit));
   return {
-    items: revisions.slice(boundedOffset, boundedOffset + limit).map(({ metadata }) => metadata),
+    items: revisions.slice(boundedOffset, boundedOffset + limit),
     offset: boundedOffset,
     limit,
     total: revisions.length,
@@ -477,7 +474,6 @@ export const resolveReferenceMetadata = Effect.fn("Artifacts.resolveReferenceMet
   const latest = lineage.revisions.find(
     (candidate) => candidate.revision === lineage.latestRevision,
   )!;
-  const latestValue = yield* (yield* ArtifactStorage).read(lineage.id, lineage.latestRevision);
   const stableRef = formatArtifactRef({ lineageId: parsed.lineageId });
   return {
     lineage: {
@@ -485,7 +481,7 @@ export const resolveReferenceMetadata = Effect.fn("Artifacts.resolveReferenceMet
       createdAt: lineage.createdAt,
       latestRevision: lineage.latestRevision,
       latest,
-      ...(latestValue?.snapshot.title === undefined ? null : { title: latestValue.snapshot.title }),
+      ...(latest.title === undefined ? null : { title: latest.title }),
       stableRef,
     },
     revision,

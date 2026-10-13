@@ -16,6 +16,8 @@ import type { CakeArtifactV1 } from "../../../../src/contracts/artifacts/artifac
 import { ArtifactPublicationConflict } from "../../../../src/contracts/storage/artifact-storage-errors";
 import { ArtifactStorage } from "../../../../src/services/storage/ArtifactStorage";
 import { makeArtifactStorageLive } from "../../../../src/services/storage/ArtifactStorageLive";
+import { addHistoricalWidgetToCatalog } from "../../../fixtures/historical-widget-catalog";
+import * as artifactWorkflows from "../../../../src/domain/artifacts/artifactWorkflows";
 
 const directories: string[] = [];
 const disposeRuntimes: Array<() => Promise<void>> = [];
@@ -114,6 +116,49 @@ describe("artifact lineage references", () => {
 });
 
 describe("ArtifactStorage", () => {
+  it("migrates catalog titles without interpreting unrelated historical widget payloads", async () => {
+    const { root } = await temporaryRoot();
+    const storage = await makeStorage(root);
+    const published = await Effect.runPromise(
+      storage.publish({
+        lineageId: lineageId("scores"),
+        expectedLatestRevision: 0,
+        snapshot: tableSnapshot(1),
+        workingDirectory: "/project",
+      }),
+    );
+    expect(published.metadata.title).toBe("Scores 1");
+    const historical = await addHistoricalWidgetToCatalog(root);
+    const catalog = await Effect.runPromise(storage.catalog());
+    expect(catalog.lineages.map((lineage) => lineage.revisions[0]?.title)).toEqual([
+      "Scores 1",
+      "Historical widget",
+    ]);
+    expect(await readFile(join(root, "blobs", `${historical.digest}.json`), "utf8")).toBe(
+      historical.serialized,
+    );
+    expect(JSON.parse(await readFile(join(root, "catalog.json"), "utf8")).version).toBe(4);
+    const run = <A, E>(effect: Effect.Effect<A, E, ArtifactStorage>) =>
+      Effect.runPromise(effect.pipe(Effect.provideService(ArtifactStorage, storage)));
+    expect((await run(artifactWorkflows.searchGlobalLineages())).items).toHaveLength(2);
+    expect(
+      (await run(artifactWorkflows.lineageDetail(lineageId("historical-widget")))).lineage.title,
+    ).toBe("Historical widget");
+    expect(
+      (await run(artifactWorkflows.paginatedHistory(lineageId("historical-widget")))).items[0]
+        ?.title,
+    ).toBe("Historical widget");
+    expect(
+      (await run(artifactWorkflows.resolveReferenceMetadata("cake://artifact/historical-widget")))
+        .lineage.title,
+    ).toBe("Historical widget");
+    // Metadata access is not a compatibility decoder: selected payload reads stay strict.
+    await expect(Effect.runPromise(storage.read(lineageId("historical-widget")))).rejects.toThrow(
+      /Missing key\s+at \["payload"\]\["browser"\]/,
+    );
+    expect(await Effect.runPromise(storage.read(lineageId("scores")))).toEqual(published);
+  });
+
   it("retains a shared browser output until the last referencing artifact snapshot is collected", async () => {
     const { root } = await temporaryRoot();
     const browser = { digest: "b".repeat(64) };
@@ -420,7 +465,7 @@ describe("ArtifactStorage", () => {
         }),
       ]),
     );
-    expect(JSON.parse(await readFile(join(root, "catalog.json"), "utf8")).version).toBe(3);
+    expect(JSON.parse(await readFile(join(root, "catalog.json"), "utf8")).version).toBe(4);
 
     await rm(join(root, "sessions"), { recursive: true });
     const reloaded = await makeStorage(root);

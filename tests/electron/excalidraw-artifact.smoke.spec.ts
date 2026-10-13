@@ -314,12 +314,17 @@ test("installed Excalidraw edits shared live state and reopens retained output w
     // Open another ordinary instance BEFORE publishing; neither may need manual revision selection.
     const paneIframe = await openArtifact();
     await expect(paneIframe.contentFrame().locator(".excalidraw canvas").first()).toBeVisible();
-    // Chat, pane and fullscreen are all already open when r2 publishes.
+    // Fullscreen moves the pane's existing browsing context rather than cloning it.
+    const paneSource = await paneIframe.getAttribute("src");
+    if (!paneSource) throw new Error("Missing compiled pane widget URL");
     await page
       .getByRole("complementary", { name: "Artifact", exact: true })
       .getByRole("button", { name: "View Captured widget fixture fullscreen" })
       .click();
-    await expect(page.locator('iframe[title="Captured widget fixture"]')).toHaveCount(3);
+    await expect(page.locator('iframe[title="Captured widget fixture"]')).toHaveCount(2);
+    await expect(
+      page.getByRole("dialog", { name: "Captured widget fixture", exact: true }).locator("iframe"),
+    ).toHaveAttribute("src", paneSource);
     const fullscreenDrawing = page
       .getByRole("dialog", { name: "Captured widget fixture", exact: true })
       .locator("iframe")
@@ -347,8 +352,7 @@ test("installed Excalidraw edits shared live state and reopens retained output w
     // Source-only publication must not replace or re-seed the mutable document.
     expect(await invoke<State>("artifacts.state.read", stateScope)).toEqual(edited);
     await expect(fullscreenDrawing.locator('main[data-source-revision="2"]')).toBeVisible();
-    for (const instance of [iframe, paneIframe])
-      await expect(instance.contentFrame().locator('main[data-source-revision="2"]')).toBeVisible();
+    await expect(iframe.contentFrame().locator('main[data-source-revision="2"]')).toBeVisible();
     expect(
       (await invoke<State>("artifacts.state.read", stateScope)).value.elements.find(
         (element) => element.id === manualShape.id,
@@ -448,6 +452,7 @@ test("installed Excalidraw edits shared live state and reopens retained output w
       }
     }
     await page.getByRole("button", { name: "Exit fullscreen Captured widget fixture" }).click();
+    await expect(paneIframe.contentFrame().locator('main[data-source-revision="2"]')).toBeVisible();
     expect((await packages("remove", "@excalidraw/excalidraw")).packages).toEqual([]);
     await application.close();
     application = await launch();

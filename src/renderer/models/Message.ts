@@ -50,6 +50,7 @@ export class Message extends Model {
   interviewResult: Extract<UiPart, { kind: "tool" }>["interviewResult"];
   artifactId: string | undefined;
   artifactRevision: number | undefined;
+  artifactReference: string | undefined;
   filePath: string | undefined;
   diff: string | undefined;
   inputStreaming: boolean | undefined;
@@ -132,6 +133,7 @@ export class Message extends Model {
         if (part.interviewResult) this.interviewResult = part.interviewResult;
         this.artifactId = part.artifactId;
         this.artifactRevision = part.artifactRevision;
+        this.artifactReference = part.artifactReference;
         this.filePath = part.filePath;
         this.diff = part.diff;
         this.inputStreaming = part.inputStreaming;
@@ -252,6 +254,7 @@ export class Message extends Model {
           interviewResult: this.interviewResult,
           artifactId: this.artifactId,
           artifactRevision: this.artifactRevision,
+          artifactReference: this.artifactReference,
           filePath: this.filePath,
           diff: this.diff,
           inputStreaming: this.inputStreaming,

@@ -10,7 +10,7 @@ import {
   ArtifactRevisionNumber,
   type ArtifactLineage,
   type ArtifactLinkTarget,
-  type ArtifactRevisionMetadata,
+  ArtifactRevisionMetadata,
 } from "../../contracts/artifacts/artifact-lineage";
 import {
   cakeArtifactV1Schema,
@@ -30,7 +30,14 @@ import {
   ArtifactStateReplacement,
 } from "../../contracts/artifacts/artifact-state";
 
-const CATALOG_VERSION = 3;
+const CATALOG_VERSION = 4;
+// Catalog migration reads identity/title only, never interprets historical payloads.
+const StoredArtifactHeader = Schema.Struct({
+  protocol: Schema.Literal("cake.artifact/v1"),
+  id: ArtifactLineageId,
+  revision: ArtifactRevisionNumber,
+  title: ArtifactRevisionMetadata.fields.title,
+});
 const CatalogEnvelope = Schema.Struct({ version: Schema.Int, data: Schema.Unknown });
 const CurrentCatalogData = Schema.Struct({
   ...ArtifactCatalog.fields,
@@ -642,6 +649,7 @@ export const makeArtifactStorageLive = (root: string) =>
                     Effect.mapError((cause) => storageError("migrate", cause)),
                   ),
                   kind: storedKind,
+                  ...(snapshot.title === undefined ? null : { title: snapshot.title }),
                   publishedAt:
                     snapshot.revision === 1
                       ? metadataIndex.value.createdAt
@@ -744,13 +752,11 @@ export const makeArtifactStorageLive = (root: string) =>
               createdAt: link.createdAt,
             })),
           };
-          yield* saveUnlocked(current);
         } else if (envelope.version === 2) {
           current = yield* Schema.decodeUnknownEffect(ArtifactCatalog)(envelope.data).pipe(
             Effect.mapError((cause) => storageError("load", cause)),
           );
-          yield* saveUnlocked(current);
-        } else if (envelope.version === CATALOG_VERSION) {
+        } else if (envelope.version === 3 || envelope.version === CATALOG_VERSION) {
           const decoded = yield* Schema.decodeUnknownEffect(CurrentCatalogData)(envelope.data).pipe(
             Effect.mapError((cause) => storageError("load", cause)),
           );
@@ -768,6 +774,43 @@ export const makeArtifactStorageLive = (root: string) =>
             "load",
             `Unsupported artifact catalog version ${envelope.version}`,
           );
+        }
+        if (envelope.version < CATALOG_VERSION) {
+          // Backfill catalog titles without rewriting immutable source or requiring
+          // unrelated historical widgets to satisfy today's browser-output contract.
+          current = {
+            ...current,
+            lineages: yield* Effect.forEach(current.lineages, (lineage) =>
+              Effect.gen(function* () {
+                const revisions = yield* Effect.forEach(lineage.revisions, (metadata) =>
+                  Effect.gen(function* () {
+                    const serialized = yield* readText("migrateTitles", blobPath(metadata.digest));
+                    if (digest(serialized) !== metadata.digest)
+                      return yield* storageError(
+                        "migrateTitles",
+                        "Artifact blob digest does not match",
+                      );
+                    const header = yield* Schema.decodeUnknownEffect(
+                      Schema.fromJsonString(StoredArtifactHeader),
+                    )(serialized).pipe(
+                      Effect.mapError((cause) => storageError("migrateTitles", cause)),
+                    );
+                    if (header.id !== lineage.id || header.revision !== metadata.revision)
+                      return yield* storageError(
+                        "migrateTitles",
+                        "Artifact header does not match catalog",
+                      );
+                    return {
+                      ...metadata,
+                      ...(header.title === undefined ? null : { title: header.title }),
+                    };
+                  }),
+                );
+                return { ...lineage, revisions };
+              }),
+            ),
+          };
+          yield* saveUnlocked(current);
         }
         return yield* Effect.try({
           try: () => validateCatalog(current),
@@ -884,6 +927,7 @@ export const makeArtifactStorageLive = (root: string) =>
           kind: input.snapshot.kind,
           publishedAt: now,
           publishedBySessionId: input.snapshot.sessionId,
+          ...(input.snapshot.title === undefined ? null : { title: input.snapshot.title }),
           workingDirectory: input.workingDirectory,
           ...(input.restoredFromRevision === undefined
             ? null

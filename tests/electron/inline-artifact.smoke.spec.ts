@@ -3,11 +3,16 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import { Effect, Layer, ManagedRuntime } from "effect";
+import { NodeFileSystem, NodePath } from "@effect/platform-node-shared";
+import { ArtifactStorage } from "../../src/services/storage/ArtifactStorage";
+import { makeArtifactStorageLive } from "../../src/services/storage/ArtifactStorageLive";
+import { addHistoricalWidgetToCatalog } from "../fixtures/historical-widget-catalog";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
 for (const theme of ["light", "dark"] as const) {
-  test(`saved visuals appear once, expanded inline by default (${theme})`, async () => {
+  test(`artifact links validate browser payloads and saved visuals render inline (${theme})`, async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-inline-artifact-"));
     const paths = {
       cakeHome: join(root, "cake-home"),
@@ -15,6 +20,17 @@ for (const theme of ["light", "dark"] as const) {
       userData: join(root, "user-data"),
     };
     await findVisualCaptureScenario("inline-artifact")!.seed(paths, theme);
+    const artifactRoot = join(paths.cakeHome, "state", "artifacts");
+    const storageRuntime = ManagedRuntime.make(
+      makeArtifactStorageLive(artifactRoot).pipe(
+        Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
+      ),
+    );
+    await storageRuntime.runPromise(
+      Effect.flatMap(ArtifactStorage, (storage) => storage.catalog()),
+    );
+    await storageRuntime.dispose();
+    await addHistoricalWidgetToCatalog(artifactRoot);
     const app = await electron.launch({
       args: [repositoryRoot],
       cwd: repositoryRoot,
@@ -37,8 +53,21 @@ for (const theme of ["light", "dark"] as const) {
       await expect(page.getByRole("button", { name: "1 artifacts" })).toBeVisible({
         timeout: 20000,
       });
-      await expect(disclosures).toHaveCount(1);
-      await expect(page.getByRole("link", { name: "saved visualization" })).toBeVisible();
+      await page.getByRole("link", { name: "saved visualization" }).click();
+      const pane = page.locator('[data-artifact-id="inline-visual"]');
+      await expect(page.getByLabel("Search artifact library")).toBeVisible();
+      await expect(page.getByRole("button", { name: /Historical widget widget/ })).toBeVisible();
+      await expect(
+        page.getByText('Missing key at ["payload"]["browser"]', { exact: false }),
+      ).not.toBeVisible();
+
+      await expect(
+        pane
+          .locator("iframe")
+          .contentFrame()
+          .getByRole("heading", { name: "One artifact, two views" }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "Close all artifacts", exact: true }).click();
       const inline = disclosures.first();
       await expect(
         inline.getByRole("button", { name: "Inline visualization Collapse" }),
@@ -196,7 +225,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect(
         inline.locator("iframe").contentFrame().getByRole("button", { name: "Explore detail" }),
       ).toBeVisible();
-      await expect(disclosures).toHaveCount(1);
+      await expect(disclosures).toHaveCount(2);
     } finally {
       await app.close();
       await rm(root, { recursive: true, force: true });

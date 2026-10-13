@@ -244,6 +244,57 @@ describe("ProjectSessionRuntimeHostLive artifact events", () => {
     expect((await registry.invoke(request, context("independent"))).content[1]).toEqual(
       published.content[1],
     );
+    const pointers: unknown[] = [];
+    const present = new CakeOperationRegistry(
+      createCakeArtifactOperations(
+        {
+          appendEntry: (_type, data) => {
+            pointers.push(data);
+          },
+        },
+        { ...independent, persistArtifact: requireArtifactOperations(independent).persistArtifact },
+      ),
+    );
+    const catalogBefore = await runtime.runPromise(
+      Effect.flatMap(ArtifactStorage, (storage) => storage.catalog()),
+    );
+    const liveBefore = await independent.readArtifactState!("approved-design");
+    for (const [reference, revision] of [
+      ["cake://artifact/approved-design", 2],
+      ["cake://artifact/approved-design@r1", 1],
+      ["cake://artifact/approved-design@r1", 1],
+    ] as const) {
+      const result = await present.invoke(
+        { command: "artifacts.present", input: { reference } },
+        context("independent"),
+      );
+      expect(result.details).toMatchObject({ result: { selectedRevision: revision } });
+    }
+    expect(pointers).toHaveLength(3);
+    expect(pointers).toEqual(
+      [2, 1, 1].map((revision) =>
+        expect.objectContaining({
+          revision,
+          presentation: "selected-revision",
+        }),
+      ),
+    );
+    expect(
+      await runtime.runPromise(Effect.flatMap(ArtifactStorage, (storage) => storage.catalog())),
+    ).toEqual(catalogBefore);
+    expect(await independent.readArtifactState!("approved-design")).toEqual(liveBefore);
+    await independent.unlinkArtifact!("approved-design");
+    await expect(
+      present.invoke(
+        {
+          command: "artifacts.present",
+          input: { reference: "cake://artifact/approved-design" },
+        },
+        context("independent"),
+      ),
+    ).rejects.toThrow();
+    expect(pointers).toHaveLength(3);
+    await independent.linkArtifact!("cake://artifact/approved-design@r1");
     const second = await parent.resolveArtifact!("cake://artifact/approved-design@r2");
     expect(await readFile(join(second.metadata.exactPath, "preview.png"), "utf8")).toBe(
       "accepted-r2",

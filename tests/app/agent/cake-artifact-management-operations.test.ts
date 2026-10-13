@@ -121,6 +121,106 @@ function makeHarness(initial: CakeArtifactV1 = markdown(1, "one")) {
 }
 
 describe("Cake artifact management operations", () => {
+  it("present-existing-widget-does-not-regenerate-or-revise, including repeated calls", async () => {
+    const { registry, callbacks, appendEntry } = makeHarness(widgetArtifact());
+    for (const call of ["first", "second"]) {
+      const result = await registry.invoke(
+        { command: "artifacts.present", input: { reference: "chart@r1" } },
+        context(call),
+      );
+      expect(result.details).toMatchObject({ result: { exactRef: "cake://artifact/chart@r1" } });
+      expect(result.content).toHaveLength(1);
+    }
+    expect(callbacks.persistArtifact).not.toHaveBeenCalled();
+    expect(callbacks.readArtifactState).not.toHaveBeenCalled();
+    expect(appendEntry.mock.calls.map((call) => call[1])).toEqual(
+      ["first", "second"].map((toolCallId) =>
+        expect.objectContaining({
+          lineageId: "chart",
+          revision: 1,
+          presentation: "selected-revision",
+          origin: { assistantEntryId: "assistant-1", toolCallId },
+        }),
+      ),
+    );
+    expect(JSON.stringify(appendEntry.mock.calls)).not.toMatch(
+      /source|payload|generationSessionId/,
+    );
+    const help = await registry.invoke({ command: "artifacts" }, context());
+    expect(help.text).toContain("artifacts.present");
+  });
+
+  it("supported-non-widget-artifact-presentation and exact-reference-respects-source-revision", async () => {
+    const { registry, appendEntry } = makeHarness();
+    await registry.invoke(
+      {
+        command: "artifacts.replace",
+        input: { lineageId: "design-plan", expectedRevision: 1, markdown: "two" },
+      },
+      context(),
+    );
+    for (const [reference, revision] of [
+      ["design-plan", 2],
+      ["design-plan@r1", 1],
+    ] as const) {
+      const result = await registry.invoke(
+        { command: "artifacts.present", input: { reference } },
+        context(),
+      );
+      expect(result.details).toMatchObject({ result: { selectedRevision: revision } });
+      expect(appendEntry).toHaveBeenLastCalledWith(
+        "cake.artifact/v1",
+        expect.objectContaining({
+          kind: "markdown",
+          revision,
+          presentation: "selected-revision",
+        }),
+      );
+    }
+  });
+
+  it.each<CakeArtifactV1>([
+    {
+      ...markdown(1, "Document"),
+      kind: "table",
+      payload: { columns: [{ id: "name", label: "Name" }], rows: [{ id: "one", name: "One" }] },
+    },
+    { ...markdown(1, "Diagram"), kind: "diagram", payload: { source: "graph LR; A-->B" } },
+    {
+      ...markdown(1, "Media"),
+      kind: "media",
+      payload: { mediaType: "image", src: "https://example.com/image.png" },
+    },
+    { ...markdown(1, "Diff"), kind: "diff", payload: { diff: "-before\n+after" } },
+    { ...markdown(1, "HTML"), kind: "html", payload: { html: "<p>Existing HTML</p>" } },
+    {
+      ...markdown(1, "File"),
+      kind: "file",
+      payload: { name: "empty.txt", mimeType: "text/plain", data: "", byteSize: 0 },
+    },
+    { ...markdown(1, "Board"), kind: "message-board", payload: { familyId: "family-1" } },
+  ])("presents an existing $kind artifact through the same pointer contract", async (artifact) => {
+    const { registry, appendEntry, callbacks } = makeHarness(artifact);
+    await registry.invoke(
+      { command: "artifacts.present", input: { reference: artifact.id } },
+      context(),
+    );
+    expect(appendEntry).toHaveBeenCalledWith(
+      "cake.artifact/v1",
+      expect.objectContaining({ kind: artifact.kind, presentation: "selected-revision" }),
+    );
+    expect(callbacks.persistArtifact).not.toHaveBeenCalled();
+  });
+
+  it("presentation-rejects-unlinked-reference without appending a pointer", async () => {
+    const { callbacks, appendEntry, registry } = makeHarness();
+    vi.mocked(callbacks.resolveArtifact!).mockRejectedValue(new Error("Artifact is not linked"));
+    await expect(
+      registry.invoke({ command: "artifacts.present", input: { reference: "missing" } }, context()),
+    ).rejects.toThrow("not linked");
+    expect(appendEntry).not.toHaveBeenCalled();
+  });
+
   it("keeps create help aligned with the chat-first text artifact policy", async () => {
     const { registry } = makeHarness();
     const help = await registry.invoke({ command: "artifacts.create.help" }, context());

@@ -839,7 +839,10 @@ export function projectSessionEntries(
 ) {
   const projected: UiPart[] = [];
   const indexes = new Map<string, number>();
-  const artifactOrigins = new Map<string, { lineageId: string; revision: number }>();
+  const artifactOrigins = new Map<
+    string,
+    { lineageId: string; revision: number; reference?: string }
+  >();
   const interviews = new Map<string, InterviewRecord>();
   const append = (part: UiPart) => {
     const existingIndex = indexes.get(part.id);
@@ -1007,6 +1010,9 @@ export function projectSessionEntries(
           artifactOrigins.set(origin.toolCallId, {
             lineageId: pointer.lineageId,
             revision: pointer.revision,
+            ...(pointer.presentation === "selected-revision"
+              ? { reference: pointer.exactRef }
+              : null),
           });
       }
       continue;
@@ -1046,6 +1052,7 @@ export function projectSessionEntries(
         ...part,
         artifactId: artifact.lineageId,
         artifactRevision: artifact.revision,
+        ...(artifact.reference === undefined ? null : { artifactReference: artifact.reference }),
       };
   }
   for (const [toolCallId, interview] of interviews) {
