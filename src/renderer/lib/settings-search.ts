@@ -166,6 +166,20 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
     label: "Application",
     items: [
       {
+        page: "widget-packages",
+        label: "Widget packages",
+        description: "Shared browser dependencies",
+        introduction:
+          "Manage trusted npm dependencies used by interactive widgets on the connected backend.",
+        settings: [
+          {
+            label: "Widget packages",
+            targetId: "widget-packages-title",
+            keywords: "npm install remove registry dependency browser artifact",
+          },
+        ],
+      },
+      {
         page: "cake-chat",
         label: "Cake Chat",
         description: "Persistent assistant and memory",

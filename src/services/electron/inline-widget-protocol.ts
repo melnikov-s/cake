@@ -1,60 +1,69 @@
 import { protocol } from "electron";
 import {
-  inlineWidgetDocument,
+  inlineWidgetResource,
   inlineWidgetScheme,
 } from "../widgets/inline-widget-document-registry";
 import { inlineWidgetContentSecurityPolicy } from "./inline-widget-policy";
 
 export function registerInlineWidgetScheme() {
   protocol.registerSchemesAsPrivileged([
-    { scheme: inlineWidgetScheme, privileges: { standard: true, secure: true } },
+    {
+      scheme: inlineWidgetScheme,
+      privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+    },
   ]);
 }
 
 export function handleInlineWidgetScheme(remoteEndpoint?: string) {
-  protocol.handle(inlineWidgetScheme, (request) => {
+  protocol.handle(inlineWidgetScheme, async (request) => {
     const url = new URL(request.url);
-    const token =
-      url.hostname === "document" && /^\/[0-9a-f-]{36}$/.test(url.pathname)
-        ? url.pathname.slice(1)
-        : undefined;
-    if (token && remoteEndpoint) {
+    const match =
+      url.hostname === "document"
+        ? /^\/([0-9a-f-]{36})(?:\/(assets\/.*))?$/.exec(url.pathname)
+        : null;
+    if (!match) return new Response("Widget resource not found", { status: 404 });
+    const token = match[1]!;
+    let path: string;
+    try {
+      path = decodeURIComponent(match[2] ?? "");
+    } catch {
+      return new Response("Invalid widget resource", { status: 400 });
+    }
+    const headers = {
+      "Cache-Control": "no-store",
+      "Content-Security-Policy": inlineWidgetContentSecurityPolicy,
+      "Referrer-Policy": "no-referrer",
+      "Access-Control-Allow-Origin": "*",
+      "X-Content-Type-Options": "nosniff",
+    };
+    if (remoteEndpoint) {
       const endpoint = new URL(remoteEndpoint);
       endpoint.protocol = endpoint.protocol === "wss:" ? "https:" : "http:";
-      endpoint.pathname = `/widget-assets/document/${token}`;
+      endpoint.pathname = `/widget-assets/document/${token}${path ? "/" + path : ""}`;
       endpoint.search = "";
-      return fetch(endpoint, {
-        redirect: "error",
-        credentials: "omit",
-        referrerPolicy: "no-referrer",
-      })
-        .then(async (response) =>
-          response.ok
-            ? new Response(await response.text(), {
-                headers: {
-                  "Cache-Control": "no-store",
-                  "Content-Security-Policy": inlineWidgetContentSecurityPolicy,
-                  "Content-Type": "text/html; charset=utf-8",
-                  "Referrer-Policy": "no-referrer",
-                },
-              })
-            : new Response("Widget document not found", { status: 404 }),
-        )
-        .catch(() => new Response("Widget backend unavailable", { status: 503 }));
+      try {
+        const response = await fetch(endpoint, {
+          redirect: "error",
+          credentials: "omit",
+          referrerPolicy: "no-referrer",
+        });
+        return response.ok
+          ? new Response(await response.arrayBuffer(), {
+              headers: {
+                ...headers,
+                "Content-Type": response.headers.get("Content-Type") ?? "application/octet-stream",
+              },
+            })
+          : new Response("Widget resource not found", { status: 404 });
+      } catch {
+        return new Response("Widget backend unavailable", { status: 503 });
+      }
     }
-    const document = token ? inlineWidgetDocument(token) : undefined;
-    if (!document)
-      return new Response("Widget document not found", {
-        status: 404,
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
-      });
-    return new Response(document, {
-      headers: {
-        "Cache-Control": "no-store",
-        "Content-Security-Policy": inlineWidgetContentSecurityPolicy,
-        "Content-Type": "text/html; charset=utf-8",
-        "Referrer-Policy": "no-referrer",
-      },
-    });
+    const resource = inlineWidgetResource(token, path);
+    return resource
+      ? new Response(Buffer.from(resource.data), {
+          headers: { ...headers, "Content-Type": resource.contentType },
+        })
+      : new Response("Widget resource not found", { status: 404 });
   });
 }

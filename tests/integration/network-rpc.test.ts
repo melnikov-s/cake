@@ -94,6 +94,36 @@ it.live("network compiler publishes only live, capability-addressed rich content
     const localResponse = yield* get(`${base}/widget-assets/document/${local.token}`);
     expect(yield* Effect.promise(() => localResponse.text())).toBe("local document");
     revokeInlineWidget(local.token);
+    const font = publishInlineWidget({
+      token: crypto.randomUUID(),
+      document: "font fixture",
+      assets: [
+        {
+          path: "assets/0/font.woff2",
+          contentType: "font/woff2",
+          data: Buffer.from("opaque-font"),
+        },
+      ],
+    });
+    try {
+      const fontUrl = `${base}/widget-assets/document/${font.token}/assets/0/font.woff2`;
+      const resource = yield* get(fontUrl, { headers: { Origin: "null" } });
+      expect(resource.status).toBe(200);
+      expect(resource.headers.get("content-type")).toBe("font/woff2");
+      expect(resource.headers.get("access-control-allow-origin")).toBe("*");
+      expect(yield* Effect.promise(() => resource.text())).toBe("opaque-font");
+      expect((yield* get(`${fontUrl}/unknown`, { headers: { Origin: "null" } })).status).toBe(403);
+      expect(
+        (yield* get(`${base}/widget-assets/document/${font.token}`, {
+          headers: { Origin: "null" },
+        })).status,
+      ).toBe(403);
+      expect((yield* get(fontUrl, { headers: { Origin: "https://wrong.example" } })).status).toBe(
+        403,
+      );
+    } finally {
+      revokeInlineWidget(font.token);
+    }
   }).pipe(Effect.scoped),
 );
 

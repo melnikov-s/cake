@@ -22,6 +22,7 @@ import { makePiAgentResourcesLive } from "../services/pi/live/PiAgentResourcesLi
 import { makePiModelsLive } from "../services/pi/live/PiModelsLive";
 import { makeMcpSettingsLayer } from "../services/pi/McpSettings";
 import { makePiSettingsLive } from "../services/pi/live/PiSettingsLive";
+import { makeWidgetPackagesLive } from "../services/widgets/WidgetPackagesLive";
 import { makeCakeChatDurableLive } from "../services/pi-durable/CakeChatDurable";
 import { makeCakeSessionRuntimesLive } from "../services/pi/CakeSessionRuntimes";
 import { createProjectSessionRuntime, createCoordinatorRuntime } from "../layers/CakeOperations";
@@ -48,6 +49,7 @@ import { makeWorktreeStorageLive } from "../services/storage/WorktreeStorageLive
 import { SubagentCoordinatorLive } from "../services/subagents/SubagentCoordinator";
 import { makeTerminalLive } from "../services/terminal/TerminalLive";
 import { makeInlineWidgetsLive } from "../services/widgets/InlineWidgetsLive";
+import { makeWidgetBrowserOutputsLive } from "../services/widgets/WidgetBrowserOutputsLive";
 import { RemoteRenderedWidgetCaptureLive } from "../services/widgets/RemoteRenderedWidgetCaptureLive";
 import { RemoteBrowserLive } from "../services/browser/RemoteBrowserLive";
 import { PreviewLeases, PreviewLeasesLive } from "../services/browser/PreviewLeases";
@@ -96,6 +98,7 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
       resolvedRoot: paths.piResolvedSessions,
     }),
     makeArtifactStorageLive(paths.artifacts),
+    makeWidgetBrowserOutputsLive(join(paths.artifacts, "browser-outputs")),
     makeMessageBoardStorageLive(paths.artifacts),
     makeReviewStorageLive(paths.reviews, paths.piReviewSessions, (record) =>
       Effect.tryPromise(() => loadReviewSessionProjection(record, paths.piReviewSessions)),
@@ -110,6 +113,9 @@ const makeBackendFoundationLive = (options: BackendLiveOptions) => {
 
   const PiLive = Layer.mergeAll(
     makePiModelsLive(paths.piAgent),
+    makeWidgetPackagesLive({ directory: join(paths.home, "widget-packages") }).pipe(
+      Layer.provide(BootstrapLive),
+    ),
     makePiSettingsLive(paths.piAgent).pipe(Layer.provide(BootstrapLive)),
     makeMcpSettingsLayer(paths.piAgent),
     makePiAgentResourcesLive(paths.piAgent),

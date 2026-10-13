@@ -1,5 +1,6 @@
 import type { CakeModelSelection } from "../contracts/model-presets/cake-model-selection";
 import { createCakeSettingsOperations } from "../domain/application/cake-settings-operations";
+import { createCakeWidgetPackageOperations } from "../domain/application/cake-widget-package-operations";
 import { createCakeWorkflowOperations } from "../domain/workflows/cake-workflow-operations";
 import { createSessionApplicationOperations } from "../domain/application/cake-session-application-operations";
 import { createAgentProjectSettingsOperations } from "../domain/projects/cake-project-settings-operations";
@@ -65,6 +66,11 @@ export function projectCakeOperations(options: CakeOperationOptions): ProjectCak
       ...(options.workflowControl ? createCakeWorkflowOperations(options.workflowControl) : []),
       ...(!options.auxiliary && options.tools === undefined
         ? createCakeSettingsOperations((command, input, signal) =>
+            bridge.api().invokeAppControl(command, input, signal),
+          )
+        : []),
+      ...(!options.auxiliary && options.tools === undefined
+        ? createCakeWidgetPackageOperations((command, input, signal) =>
             bridge.api().invokeAppControl(command, input, signal),
           )
         : []),

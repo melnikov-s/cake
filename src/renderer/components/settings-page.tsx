@@ -1,5 +1,6 @@
 import { SettingsCakeChatSection } from "./settings-cake-chat-section";
 import { SettingsMcpSection } from "./settings-mcp-section";
+import { SettingsWidgetPackagesSection } from "./settings-widget-packages-section";
 import { SettingsDictationSection } from "./settings-dictation-section";
 import { SettingsSpeechSection } from "./settings-speech-section";
 import { SettingsSpeechInputSection } from "./settings-speech-input-section";
@@ -214,6 +215,9 @@ export const SettingsPage = observer(function SettingsPage({
           )}
 
           {activePage === "mcp" && <SettingsMcpSection settings={settings.mcp} />}
+          {activePage === "widget-packages" && (
+            <SettingsWidgetPackagesSection settings={settings.widgetPackages} />
+          )}
           {(activePage === "images" || activePage === "classifiers") && (
             <SettingsNonChatModelsSection
               type={activePage === "images" ? "image" : "classifier"}

@@ -3,6 +3,11 @@ import { dirname } from "node:path";
 import { TextEncoder } from "node:util";
 import { fileURLToPath } from "node:url";
 import { build, type Message, type Plugin } from "esbuild";
+import {
+  widgetPackageResolver,
+  type WidgetBrowserAsset,
+  type WidgetCompileOptions,
+} from "./widget-package-resolver";
 
 export type InlineWidgetLanguage = "html" | "react";
 export type InlineWidgetCapability = "display" | "artifact" | "request" | "session-plugin";
@@ -10,61 +15,12 @@ export type InlineWidgetCapability = "display" | "artifact" | "request" | "sessi
 export interface CompiledInlineWidgetDocument {
   document: string;
   token: string;
+  assets?: ReadonlyArray<WidgetBrowserAsset>;
 }
 
 const cakeModuleResolveDirectory = dirname(fileURLToPath(import.meta.url));
-const d3ModulePath = fileURLToPath(import.meta.resolve("d3"));
-const d3ResolveDirectory = dirname(d3ModulePath);
+
 const maximumSourceBytes = 1_048_576;
-
-/**
- * Inline widgets are generated code, so keep their dependency surface explicit.
- * D3 is useful for local SVG/canvas/DOM visualizations; the widget CSP still
- * blocks network access even when a D3 module exposes fetch helpers.
- */
-const inlineWidgetSharedModules = new Set([
-  "react",
-  "react/jsx-runtime",
-  "react/jsx-dev-runtime",
-  "d3",
-  "d3-array",
-  "d3-axis",
-  "d3-brush",
-  "d3-chord",
-  "d3-color",
-  "d3-contour",
-  "d3-delaunay",
-  "d3-dispatch",
-  "d3-drag",
-  "d3-dsv",
-  "d3-ease",
-  "d3-fetch",
-  "d3-force",
-  "d3-format",
-  "d3-geo",
-  "d3-hierarchy",
-  "d3-interpolate",
-  "d3-path",
-  "d3-polygon",
-  "d3-quadtree",
-  "d3-random",
-  "d3-scale",
-  "d3-scale-chromatic",
-  "d3-selection",
-  "d3-shape",
-  "d3-time",
-  "d3-time-format",
-  "d3-timer",
-  "d3-transition",
-  "d3-zoom",
-]);
-
-function resolveInlineWidgetModule(specifier: string) {
-  return fileURLToPath(import.meta.resolve(specifier));
-}
-
-const approvedImportsDescription =
-  "React, approved D3 modules, or @cake/plugin-sdk in Session Plugins";
 
 function diagnostics(messages: Message[]) {
   return messages.map((message) => {
@@ -343,30 +299,6 @@ function widgetModulePlugin(source: string): Plugin {
         loader: "tsx",
         resolveDir: process.cwd(),
       }));
-      builder.onResolve({ filter: /.*/, namespace: "cake-widget" }, (args) => {
-        if (
-          !inlineWidgetSharedModules.has(args.path) &&
-          args.path !== "@cake/plugin-sdk" &&
-          args.path !== "@cake/artifact-sdk"
-        ) {
-          return {
-            errors: [
-              {
-                text: `Inline React widgets may import ${approvedImportsDescription} only; received ${JSON.stringify(args.path)}`,
-              },
-            ],
-          };
-        }
-        if (args.path === "d3") return { path: d3ModulePath };
-        if (args.path.startsWith("d3-")) {
-          return builder.resolve(args.path, {
-            kind: args.kind,
-            resolveDir: d3ResolveDirectory,
-            pluginData: { cakeApprovedLibrary: true },
-          });
-        }
-        return { path: resolveInlineWidgetModule(args.path) };
-      });
     },
   };
 }
@@ -375,18 +307,18 @@ export async function compileInlineWidget(
   language: InlineWidgetLanguage,
   source: string,
   capability: InlineWidgetCapability = "display",
+  options: WidgetCompileOptions = {},
 ): Promise<CompiledInlineWidgetDocument> {
   if (new TextEncoder().encode(source).byteLength > maximumSourceBytes)
     throw new Error("Inline widget source exceeds the 1 MB limit");
   const token = crypto.randomUUID();
   if (language === "html") return { token, document: documentShell(token, source, capability) };
 
-  const reactPath = resolveInlineWidgetModule("react");
-  const reactDomPath = resolveInlineWidgetModule("react-dom/client");
+  const packages = await widgetPackageResolver(options, token);
   // See the virtual plugin SDK above: avoid host import rewriting inside this source.
   const entry = [
-    `import React from ${JSON.stringify(reactPath)};`,
-    `import { createRoot } from ${JSON.stringify(reactDomPath)};`,
+    'import React from "react";',
+    'import { createRoot } from "react-dom/client";',
     'import Widget from "cake:inline-widget";',
     'const host = document.getElementById("cake-widget-root");',
     'if (typeof Widget !== "function") throw new Error("A cake-react widget must default-export one React component");',
@@ -405,12 +337,28 @@ export async function compileInlineWidget(
       sourcefile: "cake-widget-entry.tsx",
     },
     bundle: true,
+    minify: true,
     write: false,
     format: "iife",
     platform: "browser",
     target: "es2022",
     jsx: "automatic",
-    plugins: [widgetModules],
+    plugins: [packages.plugin, widgetModules],
+    outfile: "widget.js",
+    conditions: ["browser", "production"],
+    define: { "process.env.NODE_ENV": '"production"' },
+    loader: {
+      ".png": "dataurl",
+      ".jpg": "dataurl",
+      ".jpeg": "dataurl",
+      ".gif": "dataurl",
+      ".svg": "dataurl",
+      ".webp": "dataurl",
+      ".woff": "dataurl",
+      ".woff2": "dataurl",
+      ".ttf": "dataurl",
+      ".otf": "dataurl",
+    },
     logLevel: "silent",
   }).catch((error: unknown) => {
     const messages = isBuildFailure(error)
@@ -418,13 +366,15 @@ export async function compileInlineWidget(
       : [error instanceof Error ? error.message : String(error)];
     throw new Error(messages.join("\n"));
   });
-  const javascript = result.outputFiles[0]?.text;
+  const javascript = result.outputFiles.find((file) => file.path.endsWith(".js"))?.text;
+  const css = result.outputFiles.find((file) => file.path.endsWith(".css"))?.text ?? "";
   if (!javascript) throw new Error("Cake did not produce an inline React widget bundle");
   return {
     token,
+    assets: packages.assets,
     document: documentShell(
       token,
-      `<div id="cake-widget-root"></div><script>${javascript.replaceAll("</script", "<\\/script")}</script>`,
+      `<style>${css.replaceAll("</style", "<\\/style")}</style><div id="cake-widget-root"></div><script>${javascript.replaceAll("</script", "<\\/script")}</script>`,
       capability,
     ),
   };

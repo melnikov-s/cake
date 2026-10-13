@@ -19,6 +19,9 @@ import { RendererRequestCoordinator } from "../services/renderer-requests/Render
 import { ProjectSessionIntegrationHost } from "./ProjectSessionIntegrationHost";
 import { PiModels } from "../services/pi/PiModels";
 import { RenderedWidgetCapture } from "../services/widgets/RenderedWidgetCapture";
+import { WidgetBrowserOutputs } from "../services/widgets/WidgetBrowserOutputs";
+import { WidgetPackages } from "../services/widgets/WidgetPackages";
+import { compileInlineWidget } from "../services/widgets/inline-widget-service";
 import { RenderedWidgetCaptureError } from "../contracts/widgets/rendered-widget-capture-errors";
 import { generateReviewedWidget } from "../domain/widgets/widgetGenerationReview";
 import { importWorkspaceFile } from "../services/artifacts/importWorkspaceFile";
@@ -52,6 +55,8 @@ export const makeProjectSessionRuntimeHostLive = (
 ): Layer.Layer<
   ProjectSessionRuntimeHost,
   never,
+  | WidgetBrowserOutputs
+  | WidgetPackages
   | ArtifactProjection
   | ArtifactStorage
   | MessageBoardStorage
@@ -66,6 +71,8 @@ export const makeProjectSessionRuntimeHostLive = (
     ProjectSessionRuntimeHost,
     Effect.gen(function* () {
       const artifacts = yield* ArtifactStorage;
+      const browserOutputs = yield* WidgetBrowserOutputs;
+      const widgetPackages = yield* WidgetPackages;
       const artifactProjection = yield* ArtifactProjection;
       const families = yield* SessionFamilyStorage;
       const clientEvents = yield* ClientEvents;
@@ -174,6 +181,12 @@ export const makeProjectSessionRuntimeHostLive = (
             runAdapter(rendererRequests.requestInterview(sessionId, record, signal)),
           requestApplicationControl: (invocation, signal) =>
             runAdapter(rendererRequests.requestProjectControl(sessionId, invocation, signal)),
+
+          compileWidget: (language, source, capability) =>
+            compileInlineWidget(language, source, capability, {
+              packageDirectory: widgetPackages.directory,
+            }),
+          retainWidgetBrowser: (compiled) => runAdapter(browserOutputs.retain(compiled)),
           runReviewedWidget: generateReviewedWidget,
           captureWidget: (targetSessionId, widget, signal, pluginState) =>
             runAdapter(

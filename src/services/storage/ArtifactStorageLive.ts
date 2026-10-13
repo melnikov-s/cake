@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { WidgetBrowserOutput } from "../../contracts/widgets/widget-browser-output";
 import { DateTime, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import {
   ArtifactCatalog,
@@ -1046,6 +1047,39 @@ export const makeArtifactStorageLive = (root: string) =>
           loadUnlocked().pipe(Effect.map((catalog) => ({ catalog, token: catalogToken(catalog) }))),
         ),
       );
+      const browserReference = Schema.Struct({
+        kind: Schema.Literal("widget"),
+        payload: Schema.Struct({ browser: WidgetBrowserOutput }),
+      });
+      const browserDigestFromBlob = Effect.fn("ArtifactStorage.browserDigestFromBlob")(function* (
+        target: string,
+      ) {
+        const serialized = yield* readText("browserOutputGC", target);
+        const browser = Schema.decodeUnknownOption(Schema.fromJsonString(browserReference))(
+          serialized,
+        );
+        return browser._tag === "Some" ? browser.value.payload.browser.digest : undefined;
+      });
+      const retainedBrowserDigests = Effect.fn("ArtifactStorage.retainedBrowserDigests")(function* (
+        catalog: ArtifactCatalog,
+      ) {
+        const retained = new Set<string>();
+        for (const lineage of catalog.lineages)
+          for (const revision of lineage.revisions) {
+            const browser = yield* browserDigestFromBlob(blobPath(revision.digest));
+            if (browser) retained.add(browser);
+          }
+        return retained;
+      });
+      const removeBrowserOutput = Effect.fn("ArtifactStorage.removeBrowserOutput")(function* (
+        browser: string | undefined,
+        retained: ReadonlySet<string>,
+      ) {
+        if (browser && !retained.has(browser))
+          yield* fileSystem
+            .remove(path.join(root, "browser-outputs", browser), { recursive: true, force: true })
+            .pipe(Effect.mapError((cause) => storageError("browserOutputGC", cause)));
+      });
       const collectUnreachable = Effect.fn("ArtifactStorage.collectUnreachable")(function* (
         input: ArtifactCollectionInput,
       ) {
@@ -1116,10 +1150,18 @@ export const makeArtifactStorageLive = (root: string) =>
                   .pipe(Effect.mapError((cause) => storageError("collectUnreachable", cause)));
               }
             }
+            // Resolve every surviving browser reference before deleting any output. The
+            // repository lock also protects this decision from concurrent publication.
+            const retainedBrowsers = yield* retainedBrowserDigests({
+              lineages: retainedLineages,
+              links: nextLinks,
+            });
             let blobsRemoved = 0;
             for (const name of blobNames) {
               const match = /^([a-f0-9]{64})\.json$/.exec(name);
               if (!match || retainedDigests.has(match[1]!)) continue;
+              const browser = yield* browserDigestFromBlob(path.join(blobDirectory, name));
+              yield* removeBrowserOutput(browser, retainedBrowsers);
               yield* fileSystem
                 .remove(path.join(blobDirectory, name), { force: true })
                 .pipe(Effect.mapError((cause) => storageError("collectUnreachable", cause)));
@@ -1155,6 +1197,9 @@ export const makeArtifactStorageLive = (root: string) =>
                 .pipe(Effect.mapError((cause) => storageError("deleteBlobIfOrphaned", cause))))
             )
               return false;
+            const browser = yield* browserDigestFromBlob(target);
+            if (browser)
+              yield* removeBrowserOutput(browser, yield* retainedBrowserDigests(current));
             yield* fileSystem
               .remove(target, { force: true })
               .pipe(Effect.mapError((cause) => storageError("deleteBlobIfOrphaned", cause)));

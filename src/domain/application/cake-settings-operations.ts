@@ -12,8 +12,11 @@ import type { CakeOperationDefinition } from "../../contracts/agent/cake-operati
 
 export function createCakeSettingsOperations(
   invoke: (command: string, input: JsonObject, signal: AbortSignal) => Promise<JsonValue>,
+  operations: readonly (typeof agentSettingsOperations)[number][] = agentSettingsOperations.filter(
+    (operation) => !operation.command.startsWith("settings.widgets."),
+  ),
 ): CakeOperationDefinition[] {
-  return agentSettingsOperations.map((operation) => ({
+  return operations.map((operation) => ({
     command: operation.command,
     requires: "invokeAppControl",
     topic: "settings",

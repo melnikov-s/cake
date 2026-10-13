@@ -1,5 +1,10 @@
 import { Schema } from "effect";
 import {
+  WidgetPackageInstall,
+  WidgetPackageRemove,
+  WidgetPackageSnapshot,
+} from "../widgets/widget-packages";
+import {
   piSettingUpdateSchema,
   piSettingsSchema,
   modelOptionSchema,
@@ -78,7 +83,39 @@ const mcpGuidance = [
   "Project scope requires existing Project access and trust. Native Pi validation and same-scope reload are unchanged. OAuth configuration is not authorization; authorize through Pi's existing interactive MCP flow.",
 ];
 
+export const widgetPackageSettingsOperations = [
+  setting(
+    "settings.widgets.list",
+    empty,
+    "List backend-wide user-installed widget packages and their directory.",
+    {},
+    WidgetPackageSnapshot,
+  ),
+  setting(
+    "settings.widgets.install",
+    WidgetPackageInstall,
+    "Install a user-approved npm registry dependency for widgets, without rebuilding Cake.",
+    { specifier: "@excalidraw/excalidraw", userApproved: true },
+    WidgetPackageSnapshot,
+    [
+      "Install only after an explicit user dependency request or explicit approval. Otherwise ask first. userApproved:true records that approval; it is not permission to invent approval.",
+      "Packages are shared by all backend widgets, outside Cake's application node_modules. React and ReactDOM are provided by Cake; package paths, URLs and aliases are not supported.",
+    ],
+  ),
+  setting(
+    "settings.widgets.remove",
+    WidgetPackageRemove,
+    "Remove a shared widget dependency. Accepted artifact browser output remains usable.",
+    { name: "@excalidraw/excalidraw" },
+    WidgetPackageSnapshot,
+    [
+      "Removal affects future compilation for all backend widgets. Previously accepted browser output is retained.",
+    ],
+  ),
+] as const;
+
 export const agentSettingsOperations = [
+  ...widgetPackageSettingsOperations,
   setting(
     "settings.pi.get",
     empty,
@@ -402,6 +439,14 @@ export type AgentSettingsInvocation = typeof AgentSettingsInvocation.Type;
 
 export const agentSettingsSections = [
   ...cakeSettingsSections,
+  {
+    id: "widgets",
+    scope: "backend",
+    writable: true,
+    description:
+      "Shared user-installed widget dependencies; installation requires explicit user approval",
+    commands: ["settings.widgets.list", "settings.widgets.install", "settings.widgets.remove"],
+  },
   {
     id: "speech",
     scope: "originating-desktop",

@@ -18,6 +18,7 @@ import { ProviderSettingsStore } from "./ProviderSettingsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
 import { ProjectSessionStore } from "./ProjectSessionStore";
 import { McpSettingsStore } from "./McpSettingsStore";
+import { WidgetPackageSettingsStore } from "./WidgetPackageSettingsStore";
 import type { CakeChatSessionStore } from "./CakeChatSessionStore";
 import { UtilityModelSettingsStore } from "./UtilityModelSettingsStore";
 import { EmbeddedEditorSettingsStore } from "./EmbeddedEditorSettingsStore";
@@ -33,6 +34,7 @@ import type { ExperimentalFeatures } from "../models/ExperimentalFeatures";
 export type SettingsPageId =
   | "cake-chat"
   | "mcp"
+  | "widget-packages"
   | "models"
   | "providers"
   | "images"
@@ -72,6 +74,9 @@ export class SettingsStore extends Store<SettingsStoreProps> {
       projectSession: () =>
         this.activeSession instanceof ProjectSessionStore ? this.activeSession : undefined,
     });
+  }
+  @child get widgetPackages(): WidgetPackageSettingsStore {
+    return createStore(WidgetPackageSettingsStore);
   }
   @child get desktopSharing(): DesktopSharingSettingsStore {
     return createStore(DesktopSharingSettingsStore);

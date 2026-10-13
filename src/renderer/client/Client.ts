@@ -1,4 +1,5 @@
 import type { CommandGroup } from "./command-group";
+import type { WidgetBrowserOutput } from "../../contracts/widgets/widget-browser-output";
 import type {
   BoardDescriptionPage,
   BoardEntry,
@@ -541,6 +542,7 @@ interface ArtifactCommands {
 }
 
 interface InlineWidgetCommands {
+  open(browser: WidgetBrowserOutput, options?: ClientCommandOptions): Promise<CompiledInlineWidget>;
   compile(
     language: InlineWidgetLanguage,
     source: string,
@@ -572,6 +574,7 @@ export interface Client {
   };
   readonly piSettings: CommandGroup<CakeIpcClientService["piSettings"]>;
   readonly mcpSettings: CommandGroup<CakeIpcClientService["mcpSettings"]>;
+  readonly widgetPackages: CommandGroup<CakeIpcClientService["widgetPackages"]>;
   readonly modelPresets: CommandGroup<CakeIpcClientService["modelPresets"]>;
   readonly sessionChats: CommandGroup<CakeIpcClientService["sessionChats"]>;
   readonly projectSessions: CommandGroup<CakeIpcClientService["projectSessions"]>;

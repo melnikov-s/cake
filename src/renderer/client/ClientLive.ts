@@ -438,6 +438,7 @@ export function makeClient(
         ),
     },
     mcpSettings: commands("mcpSettings"),
+    widgetPackages: commands("widgetPackages"),
     piSettings: commands("piSettings"),
     modelPresets: commands("modelPresets"),
     savedDrafts: commands("savedDrafts"),

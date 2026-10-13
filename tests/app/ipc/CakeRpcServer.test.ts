@@ -21,6 +21,7 @@ import { unusedEndpointServices } from "./rpc-endpoint-test-backend";
 import { ElevenLabsSpeech } from "../../../src/services/speech/ElevenLabsSpeech";
 import { PocketTts } from "../../../src/services/speech/PocketTts";
 import { pocketTtsState } from "../../helpers/speech-output";
+import { WidgetPackages } from "../../../src/services/widgets/WidgetPackages";
 
 const endpoint = makeCakeRpcServerLive("/home/test", {
   agentDirectory: "/agent",
@@ -220,6 +221,62 @@ const observeEvents = Effect.fn("RpcEndpoint.test.observeEvents")(function* (
 });
 
 describe("Cake RPC endpoint", () => {
+  it.effect("widget package RPCs validate approval and invoke the backend package authority", () =>
+    Effect.gen(function* () {
+      const backend = yield* makeBackend();
+      const calls: string[] = [];
+      const snapshot = {
+        directory: "/backend/widget-packages",
+        packages: [{ name: "d3", version: "7.9.0" }],
+      };
+      const packages = WidgetPackages.of({
+        directory: snapshot.directory,
+        list: () => Effect.succeed(snapshot),
+        install: (specifier) =>
+          Effect.sync(() => {
+            calls.push(specifier);
+            return snapshot;
+          }),
+        remove: (name) =>
+          Effect.sync(() => {
+            calls.push(name);
+            return { ...snapshot, packages: [] };
+          }),
+      });
+      const host = yield* openEndpoint(
+        { ...backend, context: Context.add(backend.context, WidgetPackages, packages) },
+        7,
+      );
+      const rejected = yield* host.request("widgetPackages.install", {
+        specifier: "d3",
+        userApproved: false,
+      });
+      expect(yield* Queue.take(host.responses)).toMatchObject({
+        requestId: rejected,
+        exit: { _tag: "Failure" },
+      });
+      expect(calls).toEqual([]);
+      const listed = yield* host.request("widgetPackages.list", {});
+      expect(yield* Queue.take(host.responses)).toMatchObject({
+        requestId: listed,
+        exit: { _tag: "Success", value: snapshot },
+      });
+      const installed = yield* host.request("widgetPackages.install", {
+        specifier: "d3@7",
+        userApproved: true,
+      });
+      expect(yield* Queue.take(host.responses)).toMatchObject({
+        requestId: installed,
+        exit: { _tag: "Success", value: snapshot },
+      });
+      const removed = yield* host.request("widgetPackages.remove", { name: "d3" });
+      expect(yield* Queue.take(host.responses)).toMatchObject({
+        requestId: removed,
+        exit: { _tag: "Success", value: { ...snapshot, packages: [] } },
+      });
+      expect(calls).toEqual(["d3@7", "d3"]);
+    }),
+  );
   it.effect("rpc_endpoint_uses_host_supplied_protocol", () =>
     Effect.gen(function* () {
       const backend = yield* makeBackend();

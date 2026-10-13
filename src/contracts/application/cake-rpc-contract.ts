@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { WidgetBrowserOutput } from "../widgets/widget-browser-output";
 import {
   CaptureImage,
   CaptureDestination,
@@ -597,6 +598,7 @@ export const cakeRpcPayloadSchemas = {
     workspacePath: stringMax(4_096),
     path: bounded(1, 8_192),
   }),
+  "open-widget-browser": Schema.Struct({ browser: WidgetBrowserOutput }),
   "compile-inline-widget": Schema.Struct({
     language: inlineWidgetLanguageSchema,
     capability: inlineWidgetCapabilitySchema,
@@ -917,6 +919,7 @@ export const cakeRpcSuccessSchemas = {
   "acquire-browser-preview": cakeRpcResultSchemas["browser-preview-acquired"],
   "respond-ui": cakeRpcResultSchemas["ui-response-accepted"],
   "export-artifacts": cakeRpcResultSchemas["artifacts-exported"],
+  "open-widget-browser": cakeRpcResultSchemas["inline-widget-compiled"],
   "compile-inline-widget": cakeRpcResultSchemas["inline-widget-compiled"],
   "capture-native-widget": cakeRpcResultSchemas["native-widget-captured"],
   "respond-widget-capture": cakeRpcResultSchemas["widget-capture-accepted"],

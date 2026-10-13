@@ -27,6 +27,10 @@ import type { PiModel } from "../../../src/contracts/pi/model-data";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { McpSettings } from "../../../src/services/pi/McpSettings";
 import { PiSettings } from "../../../src/services/pi/PiSettings";
+import { WidgetPackages } from "../../../src/services/widgets/WidgetPackages";
+import { makeInlineWidgetsLive } from "../../../src/services/widgets/InlineWidgetsLive";
+import { makeWidgetBrowserOutputsLive } from "../../../src/services/widgets/WidgetBrowserOutputsLive";
+import { publishInlineWidget } from "../../../src/services/widgets/inline-widget-document-registry";
 import { PiAgentResources } from "../../../src/services/pi/PiAgentResources";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
 import { ProjectSessionConfiguration } from "../../../src/services/project-sessions/ProjectSessionConfiguration";
@@ -330,6 +334,15 @@ export const makeNetworkTestBackend = Effect.fn("NetworkTest.backend")(function*
     }),
     Layer.mock(SubagentEnvironment, {}),
     Layer.mock(ArtifactStorage, {}),
+    Layer.mock(WidgetPackages, { directory: "/backend/widget-packages" }),
+    makeInlineWidgetsLive({ publish: publishInlineWidget }).pipe(
+      Layer.provide(
+        Layer.merge(
+          Layer.mock(WidgetPackages, { directory: join(savedDraftDirectory, "packages") }),
+          makeWidgetBrowserOutputsLive(join(savedDraftDirectory, "browser-outputs")),
+        ),
+      ),
+    ),
     Layer.mock(MessageBoardStorage, {}),
     Layer.mock(ArtifactProjection, {}),
     Layer.mock(ArtifactGarbageCollector, {}),

@@ -6,6 +6,11 @@ import {
 } from "../../contracts/application/cake-rpc-contract";
 
 export const InlineWidgetRpc = RpcGroup.make(
+  Rpc.make("widgets.open-widget-browser", {
+    payload: cakeRpcPayloadSchemas["open-widget-browser"],
+    success: cakeRpcSuccessSchemas["open-widget-browser"],
+    error: InlineWidgetError,
+  }),
   Rpc.make("widgets.compile-inline-widget", {
     payload: cakeRpcPayloadSchemas["compile-inline-widget"],
     success: cakeRpcSuccessSchemas["compile-inline-widget"],

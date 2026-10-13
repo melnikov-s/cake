@@ -4,7 +4,7 @@ import { RpcSerialization } from "effect/unstable/rpc";
 import { Socket, SocketServer } from "effect/unstable/socket";
 import { createServer, type IncomingMessage } from "node:http";
 import { browserAssetAt, loadBrowserAssets } from "./browserAssets";
-import { inlineWidgetDocument } from "../services/widgets/inline-widget-document-registry";
+import { inlineWidgetResource } from "../services/widgets/inline-widget-document-registry";
 import { extensionCompanionModuleSource } from "../services/pi/runtime/extension-companion-module-registry";
 import { inlineWidgetContentSecurityPolicy } from "../services/electron/inline-widget-policy";
 import { VsCodeServer } from "../services/vscode/VsCodeServer";
@@ -183,6 +183,25 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
       const host = request.headers.host?.toLowerCase();
       if (!host || !hosts.includes(host)) return "Unexpected Host";
       const origin = request.headers.origin;
+      // Opaque sandbox frames send Origin:null for fonts. Only a live exact resource
+      // capability may cross that origin; RPC, application and workspace routes cannot.
+      if (
+        origin === "null" &&
+        !upgrade &&
+        (request.method === "GET" || request.method === "HEAD")
+      ) {
+        const resource = /^\/widget-assets\/document\/([0-9a-f-]{36})\/(assets\/[^?#]*)$/.exec(
+          request.url ?? "",
+        );
+        if (resource) {
+          try {
+            if (inlineWidgetResource(resource[1]!, decodeURIComponent(resource[2]!)))
+              return undefined;
+          } catch {
+            /* invalid URL remains refused */
+          }
+        }
+      }
       // Serving explicitly enables exact HTTP same-origin access. Explicit origins replace this default.
       const editorRoute = !isolatedEditor && request.url?.startsWith("/editor/") === true;
       const previewRoute = request.url?.startsWith("/preview/") === true;
@@ -238,26 +257,36 @@ export const openNetworkListener = Effect.fn("NetworkListener.open")(function* (
           }
           // Exact, capability-addressed in-memory publications only. Never proxy a path or
           // read a workspace file on behalf of a sandboxed frame.
-          const widgetToken = /^\/widget-assets\/document\/([0-9a-f-]{36})$/.exec(
-            request.url ?? "",
-          )?.[1];
+          const widgetMatch =
+            /^\/widget-assets\/document\/([0-9a-f-]{36})(?:\/(assets\/[^?#]*))?$/.exec(
+              request.url ?? "",
+            );
+          let resourcePath: string | undefined;
+          try {
+            resourcePath = decodeURIComponent(widgetMatch?.[2] ?? "");
+          } catch {
+            resourcePath = undefined;
+          }
+          const resource =
+            widgetMatch && resourcePath !== undefined
+              ? inlineWidgetResource(widgetMatch[1]!, resourcePath)
+              : undefined;
           const moduleToken = /^\/widget-assets\/module\/([0-9a-f]{64})$/.exec(
             request.url ?? "",
           )?.[1];
-          const document = widgetToken ? inlineWidgetDocument(widgetToken) : undefined;
           const module = moduleToken ? extensionCompanionModuleSource(moduleToken) : undefined;
-          if (document !== undefined || module !== undefined) {
-            const body = Buffer.from(document ?? module ?? "", "utf8");
+          if (resource !== undefined || module !== undefined) {
+            const body = resource ? Buffer.from(resource.data) : Buffer.from(module ?? "", "utf8");
             response.setHeader(
               "Content-Type",
-              document !== undefined
-                ? "text/html; charset=utf-8"
-                : "text/javascript; charset=utf-8",
+              resource?.contentType ?? "text/javascript; charset=utf-8",
             );
             response.setHeader("Content-Length", body.byteLength);
             response.setHeader("Referrer-Policy", "no-referrer");
-            if (document !== undefined)
+            if (resource !== undefined) {
+              response.setHeader("Access-Control-Allow-Origin", "*");
               response.setHeader("Content-Security-Policy", inlineWidgetContentSecurityPolicy);
+            }
             response.writeHead(200);
             response.end(request.method === "HEAD" ? undefined : body);
             return;

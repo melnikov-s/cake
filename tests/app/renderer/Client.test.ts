@@ -356,6 +356,7 @@ describe("Client", () => {
       "nonChatModels",
       "models",
       "mcpSettings",
+      "widgetPackages",
       "piSettings",
       "modelPresets",
       "savedDrafts",

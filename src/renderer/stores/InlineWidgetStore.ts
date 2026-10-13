@@ -4,6 +4,7 @@ import type {
   InlineWidgetCapability,
   InlineWidgetLanguage,
 } from "../../contracts/widgets/inline-widget-contract";
+import type { WidgetBrowserOutput } from "../../contracts/widgets/widget-browser-output";
 import { ClientContext } from "./context/ClientContext";
 import type { ArtifactState } from "../../contracts/artifacts/artifact-state";
 import type { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
@@ -13,6 +14,7 @@ export interface InlineWidgetState {
   language: InlineWidgetLanguage;
   capability: InlineWidgetCapability;
   source: string;
+  browser?: WidgetBrowserOutput;
   status: "building" | "ready" | "error";
   compiled?: CompiledInlineWidget;
   diagnostic?: string;
@@ -137,6 +139,20 @@ export class InlineWidgetStore extends Store {
     void this.compile(id, state, source);
   }
 
+  /** Accepted browser output is immutable; neither reopen nor reconnect recompiles source. */
+  prepareBrowser(id: string, browser: WidgetBrowserOutput) {
+    if (this.states[id]?.browser?.digest === browser.digest) return;
+    const state = observable<InlineWidgetState>({
+      language: "react",
+      capability: "display",
+      source: "",
+      browser,
+      status: "building",
+    });
+    this.states[id] = state;
+    void this.compile(id, state, "");
+  }
+
   reportRuntimeError(id: string, diagnostic: string) {
     const state = this.states[id];
     if (!state) return;
@@ -153,7 +169,9 @@ export class InlineWidgetStore extends Store {
     const revision = expectedRevision ?? (this.revisions.get(id) ?? 0) + 1;
     this.revisions.set(id, revision);
     try {
-      const compiled = await this.inlineWidgets.compile(state.language, source, state.capability);
+      const compiled = state.browser
+        ? await this.inlineWidgets.open(state.browser)
+        : await this.inlineWidgets.compile(state.language, source, state.capability);
       if (this.signal.aborted || this.revisions.get(id) !== revision || this.states[id] !== state)
         return;
       state.compiled = compiled;

@@ -28,6 +28,8 @@ import {
   SessionFamilyStorage,
 } from "../../../../src/services/storage/SessionFamilyStorage";
 import { RenderedWidgetCapture } from "../../../../src/services/widgets/RenderedWidgetCapture";
+import { WidgetPackages } from "../../../../src/services/widgets/WidgetPackages";
+import { makeWidgetBrowserOutputsLive } from "../../../../src/services/widgets/WidgetBrowserOutputsLive";
 
 const roots: string[] = [];
 const disposals: Array<() => Promise<void>> = [];
@@ -91,6 +93,8 @@ const makeHarness = async () => {
     }),
     Layer.mock(PiModels, {}),
     Layer.mock(RenderedWidgetCapture, {}),
+    Layer.mock(WidgetPackages, { directory: join(root, "widget-packages") }),
+    makeWidgetBrowserOutputsLive(join(root, "artifacts", "browser-outputs")),
     Layer.mock(ReviewStorage, {
       agentSessionDirectory: (workingDirectory, sessionId, threadId) =>
         join(workingDirectory, ".cake", sessionId, threadId),

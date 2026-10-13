@@ -84,6 +84,12 @@ async function executeAgentSettings(
     };
   };
   switch (invocation.name) {
+    case "settings.widgets.list":
+      return client.widgetPackages.list({}, options);
+    case "settings.widgets.install":
+      return client.widgetPackages.install(invocation.arguments, options);
+    case "settings.widgets.remove":
+      return client.widgetPackages.remove(invocation.arguments, options);
     case "settings.pi.get":
       return client.piSettings.get(options);
     case "settings.pi.update": {

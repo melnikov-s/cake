@@ -2,8 +2,6 @@ import { vscodeHandlers } from "./VsCodeHandlers";
 import { inlineWidgetHandlers } from "./InlineWidgetHandlers";
 import { widgetCaptureResponseHandlers } from "./WidgetCaptureHandlers";
 import { browserResponseHandlers } from "./BrowserResponseHandlers";
-import { makeInlineWidgetsLive } from "../../services/widgets/InlineWidgetsLive";
-import { publishInlineWidget } from "../../services/widgets/inline-widget-document-registry";
 import { subagentHandlers } from "./SubagentHandlers";
 import { dynamicWorkflowHandlers } from "./DynamicWorkflowHandlers";
 import { discussionHandlers } from "./DiscussionHandlers";
@@ -23,6 +21,7 @@ import { makeConversationHandlers } from "./ConversationHandlers";
 import { makeFoundationHandlers } from "./FoundationHandlers";
 import { modelHandlers } from "./ModelHandlers";
 import { mcpSettingsHandlers } from "./McpSettingsHandlers";
+import { widgetPackageHandlers } from "./WidgetPackageHandlers";
 import { piSettingsHandlers } from "./PiSettingsHandlers";
 import { providerAuthHandlers } from "./ProviderAuthHandlers";
 import { projectSessionHandlers } from "./ProjectSessionHandlers";
@@ -62,6 +61,7 @@ export const makeBackendRpcServerLive = (
     ...modelHandlers,
     ...piSettingsHandlers,
     ...mcpSettingsHandlers,
+    ...widgetPackageHandlers,
     ...providerAuthHandlers,
     ...projectSessionHandlers,
     ...projectWorkflowHandlers,
@@ -73,12 +73,5 @@ export const makeBackendRpcServerLive = (
   return RpcServer.layer(BackendRpc, {
     spanPrefix: "BackendRpcServer",
     disableFatalDefects: true,
-  }).pipe(
-    Layer.provide(
-      Layer.merge(
-        handlers.pipe(Layer.provide(makeInlineWidgetsLive({ publish: publishInlineWidget }))),
-        RendererConnectionMiddlewareLive,
-      ),
-    ),
-  );
+  }).pipe(Layer.provide(Layer.merge(handlers, RendererConnectionMiddlewareLive)));
 };

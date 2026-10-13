@@ -114,6 +114,57 @@ describe("artifact lineage references", () => {
 });
 
 describe("ArtifactStorage", () => {
+  it("retains a shared browser output until the last referencing artifact snapshot is collected", async () => {
+    const { root } = await temporaryRoot();
+    const browser = { digest: "b".repeat(64) };
+    const output = join(root, "browser-outputs", browser.digest);
+    await mkdir(output, { recursive: true });
+    await writeFile(join(output, "document.html"), "immutable browser build");
+    const payload = {
+      language: "react" as const,
+      source: "export default function Widget(){return <div/>}",
+      brief: "Fixture",
+      generationSessionId: "private-branch",
+      browser,
+    };
+    for (const [id, sessionId] of [
+      ["widget-one", "session-one"],
+      ["widget-two", "session-two"],
+    ]) {
+      const snapshot: CakeArtifactV1 = {
+        protocol: "cake.artifact/v1",
+        id: id ?? "",
+        sessionId: sessionId ?? "",
+        revision: 1,
+        kind: "widget",
+        payload,
+        fallback: { markdown: "Widget" },
+      };
+      const value = await writeLegacyBlob(root, snapshot);
+      await writeLegacyIndex(root, snapshot.sessionId, snapshot, value);
+    }
+    const storage = await makeStorage(root);
+    const first = await Effect.runPromise(storage.collectionSnapshot());
+    await Effect.runPromise(
+      storage.collectUnreachable({
+        expectedCatalogToken: first.token,
+        survivingSessionIds: ["session-two"],
+        survivingFamilyIds: [],
+        transcriptLineageIds: [],
+      }),
+    );
+    expect(await readFile(join(output, "document.html"), "utf8")).toBe("immutable browser build");
+    const second = await Effect.runPromise(storage.collectionSnapshot());
+    await Effect.runPromise(
+      storage.collectUnreachable({
+        expectedCatalogToken: second.token,
+        survivingSessionIds: [],
+        survivingFamilyIds: [],
+        transcriptLineageIds: [],
+      }),
+    );
+    await expect(readFile(join(output, "document.html"))).rejects.toThrow();
+  });
   it("publishes immutable revisions, supports exact reads and rejects stale CAS", async () => {
     const { root } = await temporaryRoot();
     const storage = await makeStorage(root);

@@ -30,6 +30,7 @@ import {
 import { managedWorktreeHandlers } from "./ManagedWorktreeHandlers";
 import { modelHandlers } from "./ModelHandlers";
 import { mcpSettingsHandlers } from "./McpSettingsHandlers";
+import { widgetPackageHandlers } from "./WidgetPackageHandlers";
 import { piSettingsHandlers } from "./PiSettingsHandlers";
 import { projectSessionHandlers } from "./ProjectSessionHandlers";
 import { ProjectSessionRpc } from "../protocol/ProjectSessionRpc";
@@ -122,6 +123,7 @@ export const makeCakeRpcServerLive = (
     ...modelHandlers,
     ...piSettingsHandlers,
     ...mcpSettingsHandlers,
+    ...widgetPackageHandlers,
     ...projectWorkflowHandlers,
     ...scheduledMessageHandlers,
     ...savedDraftHandlers,

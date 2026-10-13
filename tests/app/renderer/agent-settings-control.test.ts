@@ -30,6 +30,7 @@ import { CakeSessionRuntimes } from "../../../src/services/pi/CakeSessionRuntime
 import { ProjectAccess } from "../../../src/services/projects/ProjectAccess";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { createCakeSettingsOperations } from "../../../src/domain/application/cake-settings-operations";
+import { createCakeWidgetPackageOperations } from "../../../src/domain/application/cake-widget-package-operations";
 import { createGlobalControlOperations } from "../../../src/domain/application/cake-global-control-operations";
 import { createCakeNonChatModelOperations } from "../../../src/domain/model-preferences/cake-non-chat-model-operations";
 import {
@@ -125,6 +126,15 @@ async function fixture(trusted = true) {
     effect: Effect.Effect<A, E, ApplicationState>,
     options?: { signal?: AbortSignal },
   ) => runtime.runPromise(effect, options);
+  const packageSnapshot = {
+    directory: "/backend/widget-packages",
+    packages: [{ name: "d3", version: "7.9.0" }],
+  };
+  const widgetInstall = vi.fn<Client["widgetPackages"]["install"]>(async () => packageSnapshot);
+  const widgetRemove = vi.fn<Client["widgetPackages"]["remove"]>(async () => ({
+    ...packageSnapshot,
+    packages: [],
+  }));
   const login = vi.fn<Client["models"]["login"]>(async () => {});
   const logout = vi.fn<Client["models"]["logout"]>(async () => {});
   const nativePrompt = vi.fn<Client["sessionChats"]["prompt"]>(async () =>
@@ -141,6 +151,11 @@ async function fixture(trusted = true) {
       }),
     ],
     client: {
+      widgetPackages: {
+        list: async () => packageSnapshot,
+        install: widgetInstall,
+        remove: widgetRemove,
+      },
       application: {
         getState: () => execute(Effect.flatMap(ApplicationState, (owner) => owner.current())),
       },
@@ -218,7 +233,10 @@ async function fixture(trusted = true) {
     signal.throwIfAborted();
     return root.root.applicationControlStore.invoke({ name: command, arguments: input }, source);
   });
-  const registry = new CakeOperationRegistry(createCakeSettingsOperations(dispatch));
+  const registry = new CakeOperationRegistry([
+    ...createCakeSettingsOperations(dispatch),
+    ...createCakeWidgetPackageOperations(dispatch),
+  ]);
   const call = (command: string, input: JsonObject = {}, signal = new AbortController().signal) =>
     registry.invoke({ command, input }, { signal, toolCallId: "settings-test", runtime: {} });
   return {
@@ -233,6 +251,8 @@ async function fixture(trusted = true) {
     login,
     logout,
     nativePrompt,
+    widgetInstall,
+    widgetRemove,
     manager,
     saved: () => saved,
     document: () => JSON.parse(document),
@@ -250,6 +270,31 @@ function value(result: Awaited<ReturnType<CakeOperationRegistry["invoke"]>>) {
 }
 
 describe("Agent Settings through the real application-control/Client/domain boundary", () => {
+  it("lists, installs only approved widget dependencies, and removes through the shared package Client", async () => {
+    const h = await fixture();
+    try {
+      expect(value(await h.call("settings.widgets.list"))).toMatchObject({
+        directory: "/backend/widget-packages",
+        packages: [{ name: "d3" }],
+      });
+      await expect(h.call("settings.widgets.install", { specifier: "d3" })).rejects.toThrow();
+      expect(h.widgetInstall).not.toHaveBeenCalled();
+      await h.call("settings.widgets.install", { specifier: "d3", userApproved: true });
+      expect(h.widgetInstall).toHaveBeenCalledWith(
+        { specifier: "d3", userApproved: true },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(value(await h.call("settings.widgets.remove", { name: "d3" }))).toMatchObject({
+        packages: [],
+      });
+      expect(h.widgetRemove).toHaveBeenCalledWith(
+        { name: "d3" },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    } finally {
+      await h.dispose();
+    }
+  });
   it("discloses all Settings scopes and exact help; shared input schemas reject malformed and unknown fields before dispatch", async () => {
     const h = await fixture();
     try {

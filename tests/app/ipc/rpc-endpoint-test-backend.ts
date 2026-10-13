@@ -35,6 +35,7 @@ import { WorktreeLandingCompletion } from "../../../src/services/worktrees/Workt
 import { WorktreeLandingAgent } from "../../../src/services/worktrees/WorktreeLandingAgent";
 import { McpSettings } from "../../../src/services/pi/McpSettings";
 import { PiSettings } from "../../../src/services/pi/PiSettings";
+import { WidgetPackages } from "../../../src/services/widgets/WidgetPackages";
 import { ScheduledMessages } from "../../../src/services/scheduled-messages/ScheduledMessages";
 import { WorkspaceFiles } from "../../../src/services/filesystem/WorkspaceFiles";
 import { NativeAttachments } from "../../../src/services/filesystem/NativeAttachments";
@@ -60,6 +61,7 @@ export const unusedEndpointServices = Layer.mergeAll(
   Layer.mock(AgentAvailability, {}),
   Layer.mock(RendererRequestCoordinator, {}),
   Layer.mock(ArtifactStorage, {}),
+  Layer.mock(WidgetPackages, { directory: "/backend/widget-packages" }),
   Layer.mock(MessageBoardStorage, {}),
   Layer.mock(SavedDraftStorage, {}),
   Layer.mock(SessionFamilyStorage, {}),

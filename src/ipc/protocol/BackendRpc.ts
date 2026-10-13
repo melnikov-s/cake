@@ -18,6 +18,7 @@ import { ConversationRpc } from "./ConversationRpc";
 import { FoundationRpc } from "./FoundationRpc";
 import { ModelRpc } from "./ModelRpc";
 import { McpSettingsRpc } from "./McpSettingsRpc";
+import { WidgetPackageRpc } from "./WidgetPackageRpc";
 import { PiSettingsRpc } from "./PiSettingsRpc";
 import { ProviderAuthRpc } from "./ProviderAuthRpc";
 import { ProjectSessionRpc } from "./ProjectSessionRpc";
@@ -51,6 +52,7 @@ export const BackendRpc = ApplicationRpc.merge(
   ModelRpc,
   PiSettingsRpc,
   McpSettingsRpc,
+  WidgetPackageRpc,
   ProviderAuthRpc,
   ProjectSessionRpc,
   ProjectWorkflowRpc,

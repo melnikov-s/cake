@@ -742,6 +742,12 @@ export function makeClientCapabilities(execute: Execute): ClientCapabilities {
         ),
     },
     inlineWidgets: {
+      open: (browser, options) =>
+        execute(
+          "widgets.open-widget-browser",
+          (client) => client.widgets["open-widget-browser"]({ browser }),
+          options,
+        ).then((response) => response.widget),
       compile: (language, source, capability, options) =>
         execute(
           "widgets.compile-inline-widget",
