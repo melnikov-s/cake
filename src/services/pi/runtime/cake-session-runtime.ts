@@ -9,7 +9,10 @@ import { resolve } from "node:path";
 import { observeMessageBoardRequests } from "./message-board-extension";
 import { createTurnResultCapture } from "./turn-result-capture";
 import type { PiTurnResult } from "../../../contracts/pi/turn-result-data";
-import type { CurrentSessionControl } from "../../../contracts/agent/cake-operation-options";
+import type {
+  CurrentSessionControl,
+  SessionReferenceControl,
+} from "../../../contracts/agent/cake-operation-options";
 import type { CakeArtifactOperationOptions } from "../../../contracts/artifacts/artifact-agent-control";
 import type { MessageBoardControl } from "../../../contracts/artifacts/message-board-control";
 import type { CakeModelPresetCatalog } from "../../../contracts/model-presets/cake-model-selection";
@@ -146,6 +149,7 @@ export interface CakeSessionRuntimeOptions {
   };
   /** Live hooks used by Pi-backed continuation and metadata operations. */
   currentSessionControl?: CurrentSessionControl;
+  sessionReferences?: SessionReferenceControl;
   persistArtifact?: CakeArtifactOperationOptions["persistArtifact"];
   messageBoardControl?: MessageBoardControl;
   /** Child runtimes report their own costs separately. */
@@ -357,6 +361,14 @@ export async function createCakeSessionRuntime(
   );
   if (options.messageBoardControl)
     observeMessageBoardRequests(session, options.messageBoardControl);
+  const resolveTarget = (reference: string, signal: AbortSignal) => {
+    if (options.sessionReferences) return options.sessionReferences.resolve(reference, signal);
+    if (/^s:/i.test(reference))
+      return Promise.reject(
+        new Error("Session reference resolution is unavailable in this runtime"),
+      );
+    return Promise.resolve(reference);
+  };
   const cakeSessionId = session.sessionManager.getSessionId();
   configurationState.attachModel(session.model);
   capabilities.setSessionId(cakeSessionId);
@@ -698,24 +710,33 @@ export async function createCakeSessionRuntime(
     async pendingMessages(sessionId, signal) {
       const pending = options.currentSessionControl?.pendingMessages;
       if (!pending) throw new Error("Project Session queues are unavailable in this runtime");
-      return pending(sessionId, signal);
+      return pending(await resolveTarget(sessionId, signal), signal);
     },
     async reorderPendingMessage(sessionId, input, signal) {
       const reorder = options.currentSessionControl?.reorderPendingMessage;
       if (!reorder) throw new Error("Project Session queues are unavailable in this runtime");
-      return reorder(sessionId, input, signal);
+      return reorder(await resolveTarget(sessionId, signal), input, signal);
     },
     async mergeSession(targetSessionId, signal) {
       const merge = options.currentSessionControl?.mergeSession;
       if (!merge) throw new Error("Managed Worktree merge is unavailable in this runtime");
-      return merge(targetSessionId, signal);
+      return merge(
+        targetSessionId === undefined ? undefined : await resolveTarget(targetSessionId, signal),
+        signal,
+      );
     },
     async discardSession(targetSessionId, keepBranch, signal) {
       const discard = options.currentSessionControl?.discardSession;
       if (!discard) throw new Error("Managed Worktree discard is unavailable in this runtime");
-      return discard(targetSessionId, keepBranch, signal);
+      return discard(
+        targetSessionId === undefined ? undefined : await resolveTarget(targetSessionId, signal),
+        keepBranch,
+        signal,
+      );
     },
     async invokeAppControl(command, input, signal) {
+      if (typeof input.sessionId === "string")
+        input = { ...input, sessionId: await resolveTarget(input.sessionId, signal) };
       const familyResult =
         command === "sessions.send" || command === "sessions.reply"
           ? await options.currentSessionControl?.routeFamilyMessage?.(

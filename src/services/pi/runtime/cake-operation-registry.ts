@@ -56,6 +56,9 @@ const cakeTopics = [
   {
     name: "sessions",
     summary: "Create, inspect, message, steer, stop, and manage sessions.",
+    guidance: [
+      "Target sessions by full UUID or s:<at least 8 trailing hex characters>. Emitted references use the shortest unique suffix (normally 8); unknown or ambiguous references fail before routing. Titles are labels, not routing identities.",
+    ],
   },
   { name: "context", summary: "Inspect context use or compact the current session." },
   { name: "models", summary: "List configured model presets." },
@@ -146,7 +149,10 @@ function levenshtein(left: string, right: string) {
 export class CakeOperationRegistry {
   private readonly operations = new Map<string, CakeOperationDefinition>();
 
-  constructor(definitions: readonly CakeOperationDefinition[]) {
+  constructor(
+    definitions: readonly CakeOperationDefinition[],
+    private readonly projectResult?: (value: JsonValue, signal: AbortSignal) => Promise<JsonValue>,
+  ) {
     for (const definition of definitions) {
       if (this.operations.has(definition.command))
         throw new Error(`Duplicate Cake operation ${definition.command}`);
@@ -299,8 +305,14 @@ export class CakeOperationRegistry {
           ? executionResult.metadata
           : executionResult,
     );
+    const presented = this.projectResult
+      ? await this.projectResult(result, context.signal)
+      : result;
+    // Typed results retain their canonical contract. Text is always the agent projection.
+    const structured =
+      operation.outputSchema && !Schema.is(operation.outputSchema)(presented) ? result : presented;
     const images = richResult ? decodeImages(executionResult.images) : [];
-    const serialized = JSON.stringify(result);
+    const serialized = JSON.stringify(structured);
     const byteLength = new TextEncoder().encode(serialized).byteLength;
     if (operation.outputSchema && byteLength > MAX_CAKE_OPERATION_RESULT_BYTES)
       throw new Error(
@@ -311,18 +323,18 @@ export class CakeOperationRegistry {
         ? {
             truncated: true,
             byteLength,
-            preview: formatCakeResult(result),
+            preview: formatCakeResult(presented),
           }
-        : result;
+        : structured;
     const text = formatCakeResult(
-      result,
+      presented,
       operation.truncateResultText === false ? MAX_CAKE_OPERATION_RESULT_BYTES : undefined,
     );
     return {
       text,
       content: [{ type: "text", text }, ...images],
       details: { protocol: CAKE_OPERATION_PROTOCOL, command, result: boundedResult },
-      structuredContent: operation.outputSchema ? { command, result } : text,
+      structuredContent: operation.outputSchema ? { command, result: structured } : text,
     };
   }
 }

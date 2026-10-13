@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { resolveSessionReference } from "../../contracts/project-sessions/session-reference";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import {
   SESSION_TITLE_MAX_LENGTH,
@@ -7,7 +8,7 @@ import {
 import { isActiveSessionActivity } from "../lib/session-activity";
 import { CakeModelSelection } from "../../contracts/model-presets/cake-model-selection";
 import type { AppControlResult } from "./app-control-data";
-import { sessionLabels, knownSession } from "./control-projections";
+import { sessionLabels } from "./control-projections";
 import { bounded, trimmed, sessionIdTargetSchema } from "./control-arguments";
 import { defineControl, defineSessionControl } from "./control-definition";
 import { toStrictJson } from "./control-json";
@@ -202,12 +203,19 @@ export const sessionLifecycleControls = [
       summary: "List scheduled messages, optionally filtered to one Project Session.",
     },
     run: async (input, { host }, command): Promise<AppControlResult> => {
-      if (input.sessionId && !knownSession(host, input.sessionId))
-        return { ok: false, command, error: "Cake could not find that session." };
+      let sessionId = input.sessionId;
+      if (sessionId !== undefined) {
+        const resolved = resolveSessionReference(
+          sessionId,
+          host.state.sessions().map((session) => session.sessionId),
+        );
+        if (!resolved.ok) return { ok: false, command, error: resolved.error };
+        sessionId = resolved.sessionId;
+      }
       return {
         ok: true,
         command,
-        messages: await host.sessions.listScheduledMessages(input.sessionId),
+        messages: await host.sessions.listScheduledMessages(sessionId),
       };
     },
   }),
@@ -339,19 +347,20 @@ export const sessionLifecycleControls = [
       summary: "Idempotently resolve or restore explicit Project Session targets.",
     },
     run: async (input, { host }, command): Promise<AppControlResult> => {
-      const projectIds = input.targets
-        .filter((target) => target.kind === "project")
-        .map((target) => target.sessionId);
-      const unknownProject = projectIds.find((sessionId) => !knownSession(host, sessionId));
-      if (unknownProject)
-        return { ok: false, command, error: `Cake could not find session ${unknownProject}.` };
+      const ids = host.state.sessions().map((session) => session.sessionId);
+      const projectIds: string[] = [];
+      for (const target of input.targets) {
+        const resolved = resolveSessionReference(target.sessionId, ids);
+        if (!resolved.ok) return { ok: false, command, error: resolved.error };
+        projectIds.push(resolved.sessionId);
+      }
       const projectCount = projectIds.length
         ? await host.sessions.setProjectSessionsResolved([...new Set(projectIds)], input.resolved)
         : 0;
       return toStrictJson({
         ok: true,
         command,
-        targets: input.targets,
+        targets: projectIds.map((sessionId) => ({ kind: "project", sessionId })),
         resolved: input.resolved,
         sessionCount: projectCount,
       });

@@ -9,6 +9,7 @@ import type {
   SessionSummaryView,
 } from "./app-control-data";
 import { knownSession } from "./control-projections";
+import { resolveSessionReference } from "../../contracts/project-sessions/session-reference";
 
 export interface ControlContext {
   host: AppControlHost;
@@ -101,9 +102,14 @@ export function defineSessionControl<
   return defineControl({
     ...definition,
     async run(input, context, command) {
-      const session = knownSession(context.host, input.sessionId);
+      const resolved = resolveSessionReference(
+        input.sessionId,
+        context.host.state.sessions().map((session) => session.sessionId),
+      );
+      if (!resolved.ok) return { ok: false, command, error: resolved.error };
+      const session = knownSession(context.host, resolved.sessionId);
       if (!session) return { ok: false, command, error: "Cake could not find that session." };
-      return definition.run(input, context, command, session);
+      return definition.run({ ...input, sessionId: resolved.sessionId }, context, command, session);
     },
   });
 }

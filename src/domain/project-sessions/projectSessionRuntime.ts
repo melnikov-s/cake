@@ -4,6 +4,7 @@ import * as sessionFamilyMessaging from "../session-families/sessionFamilyMessag
 import * as projectSessionAgentPolicy from "./projectSessionAgentPolicy";
 import { resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import * as projectSessionLocations from "./projectSessionLocations";
+import * as sessionReferences from "./sessionReferences";
 import * as managedWorktrees from "../worktrees/managedWorktrees";
 import * as worktreeLandings from "../worktrees/worktreeLandings";
 import { WorktreeLandingCoordinator } from "../../services/worktrees/WorktreeLandingCoordinator";
@@ -17,7 +18,7 @@ import * as projectSessionContinuations from "./projectSessionContinuations";
 import * as projectSessionOperations from "./projectSessionOperations";
 import * as sessionChats from "../conversations/sessionChats";
 import { inheritTaskInputProtection } from "../conversations/taskInputs";
-import { Effect, Option, Schema, Schedule } from "effect";
+import { Context, Effect, Option, Schema, Schedule } from "effect";
 import {
   deleteSessionPlugin,
   setProjectSessionLabelsIfUnlabelled,
@@ -64,6 +65,7 @@ import type { Terminal } from "../../services/terminal/Terminal";
 import { toJsonValue } from "../../utils/to-json-value";
 import { agentEditorLocation } from "../../utils/agent-editor-location";
 import type { JsonObject } from "../../contracts/serialization/json-contract";
+import { sessionReference } from "../../contracts/project-sessions/session-reference";
 import {
   EditorSelectionOpenResult,
   EditorSelectionState,
@@ -143,7 +145,11 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     | TaskInputStorage
     | Effect.Services<ReturnType<typeof workflowControl.invoke>>
   >();
-  const run = makePiCallbackExecutor(context);
+  const run = makePiCallbackExecutor(
+    Option.isSome(savedDraftStorage)
+      ? Context.add(context, SavedDraftStorage, savedDraftStorage.value)
+      : context,
+  );
   const agentControl = makeSubagentControl({
     runEffect: (effect, signal) => run(effect, { signal }),
   });
@@ -197,7 +203,14 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
     family && member?.parentSessionId
       ? renderProjectSessionPrompt(childSessionFamilyPromptTemplate, {
           familyId: family.familyId,
-          parentSessionId: member.parentSessionId,
+          parentSessionId: sessionReference(
+            member.parentSessionId,
+            (yield* sessionReferences
+              .catalog()
+              .pipe(Effect.mapError((cause) => compositionError("relationshipPrompt", cause)))).map(
+              (entry) => entry.sessionId,
+            ),
+          ),
           workingDirectory: member.workingDirectory,
         })
       : renderProjectSessionPrompt(parentSessionFamilyPromptTemplate);
@@ -338,6 +351,17 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       }),
     runtime: {
       ...runtimeIntegrations,
+      sessionReferences: {
+        resolve: (reference, signal) => run(sessionReferences.resolve(reference), { signal }),
+        project: (value, signal) => run(sessionReferences.project(value), { signal }),
+        ids: (signal) =>
+          run(
+            sessionReferences
+              .catalog()
+              .pipe(Effect.map((roster) => roster.map((entry) => entry.sessionId))),
+            { signal },
+          ),
+      },
       agentControl: agentControl(getRuntimeOptions, location.workingDirectory),
       workflowControl: {
         isEnabled: () => application.snapshot().experimentalFeatures?.dynamicWorkflows === true,

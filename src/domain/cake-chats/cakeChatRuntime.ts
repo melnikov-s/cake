@@ -1,10 +1,12 @@
-import { Effect, Schema } from "effect";
+import { Context, Effect, Option, Schema } from "effect";
 import * as projectSessionCreation from "../project-sessions/projectSessionCreation";
+import * as sessionReferences from "../project-sessions/sessionReferences";
 import { AgentProjectSessionCreate } from "../../contracts/project-sessions/session-reporting";
 import { inputRefsSchema } from "../../contracts/conversations/task-input";
 import { toJsonValue } from "../../utils/to-json-value";
 import { forwardTaskInputControl, safeCoordinatorProjection } from "./taskInputControls";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
+import { SavedDraftStorage } from "../../services/storage/SavedDraftStorage";
 import { resolveCakeModelSelection } from "../model-presets/cake-model-selection";
 import { setSessionFastMode } from "../application/application";
 import { PiModels } from "../../services/pi/PiModels";
@@ -110,8 +112,12 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     | Effect.Services<ReturnType<typeof projectSessionCreation.createPrompted>>
     | TaskInputStorage
     | Effect.Services<ReturnType<typeof workflowControl.invoke>>
+    | Effect.Services<ReturnType<typeof sessionReferences.catalog>>
   >();
-  const run = makePiCallbackExecutor(context);
+  const drafts = yield* Effect.serviceOption(SavedDraftStorage);
+  const run = makePiCallbackExecutor(
+    Option.isSome(drafts) ? Context.add(context, SavedDraftStorage, drafts.value) : context,
+  );
   const agentControl = makeSubagentControl({
     runEffect: (effect, signal) => run(effect, { signal }),
   });
@@ -136,6 +142,17 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
     }),
     runtime: {
       cwd: configuration.location.workingDirectory,
+      sessionReferences: {
+        resolve: (reference, signal) => run(sessionReferences.resolve(reference), { signal }),
+        project: (value, signal) => run(sessionReferences.project(value), { signal }),
+        ids: (signal) =>
+          run(
+            sessionReferences
+              .catalog()
+              .pipe(Effect.map((roster) => roster.map((entry) => entry.sessionId))),
+            { signal },
+          ),
+      },
       trusted: true,
       agentDir: configuration.agentDirectory,
       sessionDir: configuration.location.sessionDirectory,
@@ -222,6 +239,17 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           run(
             Effect.gen(function* () {
               const inputs = yield* TaskInputStorage;
+              const argumentsObject = yield* Schema.decodeUnknownEffect(jsonObjectSchema)(
+                invocation.arguments,
+              );
+              if (Schema.is(Schema.String)(argumentsObject.sessionId))
+                invocation = {
+                  ...invocation,
+                  arguments: {
+                    ...argumentsObject,
+                    sessionId: yield* sessionReferences.resolve(argumentsObject.sessionId),
+                  },
+                };
               const args = yield* Schema.decodeUnknownEffect(
                 Schema.Struct({ sessionId: Schema.optionalKey(Schema.String) }),
               )(invocation.arguments);

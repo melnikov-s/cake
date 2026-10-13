@@ -12,6 +12,11 @@ import { applyFastModePayload, FastModePayload } from "../pi/fast-mode";
 import { durableModelFacade } from "./durable-model-facade";
 import type { RequestInspection } from "./request-inspection";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
+import type { SessionReferenceControl } from "../../contracts/agent/cake-operation-options";
+import {
+  parseCrossSessionMessage,
+  projectCrossSessionMessageForAgent,
+} from "../../contracts/conversations/cross-session-message";
 
 /** Keep Cake's existing credential/custom-provider authority. Never ask the newer
  * collection to authenticate against a different default Pi home. The two SDKs
@@ -23,16 +28,19 @@ export function durableModels(
   >,
   fastMode: () => boolean = () => false,
   inspection?: RequestInspection,
+  sessionReferences?: SessionReferenceControl,
 ): Models & { synchronizeProviders(): void } {
   const catalog = createModels();
   const relay = (
-    start: () => ReturnType<ModelRuntime["streamSimple"]>,
+    start: () =>
+      | ReturnType<ModelRuntime["streamSimple"]>
+      | Promise<ReturnType<ModelRuntime["streamSimple"]>>,
     model: Parameters<Models["streamSimple"]>[0],
     capture?: ReturnType<RequestInspection["begin"]>,
   ): AssistantMessageEventStream => {
     const output = createAssistantMessageEventStream();
     void (async () => {
-      for await (const event of start()) {
+      for await (const event of await start()) {
         if (event.type === "error") capture?.settle(true);
         if (event.type === "done") capture?.settle(false);
         output.push(event);
@@ -61,11 +69,43 @@ export function durableModels(
     });
     return output;
   };
+  const projectContext = async (
+    context: Parameters<Models["streamSimple"]>[1],
+    signal?: AbortSignal,
+  ) => {
+    const containsEnvelope = context.messages.some(
+      (message) =>
+        message.role === "user" &&
+        (Schema.is(Schema.String)(message.content)
+          ? parseCrossSessionMessage(message.content) !== undefined
+          : message.content.some(
+              (part) => part.type === "text" && parseCrossSessionMessage(part.text) !== undefined,
+            )),
+    );
+    if (!sessionReferences || !containsEnvelope)
+      return normalizeContext({ messages: context.messages });
+    const ids = await sessionReferences.ids(signal ?? new AbortController().signal);
+    return normalizeContext({
+      messages: context.messages.map((message) => {
+        if (message.role !== "user") return message;
+        return {
+          ...message,
+          content: Schema.is(Schema.String)(message.content)
+            ? projectCrossSessionMessageForAgent(message.content, ids)
+            : message.content.map((part) =>
+                part.type === "text"
+                  ? { ...part, text: projectCrossSessionMessageForAgent(part.text, ids) }
+                  : part,
+              ),
+        };
+      }),
+    });
+  };
   const streamSimple: Models["streamSimple"] = (model, context, options) => {
     const capture = inspection?.begin(CAKE_CHAT_SESSION_ID, model, options, fastMode());
     return relay(
-      () =>
-        runtime.streamSimple(model, normalizeContext({ messages: context.messages }), {
+      async () =>
+        runtime.streamSimple(model, await projectContext(context, options?.signal), {
           ...options,
           fetch: capture ? capture.fetch(options?.fetch) : options?.fetch,
           onPayload: async (payload, selected) => {
@@ -87,8 +127,8 @@ export function durableModels(
   const stream: Models["stream"] = (model, context, options) => {
     const capture = inspection?.begin(CAKE_CHAT_SESSION_ID, model, options);
     return relay(
-      () =>
-        runtime.stream<Api>(model, normalizeContext({ messages: context.messages }), {
+      async () =>
+        runtime.stream<Api>(model, await projectContext(context, options?.signal), {
           ...options,
           fetch: capture ? capture.fetch(options?.fetch) : options?.fetch,
           onPayload: async (payload, selected) => {

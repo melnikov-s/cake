@@ -152,6 +152,15 @@ export const route: (
   );
   yield* inheritTaskInputProtection(sessionId, targetSessionId);
   const destinationSnapshot = yield* destination.snapshot();
+  const destinationSummary = yield* sessions
+    .catalogEntry(
+      {
+        workingDirectory: destinationLocation.workingDirectory,
+        sessionDirectory: destinationLocation.sessionDirectory,
+      },
+      targetSessionId,
+    )
+    .pipe(Effect.catch(() => Effect.succeed(undefined)));
   const senderSummary = yield* sessions
     .catalogEntry(
       {
@@ -248,7 +257,8 @@ export const route: (
   return toJsonValue({
     ok: true,
     command,
-    targetTitle: `Project Session ${targetSessionId}`,
+    targetTitle: destinationSummary?.title ?? "Project Session",
+    target: { sessionId: targetSessionId, workspacePath: destinationLocation.workingDirectory },
     messageId,
     threadId,
     turnId,

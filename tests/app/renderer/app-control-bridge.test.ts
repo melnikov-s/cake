@@ -1398,6 +1398,105 @@ describe("AppControlBridge", () => {
     expect(setSessionLabels).toHaveBeenNthCalledWith(2, "session-1", []);
   });
 
+  it("routes short session references through canonical messaging, inspection, scheduling and lifecycle IDs", async () => {
+    const a = "00000000-0000-4000-8000-000112345678";
+    const b = "00000000-0000-4000-8000-000212345678";
+    const sendMessage = vi.fn(async () => "turn-1");
+    const inspect = vi.fn(async () => ({
+      sessionId: a,
+      projectPath: "/projects/alpha",
+      workingDirectory: "/projects/alpha",
+      sessionFile: `/sessions/${a}.jsonl`,
+      parts: [],
+      resolved: false,
+    }));
+    const scheduleMessage = vi.fn(async (input) => ({
+      id: "00000000-0000-4000-8000-000000000001",
+      ...input,
+      createdAt: "2026-09-04T12:00:00.000Z",
+    }));
+    const listScheduledMessages = vi.fn(async () => []);
+    const setProjectSessionsResolved = vi.fn(async () => 2);
+    const bridge = new AppControlBridge(
+      createHost({
+        sessions: () =>
+          [a, b].map((sessionId) => ({
+            workingDirectory: "/projects/alpha",
+            projectName: "Alpha",
+            sessionId,
+            title: "Review",
+            modifiedAt: "2026-09-04T12:00:00.000Z",
+            messageCount: 2,
+            resolved: false,
+            draft: false,
+          })),
+        sendMessage,
+        inspect,
+        scheduleMessage,
+        listScheduledMessages,
+        setProjectSessionsResolved,
+      }),
+    );
+    for (const [reference, error] of [
+      ["s:12345678", "Ambiguous"],
+      ["s:ffffffff", "Unknown"],
+    ] as const) {
+      await expect(
+        bridge.invoke({
+          name: "sessions.send",
+          arguments: { sessionId: reference, text: "Review" },
+        }),
+      ).resolves.toMatchObject({ ok: false, error: expect.stringContaining(error) });
+    }
+    expect(sendMessage).not.toHaveBeenCalled();
+    await expect(
+      bridge.invoke({
+        name: "sessions.send",
+        arguments: { sessionId: "s:112345678", text: "Review" },
+      }),
+    ).resolves.toMatchObject({ ok: true, target: { sessionId: a } });
+    expect(sendMessage).toHaveBeenCalledWith(a, "Review", "prompt", undefined, undefined);
+    await bridge.invoke({ name: "sessions.info", arguments: { sessionId: "s:112345678" } });
+    expect(inspect).toHaveBeenCalledWith(a);
+    await bridge.invoke({
+      name: "sessions.schedule",
+      arguments: { sessionId: "s:112345678", text: "Review", sendAt: "2030-01-01T12:00:00.000Z" },
+    });
+    expect(scheduleMessage).toHaveBeenCalledWith({
+      targetSessionId: a,
+      text: "Review",
+      sendAt: "2030-01-01T12:00:00.000Z",
+    });
+    await bridge.invoke({ name: "sessions.scheduled", arguments: { sessionId: "s:212345678" } });
+    expect(listScheduledMessages).toHaveBeenCalledWith(b);
+    await expect(
+      bridge.invoke({
+        name: "sessions.resolve",
+        arguments: {
+          targets: [
+            { kind: "project", sessionId: "s:112345678" },
+            { kind: "project", sessionId: "s:ffffffff" },
+          ],
+          resolved: true,
+        },
+      }),
+    ).resolves.toMatchObject({ ok: false });
+    expect(setProjectSessionsResolved).not.toHaveBeenCalled();
+    await bridge.invoke({
+      name: "sessions.resolve",
+      arguments: {
+        targets: [
+          { kind: "project", sessionId: "s:112345678" },
+          { kind: "project", sessionId: "s:212345678" },
+        ],
+        resolved: true,
+      },
+    });
+    expect(setProjectSessionsResolved).toHaveBeenCalledWith([a, b], true);
+    await bridge.invoke({ name: "sessions.send", arguments: { sessionId: a, text: "Exact UUID" } });
+    expect(sendMessage).toHaveBeenLastCalledWith(a, "Exact UUID", "prompt", undefined, undefined);
+  });
+
   it("returns the full transcript path and first user message for session info", async () => {
     const sessions = [
       {

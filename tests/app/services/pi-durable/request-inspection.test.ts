@@ -14,6 +14,10 @@ import {
   MemoryStorage,
 } from "@earendil-works/pi-durable";
 import { Type } from "@earendil-works/pi-durable-ai";
+import {
+  encodeCrossSessionMessage,
+  parseCrossSessionMessage,
+} from "../../../../src/contracts/conversations/cross-session-message";
 
 const model: Model<"openai-completions"> = {
   provider: "fixture",
@@ -45,6 +49,42 @@ runtime.setProvider(
     api: { stream, streamSimple },
   }),
 );
+
+it("shortens coordination envelopes in provider context without changing canonical originals", async () => {
+  const sender = "00000000-0000-4000-8000-000112345678";
+  const other = "00000000-0000-4000-8000-000212345678";
+  const envelope = encodeCrossSessionMessage(`Session ${sender} stopped without replying.`, {
+    version: 1,
+    messageId: "00000000-0000-4000-8000-000000000001",
+    threadId: "00000000-0000-4000-8000-000000000002",
+    sequence: 1,
+    expectsResponse: false,
+    generatedNotice: true,
+    sender: { sessionId: sender, title: "Review worker", kind: "project-session" },
+  });
+  const ids = vi.fn(async () => [sender, other]);
+  const models = durableModels(runtime, () => false, undefined, {
+    ids,
+    resolve: async () => sender,
+    project: async (value) => value,
+  });
+  const sent: string[] = [];
+  await models.completeSimple(
+    model,
+    normalizeContext({ messages: [{ role: "user", content: envelope, timestamp: 1 }] }),
+    {
+      fetch: async (input, init) => {
+        sent.push(await new Request(input, init).text());
+        return response();
+      },
+    },
+  );
+  expect(sent[0]).toContain("s:112345678");
+  expect(sent[0]).toContain("Review worker");
+  expect(sent[0]).not.toContain(sender);
+  expect(parseCrossSessionMessage(envelope)?.metadata.sender.sessionId).toBe(sender);
+  expect(ids).toHaveBeenCalledOnce();
+});
 
 it("captures exactly the real provider's serialized body, with tools, tool results, images and ordered instructions; later turns cannot mutate it", async () => {
   const history = createRequestInspectionHistory();

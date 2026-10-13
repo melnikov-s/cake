@@ -1,4 +1,5 @@
 import { Effect, Option, Schema } from "effect";
+import { sessionReference } from "../project-sessions/session-reference";
 
 const boundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const boundedLabel = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1_024));
@@ -66,6 +67,30 @@ const suffix = "</cake-session-message>";
 export function encodeCrossSessionMessage(text: string, metadata: CrossSessionMessageMetadata) {
   const validated = Schema.decodeUnknownSync(CrossSessionMessageMetadata)(metadata);
   return `${prefix}${JSON.stringify(validated)}${suffix}\n\n${text}`;
+}
+
+/** Provider-context projection only; persisted routing metadata stays canonical. */
+export function projectCrossSessionMessageForAgent(
+  content: string,
+  knownSessionIds: readonly string[],
+): string {
+  const parsed = parseCrossSessionMessage(content);
+  if (!parsed) return content;
+  const { sender } = parsed.metadata;
+  const ref = sessionReference(sender.sessionId, knownSessionIds);
+  const fallbackTitle =
+    sender.title === `Session ${sender.sessionId}` ||
+    sender.title === `Project Session ${sender.sessionId}`;
+  const noticePrefix = `Session ${sender.sessionId}`;
+  const text =
+    (parsed.metadata.generatedNotice || parsed.text.startsWith(`${noticePrefix} — `)) &&
+    parsed.text.startsWith(noticePrefix)
+      ? `Session ${ref}${parsed.text.slice(noticePrefix.length)}`
+      : parsed.text;
+  return encodeCrossSessionMessage(text, {
+    ...parsed.metadata,
+    sender: { ...sender, sessionId: ref, title: fallbackTitle ? `Session ${ref}` : sender.title },
+  });
 }
 
 export function parseCrossSessionMessage(

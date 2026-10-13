@@ -32,6 +32,11 @@ evidence from the named effort, not a claim that those checks passed on every la
 checkout. Implementation observations and proposed changes should remain clearly
 distinguished from established policy.
 
+## Agent session targeting
+
+[Session references](./session-references.md) defines suffix-based agent identities,
+canonical routing, collision handling, and typed output projection boundaries.
+
 ## Saved drafts and unsent input
 
 Unsent composer input and explicitly saved Draft records are different concepts.

@@ -22,6 +22,7 @@ import {
 import type { CakeOperationHost } from "../../../contracts/agent/cake-operation-context";
 import type { JsonObject, JsonValue } from "../../../contracts/serialization/json-contract";
 import { createMessageBoardExtension } from "./message-board-extension";
+import { createSessionReferenceExtension } from "./session-reference-extension";
 import { createCakeArtifactExtension } from "./artifact-extension";
 import {
   CakeOperationRegistry,
@@ -44,8 +45,9 @@ import type { CakeSessionRuntimeOptions } from "./cake-session-runtime";
 export function createCakeToolDefinition(
   definitions: readonly CakeOperationDefinition[],
   onRegistry?: (registry: CakeOperationRegistry) => void,
+  projectResult?: (value: JsonValue, signal: AbortSignal) => Promise<JsonValue>,
 ): ToolDefinition {
-  const registry = new CakeOperationRegistry(definitions);
+  const registry = new CakeOperationRegistry(definitions, projectResult);
   onRegistry?.(registry);
   return {
     name: "cake",
@@ -84,6 +86,7 @@ export function createCakeToolDefinition(
 function createCakeGatewayExtension(
   definitions: (pi: CakeOperationHost) => CakeOperationDefinition[],
   onRegistry?: (registry: CakeOperationRegistry) => void,
+  projectResult?: (value: JsonValue, signal: AbortSignal) => Promise<JsonValue>,
 ): InlineExtension {
   return (pi) => {
     const host: CakeOperationHost = {
@@ -91,7 +94,7 @@ function createCakeGatewayExtension(
       on: (event, handler) =>
         pi.on(event, (input) => handler({ systemPrompt: input.systemPrompt })),
     };
-    pi.registerTool(createCakeToolDefinition(definitions(host), onRegistry));
+    pi.registerTool(createCakeToolDefinition(definitions(host), onRegistry, projectResult));
   };
 }
 
@@ -247,6 +250,9 @@ export async function createCakeSessionRuntimeCapabilities(input: {
             : [
                 ...requestExtensions,
                 createCakeSystemPromptExtension(),
+                ...(options.sessionReferences
+                  ? [createSessionReferenceExtension(options.sessionReferences)]
+                  : []),
                 createCakeGatewayExtension(
                   (pi) =>
                     options.operations?.({
@@ -263,6 +269,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
                         ),
                     }) ?? [],
                   captureOperationRegistry,
+                  options.sessionReferences?.project,
                 ),
                 createCakeArtifactExtension({ persistArtifact }),
                 ...(options.messageBoardControl

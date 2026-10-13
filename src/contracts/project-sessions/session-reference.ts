@@ -42,7 +42,7 @@ export function resolveSessionReference(
 }
 
 const identityKey = (key: string) =>
-  /(?:^|Session)Ids?$/.test(key) || key === "sessionId" || key === "sessionIds";
+  /SessionIds?$/.test(key) || key === "sessionId" || key === "sessionIds";
 const audienceKey = (key: string) => key === "audience";
 
 /** Project only identity fields, never user text, paths, family IDs, or message/thread IDs. */

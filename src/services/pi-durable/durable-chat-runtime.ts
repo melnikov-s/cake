@@ -131,7 +131,12 @@ export async function createDurableCakeChatRuntime(
     options.agentDir,
     catalogRuntime,
   );
-  const models = durableModels(catalogRuntime, () => fastMode, inspection);
+  const models = durableModels(
+    catalogRuntime,
+    () => fastMode,
+    inspection,
+    options.sessionReferences,
+  );
   const available = await catalogRuntime.getAvailable();
   const presets = options.coordinator.modelPresets?.();
   const preset = presets?.presets.find((entry) => entry.id === presets.defaultPresetId);
@@ -195,6 +200,7 @@ export async function createDurableCakeChatRuntime(
         await runtime.applyConfiguration(model);
       },
     }),
+    options.sessionReferences?.project,
   );
   const registry = createRegistry();
   const parameters = Schema.toStandardJSONSchemaV1(cakeToolEnvelopeSchema)[
