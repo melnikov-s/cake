@@ -37,11 +37,14 @@ import { piAgentDirectory } from "../services/pi/PiPaths";
 import { MainApplication } from "./MainApplication";
 import { makeMainLive } from "./MainLive";
 import { installStdioErrorHandlers } from "./stdio-errors";
+import { reportMainFailure } from "./report-main-failure";
+import { installProcessErrorHandlers } from "./process-errors";
 import cakeIconPath from "../assets/cake.png?asset";
 import annotationMenuIconPath from "../assets/menu-annotation.png?asset";
 import chatMenuIconPath from "../assets/menu-chat.png?asset";
 
 installStdioErrorHandlers(process.stdout, process.stderr);
+installProcessErrorHandlers(process, reportMainFailure, () => app.exit(1));
 
 app.setName("Cake");
 registerRichContentSchemes();
@@ -113,11 +116,16 @@ void mainRuntime
   )
   .then(async (exit) => {
     let exitCode = Exit.isFailure(exit) ? 1 : 0;
+    if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause))
+      await reportMainFailure(Cause.pretty(exit.cause));
     try {
       await mainRuntime.dispose();
     } catch (defect) {
       exitCode = 1;
       console.error("[cake.main] ManagedRuntime finalization failed", defect);
+      await reportMainFailure(
+        defect instanceof Error ? (defect.stack ?? defect.message) : String(defect),
+      );
     } finally {
       app.exit(exitCode);
     }

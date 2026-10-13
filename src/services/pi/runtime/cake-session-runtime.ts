@@ -160,6 +160,8 @@ export interface CakeSessionRuntimeOptions {
   trusted: boolean;
   agentDir: string;
   sessionDir: string;
+  /** Dedicated session directories (such as Discussion threads) have no workspace subdirectory. */
+  directSessionDir?: boolean;
   /** Legacy Cake Chat sidecar cleanup only; primary Pi sessions stay in sessionDir. */
   resolvedSessionDir?: string;
   newSession?: boolean;
@@ -313,7 +315,9 @@ export async function createCakeSessionRuntime(
     throw new Error("Project investigators require an ephemeral auxiliary runtime");
   if (options.ephemeral && (!options.newSession || options.sessionFile))
     throw new Error("An ephemeral runtime must create a new in-memory session");
-  const sessionDir = cakeWorkspaceSessionDirectory(options.cwd, options.sessionDir);
+  const sessionDir = options.directSessionDir
+    ? resolve(options.sessionDir)
+    : cakeWorkspaceSessionDirectory(options.cwd, options.sessionDir);
   const allowedSessionRoot = sessionDir;
   let directSession: SessionManager | undefined;
   if (options.sessionFile) {
@@ -322,7 +326,12 @@ export async function createCakeSessionRuntime(
   }
   const requestedSessionFile =
     options.sessionId && !options.newSession
-      ? await findSessionFile(options.cwd, options.sessionId, options.sessionDir, false)
+      ? await findSessionFile(
+          options.cwd,
+          options.sessionId,
+          options.sessionDir,
+          options.directSessionDir,
+        )
       : undefined;
   if (options.sessionId && !options.newSession && !requestedSessionFile && !directSession)
     throw new Error("That session is no longer available");
@@ -439,7 +448,7 @@ export async function createCakeSessionRuntime(
     const [sessionFile, models] = await Promise.all([
       options.auxiliary
         ? Promise.resolve(undefined)
-        : findSessionFile(options.cwd, cakeSessionId, options.sessionDir, false),
+        : findSessionFile(options.cwd, cakeSessionId, options.sessionDir, options.directSessionDir),
       options.auxiliary ? Promise.resolve([]) : configuration.modelOptions(),
     ]);
 

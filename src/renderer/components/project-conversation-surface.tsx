@@ -1,5 +1,6 @@
 import { observer, useStore } from "r-state-tree/react";
 import { Avatar } from "@/components/ui/avatar";
+import { ErrorNotice } from "@/components/error-notice";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ConversationSplitLayout } from "@/components/conversation-split-layout";
 import { BlockingInterviews } from "@/components/blocking-interviews";
@@ -29,7 +30,14 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
   const projectChatProps = (paneSession: ProjectSessionStore) => {
     const temporary = store.sessionRegistry.pendingSessions.isTemporary(paneSession.sessionId);
     const draft = store.sessionRegistry.pendingSessions.isDraft(paneSession.sessionId);
-    const paneError = store.contextError(paneSession.sessionId);
+    const paneError =
+      store.contextError(paneSession.sessionId) ??
+      (paneSession.workspacePath === projectOpen.projectPath && projectOpen.error
+        ? { message: projectOpen.error, details: projectOpen.errorDetails }
+        : undefined) ??
+      (paneSession.model.observationError
+        ? { message: paneSession.model.observationError, details: undefined }
+        : undefined);
     const focused = focusedSessionId === paneSession.sessionId;
     const errorMessage =
       paneError?.message ??
@@ -47,7 +55,7 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
           store.openingSession?.sourceSessionId === paneSession.sessionId
             ? store.openingSession.sessionId
             : undefined,
-        ready: paneSession.hydrated || temporary || draft,
+        ready: paneSession.hydrated || temporary || draft || Boolean(paneError),
       },
       transcriptBehavior: projectTranscriptBehaviorFor(root, paneSession),
       empty: paneSession.hydrated ? (
@@ -60,10 +68,19 @@ export const ProjectConversationSurface = observer(function ProjectConversationS
             Describe a task, ask a question, or choose another session from the sidebar.
           </p>
         </div>
+      ) : paneError ? (
+        <ErrorNotice
+          title="Could not open session"
+          message={paneError.message}
+          details={paneError.details}
+        />
       ) : (
         <LoadingState label="Opening session" />
       ),
-      error: errorMessage ? { message: errorMessage, details: errorDetails } : undefined,
+      error:
+        errorMessage && (paneSession.hydrated || !paneError)
+          ? { message: errorMessage, details: errorDetails }
+          : undefined,
       composerContent: root.sessionCatalogStore.find(paneSession.sessionId)
         ?.resolved ? undefined : (
         <BlockingInterviews session={paneSession} inlineWidgets={root.inlineWidgetStore} />

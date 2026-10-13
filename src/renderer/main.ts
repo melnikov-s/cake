@@ -8,7 +8,7 @@ import { DesktopConnectionScreen } from "./components/desktop-connection-screen"
 import type { Client } from "./client/Client";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { DesktopBridgeError } from "./components/desktop-bridge-error";
+import { StartupError } from "./components/startup-error";
 import { RendererRoot } from "./components/renderer-root";
 import { ScreenCaptureOverlay } from "./components/screen-capture-overlay";
 import { ScreenCaptureOverlayStore } from "./stores/ScreenCaptureOverlayStore";
@@ -39,7 +39,12 @@ interface PersistenceRef {
   current?: WindowStatePersistence;
 }
 
-if (!window.cake) root.render(createElement(DesktopBridgeError));
+if (!window.cake)
+  root.render(
+    createElement(StartupError, {
+      error: new Error("Cake's desktop bridge did not load. Restart Cake to try again."),
+    }),
+  );
 else if (new URLSearchParams(window.location.search).get("screenCapture") === "1") {
   const runtime = makeRuntime(window.cake.rpc);
   const store = mount(
@@ -58,7 +63,11 @@ else if (new URLSearchParams(window.location.search).get("screenCapture") === "1
     },
     { once: true },
   );
-} else void bootstrap(window.cake);
+} else
+  void bootstrap(window.cake).catch((error: unknown) => {
+    console.error("[cake] Startup failed", error);
+    root.render(createElement(StartupError, { error }));
+  });
 
 async function bootstrap(bridge: NonNullable<typeof window.cake>) {
   const initialRuntime = makeRuntime(bridge.rpc);
@@ -251,6 +260,7 @@ async function mountDesktop(runtime: Runtime, client: Client, connection: Deskto
       stopObservingAgentAvailability();
       stopObservingApplicationState();
       stopObservingModels();
+      root.unmount();
       rootStore[Symbol.dispose]();
       projection[Symbol.dispose]();
     },

@@ -164,6 +164,7 @@ const acquireRecord = Effect.fn("DiscussionSessions.acquireRecord")(function* (
     trusted: location.trusted,
     agentDir: location.agentDirectory,
     sessionDir: location.sessionDirectory,
+    directSessionDir: true,
     newSession: record.sidecarSessionId === undefined,
     sessionId: sidecarSessionId,
     auxiliary: true,

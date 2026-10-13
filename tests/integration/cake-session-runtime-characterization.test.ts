@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createAgentSession,
@@ -144,6 +144,64 @@ afterEach(async () => {
 });
 
 describe("CakeSessionRuntime characterization", () => {
+  it.each([false, true])(
+    "resumes the same transcript from its configured directory (direct=%s)",
+    async (directSessionDir) => {
+      const directory = await createTemporaryDirectory();
+      const agentDir = join(directory, "agent");
+      vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
+      const sessionRoot = join(directory, "sessions");
+      const sessionDir = directSessionDir
+        ? sessionRoot
+        : cakeWorkspaceSessionDirectory(directory, sessionRoot);
+      const manager = SessionManager.create(directory, sessionDir);
+      manager.appendMessage({ role: "user", content: "Retain this discussion", timestamp: 1 });
+      manager.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: "Persisted discussion answer" }],
+        api: "openai-completions",
+        provider: "fixture-provider",
+        model: "fixture-model",
+        usage: {
+          input: 10,
+          output: 5,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 15,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "stop",
+        timestamp: 2,
+      });
+      const options = {
+        cwd: directory,
+        agentDir,
+        sessionDir: sessionRoot,
+        directSessionDir,
+        auxiliary: directSessionDir,
+        trusted: true,
+        requestUi: async () => undefined,
+        onEvent: () => {},
+      };
+      for (const target of [
+        { sessionId: manager.getSessionId() },
+        { sessionFile: manager.getSessionFile() ?? undefined },
+      ]) {
+        const runtime = await createCakeSessionRuntime({ ...options, ...target });
+        runtimes.push(runtime);
+        expect(runtime.sessionId).toBe(manager.getSessionId());
+        expect(runtime.sessionFile).toBe(manager.getSessionFile());
+        expect(JSON.stringify((await runtime.snapshot()).parts)).toContain(
+          "Persisted discussion answer",
+        );
+        await runtime.dispose();
+      }
+      const fresh = await createCakeSessionRuntime({ ...options, newSession: true });
+      runtimes.push(fresh);
+      expect(dirname(fresh.sessionFile)).toBe(sessionDir);
+    },
+  );
+
   it("loads fresh project instructions, skills and extensions into an in-memory investigator across follow-ups", async () => {
     const directory = await createTemporaryDirectory();
     const bodies: Array<Record<string, unknown>> = [];

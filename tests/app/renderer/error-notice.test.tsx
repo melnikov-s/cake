@@ -3,7 +3,7 @@
  */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ErrorNotice } from "../../../src/renderer/components/error-notice";
 
 describe("ErrorNotice", () => {
@@ -22,7 +22,7 @@ describe("ErrorNotice", () => {
     container.remove();
   });
 
-  it("suppresses internal missing-session failures without hiding actionable session failures", () => {
+  it("shows missing-session failures and other actionable session failures", () => {
     act(() => {
       root.render(
         <ErrorNotice
@@ -32,8 +32,9 @@ describe("ErrorNotice", () => {
         />,
       );
     });
-    expect(container.querySelector('[role="alert"]')).toBeNull();
-    expect(container.textContent).toBe("");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "Cake could not find Project Session 03bd332b-18f1-4e1f-bfa4-f92a1e9cab2a",
+    );
 
     act(() => {
       root.render(
@@ -63,5 +64,29 @@ describe("ErrorNotice", () => {
       root.render(<ErrorNotice title="Operation failed" message="Second failure" />);
     });
     expect(container.textContent).toContain("Second failure");
+  });
+
+  it("logs the full caught error to the dev console even after the notice is dismissed", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      act(() =>
+        root.render(
+          <ErrorNotice
+            title="Backend operation failed"
+            message="Permission denied"
+            details="Error: Permission denied\n at backendOperation (backend.ts:42)"
+          />,
+        ),
+      );
+      expect(logged).toHaveBeenCalledWith(
+        expect.stringContaining("at backendOperation (backend.ts:42)"),
+      );
+      act(() =>
+        container.querySelector<HTMLButtonElement>('button[aria-label="Dismiss error"]')!.click(),
+      );
+      expect(logged).toHaveBeenCalledTimes(1);
+    } finally {
+      logged.mockRestore();
+    }
   });
 });

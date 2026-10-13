@@ -380,6 +380,7 @@ const runtimeFingerprint = (options: CakeSessionRuntimeAcquireOptions): string =
     cwd: runtime.cwd,
     agentDir: runtime.agentDir,
     sessionDir: runtime.sessionDir,
+    directSessionDir: runtime.directSessionDir ?? false,
     resolvedSessionDir: runtime.resolvedSessionDir,
     // Once a caller creates an explicit session ID, later open/command
     // acquisitions address that same runtime. Creation mode is not a lasting

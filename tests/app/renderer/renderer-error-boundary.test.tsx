@@ -43,17 +43,19 @@ describe("RendererErrorBoundary", () => {
       ),
     );
 
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    expect(document.querySelector('dialog[open] [role="alert"]')?.textContent).toContain(
       "The renderer crashed",
     );
-    expect(container.querySelector("pre")?.textContent).toContain("Maximum update depth exceeded");
-    expect(container.querySelector("pre")?.textContent).toContain("React component stack");
+    expect(document.querySelector("dialog pre")?.textContent).toContain(
+      "Maximum update depth exceeded",
+    );
+    expect(document.querySelector("dialog pre")?.textContent).toContain("React component stack");
     expect(consoleError).toHaveBeenCalledWith(
       "[cake] Renderer crashed:",
       expect.stringContaining("Maximum update depth exceeded"),
     );
 
-    act(() => container.querySelector<HTMLButtonElement>("button")!.click());
+    act(() => document.querySelector<HTMLButtonElement>("dialog button")!.click());
     expect(onReload).toHaveBeenCalledOnce();
   });
 
@@ -69,7 +71,7 @@ describe("RendererErrorBoundary", () => {
       ),
     );
 
-    const copy = [...container.querySelectorAll("button")].find(
+    const copy = [...document.querySelectorAll<HTMLButtonElement>("dialog button")].find(
       (button) => button.textContent === "Copy full error details",
     );
     await act(async () => copy?.click());

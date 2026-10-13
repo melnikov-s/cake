@@ -14,6 +14,7 @@ import {
 } from "electron";
 import { ScreenCaptureWindow } from "./ScreenCaptureWindow";
 import { shouldAllowNavigation } from "./navigation-policy";
+import { installRendererDiagnostics } from "./renderer-diagnostics";
 import { CAKE_TITLE_BAR_HEIGHT, Electron, type ElectronWindowLifecycle } from "./Electron";
 import { ElectronError } from "../../contracts/desktop/electron-errors";
 import { ClientConnections } from "../clients/ClientConnections";
@@ -76,6 +77,7 @@ const makeElectronService = (
       clientEvents.sendTo(connectionForWindow(window), { type: "screen-capture-requested" }),
   });
   const fullscreenSurfaces = new Map<number, Set<string>>();
+  const failedRenderers = new Set<number>();
   const fullscreenSurfaceListeners = new Set<
     (state: { readonly connectionId: number; readonly open: boolean }) => void
   >();
@@ -162,6 +164,16 @@ const makeElectronService = (
     });
     const nativeId = window.webContents.id;
     const ownerId = connections.desktop(nativeId);
+    installRendererDiagnostics(window, () => {
+      failedRenderers.add(ownerId);
+      for (const listener of fullscreenSurfaceListeners)
+        listener({ connectionId: ownerId, open: true });
+    });
+    window.webContents.on("did-start-navigation", (event) => {
+      if (!event.isMainFrame || event.isSameDocument || !failedRenderers.delete(ownerId)) return;
+      for (const listener of fullscreenSurfaceListeners)
+        listener({ connectionId: ownerId, open: Boolean(fullscreenSurfaces.get(ownerId)?.size) });
+    });
     windows.set(window.id, window);
     lastFocusedWindow = window;
     window.on("focus", () => {
@@ -241,6 +253,7 @@ const makeElectronService = (
     });
     window.on("close", (event) => {
       if (applicationQuitting) return;
+      if (failedRenderers.has(ownerId)) return;
       if (closeFullscreenSurfaceForWindow(window)) {
         event.preventDefault();
         return;
@@ -257,6 +270,7 @@ const makeElectronService = (
       clientWorkspaces.releaseConnection(ownerId);
       connections.release(ownerId);
       fullscreenSurfaces.delete(ownerId);
+      failedRenderers.delete(ownerId);
       if (applicationQuitting) return;
       lifecycle().onWindowClosed(ownerId, workingDirectory, nativeId);
     });
@@ -681,7 +695,7 @@ const makeElectronService = (
           catch: electronError,
         });
         let surfaceIds = fullscreenSurfaces.get(connectionId);
-        const wasOpen = Boolean(surfaceIds?.size);
+        const wasOpen = failedRenderers.has(connectionId) || Boolean(surfaceIds?.size);
         if (request.open) {
           if (!surfaceIds) {
             surfaceIds = new Set();
@@ -692,7 +706,8 @@ const makeElectronService = (
           surfaceIds.delete(request.surfaceId);
           if (surfaceIds.size === 0) fullscreenSurfaces.delete(connectionId);
         }
-        const open = Boolean(fullscreenSurfaces.get(connectionId)?.size);
+        const open =
+          failedRenderers.has(connectionId) || Boolean(fullscreenSurfaces.get(connectionId)?.size);
         if (open !== wasOpen)
           for (const listener of fullscreenSurfaceListeners) listener({ connectionId, open });
         return { requestId: request.requestId };
@@ -747,6 +762,7 @@ const makeElectronService = (
         }
         fullscreenSurfaceListeners.clear();
         fullscreenSurfaces.clear();
+        failedRenderers.clear();
         windows.clear();
         windowLifecycle = undefined;
       }),

@@ -1,3 +1,4 @@
+import { provokeRendererCrash } from "../../tests/electron/renderer-crash-fixture.ts";
 import {
   seedMessageBoardFixture,
   MESSAGE_BOARD_FIXTURE_ID,
@@ -2708,7 +2709,23 @@ const nestedToolActivityScenario: VisualCaptureScenario = {
   },
 };
 
+const rendererCrash: VisualCaptureScenario = {
+  ...assistantMarkdownCode,
+  name: "renderer-crash",
+  description: "Fatal error above an existing modal and native view, with copyable diagnostics",
+  states: ["default"],
+  async prepare(page, _state, application) {
+    if (!application) throw new Error("Renderer crash capture requires Electron");
+    await provokeRendererCrash(page, application);
+    await expect(
+      page.getByRole("dialog", { name: "Cake encountered an error", exact: true }),
+    ).toBeVisible();
+  },
+  region: (page) => page.getByRole("dialog", { name: "Cake encountered an error", exact: true }),
+};
+
 export const visualCaptureScenarios = [
+  rendererCrash,
   workflowChoiceScenario,
   workflowProgressScenario,
   nestedToolActivityScenario,

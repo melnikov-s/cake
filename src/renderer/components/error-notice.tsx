@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { IconButton } from "@/components/ui/icon-button";
 import { CloseIcon } from "@/components/ui/icons";
 import { CopyErrorDetailsButton } from "./copy-error-details-button";
@@ -14,8 +14,9 @@ export function ErrorNotice({
 }) {
   const signature = `${title}\u0000${message}\u0000${details}`;
   const [dismissedSignature, setDismissedSignature] = useState<string>();
-  // Stale Project Session references are internal lookup failures, not actionable notices.
-  if (/^Cake could not find Project Session \S+$/.test(message)) return null;
+  useEffect(() => {
+    console.error(`[cake] ${title}: ${message}\n${details}`);
+  }, [title, message, details]);
   if (dismissedSignature === signature) return null;
 
   return (

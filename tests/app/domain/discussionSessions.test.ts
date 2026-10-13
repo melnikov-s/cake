@@ -49,11 +49,19 @@ const anchor = {
   diff: "+value",
 };
 
-const makeLayer = (options: { readonly assistant?: boolean } = {}) => {
+const makeLayer = (
+  options: { readonly assistant?: boolean; readonly persistedSidecar?: boolean } = {},
+) => {
   let record: DiscussionSessionRecord = {
     id: "thread-1",
     workingDirectory: "/project",
     parentSessionId: "parent-1",
+    ...(options.persistedSidecar
+      ? {
+          sidecarSessionId: "persisted-sidecar",
+          sidecarSessionFile: "/cake/reviews/thread-1/persisted-sidecar.jsonl",
+        }
+      : {}),
     pendingParts: [
       {
         id: "pending-question",
@@ -91,7 +99,7 @@ const makeLayer = (options: { readonly assistant?: boolean } = {}) => {
   const runtime = (options: CakeSessionRuntimeSetup): CakeSessionRuntime => {
     const sessionId = options.sessionId ?? "generated";
     const sessionFile = options.auxiliary
-      ? `/reviews/${sessionId}.jsonl`
+      ? `${options.sessionDir}/${sessionId}.jsonl`
       : `/sessions/${sessionId}.jsonl`;
     return {
       sessionId,
@@ -328,6 +336,7 @@ describe("Discussion Sessions domain", () => {
       assert.equal(accepted.thread.sidecarSessionId, fixture.record().sidecarSessionId);
       const sidecar = fixture.options.find((options) => options.auxiliary);
       assert.deepEqual(sidecar?.tools, ["read", "grep", "find", "ls"]);
+      assert.equal(sidecar?.directSessionDir, true);
       assert.equal(sidecar?.globalControl, undefined);
       // The parent's Discussion catalog learns about the new sidecar right away.
       assert.ok(fixture.parentIndexRefreshes() >= 1);
@@ -403,6 +412,29 @@ describe("Discussion Sessions domain", () => {
       assert.equal(fixture.record().status, "open");
       // Delivery and settlement both keep the parent's catalog current.
       assert.ok(fixture.parentIndexRefreshes() > refreshesBefore);
+    }).pipe(Effect.provide(fixture.layer));
+  });
+
+  it.effect("observes a persisted sidecar from the dedicated thread directory", () => {
+    const fixture = makeLayer({ persistedSidecar: true });
+    return Effect.gen(function* () {
+      const updates = yield* discussionSessions.observe({
+        parentSessionId: "parent-1",
+        workingDirectory: "/project",
+        threadId: "thread-1",
+      });
+      const first = yield* Stream.runHead(updates);
+      assert.equal(first._tag === "Some" && first.value._tag, "Snapshot");
+      if (first._tag !== "Some" || first.value._tag !== "Snapshot") return;
+      assert.equal(first.value.snapshot.conversation.sessionId, "persisted-sidecar");
+      assert.equal(
+        first.value.snapshot.conversation.sessionFile,
+        fixture.record().sidecarSessionFile,
+      );
+      assert.equal(fixture.options.length, 1);
+      assert.equal(fixture.options[0]?.directSessionDir, true);
+      assert.equal(fixture.options[0]?.sessionDir, "/cake/reviews/thread-1");
+      assert.equal(fixture.options[0]?.newSession, false);
     }).pipe(Effect.provide(fixture.layer));
   });
 

@@ -649,3 +649,63 @@ describe("Session artifact workflows", () => {
     expect(screen.queryByRole("button", { name: /Outdated title/ })).toBeNull();
   });
 });
+
+it("does not load artifacts for unhydrated session identities restored from window history", async () => {
+  const ids = Array.from({ length: 12 }, (_, index) => `restored-${index}`);
+  const effective = vi.fn<Client["artifacts"]["effective"]>(async () => []);
+  using fixture = createRendererStoreFixture({
+    projects: [projectRecord({ path: "/project" })],
+    sessions: ids.map((sessionId) => sessionSummary({ sessionId, projectPath: "/project" })),
+    client: { artifacts: { effective } },
+    snapshot: {
+      state: {},
+      children: {
+        sessionRegistry: {
+          state: { targets: ids.map((sessionId) => ({ sessionId, workspacePath: "/project" })) },
+          children: {
+            sessions: ids.map((key) => ({
+              key,
+              state: {},
+              children: { sessionArtifactsStore: { state: {}, children: {} } },
+            })),
+          },
+        },
+      },
+    },
+  });
+  fixture.root.appShellStore.selectProjectSession(ids[0]!);
+  fixture.root.projectWorkbenchStore.showLoadedSession(ids[0]!);
+  fixture.root.sessionLayoutStore.ensureSession(ids[0]!);
+  const view = render(
+    <RendererRoot rootStore={fixture.root} openExternalUrl={vi.fn()} openSession={vi.fn()} />,
+  );
+  try {
+    expect(screen.getByText("Opening session")).toBeDefined();
+    expect(effective).not.toHaveBeenCalled();
+    await act(async () =>
+      applyConversationUpdate(fixture.models.projectConversation(ids[0]!, "/project"), {
+        _tag: "Snapshot",
+        revision: 1,
+        snapshot: {
+          sessionId: ids[0]!,
+          sessionFile: "/sessions/restored-0.jsonl",
+          parts: [],
+          models: [],
+          thinkingLevel: "off",
+          availableThinkingLevels: ["off"],
+          streaming: false,
+          diagnostics: [],
+          commands: [],
+          compatibility: { resources: [], diagnostics: [] },
+          extensionUi: { statuses: [] },
+          tree: [],
+        },
+      }),
+    );
+    await waitFor(() => expect(effective).toHaveBeenCalledOnce());
+    expect(effective).toHaveBeenCalledWith(ids[0], expect.anything());
+    expect(screen.getByRole("button", { name: "0 artifacts" })).toBeDefined();
+  } finally {
+    view.unmount();
+  }
+});

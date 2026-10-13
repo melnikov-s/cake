@@ -1,6 +1,16 @@
 // React's test-only `act` export is absent from the production build.
 process.env.NODE_ENV = "test";
 
+// jsdom has no modal top layer. Electron tests verify real stacking and focus.
+if (typeof HTMLDialogElement !== "undefined" && !HTMLDialogElement.prototype.showModal) {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
+}
+
 // jsdom does not perform layout. Geometry and scrolling are exercised in
 // Electron; DOM-only component tests just need the browser observer API.
 if (typeof window !== "undefined" && !("ResizeObserver" in globalThis)) {

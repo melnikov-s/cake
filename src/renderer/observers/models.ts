@@ -12,6 +12,7 @@ import type {
   SessionCatalogUpdate,
 } from "../../contracts/application/catalog-data";
 import { SessionChatError } from "../../contracts/conversations/conversation-data";
+import { DiscussionSessionError } from "../../contracts/discussion-sessions/discussion-session-data";
 import type {
   DiscussionSessionTarget,
   DiscussionSessionUpdate,
@@ -156,6 +157,11 @@ export const createModelObserver = (
     error.operation === "observeProjectSession" &&
     error.message === "That session is no longer available";
 
+  const unavailableDiscussion = (key: string, error: unknown) =>
+    key.startsWith("discussion-session:") &&
+    Schema.is(DiscussionSessionError)(error) &&
+    error.message === "That session is no longer available";
+
   const stop = (key: string, clear = true) => {
     const observation = observations.get(key);
     observation?.stop();
@@ -186,11 +192,14 @@ export const createModelObserver = (
           observeModelStream(key, model, stream, apply, options);
         });
       },
-      classifyFailure: (error): StreamFailureAction => (unavailable(key, error) ? "stop" : "retry"),
+      classifyFailure: (error): StreamFailureAction =>
+        unavailable(key, error) || unavailableDiscussion(key, error) ? "stop" : "retry",
       reportFailure: (error) => {
         options.failed?.(error);
         if (!unavailable(key, error))
-          console.error(`[cake.renderer] ${key} observation failed`, error);
+          console.error(
+            `[cake.renderer] ${key} observation failed\n${observationFailureDetails(key, error)}`,
+          );
       },
     });
     observations.set(key, { model, stop: cancel, ...options });
@@ -585,7 +594,7 @@ export const observeModels = (runtime: Runtime, projection: RootProjection, root
       tone: "error",
       title: "Updates stopped",
       autoDismiss: false,
-      message: "Updates for this view stopped. Retry to reconnect.",
+      message: error instanceof Error ? error.message : String(error),
       details: observationFailureDetails(key, error),
       coalesceKey: `observation:${key}`,
       action: { label: "Retry", run: retry },
