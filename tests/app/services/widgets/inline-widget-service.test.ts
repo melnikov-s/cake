@@ -16,6 +16,10 @@ describe("inline widget service", () => {
     expect(compiled.document).toContain("<button");
     expect(compiled.document).toContain("body>*{max-width:100%}");
     expect(compiled.document).toContain("overflow-wrap:anywhere");
+    expect(compiled.document).toContain('<html data-sizing="viewport">');
+    expect(compiled.document).toContain(
+      'html[data-sizing="viewport"] #cake-widget-root{height:100%;min-height:0}',
+    );
   });
 
   it("gives generation and repair agents one collision-free responsive layout contract", () => {
@@ -26,6 +30,9 @@ describe("inline widget service", () => {
       "do not use absolute or fixed positioning for structural text",
     );
     expect(inlineWidgetLayoutRequirements).toContain("No text or interactive control may overlap");
+    expect(inlineWidgetLayoutRequirements).toContain("user-resizable viewport");
+    expect(inlineWidgetLayoutRequirements).toContain("ResizeObserver");
+    expect(inlineWidgetLayoutRequirements).toContain("View geometry is not artifact document data");
   });
 
   it("bundles the narrow artifact SDK only in artifact widgets", async () => {
@@ -55,6 +62,7 @@ describe("inline widget service", () => {
       "<button onclick=\"cakeRequest.submit({answer:'yes'})\">Yes</button>",
       "request",
     );
+    expect(html.document).toContain('<html data-sizing="content">');
     expect(html.document).toContain("globalThis.cakeRequest");
     expect(html.document).toContain('send("submit", value)');
   });
@@ -70,6 +78,7 @@ describe("inline widget service", () => {
       }
     `;
     const compiled = await compileInlineWidget("react", source, "session-plugin");
+    expect(compiled.document).toContain('<html data-sizing="content">');
     expect(compiled.document).toContain("__cakePluginBridge");
     expect(compiled.document).toContain("plugin-call");
     expect(compiled.document).toContain("event.source !== parent");

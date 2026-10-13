@@ -1218,9 +1218,9 @@ const inlineArtifactScenario: VisualCaptureScenario = {
     const source = `import React, { useState } from "react";
 export default function Visual() {
   const [expanded, setExpanded] = useState(false);
-  return <main style={{ color: "var(--foreground,CanvasText)", fontFamily: "var(--font-sans,system-ui)" }}>
+  return <main style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column", color: "var(--foreground,CanvasText)", fontFamily: "var(--font-sans,system-ui)" }}>
     <h2 style={{ margin: "0 0 12px", fontSize: 20 }}>One artifact, two views</h2>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12 }}>
+    <div data-testid="canvas" style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12 }}>
       {[["Conversation", "Explain in context"], ["Artifact", "Revisit and explore"]].map(([name, text]) =>
         <section key={name} style={{ padding: 16, border: "1px solid var(--border,GrayText)", borderRadius: 12 }}>
           <strong>{name}</strong><p>{text}</p>
@@ -1229,7 +1229,7 @@ export default function Visual() {
     <button onClick={() => setExpanded(!expanded)} style={{ marginTop: 12, padding: 8, color: "var(--foreground,CanvasText)", background: "var(--muted,Canvas)", border: "1px solid var(--border,GrayText)" }}>
       {expanded ? "Hide detail" : "Explore detail"}
     </button>
-    {expanded && <section style={{ minHeight: 480, paddingTop: 16 }}>Expanded detail stays in this view.</section>}
+    {expanded && <section style={{ paddingTop: 16 }}>Expanded detail stays in this view.</section>}
   </main>;
 }`;
     await seedArtifactScenario(

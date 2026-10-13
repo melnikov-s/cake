@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Markdown } from "@/components/ai-elements/markdown";
 import { FullscreenSurface } from "@/components/fullscreen-surface";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
+import { ResizableSurface } from "@/components/ui/resizable-surface";
 import { observer } from "r-state-tree/react";
 import type { ArtifactRecord } from "../../contracts/artifacts/artifact-contract";
 import type { SourceLocation } from "../../contracts/editor/source-location";
@@ -37,7 +38,7 @@ export const ArtifactHost = observer(function ArtifactHost({
   const title = artifact.title ?? artifact.id;
   const canvas = artifact.kind === "widget" || artifact.kind === "html";
 
-  const renderArtifact = (fill = false) => (
+  const renderArtifact = () => (
     <>
       {artifact.kind === "message-board" ? (
         messageBoard ? (
@@ -59,15 +60,6 @@ export const ArtifactHost = observer(function ArtifactHost({
       ) : null}
       {artifact.kind === "html" ? <HtmlArtifact artifact={artifact} /> : null}
       {artifact.kind === "file" ? <FileArtifact artifact={artifact} /> : null}
-      {artifact.kind === "widget" ? (
-        <WidgetArtifact
-          artifact={artifact}
-          stateSessionId={stateSessionId}
-          inlineWidgets={inlineWidgets}
-          fill={fill}
-          presentation={fill ? "workspace" : presentation}
-        />
-      ) : null}
     </>
   );
 
@@ -82,15 +74,43 @@ export const ArtifactHost = observer(function ArtifactHost({
         label={`View ${title} fullscreen`}
         onClick={() => setFullscreen(true)}
       />
-      {renderArtifact()}
-      {fullscreen && (
+      {artifact.kind === "widget" ? (
+        <ResizableSurface
+          label={title}
+          renderExpanded={
+            fullscreen
+              ? (targetRef) => (
+                  <FullscreenSurface
+                    mode="canvas"
+                    eyebrow="Artifact"
+                    title={title}
+                    onClose={() => setFullscreen(false)}
+                  >
+                    <div ref={targetRef} className="h-full min-h-0 w-full" />
+                  </FullscreenSurface>
+                )
+              : undefined
+          }
+        >
+          <WidgetArtifact
+            artifact={artifact}
+            stateSessionId={stateSessionId}
+            inlineWidgets={inlineWidgets}
+            fill
+            presentation={fullscreen ? "workspace" : presentation}
+          />
+        </ResizableSurface>
+      ) : (
+        renderArtifact()
+      )}
+      {fullscreen && artifact.kind !== "widget" && (
         <FullscreenSurface
           mode={canvas ? "canvas" : "reader"}
           eyebrow="Artifact"
           title={title}
           onClose={() => setFullscreen(false)}
         >
-          {renderArtifact(true)}
+          {renderArtifact()}
         </FullscreenSurface>
       )}
     </article>

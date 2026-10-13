@@ -128,6 +128,7 @@ export const GeneratedSessionPlugin = observer(function GeneratedSessionPlugin({
   return (
     <InlineWidgetFrame
       ref={iframe}
+      sizing="content"
       title={plugin.title}
       compiled={compiledState.compiled}
       style={{ height }}

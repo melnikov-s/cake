@@ -61,6 +61,12 @@ family depth, worktree context, relative time and activity. Callers own ordering
 content-sized, draggable toolbar with viewport-clamped transient geometry and keyboard movement.
 Only its actual footprint intercepts input on the underlying canvas.
 
+[`ResizableSurface`](../../src/renderer/components/ui/resizable-surface.tsx) provides a
+600px initial canvas with a discoverable pointer/keyboard resize grip (240–1200px).
+Geometry is local to the mounted view, never artifact document data; fullscreen
+restores the same inline height. Its expanded target uses atomic DOM moves to
+preserve the live iframe browsing context rather than remounting an editor.
+
 ### Workspace and chat shell
 
 [`WorkspaceChatLayout`](../../src/renderer/components/workspace-chat-layout.tsx)

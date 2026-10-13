@@ -22,11 +22,20 @@ export const InlineWidgetFrame = forwardRef<
     className?: string;
     style?: CSSProperties;
     presentation?: "inline" | "workspace";
+    sizing?: "viewport" | "content";
     /** Artifact-owned export controls may download generated local files. */
     downloads?: boolean;
   }
 >(function InlineWidgetFrame(
-  { title, compiled, className, style, presentation = "workspace", downloads = false },
+  {
+    title,
+    compiled,
+    className,
+    style,
+    presentation = "workspace",
+    sizing = "viewport",
+    downloads = false,
+  },
   ref,
 ) {
   const colorScheme = useResolvedColorTheme();
@@ -34,7 +43,9 @@ export const InlineWidgetFrame = forwardRef<
   // The initial theme is carried before first paint. Live changes are posted,
   // never assigned to src: reloading would erase widget interaction state.
   const [initial] = useState(() =>
-    encodeURIComponent(JSON.stringify({ theme: readWidgetTheme(colorScheme), presentation })),
+    encodeURIComponent(
+      JSON.stringify({ theme: readWidgetTheme(colorScheme), presentation, sizing }),
+    ),
   );
   const postPresentation = useCallback(() => {
     frame.current?.contentWindow?.postMessage(
@@ -42,11 +53,11 @@ export const InlineWidgetFrame = forwardRef<
         source: "cake-widget-host",
         token: compiled.token,
         type: "presentation",
-        value: { theme: readWidgetTheme(colorScheme), presentation },
+        value: { theme: readWidgetTheme(colorScheme), presentation, sizing },
       },
       "*",
     );
-  }, [colorScheme, compiled.token, presentation]);
+  }, [colorScheme, compiled.token, presentation, sizing]);
   useEffect(postPresentation, [postPresentation]);
   useImperativeHandle(ref, () => frame.current!, [compiled.token]);
   const url = widgetDocumentUrl(compiled, window.location);
@@ -60,7 +71,7 @@ export const InlineWidgetFrame = forwardRef<
       sandbox={downloads ? "allow-scripts allow-downloads" : "allow-scripts"}
       referrerPolicy="no-referrer"
       src={src}
-      className={cn("w-full border-none", className)}
+      className={cn("block min-h-0 w-full border-none", className)}
       style={style}
     />
   );

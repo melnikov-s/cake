@@ -1,13 +1,14 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import mermaid from "mermaid";
 import type {
   ArtifactRecord,
   CakeArtifactV1,
 } from "../../../src/contracts/artifacts/artifact-contract";
 import { ArtifactHost } from "../../../src/renderer/components/artifact-host";
+import { decodeArtifactLineageId } from "../../../src/contracts/artifacts/artifact-lineage";
 import { FullscreenSurfaceFixture } from "./fullscreen-surface-fixture";
 import { createRendererStoreFixture } from "./renderer-store-fixture";
 
@@ -32,6 +33,16 @@ const base = {
   fallback: { markdown: "Readable fallback" },
   interaction: { mode: "present" as const },
 };
+// jsdom has no browsing-context-preserving moveBefore; Electron coverage below
+// verifies the native operation actually retains editor state.
+beforeEach(() => {
+  Object.defineProperty(Element.prototype, "moveBefore", {
+    configurable: true,
+    value(this: Element, node: Node, child: Node | null) {
+      this.insertBefore(node, child);
+    },
+  });
+});
 afterEach(cleanup);
 
 describe("ArtifactHost", () => {
@@ -145,7 +156,15 @@ describe("ArtifactHost", () => {
     const token = "00000000-0000-4000-8000-000000000002";
     const source = "export default () => <strong>Generated</strong>";
     const open = vi.fn(async () => ({ token, url: `cake-widget://document/${token}` }));
-    using fixture = createRendererStoreFixture({ client: { inlineWidgets: { open } } });
+    const stateRead = vi.fn(async () => ({
+      lineageId: decodeArtifactLineageId(base.id),
+      version: 7,
+      value: { scene: "user edits" },
+    }));
+    const stateReplace = vi.fn();
+    using fixture = createRendererStoreFixture({
+      client: { inlineWidgets: { open }, artifacts: { stateRead, stateReplace } },
+    });
     const view = render(
       <FullscreenSurfaceFixture>
         <ArtifactHost
@@ -162,6 +181,7 @@ describe("ArtifactHost", () => {
             },
           })}
           inlineWidgets={fixture.root.inlineWidgetStore}
+          stateSessionId="viewer"
         />
       </FullscreenSurfaceFixture>,
     );
@@ -171,13 +191,30 @@ describe("ArtifactHost", () => {
       const frame = view.container.querySelector("iframe")!;
       expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-downloads");
       expect(view.container.textContent).not.toContain(source);
+      const surface = frame.parentElement!.parentElement!;
+      expect(surface.style.height).toBe("600px");
+      const resize = screen.getByRole("separator", { name: "Resize Comparison" });
+      resize.focus();
+      await userEvent.setup().keyboard("{ArrowDown}{ArrowDown}");
+      expect(surface.style.height).toBe("632px");
+      await userEvent.setup().keyboard("{Home}");
+      expect(surface.style.height).toBe("240px");
+      await userEvent.setup().keyboard("{End}");
+      expect(surface.style.height).toBe("1200px");
       await userEvent
         .setup()
         .click(screen.getByRole("button", { name: "View Comparison fullscreen" }));
       expect(screen.getByRole("dialog").querySelector("iframe")?.getAttribute("sandbox")).toBe(
         "allow-scripts allow-downloads",
       );
+      expect(screen.getByRole("dialog").querySelector("iframe")).toBe(frame);
+      expect(open).toHaveBeenCalledTimes(1);
       await userEvent.setup().keyboard("{Escape}");
+      expect(view.container.querySelector("iframe")).toBe(frame);
+      expect(surface.style.height).toBe("1200px");
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(stateRead).toHaveBeenCalledTimes(1);
+      expect(stateReplace).not.toHaveBeenCalled();
       act(() =>
         window.dispatchEvent(
           new MessageEvent("message", {

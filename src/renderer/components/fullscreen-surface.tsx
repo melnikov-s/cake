@@ -70,7 +70,7 @@ export function FullscreenSurface({
       onMouseDown={onClose}
     >
       <header
-        className="flex items-center justify-between border-b border-border bg-card py-3 pr-5 pl-[84px]"
+        className="flex shrink-0 items-center justify-between border-b border-border bg-card py-3 pr-5 pl-[84px]"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div>
@@ -90,15 +90,15 @@ export function FullscreenSurface({
       </header>
       <main
         className={cn(
-          "flex flex-1 justify-center overflow-auto p-6",
-          mode === "canvas" && "p-0",
+          "flex min-h-0 flex-1 justify-center overflow-auto p-6",
+          mode === "canvas" && "overflow-hidden p-0",
           mode === "dialog" && "items-center",
         )}
       >
         <article
           className={cn(
             "w-full max-w-4xl",
-            mode === "canvas" && "h-full max-w-none",
+            mode === "canvas" && "h-full min-h-0 max-w-none overflow-hidden",
             mode === "dialog" && "max-w-[34rem]",
           )}
           onMouseDown={(event) => event.stopPropagation()}

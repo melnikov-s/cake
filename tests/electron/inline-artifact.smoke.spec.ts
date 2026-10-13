@@ -46,22 +46,37 @@ for (const theme of ["light", "dark"] as const) {
       const iframe = inline.locator("iframe");
       const frame = iframe.contentFrame();
       await expect(frame.getByRole("heading", { name: "One artifact, two views" })).toBeVisible();
-      await expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
+      await expect(iframe).toHaveAttribute("sandbox", "allow-scripts allow-downloads");
       await expect(frame.locator("html")).toHaveAttribute("data-theme", theme);
       await expect(frame.locator("html")).toHaveAttribute("data-presentation", "inline");
+      await expect(frame.locator("html")).toHaveAttribute("data-cake-widget-ready", "true");
       const originalSrc = await iframe.getAttribute("src");
       const initialHeight = await iframe.evaluate(
         (element) => element.getBoundingClientRect().height,
       );
-      await frame.getByRole("button", { name: "Explore detail" }).click();
+      expect(initialHeight).toBe(600);
+      const resize = inline.getByRole("separator", { name: "Resize Inline visualization" });
+      await resize.focus();
+      await resize.press("ArrowDown");
+      await expect(resize).toHaveAttribute("aria-valuenow", "616");
+      const grip = (await resize.boundingBox())!;
+      await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2 + 64);
+      await page.mouse.up();
+      await expect(resize).toHaveAttribute("aria-valuenow", "680");
       await expect
         .poll(() => iframe.evaluate((element) => element.getBoundingClientRect().height))
-        .toBeGreaterThan(initialHeight + 400);
-      await frame.getByRole("button", { name: "Hide detail" }).click();
-      await expect
-        .poll(() => iframe.evaluate((element) => element.getBoundingClientRect().height))
-        .toBeLessThan(initialHeight + 20);
-      await frame.getByRole("button", { name: "Explore detail" }).click();
+        .toBe(680);
+      const explore = frame.getByRole("button", { name: "Explore detail" });
+      await explore.focus();
+      await explore.press("Enter");
+      await expect(frame.getByRole("button", { name: "Hide detail" })).toBeVisible();
+      // An unsaved, purely local edit must survive moves, not just rehydrate
+      // from durable artifact state in a newly created iframe.
+      await frame.locator("main").evaluate((element) => {
+        element.dataset.unsaved = "retained";
+      });
 
       const nextTheme = theme === "light" ? "dark" : "light";
       await page.evaluate((value) => {
@@ -131,9 +146,46 @@ for (const theme of ["light", "dark"] as const) {
           .contentFrame()
           .getByRole("heading", { name: "One artifact, two views" }),
       ).toBeVisible();
+      const fullFrame = fullscreen.locator("iframe");
+      const fullContent = fullFrame.contentFrame();
+      await expect(fullContent.getByRole("button", { name: "Hide detail" })).toBeVisible();
+      await expect(fullContent.locator("main")).toHaveAttribute("data-unsaved", "retained");
+      expect(await fullFrame.getAttribute("src")).toBe(originalSrc);
+      const assertFilled = async () => {
+        const header = (await fullscreen.locator("header").boundingBox())!;
+        const bounds = (await fullFrame.boundingBox())!;
+        const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+        expect(bounds.width).toBe(viewport.width);
+        expect(bounds.height).toBeCloseTo(viewport.height - header.height, 0);
+        expect(bounds.y).toBeCloseTo(header.height, 0);
+        expect(
+          await fullContent
+            .locator("body")
+            .evaluate((body) => body.scrollHeight > body.clientHeight),
+        ).toBe(false);
+        expect(
+          await fullContent
+            .getByTestId("canvas")
+            .evaluate((element) => element.getBoundingClientRect().height),
+        ).toBeGreaterThan(bounds.height - 250);
+      };
+      await assertFilled();
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]!.setContentSize(1000, 760),
+      );
+      await expect
+        .poll(() => fullFrame.evaluate((element) => element.getBoundingClientRect().width))
+        .toBe(1000);
+      await assertFilled();
       await fullscreen
         .getByRole("button", { name: "Exit fullscreen Inline visualization" })
         .click();
+      await expect(frame.locator("main")).toHaveAttribute("data-unsaved", "retained");
+      await expect(frame.getByRole("button", { name: "Hide detail" })).toBeVisible();
+      await expect
+        .poll(() => iframe.evaluate((element) => element.getBoundingClientRect().height))
+        .toBe(680);
+      await expect(resize).toHaveAttribute("aria-valuenow", "680");
       const collapse = inline.getByRole("button", { name: "Inline visualization Collapse" });
       await collapse.focus();
       await collapse.press("Enter");

@@ -49,6 +49,7 @@ export const InterviewWidget = observer(function InterviewWidget({
   return (
     <InlineWidgetFrame
       ref={iframe}
+      sizing="content"
       title={interview.record.request.title}
       compiled={state.compiled}
       className="w-full border-none"
