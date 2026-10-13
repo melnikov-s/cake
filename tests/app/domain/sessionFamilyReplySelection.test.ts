@@ -87,7 +87,11 @@ const environment = () =>
         trustedProjectPaths: ["/project"],
       }),
     }),
-    Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+    Layer.mock(SessionArchiveStorage, {
+      locate: () => Effect.succeed("active" as const),
+      resolvedProjects: () => Stream.empty,
+      resolved: () => Stream.empty,
+    }),
     Layer.mock(ManagedWorktrees, {
       records: () => Effect.succeed([]),
       proposeSquashMessage: () => Effect.void,

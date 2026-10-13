@@ -66,6 +66,7 @@ const environment = (forked: string[] = []) =>
     Layer.mock(SessionArchiveStorage, {
       locate: () => Effect.succeed("active" as const),
       resolved: () => Stream.empty,
+      resolvedProjects: () => Stream.empty,
       resolvedProjectEntry: () => Effect.succeed(undefined),
     }),
     Layer.mock(ManagedWorktrees, {

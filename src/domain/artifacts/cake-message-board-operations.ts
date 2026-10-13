@@ -40,7 +40,7 @@ export const createMessageBoardOperations = (
     limitations: [
       "Audience is required: target affected owners using session references. Use workgroup only for genuinely shared decisions. Only workgroup members may append or be targeted.",
       "Post information that changes another member's work. No routine progress, tool diaries, acknowledgments or duplicate completion reports.",
-      "Entries are immutable. Use topic plus supersedes: [sequence, ...] for corrections within the same topic. Supersession is recipient-specific; include everyone affected by the old decision. Agent decisions are not user authorization.",
+      "Entries are immutable. Use topic plus supersedes: [sequence, ...] for corrections within the same topic (untagged originals may acquire a topic through a correction). Supersession is recipient-specific; include everyone affected by the old decision. Agent decisions are not user authorization.",
       "Establish types, signatures, file ownership, dependencies and acceptance criteria before dependent implementation. Post changes/discoveries, not repeated contract negotiation.",
       "Completion replies satisfy assignments. Board results contain only cross-owner commit, contract delta, integration action and verification limits; reference earlier entries instead of repeating them.",
       "Use direct messaging/steering for assignments, urgent redirection, or blocked-child wake-ups.",

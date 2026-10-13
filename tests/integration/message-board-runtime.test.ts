@@ -35,6 +35,7 @@ import {
   observeMessageBoardRequests,
 } from "../../src/services/pi/runtime/message-board-extension";
 import type { MessageBoardControl } from "../../src/contracts/artifacts/message-board-control";
+import type { SessionReferenceControl } from "../../src/contracts/agent/cake-operation-options";
 import {
   boardDescription,
   type BoardEntry,
@@ -66,6 +67,7 @@ function gate() {
 }
 const harness = async (
   input: {
+    references?: SessionReferenceControl;
     tools?: number;
     readBody?: boolean;
     nestedRead?: boolean;
@@ -218,7 +220,7 @@ const harness = async (
     noContextFiles: true,
     extensionFactories: [
       ...(input.before ? [input.before] : []),
-      createMessageBoardExtension(control),
+      createMessageBoardExtension(control, input.references),
       ...(input.after ? [input.after] : []),
     ],
   });
@@ -369,6 +371,57 @@ const persistedSessionFile = (manager: SessionManager) => {
 };
 
 describe("message-board intake in real Pi", () => {
+  it("shortens reminder identities collision-safely while preserving selective intake receipts", async () => {
+    const author = "00000000-0000-4000-8000-000012345678";
+    const recipient = "00000000-0000-4000-8000-000112345678";
+    const fixture = await harness({
+      references: {
+        ids: async () => [author, recipient],
+        resolve: async (reference) => reference,
+        project: async (value) => value,
+      },
+    });
+    try {
+      fixture.entries.push(
+        { ...entry(1), authorSessionId: author, audience: [recipient], topic: "output" },
+        {
+          ...entry(2),
+          authorSessionId: author,
+          audience: [recipient],
+          topic: "output",
+          supersedes: [1],
+        },
+      );
+      await fixture.control.recordIntake("family-board-test", [1], "readAt");
+      await fixture.session.prompt("Continue work");
+      const request = JSON.stringify(fixture.requests[0]);
+      expect(request).toContain("s:012345678");
+      expect(request).toContain("s:112345678");
+      expect(request).toContain("Topic output");
+      expect(request).toContain("Supersedes #1");
+      expect(request).not.toContain(author);
+      expect(request).not.toContain(recipient);
+      expect(request).not.toContain("Full evidence 2");
+      expect(fixture.receipts.find((receipt) => receipt.sequence === 2)).toEqual({
+        sequence: 2,
+        sessionId: "child",
+        notifiedAt: expect.any(String),
+      });
+      await fixture.session.prompt("Continue again");
+      expect(
+        fixture.manager
+          .getBranch()
+          .filter(
+            (value) =>
+              value.type === "custom_message" && value.customType === MESSAGE_BOARD_REMINDER,
+          ),
+      ).toHaveLength(1);
+      expect(fixture.session.getSteeringMessages()).toEqual([]);
+      expect(fixture.session.getFollowUpMessages()).toEqual([]);
+    } finally {
+      fixture.session.dispose();
+    }
+  });
   it("delivers coalesced descriptions only after the full parallel tool batch, without queues or extra turns", async () => {
     const fixture = await harness({ tools: 2 });
     try {

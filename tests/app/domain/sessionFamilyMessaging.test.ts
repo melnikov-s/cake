@@ -77,7 +77,11 @@ const environment = (
         ],
       }),
     }),
-    Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed(namespace) }),
+    Layer.mock(SessionArchiveStorage, {
+      locate: () => Effect.succeed(namespace),
+      resolvedProjects: () => Stream.empty,
+      resolved: () => Stream.empty,
+    }),
     Layer.mock(ManagedWorktrees, { records: () => Effect.succeed([]) }),
     pi,
   );

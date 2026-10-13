@@ -241,6 +241,63 @@ describe("Workboard policy", () => {
       }),
     ),
   );
+  it.effect(
+    "resolves short board audiences and receipt targets before storing canonical identities",
+    () => {
+      const parent = "00000000-0000-4000-8000-000000000001";
+      const child = "00000000-0000-4000-8000-000012345678";
+      const sibling = "00000000-0000-4000-8000-000112345678";
+      const ids = [parent, child, sibling];
+      const referenceFamily = {
+        ...family,
+        parentSessionId: parent,
+        children: family.children.map((member, index) => ({
+          ...member,
+          parentSessionId: parent,
+          sessionId: ids[index + 1] ?? child,
+        })),
+      };
+      return Effect.gen(function* () {
+        const board = yield* boards.ensureBoard(referenceFamily);
+        for (const audience of [["s:12345678"], ["s:ffffffff"], ["outsider"]]) {
+          expect(
+            (yield* Effect.result(
+              boards.append(parent, { audience, description: "Invalid target", body: "Evidence" }),
+            ))._tag,
+          ).toBe("Failure");
+        }
+        const post = yield* boards.append(parent, {
+          audience: ["s:012345678", child],
+          description: "Targeted contract",
+          body: "Evidence",
+        });
+        expect(post.entry.audience).toEqual([child]);
+        expect((yield* (yield* MessageBoardStorage).entries(board.lineageId))[0]?.audience).toEqual(
+          [child],
+        );
+        expect((yield* boards.readNew(child)).entries).toHaveLength(1);
+        expect((yield* boards.readNew(sibling)).entries).toHaveLength(0);
+        expect((yield* boards.sessionReceipts(parent, "s:012345678")).sessionId).toBe(child);
+        expect((yield* Effect.result(boards.sessionReceipts(parent, "s:12345678")))._tag).toBe(
+          "Failure",
+        );
+        expect((yield* Effect.result(boards.sessionReceipts(parent, "s:ffffffff")))._tag).toBe(
+          "Failure",
+        );
+      }).pipe(
+        Effect.provide(
+          Layer.merge(
+            messageBoardHarness().layer,
+            Layer.mock(SessionFamilyStorage, {
+              familyForMember: (id) =>
+                Effect.succeed(ids.includes(id) ? referenceFamily : undefined),
+              list: () => Effect.succeed([referenceFamily]),
+            }),
+          ),
+        ),
+      );
+    },
+  );
   it.effect("requires explicit audiences instead of silently broadcasting", () =>
     Effect.sync(() => {
       expect(
@@ -378,6 +435,72 @@ describe("Workboard policy", () => {
         expect((yield* boards.current("parent")).entries).toMatchObject([
           { sequence: 2, supersedes: [1] },
         ]);
+      }),
+    ),
+  );
+  it.effect("keeps independent live proposals in a topic until explicitly superseded", () =>
+    run(
+      Effect.gen(function* () {
+        yield* boards.ensureBoard(family);
+        yield* boards.append("parent", {
+          audience: "workgroup",
+          topic: "output",
+          description: "Proposal A",
+          body: "A",
+        });
+        yield* boards.append("child", {
+          audience: "workgroup",
+          topic: "output",
+          description: "Proposal B",
+          body: "B",
+        });
+        expect(
+          (yield* boards.current("sibling", { topic: "output" })).entries.map(
+            (entry) => entry.sequence,
+          ),
+        ).toEqual([1, 2]);
+        yield* boards.append("parent", {
+          audience: "workgroup",
+          topic: "output",
+          supersedes: [1, 2],
+          description: "Decision C",
+          body: "C",
+        });
+        yield* boards.append("child", {
+          audience: "workgroup",
+          topic: "output",
+          supersedes: [3],
+          description: "Correction D",
+          body: "D",
+        });
+        expect(
+          (yield* boards.current("sibling", { topic: "output" })).entries.map(
+            (entry) => entry.sequence,
+          ),
+        ).toEqual([4]);
+      }),
+    ),
+  );
+  it.effect("can organize an untagged finding through a topic-bearing correction", () =>
+    run(
+      Effect.gen(function* () {
+        yield* boards.ensureBoard(family);
+        yield* boards.append("parent", {
+          audience: "workgroup",
+          description: "Initial finding",
+          body: "Evidence",
+        });
+        yield* boards.append("child", {
+          audience: "workgroup",
+          topic: "output",
+          supersedes: [1],
+          description: "Organized correction",
+          body: "Corrected evidence",
+        });
+        expect((yield* boards.current("parent", { topic: "output" })).entries).toMatchObject([
+          { sequence: 2, topic: "output", supersedes: [1] },
+        ]);
+        expect((yield* boards.read("parent", [1])).entries[0]?.topic).toBeUndefined();
       }),
     ),
   );

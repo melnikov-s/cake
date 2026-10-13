@@ -91,10 +91,13 @@ export const makeMessageBoardStorageLive = (artifactRoot: string) =>
                   return yield* error("append", "Superseding an entry requires a topic");
                 for (const sequence of decoded.supersedes) {
                   const previous = all.find((entry) => entry.sequence === sequence);
-                  if (!previous || previous.topic !== decoded.topic)
+                  if (
+                    !previous ||
+                    (previous.topic !== undefined && previous.topic !== decoded.topic)
+                  )
                     return yield* error(
                       "append",
-                      `Entry #${sequence} must exist in the same topic`,
+                      `Entry #${sequence} must exist and be untagged or in the same topic`,
                     );
                 }
               }

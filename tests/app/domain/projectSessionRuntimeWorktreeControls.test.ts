@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Stream } from "effect";
 import { describe } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { acquireOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
@@ -108,9 +108,11 @@ describe("Project Session runtime worktree controls", () => {
       }),
       familyStorageHarness().layer,
       SessionCatalogChanges.layer,
-      Layer.mock(CakeSessionRuntimes, {}),
+      Layer.mock(CakeSessionRuntimes, { catalog: () => Stream.empty }),
       Layer.mock(SessionArchiveStorage, {
         locate: () => Effect.succeed("active" as const),
+        resolved: () => Stream.empty,
+        resolvedProjects: () => Stream.empty,
       }),
       Layer.mock(ApplicationState, {
         transact: (transition) => transition(defaultApplicationState()),

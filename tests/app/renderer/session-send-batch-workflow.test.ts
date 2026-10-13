@@ -168,7 +168,7 @@ describe("batch tool through real session send controls", () => {
       result: {
         status: "partial",
         outcomes: [
-          { sessionId: "missing", ok: false, error: "Cake could not find that session." },
+          { sessionId: "missing", ok: false, error: "Unknown session reference: missing" },
           { sessionId: "a", ok: false, error: "Recipient unavailable" },
           { sessionId: "b", ok: true, delivery: "steer" },
         ],

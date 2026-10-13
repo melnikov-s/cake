@@ -7,6 +7,8 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Option, Schema } from "effect";
 import { BoardDescription, BoardReadResult } from "../../../contracts/artifacts/message-board";
+import type { SessionReferenceControl } from "../../../contracts/agent/cake-operation-options";
+import { sessionReference } from "../../../contracts/project-sessions/session-reference";
 import type {
   BoardNoticeEntry,
   MessageBoardControl,
@@ -33,7 +35,7 @@ const textOf = (content: string | readonly { type: string; text?: string }[]) =>
 
 /** Context-only delivery, never steering or a follow-up. Pi owns persistence and execution. */
 export const createMessageBoardExtension =
-  (control: MessageBoardControl): InlineExtension =>
+  (control: MessageBoardControl, references?: SessionReferenceControl): InlineExtension =>
   (pi) => {
     // Persisted descriptions that have not yet reached a request suppress duplicate staging.
     // Reconstructed from Pi's effective context, not abandoned branches or a second history.
@@ -61,9 +63,19 @@ export const createMessageBoardExtension =
       restore(ctx);
       const page = await control.readNew({ limit: 10 }, true, [...staged.values()]);
       if (!page) return;
-      const candidates = page.entries.filter(
+      const pending = page.entries.filter(
         (entry) => !staged.has(`${page.boardId}:${entry.sequence}`),
       );
+      if (!pending.length) return;
+      const knownIds = references ? await references.ids(new AbortController().signal) : [];
+      const candidates = pending.map((entry): BoardDescription => ({
+        ...entry,
+        authorSessionId: sessionReference(entry.authorSessionId, knownIds),
+        audience:
+          entry.audience === "workgroup"
+            ? "workgroup"
+            : entry.audience.map((id) => sessionReference(id, knownIds)),
+      }));
       const entries: BoardDescription[] = [];
       let characters = 0;
       for (const entry of candidates) {

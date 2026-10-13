@@ -1,4 +1,5 @@
 import { DateTime, Effect, Option, Schema } from "effect";
+import { resolveSessionReference } from "../../contracts/project-sessions/session-reference";
 import type { BoardNoticeEntry } from "../../contracts/artifacts/message-board-control";
 import { ClientEvents } from "../../services/clients/ClientEvents";
 import { ArtifactLineageId } from "../../contracts/artifacts/artifact-lineage";
@@ -100,12 +101,18 @@ export const append = Effect.fn("MessageBoards.append")(function* (
   input: BoardAppendInput,
 ) {
   const { id, family } = yield* callerBoard(sessionId);
-  if (
-    input.audience !== "workgroup" &&
-    input.audience.some((member) => !familyMemberIds(family).includes(member))
-  )
-    return yield* failure("append", "Audience must contain only members of this workgroup");
-  const entry = yield* (yield* MessageBoardStorage).append(id, sessionId, input);
+  const members = familyMemberIds(family);
+  let audience: BoardAppendInput["audience"] = input.audience;
+  if (input.audience !== "workgroup") {
+    const resolved: string[] = [];
+    for (const reference of input.audience) {
+      const result = resolveSessionReference(reference, members);
+      if (!result.ok) return yield* failure("append", result.error);
+      resolved.push(result.sessionId);
+    }
+    audience = [...new Set(resolved)];
+  }
+  const entry = yield* (yield* MessageBoardStorage).append(id, sessionId, { ...input, audience });
   yield* publishInvalidation(id);
   return { boardId: id, entry: boardDescription(entry) };
 });
@@ -227,12 +234,13 @@ const receiptsFor = Effect.fn("MessageBoards.receiptsFor")(function* (
 });
 export const sessionReceipts = Effect.fn("MessageBoards.sessionReceipts")(function* (
   callerId: string,
-  sessionId: string,
+  sessionReference: string,
   input: BoardPageInput = {},
 ) {
   const { id, family } = yield* callerBoard(callerId);
-  if (!familyMemberIds(family).includes(sessionId))
-    return yield* failure("receipts", "Session is outside this workgroup");
+  const resolved = resolveSessionReference(sessionReference, familyMemberIds(family));
+  if (!resolved.ok) return yield* failure("receipts", resolved.error);
+  const sessionId = resolved.sessionId;
   const storage = yield* MessageBoardStorage;
   const receipts = yield* storage.receipts(id);
   const entries = (yield* storage.entries(id))

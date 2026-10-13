@@ -269,7 +269,12 @@ export async function createCakeSessionRuntimeCapabilities(input: {
                 ),
                 createCakeArtifactExtension({ persistArtifact, compileArtifactBrowser }),
                 ...(options.messageBoardControl
-                  ? [createMessageBoardExtension(options.messageBoardControl)]
+                  ? [
+                      createMessageBoardExtension(
+                        options.messageBoardControl,
+                        options.sessionReferences,
+                      ),
+                    ]
                   : []),
                 ...(options.reviewContextPath
                   ? [

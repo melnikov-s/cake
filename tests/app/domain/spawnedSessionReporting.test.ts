@@ -108,6 +108,8 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
     Layer.mock(PiModels, { resolve: (selection) => Effect.succeed(selection) }),
     Layer.mock(SessionArchiveStorage, {
       locate: (id) => Effect.succeed(materialized.has(id) ? ("active" as const) : undefined),
+      resolved: () => Stream.empty,
+      resolvedProjects: () => Stream.empty,
     }),
     SessionCatalogChanges.layer,
     Layer.mock(RendererRequestCoordinator, {
