@@ -86,9 +86,21 @@ export const makeMessageBoardStorageLive = (artifactRoot: string) =>
                 Effect.mapError((cause) => error("append", cause)),
               );
               const all = yield* entries(id);
+              if (decoded.supersedes) {
+                if (!decoded.topic)
+                  return yield* error("append", "Superseding an entry requires a topic");
+                for (const sequence of decoded.supersedes) {
+                  const previous = all.find((entry) => entry.sequence === sequence);
+                  if (!previous || previous.topic !== decoded.topic)
+                    return yield* error(
+                      "append",
+                      `Entry #${sequence} must exist in the same topic`,
+                    );
+                }
+              }
               const entry = yield* BoardEntry.makeEffect({
                 ...decoded,
-                audience: decoded.audience ?? "workgroup",
+                audience: decoded.audience,
                 sequence: (all.at(-1)?.sequence ?? 0) + 1,
                 authorSessionId,
                 createdAt: DateTime.formatIso(yield* DateTime.now),

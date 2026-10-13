@@ -1,5 +1,6 @@
 import { it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
+import { BoardAppendInput } from "../../../src/contracts/artifacts/message-board";
 import { describe, expect } from "vitest";
 import * as boards from "../../../src/domain/artifacts/messageBoards";
 import * as artifacts from "../../../src/domain/artifacts/artifactWorkflows";
@@ -52,6 +53,7 @@ describe("Workboard policy", () => {
         const posts = yield* Effect.all(
           Array.from({ length: 12 }, (_, index) =>
             boards.append(index % 2 ? "child" : "parent", {
+              audience: "workgroup",
               description: `Finding ${index}`,
               body: `Evidence ${index}`,
             }),
@@ -79,7 +81,11 @@ describe("Workboard policy", () => {
       run(
         Effect.gen(function* () {
           yield* boards.ensureBoard(family);
-          yield* boards.append("parent", { description: "Family", body: "Family evidence" });
+          yield* boards.append("parent", {
+            audience: "workgroup",
+            description: "Family",
+            body: "Family evidence",
+          });
           yield* boards.append("parent", {
             description: "Child only",
             body: "Child evidence",
@@ -90,7 +96,11 @@ describe("Workboard policy", () => {
             body: "Sibling evidence",
             audience: ["sibling"],
           });
-          yield* boards.append("child", { description: "My own result", body: "My evidence" });
+          yield* boards.append("child", {
+            audience: "workgroup",
+            description: "My own result",
+            body: "My evidence",
+          });
           const first = yield* boards.readNew("child", { limit: 1 });
           expect(first.entries.map((entry) => entry.sequence)).toEqual([1]);
           expect(first.hasMore).toBe(true);
@@ -150,6 +160,7 @@ describe("Workboard policy", () => {
           audience: ["child"],
         });
         yield* boards.append("parent", {
+          audience: "workgroup",
           description: "Workgroup finding",
           body: "Other evidence",
         });
@@ -209,7 +220,11 @@ describe("Workboard policy", () => {
     run(
       Effect.gen(function* () {
         const board = yield* boards.ensureBoard(family);
-        yield* boards.append("parent", { description: "Finding", body: "Full evidence" });
+        yield* boards.append("parent", {
+          audience: "workgroup",
+          description: "Finding",
+          body: "Full evidence",
+        });
         expect(board.snapshot.title).toBe("Workboard");
         expect((yield* boards.read("child", [1])).entries[0]?.body).toBe("Full evidence");
         expect((yield* boards.browse(board.lineageId, {})).entries[0]?.description).toBe("Finding");
@@ -226,13 +241,181 @@ describe("Workboard policy", () => {
       }),
     ),
   );
+  it.effect("requires explicit audiences instead of silently broadcasting", () =>
+    Effect.sync(() => {
+      expect(
+        Schema.decodeUnknownResult(BoardAppendInput)({ description: "Finding", body: "Evidence" })
+          ._tag,
+      ).toBe("Failure");
+      expect(
+        Schema.decodeUnknownResult(BoardAppendInput)({
+          description: "Finding",
+          body: "Evidence",
+          audience: [],
+        })._tag,
+      ).toBe("Failure");
+    }),
+  );
+  it.effect("current decisions and unread discovery respect recipient-specific supersession", () =>
+    run(
+      Effect.gen(function* () {
+        const board = yield* boards.ensureBoard(family);
+        yield* boards.append("parent", {
+          audience: "workgroup",
+          topic: "output",
+          description: "Initial output",
+          body: "Initial contract",
+        });
+        yield* boards.append("parent", {
+          audience: ["child"],
+          topic: "output",
+          supersedes: [1],
+          description: "Child correction",
+          body: "Corrected contract",
+        });
+        yield* boards.append("parent", {
+          audience: "workgroup",
+          topic: "state",
+          description: "State contract",
+          body: "State evidence",
+        });
+        expect(
+          (yield* boards.current("child", { topic: "output" })).entries.map(
+            (entry) => entry.sequence,
+          ),
+        ).toEqual([2]);
+        expect(
+          (yield* boards.current("sibling", { topic: "output" })).entries.map(
+            (entry) => entry.sequence,
+          ),
+        ).toEqual([1]);
+        expect((yield* boards.readNew("child")).entries.map((entry) => entry.sequence)).toEqual([
+          2, 3,
+        ]);
+        expect((yield* boards.readNew("sibling")).entries.map((entry) => entry.sequence)).toEqual([
+          1, 3,
+        ]);
+        const first = yield* boards.current("child", { limit: 1 });
+        expect(first).toMatchObject({ nextAfter: 2, hasMore: true });
+        expect(
+          (yield* boards.current("child", { after: first.nextAfter })).entries.map(
+            (entry) => entry.sequence,
+          ),
+        ).toEqual([3]);
+        yield* boards.recordIntake("child", board.lineageId, [2], "readAt");
+        expect((yield* boards.current("child", { topic: "output" })).entries).toMatchObject([
+          { sequence: 2, topic: "output", supersedes: [1] },
+        ]);
+        yield* boards.append("child", {
+          audience: "workgroup",
+          topic: "output",
+          supersedes: [1, 2],
+          description: "Shared final output",
+          body: "Final contract",
+        });
+        expect(
+          (yield* boards.current("child", { topic: "output" })).entries.map(
+            (entry) => entry.sequence,
+          ),
+        ).toEqual([4]);
+        expect(
+          (yield* boards.current("sibling", { topic: "output" })).entries.map(
+            (entry) => entry.sequence,
+          ),
+        ).toEqual([4]);
+        // The author's own replacement still removes old unread proposals, without notifying itself.
+        expect((yield* boards.readNew("child")).entries.map((entry) => entry.sequence)).toEqual([
+          3,
+        ]);
+        expect((yield* boards.read("sibling", [1, 2])).entries.map((entry) => entry.body)).toEqual([
+          "Initial contract",
+          "Corrected contract",
+        ]);
+        expect(
+          (yield* boards.browse(board.lineageId, {})).entries.map((entry) => entry.sequence),
+        ).toEqual([1, 2, 3, 4]);
+        expect((yield* boards.entryReceipts("parent", 2)).receipts[0]?.readAt).toEqual(
+          expect.any(String),
+        );
+        expect(yield* (yield* MessageBoardStorage).receipts(board.lineageId)).toHaveLength(1);
+      }),
+    ),
+  );
+  it.effect("validates same-topic earlier references atomically without consuming sequences", () =>
+    run(
+      Effect.gen(function* () {
+        yield* boards.ensureBoard(family);
+        yield* boards.append("parent", {
+          audience: "workgroup",
+          topic: "output",
+          description: "Initial",
+          body: "Evidence",
+        });
+        for (const relations of [
+          { supersedes: [1] },
+          { topic: "state", supersedes: [1] },
+          { topic: "output", supersedes: [2] },
+          { topic: "output", supersedes: [999] },
+        ]) {
+          const result = yield* Effect.result(
+            boards.append("parent", {
+              audience: "workgroup",
+              description: "Invalid correction",
+              body: "Evidence",
+              ...relations,
+            }),
+          );
+          expect(result._tag).toBe("Failure");
+        }
+        const valid = yield* boards.append("child", {
+          audience: "workgroup",
+          topic: "output",
+          supersedes: [1],
+          description: "Correction",
+          body: "Evidence",
+        });
+        expect(valid.entry.sequence).toBe(2);
+        expect((yield* boards.current("parent")).entries).toMatchObject([
+          { sequence: 2, supersedes: [1] },
+        ]);
+      }),
+    ),
+  );
+  it.effect("retains topic relationships and current decisions after reacquisition", () =>
+    Effect.gen(function* () {
+      const harness = messageBoardHarness();
+      yield* Effect.gen(function* () {
+        yield* boards.ensureBoard(family);
+        yield* boards.append("parent", {
+          audience: "workgroup",
+          topic: "output",
+          description: "Initial",
+          body: "Initial body",
+        });
+        yield* boards.append("child", {
+          audience: "workgroup",
+          topic: "output",
+          supersedes: [1],
+          description: "Corrected",
+          body: "Final body",
+        });
+      }).pipe(Effect.provide(Layer.merge(harness.layer, familyLayer)));
+      yield* Effect.gen(function* () {
+        expect((yield* boards.current("parent")).entries).toMatchObject([
+          { sequence: 2, topic: "output", supersedes: [1] },
+        ]);
+        expect((yield* boards.read("parent", [1])).entries[0]?.body).toBe("Initial body");
+      }).pipe(Effect.provide(Layer.merge(messageBoardHarness(harness.files).layer, familyLayer)));
+    }),
+  );
   it.effect("rejects outsiders, invalid audiences, and generic board replacement", () =>
     run(
       Effect.gen(function* () {
         const board = yield* boards.ensureBoard(family);
         expect(
-          (yield* Effect.result(boards.append("outsider", { description: "Bad", body: "Bad" })))
-            ._tag,
+          (yield* Effect.result(
+            boards.append("outsider", { audience: "workgroup", description: "Bad", body: "Bad" }),
+          ))._tag,
         ).toBe("Failure");
         expect(
           (yield* Effect.result(
@@ -265,7 +448,11 @@ describe("Workboard policy", () => {
       const layer = Layer.merge(harness.layer, familyLayer);
       const id = yield* Effect.gen(function* () {
         const board = yield* boards.ensureBoard(family);
-        yield* boards.append("parent", { description: "Persisted", body: "Evidence" });
+        yield* boards.append("parent", {
+          audience: "workgroup",
+          description: "Persisted",
+          body: "Evidence",
+        });
         yield* boards.recordIntake("child", board.lineageId, [1], "notifiedAt");
         return board.lineageId;
       }).pipe(Effect.provide(layer));
@@ -301,6 +488,7 @@ describe("Workboard policy", () => {
       expect(new Set([...first, descendant].map((board) => board.lineageId)).size).toBe(1);
       expect((yield* (yield* ArtifactStorage).catalog()).lineages).toHaveLength(1);
       yield* boards.append("grandchild", {
+        audience: "workgroup",
         description: "Discovery",
         body: "Evidence from a separate worktree",
       });

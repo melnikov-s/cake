@@ -68,7 +68,11 @@ async function setup(
     }),
   );
   await backend.runPromise(
-    boards.append("other-parent", { description: "Other finding", body: "Other evidence" }),
+    boards.append("other-parent", {
+      audience: "workgroup",
+      description: "Other finding",
+      body: "Other evidence",
+    }),
   );
   const fixture = createRendererStoreFixture({
     client: {
@@ -150,13 +154,21 @@ describe("live Workboard workflow", () => {
       hold = true;
       await act(() =>
         f.backend.runPromise(
-          boards.append("child", { description: "Second finding", body: "Second evidence" }),
+          boards.append("child", {
+            audience: "workgroup",
+            description: "Second finding",
+            body: "Second evidence",
+          }),
         ),
       );
       await requested.promise;
       await act(() =>
         f.backend.runPromise(
-          boards.append("child", { description: "Third finding", body: "Third evidence" }),
+          boards.append("child", {
+            audience: "workgroup",
+            description: "Third finding",
+            body: "Third evidence",
+          }),
         ),
       );
       await act(async () => release.resolve());
@@ -167,6 +179,7 @@ describe("live Workboard workflow", () => {
       await act(() =>
         f.backend.runPromise(
           boards.append("other-parent", {
+            audience: "workgroup",
             description: "Unrelated change",
             body: "Other evidence",
           }),
@@ -178,7 +191,11 @@ describe("live Workboard workflow", () => {
       fail = true;
       await act(() =>
         f.backend.runPromise(
-          boards.append("child", { description: "Fourth finding", body: "Fourth evidence" }),
+          boards.append("child", {
+            audience: "workgroup",
+            description: "Fourth finding",
+            body: "Fourth evidence",
+          }),
         ),
       );
       await screen.findByText("Board connection interrupted");
@@ -263,7 +280,11 @@ describe("live Workboard workflow", () => {
       hold = true;
       await act(() =>
         f.backend.runPromise(
-          boards.append("child", { description: "Late old finding", body: "Old board evidence" }),
+          boards.append("child", {
+            audience: "workgroup",
+            description: "Late old finding",
+            body: "Old board evidence",
+          }),
         ),
       );
       await pageRequested.promise;

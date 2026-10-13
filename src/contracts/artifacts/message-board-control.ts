@@ -1,5 +1,6 @@
 import type {
   BoardAppendInput,
+  BoardCurrentInput,
   BoardDescription,
   BoardDescriptionPage,
   BoardEntryReceipts,
@@ -21,6 +22,7 @@ export interface MessageBoardControl {
     notificationOnly?: boolean,
     excludeEntries?: ReadonlyArray<BoardNoticeEntry>,
   ): Promise<BoardDescriptionPage | undefined>;
+  current(input: BoardCurrentInput): Promise<BoardDescriptionPage>;
   read(sequences: ReadonlyArray<number>): Promise<BoardReadResult>;
   entryReceipts(sequence: number): Promise<BoardEntryReceipts>;
   sessionReceipts(sessionId: string, input: BoardPageInput): Promise<BoardSessionReceipts>;

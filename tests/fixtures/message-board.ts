@@ -116,10 +116,12 @@ export const seedMessageBoardFixture = async (
         audience: [MESSAGE_BOARD_FIXTURE_PARENT],
       });
       yield* boards.append(MESSAGE_BOARD_FIXTURE_PARENT, {
+        audience: "workgroup",
         description: "The approved interface is ready for implementation",
         body: "The reviewed contract is now the implementation baseline. Corrections should reference the earlier entry rather than silently rewriting it.",
       });
       yield* boards.append(childId, {
+        audience: "workgroup",
         description: "Focused verification unblocks the next slice",
         body: "The isolation regression passes. The implementation owner can now continue integration.",
       });
@@ -138,6 +140,7 @@ export const seedMessageBoardFixture = async (
         });
         yield* boards.ensureBoard(secondFamily, "Switchboard");
         yield* boards.append("visual-switch-member-2", {
+          audience: "workgroup",
           description: "Switchboard finding",
           body: "Independent board evidence",
         });

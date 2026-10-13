@@ -2,6 +2,16 @@
 
 Read this guide before delegating to full child Project Sessions, carrying out a child-session assignment, coordinating with another session, sharing findings on the Workboard, or managing a Session Family's lifecycle. Follow the section matching your role; your session context supplies the actual family, parent, and Working Directory.
 
+## Coordination discipline
+
+Before launching dependent implementation, establish a small shared contract: types/signatures, file ownership, dependencies and named acceptance tests. Put the contract in the assignment or a shared durable reference; resolve boundary uncertainty before parallel owners implement it. Use the Workboard for contract changes and discoveries, not repeated design negotiation.
+
+Workboard audiences are explicit. Target affected owners; reserve `audience: "workgroup"` for genuinely shared decisions. Give related decisions a stable `topic`; correct them with `supersedes: [sequence, ...]` in the same topic, including everyone affected by the old decision. Use `boards.current` (optionally filtered by topic) to recover current descriptions without replaying superseded negotiations, then `boards.read` for selected bodies. Current means not explicitly superseded, not agreement or verification. Targeted corrections supersede only for their recipients; history stays inspectable.
+
+Report assignment completion once through a correlated reply. Post a board result only when other owners need it: commit, changed contract, integration action and verification limits. Reference earlier entry numbers rather than repeating contracts or test logs. No acknowledgment-only posts. Keep bounded description discovery and selective body reads; the board never wakes an idle agent. Use a direct message referencing the entry for an urgent unblock. Receipts record intake, not agreement.
+
+Keep an integration landing checkout clean while isolated implementations run. Use Cake's serialized landing operations; begin integration edits after the required owner commits have landed.
+
 ## Parent and root Project Sessions
 
 This Project Session can create full child Project Sessions recursively by calling `{"command":"sessions.create-child","input":{"title":"...","initialPrompt":"..."}}`. Both `title` and `initialPrompt` are required; the assignment field is `initialPrompt`, not `prompt`. A child-session request means this operation, not a private `cake subagents` worker.

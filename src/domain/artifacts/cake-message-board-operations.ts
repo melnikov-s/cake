@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import {
   BoardAppendInput,
+  BoardCurrentInput,
   BoardDescription,
   BoardDescriptionPage,
   BoardEntryReceipts,
@@ -29,15 +30,19 @@ export const createMessageBoardOperations = (
         input: {
           description: "Renderer and backend must use a distinct editor origin",
           body: "The iframe currently shares Cake's origin. Both owners need isolation before integration.",
+          audience: ["s:236e7b8b", "s:7d87c268"],
+          topic: "editor-origin",
         },
       },
     ],
     result:
       "Cake-stamped author, timestamp, sequence and description. Posting does not wake recipients.",
     limitations: [
-      "Only workgroup members may append. Audience defaults to workgroup; targeted audiences must be workgroup members.",
+      "Audience is required: target affected owners using session references. Use workgroup only for genuinely shared decisions. Only workgroup members may append or be targeted.",
       "Post information that changes another member's work. No routine progress, tool diaries, acknowledgments or duplicate completion reports.",
-      "Entries are immutable. Correct an earlier entry by referencing its sequence in a new post. Agent decisions are not user authorization.",
+      "Entries are immutable. Use topic plus supersedes: [sequence, ...] for corrections within the same topic. Supersession is recipient-specific; include everyone affected by the old decision. Agent decisions are not user authorization.",
+      "Establish types, signatures, file ownership, dependencies and acceptance criteria before dependent implementation. Post changes/discoveries, not repeated contract negotiation.",
+      "Completion replies satisfy assignments. Board results contain only cross-owner commit, contract delta, integration action and verification limits; reference earlier entries instead of repeating them.",
       "Use direct messaging/steering for assignments, urgent redirection, or blocked-child wake-ups.",
     ],
     execute: (input) => control.append(Schema.decodeUnknownSync(BoardAppendInput)(input)),
@@ -51,13 +56,28 @@ export const createMessageBoardOperations = (
     examples: [{ input: { limit: 20 } }],
     result: "Descriptions, nextAfter and hasMore; bodies are not marked read.",
     limitations: [
-      "Supply nextAfter as after to continue paging. Omit after to revisit unread entries. Previously read bodies and your own posts are excluded.",
+      "Supply nextAfter as after to continue paging. Omit after to revisit unread entries. Previously read bodies, superseded entries and your own posts are excluded.",
     ],
     execute: async (input) => {
       const page = await control.readNew(Schema.decodeUnknownSync(BoardPageInput)(input));
       if (!page) throw new Error("This session has no Workboard");
       return page;
     },
+  },
+  {
+    command: "boards.current",
+    topic: "boards",
+    summary: "Discover current relevant decisions without replaying superseded negotiations.",
+    inputSchema: BoardCurrentInput,
+    outputSchema: BoardDescriptionPage,
+    examples: [{ input: { topic: "editor-origin", limit: 20 } }],
+    result:
+      "A bounded page of non-superseded descriptions, independent of read receipts. Bodies remain opt-in through boards.read.",
+    limitations: [
+      "Current means not explicitly superseded, not verified or agreed. Multiple live proposals may coexist. Targeted replacements only supersede for their recipients; original entries remain inspectable.",
+      "Supply nextAfter as after to continue paging. Query without after to refresh current decisions after compaction. No read receipt is recorded by this query.",
+    ],
+    execute: (input) => control.current(Schema.decodeUnknownSync(BoardCurrentInput)(input)),
   },
   {
     command: "boards.read",

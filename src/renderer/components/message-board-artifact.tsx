@@ -44,6 +44,14 @@ export const MessageBoardArtifact = observer(function MessageBoardArtifact({
           <p className="mt-1 break-all text-[11px] text-muted-foreground">
             From {entry.authorSessionId} · {new Date(entry.createdAt).toLocaleString()}
           </p>
+          {entry.topic && (
+            <p className="mt-1 break-all text-[11px] text-muted-foreground">
+              Topic: {entry.topic}
+              {entry.supersedes?.length
+                ? ` · Supersedes ${entry.supersedes.map((sequence) => `#${sequence}`).join(", ")} for this entry's audience`
+                : ""}
+            </p>
+          )}
           {store.expanded.includes(entry.sequence) && (
             <div className="min-w-0 pt-3">
               {store.bodies[entry.sequence] ? (

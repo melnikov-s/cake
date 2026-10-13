@@ -9,10 +9,18 @@ const BoardAudience = Schema.Union([
   Schema.Literal("workgroup"),
   Schema.Array(BoardSessionId).check(Schema.isMinLength(1), Schema.isMaxLength(100)),
 ]);
+const BoardTopic = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,63}$/));
+const BoardRelations = {
+  topic: Schema.optionalKey(BoardTopic),
+  supersedes: Schema.optionalKey(
+    Schema.Array(BoardSequence).check(Schema.isMinLength(1), Schema.isMaxLength(10)),
+  ),
+};
 export const BoardAppendInput = Schema.Struct({
   description: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
   body: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32_768)),
-  audience: Schema.optionalKey(BoardAudience),
+  audience: BoardAudience,
+  ...BoardRelations,
 });
 export interface BoardAppendInput extends Schema.Schema.Type<typeof BoardAppendInput> {}
 export const BoardEntry = Schema.Struct({
@@ -22,6 +30,7 @@ export const BoardEntry = Schema.Struct({
   description: BoardAppendInput.fields.description,
   body: BoardAppendInput.fields.body,
   audience: BoardAudience,
+  ...BoardRelations,
 });
 export interface BoardEntry extends Schema.Schema.Type<typeof BoardEntry> {}
 export const BoardDescription = Schema.Struct({
@@ -30,6 +39,7 @@ export const BoardDescription = Schema.Struct({
   createdAt: Schema.String,
   description: BoardAppendInput.fields.description,
   audience: BoardAudience,
+  ...BoardRelations,
 });
 export interface BoardDescription extends Schema.Schema.Type<typeof BoardDescription> {}
 export const BoardReceipt = Schema.Struct({
@@ -51,6 +61,11 @@ export const BoardPageInput = Schema.Struct({
   ),
 });
 export interface BoardPageInput extends Schema.Schema.Type<typeof BoardPageInput> {}
+export const BoardCurrentInput = Schema.Struct({
+  ...BoardPageInput.fields,
+  topic: Schema.optionalKey(BoardTopic),
+});
+export interface BoardCurrentInput extends Schema.Schema.Type<typeof BoardCurrentInput> {}
 export const BoardBrowseInput = Schema.Struct({
   ...BoardPageInput.fields,
   recent: Schema.optionalKey(Schema.Boolean),
@@ -90,10 +105,25 @@ export class MessageBoardError extends Schema.TaggedError<MessageBoardError>()(
 
 export const boardRelevant = (entry: BoardDescription, sessionId: string) =>
   entry.audience === "workgroup" || entry.audience.includes(sessionId);
-export const boardDescription = (entry: BoardEntry): BoardDescription => ({
-  sequence: entry.sequence,
-  authorSessionId: entry.authorSessionId,
-  createdAt: entry.createdAt,
-  description: entry.description,
-  audience: entry.audience,
-});
+export const boardDescription = (entry: BoardEntry): BoardDescription => {
+  const description = {
+    sequence: entry.sequence,
+    authorSessionId: entry.authorSessionId,
+    createdAt: entry.createdAt,
+    description: entry.description,
+    audience: entry.audience,
+  };
+  if (entry.topic !== undefined) Object.assign(description, { topic: entry.topic });
+  if (entry.supersedes !== undefined) Object.assign(description, { supersedes: entry.supersedes });
+  return description;
+};
+
+/** Audience is routing, not privacy. A targeted replacement only supersedes for its recipients. */
+export const boardCurrentEntries = <T extends BoardDescription>(
+  entries: ReadonlyArray<T>,
+  sessionId: string,
+): ReadonlyArray<T> => {
+  const relevant = entries.filter((entry) => boardRelevant(entry, sessionId));
+  const superseded = new Set(relevant.flatMap((entry) => entry.supersedes ?? []));
+  return relevant.filter((entry) => !superseded.has(entry.sequence));
+};

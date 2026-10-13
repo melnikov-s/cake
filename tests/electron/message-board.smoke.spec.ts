@@ -26,6 +26,7 @@ const appendLiveEntries = (
       if (!append) throw new Error("Workboard smoke append hook unavailable");
       for (let sequence = range.start; sequence < range.start + range.count; sequence += 1)
         await append(range.sessionId, {
+          audience: "workgroup",
           description: `Live finding ${sequence}`,
           body: `Additional coordination evidence ${sequence}`,
         });

@@ -6,6 +6,8 @@ import {
   MessageBoardError,
   boardDescription,
   boardRelevant,
+  boardCurrentEntries,
+  type BoardCurrentInput,
   type BoardAppendInput,
   type BoardBrowseInput,
   type BoardPageInput,
@@ -99,7 +101,6 @@ export const append = Effect.fn("MessageBoards.append")(function* (
 ) {
   const { id, family } = yield* callerBoard(sessionId);
   if (
-    input.audience !== undefined &&
     input.audience !== "workgroup" &&
     input.audience.some((member) => !familyMemberIds(family).includes(member))
   )
@@ -136,7 +137,7 @@ export const readNew = Effect.fn("MessageBoards.readNew")(function* (
   const excluded = new Set(
     excludeEntries.filter((entry) => entry.boardId === id).map((entry) => entry.sequence),
   );
-  const entries = (yield* storage.entries(id))
+  const entries = boardCurrentEntries(yield* storage.entries(id), sessionId)
     .filter((entry) => {
       if (
         excluded.has(entry.sequence) ||
@@ -151,6 +152,18 @@ export const readNew = Effect.fn("MessageBoards.readNew")(function* (
         receipt?.readAt === undefined && (!notificationOnly || receipt?.notifiedAt === undefined)
       );
     })
+    .map(boardDescription);
+  return { boardId: id, ...page(entries, input) };
+});
+
+/** Current relevant descriptions, independent of unread/notification receipts. Bodies stay opt-in. */
+export const current = Effect.fn("MessageBoards.current")(function* (
+  sessionId: string,
+  input: BoardCurrentInput = {},
+) {
+  const { id } = yield* callerBoard(sessionId);
+  const entries = boardCurrentEntries(yield* (yield* MessageBoardStorage).entries(id), sessionId)
+    .filter((entry) => input.topic === undefined || entry.topic === input.topic)
     .map(boardDescription);
   return { boardId: id, ...page(entries, input) };
 });

@@ -90,7 +90,7 @@ const harness = async (
       const value: BoardEntry = {
         ...entry(entries.length + 1),
         ...input,
-        audience: input.audience ?? "workgroup",
+        audience: input.audience,
       };
       entries.push(value);
       return { boardId, entry: boardDescription(value) };
@@ -115,6 +115,12 @@ const harness = async (
         hasMore: selected.length < available.length,
       };
     },
+    current: async () => ({
+      boardId,
+      entries: entries.map(boardDescription),
+      nextAfter: entries.at(-1)?.sequence ?? 0,
+      hasMore: false,
+    }),
     read: async (sequences) => ({
       boardId,
       entries: entries.filter((entry) => sequences.includes(entry.sequence)),
@@ -316,6 +322,7 @@ const persistedBackend = async (cwd: string) => {
   );
   const control: MessageBoardControl = {
     append: (input) => runtime.runPromise(boards.append("parent", input)),
+    current: (input) => runtime.runPromise(boards.current("child", input)),
     readNew: (input, notificationOnly, excluded) =>
       runtime.runPromise(boards.readNew("child", input, notificationOnly, excluded)),
     read: (sequences) => runtime.runPromise(boards.read("child", sequences)),
@@ -371,8 +378,16 @@ describe("message-board intake in real Pi", () => {
       });
       const prompt = fixture.session.prompt("Work independently");
       await Promise.all(fixture.started.map((gate) => gate.promise));
-      await fixture.control.append({ description: "Finding 1", body: "Full evidence 1" });
-      await fixture.control.append({ description: "Finding 2", body: "Full evidence 2" });
+      await fixture.control.append({
+        audience: "workgroup",
+        description: "Finding 1",
+        body: "Full evidence 1",
+      });
+      await fixture.control.append({
+        audience: "workgroup",
+        description: "Finding 2",
+        body: "Full evidence 2",
+      });
       expect(fixture.receipts).toEqual([]);
       expect(fixture.requests).toHaveLength(1);
       expect(fixture.session.isStreaming).toBe(true);
@@ -655,7 +670,11 @@ describe("message-board intake in real Pi", () => {
   it("collects on genuine idle-start without waking the agent on append", async () => {
     const fixture = await harness();
     try {
-      await fixture.control.append({ description: "Finding 1", body: "Full evidence 1" });
+      await fixture.control.append({
+        audience: "workgroup",
+        description: "Finding 1",
+        body: "Full evidence 1",
+      });
       expect(fixture.requests).toHaveLength(0);
       expect(fixture.session.isStreaming).toBe(false);
       expect(fixture.session.getSteeringMessages()).toEqual([]);
@@ -674,8 +693,16 @@ describe("message-board disk recovery with a recreated Pi session and storage ru
   it("reloads entries and independent receipts without staging or stamping duplicate notifications", async () => {
     const seeded = await seedPersistedBoard();
     let backend = seeded.backend;
-    await backend.control.append({ description: "Finding 1", body: "Full evidence 1" });
-    await backend.control.append({ description: "Finding 2", body: "Full evidence 2" });
+    await backend.control.append({
+      audience: "workgroup",
+      description: "Finding 1",
+      body: "Full evidence 1",
+    });
+    await backend.control.append({
+      audience: "workgroup",
+      description: "Finding 2",
+      body: "Full evidence 2",
+    });
     let fixture = await harness({
       persisted: { cwd: seeded.cwd, control: backend.control },
       readBody: true,
@@ -760,6 +787,7 @@ describe("message-board disk recovery with a recreated Pi session and storage ru
       await fixture.started[0]?.promise;
       const boardId = seeded.boardId;
       await backend.control.append({
+        audience: "workgroup",
         description: "Finding 1",
         body: "Full evidence 1",
       });
@@ -788,7 +816,11 @@ describe("message-board disk recovery with a recreated Pi session and storage ru
       expect(backend.storage).not.toBe(oldStorage);
       expect(persistedReminders(fixture.manager)).toEqual(pendingReminders);
       expect(await backend.runtime.runPromise(backend.storage.receipts(boardId))).toEqual([]);
-      await backend.control.append({ description: "Finding 2", body: "Full evidence 2" });
+      await backend.control.append({
+        audience: "workgroup",
+        description: "Finding 2",
+        body: "Full evidence 2",
+      });
       expect(fixture.requests).toEqual([]);
       expect(fixture.session.isStreaming).toBe(false);
       expect(fixture.session.getSteeringMessages()).toEqual([]);

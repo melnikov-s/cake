@@ -52,7 +52,9 @@ describe("message-board artifact workflow", () => {
             boards.append("parent", {
               description: `Finding ${sequence}`,
               body: `Evidence body ${sequence}`,
-              ...(sequence === 1 ? { audience: ["child"] } : {}),
+              audience: sequence === 1 ? ["child"] : "workgroup",
+              topic: "output",
+              ...(sequence === 2 ? { supersedes: [1] } : {}),
             }),
           );
         await backend.runPromise(boards.recordIntake("child", board.lineageId, [1], "notifiedAt"));
@@ -101,6 +103,9 @@ describe("message-board artifact workflow", () => {
           await user.click(await screen.findByRole("button", { name: /Workboard/ }));
           await screen.findByRole("button", { name: /#1 · Finding 1/ });
           expect(screen.getByText("Append-only coordination log")).toBeDefined();
+          expect(
+            screen.getByText(/Topic: output.*Supersedes #1 for this entry's audience/),
+          ).toBeDefined();
           expect(screen.queryByText("Shared with workgroup")).toBeNull();
           expect(
             within(screen.getByRole("main").parentElement!).queryByRole("complementary"),
@@ -136,6 +141,7 @@ describe("message-board artifact workflow", () => {
           ).toEqual(before);
           await backend.runPromise(
             boards.append("child", {
+              audience: "workgroup",
               description: "Integration unblocked",
               body: "Additional evidence",
             }),

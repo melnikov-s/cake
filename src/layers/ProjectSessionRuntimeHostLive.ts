@@ -449,6 +449,7 @@ export const makeProjectSessionRuntimeHostLive = (
                               );
                             }),
                           ),
+                        current: (input) => runAdapter(messageBoards.current(sessionId, input)),
                         read: (sequences) => runAdapter(messageBoards.read(sessionId, sequences)),
                         entryReceipts: (sequence) =>
                           runAdapter(messageBoards.entryReceipts(sessionId, sequence)),
