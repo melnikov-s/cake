@@ -7,6 +7,68 @@ import {
 import { projectQueuedMessages } from "../../../../src/services/pi/runtime/session-projection";
 
 describe("Cake runtime streaming projection", () => {
+  it("keeps interview requests out of artifact projection throughout live tool execution", () => {
+    const events: RuntimeProjectionEvent[] = [];
+    const session = {
+      agent: { state: { tools: [] } },
+      systemPrompt: "",
+      getSteeringMessages: () => [],
+      getFollowUpMessages: () => [],
+      getSessionStats: () => ({ tokens: {}, cost: 0 }),
+    } as unknown as AgentSession;
+    const projection = createCakeSessionRuntimeEventProjection({
+      session,
+      sessionId: "session-1",
+      emit: (event) => events.push(event),
+      compactionQueuedMessages: () => [],
+      isDisposed: () => false,
+    });
+    const args = {
+      command: "interview.open",
+      input: { request: { protocol: "cake.request/v1", id: "choice" } },
+    };
+    const call = { toolCallId: "call-1", toolName: "cake", args };
+    try {
+      projection.projectEvent({
+        type: "message_update",
+        message: {
+          role: "assistant",
+          content: [{ type: "toolCall", id: "call-1", name: "cake", arguments: args }],
+        },
+        assistantMessageEvent: { type: "toolcall_delta", contentIndex: 0, delta: "" },
+      } as never);
+      // Execution start flushes the streamed arguments before emitting the running tool.
+      projection.projectEvent({ type: "tool_execution_start", ...call } as never);
+      projection.projectEvent({
+        type: "tool_execution_update",
+        ...call,
+        partialResult: { content: [] },
+      } as never);
+      projection.projectEvent({
+        type: "tool_execution_end",
+        ...call,
+        result: {
+          content: [],
+          details: {
+            command: "interview.open",
+            result: { interviewId: "call-1", cancelled: false, value: {} },
+          },
+        },
+        isError: false,
+      } as never);
+      const tools = events.flatMap((event) =>
+        event.type === "part-updated" && event.part.kind === "tool" ? [event.part] : [],
+      );
+      expect(tools.map((part) => part.state)).toEqual(["running", "running", "running", "success"]);
+      for (const part of tools) {
+        expect(part.command).toBe("interview.open");
+        expect(part.artifactId).toBeUndefined();
+      }
+    } finally {
+      projection.dispose();
+    }
+  });
+
   it("coalesces superseding full-message updates before crossing the runtime boundary", () => {
     vi.useFakeTimers();
     const events: RuntimeProjectionEvent[] = [];

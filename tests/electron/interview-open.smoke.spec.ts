@@ -267,6 +267,29 @@ reply({ ready: true });
       await page.getByRole("button", { name: "Apply" }).click();
       await expect(page.getByLabel("Search presets and models")).toBeHidden();
 
+      // Record transient previews too: the interview replaces the erroneous
+      // artifact surface before a final-state-only assertion can see it.
+      const interviewArtifactPreviews: string[] = [];
+      await page.exposeFunction("recordInterviewArtifactPreview", (reference: string) => {
+        interviewArtifactPreviews.push(reference);
+      });
+      await page.evaluate(() => {
+        const selector = '[data-artifact-reference="cake://artifact/fixture-interview"]';
+        const record = (element: Element) => {
+          if (element.matches(selector))
+            void (
+              window as Window & {
+                recordInterviewArtifactPreview(reference: string): Promise<void>;
+              }
+            ).recordInterviewArtifactPreview(element.getAttribute("data-artifact-reference")!);
+          element.querySelectorAll(selector).forEach(record);
+        };
+        new MutationObserver((mutations) => {
+          for (const mutation of mutations)
+            for (const node of mutation.addedNodes) if (node instanceof Element) record(node);
+        }).observe(document.body, { childList: true, subtree: true });
+      });
+
       const composer = page.getByLabel("Message");
       await composer.fill("Interview me");
       await composer.press("Enter");
@@ -291,6 +314,7 @@ reply({ ready: true });
       await expect(form).toBeVisible({ timeout: 30_000 });
       await expect(page.locator('.transcript [data-interview-id="call_interview"]')).toBeVisible();
       await expect(form).toContainText(`Question 1 of ${dictationEnabled ? 4 : 2}`);
+      expect(interviewArtifactPreviews).toEqual([]);
       if (dictationEnabled) {
         await form.getByRole("radio", { name: "Other", exact: true }).check();
         const custom = form.getByRole("textbox", { name: "Region other option" });

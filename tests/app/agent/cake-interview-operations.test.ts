@@ -84,10 +84,32 @@ describe("Interview operation and Pi projection", () => {
         isError: false,
       },
     };
+    // The tool appears before the separate interview metadata is projected.
+    const pending = projectSessionEntries([assistant] as never, undefined, { live: true });
+    expect(pending).toEqual([
+      expect.objectContaining({
+        kind: "tool",
+        command: "interview.open",
+        artifactId: undefined,
+        state: "running",
+      }),
+    ]);
+    const waiting = projectSessionEntries([assistant, metadata] as never, undefined, {
+      live: true,
+    });
+    expect(waiting).toEqual([
+      expect.objectContaining({
+        kind: "tool",
+        artifactId: undefined,
+        interview: { id: "call-1", sessionId: "session-1", request },
+        state: "running",
+      }),
+    ]);
     const parts = projectSessionEntries([assistant, metadata, toolResult] as never);
     expect(parts.filter((part) => part.kind === "tool")).toEqual([
       expect.objectContaining({
         id: "tool-call-1",
+        artifactId: undefined,
         interview: { id: "call-1", sessionId: "session-1", request },
         interviewResult: { interviewId: "call-1", cancelled: false, value: { answer: "yes" } },
         state: "success",

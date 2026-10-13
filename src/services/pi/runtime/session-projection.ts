@@ -241,19 +241,9 @@ export function toolArtifactId(value: unknown) {
     typeof artifact === "object" && artifact !== null
       ? projectedArtifactId(Reflect.get(artifact, "id"))
       : undefined;
-  if (artifactId) return artifactId;
-  const request = Reflect.get(value, "request");
-  const requestId =
-    typeof request === "object" && request !== null
-      ? projectedArtifactId(Reflect.get(request, "id"))
-      : undefined;
-  if (requestId) return requestId;
-  const input = Reflect.get(value, "input");
-  const nestedRequest =
-    typeof input === "object" && input !== null ? Reflect.get(input, "request") : undefined;
-  return typeof nestedRequest === "object" && nestedRequest !== null
-    ? projectedArtifactId(Reflect.get(nestedRequest, "id"))
-    : undefined;
+  // Interview request IDs are not artifact references, including while their
+  // tool arguments stream before interview metadata reaches the transcript.
+  return artifactId;
 }
 
 export function textFromContent(content: unknown): string {

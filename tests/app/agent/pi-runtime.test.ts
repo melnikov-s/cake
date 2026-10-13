@@ -2022,6 +2022,22 @@ describe("Pi 1.0.0 foundation contract", () => {
     ]);
   });
 
+  it.each([
+    { artifactId: "artifact-1" },
+    { details: { artifactId: "artifact-1" } },
+    { details: { result: { artifactId: "artifact-1" } } },
+    { artifact: { id: "artifact-1" } },
+  ])("projects explicit artifact identity from %j", (value) => {
+    expect(toolArtifactId(value)).toBe("artifact-1");
+  });
+
+  it.each([{ request: { id: "request-1" } }, { input: { request: { id: "request-1" } } }])(
+    "does not infer artifact identity from a request ID in %j",
+    (value) => {
+      expect(toolArtifactId(value)).toBeUndefined();
+    },
+  );
+
   it("omits malformed artifact IDs from tool projections", () => {
     expect(toolArtifactId({ artifactId: "" })).toBeUndefined();
     expect(toolArtifactId({ artifactId: "x".repeat(257) })).toBeUndefined();
@@ -2030,7 +2046,7 @@ describe("Pi 1.0.0 foundation contract", () => {
         artifactId: "",
         input: { request: { id: "request-1" } },
       }),
-    ).toBe("request-1");
+    ).toBeUndefined();
 
     const parts = projectSessionEntries([
       {
