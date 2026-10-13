@@ -1,4 +1,8 @@
 import { Schema } from "effect";
+import {
+  SessionNavigationInput,
+  sessionNavigationHelp,
+} from "../../contracts/application/session-navigation";
 import { SessionHistoryQuery } from "../../contracts/conversations/session-query-data";
 import { jsonObjectSchema } from "../../contracts/serialization/json-contract";
 import type { AppControlResult } from "./app-control-data";
@@ -8,12 +12,7 @@ import {
   orderedFamilySessions,
   toControlSession,
 } from "./control-projections";
-import {
-  bounded,
-  sessionIdTargetSchema,
-  sessionNavigationTargetSchema,
-  emptyArgumentsSchema,
-} from "./control-arguments";
+import { bounded, sessionIdTargetSchema, emptyArgumentsSchema } from "./control-arguments";
 import { defineControl, defineSessionControl } from "./control-definition";
 import { toStrictJson } from "./control-json";
 export const sessionInspectionControls = [
@@ -323,14 +322,17 @@ export const sessionInspectionControls = [
   }),
   defineSessionControl({
     command: "sessions.open",
-    args: sessionNavigationTargetSchema,
+    args: SessionNavigationInput,
     scope: "global",
-    discovery: {
-      topic: "sessions",
-      summary:
-        "Open one explicitly targeted project session, optionally at a specific transcript message.",
-    },
+    discovery: sessionNavigationHelp,
     run: async (input, { host }, command, known): Promise<AppControlResult> => {
+      if (!host.sessions.navigationEnabled())
+        return {
+          ok: false,
+          command,
+          error:
+            "Agent session navigation is disabled in Settings → Agent for this window. Offer a session link for the user to open instead.",
+        };
       const { sessionId } = input;
 
       const workspacePath = known.workingDirectory;

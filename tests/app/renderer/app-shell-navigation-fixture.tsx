@@ -1,6 +1,6 @@
 import { act, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { applySnapshot } from "r-state-tree";
+import { applySnapshot, type StoreSnapshot } from "r-state-tree";
 import { StoreProvider } from "r-state-tree/react";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
 import { CAKE_CHAT_SESSION_ID } from "../../../src/contracts/cake-chats/cake-chat-data";
@@ -32,8 +32,12 @@ function snapshot(sessionId: string): ConversationSnapshot {
   };
 }
 
-export function renderAppShellNavigation(client: TestClientOverrides = {}) {
+export function renderAppShellNavigation(
+  client: TestClientOverrides = {},
+  savedSnapshot?: StoreSnapshot,
+) {
   const fixture = createRendererStoreFixture({
+    snapshot: savedSnapshot,
     projects: sessions.map((session) => projectRecord({ path: session.projectPath })),
     sessions,
     client: {
@@ -92,6 +96,8 @@ export function renderAppShellNavigation(client: TestClientOverrides = {}) {
     </StoreProvider>,
   );
   return {
+    root: fixture.root,
+    client: fixture.client,
     user: userEvent.setup(),
     async publishResolved(sessionId: string) {
       await act(async () =>

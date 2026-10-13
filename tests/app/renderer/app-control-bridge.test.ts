@@ -129,6 +129,7 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
         (async () => {
           throw new Error("not used");
         }),
+      navigationEnabled: overrides.navigationEnabled ?? (() => true),
       open: overrides.open ?? (async () => false),
       create:
         overrides.create ??

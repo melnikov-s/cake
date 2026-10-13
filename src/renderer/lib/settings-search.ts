@@ -76,6 +76,11 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
         label: "Agent",
         description: "Behavior and content",
         settings: [
+          {
+            label: "Allow agent session navigation",
+            targetId: "setting-agent-session-navigation",
+            keywords: "permission open conversation pane window disable",
+          },
           { label: "Auto-compact", targetId: "setting-auto-compact", keywords: "context" },
           { label: "Automatic retry", targetId: "setting-automatic-retry", keywords: "failures" },
           {

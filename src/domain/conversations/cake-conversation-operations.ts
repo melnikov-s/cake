@@ -1,4 +1,8 @@
 import { Schema } from "effect";
+import {
+  SessionNavigationInput,
+  sessionNavigationHelp,
+} from "../../contracts/application/session-navigation";
 import { CakeModelSelection } from "../../contracts/model-presets/cake-model-selection";
 import { jsonObjectSchema, type JsonObject } from "../../contracts/serialization/json-contract";
 
@@ -69,6 +73,13 @@ export function createConversationOperations(
       result:
         "Project Session identities, projects, paths, titles, activity, and resolution state.",
       execute: (_input, context) => api().invokeAppControl("sessions.list", {}, context.signal),
+    },
+    {
+      command: "sessions.open",
+      requires: "invokeAppControl",
+      ...sessionNavigationHelp,
+      inputSchema: SessionNavigationInput,
+      execute: invokeAppControl("sessions.open"),
     },
     {
       command: "sessions.cake",

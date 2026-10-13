@@ -189,6 +189,7 @@ export interface AppControlHost {
   };
   sessions: {
     inspect(sessionId: string): Promise<ProjectSessionPreview>;
+    navigationEnabled(): boolean;
     open(sessionId: string, messageId?: string): Promise<boolean | void>;
     create(input: {
       inputRefs?: readonly string[];

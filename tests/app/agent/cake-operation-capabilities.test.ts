@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Schema } from "effect";
+import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { projectCakeOperations } from "../../../src/layers/CakeOperations";
 import * as projectSessionOperations from "../../../src/domain/project-sessions/cake-session-operations";
 import { createConversationOperations } from "../../../src/domain/conversations/cake-conversation-operations";
@@ -120,6 +122,7 @@ describe("Project Session operation capabilities", () => {
       "session-labels.list",
       "notifications.send",
       "sessions.list",
+      "sessions.open",
       "sessions.history",
       "sessions.cancel-queued",
       "sessions.send-batch",
@@ -132,6 +135,33 @@ describe("Project Session operation capabilities", () => {
       );
       expect(withoutGateway).not.toContain(command);
     }
+  });
+
+  it("advertises the exact session navigation schema and user-owned permission in Cake help", () => {
+    const definitions = operations({
+      currentSessionControl: control({ invokeAppControl: async () => null }),
+    });
+    const navigation = definitions.find((operation) => operation.command === "sessions.open");
+    expect(navigation).toBeDefined();
+    if (!navigation) throw new Error("Expected navigation capability");
+    expect(
+      Schema.toStandardJSONSchemaV1(navigation.inputSchema)["~standard"].jsonSchema.input({
+        target: "draft-07",
+      }),
+    ).toMatchObject({
+      type: "object",
+      properties: {
+        sessionId: { type: "string", minLength: 1, maxLength: 256 },
+        messageId: { type: "string", minLength: 1, maxLength: 256 },
+      },
+      required: ["sessionId"],
+      additionalProperties: false,
+    });
+    const registry = new CakeOperationRegistry(definitions);
+    expect(registry.topicHelp("sessions")).toContain("sessions.open —");
+    expect(registry.operationHelp("sessions.open")).toContain("Settings → Agent");
+    expect(registry.operationHelp("sessions.open")).toContain("cannot be changed by an agent");
+    expect(registry.operationHelp("sessions.open")).toContain("Enabled by default");
   });
 
   it.each([undefined, true, false])(

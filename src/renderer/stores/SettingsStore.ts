@@ -13,6 +13,7 @@ import type { ApplicationState } from "../../contracts/conversations/session-con
 import { hotkeyDefinitions } from "../lib/hotkeys";
 import { DesktopSharingSettingsStore } from "./DesktopSharingSettingsStore";
 import { AppearanceSettingsStore } from "./AppearanceSettingsStore";
+import { AgentNavigationSettingsStore } from "./AgentNavigationSettingsStore";
 import { ModelPresetSettingsStore } from "./ModelPresetSettingsStore";
 import { ProviderSettingsStore } from "./ProviderSettingsStore";
 import type { SessionOperationCoordinatorStore } from "./SessionOperationCoordinatorStore";
@@ -80,6 +81,9 @@ export class SettingsStore extends Store<SettingsStoreProps> {
   }
   @child get desktopSharing(): DesktopSharingSettingsStore {
     return createStore(DesktopSharingSettingsStore);
+  }
+  @child get agentNavigation(): AgentNavigationSettingsStore {
+    return createStore(AgentNavigationSettingsStore);
   }
   @child get appearance(): AppearanceSettingsStore {
     return createStore(AppearanceSettingsStore);

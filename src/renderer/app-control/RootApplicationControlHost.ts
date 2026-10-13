@@ -236,6 +236,7 @@ export function createRootApplicationControlHost(
       },
       inspect: (sessionId) =>
         capabilities.client.projectSessions.inspect({ sessionId }, { signal: capabilities.signal }),
+      navigationEnabled: () => capabilities.settingsStore.agentNavigation.enabled,
       open: (sessionId, messageId) =>
         capabilities.navigationStore.openSession(sessionId, messageId),
       create: (input) => capabilities.projectSessionCreationStore.createPromptedSession(input),

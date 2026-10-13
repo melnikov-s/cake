@@ -789,6 +789,27 @@ const experimentalSettingsScenario: VisualCaptureScenario = {
   region: (page) => page.locator("#settings-content-scroll"),
 };
 
+const agentNavigationSettingsScenario: VisualCaptureScenario = {
+  name: "agent-navigation-settings",
+  description: "User-owned window permission for agent-driven Project Session navigation",
+  states: ["default", "disabled"],
+  seed: assistantMarkdownCode.seed,
+  async prepare(page, state, application) {
+    await assistantMarkdownCode.prepare(page, "default", application);
+    await page.getByRole("button", { name: "Open settings", exact: true }).click();
+    await page.getByRole("button", { name: /^Agent Behavior and content$/ }).click();
+    const toggle = page.getByRole("switch", { name: "Allow agent session navigation" });
+    await expect(toggle).toBeChecked();
+    if (state === "disabled") {
+      await toggle.click();
+      await expect(toggle).not.toBeChecked();
+    }
+    await page.waitForFunction(() => document.fonts.status === "loaded");
+    await page.mouse.move(1, 1);
+  },
+  region: (page) => page.locator('section[aria-labelledby="agent-navigation-title"]'),
+};
+
 const screenCaptureSettingsScenario: VisualCaptureScenario = {
   name: "screen-capture-settings",
   description: "Screen capture shortcut, image resizing, and crop/annotation instructions",
@@ -2702,6 +2723,7 @@ export const visualCaptureScenarios = [
   speechOutputSettingsScenario,
   screenCaptureSettingsScenario,
   experimentalSettingsScenario,
+  agentNavigationSettingsScenario,
   screenCaptureOverlayScenario,
   inlineLinks,
   requestExplanationScenario,

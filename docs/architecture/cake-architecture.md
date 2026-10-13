@@ -243,6 +243,13 @@ is a refactoring signal, not precedent.
   primitives; shared chat primitives do not consume Project-only contexts.
   **ScreenCaptureAttachmentStore** owns capture destination presentation and routing,
   including unsent pane identities that intentionally remain outside sidebar lists.
+- **Agent session navigation** uses `sessions.open` through the invoking renderer’s
+  existing application-control gateway and `NavigationStore`. Project Session targets
+  are validated against the catalog; ordinary focused-pane/history policy applies,
+  including focusing an already-open target. `SettingsStore.agentNavigation` owns the
+  user-only permission: enabled by default, window-local, persisted in the existing
+  window snapshot. It is not writable through agent Settings operations. Disabling it
+  blocks agent navigation, not manual sidebar, history, or session-link navigation.
 - **React** retains only tiny DOM, focus, hover, measurement, animation, or isolated
   input state. Dispose external resources with their actual owner.
 - **Window persistence** is infrastructure outside the Store tree: load a versioned

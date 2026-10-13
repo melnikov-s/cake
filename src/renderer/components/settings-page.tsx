@@ -54,6 +54,7 @@ import { LabelSettings } from "./label-settings";
 import { SettingsNonChatModelsSection } from "./settings-non-chat-models-section";
 import { SettingsNativeToolsSection } from "./settings-native-tools-section";
 import { SettingsExperimentalSection } from "./settings-experimental-section";
+import { SettingsAgentNavigationSection } from "./settings-agent-navigation-section";
 
 export const SettingsPage = observer(function SettingsPage({
   settings,
@@ -388,6 +389,10 @@ export const SettingsPage = observer(function SettingsPage({
                 </div>
               </section>
             </>
+          )}
+
+          {activePage === "agent" && (
+            <SettingsAgentNavigationSection navigation={settings.agentNavigation} />
           )}
 
           {activePage === "agent" && (
