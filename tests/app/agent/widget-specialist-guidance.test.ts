@@ -25,7 +25,8 @@ const context = {
 };
 
 function expectUnifiedWidgetGuidance(prompt: string) {
-  expect(prompt).toContain("approved D3 modules");
+  expect(prompt).toContain("user-installed widget packages");
+  expect(prompt).toContain("@cake/artifact-sdk");
   expect(prompt).toContain("ordinary React, SVG/D3, or a composition of them");
   expect(prompt).toContain("there is no separate diagram artifact to create");
   expect(prompt).toContain("Outside a diagram canvas");
@@ -86,6 +87,54 @@ describe("widget specialist guidance", () => {
       expect(options.systemPrompt).toContain("Render named scalar fields");
     },
   );
+
+  it("submits surgically edited staged source and enables skill/candidate capabilities", async () => {
+    const candidate = {
+      source: "export default function Edited(){return null}",
+      state: { scene: "latest" },
+    };
+    run.mockResolvedValue({
+      sessionId: "private-widget-session",
+      sessionFile: undefined,
+      response: "USE_STAGED_CANDIDATE",
+    });
+    const result = await runInlineWidgetRepair({
+      ...context,
+      language: "react",
+      capability: "artifact",
+      source: candidate.source,
+      candidate,
+      projectTrusted: true,
+      context: "Change the scene",
+    });
+    expect(result.response).toContain(candidate.source);
+    expect(run.mock.calls[0]?.[0]).toMatchObject({
+      widgetCandidate: candidate,
+      includeSkills: true,
+      projectTrusted: true,
+      noTools: "all",
+    });
+  });
+
+  it("does not submit edited source from a failed specialist turn", async () => {
+    run.mockResolvedValue({
+      sessionId: "private-widget-session",
+      sessionFile: undefined,
+      response: "USE_STAGED_CANDIDATE",
+      error: "model disconnected",
+    });
+    const candidate = { source: "export default function Edited(){return null}", state: null };
+    await expect(
+      runInlineWidgetRepair({
+        ...context,
+        language: "react",
+        capability: "artifact",
+        source: candidate.source,
+        candidate,
+        context: "Edit",
+      }),
+    ).rejects.toThrow("model disconnected");
+  });
 
   it.each(["display", "request"] as const)(
     "keeps the same diagram capabilities during %s widget repair",

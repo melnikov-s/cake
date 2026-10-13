@@ -146,6 +146,7 @@ it.live(
               return {
                 widget: published,
                 release: Effect.sync(() => revokeInlineWidget(published.token)),
+                retain: () => Effect.succeed({ digest: "a".repeat(64) }),
               };
             }),
           repair: () => Effect.fail(new Error("Unexpected repair")),

@@ -2,6 +2,7 @@ import type { CakeArtifactOperationOptions } from "../../contracts/artifacts/art
 import type { CakeOperationHost } from "../../contracts/agent/cake-operation-context";
 import { editText } from "../../services/pi/edit-text";
 import { Schema } from "effect";
+import { jsonValueSchema } from "../../contracts/serialization/json-contract";
 
 import {
   MAX_ARTIFACT_INPUT_BYTES,
@@ -39,6 +40,7 @@ const widgetSchema = Schema.Struct({
   title: titleSchema,
   brief: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(262_144)),
   data: Schema.optionalKey(Schema.Unknown),
+  initialState: Schema.optionalKey(jsonValueSchema),
   fallback: Schema.Struct({
     markdown: Schema.String.check(
       Schema.isMinLength(1),
@@ -146,11 +148,17 @@ export function createCakeArtifactOperations(
   pi: CakeOperationHost,
   options: CakeArtifactOperationOptions,
 ): CakeOperationDefinition[] {
-  const persist = async (input: CakeArtifactV1, sessionId: string) => {
+  const persist = async (
+    input: CakeArtifactV1,
+    sessionId: string,
+    stagedState?: Parameters<CakeArtifactOperationOptions["persistArtifact"]>[1],
+  ) => {
     const artifact = parseArtifactInput(input);
     if (artifact.sessionId !== sessionId)
       throw new Error("Artifact sessionId does not match the active Pi session");
-    return options.persistArtifact(artifact);
+    return stagedState === undefined
+      ? options.persistArtifact(artifact)
+      : options.persistArtifact(artifact, stagedState);
   };
   const appendPointer = (
     record: ArtifactRecord,
@@ -452,6 +460,7 @@ export function createCakeArtifactOperations(
         const sessionId = runtime.sessionId;
         const revision = update.expectedRevision + 1;
         let artifact: CakeArtifactV1;
+        let stagedState: Parameters<CakeArtifactOperationOptions["persistArtifact"]>[1];
         if ("markdown" in update) {
           if (current.artifact.kind !== "markdown")
             throw new Error(
@@ -484,6 +493,8 @@ export function createCakeArtifactOperations(
             );
           if (!options.reviseInlineWidget)
             throw new Error("Durable widget revision is unavailable");
+          if (!options.readArtifactState) throw new Error("Artifact state access is unavailable");
+          const latestState = await options.readArtifactState(update.lineageId);
           const generated = await options.reviseInlineWidget({
             sessionId,
             generationSessionId: current.artifact.payload.generationSessionId,
@@ -491,10 +502,18 @@ export function createCakeArtifactOperations(
             brief: current.artifact.payload.brief,
             fallback: current.artifact.fallback.markdown,
             instructions: update.instructions,
+            initialState: latestState.value,
             model: runtime.model,
             signal: context.signal,
           });
           if (context.signal.aborted) throw new Error("Widget revision was cancelled");
+          if (!generated.browser)
+            throw new Error("Accepted widget revision has no retained browser output");
+          if (generated.state !== undefined)
+            stagedState = {
+              expectedVersion: latestState.version,
+              value: generated.state,
+            };
           artifact = {
             ...current.artifact,
             revision,
@@ -503,13 +522,14 @@ export function createCakeArtifactOperations(
               source: generated.source,
               generationSessionId: generated.generationSessionId,
               preview: generated.preview,
+              browser: generated.browser,
             },
           };
           if (update.title) artifact = { ...artifact, title: update.title };
         }
         // The publishing session is revision provenance; the global lineage identity stays stable.
         artifact = { ...artifact, sessionId };
-        const record = await persist(artifact, sessionId);
+        const record = await persist(artifact, sessionId, stagedState);
         appendPointer(record, pointerOrigin(context));
         const resolved = await resolveArtifact(
           `cake://artifact/${record.artifact.id}@r${revision}`,
@@ -583,7 +603,7 @@ export function createCakeArtifactOperations(
         "Prefer ordinary inline Markdown—including Mermaid and small tables—whenever it communicates the result clearly. Create a widget only for a substantial, reusable, or genuinely interactive/visual deliverable, especially when requested.",
         "Supply the explanation goal, audience, verified facts/source references, bounded data, and a readable Markdown fallback. Do not write the generated React source yourself.",
         "Publication supplies the accepted rendered preview to the agent as a native image, with an immutable exact reference. The user sees a live interactive widget. Before implementing an approved design, inspect that exact preview (artifacts.preview or the resolved preview.png), not merely your original brief. Read projected source selectively when needed and compare the implementation's real screenshot against the approved revision.",
-        "The specialist can combine ordinary React explanations, D3/SVG diagrams, filters and details inside one widget. Describe the intended relationships and useful interactions, not pixel coordinates or a mandatory graph DSL.",
+        "The specialist can read domain skills and combine React, installed widget libraries, editable canvases, filters and details. Supply initialState for artifact-scoped JSON data; the widget owns its format and save timing. Describe intended relationships and useful interactions, not pixel coordinates or a mandatory graph DSL.",
         "The published visualization is shown once inline, expanded by default with a collapse control. Do not repeat its embed or add an Open artifact link after publication. A standalone ![Title](cake://artifact/<id>@rN) paragraph can show a saved revision without a publication surface in this conversation; duplicate embeds of published exact revisions are omitted. Ordinary [Title](cake://artifact/<id>) links stay compact. Use exact revisions for historical explanations.",
       ],
       inputSchema: Schema.Struct({ widget: widgetSchema }),
@@ -603,7 +623,7 @@ export function createCakeArtifactOperations(
         "The persisted widget ID, revision, digest and exact reference plus its accepted review PNG as a native model-visible image; no generated source or private branch history.",
       limitations: [
         "The immutable snapshot, including accepted PNG bytes, must fit the existing 1 MiB serialized artifact limit. Oversized publication fails rather than silently omitting the preview.",
-        "Generated widgets have no filesystem, Node, Electron, parent-DOM or Cake API access. CSP blocks fetch/XHR/WebSocket; generic widgets permit passive HTTPS/data images and media. Supply local data and request self-contained output.",
+        "Generated widgets have no filesystem, Node, Electron, parent-DOM or unrestricted Cake API access. @cake/artifact-sdk grants only artifact-scoped JSON state. CSP blocks fetch/XHR/WebSocket. Required libraries must already be installed; ask for dependency authorization outside the private generation branch.",
         "Generation inherits the caller's ancestor context at creation time, excluding sibling branches and unfinished tool calls. Revisions follow the artifact's generation branch, not later parent messages.",
         "Every successfully rendered candidate is reviewed from an actual Cake Electron screenshot. Private review history stays private; only the accepted capture is retained in the immutable artifact snapshot and supplied to the caller. The capture covers one bounded initial state, not every interaction, theme, or viewport.",
       ],
@@ -620,6 +640,7 @@ export function createCakeArtifactOperations(
           parentConversation: widgetConversationFromOperation(runtime),
           brief: widget.brief,
           data: widget.data,
+          initialState: widget.initialState,
           fallback: widget.fallback.markdown,
           model: runtime.model
             ? { provider: runtime.model.provider, id: runtime.model.id }
@@ -627,6 +648,7 @@ export function createCakeArtifactOperations(
           signal: context.signal,
         });
         if (context.signal.aborted) throw new Error("Widget generation was cancelled");
+        if (!generated.browser) throw new Error("Accepted widget has no retained browser output");
         const record = await persist(
           {
             protocol: "cake.artifact/v1",
@@ -641,11 +663,19 @@ export function createCakeArtifactOperations(
               brief: serialized,
               generationSessionId: generated.generationSessionId,
               preview: generated.preview,
+              browser: generated.browser,
             },
             fallback: widget.fallback,
             interaction: { mode: "present" },
           },
           sessionId,
+          generated.state !== undefined || widget.initialState !== undefined
+            ? {
+                expectedVersion: 0,
+                value:
+                  generated.state !== undefined ? generated.state : (widget.initialState ?? null),
+              }
+            : undefined,
         );
         appendPointer(record, pointerOrigin(context));
         if (record.artifact.kind !== "widget" || !record.artifact.payload.preview)

@@ -1,6 +1,7 @@
 import type { JsonValue } from "../serialization/json-contract";
 import type { WidgetConversationOrigin } from "./widget-conversation";
 import type { WidgetPreview } from "./widget-preview";
+import type { WidgetBrowserOutput } from "./widget-browser-output";
 
 export interface InlineWidgetGenerationRequest {
   sessionId: string;
@@ -19,6 +20,9 @@ export interface InlineWidgetGenerationResult {
   source: string;
   generationSessionId: string;
   preview: WidgetPreview;
+  browser: WidgetBrowserOutput;
+  /** Accepted candidate state, omitted when the branch did not change it. */
+  state?: JsonValue;
 }
 
 export interface InlineWidgetRevisionRequest {
@@ -28,6 +32,7 @@ export interface InlineWidgetRevisionRequest {
   brief: string;
   fallback: string;
   instructions: string;
+  initialState?: JsonValue;
   model?: { provider: string; id: string };
   signal?: AbortSignal;
 }

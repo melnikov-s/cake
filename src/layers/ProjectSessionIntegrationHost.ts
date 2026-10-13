@@ -6,6 +6,10 @@ import type { UtilityModel } from "../contracts/conversations/session-contract";
 import type { CakeModelPresetCatalog } from "../contracts/model-presets/cake-model-selection";
 import type { WorktreeLandingCoordinator } from "../contracts/worktrees/worktree-contract";
 import type { JsonValue } from "../contracts/serialization/json-contract";
+import type { ArtifactStagedState } from "../contracts/artifacts/artifact-state";
+import type { WidgetCandidate } from "../contracts/widgets/widget-candidate";
+import type { WidgetBrowserOutput } from "../contracts/widgets/widget-browser-output";
+import type { CompiledInlineWidgetDocument } from "../services/widgets/inline-widget-service";
 import type { ProjectSessionControlInvocation } from "../contracts/project-sessions/project-session-data";
 import type { VscodeActionResult } from "../contracts/vscode/vscode-action-result";
 import {
@@ -43,6 +47,7 @@ interface ArtifactRepositoryPort {
   readonly upsert: (
     workingDirectory: string,
     artifact: CakeArtifactV1,
+    stagedState?: ArtifactStagedState,
   ) => Effect.Effect<ArtifactRecord, unknown, never>;
   readonly get: (
     workingDirectory: string,
@@ -114,6 +119,9 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly runWidgetRepair?: typeof runInlineWidgetRepair;
   readonly runWidgetVisualReview?: typeof runInlineWidgetVisualReview;
   readonly compileWidget?: typeof compileInlineWidget;
+  readonly retainWidgetBrowser?: (
+    compiled: CompiledInlineWidgetDocument,
+  ) => Promise<WidgetBrowserOutput>;
   readonly runReviewedWidget: (
     input: WidgetReviewInput,
     dependencies: WidgetGenerationReviewDependencies,
@@ -170,6 +178,10 @@ export class ProjectSessionIntegrationHost {
   private readonly runWidgetRepair: typeof runInlineWidgetRepair;
   private readonly runWidgetVisualReview: typeof runInlineWidgetVisualReview;
   private readonly compileWidget: typeof compileInlineWidget;
+  private readonly retainWidgetBrowser: NonNullable<
+    ProjectSessionIntegrationHostOptions["retainWidgetBrowser"]
+  >;
+  private readonly isTrusted: () => boolean;
   private readonly runReviewedWidget: ProjectSessionIntegrationHostOptions["runReviewedWidget"];
   private readonly execute: ProjectSessionIntegrationHostOptions["execute"];
   private readonly captureWidget: NonNullable<
@@ -199,6 +211,12 @@ export class ProjectSessionIntegrationHost {
     this.runWidgetRepair = options.runWidgetRepair ?? runInlineWidgetRepair;
     this.runWidgetVisualReview = options.runWidgetVisualReview ?? runInlineWidgetVisualReview;
     this.compileWidget = options.compileWidget ?? compileInlineWidget;
+    this.isTrusted = options.isTrusted ?? (() => false);
+    this.retainWidgetBrowser =
+      options.retainWidgetBrowser ??
+      (async () => {
+        throw new Error("Durable widget browser output retention is unavailable");
+      });
     this.runReviewedWidget = options.runReviewedWidget;
     this.execute = options.execute;
     this.captureWidget =
@@ -257,7 +275,8 @@ export class ProjectSessionIntegrationHost {
         this.requestApplicationControlFromRenderer(invocation, signal),
       emitExtensionUiIntent: (intent) =>
         this.emit({ type: "extension-ui-intent", sessionId, intent }),
-      persistArtifact: (artifact) => this.execute(this.persistArtifact(artifact, sessionId)),
+      persistArtifact: (artifact, stagedState) =>
+        this.execute(this.persistArtifact(artifact, sessionId, stagedState)),
       requestInterview: (record, signal) => this.requestInterviewFromRenderer(record, signal),
       generateInlineWidget: (input) => this.execute(this.generateInlineWidget(input), input.signal),
       reviseInlineWidget: (input) => this.execute(this.reviseInlineWidget(input), input.signal),
@@ -288,12 +307,16 @@ export class ProjectSessionIntegrationHost {
     if (!this.disposed) this.emitEvent(event);
   }
 
-  private persistArtifact(artifact: CakeArtifactV1, activeSessionId: string) {
+  private persistArtifact(
+    artifact: CakeArtifactV1,
+    activeSessionId: string,
+    stagedState?: ArtifactStagedState,
+  ) {
     const repository = this.artifactRepository;
     const workingDirectory = this.workspacePath;
     const emit = (event: CakeEvent) => this.emit(event);
     return Effect.gen(function* () {
-      const record = yield* repository.upsert(workingDirectory, artifact);
+      const record = yield* repository.upsert(workingDirectory, artifact, stagedState);
       if (activeSessionId !== artifact.sessionId)
         yield* repository.linkSession(record, activeSessionId);
       emit({ type: "artifact-updated", record });
@@ -309,13 +332,16 @@ export class ProjectSessionIntegrationHost {
       fallback: input.fallback,
       surface: input.surface ?? "widget",
     });
-    return this.reviewWidget(input, context, () =>
+    const candidate: WidgetCandidate = { source: "", state: input.initialState ?? null };
+    return this.reviewWidget(input, context, candidate, () =>
       this.runWidgetGeneration({
         cwd: this.workspacePath,
         agentDir: this.agentDir,
         sessionDir: this.widgetSessionDir,
         sessionRoots: this.widgetSessionRoots,
         conversation: { type: "parent", origin: input.parentConversation },
+        candidate: input.surface === "session-plugin" ? undefined : candidate,
+        projectTrusted: this.isTrusted(),
         ...input,
       }),
     );
@@ -326,15 +352,18 @@ export class ProjectSessionIntegrationHost {
       brief: input.brief,
       fallback: input.fallback,
       revisionInstructions: input.instructions,
+      initialState: input.initialState ?? null,
     });
     const generationInput: WidgetReviewInput = {
       sessionId: input.sessionId,
       brief: input.brief,
       fallback: input.fallback,
+      initialState: input.initialState,
       model: input.model,
       signal: input.signal,
     };
-    return this.reviewWidget(generationInput, context, () =>
+    const candidate: WidgetCandidate = { source: input.source, state: input.initialState ?? null };
+    return this.reviewWidget(generationInput, context, candidate, () =>
       this.runWidgetRepair({
         cwd: this.workspacePath,
         agentDir: this.agentDir,
@@ -342,8 +371,10 @@ export class ProjectSessionIntegrationHost {
         sessionRoots: this.widgetSessionRoots,
         conversation: { type: "revision", sessionId: input.generationSessionId },
         language: "react",
-        capability: "display",
+        capability: "artifact",
         source: input.source,
+        candidate,
+        projectTrusted: this.isTrusted(),
         context,
         diagnostic: `Requested durable revision: ${input.instructions}`,
         model: input.model,
@@ -355,6 +386,7 @@ export class ProjectSessionIntegrationHost {
   private reviewWidget(
     input: WidgetReviewInput,
     context: string,
+    candidate: WidgetCandidate,
     generate: () => ReturnType<typeof runInlineWidgetGeneration>,
   ) {
     let generationSessionId: string | undefined;
@@ -364,6 +396,7 @@ export class ProjectSessionIntegrationHost {
     };
     const fromPromise = <A>(evaluate: (signal: AbortSignal) => Promise<A>) =>
       Effect.tryPromise({ try: evaluate, catch: (cause) => cause });
+    const originalState = JSON.stringify(candidate.state);
     return this.runReviewedWidget(input, {
       requireVisionModel: (model) => fromPromise(() => this.requireVisionModel(model)),
       generate: () =>
@@ -373,18 +406,20 @@ export class ProjectSessionIntegrationHost {
           return generated;
         }),
       compile: (source) =>
-        fromPromise(() =>
-          this.compileWidget(
+        fromPromise(() => {
+          candidate.source = source;
+          return this.compileWidget(
             "react",
             source,
-            input.surface === "session-plugin" ? "session-plugin" : "display",
-          ),
-        ).pipe(
+            input.surface === "session-plugin" ? "session-plugin" : "artifact",
+          );
+        }).pipe(
           Effect.map((compiled) => {
             const widget = publishInlineWidget(compiled);
             return {
               widget,
               release: Effect.sync(() => revokeInlineWidget(widget.token)),
+              retain: () => fromPromise(() => this.retainWidgetBrowser(compiled)),
             };
           }),
         ),
@@ -397,8 +432,10 @@ export class ProjectSessionIntegrationHost {
             sessionRoots: this.widgetSessionRoots,
             conversation: conversation(),
             language: "react",
-            capability: input.surface === "session-plugin" ? "session-plugin" : "display",
+            capability: input.surface === "session-plugin" ? "session-plugin" : "artifact",
             source,
+            candidate: input.surface === "session-plugin" ? undefined : candidate,
+            projectTrusted: this.isTrusted(),
             context,
             diagnostic,
             model: input.model,
@@ -411,7 +448,7 @@ export class ProjectSessionIntegrationHost {
             input.sessionId,
             widget,
             signal,
-            input.surface === "session-plugin" ? (input.initialState ?? null) : undefined,
+            input.surface === "session-plugin" ? (input.initialState ?? null) : candidate.state,
           ),
         ),
       review: (source, diagnostic, pngBase64) => {
@@ -428,7 +465,10 @@ export class ProjectSessionIntegrationHost {
             sessionRoots: this.widgetSessionRoots,
             conversation: conversation(),
             source,
-            context,
+            context:
+              input.surface === "session-plugin"
+                ? context
+                : `${context}\n\nCurrent staged artifact state (authoritative for this preview):\n${JSON.stringify(candidate.state)}`,
             diagnostic,
             pngBase64,
             model,
@@ -436,6 +476,11 @@ export class ProjectSessionIntegrationHost {
           }),
         );
       },
-    });
+    }).pipe(
+      Effect.map((accepted) => ({
+        ...accepted,
+        ...(originalState === JSON.stringify(candidate.state) ? null : { state: candidate.state }),
+      })),
+    );
   }
 }

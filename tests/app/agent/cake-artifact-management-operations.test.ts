@@ -65,6 +65,22 @@ const markdown = (revision: number, value: string): CakeArtifactV1 => ({
   interaction: { mode: "present" },
 });
 
+const widgetArtifact = (): CakeArtifactV1 => ({
+  protocol: "cake.artifact/v1",
+  id: "chart",
+  sessionId: "original-parent",
+  revision: 1,
+  kind: "widget",
+  payload: {
+    language: "react",
+    source: "export default function Chart(){return null}",
+    brief: "Verified chart",
+    generationSessionId: "accepted-generation",
+  },
+  fallback: { markdown: "Chart" },
+  interaction: { mode: "present" },
+});
+
 function makeHarness(initial: CakeArtifactV1 = markdown(1, "one")) {
   let current = initial;
   const revisions = new Map([[initial.revision, initial]]);
@@ -81,6 +97,11 @@ function makeHarness(initial: CakeArtifactV1 = markdown(1, "one")) {
       if (!selected) throw new Error(`Unknown artifact revision: ${reference}`);
       return { record: record(selected), metadata: metadata(selected) };
     }),
+    readArtifactState: vi.fn(async (lineageId) => ({
+      lineageId,
+      version: 9,
+      value: { scene: "latest live state" },
+    })),
     listArtifactMetadata: vi.fn(async () => [metadata(current)]),
     historyArtifact: vi.fn(async () => [...revisions.values()].map(metadata)),
     restoreArtifact: vi.fn(async ({ sourceRevision, expectedRevision }) => {
@@ -535,26 +556,14 @@ describe("Cake artifact management operations", () => {
   });
 
   it("revises from the accepted widget generation branch and publishes its new branch identity", async () => {
-    const initial: CakeArtifactV1 = {
-      protocol: "cake.artifact/v1",
-      id: "chart",
-      sessionId: "original-parent",
-      revision: 1,
-      kind: "widget",
-      payload: {
-        language: "react",
-        source: "export default function Chart(){return null}",
-        brief: "Verified chart",
-        generationSessionId: "accepted-generation",
-      },
-      fallback: { markdown: "Chart" },
-      interaction: { mode: "present" },
-    };
+    const initial = widgetArtifact();
+    if (initial.kind !== "widget") throw new Error("Expected widget");
     const { registry, callbacks } = makeHarness(initial);
     const revise = vi.fn(async () => ({
       language: "react" as const,
       source: "export default function Revised(){return null}",
       generationSessionId: "revision-branch",
+      browser: { digest: "a".repeat(64) },
       preview: { mimeType: "image/png" as const, data: "cG5n" },
     }));
     callbacks.reviseInlineWidget = revise;
@@ -582,6 +591,7 @@ describe("Cake artifact management operations", () => {
         generationSessionId: "accepted-generation",
         source: initial.payload.source,
         instructions: "Use clearer labels",
+        initialState: { scene: "latest live state" },
       }),
     );
     expect(callbacks.persistArtifact).toHaveBeenCalledWith(
@@ -592,6 +602,66 @@ describe("Cake artifact management operations", () => {
       }),
     );
   });
+
+  it("commits only accepted staged state with the version read from live storage", async () => {
+    const { registry, callbacks, appendEntry } = makeHarness(widgetArtifact());
+    callbacks.reviseInlineWidget = vi.fn(async () => ({
+      language: "react" as const,
+      source: "export default function Revised(){return null}",
+      generationSessionId: "new-branch",
+      browser: { digest: "a".repeat(64) },
+      preview: { mimeType: "image/png" as const, data: "cG5n" },
+      state: { scene: "edited" },
+    }));
+    await registry.invoke(
+      {
+        command: "artifacts.replace",
+        input: { lineageId: "chart", expectedRevision: 1, instructions: "Edit scene" },
+      },
+      context(),
+    );
+    expect(callbacks.readArtifactState).toHaveBeenCalledWith("chart");
+    expect(callbacks.persistArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({ revision: 2 }),
+      { expectedVersion: 9, value: { scene: "edited" } },
+    );
+    expect(appendEntry).toHaveBeenCalledOnce();
+  });
+
+  it.each(["review", "state conflict"])(
+    "does not publish a pointer or alter accepted state after %s failure",
+    async (failure) => {
+      const initial = widgetArtifact();
+      const { registry, callbacks, appendEntry } = makeHarness(initial);
+      callbacks.reviseInlineWidget = vi.fn(async () => {
+        if (failure === "review") throw new Error("review failed");
+        return {
+          language: "react" as const,
+          source: "export default function Revised(){return null}",
+          generationSessionId: "rejected-branch",
+          browser: { digest: "a".repeat(64) },
+          preview: { mimeType: "image/png" as const, data: "cG5n" },
+          state: { scene: "edited" },
+        };
+      });
+      if (failure === "state conflict")
+        callbacks.persistArtifact = vi.fn(async () => {
+          throw new Error("state conflict");
+        });
+      await expect(
+        registry.invoke(
+          {
+            command: "artifacts.replace",
+            input: { lineageId: "chart", expectedRevision: 1, instructions: "Edit scene" },
+          },
+          context(),
+        ),
+      ).rejects.toThrow(failure);
+      if (failure === "review") expect(callbacks.persistArtifact).not.toHaveBeenCalled();
+      expect(appendEntry).not.toHaveBeenCalled();
+      expect((await callbacks.resolveArtifact!("chart")).record.artifact).toEqual(initial);
+    },
+  );
 
   it("appends one restore pointer while link and unlink append none", async () => {
     const { registry, appendEntry, callbacks } = makeHarness(markdown(2, "two"));

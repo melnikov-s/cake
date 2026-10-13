@@ -10,6 +10,8 @@ import {
 import { registerAgentDirectoryExtensionProviders } from "./extension-providers";
 import { createPromptCacheLineage } from "./prompt-cache-lineage";
 import { createWidgetContextExtension } from "./widget-context-extension";
+import { createWidgetCandidateTools } from "./widget-candidate-tools";
+import type { WidgetCandidate } from "../../../contracts/widgets/widget-candidate";
 import { createNestedToolActivityProjection } from "./nested-tool-activity-projection";
 import { canonicalPathIsInsideRoot } from "./workspace-paths";
 import type {
@@ -38,6 +40,8 @@ export interface IsolatedSessionOptions {
   systemPrompt: string;
   /** Retains ancestor prompt sections and appends the restricted widget task. */
   inheritWidgetContext?: boolean;
+  /** Grants only skill-resource reads and edits to this operation-local candidate. */
+  widgetCandidate?: WidgetCandidate;
   /** Explicit roots that may contain this session's cache ancestors. */
   promptCacheSessionRoots?: ReadonlyArray<string>;
   prompt: string;
@@ -169,6 +173,16 @@ export async function runIsolatedSession(
       : undefined,
   });
   await resourceLoader.reload({ resolveProjectTrust: async () => options.projectTrusted });
+  const candidateTools = options.widgetCandidate
+    ? await createWidgetCandidateTools({
+        cwd: options.cwd,
+        candidate: options.widgetCandidate,
+        skills: resourceLoader.getSkills().skills,
+      })
+    : [];
+  const selectedTools = options.widgetCandidate
+    ? candidateTools.map((tool) => tool.name)
+    : options.tools;
   const agentSessionOptions = {
     cwd: options.cwd,
     agentDir: options.agentDir,
@@ -176,10 +190,10 @@ export async function runIsolatedSession(
     resourceLoader,
     settingsManager,
     sessionManager: options.sessionManager,
-    customTools: options.customTools,
+    customTools: [...(options.customTools ?? []), ...candidateTools],
   };
-  const optionsWithTools = options.tools
-    ? { ...agentSessionOptions, tools: options.tools }
+  const optionsWithTools = selectedTools
+    ? { ...agentSessionOptions, tools: selectedTools }
     : agentSessionOptions;
   const { session } = await createAgentSession(
     options.noTools ? { ...optionsWithTools, noTools: options.noTools } : optionsWithTools,

@@ -154,6 +154,7 @@ describe("ProjectSessionRuntimeHostLive artifact events", () => {
               language: "react",
               source: "export default function First(){return <main>Approved</main>}",
               generationSessionId: "private-generation",
+              browser: { digest: "a".repeat(64) },
               preview: {
                 mimeType: "image/png",
                 data: Buffer.from("accepted-r1").toString("base64"),

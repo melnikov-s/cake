@@ -103,6 +103,7 @@ describe("Pi 1.0.0 foundation contract", () => {
         language: "react",
         source: "export default () => null",
         generationSessionId: "generation-1",
+        browser: { digest: "a".repeat(64) },
         preview: { mimeType: "image/png", data: "cG5n" },
       }),
       onEvent: () => undefined,

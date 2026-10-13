@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import type { WidgetBrowserOutput } from "../../contracts/widgets/widget-browser-output";
 import type { WidgetPreview } from "../../contracts/widgets/widget-preview";
 import type { JsonValue } from "../../contracts/serialization/json-contract";
 import { extractRepairedWidget } from "../../services/widgets/inline-widget-service";
@@ -20,6 +21,8 @@ export interface InlineWidgetGenerationResult {
   readonly source: string;
   readonly generationSessionId: string;
   readonly preview: WidgetPreview;
+  readonly browser: WidgetBrowserOutput;
+  readonly state?: JsonValue;
 }
 
 export class WidgetGenerationReviewError extends Schema.TaggedError<WidgetGenerationReviewError>()(
@@ -43,6 +46,8 @@ export interface WidgetGenerationReviewDependencies {
     {
       readonly widget: { readonly token: string; readonly url: string };
       readonly release: Effect.Effect<void>;
+      /** Retain only the accepted compiled output, never rejected candidates. */
+      readonly retain: () => Effect.Effect<WidgetBrowserOutput, unknown>;
     },
     unknown
   >;
@@ -134,7 +139,11 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
       const review = yield* dependencies
         .review(source, diagnostic, capture.pngBase64)
         .pipe(mapFailure("review", "infrastructure"));
-      return { response: review.response, pngBase64: capture.pngBase64 };
+      const browser =
+        review.response.trim() === "ACCEPT_CURRENT"
+          ? yield* candidate.retain().pipe(mapFailure("compile", "infrastructure"))
+          : undefined;
+      return { response: review.response, pngBase64: capture.pngBase64, browser };
     }).pipe(Effect.ensuring(candidate.release), Effect.result);
 
     if (outcome._tag === "Failure") {
@@ -151,13 +160,21 @@ export const generateReviewedWidget = Effect.fn("WidgetGenerationReview.generate
     }
 
     const response = outcome.success.response.trim();
-    if (response === "ACCEPT_CURRENT")
+    if (response === "ACCEPT_CURRENT") {
+      if (!outcome.success.browser)
+        return yield* fail(
+          "compile",
+          "infrastructure",
+          "Accepted widget is missing retained browser output",
+        );
       return {
         language: "react" as const,
         source,
         generationSessionId: generated.sessionId,
         preview: { mimeType: "image/png" as const, data: outcome.success.pngBase64 },
+        browser: outcome.success.browser,
       };
+    }
     if (replacements >= 2)
       return yield* fail(
         "review",

@@ -4,6 +4,7 @@ import type {
   InlineWidgetRevisionRequest,
 } from "../widgets/widget-generation";
 
+import type { ArtifactStagedState } from "./artifact-state";
 import type { ArtifactRecord, CakeArtifactV1 } from "./artifact-contract";
 import type { ArtifactProjectionMetadata } from "./artifact-projection-data";
 
@@ -13,7 +14,10 @@ export interface ResolvedAgentArtifact {
 }
 
 export interface CakeArtifactOperationOptions {
-  persistArtifact(artifact: CakeArtifactV1): Promise<ArtifactRecord>;
+  persistArtifact(
+    artifact: CakeArtifactV1,
+    stagedState?: ArtifactStagedState,
+  ): Promise<ArtifactRecord>;
   generateInlineWidget?(
     input: InlineWidgetGenerationRequest,
   ): Promise<InlineWidgetGenerationResult>;

@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { generateReviewedWidget } from "../../../../src/domain/widgets/widgetGenerationReview";
 import { ProjectSessionIntegrationHost } from "../../../../src/layers/ProjectSessionIntegrationHost";
+import type { WidgetCandidate } from "../../../../src/contracts/widgets/widget-candidate";
 import type { InlineWidgetGenerationRequest } from "../../../../src/contracts/widgets/widget-generation";
 import { RenderedWidgetCaptureError } from "../../../../src/contracts/widgets/rendered-widget-capture-errors";
 import { inlineWidgetDocument } from "../../../../src/services/widgets/inline-widget-document-registry";
@@ -16,6 +17,8 @@ function host(options: {
   signal?: AbortSignal;
   visualReview?: (signal: AbortSignal | undefined) => Promise<string>;
   captureError?: RenderedWidgetCaptureError;
+  retainError?: string;
+  stageState?: (candidate: WidgetCandidate) => void;
 }) {
   const calls: string[] = [];
   const generationInputs: unknown[] = [];
@@ -43,6 +46,11 @@ function host(options: {
       calls.push("generate");
       return { sessionId: "generation-session", response: options.generation ?? source("Initial") };
     },
+    retainWidgetBrowser: async (compiled) => {
+      calls.push(`retain:${compiled.token.slice(-1)}`);
+      if (options.retainError) throw new Error(options.retainError);
+      return { digest: "a".repeat(64) };
+    },
     compileWidget: async (_language, candidate) => {
       const name = candidate.match(/function (\w+)/)?.[1] ?? "unknown";
       calls.push(`compile:${name}`);
@@ -66,6 +74,7 @@ function host(options: {
     },
     runWidgetRepair: async (input) => {
       repairInputs.push(input);
+      if (input.candidate) options.stageState?.(input.candidate);
       calls.push(`repair:${input.diagnostic?.split(":")[0]}`);
       return { sessionId: "repair", response: source("Repaired") };
     },
@@ -166,6 +175,7 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
       "compile:Repaired",
       "capture:1",
       "review",
+      "retain:1",
     ]);
   });
 
@@ -192,7 +202,9 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
       "compile:Second",
       "capture:2",
       "review",
+      "retain:2",
     ]);
+    expect(result.browser).toEqual({ digest: "a".repeat(64) });
   });
 
   it("shares the two-replacement budget across compiler repair and visual review", async () => {
@@ -230,6 +242,14 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     for (const token of fixture.capturedTokens) expect(inlineWidgetDocument(token)).toBeUndefined();
   });
 
+  it("returns no publishable candidate when retaining accepted browser output fails", async () => {
+    const fixture = host({ reviews: ["ACCEPT_CURRENT"], retainError: "disk full" });
+    await expect(generate(fixture.integration, request())).rejects.toThrow("disk full");
+    expect(fixture.calls.filter((call) => call.startsWith("repair"))).toEqual([]);
+    expect(fixture.calls.filter((call) => call.startsWith("retain"))).toEqual(["retain:1"]);
+    for (const token of fixture.capturedTokens) expect(inlineWidgetDocument(token)).toBeUndefined();
+  });
+
   it("aborts active specialist review and never returns publishable source", async () => {
     const controller = new AbortController();
     const fixture = host({
@@ -246,6 +266,32 @@ describe("ProjectSessionIntegrationHost widget rendered review", () => {
     controller.abort();
     await expect(pending).rejects.toThrow();
     expect(fixture.calls.filter((call) => call.startsWith("capture"))).toHaveLength(1);
+  });
+
+  it("reviews staged state and returns it only after acceptance without changing the input", async () => {
+    const initialState = { scene: "latest-live-scene" };
+    const fixture = host({
+      reviews: ["ACCEPT_CURRENT"],
+      stageState: (candidate) => {
+        expect(candidate.state).toEqual(initialState);
+        candidate.state = { scene: "revised-scene" };
+      },
+    });
+    const revise = fixture.integration.runtimeIntegrations("project-session").reviseInlineWidget;
+    if (!revise) throw new Error("Missing revision integration");
+    const accepted = await revise({
+      sessionId: "project-session",
+      generationSessionId: "existing",
+      source: "existing",
+      brief: "scene",
+      fallback: "scene",
+      instructions: "edit scene",
+      initialState,
+      model: request().model,
+    });
+    expect(accepted.state).toEqual({ scene: "revised-scene" });
+    expect(fixture.captureStates).toEqual([{ scene: "revised-scene" }]);
+    expect(initialState).toEqual({ scene: "latest-live-scene" });
   });
 
   it("fails preflight before generation when vision review is unavailable", async () => {

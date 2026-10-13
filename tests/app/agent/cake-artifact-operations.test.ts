@@ -40,6 +40,7 @@ describe("Cake widget presentation operation", () => {
       language: "react" as const,
       source: "export default function Widget() { return <main>Runtime</main>; }",
       generationSessionId: "generation-1",
+      browser: { digest: "a".repeat(64) },
       preview: { mimeType: "image/png" as const, data: "cG5n" },
     }));
     const registry = new CakeOperationRegistry(
@@ -112,6 +113,7 @@ describe("Cake widget presentation operation", () => {
             language: "react",
             source: "export default () => null",
             generationSessionId: "generation-1",
+            browser: { digest: "a".repeat(64) },
             preview: { mimeType: "image/png", data },
           }),
         },
@@ -143,6 +145,7 @@ describe("Cake widget presentation operation", () => {
               language: "react" as const,
               source: "export default function Widget() { return null; }",
               generationSessionId: "generation-1",
+              browser: { digest: "a".repeat(64) },
               preview: { mimeType: "image/png" as const, data: "cG5n" },
             };
           }),
