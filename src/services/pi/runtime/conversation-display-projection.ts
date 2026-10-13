@@ -28,7 +28,6 @@ function projectedDialogueParts(entry: SessionEntry): UiPart[] {
 }
 
 function compactedPart(part: UiPart): UiPart {
-  if (part.kind === "context") return { ...part, origin: "compacted" };
   if (!isWorkLogPart(part)) return part;
   if (part.kind === "reasoning" || part.kind === "tool" || part.kind === "command")
     return { ...part, origin: "compacted" };
@@ -175,9 +174,10 @@ function reconstruct(
     sourceDialogue.forEach((part, index) => replacements.set(part.id, replayedDialogue[index]!));
   }
 
-  const reconstructedPrefix = source.parts.map(
-    (part) => replacements.get(part.id) ?? compactedPart(part),
-  );
+  // Removed context stays in Pi's original branch, not in the visible continuation.
+  const reconstructedPrefix = source.parts
+    .filter((part) => part.kind !== "context")
+    .map((part) => replacements.get(part.id) ?? compactedPart(part));
   const markerParts = projectSessionEntries(branch.slice(0, replay.markerIndex + 1));
   const postEntries = branch.slice(located.index + 1);
   const postCompactionParts = projectSessionEntries(postEntries, postEntries, { live });
@@ -251,7 +251,9 @@ function reconstructForkPrefix(
       valid: true,
       parts: [
         ...markerParts,
-        ...source.parts.map((part) => replacements.get(part.id) ?? compactedPart(part)),
+        ...source.parts
+          .filter((part) => part.kind !== "context")
+          .map((part) => replacements.get(part.id) ?? compactedPart(part)),
       ],
     };
   }

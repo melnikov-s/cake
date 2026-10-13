@@ -82,8 +82,8 @@ projections needed by a surface. References do not transfer ownership.
   `SessionManager.getBranch()`, not compacted model input from
   `buildContextEntries()`. Permanent Cake Chat presents original-history pages
   and a live projection, not its derived summary nodes or context resets.
-- Never silently hide model-facing system reminders or custom messages, including
-  Cake/extension messages, regardless of Pi's `display` flag. Disclose them as
+- Never silently hide current model-facing system reminders or custom messages,
+  including Cake/extension messages, regardless of Pi's `display` flag. Disclose them as
   inspectable context pills; group consecutive pills horizontally with wrapping,
   not separate rows. Expose
   the live runtime's instructions in five source groups: **System** (Pi, Cake,
@@ -97,9 +97,10 @@ projections needed by a surface. References do not transfer ownership.
   a new instruction injection. Strip injected reminders (including embedded ones),
   reasoning, tools, custom messages, and cross-session coordination. Keep
   orientation/provenance in non-context Pi metadata and the original transcript
-  tree inspectable. Mark removed historical context after Tool Compact; preserve
-  literal user-authored reminder tags as user content. The checkpoint does not
-  add a new context pill; genuine later instruction changes do.
+  tree inspectable. Do not show Tool Compact notices or removed historical context
+  pills in the continuation; preserve literal user-authored reminder tags as user
+  content. The checkpoint does not add a new context pill; genuine later
+  instruction changes do.
 - Waiting user and cross-session inputs use the owning Pi backend's admission
   and queue mechanism. Regular-Pi queue metadata is transient; permanent Cake
   Chat's inbox is Pi Durable-owned. Cake does not persist a competing runtime

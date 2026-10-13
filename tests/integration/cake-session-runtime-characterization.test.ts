@@ -262,16 +262,8 @@ describe("CakeSessionRuntime characterization", () => {
     expect(
       before.parts.filter((part) => part.kind === "context" && part.title === "System"),
     ).toHaveLength(1);
-    expect(
-      compacted.parts.filter((part) => part.kind === "context" && part.origin !== "compacted"),
-    ).toEqual(before.parts.filter((part) => part.id.startsWith("runtime-system-prompt")));
-    expect(compacted.parts).toContainEqual(
-      expect.objectContaining({
-        kind: "context",
-        title: "Additional instructions",
-        origin: "compacted",
-        text: expect.stringContaining("REQUIRED_CANONICAL_INSTRUCTION"),
-      }),
+    expect(compacted.parts.filter((part) => part.kind === "context")).toEqual(
+      before.parts.filter((part) => part.id.startsWith("runtime-system-prompt")),
     );
     expect(injections()).toHaveLength(0);
     expect(systemEntries()).toHaveLength(1);

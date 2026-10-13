@@ -31,7 +31,6 @@ import {
   type UiPart,
 } from "../../../contracts/conversations/session-contract";
 
-export { toolCompactEntryType } from "./tool-compaction-provenance";
 import { toolCompactEntryType, toolCompactMarkerSchema } from "./tool-compaction-provenance";
 
 export const reviewRunEntryType = "cake.review-run/v1";
@@ -991,18 +990,6 @@ export function projectSessionEntries(
       continue;
     }
     if (entry.type !== "custom") continue;
-    if (entry.customType === toolCompactEntryType) {
-      const marker = Schema.decodeUnknownOption(toolCompactMarkerSchema)(entry.data);
-      if (Option.isSome(marker))
-        append({
-          id: `entry-${entry.id}-custom`,
-          kind: "notice",
-          tone: "info",
-          title: "Tool compact",
-          detail: marker.value.summary,
-        });
-      continue;
-    }
     if (entry.customType === "cake.artifact/v1") {
       const pointer = decodeArtifactPointer(entry.data);
       if (pointer?.origin) {

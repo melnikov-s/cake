@@ -93,7 +93,7 @@ describe("system instruction source projection", () => {
     ).toEqual(["System"]);
   });
 
-  it("deduplicates complete baselines but retains partial, removed, changed and compacted context", () => {
+  it("deduplicates complete baselines but retains partial, removed and changed context", () => {
     const stored = context();
     expect(withoutRuntimeSystemPrompt(stored, prompt, tools)).toEqual([]);
     const patch = projectSystemContext({ sections: { addendum: sections.addendum } }, "patch", "");
@@ -107,11 +107,7 @@ describe("system instruction source projection", () => {
       "System",
       "Skills",
     ]);
-    const compacted = stored.map((part) => ({ ...part, origin: "compacted" as const }));
-    expect(withoutRuntimeSystemPrompt([...changed, ...compacted], prompt, tools)).toEqual([
-      ...changed,
-      ...compacted,
-    ]);
+    expect(withoutRuntimeSystemPrompt(changed, prompt, tools)).toEqual(changed);
     const changedTools = projectSystemContext(
       { sections, toolsAdded: [tools[0]] },
       "old-tools",

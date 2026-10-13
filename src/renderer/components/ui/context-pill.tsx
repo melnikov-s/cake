@@ -7,29 +7,22 @@ import type { SourceLocation } from "../../../contracts/editor/source-location";
 export function ContextPill({
   title,
   text,
-  compacted = false,
   onOpenSourceLocation,
 }: {
   title: string;
   text: string;
-  compacted?: boolean;
   onOpenSourceLocation?(location: SourceLocation): void;
 }) {
   const [open, setOpen] = useState(false);
   const contentId = useId();
   return (
-    <section
-      className="contents"
-      data-slot="context-pill"
-      data-origin={compacted ? "compacted" : "current"}
-    >
+    <section className="contents" data-slot="context-pill">
       <Chip
         aria-expanded={open}
         aria-controls={open ? contentId : undefined}
         onClick={() => setOpen(!open)}
       >
         <span className="max-w-64 truncate">{title}</span>
-        {compacted && <span>· removed from context</span>}
       </Chip>
       {open && (
         <div

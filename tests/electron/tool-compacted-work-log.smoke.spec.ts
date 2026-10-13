@@ -282,10 +282,7 @@ test("shows compacted historical work in place, muted and expandable", async () 
     SessionManager.open(join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sessionId}.jsonl`)),
   );
   expect(fixtureParts.filter((part) => part.kind === "context" && part.title === "System")).toEqual(
-    [
-      expect.objectContaining({ origin: "compacted" }),
-      expect.objectContaining({ text: expect.stringContaining("Genuinely changed instructions") }),
-    ],
+    [expect.objectContaining({ text: expect.stringContaining("Genuinely changed instructions") })],
   );
 
   const application = await electron.launch({
@@ -329,21 +326,21 @@ test("shows compacted historical work in place, muted and expandable", async () 
     await compacted.getByRole("button", { name: /read/i }).first().click();
     await expect(compacted).toContainText("Historical tool output");
     await compacted.locator(":scope > summary").click();
-    const cakePill = page.getByRole("button", {
-      name: "Cake reminder · removed from context",
-      exact: true,
-    });
-    const extensionPill = page.getByRole("button", {
-      name: "Extension reminder · removed from context",
-      exact: true,
-    });
-    await expect(cakePill).toBeVisible();
-    await expect(extensionPill).toBeVisible();
-    await cakePill.click();
+    await expect(page.getByRole("button", { name: "Cake reminder", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Extension reminder", exact: true })).toHaveCount(
+      0,
+    );
+    // The genuine instruction change stays inspectable even if the runtime
+    // materializes its current prompt while this initially passive preview is open.
+    const systemChange = page
+      .locator('[data-part-id="entry-changed-system-system-prompt-system"]')
+      .getByRole("button", { name: "System", exact: true });
+    await expect(systemChange).toHaveCount(1);
+    await systemChange.click();
     await expect(
-      page.getByText("Hidden Cake context sent to the model.", { exact: true }),
+      page.getByRole("heading", { name: "Genuinely changed instructions" }),
     ).toBeVisible();
-    const expandedLayout = await cakePill.evaluate((trigger) => {
+    const expandedLayout = await systemChange.evaluate((trigger) => {
       const panel = document.getElementById(trigger.getAttribute("aria-controls") ?? "");
       const group = trigger.closest('[data-slot="context-group"]');
       if (!panel || !group) throw new Error("Missing context disclosure");
@@ -356,45 +353,18 @@ test("shows compacted historical work in place, muted and expandable", async () 
     });
     expect(Math.abs(expandedLayout.panelWidth - expandedLayout.groupWidth)).toBeLessThan(2);
     expect(expandedLayout.panelTop).toBeGreaterThan(expandedLayout.triggerBottom);
-    const openBoxes = await Promise.all([cakePill.boundingBox(), extensionPill.boundingBox()]);
-    expect(openBoxes[0]).not.toBeNull();
-    expect(openBoxes[1]).not.toBeNull();
-    expect(Math.abs(openBoxes[0]!.y - openBoxes[1]!.y)).toBeLessThan(2);
-    await cakePill.click();
-    const boxes = await Promise.all([cakePill.boundingBox(), extensionPill.boundingBox()]);
-    expect(boxes[0]).not.toBeNull();
-    expect(boxes[1]).not.toBeNull();
-    expect(Math.abs(boxes[0]!.y - boxes[1]!.y)).toBeLessThan(2);
-    expect(boxes[1]!.x).toBeGreaterThan(boxes[0]!.x);
-    await extensionPill.click();
-    await expect(
-      page.getByText("Extension context sent to the model.", { exact: true }),
-    ).toBeVisible();
-    // The genuine instruction change stays inspectable even if the runtime
-    // materializes its current prompt while this initially passive preview is open.
-    const systemChange = page
-      .locator('[data-part-id="entry-changed-system-system-prompt-system"]')
-      .getByRole("button", { name: "System", exact: true });
-    await expect(systemChange).toHaveCount(1);
-    await systemChange.click();
-    await expect(
-      page.getByRole("heading", { name: "Genuinely changed instructions" }),
-    ).toBeVisible();
     await expect(page.locator('[data-slot="context-pill"] [data-streamdown="strong"]')).toHaveText(
       "Markdown",
     );
     await systemChange.click();
     await page.getByRole("button", { name: "Tools", exact: true }).click();
     await expect(page.locator('[data-slot="context-pill"] pre')).toContainText('"name": "read"');
-    // This unopened-runtime preview shows the original event and genuine change,
-    // but does not mistake the carried checkpoint for another injection.
+    // Only current reminders and genuine changes are inspectable in the continuation.
     const currentReminder = page.getByRole("button", { name: "Cake · response mode", exact: true });
     await expect(currentReminder).toBeVisible();
     await currentReminder.click();
     await expect(
-      page
-        .locator('[data-slot="context-pill"][data-origin="current"]')
-        .filter({ has: currentReminder }),
+      page.locator('[data-slot="context-pill"]').filter({ has: currentReminder }),
     ).toContainText("Cake response mode: text");
     await expect(page.getByText("Original answer.", { exact: true })).toBeVisible();
     await expect(page.getByText("Current answer.", { exact: true })).toBeVisible();

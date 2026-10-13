@@ -24,7 +24,7 @@ const usage = {
 afterEach(cleanup);
 
 describe("Context visibility through the authoritative projection and shared Chat", () => {
-  it("discloses hidden context beside injected reminders and retains labeled history after Tool Compact", async () => {
+  it("discloses current context and hides it after Tool Compact while retaining dialogue", async () => {
     const pi = SessionManager.inMemory("/project");
     pi.appendMessage({
       role: "user",
@@ -119,18 +119,18 @@ describe("Context visibility through the authoritative projection and shared Cha
         appendToolCompactedBranch(pi, leaf);
         publish();
       });
-      expect(
-        view.container.querySelectorAll('[data-slot="context-pill"][data-origin="compacted"]'),
-      ).toHaveLength(4);
-      expect(screen.getAllByText("· removed from context")).toHaveLength(4);
+      expect(view.container.querySelectorAll('[data-slot="context-pill"]')).toHaveLength(0);
       expect(screen.getByText("API review", { exact: true })).toBeTruthy();
       expect(screen.getByText("A session report")).toBeTruthy();
       expect(JSON.stringify(pi.buildSessionContext().messages)).not.toContain("A session report");
       expect(screen.getByText("Answer", { exact: true })).toBeTruthy();
-      await user.click(
-        screen.getByRole("button", { name: "extension.context · removed from context" }),
-      );
-      expect(screen.getByText("Exact extension context")).toBeTruthy();
+      act(() => {
+        pi.appendCustomMessageEntry("extension.context", "New extension context", true);
+        publish();
+      });
+      expect(view.container.querySelectorAll('[data-slot="context-pill"]')).toHaveLength(1);
+      await user.click(screen.getByRole("button", { name: "extension.context" }));
+      expect(screen.getByText("New extension context")).toBeTruthy();
     } finally {
       view.unmount();
     }

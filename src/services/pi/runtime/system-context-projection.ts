@@ -150,7 +150,7 @@ export function withoutRuntimeSystemPrompt(
   const runtimeInstructions = runtimeParts.filter((part) => part.title !== "Tools");
   const groups = new Map<string, ContextPart[]>();
   for (const part of parts) {
-    if (part.kind !== "context" || part.origin === "compacted") continue;
+    if (part.kind !== "context") continue;
     const boundary = part.id.lastIndexOf("-system-prompt");
     if (boundary < 0) continue;
     const groupId = part.id.slice(0, boundary);

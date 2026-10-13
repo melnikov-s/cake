@@ -256,7 +256,6 @@ const TranscriptPartContent = observer(function TranscriptPartContent({
       <ContextPill
         title={part.title}
         text={part.text}
-        compacted={part.origin === "compacted"}
         onOpenSourceLocation={behavior.openSourceLocation}
       />
     );

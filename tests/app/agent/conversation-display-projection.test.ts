@@ -139,7 +139,6 @@ describe("Conversation display projection after tool compaction", () => {
     );
     const parts = projectConversationDisplay(session);
     expect(summarized(parts)).toMatchObject([
-      { kind: "notice" },
       { kind: "text", text: "same text" },
       { kind: "text", text: "I checked https://example.com/a." },
       { kind: "source" },
@@ -185,9 +184,6 @@ describe("Conversation display projection after tool compaction", () => {
     appendToolCompactedBranch(session, secondLeaf);
 
     const parts = projectConversationDisplay(session);
-    expect(
-      parts.filter((part) => part.kind === "notice" && part.title === "Tool compact"),
-    ).toHaveLength(2);
     expect(parts.filter((part) => part.kind === "text" && part.text === "same text")).toHaveLength(
       3,
     );
@@ -202,23 +198,17 @@ describe("Conversation display projection after tool compaction", () => {
     ).toMatchObject({ origin: "compacted", state: "success" });
   });
 
-  it("keeps markers without provenance and malformed provenance on the active-branch behavior", () => {
+  it("projects active dialogue when compaction provenance is missing or malformed", () => {
     const missing = SessionManager.inMemory("/project");
     missing.appendCustomEntry(toolCompactEntryType, { summary: "Compact" });
     missing.appendMessage({ role: "user", content: "visible", timestamp: 1 });
-    expect(projectConversationDisplay(missing).map((part) => part.kind)).toEqual([
-      "notice",
-      "text",
-    ]);
+    expect(projectConversationDisplay(missing).map((part) => part.kind)).toEqual(["text"]);
 
     const malformed = SessionManager.inMemory("/project");
     malformed.appendCustomEntry(toolCompactEntryType, { summary: "Malformed compact" });
     malformed.appendMessage({ role: "user", content: "active only", timestamp: 1 });
     malformed.appendCustomEntry(toolCompactProvenanceEntryType, { version: 1, sourceLeafId: 42 });
-    expect(projectConversationDisplay(malformed).map((part) => part.kind)).toEqual([
-      "notice",
-      "text",
-    ]);
+    expect(projectConversationDisplay(malformed).map((part) => part.kind)).toEqual(["text"]);
   });
 
   it.each([
@@ -300,7 +290,7 @@ describe("Conversation display projection after tool compaction", () => {
       replay,
       provenance,
     ] satisfies FileEntry[]);
-    expect(projectConversationDisplay(cyclic).map((part) => part.kind)).toEqual(["notice", "text"]);
+    expect(projectConversationDisplay(cyclic).map((part) => part.kind)).toEqual(["text"]);
 
     const deepEntries: FileEntry[] = [header];
     let sourceLeafId = "base";
@@ -337,9 +327,6 @@ describe("Conversation display projection after tool compaction", () => {
       sourceMessageId = nextReplayId;
     }
     const tooDeep = SessionManager.inMemory("/project", undefined, deepEntries);
-    expect(projectConversationDisplay(tooDeep).map((part) => part.kind)).toEqual([
-      "notice",
-      "text",
-    ]);
+    expect(projectConversationDisplay(tooDeep).map((part) => part.kind)).toEqual(["text"]);
   });
 });

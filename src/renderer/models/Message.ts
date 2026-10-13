@@ -11,7 +11,7 @@ type TextRole = Extract<UiPart, { kind: "text" }>["role"];
 type TextStatus = Extract<UiPart, { kind: "text" }>["status"];
 type PartStatus = Extract<UiPart, { kind: "text" | "reasoning" | "review-run" }>["status"];
 type PartState = Extract<UiPart, { kind: "tool" | "command" }>["state"];
-type WorkLogOrigin = Extract<UiPart, { kind: "tool" | "context" }>["origin"];
+type WorkLogOrigin = Extract<UiPart, { kind: "tool" }>["origin"];
 type AttachmentKind = Extract<UiPart, { kind: "attachment" }>["attachmentKind"];
 type NoticeTone = Extract<UiPart, { kind: "notice" }>["tone"];
 type DeliveryState = Extract<UiPart, { kind: "text" }>["deliveryState"];
@@ -85,7 +85,6 @@ export class Message extends Model {
       case "context":
         this.title = part.title;
         this.text = part.text;
-        this.origin = part.origin;
         return true;
       case "text":
         this.role = part.role;
@@ -190,7 +189,6 @@ export class Message extends Model {
           kind: this.kind,
           title: this.title!,
           text: this.text!,
-          origin: this.origin,
         };
       case "text":
         // SAFETY: snapshots and update() keep status aligned with the part discriminant.

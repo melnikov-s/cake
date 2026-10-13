@@ -34,7 +34,6 @@ import {
   createLiveMessageProjector,
   formatToolResult,
   formatUnknown,
-  toolCompactEntryType,
   promptText,
   projectQueuedMessages,
   projectSessionEntries,
@@ -1765,38 +1764,6 @@ describe("Pi 1.0.0 foundation contract", () => {
     ]);
   });
 
-  it("projects a tool-compaction preamble as an info notice before the dialogue", () => {
-    const detail =
-      "This conversation branch was tool compacted. 2 tool calls and results were omitted.";
-    const parts = projectSessionEntries([
-      {
-        type: "custom",
-        id: "tool-compact-entry",
-        parentId: null,
-        timestamp: new Date(0).toISOString(),
-        customType: toolCompactEntryType,
-        data: { summary: detail },
-      },
-      {
-        type: "message",
-        id: "user-after-tool-compact",
-        parentId: "tool-compact-entry",
-        timestamp: new Date(0).toISOString(),
-        message: { role: "user", content: "Pick up from here", timestamp: 0 },
-      },
-    ] as never);
-    expect(parts).toEqual([
-      {
-        id: "entry-tool-compact-entry-custom",
-        kind: "notice",
-        tone: "info",
-        title: "Tool compact",
-        detail,
-      },
-      expect.objectContaining({ kind: "text", role: "user", text: "Pick up from here" }),
-    ]);
-  });
-
   it("collapses persisted native retry errors to the final outcome", () => {
     const assistant = (id: string, stopReason: "error" | "stop", errorMessage?: string) => ({
       type: "message",
@@ -2896,7 +2863,6 @@ describe("S1 Pi runtime", () => {
     expect(persisted.getTree()).toHaveLength(2);
     expect(snapshot.parts).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ kind: "notice", title: "Tool compact" }),
         expect.objectContaining({ kind: "text", text: "Investigation complete" }),
       ]),
     );

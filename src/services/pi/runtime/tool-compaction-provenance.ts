@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-/** Visible orientation marker on a tool-compacted Pi branch. */
+/** Hidden orientation metadata on a tool-compacted Pi branch. */
 export const toolCompactEntryType = "cake.tool-compact/v1";
 /** Hidden Cake provenance. Plain Pi custom entries never participate in model context. */
 export const toolCompactProvenanceEntryType = "cake.tool-compact-provenance/v1";

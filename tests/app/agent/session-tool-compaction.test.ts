@@ -182,17 +182,6 @@ describe("tool compaction", () => {
     expect(JSON.stringify(messages)).not.toContain("tool-compacted continuation");
     expect(projectConversationDisplay(session)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          kind: "context",
-          title: "Cake · response mode",
-          origin: "compacted",
-        }),
-        expect.objectContaining({
-          kind: "context",
-          title: "cake.context",
-          text: "Hidden injected context",
-          origin: "compacted",
-        }),
         expect.objectContaining({ kind: "text", role: "assistant", text: "Answer" }),
       ]),
     );
@@ -209,7 +198,7 @@ describe("tool compaction", () => {
     ]);
     expect(
       projectConversationDisplay(session).filter((part) => part.kind === "context"),
-    ).toHaveLength(9);
+    ).toHaveLength(0);
   });
 
   it("carries the selected branch's folded Pi checkpoint without projecting another injection", () => {
@@ -254,12 +243,7 @@ describe("tool compaction", () => {
       "Remove this reminder",
     );
     const parts = projectConversationDisplay(session);
-    expect(parts.filter((part) => part.kind === "context" && part.title === "System")).toHaveLength(
-      2,
-    );
-    expect(
-      parts.filter((part) => part.kind === "context").every((part) => part.origin === "compacted"),
-    ).toBe(true);
+    expect(parts.filter((part) => part.kind === "context")).toHaveLength(0);
 
     const nextId = session.appendMessage(assistant([{ type: "text", text: "Next answer" }]));
     appendToolCompactedBranch(session, nextId);
@@ -270,7 +254,7 @@ describe("tool compaction", () => {
       projectConversationDisplay(session).filter(
         (part) => part.kind === "context" && part.title === "System",
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(0);
     // A genuine post-compaction change is still visible, not mistaken for the checkpoint.
     session.appendMessage({
       role: "system",
