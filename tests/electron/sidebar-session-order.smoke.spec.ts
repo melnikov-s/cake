@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -25,17 +26,7 @@ for (const resolveSelected of [true, false]) {
     ]);
     await writeFile(
       join(userData, "window-state.json"),
-      JSON.stringify({
-        projectPath: project,
-        selectedSessionId: "previous",
-        activeConversation: {
-          kind: "project-session",
-          workspacePath: project,
-          sessionId: "previous",
-        },
-        recentProjectPaths: [project],
-        theme: "system",
-      }),
+      windowState({ project, sessionId: "previous", theme: "system" }),
     );
     await writeFile(
       join(cakeHome, "state", "application.json"),

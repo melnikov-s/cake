@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { installLocalModelHttpGuard } from "./main-harness";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const sourceId = "agent-navigation-source";
@@ -132,17 +133,7 @@ for (const disabled of [false, true]) {
       );
       await writeFile(
         join(userData, "window-state.json"),
-        JSON.stringify({
-          projectPath: project,
-          selectedSessionId: sourceId,
-          activeConversation: {
-            kind: "project-session",
-            workspacePath: project,
-            sessionId: sourceId,
-          },
-          recentProjectPaths: [project],
-          draft: "",
-        }),
+        windowState({ project, sessionId: sourceId }),
       );
       const launch = () =>
         electron.launch({

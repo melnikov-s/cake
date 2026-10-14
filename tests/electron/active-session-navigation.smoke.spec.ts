@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { installLocalModelHttpGuard } from "./main-harness";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 function chunk(content: string, finishReason: string | null = null) {
@@ -83,17 +84,7 @@ test("session shortcuts respect Project focus and restore cross-project navigati
   );
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: alpha,
-      selectedSessionId: "alpha-worker",
-      activeConversation: {
-        kind: "project-session",
-        workspacePath: alpha,
-        sessionId: "alpha-worker",
-      },
-      recentProjectPaths: [alpha, beta],
-      draft: "",
-    }),
+    windowState({ project: alpha, sessionId: "alpha-worker", projects: [alpha, beta] }),
   );
   for (const [id, project] of [
     ["alpha-worker", alpha],

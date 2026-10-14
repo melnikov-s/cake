@@ -44,7 +44,6 @@ it("keeps desktop-only Browser Mode out of browser chat", async () => {
             location: cakeChatLocations.make({
               homeDirectory: "/home/test",
               sessionDirectory: "/chat",
-              resolvedSessionDirectory: "/chat-resolved",
             }),
           },
         },

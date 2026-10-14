@@ -120,7 +120,6 @@ it("selects published widget and HTML artifacts through the real library project
             location: cakeChatLocations.make({
               homeDirectory: "/home/test",
               sessionDirectory: "/chat",
-              resolvedSessionDirectory: "/chat-resolved",
             }),
           },
         },

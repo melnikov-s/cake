@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -33,19 +34,7 @@ test("navigates session history with back, forward, and resolve", async () => {
   ]);
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: forwardSessionId,
-      activeConversation: {
-        kind: "project-session",
-        workspacePath: project,
-        sessionId: forwardSessionId,
-      },
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "system",
-      draftsBySession: {},
-    }),
+    windowState({ project, sessionId: forwardSessionId, theme: "system" }),
   );
   await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(

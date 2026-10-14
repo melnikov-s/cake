@@ -8,6 +8,7 @@ import {
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -100,15 +101,7 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
       trustedProjectPaths: [],
     }),
   );
-  await writeFile(
-    join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "system",
-    }),
-  );
+  await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "system" }));
   let application = await launch(temporaryRoot, cakeHome);
   try {
     await application.firstWindow();
@@ -169,15 +162,7 @@ test("Model Presets use Effect RPC, persist transactionally, and preserve unreso
     await application.close();
     // Start the verification window with one genuinely new staged Project chat;
     // the first renderer may have snapshotted its pre-mutation pending configuration.
-    await writeFile(
-      join(userData, "window-state.json"),
-      JSON.stringify({
-        projectPath: project,
-        recentProjectPaths: [project],
-        draft: "",
-        theme: "system",
-      }),
-    );
+    await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "system" }));
     application = await launch(temporaryRoot, cakeHome);
     const mainPage = await application.firstWindow();
     const restartedHarness = await openHarness(application);

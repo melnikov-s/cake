@@ -6,6 +6,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 import { seedWorkflowCheckpoint } from "../fixtures/workflow-checkpoint";
 import { workflowSource, workflowRunFixture } from "../fixtures/dynamic-workflow";
 import type { CakeEvent } from "../../src/contracts/application/cake-rpc-contract";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -25,15 +26,7 @@ test("inspects workflow details and preserves native project composer input in a
   ]);
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: sessionId,
-      activeConversation: { kind: "project-session", workspacePath: project, sessionId },
-      recentProjectPaths: [project],
-      theme: "dark",
-      draft: "",
-      draftsBySession: {},
-    }),
+    windowState({ project, sessionId, theme: "dark" }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),

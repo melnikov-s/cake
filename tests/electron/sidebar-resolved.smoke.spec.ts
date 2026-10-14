@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -21,15 +22,7 @@ test("resolves and restores the selected project session in the desktop sidebar"
   ]);
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: sessionId,
-      activeConversation: { kind: "project-session", workspacePath: project, sessionId },
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "system",
-      draftsBySession: {},
-    }),
+    windowState({ project, sessionId, theme: "system" }),
   );
   await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(

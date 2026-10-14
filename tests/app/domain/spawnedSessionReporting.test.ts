@@ -258,7 +258,6 @@ const assembleCoordinator = Effect.fn("SpawnedReportingTest.assembleCoordinator"
       location: {
         workingDirectory: "/home",
         sessionDirectory: "/chat",
-        resolvedSessionDirectory: "/chat-resolved",
       },
       agentDirectory: "/cake",
     },

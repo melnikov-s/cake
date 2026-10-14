@@ -5,6 +5,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { resolveCakePaths } from "../../src/config/CakePaths";
 import { workingDirectorySessionPath } from "../../src/services/storage/session-files";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -16,15 +17,7 @@ test("opens a durable Pi session in the sandboxed desktop and survives a Pi runt
   await import("node:fs/promises").then(({ mkdir }) =>
     Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]),
   );
-  await writeFile(
-    join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "system",
-    }),
-  );
+  await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "system" }));
   await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
     join(cakeHome, "state", "application.json"),

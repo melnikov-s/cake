@@ -7,7 +7,6 @@ import {
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { access } from "node:fs/promises";
-import { dirname } from "node:path";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
 import type {
   PiSessionSummary,
@@ -15,7 +14,7 @@ import type {
 } from "../../contracts/conversations/session-contract";
 import { ChatMetadataDoc } from "./durable-chat-metadata";
 import { readDurableOriginalPage } from "./durable-chat-history";
-import { durableChatDatabase, purgeLegacyGlobalChatHistory } from "./durable-chat-location";
+import { durableChatDatabase } from "./durable-chat-location";
 
 /** Readers use the SDK's document kernel, not a Harness: discovery cannot create a
  * conversation, load providers, resume tasks, or run scheduler recovery cleanup. */
@@ -23,7 +22,6 @@ async function read<A>(
   directory: string,
   evaluate: (session: Session, storage: Storage) => Promise<A>,
 ): Promise<A | undefined> {
-  await purgeLegacyGlobalChatHistory(directory);
   const path = durableChatDatabase(directory);
   try {
     await access(path);
@@ -61,7 +59,7 @@ export function readDurableChatSummary(directory: string): Promise<PiSessionSumm
 
 export function readDurableChatPreview(directory: string): Promise<PiSessionPreview | undefined> {
   return read(directory, async (_session, storage) => ({
-    workspacePath: dirname(directory),
+    workspacePath: directory,
     sessionId: CAKE_CHAT_SESSION_ID,
     sessionFile: durableChatDatabase(directory),
     parts: (

@@ -16,8 +16,6 @@ export const WindowStateRpc = RpcGroup.make(
       WindowStateReadError,
       WindowStateMalformedDocumentError,
       WindowStateUnsupportedVersionError,
-      WindowStateEncodeError,
-      WindowStateWriteError,
     ]),
   }),
   Rpc.make("windowState.save", {

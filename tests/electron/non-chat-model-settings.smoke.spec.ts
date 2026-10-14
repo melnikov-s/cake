@@ -5,6 +5,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 import { defaultApplicationState } from "../../src/contracts/application/application-data";
 import { nativeNonChatScript, nonChatProviderSource } from "../fixtures/non-chat-provider";
 import { nonChatModelChoiceValue } from "../../src/renderer/lib/non-chat-model-choice";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 test("image/classifier preferences and native execution controls persist and reach native codemode", async () => {
@@ -28,15 +29,7 @@ test("image/classifier preferences and native execution controls persist and rea
     join(agentDir, "auth.json"),
     JSON.stringify({ "non-chat-fixture": { type: "api_key", key: "fixture" } }),
   );
-  await writeFile(
-    join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "system",
-    }),
-  );
+  await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "system" }));
   await writeFile(
     appDocument,
     JSON.stringify({

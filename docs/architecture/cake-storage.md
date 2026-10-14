@@ -29,21 +29,16 @@ filtering for shared custom directories. Tests must explicitly isolate both home
 │   ├── artifacts/
 │   └── reviews/
 ├── pi/
-│   ├── sessions/                   # old Cake primary sessions; migration input only
-│   ├── resolved-sessions/          # old Cake archives; migration input only
 │   ├── review-sessions/
 │   ├── widget-sessions/
 │   ├── subagent-sessions/
 │   └── global-chat/
-│       └── coordinator.sqlite     # Pi Durable; old global histories are not imported
+│       └── coordinator.sqlite     # Pi Durable; permanent Cake Chat
 └── cache/
     └── artifact-projections/
 ```
 
-This is an ownership-oriented root map, not an exhaustive file inventory. The
-permanent coordinator's former `global-chat/sessions` and `resolved-sessions`
-directories are deleted without import by its documented clean-start cutover;
-that is separate from the preserving Project Session migration below. See
+This is an ownership-oriented root map, not an exhaustive file inventory. See
 [Permanent Cake Chat](#permanent-cake-chat).
 
 `cache/artifact-projections` contains disposable, read-only, digest-verified
@@ -62,30 +57,14 @@ embedded-editor data. `CakePaths` resolves durable Cake locations and disposable
 cache roots in main;
 renderer code never constructs storage paths.
 
-## Explicit shared-Pi session migration
+## Pi configuration
 
-Startup does not run the shared-directory migration. Stop Cake and terminal Pi,
-then inspect `pnpm migrate:pi:sessions --plan`; explicitly opt in with
-`pnpm migrate:pi:sessions --apply`. Planning is read-only. The command scans old
-`<CAKE_HOME>/pi/sessions` and `resolved-sessions`, preserving transcript IDs,
-filenames, bytes, modification times, branches and compactions. It rejects stale
-plans, duplicate source IDs and existing destination files/IDs before applying
-any entry; exclusive file creation also protects against destination races.
-
-Resolution directory keys and resolved-project routing records are rebound to
-Pi's destination. Cake metadata/family IDs do not change. Atomic per-session
-receipts make completed copies recognizable on rerun without overwriting later
-Pi continuations. Original files remain backups, preserving old Pi
-`parentSession` references. Do not remove those backups while forks still refer
-to them. Cake-only sidecar transcripts are not imported into primary Pi discovery.
-
-The command deliberately does **not** copy or merge credentials, models,
-settings, packages, or resource directories: existing Pi configuration wins,
-and old Cake configuration remains untouched for manual review. Extension
-switches in **Execution & resources → Automatic extensions** use native global
-Pi `+`/`-` overrides and package extension filters. They discover resources
-without installing packages or executing extensions, affect terminal Pi too,
-and reload idle Cake runtimes (active runtimes reload after their turn).
+Cake never copies or merges Pi credentials, models, settings, packages, or
+resource directories. Extension switches in **Execution & resources → Automatic
+extensions** use native global Pi `+`/`-` overrides and package extension
+filters. They discover resources without installing packages or executing
+extensions, affect terminal Pi too, and reload idle Cake runtimes (active
+runtimes reload after their turn).
 
 ## Focused storage Services
 
@@ -221,7 +200,9 @@ Do not persist:
 
 Hydration order is mandatory:
 
-1. main reads, migrates, and validates the stored document;
+1. main reads and validates the stored document. Window state carries no
+   migrations: a document from any other version fails to load and the renderer
+   starts from the fallback below;
 2. renderer bootstrap selects an explicit fallback if loading or snapshot
    validation fails;
 3. the renderer mounts the r-state-tree Root Store once with the complete
@@ -255,8 +236,8 @@ clears that metadata before Pi opens it. Neither operation moves or modifies
 the Pi transcript. Pi remains the transcript-format and session engine authority.
 
 `state/resolved-project-metadata/resolution.json` is a versioned index of resolved
-IDs keyed by their normal session directory. Earlier global-chat roots also used
-this index; the permanent Durable coordinator has no resolve/archive lifecycle.
+IDs keyed by their normal session directory. The permanent Durable coordinator
+has no resolve/archive lifecycle.
 Backend updates are serialized and atomically replace the metadata document.
 Catalogs read the IDs once per listing and exclude resolved sessions before
 opening Pi transcripts to derive titles; no LSM, transcript scan, or second
@@ -304,8 +285,7 @@ Application storage separately owns memory preferences and dedicated instruction
 
 The Pi Durable SDK supplies process-crash recovery, not a newest-commit power-loss
 guarantee. Replay-unsafe Cake mutations require inspecting live state rather than
-blind repetition. The clean-start deletion of old global histories is a documented
-cutover decision, not the default migration policy for other persisted data.
+blind repetition.
 
 ## Artifact and review storage
 

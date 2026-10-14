@@ -38,6 +38,7 @@ import {
   installLocalModelHttpGuard,
   installSpeechHttpFixture,
 } from "../../tests/electron/main-harness.ts";
+import { windowState } from "../../tests/fixtures/window-state";
 
 interface ScenarioFixturePaths {
   readonly cakeHome: string;
@@ -94,19 +95,7 @@ const assistantMarkdownCode: VisualCaptureScenario = {
     ]);
     await writeFile(
       join(paths.userData, "window-state.json"),
-      JSON.stringify({
-        projectPath: paths.project,
-        selectedSessionId: sessionId,
-        activeConversation: {
-          kind: "project-session",
-          workspacePath: paths.project,
-          sessionId,
-        },
-        recentProjectPaths: [paths.project],
-        draft: "",
-        draftsBySession: {},
-        theme,
-      }),
+      windowState({ project: paths.project, sessionId, theme }),
     );
     await writeFile(
       join(paths.cakeHome, "state", "application.json"),
@@ -537,15 +526,7 @@ const conversationEntryScenario: VisualCaptureScenario = {
     );
     await writeFile(
       join(paths.userData, "window-state.json"),
-      JSON.stringify({
-        projectPath: paths.project,
-        selectedSessionId: sessionId,
-        activeConversation: { kind: "project-session", workspacePath: paths.project, sessionId },
-        recentProjectPaths: [paths.project],
-        draft: "",
-        draftsBySession: {},
-        theme,
-      }),
+      windowState({ project: paths.project, sessionId, theme }),
     );
     await writeFile(
       join(paths.cakeHome, "state", "application.json"),
@@ -1048,19 +1029,7 @@ async function seedArtifactScenario(
   ]);
   await writeFile(
     join(paths.userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: paths.project,
-      selectedSessionId: sessionId,
-      activeConversation: {
-        kind: "project-session",
-        workspacePath: paths.project,
-        sessionId,
-      },
-      recentProjectPaths: [paths.project],
-      draft: "",
-      draftsBySession: {},
-      theme,
-    }),
+    windowState({ project: paths.project, sessionId, theme }),
   );
   await writeFile(
     join(paths.cakeHome, "state", "application.json"),
@@ -1403,13 +1372,7 @@ const cakePromptsSettingsScenario: VisualCaptureScenario = {
     ]);
     await writeFile(
       join(paths.userData, "window-state.json"),
-      JSON.stringify({
-        projectPath: paths.project,
-        recentProjectPaths: [paths.project],
-        draft: "",
-        draftsBySession: {},
-        theme,
-      }),
+      windowState({ project: paths.project, theme }),
     );
     await writeFile(
       join(paths.cakeHome, "state", "application.json"),
@@ -2415,15 +2378,7 @@ const sourceSelectionScenario: VisualCaptureScenario = {
     await writeFile(join(paths.project, "src", "example.ts"), "export const answer = 42;\n");
     await writeFile(
       join(paths.userData, "window-state.json"),
-      JSON.stringify({
-        projectPath: paths.project,
-        selectedSessionId: sessionId,
-        activeConversation: { kind: "project-session", workspacePath: paths.project, sessionId },
-        recentProjectPaths: [paths.project],
-        draft: "",
-        draftsBySession: {},
-        theme,
-      }),
+      windowState({ project: paths.project, sessionId, theme }),
     );
     await writeFile(
       join(paths.cakeHome, "state", "application.json"),

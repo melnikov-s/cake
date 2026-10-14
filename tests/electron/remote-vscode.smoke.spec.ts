@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { windowState } from "../fixtures/window-state";
 
 const repository = resolve(import.meta.dirname, "../..");
 const sessionId = "00000000-0000-4000-8000-000000000001";
@@ -136,14 +137,7 @@ test("separate Node backend serves a real leased code-server workbench to remote
     await mkdir(presentation, { recursive: true });
     await writeFile(
       join(presentation, "window-state.json"),
-      JSON.stringify({
-        projectPath: project,
-        selectedSessionId: sessionId,
-        activeConversation: { kind: "project-session", workspacePath: project, sessionId },
-        recentProjectPaths: [project],
-        draft: "",
-        theme: "dark",
-      }),
+      windowState({ project, sessionId, theme: "dark" }),
     );
     application = await electron.launch({
       args: [repository],

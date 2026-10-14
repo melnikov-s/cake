@@ -70,7 +70,6 @@ it("isolates leased editor HTTP and WS from browser assets and RPC, then revokes
             location: cakeChatLocations.make({
               homeDirectory: "/home/test",
               sessionDirectory: "/chat",
-              resolvedSessionDirectory: "/resolved",
             }),
           },
         },
@@ -236,7 +235,6 @@ it("keeps an IPv6 editor Host and CSP origin bracketed exactly once", async () =
             location: cakeChatLocations.make({
               homeDirectory: "/home/test",
               sessionDirectory: "/chat",
-              resolvedSessionDirectory: "/resolved",
             }),
           },
         },

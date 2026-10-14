@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { emitRendererEvent } from "./main-harness";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -49,19 +50,7 @@ test("opens family children beside their parent and reuses the child pane", asyn
   ]);
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: parentSessionId,
-      activeConversation: {
-        kind: "project-session",
-        workspacePath: project,
-        sessionId: parentSessionId,
-      },
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "system",
-      draftsBySession: {},
-    }),
+    windowState({ project, sessionId: parentSessionId, theme: "system" }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),

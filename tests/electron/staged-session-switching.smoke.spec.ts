@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -17,7 +18,7 @@ test("switches directly between new Project chats and retains each composer", as
   );
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({ projectPath: projects[0], recentProjectPaths: projects, draft: "" }),
+    windowState({ project: projects[0]!, projects }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),

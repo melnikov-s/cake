@@ -131,7 +131,6 @@ it("embeds only an isolated editor origin, supports editor resources and revokes
             location: cakeChatLocations.make({
               homeDirectory: "/home/test",
               sessionDirectory: "/chat",
-              resolvedSessionDirectory: "/chat-resolved",
             }),
           },
         },

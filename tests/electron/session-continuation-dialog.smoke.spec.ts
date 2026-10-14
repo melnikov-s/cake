@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const execFileAsync = promisify(execFile);
@@ -38,15 +39,7 @@ test("forks sessions across working directories", async () => {
   await seedGitRepository(project);
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: sessionId,
-      activeConversation: { kind: "project-session", workspacePath: project, sessionId },
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "system",
-      draftsBySession: {},
-    }),
+    windowState({ project, sessionId, theme: "system" }),
   );
   await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(

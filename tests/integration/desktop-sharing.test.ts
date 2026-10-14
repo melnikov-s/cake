@@ -54,7 +54,6 @@ const configuration = {
     location: cakeChatLocations.make({
       homeDirectory: "/home/test",
       sessionDirectory: "/chat",
-      resolvedSessionDirectory: "/resolved",
     }),
   },
 };

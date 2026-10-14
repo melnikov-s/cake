@@ -214,7 +214,6 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
               location: cakeChatLocations.make({
                 homeDirectory: root,
                 sessionDirectory: join(root, "sessions"),
-                resolvedSessionDirectory: join(root, "resolved"),
               }),
             },
           },
@@ -236,7 +235,6 @@ it("routes a secure Cake app and leased editor via separate origins on one port 
               location: cakeChatLocations.make({
                 homeDirectory: root,
                 sessionDirectory: join(root, "sessions"),
-                resolvedSessionDirectory: join(root, "resolved"),
               }),
             },
           },

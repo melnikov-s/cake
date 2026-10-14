@@ -156,7 +156,6 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
       trusted: true,
       agentDir: configuration.agentDirectory,
       sessionDir: configuration.location.sessionDirectory,
-      resolvedSessionDir: configuration.location.resolvedSessionDirectory,
       newSession,
       sessionId: target.sessionId,
       // Pin the complete Cake Chat toolset instead of relying on Pi's default-tool

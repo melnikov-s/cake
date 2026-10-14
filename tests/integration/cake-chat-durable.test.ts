@@ -1,6 +1,6 @@
 import { createCoordinatorRuntime } from "../../src/layers/CakeOperations";
 import type { CakeSessionRuntimeSetup } from "../../src/services/pi/CakeSessionRuntimes";
-import { mkdir, mkdtemp, readFile, rm, writeFile, access } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Deferred, Effect, Layer, ManagedRuntime } from "effect";
@@ -41,7 +41,7 @@ async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), "cake-durable-live-"));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const agentDir = join(directory, "agent");
-  const sessionDir = join(directory, "global-chat", "sessions");
+  const sessionDir = join(directory, "global-chat");
   await mkdir(agentDir, { recursive: true });
   const legacy = await ModelRuntime.create({
     authPath: join(agentDir, "auth.json"),
@@ -132,7 +132,6 @@ async function fixture() {
         trusted: true,
         agentDir,
         sessionDir,
-        resolvedSessionDir: join(directory, "global-chat", "resolved-sessions"),
         sessionId: CAKE_CHAT_SESSION_ID,
         requestUi: async () => undefined,
         globalControl: globalControl ?? { tools: [], invoke: async () => ({}) },
@@ -329,15 +328,8 @@ it("keeps attachment bytes out of provider input, originals, zoom and future mem
   expect((await readFile(image.originalPath)).toString("base64")).toBe(data);
 });
 
-it("uses production SQLite, existing credentials and exact originals across reopen; purges only global JSONL roots", async () => {
+it("uses production SQLite, existing credentials and exact originals across reopen", async () => {
   const f = await fixture();
-  const old = join(f.sessionDir, "old.jsonl");
-  const resolved = join(f.directory, "global-chat", "resolved-sessions", "old.jsonl");
-  const project = join(f.directory, "project-sessions", "project.jsonl");
-  for (const path of [old, resolved, project]) {
-    await mkdir(join(path, ".."), { recursive: true });
-    await writeFile(path, "original history");
-  }
   const original = `ANCIENT_DETAIL ${"original words ".repeat(200)}`;
   f.answer(() => durableAnswer(original));
   const first = await f.open();
@@ -353,9 +345,6 @@ it("uses production SQLite, existing credentials and exact originals across reop
       (part) => part.kind === "text" && part.role === "user" && part.renderAs === "markdown",
     ),
   ).toBe(true);
-  await expect(access(old)).rejects.toThrow();
-  await expect(access(resolved)).rejects.toThrow();
-  expect(await readFile(project, "utf8")).toBe("original history");
   await first.close();
   const before = f.requests.length;
   await f.serviceRuntime.runPromise(f.service.catalogEntry(f.sessionDir));

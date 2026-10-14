@@ -69,11 +69,7 @@ export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
   const initial = Stream.fromEffect(
     (query.resolved
       ? Effect.succeed([])
-      : sessions.catalog(queryFor(location)).pipe(
-          Stream.filter((item) => item.id === CAKE_CHAT_SESSION_ID),
-          Stream.map(toSummary),
-          Stream.runCollect,
-        )
+      : sessions.catalog(queryFor(location)).pipe(Stream.map(toSummary), Stream.runCollect)
     ).pipe(
       Effect.map((items) => ({
         _tag: "InitialSnapshot" as const,
@@ -93,11 +89,7 @@ export const observeCatalog = Effect.fn("CakeChats.observeCatalog")(function* (
         PiSessionError
       > => {
         if (item._tag === "InitialSnapshot") return Effect.succeed(item);
-        if (
-          query.resolved ||
-          item._tag !== "CakeChatSessionChanged" ||
-          item.sessionId !== CAKE_CHAT_SESSION_ID
-        )
+        if (query.resolved || item._tag !== "CakeChatSessionChanged")
           return Effect.succeed(undefined);
         return sessions
           .catalogEntry(queryFor(location), CAKE_CHAT_SESSION_ID)

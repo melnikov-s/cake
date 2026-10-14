@@ -1,8 +1,7 @@
 import { createServer } from "node:http";
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { ROOT_CONVERSATION_ID } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -44,46 +43,17 @@ async function menuItems(app: ElectronApplication) {
   );
 }
 
-function seedHistory(directory: string, text: string) {
-  const manager = SessionManager.create(homedir(), directory);
-  manager.appendMessage({ role: "user", content: text, timestamp: Date.now() });
-  manager.appendMessage({
-    role: "assistant",
-    content: [{ type: "text", text: "Saved reply" }],
-    api: "openai-completions",
-    provider: "fixture",
-    model: "fixture",
-    stopReason: "stop",
-    timestamp: Date.now(),
-    usage: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 0,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
-  });
-  return manager.getSessionFile()!;
-}
-
-test("permanent Cake Chat retains its input, history and settings across restart and resets only old global histories", async () => {
+test("permanent Cake Chat retains its input, history and settings across restart", async () => {
   test.setTimeout(90_000);
   const root = await mkdtemp(join(tmpdir(), "cake-chat-smoke-"));
   const cakeHome = join(root, "cake-home");
   const userData = join(root, "user-data");
   const document = join(cakeHome, "state", "application.json");
-  const activeDirectory = join(cakeHome, "pi", "global-chat", "sessions");
-  const resolvedDirectory = join(cakeHome, "pi", "global-chat", "resolved-sessions");
   await Promise.all([
     mkdir(join(cakeHome, "state"), { recursive: true }),
     mkdir(join(cakeHome, "pi"), { recursive: true }),
     mkdir(userData),
   ]);
-  const oldActive = seedHistory(activeDirectory, "Old active global conversation");
-  const oldResolved = seedHistory(resolvedDirectory, "Old resolved global conversation");
-  const projectFile = seedHistory(join(root, "project-sessions"), "Independent project work");
-  const projectHistory = await readFile(projectFile, "utf8");
   const requests: unknown[] = [];
   const requestBodies: string[] = [];
   const summaryBodies: string[] = [];
@@ -421,23 +391,6 @@ test("permanent Cake Chat retains its input, history and settings across restart
       summaryBodies.at(-1),
     );
     await page.getByRole("button", { name: "Close", exact: true }).click();
-    await expect
-      .poll(() =>
-        readFile(oldActive).then(
-          () => true,
-          () => false,
-        ),
-      )
-      .toBe(false);
-    await expect
-      .poll(() =>
-        readFile(oldResolved).then(
-          () => true,
-          () => false,
-        ),
-      )
-      .toBe(false);
-    expect(await readFile(projectFile, "utf8")).toBe(projectHistory);
 
     // A manual unread reminder uses the same application storage as Project Sessions.
     await interceptMenu(app, "Mark as Unread");
@@ -505,7 +458,6 @@ test("permanent Cake Chat retains its input, history and settings across restart
     expect(JSON.stringify(requests[2])).not.toContain(
       "Detailed task context. Detailed task context.",
     );
-    expect(await readFile(projectFile, "utf8")).toBe(projectHistory);
 
     // The reply exceeds the memory budget, so background indexing starts a slow
     // summary. The next turn stalls before its provider request, not in streaming.

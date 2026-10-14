@@ -1,5 +1,4 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
 import type { ChatConfiguration } from "../../contracts/conversations/session-contract";
 import type { CakeChatSummary } from "../../contracts/cake-chats/cake-chat-data";
 import type { JsonObject } from "../../contracts/serialization/json-contract";
@@ -77,8 +76,7 @@ export class CakeChatPendingSessionsStore extends Store<CakeChatPendingSessionsS
   reconcileMaterialized(authoritativeSessionIds: ReadonlySet<string>) {
     for (let index = this.conversationIds.length - 1; index >= 0; index -= 1) {
       const sessionId = this.conversationIds[index]!;
-      if (sessionId !== CAKE_CHAT_SESSION_ID || authoritativeSessionIds.has(sessionId))
-        this.remove(sessionId);
+      if (authoritativeSessionIds.has(sessionId)) this.remove(sessionId);
     }
   }
 

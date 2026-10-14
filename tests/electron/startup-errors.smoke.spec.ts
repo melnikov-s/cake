@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -16,19 +17,7 @@ test("shows a restored session's startup failure in the window instead of loadin
   // The persisted window still points at a Pi session whose file is no longer available.
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: "missing-restored-session",
-      activeConversation: {
-        kind: "project-session",
-        workspacePath: project,
-        sessionId: "missing-restored-session",
-      },
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "dark",
-      draftsBySession: {},
-    }),
+    windowState({ project, sessionId: "missing-restored-session", theme: "dark" }),
   );
   const timestamp = new Date(0).toISOString();
   await writeFile(

@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { seedCakeChatHistory } from "./durable-chat-fixture";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -37,19 +38,7 @@ test("selects multiple project sessions and Cake Chat with independent transcrip
   );
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: sessions[0]!.id,
-      activeConversation: {
-        kind: "project-session",
-        workspacePath: project,
-        sessionId: sessions[0]!.id,
-      },
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "dark",
-      draftsBySession: {},
-    }),
+    windowState({ project, sessionId: sessions[0]!.id, theme: "dark" }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),

@@ -31,7 +31,6 @@ it("serves only the bounded browser build with HTTP authority checks and correct
               location: cakeChatLocations.make({
                 homeDirectory: "/home/test",
                 sessionDirectory: "/chat",
-                resolvedSessionDirectory: "/chat-resolved",
               }),
             },
           },

@@ -121,7 +121,6 @@ export interface ProjectSessionIntegrationHostOptions {
   readonly workspacePath: string;
   readonly agentDir: string;
   readonly sessionDir: string;
-  readonly resolvedSessionDir?: string;
   readonly widgetSessionDir?: string;
   readonly emit: (event: CakeEvent) => void;
   readonly requestUi: (request: RuntimeUiRequest) => Promise<string | undefined>;

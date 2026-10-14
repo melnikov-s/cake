@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const execFile = promisify(execFileCallback);
@@ -14,15 +15,7 @@ test("opens the shared artifact popup and library and isolates HTML", async () =
   const project = join(temporaryRoot, "project");
   const cakeHome = join(temporaryRoot, "cake-home");
   await Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]);
-  await writeFile(
-    join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "system",
-    }),
-  );
+  await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "system" }));
   await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
     join(cakeHome, "state", "application.json"),

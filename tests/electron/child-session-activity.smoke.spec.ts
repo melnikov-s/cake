@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -98,15 +99,7 @@ test("background family children show running activity and only offer Mark as Un
       },
     }),
   );
-  await writeFile(
-    join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "dark",
-    }),
-  );
+  await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "dark" }));
   await writeFile(
     join(cakeHome, "state", "application.json"),
     JSON.stringify({

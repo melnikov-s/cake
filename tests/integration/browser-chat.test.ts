@@ -98,7 +98,6 @@ it("retains a lost-receipt draft but blocks resending until browser delivery is 
             location: cakeChatLocations.make({
               homeDirectory: "/home/test",
               sessionDirectory: "/chat",
-              resolvedSessionDirectory: "/chat-resolved",
             }),
           },
         },
@@ -197,7 +196,6 @@ it("real Chromium uses the shared sidebar, project chat and Cake Chat without re
             location: cakeChatLocations.make({
               homeDirectory: "/home/test",
               sessionDirectory: "/chat",
-              resolvedSessionDirectory: "/chat-resolved",
             }),
           },
         },

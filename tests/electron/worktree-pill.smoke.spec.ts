@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { windowState } from "../fixtures/window-state";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -36,15 +37,7 @@ test("chooses an isolated worktree without disturbing the new-chat composer", as
   await writeFile(join(project, "README.md"), "fixture\n");
   await execFileAsync("git", ["add", "-A"], { cwd: project });
   await execFileAsync("git", ["commit", "-m", "fixture"], { cwd: project });
-  await writeFile(
-    join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "system",
-    }),
-  );
+  await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "system" }));
   await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(
     join(cakeHome, "state", "application.json"),
@@ -251,15 +244,7 @@ test("shows only the active branch or target-warning tooltip across hover and fo
   );
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: worktreePath,
-      selectedSessionId: sessionId,
-      activeConversation: { kind: "project-session", workspacePath: worktreePath, sessionId },
-      recentProjectPaths: [project],
-      draftsBySession: {},
-      draft: "",
-      theme: "system",
-    }),
+    windowState({ project: worktreePath, sessionId, theme: "system" }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),
@@ -417,15 +402,7 @@ test("lands new commits from an already-landed worktree before resolving it", as
   );
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: worktreePath,
-      selectedSessionId: sessionId,
-      activeConversation: { kind: "project-session", workspacePath: worktreePath, sessionId },
-      recentProjectPaths: [project],
-      draftsBySession: {},
-      draft: "",
-      theme: "system",
-    }),
+    windowState({ project: worktreePath, sessionId, theme: "system" }),
   );
   await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(

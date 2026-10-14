@@ -9,6 +9,7 @@ import {
   nativeImageScript,
   originalImageBytes,
 } from "../fixtures/native-images";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -108,15 +109,7 @@ test("native images appear in Chat and only explicitly requested originals are s
       },
     }),
   );
-  await writeFile(
-    join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "system",
-    }),
-  );
+  await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "system" }));
   await writeFile(
     join(cakeHome, "state", "application.json"),
     JSON.stringify({

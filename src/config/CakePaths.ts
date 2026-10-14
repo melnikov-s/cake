@@ -9,8 +9,8 @@ export interface CakePaths {
   piReviewSessions: string;
   piWidgetSessions: string;
   piSubagentSessions: string;
-  piGlobalChatSessions: string;
-  piGlobalChatResolvedSessions: string;
+  /** Pi Durable storage for the permanent Cake Chat (`coordinator.sqlite`). */
+  cakeChat: string;
   state: string;
   sessionFamilies: string;
   resolvedProjectMetadata: string;
@@ -43,8 +43,7 @@ export function resolveCakePaths(options: ResolveCakePathsOptions): CakePaths {
     piReviewSessions: join(home, "pi", "review-sessions"),
     piWidgetSessions: join(home, "pi", "widget-sessions"),
     piSubagentSessions: join(home, "pi", "subagent-sessions"),
-    piGlobalChatSessions: join(home, "pi", "global-chat", "sessions"),
-    piGlobalChatResolvedSessions: join(home, "pi", "global-chat", "resolved-sessions"),
+    cakeChat: join(home, "pi", "global-chat"),
     state,
     sessionFamilies: join(state, "session-families.json"),
     resolvedProjectMetadata: join(state, "resolved-project-metadata"),

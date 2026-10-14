@@ -7,6 +7,7 @@ import { _electron as electron, expect, test, type ElectronApplication } from "@
 import type { JsonObject } from "../../src/contracts/serialization/json-contract";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { emitRendererEvent, installLocalModelHttpGuard } from "./main-harness";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const sessionId = "selection-tour";
@@ -67,15 +68,7 @@ async function fixture() {
   const timestamp = new Date(0).toISOString();
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: sessionId,
-      activeConversation: { kind: "project-session", workspacePath: project, sessionId },
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "dark",
-      draftsBySession: {},
-    }),
+    windowState({ project, sessionId, theme: "dark" }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),

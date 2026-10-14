@@ -162,8 +162,6 @@ export interface CakeSessionRuntimeOptions {
   sessionDir: string;
   /** Dedicated session directories (such as Discussion threads) have no workspace subdirectory. */
   directSessionDir?: boolean;
-  /** Legacy Cake Chat sidecar cleanup only; primary Pi sessions stay in sessionDir. */
-  resolvedSessionDir?: string;
   newSession?: boolean;
   sessionId?: string;
   sessionFile?: string;

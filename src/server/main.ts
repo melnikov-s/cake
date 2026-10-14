@@ -37,8 +37,7 @@ const program = Effect.gen(function* () {
             agentDirectory: paths.piAgent,
             location: cakeChatLocations.make({
               homeDirectory,
-              sessionDirectory: paths.piGlobalChatSessions,
-              resolvedSessionDirectory: paths.piGlobalChatResolvedSessions,
+              sessionDirectory: paths.cakeChat,
             }),
           },
         },

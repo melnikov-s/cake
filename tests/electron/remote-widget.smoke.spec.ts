@@ -8,6 +8,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 import { Effect } from "effect";
 import { connectClient } from "../integration/fixtures/network-client";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -215,16 +216,7 @@ test("remote Electron loads backend widgets and companion actions, then Pi revie
       createHash("sha256").update(url).digest("hex"),
     );
     await mkdir(presentation, { recursive: true });
-    await writeFile(
-      join(presentation, "window-state.json"),
-      JSON.stringify({
-        projectPath: project,
-        selectedSessionId: sessionId,
-        activeConversation: { kind: "project-session", workspacePath: project, sessionId },
-        recentProjectPaths: [project],
-        draft: "",
-      }),
-    );
+    await writeFile(join(presentation, "window-state.json"), windowState({ project, sessionId }));
     const compiled = await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {

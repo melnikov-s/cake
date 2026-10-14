@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -58,14 +59,7 @@ test("canceling child reports retires their outbox entries and Stop stays stoppe
   );
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: parentId,
-      activeConversation: { kind: "project-session", workspacePath: project, sessionId: parentId },
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "dark",
-    }),
+    windowState({ project, sessionId: parentId, theme: "dark" }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),

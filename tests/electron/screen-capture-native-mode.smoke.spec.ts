@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -21,10 +22,7 @@ test("@foreground screenshot capture preserves macOS foreground process mode", a
     mkdir(join(cakeHome, "state"), { recursive: true }),
     mkdir(userData, { recursive: true }),
   ]);
-  await writeFile(
-    join(userData, "window-state.json"),
-    JSON.stringify({ projectPath: project, recentProjectPaths: [project], theme: "dark" }),
-  );
+  await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "dark" }));
   await writeFile(
     join(cakeHome, "state", "application.json"),
     JSON.stringify({

@@ -20,7 +20,6 @@ it.live(
             location: cakeChatLocations.make({
               homeDirectory: "/home/test",
               sessionDirectory: "/chat",
-              resolvedSessionDirectory: "/chat-resolved",
             }),
           },
         },

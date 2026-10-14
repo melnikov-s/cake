@@ -381,7 +381,6 @@ const runtimeFingerprint = (options: CakeSessionRuntimeAcquireOptions): string =
     agentDir: runtime.agentDir,
     sessionDir: runtime.sessionDir,
     directSessionDir: runtime.directSessionDir ?? false,
-    resolvedSessionDir: runtime.resolvedSessionDir,
     // Once a caller creates an explicit session ID, later open/command
     // acquisitions address that same runtime. Creation mode is not a lasting
     // runtime policy and therefore is not part of the conflict fingerprint.
@@ -1208,8 +1207,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
     }),
   );
 
-const coordinatorDirectory = (directory: string) =>
-  /(?:^|[/\\])global-chat[/\\]sessions$/.test(directory);
+const coordinatorDirectory = (directory: string) => /(?:^|[/\\])global-chat$/.test(directory);
 
 export const makeCakeSessionRuntimesLive = (
   createRuntime: (options: CakeSessionRuntimeSetup) => Promise<CakeSessionRuntime>,

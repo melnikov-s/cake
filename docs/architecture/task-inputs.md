@@ -77,5 +77,3 @@ Arbitrary binary files are tool-readable files, not provider-native file parts.
 - Extensions, generated files/shared metadata and deliberate content copying outside
   supported session flows. This is not data-loss-prevention against a trusted Project
   agent actively exfiltrating through filesystem or application mutations.
-- Existing global history containing older ordinary attachments is not retroactively
-  scrubbed; this boundary applies to new submissions.

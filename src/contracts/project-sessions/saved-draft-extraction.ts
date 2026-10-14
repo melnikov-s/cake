@@ -1,12 +1,12 @@
 import { Predicate, Schema } from "effect";
 import { SavedDraft, type SavedDraft as SavedDraftValue } from "./saved-draft-data";
 
-export const decodeStringArray = (value: Schema.Schema.Type<typeof Schema.Json> | undefined) => {
+const decodeStringArray = (value: Schema.Schema.Type<typeof Schema.Json> | undefined) => {
   const result = Schema.decodeUnknownResult(Schema.Array(Schema.String))(value);
   return result._tag === "Success" ? [...result.success] : [];
 };
 
-export const decodeString = (value: Schema.Schema.Type<typeof Schema.Json> | undefined) => {
+const decodeString = (value: Schema.Schema.Type<typeof Schema.Json> | undefined) => {
   const result = Schema.decodeUnknownResult(Schema.String)(value);
   return result._tag === "Success" ? result.success : undefined;
 };

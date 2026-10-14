@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -22,17 +23,7 @@ test("resolving in a large Activity feed does not force layout for every shifted
   ]);
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: "activity-0",
-      activeConversation: {
-        kind: "project-session",
-        workspacePath: project,
-        sessionId: "activity-0",
-      },
-      recentProjectPaths: [project],
-      theme: "system",
-    }),
+    windowState({ project, sessionId: "activity-0", theme: "system" }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),

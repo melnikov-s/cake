@@ -6,7 +6,6 @@
     "src/assets/vscode-companion/extension.js",
     "src/server/main.ts",
     "scripts/visual-capture/cli.ts",
-    "src/services/pi/PiSessionMigrationCommand.ts",
     "tests/integration/fixtures/headless-backend.ts",
     "tests/integration/fixtures/workflow-sandbox-backend.ts"
   ],

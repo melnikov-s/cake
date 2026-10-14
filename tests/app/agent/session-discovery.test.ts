@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -62,6 +62,27 @@ describe("loadWorkspacePiSessionPreview", () => {
     expect(catalog.map((item) => item.id)).toEqual([active.getSessionId()]);
     expect(open).toHaveBeenCalledTimes(1);
     expect(open.mock.calls[0]?.[0]).toBe(active.getSessionFile());
+  });
+  it("skips an unreadable transcript without hiding the directory's other sessions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cake-session-unreadable-"));
+    temporaryDirectories.push(root);
+    const cwd = join(root, "project");
+    const sessionRoot = join(root, "sessions");
+    const directory = cakeWorkspaceSessionDirectory(cwd, sessionRoot);
+    const sessions = ["First work", "Second work"].map((content, index) => {
+      const manager = SessionManager.create(cwd, directory);
+      manager.appendMessage({ role: "user", content, timestamp: index + 1 });
+      return manager.getSessionId();
+    });
+    // A transcript tail without its session header, as found on disk.
+    await writeFile(
+      join(directory, "2026-09-01T15-09-02-711Z_01a05d84-3d77-7e1b-beaa-dd6dab584e42.jsonl"),
+      `${JSON.stringify({ type: "message", id: "d8c94a21", parentId: "a94f94fc" })}\n`,
+    );
+    const catalog = await Effect.runPromise(
+      streamWorkspaceSessions(cwd, sessionRoot).pipe(Stream.runCollect),
+    );
+    expect(catalog.map((item) => item.id).sort()).toEqual([...sessions].sort());
   });
   it("reconstructs compacted work logs from a persisted Pi transcript", async () => {
     const root = await mkdtemp(join(tmpdir(), "cake-session-preview-"));

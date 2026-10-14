@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -57,14 +58,7 @@ async function queuedMessagesFixture(dictation = false) {
   );
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: sessionId,
-      activeConversation: { kind: "project-session", workspacePath: project, sessionId },
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "dark",
-    }),
+    windowState({ project, sessionId, theme: "dark" }),
   );
   const timestamp = new Date(0).toISOString();
   await writeFile(

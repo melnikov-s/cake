@@ -102,14 +102,11 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
   }
 
   get summaries(): readonly CakeChatSummaryProjection[] {
-    const authoritative: CakeChatSummaryProjection[] = this.props.catalog.sessions.filter(
-      (session) => session.sessionId === CAKE_CHAT_SESSION_ID,
-    );
+    const authoritative: CakeChatSummaryProjection[] = [...this.props.catalog.sessions];
     const authoritativeIds = new Set(authoritative.map((session) => session.sessionId));
     authoritative.push(
       ...this.pendingSessions.summaries.filter(
-        (session) =>
-          session.sessionId === CAKE_CHAT_SESSION_ID && !authoritativeIds.has(session.sessionId),
+        (session) => !authoritativeIds.has(session.sessionId),
       ),
     );
     return authoritative.sort(compareSessionSummariesForSidebar);
@@ -239,7 +236,6 @@ export class CakeChatCollectionStore extends Store<CakeChatCollectionStoreProps>
 
   async openSession(sessionId: string) {
     if (!this.hydrated) await this.initialize();
-    sessionId = CAKE_CHAT_SESSION_ID;
     this.markRead();
     if (this.pendingSessions.isPending(sessionId) || sessionId === this.sessionId) {
       this.selectSession(sessionId);

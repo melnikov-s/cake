@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { NodeSocket } from "@effect/platform-node-shared";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { windowState } from "../fixtures/window-state";
 
 const repository = resolve(import.meta.dirname, "../..");
 
@@ -255,16 +256,7 @@ test("remote Pi Browser Mode controls desktop Chromium and previews backend loca
       createHash("sha256").update(url).digest("hex"),
     );
     await mkdir(presentation, { recursive: true });
-    await writeFile(
-      join(presentation, "window-state.json"),
-      JSON.stringify({
-        projectPath: project,
-        selectedSessionId: sessionId,
-        activeConversation: { kind: "project-session", workspacePath: project, sessionId },
-        recentProjectPaths: [project],
-        draft: "",
-      }),
-    );
+    await writeFile(join(presentation, "window-state.json"), windowState({ project, sessionId }));
     const application = await electron.launch({
       args: [repository],
       cwd: repository,

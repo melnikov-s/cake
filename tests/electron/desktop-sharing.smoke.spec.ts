@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { _electron as electron, chromium, expect, test, type Page } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const openSharing = async (page: Page) => {
@@ -37,16 +38,7 @@ test("desktop Settings shares the existing backend; window closure, reopen, disa
       trustedProjectPaths: [project],
     }),
   );
-  await writeFile(
-    join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: id,
-      activeConversation: { kind: "project-session", workspacePath: project, sessionId: id },
-      recentProjectPaths: [project],
-      draft: "",
-    }),
-  );
+  await writeFile(join(userData, "window-state.json"), windowState({ project, sessionId: id }));
   await writeFile(
     join(sessions, ".pi-session-metadata.json"),
     JSON.stringify({ version: 1, sessions: { [id]: { title } } }),

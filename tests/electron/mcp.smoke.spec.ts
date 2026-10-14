@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { startMcpServer } from "../fixtures/mcp-server";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -23,15 +24,7 @@ for (const remote of [false, true]) {
       mkdir(join(cakeHome, "state"), { recursive: true }),
       mkdir(join(agentDir, "extensions"), { recursive: true }),
     ]);
-    await writeFile(
-      join(userData, "window-state.json"),
-      JSON.stringify({
-        projectPath: project,
-        recentProjectPaths: [project],
-        draft: "",
-        theme: "system",
-      }),
-    );
+    await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "system" }));
     await writeFile(
       join(cakeHome, "state", "application.json"),
       JSON.stringify({

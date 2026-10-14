@@ -221,7 +221,7 @@ export function streamWorkspaceSessions(
     Stream.mapEffect(
       (item) =>
         Effect.try({
-          try: () => ({
+          try: (): PiSessionSummary => ({
             id: item.id,
             title: sessionTitleFromFile(item.path, cwd),
             created: item.createdAt,
@@ -230,9 +230,17 @@ export function streamWorkspaceSessions(
             resolved: false,
           }),
           catch: (cause) => cause,
-        }),
+        }).pipe(
+          // One unreadable transcript must not hide the rest of the directory.
+          Effect.catch((cause) =>
+            Effect.logWarning("Skipping unreadable Pi session file", item.path, cause).pipe(
+              Effect.as(undefined),
+            ),
+          ),
+        ),
       { concurrency: 16 },
     ),
+    Stream.filter((item) => item !== undefined),
   );
 }
 

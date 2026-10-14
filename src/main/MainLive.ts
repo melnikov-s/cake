@@ -90,8 +90,7 @@ export const makeMainLive = (options: MainLiveOptions) => {
   const cakeChat = {
     location: cakeChatLocations.make({
       homeDirectory,
-      sessionDirectory: options.paths.piGlobalChatSessions,
-      resolvedSessionDirectory: options.paths.piGlobalChatResolvedSessions,
+      sessionDirectory: options.paths.cakeChat,
     }),
     agentDirectory: options.paths.piAgent,
   };

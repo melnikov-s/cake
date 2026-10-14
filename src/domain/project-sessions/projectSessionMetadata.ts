@@ -393,7 +393,16 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
                 ),
               ),
           ),
-          Stream.catch(() => Stream.empty),
+          // An unreadable checkout must not hide the Project's other locations.
+          Stream.catch((cause) =>
+            Stream.fromEffect(
+              Effect.logWarning(
+                "Skipping unreadable Project Session location",
+                location.workingDirectory,
+                cause,
+              ),
+            ).pipe(Stream.drain),
+          ),
         );
       },
       { concurrency: ACTIVE_CATALOG_LOCATION_CONCURRENCY },

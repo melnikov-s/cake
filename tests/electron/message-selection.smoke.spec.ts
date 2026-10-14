@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -49,15 +50,7 @@ async function verifyMessageSelection(highlightsOnly: boolean) {
   ]);
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: sessionId,
-      activeConversation: { kind: "project-session", workspacePath: project, sessionId },
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "dark",
-      draftsBySession: {},
-    }),
+    windowState({ project, sessionId, theme: "dark" }),
   );
   await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(

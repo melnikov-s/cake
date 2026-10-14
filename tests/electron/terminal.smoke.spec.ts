@@ -5,6 +5,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { callRpcHarness, openRpcHarness } from "./rpc-harness";
 import { emitRendererEvent } from "./main-harness";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -24,14 +25,7 @@ test("Quake terminal runs a shell and retains tabs when a Project Session is res
   ]);
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: sessionId,
-      activeConversation: { kind: "project-session", workspacePath: project, sessionId },
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "dark",
-    }),
+    windowState({ project, sessionId, theme: "dark" }),
   );
   await mkdir(join(cakeHome, "state"), { recursive: true });
   await writeFile(

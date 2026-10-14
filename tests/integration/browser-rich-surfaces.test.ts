@@ -40,7 +40,6 @@ it("Chromium renders a published navigable widget and HTML artifact in opaque fr
             location: cakeChatLocations.make({
               homeDirectory: "/home/test",
               sessionDirectory: "/chat",
-              resolvedSessionDirectory: "/chat-resolved",
             }),
           },
         },

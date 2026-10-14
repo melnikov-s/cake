@@ -43,7 +43,6 @@ it("browser menu actions and pasted image bytes reach backend staging without a 
             location: cakeChatLocations.make({
               homeDirectory: "/home/test",
               sessionDirectory: "/chat",
-              resolvedSessionDirectory: "/chat-resolved",
             }),
           },
         },

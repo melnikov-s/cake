@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { nestedUsage } from "../fixtures/nested-tool-activity";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const script =
@@ -36,15 +37,7 @@ test("authoritative chat discloses parallel script children, then restores metad
     mkdir(join(cakeHome, "state"), { recursive: true }),
     mkdir(join(agentDir, "extensions"), { recursive: true }),
   ]);
-  await writeFile(
-    join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "dark",
-    }),
-  );
+  await writeFile(join(userData, "window-state.json"), windowState({ project, theme: "dark" }));
   await writeFile(
     join(cakeHome, "state", "application.json"),
     JSON.stringify({

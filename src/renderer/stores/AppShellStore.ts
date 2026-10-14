@@ -1,6 +1,5 @@
 import { Store, observable, snapshot } from "r-state-tree";
 import { SessionMetadataContext } from "./context/SessionMetadataContext";
-import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
 
 export type AppSurface = "workbench" | "cake-chat" | "artifact-library" | "settings";
 
@@ -117,11 +116,8 @@ export class AppShellStore extends Store<AppShellStoreProps> {
       const entry = this.sessionHistory[cursor]!;
       if (!this.props.sessionInNavigationScope(entry)) continue;
       if (target && !sameSessionEntry(entry, target)) continue;
-      const resolved =
-        entry.kind === "project-session"
-          ? this.metadata.isResolved(entry.sessionId)
-          : entry.sessionId !== CAKE_CHAT_SESSION_ID;
-      if (resolved !== true) return cursor;
+      if (entry.kind === "cake-chat" || this.metadata.isResolved(entry.sessionId) !== true)
+        return cursor;
     }
     return undefined;
   }

@@ -1,8 +1,5 @@
 import { Store, child, createStore, observable, snapshot } from "r-state-tree";
-import {
-  CAKE_CHAT_SESSION_ID,
-  type CakeChatTarget,
-} from "../../contracts/cake-chats/cake-chat-data";
+import type { CakeChatTarget } from "../../contracts/cake-chats/cake-chat-data";
 import type { ModelPreset } from "../../contracts/conversations/session-contract";
 import type { Conversation } from "../models/Conversation";
 import type { ArtifactCatalog } from "../models/ArtifactCatalog";
@@ -75,7 +72,6 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
   }
 
   load(sessionId: string) {
-    sessionId = CAKE_CHAT_SESSION_ID;
     const existing = this.find(sessionId);
     if (existing) return existing;
     this.targets.push(sessionId);
@@ -90,10 +86,6 @@ export class CakeChatRegistryStore extends Store<CakeChatRegistryStoreProps> {
 
   /** Reconciles pending identities against the authoritative catalog without replacing loaded Stores. */
   reconcile(authoritativeSessionIds: ReadonlySet<string>) {
-    for (let i = this.targets.length - 1; i >= 0; i -= 1) {
-      const id = this.targets[i]!;
-      if (id !== CAKE_CHAT_SESSION_ID) this.remove(id);
-    }
     this.props.pendingSessions().reconcileMaterialized(authoritativeSessionIds);
   }
 

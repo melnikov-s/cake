@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -16,10 +17,7 @@ test("splits project chats while retaining independent drafts and pane focus", a
     mkdir(project, { recursive: true }),
     mkdir(join(cakeHome, "state"), { recursive: true }),
   ]);
-  await writeFile(
-    join(userData, "window-state.json"),
-    JSON.stringify({ projectPath: project, recentProjectPaths: [project], draft: "" }),
-  );
+  await writeFile(join(userData, "window-state.json"), windowState({ project }));
   await writeFile(
     join(cakeHome, "state", "application.json"),
     JSON.stringify({

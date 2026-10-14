@@ -108,7 +108,6 @@ it("opens a socket-owned browser terminal, accepts input/output and never replay
             location: cakeChatLocations.make({
               homeDirectory: "/home/test",
               sessionDirectory: "/chat",
-              resolvedSessionDirectory: "/chat-resolved",
             }),
           },
         },

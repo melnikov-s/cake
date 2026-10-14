@@ -130,7 +130,6 @@ it("Chromium imports a published companion in the shared shell and dispatches it
             location: cakeChatLocations.make({
               homeDirectory: "/home/test",
               sessionDirectory: "/chat",
-              resolvedSessionDirectory: "/chat-resolved",
             }),
           },
         },

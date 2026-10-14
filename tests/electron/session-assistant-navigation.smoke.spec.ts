@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { installLocalModelHttpGuard } from "./main-harness";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -211,17 +212,7 @@ for (const scenario of ["migrated", "unavailable"] as const) {
       );
       await writeFile(
         join(userData, "window-state.json"),
-        JSON.stringify({
-          projectPath: project,
-          selectedSessionId: sourceId,
-          activeConversation: {
-            kind: "project-session",
-            workspacePath: project,
-            sessionId: sourceId,
-          },
-          recentProjectPaths: [project],
-          draft: "",
-        }),
+        windowState({ project, sessionId: sourceId }),
       );
       const application = await electron.launch({
         args: [repositoryRoot],

@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -19,10 +20,7 @@ test("authorizes and opens a restored Project", async () => {
     join(project, ".pi", "extensions", "fixture.ts"),
     "export default function fixture() {}\n",
   );
-  await writeFile(
-    join(userData, "window-state.json"),
-    JSON.stringify({ projectPath: project, recentProjectPaths: [project], draft: "" }),
-  );
+  await writeFile(join(userData, "window-state.json"), windowState({ project }));
   await writeFile(
     join(cakeHome, "state", "application.json"),
     JSON.stringify({

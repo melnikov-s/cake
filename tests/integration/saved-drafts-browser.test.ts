@@ -37,7 +37,6 @@ it("two real browser tabs see shared saved edits and one activation reaches the 
             location: cakeChatLocations.make({
               homeDirectory: "/home/test",
               sessionDirectory: "/chat",
-              resolvedSessionDirectory: "/chat-resolved",
             }),
           },
         },

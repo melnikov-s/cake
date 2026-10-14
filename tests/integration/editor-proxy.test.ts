@@ -81,7 +81,6 @@ it("leased editor HTTP/WS preserves base paths and bytes, refuses wrong owners/r
             location: cakeChatLocations.make({
               homeDirectory: "/home/test",
               sessionDirectory: "/chat",
-              resolvedSessionDirectory: "/chat-resolved",
             }),
           },
         },

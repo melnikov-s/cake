@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -151,13 +152,7 @@ test("remote Electron uses the full shell and only the server owns agent state",
     await mkdir(presentation, { recursive: true });
     await writeFile(
       join(presentation, "window-state.json"),
-      JSON.stringify({
-        projectPath: project,
-        selectedSessionId: id,
-        activeConversation: { kind: "project-session", workspacePath: project, sessionId: id },
-        recentProjectPaths: [project],
-        draft: "",
-      }),
+      windowState({ project, sessionId: id }),
     );
     const application = await electron.launch({
       args: [repositoryRoot],

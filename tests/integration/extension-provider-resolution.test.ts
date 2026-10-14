@@ -84,7 +84,7 @@ async function openRuntime(
           durable.createRuntime({
             ...runtimeOptions,
             sessionId: CAKE_CHAT_SESSION_ID,
-            sessionDir: join(directory, "global-chat", "sessions"),
+            sessionDir: join(directory, "global-chat"),
             globalControl: { tools: [], invoke: async () => ({ ok: true }) },
             cakeChatMemory: {
               preferences: () => ({ memoryViewBytes: 4_000, instructions: "" }),

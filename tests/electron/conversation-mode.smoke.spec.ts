@@ -13,6 +13,7 @@ import {
   installSpeechHttpFixture,
   speechHttpRequests,
 } from "./main-harness";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 async function launch({
@@ -215,15 +216,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   await writeFile(wavPath, wav);
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: sessionId,
-      activeConversation: { kind: "project-session", workspacePath: project, sessionId },
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "dark",
-      draftsBySession: {},
-    }),
+    windowState({ project, sessionId, theme: "dark" }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),

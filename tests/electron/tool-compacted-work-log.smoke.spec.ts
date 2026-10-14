@@ -8,6 +8,7 @@ import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/ses
 import { addResponseModeReminder } from "../../src/contracts/conversations/response-mode-reminders";
 import { addPresentationModeReminder } from "../../src/contracts/conversations/presentation-mode-reminders";
 import { encodeCrossSessionMessage } from "../../src/contracts/conversations/cross-session-message";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const timestamp = new Date(0).toISOString();
@@ -55,15 +56,7 @@ test("shows compacted historical work in place, muted and expandable", async () 
   ]);
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: sessionId,
-      activeConversation: { kind: "project-session", workspacePath: project, sessionId },
-      recentProjectPaths: [project],
-      draft: "",
-      theme: "dark",
-      draftsBySession: {},
-    }),
+    windowState({ project, sessionId, theme: "dark" }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),

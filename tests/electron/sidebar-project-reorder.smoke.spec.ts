@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { store, windowStateDocument } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -20,7 +21,9 @@ test("reorders projects by dragging in the desktop sidebar", async () => {
   ]);
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({ recentProjectPaths: [firstProject, secondProject], theme: "system" }),
+    windowStateDocument({
+      projectCatalogStore: store({ projectOrder: [firstProject, secondProject] }),
+    }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),

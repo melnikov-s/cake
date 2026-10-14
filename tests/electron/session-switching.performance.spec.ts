@@ -5,6 +5,7 @@ import process from "node:process";
 import { _electron as electron, expect, test, type CDPSession } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { emitRendererEvent } from "./main-harness";
+import { WINDOW_STATE_DOCUMENT_VERSION } from "../../src/services/storage/WindowStateStorage";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const baselineRoot = process.env.CAKE_PERFORMANCE_BASELINE_APP;
@@ -113,7 +114,7 @@ async function fixture(additionalChild = false) {
   await writeFile(
     join(userData, "window-state.json"),
     JSON.stringify({
-      version: 12,
+      version: WINDOW_STATE_DOCUMENT_VERSION,
       data: store(
         {},
         {

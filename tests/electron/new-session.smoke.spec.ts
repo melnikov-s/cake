@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { findVisualCaptureScenario } from "../../scripts/visual-capture/scenarios";
+import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -131,7 +132,7 @@ test("new session dialog supports filtering, keyboard, mouse and cancellation", 
   );
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({ projectPath: alpha, recentProjectPaths: [alpha, beta], draft: "" }),
+    windowState({ project: alpha, projects: [alpha, beta] }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),

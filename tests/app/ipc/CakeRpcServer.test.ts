@@ -28,7 +28,6 @@ const endpoint = makeCakeRpcServerLive("/home/test", {
   location: cakeChatLocations.make({
     homeDirectory: "/home/test",
     sessionDirectory: "/chat",
-    resolvedSessionDirectory: "/chat-resolved",
   }),
 });
 

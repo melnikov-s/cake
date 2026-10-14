@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { store, windowStateChildren, windowStateDocument } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -14,25 +15,32 @@ test("restores, edits, resolves, and activates a project draft session", async (
   await Promise.all([mkdir(userData, { recursive: true }), mkdir(project, { recursive: true })]);
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: project,
-      selectedSessionId: sessionId,
-      activeConversation: { kind: "project-session", workspacePath: project, sessionId },
-      recentProjectPaths: [project],
-      draft: "",
-      draftsBySession: {},
-      pendingProjectSessions: [
+    windowStateDocument({
+      ...windowStateChildren({ project, sessionId }),
+      sessionRegistry: store(
+        { targets: [{ sessionId, workspacePath: project }] },
         {
-          sessionId,
-          workspacePath: project,
-          draft: "",
-          name: "Planned work",
-          lifecycle: "saved-draft",
-          resolved: false,
-          stagedPrompt: { text: "Original plan", attachments: [] },
+          pendingSessions: store(
+            { temporarySessionIds: [sessionId], conversationIds: [sessionId] },
+            {
+              conversations: [
+                {
+                  key: sessionId,
+                  state: {
+                    name: "Planned work",
+                    draftPrompt: { text: "Original plan", attachments: [], resolved: false },
+                    fallbackTitle: "Planned work",
+                    createdAt: new Date(0).toISOString(),
+                    modifiedAt: new Date(0).toISOString(),
+                    messageCount: 0,
+                  },
+                  children: {},
+                },
+              ],
+            },
+          ),
         },
-      ],
-      theme: "system",
+      ),
     }),
   );
   await mkdir(join(cakeHome, "state"), { recursive: true });

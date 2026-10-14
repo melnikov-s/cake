@@ -46,7 +46,6 @@ it("projects review-run status, saves a label, and gates browser-only native set
             location: cakeChatLocations.make({
               homeDirectory: "/home/test",
               sessionDirectory: "/chat",
-              resolvedSessionDirectory: "/chat-resolved",
             }),
           },
         },

@@ -9,13 +9,14 @@ import {
   makeSessionFamilyStorageLive,
   SessionFamilyStorage,
 } from "../../src/services/storage/SessionFamilyStorage";
+import { windowState } from "./window-state";
 
 export const MESSAGE_BOARD_FIXTURE_ID = "family-board-visual-message-board-family";
 export const SWITCH_BOARD_FIXTURE_ID = "family-board-visual-switch-board-family";
 const MESSAGE_BOARD_FIXTURE_PARENT = "visual-workboard-member-1";
 export const seedMessageBoardFixture = async (
   paths: { cakeHome: string; userData: string; project: string },
-  theme: string = "dark",
+  theme: "system" | "light" | "dark" = "dark",
   options: { secondBoard?: boolean } = {},
 ) => {
   const timestamp = "2026-01-01T10:00:00.000Z";
@@ -37,18 +38,7 @@ export const seedMessageBoardFixture = async (
   ]);
   await writeFile(
     join(paths.userData, "window-state.json"),
-    JSON.stringify({
-      projectPath: paths.project,
-      selectedSessionId: MESSAGE_BOARD_FIXTURE_PARENT,
-      activeConversation: {
-        kind: "project-session",
-        workspacePath: paths.project,
-        sessionId: MESSAGE_BOARD_FIXTURE_PARENT,
-      },
-      recentProjectPaths: [paths.project],
-      draft: "",
-      theme,
-    }),
+    windowState({ project: paths.project, sessionId: MESSAGE_BOARD_FIXTURE_PARENT, theme }),
   );
   await writeFile(
     join(root, "application.json"),

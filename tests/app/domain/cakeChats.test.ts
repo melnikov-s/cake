@@ -26,7 +26,6 @@ import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamil
 const location = {
   workingDirectory: "/home/user",
   sessionDirectory: "/cake/global",
-  resolvedSessionDirectory: "/cake/global-resolved",
 };
 const configuration = { location, agentDirectory: "/cake/pi" };
 
@@ -81,9 +80,7 @@ function fixture() {
       catalogEntry: (_, id) => Effect.succeed(summary(id)),
       catalog: () =>
         Stream.fromIterable(
-          [summary("old-active"), summary(CAKE_CHAT_SESSION_ID)].filter(
-            (item) => !removed.includes(item.id),
-          ),
+          [summary(CAKE_CHAT_SESSION_ID)].filter((item) => !removed.includes(item.id)),
         ),
     }),
     Layer.mock(SessionArchiveStorage, {}),
@@ -188,7 +185,7 @@ describe("permanent Cake Chat", () => {
   );
 
   it.effect(
-    "exposes only the permanent coordinator in the active catalog and has no resolved lane",
+    "exposes the permanent coordinator in the active catalog and has no resolved lane",
     () => {
       const f = fixture();
       return Effect.gen(function* () {

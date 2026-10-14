@@ -58,7 +58,7 @@ import type { RequestInspection } from "./request-inspection";
 import { openDurableChatEngine } from "./durable-chat-engine";
 import { readDurableOriginalPage } from "./durable-chat-history";
 
-import { durableChatDatabase, purgeLegacyGlobalChatHistory } from "./durable-chat-location";
+import { durableChatDatabase } from "./durable-chat-location";
 import { coordinatorSystemPrompt } from "./coordinator-system-prompt";
 import { abortDurableActiveTurn, startDurableQueuedInput } from "./durable-chat-queue";
 import { registerAgentDirectoryExtensionProviders } from "../pi/runtime/extension-providers";
@@ -268,9 +268,6 @@ export async function createDurableCakeChatRuntime(
   });
   registry.install(defineExtension({ name: "cake-coordinator", tools: [cake, zoom, date] }));
   await mkdir(dirname(sessionFile), { recursive: true });
-  // Clean start is intentional. These are the explicitly configured global namespace
-  // roots, never a Project Session directory. SQLite is outside both deleted roots.
-  await purgeLegacyGlobalChatHistory(options.sessionDir, options.resolvedSessionDir);
   const storage = await openNodeSqliteStorage(sessionFile);
   let publishing: Promise<void> | undefined;
   let publishAgain = false;

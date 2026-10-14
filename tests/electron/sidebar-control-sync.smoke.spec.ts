@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
 import { emitRendererEvent } from "./main-harness";
+import { store, windowStateDocument } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 
@@ -33,7 +34,7 @@ test("a native-control draft remains in the limited sidebar when activated", asy
   );
   await writeFile(
     join(userData, "window-state.json"),
-    JSON.stringify({ recentProjectPaths: [project], theme: "system" }),
+    windowStateDocument({ projectCatalogStore: store({ projectOrder: [project] }) }),
   );
   await writeFile(
     join(cakeHome, "state", "application.json"),
