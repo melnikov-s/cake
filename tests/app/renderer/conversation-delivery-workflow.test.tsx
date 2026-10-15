@@ -60,6 +60,43 @@ describe("Conversation delivery workflow", () => {
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Send" }).disabled).toBe(false);
   });
 
+  it("reconciles a pasted-text-only send so the durable, openable reference replaces the pending pill", async () => {
+    const prompt = vi.fn<Client["sessionChats"]["prompt"]>(async () => turnId);
+    using fixture = renderConversationDelivery({ sessionChats: { prompt } });
+    await fixture.user.click(input());
+    await fixture.user.paste("PRIVATE_PASTED_LOG\n" + "error details\n".repeat(50));
+    const name = "Pasted text · 52 lines";
+    await fixture.user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(prompt).toHaveBeenCalled());
+    const conversation = within(screen.getByLabelText("Conversation"));
+    expect(conversation.getAllByText(name)).toHaveLength(1);
+    fixture.publish([
+      {
+        id: "canonical-user",
+        entryId: "canonical-entry",
+        kind: "text",
+        role: "user",
+        text: "",
+        status: "complete",
+      },
+      {
+        id: "canonical-input",
+        kind: "attachment",
+        name,
+        mediaType: "text/plain",
+        attachmentKind: "file",
+        inputReference: {
+          kind: "input",
+          id: "20000000-0000-4000-8000-000000000001",
+          name,
+          mimeType: "text/plain",
+          byteLength: 700,
+        },
+      },
+    ]);
+    await waitFor(() => expect(conversation.getAllByText(name)).toHaveLength(1));
+  });
+
   it.each(["Edited text", "Original text"])(
     "projects an edit in place and reconciles the replacement entry (%s)",
     async (text) => {

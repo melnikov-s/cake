@@ -295,10 +295,13 @@ export class OptimisticUserMessagesStore extends Store<OptimisticUserMessagesSto
     const attachment = parts.find(
       (part): part is Extract<UiPart, { kind: "attachment" }> => part.kind === "attachment",
     );
-    return attachment?.data
+    // Text-less sends match by image bytes or, for pasted text and files, by the
+    // durable input reference Cake stores under the same name.
+    return attachment
       ? canonical.filter(
           (part) =>
-            (part.kind === "attachment" &&
+            (attachment.data !== undefined &&
+              part.kind === "attachment" &&
               part.attachmentKind === attachment.attachmentKind &&
               part.data === attachment.data) ||
             isInputReference(part, attachment.name),
