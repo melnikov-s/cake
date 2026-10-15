@@ -23,6 +23,7 @@ import {
   deleteSessionPlugin,
   setProjectSessionLabelsIfUnlabelled,
   setSessionFastMode,
+  setSessionUnread,
   setSessionPluginState,
   patchSessionPluginState,
   upsertSessionPlugin,
@@ -292,6 +293,30 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       throw new Error(status.error ?? "The owning renderer's VS Code controls are unavailable");
     return response;
   };
+  const publishActivity = catalogs.publish({
+    _tag: "ProjectSessionActivityChanged",
+    sessionId,
+    projectPath: location.projectPath,
+    workingDirectory: location.workingDirectory,
+    sessionDirectory: location.sessionDirectory,
+  });
+  // A finished turn is durably unread until a window shows it, so sessions no window
+  // observes still surface completion. The cheap activity event carries the flag.
+  const markFinishedTurnUnread = Effect.gen(function* () {
+    const namespace = yield* resolutionNamespace(sessionId, {
+      cwd: location.workingDirectory,
+      activeRoot: location.sessionDirectory,
+      resolvedRoot: location.resolvedSessionDirectory,
+    });
+    if (namespace === "resolved") return;
+    yield* setSessionUnread(sessionId, true);
+    yield* publishActivity;
+  }).pipe(
+    Effect.provideService(ApplicationState, application),
+    Effect.provideService(SessionFamilyStorage, families),
+    Effect.provideService(SessionArchiveStorage, archive),
+    Effect.catchCause((cause) => Effect.logWarning("Could not mark finished turn unread", cause)),
+  );
   const runtimeOptions: CakeSessionRuntimeAcquireOptions = {
     profile: { _tag: "ProjectSession" },
     onRelease: runtimeHost.releaseSession(sessionId),
@@ -302,13 +327,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
       workingDirectory: location.workingDirectory,
       resolved: false,
     }),
-    onTurnActivityChanged: catalogs.publish({
-      _tag: "ProjectSessionActivityChanged",
-      sessionId,
-      projectPath: location.projectPath,
-      workingDirectory: location.workingDirectory,
-      sessionDirectory: location.sessionDirectory,
-    }),
+    onTurnActivityChanged: publishActivity,
     admitTurn: (input, accept) =>
       sessionFamilies
         .admitTurn(
@@ -327,6 +346,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         ),
     onTurnSettled: (event) =>
       Effect.gen(function* () {
+        if (event.outcome !== "aborted") yield* markFinishedTurnUnread;
         const workflowOwnsCompletion = yield* workflowLifecycle
           .holdsTurnCompletion(sessionId, event.turnId)
           .pipe(Effect.provideService(WorkflowSupervisor, workflowSupervisor));

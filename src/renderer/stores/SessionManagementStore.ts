@@ -19,6 +19,8 @@ export interface SessionManagementStoreProps {
 /** Owns Project Session rename, labels, archive/restore, deletion, and unread commands. */
 export class SessionManagementStore extends Store<SessionManagementStoreProps> {
   private readonly transitioningSessionIds = observable(new Set<string>());
+  /** Unread reminders this window's user set; finished-turn unread is the backend's. */
+  private readonly userMarkedUnreadIds = new Set<string>();
 
   get client() {
     return ClientContext.consume(this)!;
@@ -207,8 +209,14 @@ export class SessionManagementStore extends Store<SessionManagementStoreProps> {
     }
   }
 
+  isUserMarkedUnread(sessionId: string) {
+    return this.userMarkedUnreadIds.has(sessionId);
+  }
+
   async setSessionUnread(sessionId: string, unread: boolean) {
     if (!this.props.catalog.find(sessionId) || this.signal.aborted) return;
+    if (unread) this.userMarkedUnreadIds.add(sessionId);
+    else this.userMarkedUnreadIds.delete(sessionId);
     try {
       await this.client.workspaces.setSessionUnread(sessionId, unread, { signal: this.signal });
     } catch (error) {

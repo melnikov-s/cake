@@ -79,6 +79,10 @@ retained after Pi settles. Pi activity transitions and acceptance/settlement eve
 refresh sidebar indicators without demanding a Conversation observation or selecting
 the session. These activity events also carry the transcript's last write time (one
 file stat, never a transcript read), so sidebar recency follows background turns.
+A completed or failed turn durably marks its session unread, carried on the same
+activity event, so sessions no window observes still show completion. Opening the
+session clears it, as does finishing while selected, unless the user set that
+reminder.
 Activity is runtime-derived and is not persisted as session metadata.
 Conversation activity likewise clears when Pi stops, independently of later turn
 completion bookkeeping.

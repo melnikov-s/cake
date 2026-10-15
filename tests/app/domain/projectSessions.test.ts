@@ -982,7 +982,13 @@ describe("Project Sessions domain", () => {
               }
               if (update.event._tag === "Upserted")
                 return Deferred.succeed(appeared, update.event.session);
-              if (update.event._tag === "ActivityChanged" && !update.event.running && durable)
+              // Settlement durably marks the finished turn unread on the cheap activity event.
+              if (
+                update.event._tag === "ActivityChanged" &&
+                !update.event.running &&
+                update.event.unread &&
+                durable
+              )
                 return Deferred.succeed(settled, undefined);
               return Effect.void;
             }),
@@ -1035,6 +1041,10 @@ describe("Project Sessions domain", () => {
               ? reconstructed[0].sessions.map((s) => [s.sessionId, s.workingDirectory, s.running])
               : [],
             [[item.id, "/worktree", false]],
+          );
+          assert.equal(
+            reconstructed[0]?._tag === "Snapshot" ? reconstructed[0].sessions[0]?.unread : false,
+            true,
           );
           const recovered = yield* projectSessionMetadata.lookup({
             sessionId: item.id,

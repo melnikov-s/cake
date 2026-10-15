@@ -59,6 +59,23 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
   /** Session context the current error belongs to; context-free errors are undefined. */
   private errorSessionId: string | undefined;
   private sessionOpenRevision = 0;
+
+  constructor(props: ProjectWorkbenchStore["props"]) {
+    super(props);
+    // A turn that finishes while its session is selected was seen, so clear the
+    // backend's finished-turn unread mark; a reminder the user set stays.
+    this.reaction(
+      () => {
+        const sessionId = this.activeSessionId;
+        return sessionId && this.props.catalog.find(sessionId)?.unread ? sessionId : undefined;
+      },
+      (sessionId) => {
+        const management = SessionManagementContext.consume(this);
+        if (sessionId && management && !management.isUserMarkedUnread(sessionId))
+          void management.setSessionUnread(sessionId, false);
+      },
+    );
+  }
   /** Transient navigation intent; loading runs independently of transcript motion. */
   openingSession: { sessionId: string; sourceSessionId: string | undefined } | undefined;
   private reopenAfterAgentRestart = false;

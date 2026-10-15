@@ -86,6 +86,7 @@ async function renderCatalog(
     </>,
   );
   return {
+    root,
     user: userEvent.setup(),
     async publish(sessions: SessionSummaryFixture[]) {
       await act(async () =>
@@ -113,6 +114,50 @@ function sidebar() {
 afterEach(cleanup);
 
 describe("Session catalog lifecycle workflows", () => {
+  it("shows a finished background turn as unread but clears it for the selected session", async () => {
+    const setSessionUnread = vi.fn<Client["workspaces"]["setSessionUnread"]>(
+      async () => ({}) as never,
+    );
+    using fixture = await renderCatalog({
+      sessions: [
+        summary(sessionId, { title: "Selected" }),
+        summary("background", { title: "Background" }),
+      ],
+      client: { workspaces: { setSessionUnread } },
+    });
+    const row = (name: RegExp) =>
+      sidebar().getByRole("button", { name }).closest<HTMLElement>(".session-item")!;
+    const finished = (revision: number, id: string) =>
+      fixture.publishUpdate({
+        _tag: "Event",
+        revision,
+        event: { _tag: "ActivityChanged", sessionId: id, running: false, unread: true },
+      });
+    await finished(2, "background");
+    expect(within(row(/^Background /)).getByRole("img", { name: "Ready, unread" })).toBeTruthy();
+    expect(setSessionUnread).not.toHaveBeenCalled();
+    // The user watched the selected session finish, so its backend mark is cleared.
+    await finished(3, sessionId);
+    expect(setSessionUnread).toHaveBeenCalledExactlyOnceWith(sessionId, false, expect.anything());
+  });
+
+  it("keeps a reminder the user set on the selected session", async () => {
+    const setSessionUnread = vi.fn<Client["workspaces"]["setSessionUnread"]>(
+      async () => ({}) as never,
+    );
+    using fixture = await renderCatalog({
+      sessions: [summary(sessionId, { title: "Selected" })],
+      client: { workspaces: { setSessionUnread } },
+    });
+    await act(() => fixture.root.sidebarStore.setSessionUnread(sessionId, true));
+    await fixture.publishUpdate({
+      _tag: "Event",
+      revision: 2,
+      event: { _tag: "StatusChanged", sessionId, resolved: false, unread: true },
+    });
+    expect(setSessionUnread.mock.calls.map(([, unread]) => unread)).toEqual([true]);
+  });
+
   it("moves an unopened session up when its background turn settles, ignoring stale times", async () => {
     using fixture = await renderCatalog({
       sessions: [

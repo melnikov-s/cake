@@ -130,6 +130,7 @@ export function applySessionCatalogGroupUpdate(
       const existing = model.find(event.sessionId);
       if (existing && belongsToGroup(existing)) {
         existing.running = event.running;
+        if (event.unread !== undefined) existing.unread = event.unread;
         if (event.modifiedAt && event.modifiedAt > existing.modifiedAt)
           existing.modifiedAt = event.modifiedAt;
       }

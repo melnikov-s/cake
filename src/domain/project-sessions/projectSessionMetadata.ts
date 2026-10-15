@@ -509,10 +509,12 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
     const sessions = yield* CakeSessionRuntimes;
     const status = yield* sessions.currentStatus(change);
     const modifiedAt = yield* sessions.currentModifiedAt(change);
+    const state = yield* getState();
     return {
       _tag: "ActivityChanged",
       sessionId: change.sessionId,
       running: status?.streaming ?? false,
+      unread: state.unreadSessionIds.includes(change.sessionId),
       ...(modifiedAt ? { modifiedAt } : null),
     } as const;
   }

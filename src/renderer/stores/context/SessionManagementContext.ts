@@ -13,5 +13,6 @@ export const SessionManagementContext =
       | "deleteSession"
       | "setSessionLabels"
       | "setSessionUnread"
+      | "isUserMarkedUnread"
     >
   >();
