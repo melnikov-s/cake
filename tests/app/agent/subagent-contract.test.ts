@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveCakeModelSelection } from "../../../src/domain/model-presets/cake-model-selection";
 import type {
   ExplicitCakeModelSelection,
-  SubagentDefaultModel,
+  CakeModelChoice,
 } from "../../../src/contracts/model-presets/cake-model-selection";
 import { CakeOperationRegistry } from "../../../src/services/pi/runtime/cake-operation-registry";
 import { createAgentControlOperations } from "../../../src/domain/subagents/cake-subagent-operations";
@@ -261,7 +261,7 @@ describe("subagent contract", () => {
       thinkingLevel,
       fastMode,
     });
-    const settings: Array<[SubagentDefaultModel | undefined, ExplicitCakeModelSelection]> = [
+    const settings: Array<[CakeModelChoice | undefined, ExplicitCakeModelSelection]> = [
       [undefined, inherited],
       [{ source: "default" }, configuration(preset)],
       [{ source: "inherit" }, inherited],

@@ -12,15 +12,21 @@ import { toJsonValue } from "../../utils/to-json-value";
 import { forwardTaskInputControl, safeCoordinatorProjection } from "./taskInputControls";
 import { TaskInputStorage } from "../../services/storage/TaskInputStorage";
 import { SavedDraftStorage } from "../../services/storage/SavedDraftStorage";
-import { cakeModelCatalog, resolveCakeModelSelection } from "../model-presets/cake-model-selection";
+import {
+  cakeModelCatalog,
+  resolveCakeModelChoice,
+  resolveCakeModelSelection,
+} from "../model-presets/cake-model-selection";
 import {
   getCakeChatInstructions,
   updateCakeChatInstructions,
   setSessionFastMode,
 } from "../application/application";
 import { PiModels } from "../../services/pi/PiModels";
-import { defaultCakeChatPreferences } from "../../contracts/cake-chats/cake-chat-preferences";
-import { utilityModelSelection } from "../utility-work/utilityWork";
+import {
+  cakeChatModelSettingDefaults,
+  defaultCakeChatPreferences,
+} from "../../contracts/cake-chats/cake-chat-preferences";
 import type { CakeChatTarget } from "../../contracts/cake-chats/cake-chat-data";
 import type { CakeChatLocation } from "./cakeChatLocations";
 import { makeSubagentControl } from "../subagents/subagentControl";
@@ -181,17 +187,21 @@ export const acquireOptions = Effect.fn("CakeChats.acquireOptions")(function* ({
           application.snapshot().cakeChatPreferences ?? defaultCakeChatPreferences(),
         summarize: (input) => {
           const state = application.snapshot();
-          const model = state.cakeChatPreferences?.summarizationModel ?? state.utilityModel;
-          if (!model)
-            return Promise.reject(
-              new Error(
-                "Configure a utility model or Cake Chat summarization model in Settings to continue.",
-              ),
+          let selection;
+          try {
+            selection = resolveCakeModelChoice(
+              state.cakeChatPreferences?.summarizationModel ??
+                cakeChatModelSettingDefaults.summarizationModel,
+              cakeModelCatalog(state),
+              input.caller,
             );
+          } catch (error) {
+            return Promise.reject(error);
+          }
           return run(
             models.complete(
               {
-                selection: utilityModelSelection(model),
+                selection,
                 instructions: input.instructions,
                 context: input.context,
                 maximumOutputCharacters: 4_096,

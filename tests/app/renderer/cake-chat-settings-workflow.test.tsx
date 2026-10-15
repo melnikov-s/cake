@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { defaultApplicationState } from "../../../src/contracts/application/application-data";
@@ -80,102 +80,107 @@ it("shows a failed preference save and permits retry without discarding persiste
   }
 });
 
-it("persists every Subagent default model choice through the real Settings workflow", async () => {
-  const presets = [
-    {
-      id: "00000000-0000-4000-8000-000000000001",
-      name: "Astra",
-      provider: "anthropic",
-      modelId: "claude-opus",
-      thinkingLevel: "high" as const,
-      fastMode: false,
-    },
-    {
-      id: "00000000-0000-4000-8000-000000000002",
-      name: "Flash",
-      provider: "google",
-      modelId: "gemini-flash",
-      thinkingLevel: "low" as const,
-      fastMode: false,
-    },
-  ];
-  const base = {
-    ...defaultApplicationState(),
-    modelPresets: presets,
-    defaultModelPresetId: presets[0]!.id,
-    utilityModel: { provider: "openai", modelId: "gpt-mini", thinkingLevel: "off" as const },
-  };
-  let revision = 0;
-  const save = vi.fn<Client["workspaces"]["setCakeChatPreferences"]>(async (preferences) => {
-    const state = { ...base, cakeChatPreferences: preferences };
-    fixture.root.settingsStore.applyApplicationState(++revision, state);
-    return state;
-  });
-  using fixture = createRendererStoreFixture({
-    client: { workspaces: { setCakeChatPreferences: save } },
-  });
-  fixture.root.settingsStore.applyApplicationState(0, base);
-  fixture.root.settingsStore.selectPage("cake-chat");
-  const view = render(<SettingsPage settings={fixture.root.settingsStore} />);
-  try {
-    const user = userEvent.setup();
-    const select = screen.getByRole("combobox", { name: "Subagent default model" });
-    expect(select).toHaveProperty("value", "inherit");
-    expect(screen.getByRole("option", { name: "Default preset (Astra)" })).toBeDefined();
-
-    const choices = [
-      ["default", { source: "default" }],
-      ["utility", { source: "utility" }],
-      [`preset:${presets[1]!.id}`, { source: "preset", presetId: presets[1]!.id }],
-    ] as const;
-    for (const [value, subagentDefaultModel] of choices) {
-      await user.selectOptions(select, value);
-      await waitFor(() =>
-        expect(save).toHaveBeenLastCalledWith(
-          { ...defaultCakeChatPreferences(), subagentDefaultModel },
-          expect.anything(),
-        ),
-      );
-      expect(select).toHaveProperty("value", value);
-    }
-
-    // Choosing Inherit stores nothing, matching the out-of-the-box value.
-    await user.selectOptions(select, "inherit");
-    await waitFor(() =>
-      expect(save).toHaveBeenLastCalledWith(defaultCakeChatPreferences(), expect.anything()),
-    );
-
-    // A specific model needs a picked model before anything is saved.
-    const saves = save.mock.calls.length;
-    await user.selectOptions(select, "model");
-    expect(
-      screen.getByRole("button", { name: /Subagent default model configuration/ }),
-    ).toBeDefined();
-    expect(save).toHaveBeenCalledTimes(saves);
-
-    // A saved freeform model shows as the specific-model choice with its model ID.
-    const freeform = {
-      provider: "custom",
-      modelId: "not-a-preset",
-      thinkingLevel: "medium" as const,
-      fastMode: true,
-    };
-    await fixture.root.settingsStore.cakeChat.setSubagentDefaultModel({
-      source: "model",
-      model: freeform,
-    });
-    expect(save).toHaveBeenLastCalledWith(
+it.each([
+  ["subagentDefaultModel", "Subagent default model", "inherit", "Inherit chat model (default)"],
+  ["summarizationModel", "Summarization model", "utility", "Utility model (default, gpt-mini)"],
+] as const)(
+  "persists every %s choice through the shared Settings model-choice field",
+  async (setting, label, defaultSource, defaultOption) => {
+    const presets = [
       {
-        ...defaultCakeChatPreferences(),
-        subagentDefaultModel: { source: "model", model: freeform },
+        id: "00000000-0000-4000-8000-000000000001",
+        name: "Astra",
+        provider: "anthropic",
+        modelId: "claude-opus",
+        thinkingLevel: "high" as const,
+        fastMode: false,
       },
-      expect.anything(),
-    );
-    await waitFor(() => expect(select).toHaveProperty("value", "model"));
-    expect(
-      screen.getByRole("button", { name: /Subagent default model configuration/ }).textContent,
-    ).toContain("not-a-preset");
-  } finally {
-    view.unmount();
-  }
-});
+      {
+        id: "00000000-0000-4000-8000-000000000002",
+        name: "Flash",
+        provider: "google",
+        modelId: "gemini-flash",
+        thinkingLevel: "low" as const,
+        fastMode: false,
+      },
+    ];
+    const base = {
+      ...defaultApplicationState(),
+      modelPresets: presets,
+      defaultModelPresetId: presets[0]!.id,
+      utilityModel: { provider: "openai", modelId: "gpt-mini", thinkingLevel: "off" as const },
+    };
+    let revision = 0;
+    const save = vi.fn<Client["workspaces"]["setCakeChatPreferences"]>(async (preferences) => {
+      const state = { ...base, cakeChatPreferences: preferences };
+      fixture.root.settingsStore.applyApplicationState(++revision, state);
+      return state;
+    });
+    using fixture = createRendererStoreFixture({
+      client: { workspaces: { setCakeChatPreferences: save } },
+    });
+    fixture.root.settingsStore.applyApplicationState(0, base);
+    fixture.root.settingsStore.selectPage("cake-chat");
+    const view = render(<SettingsPage settings={fixture.root.settingsStore} />);
+    try {
+      const user = userEvent.setup();
+      const select = screen.getByRole("combobox", { name: label });
+      expect(select).toHaveProperty("value", defaultSource);
+      const options = within(select);
+      expect(options.getByRole("option", { name: defaultOption })).toBeDefined();
+      expect(options.getByRole("option", { name: "Default preset (Astra)" })).toBeDefined();
+
+      const choices = [
+        ["inherit", { source: "inherit" }],
+        ["default", { source: "default" }],
+        ["utility", { source: "utility" }],
+        [`preset:${presets[1]!.id}`, { source: "preset", presetId: presets[1]!.id }],
+      ] as const;
+      for (const [value, choice] of choices) {
+        if (value === defaultSource) continue;
+        await user.selectOptions(select, value);
+        await waitFor(() =>
+          expect(save).toHaveBeenLastCalledWith(
+            { ...defaultCakeChatPreferences(), [setting]: choice },
+            expect.anything(),
+          ),
+        );
+        expect(select).toHaveProperty("value", value);
+      }
+
+      // Choosing the setting's default stores nothing, matching the out-of-the-box value.
+      await user.selectOptions(select, defaultSource);
+      await waitFor(() =>
+        expect(save).toHaveBeenLastCalledWith(defaultCakeChatPreferences(), expect.anything()),
+      );
+
+      // A specific model needs a picked model before anything is saved.
+      const saves = save.mock.calls.length;
+      await user.selectOptions(select, "model");
+      expect(screen.getByRole("button", { name: `${label} configuration` })).toBeDefined();
+      expect(save).toHaveBeenCalledTimes(saves);
+
+      // A saved freeform model shows as the specific-model choice with its model ID.
+      const freeform = {
+        provider: "custom",
+        modelId: "not-a-preset",
+        thinkingLevel: "medium" as const,
+        fastMode: true,
+      };
+      await fixture.root.settingsStore.cakeChat.setModelChoice(setting, {
+        source: "model",
+        model: freeform,
+      });
+      expect(save).toHaveBeenLastCalledWith(
+        { ...defaultCakeChatPreferences(), [setting]: { source: "model", model: freeform } },
+        expect.anything(),
+      );
+      await waitFor(() => expect(select).toHaveProperty("value", "model"));
+      expect(screen.getByRole("button", { name: `${label} configuration` }).textContent).toContain(
+        "not-a-preset",
+      );
+    } finally {
+      view.unmount();
+    }
+  },
+);

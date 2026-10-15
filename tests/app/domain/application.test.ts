@@ -121,7 +121,7 @@ describe("Application domain", () => {
       const preferences = {
         memoryViewBytes: 8_000,
         instructions: "Original guidance.",
-        summarizationModel: { provider: "p", modelId: "summary", thinkingLevel: "low" as const },
+        summarizationModel: { source: "inherit" as const },
         // Instruction updates preserve, and reloads restore, the Subagent default model.
         subagentDefaultModel: {
           source: "model" as const,

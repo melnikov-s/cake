@@ -127,7 +127,7 @@ test("Cake Chat delegates to a project-context worker in the existing live subag
   await writeFile(
     join(cakeHome, "state", "application.json"),
     JSON.stringify({
-      version: 6,
+      version: 7,
       data: {
         ...defaultApplicationState(),
         projects: [

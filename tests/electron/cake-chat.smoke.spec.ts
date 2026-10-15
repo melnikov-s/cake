@@ -117,7 +117,7 @@ test("permanent Cake Chat retains its input, history and settings across restart
   await writeFile(
     document,
     JSON.stringify({
-      version: 6,
+      version: 7,
       data: {
         ...defaultApplicationState(),
         modelPresets: [

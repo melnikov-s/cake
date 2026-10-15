@@ -5,7 +5,7 @@ import {
   CakeModelSelection,
   type CakeModelPresetCatalog,
   type ExplicitCakeModelSelection,
-  type SubagentDefaultModel,
+  type CakeModelChoice,
 } from "../../../src/contracts/model-presets/cake-model-selection";
 import { resolveCakeModelSelection } from "../../../src/domain/model-presets/cake-model-selection";
 
@@ -149,7 +149,7 @@ describe("Cake model selection", () => {
       modelId: "gpt-5.6-sol",
       thinkingLevel: "high" as const,
     };
-    const cases: Array<[string, SubagentDefaultModel | undefined, ExplicitCakeModelSelection]> = [
+    const cases: Array<[string, CakeModelChoice | undefined, ExplicitCakeModelSelection]> = [
       ["unset → caller (Inherit is the default)", undefined, caller],
       ["default → default preset", { source: "default" }, { ...sol, fastMode: true }],
       ["inherit → caller", { source: "inherit" }, caller],

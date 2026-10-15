@@ -169,7 +169,10 @@ describe("permanent Cake Chat", () => {
           cakeChatPreferences: {
             memoryViewBytes: 5_000,
             instructions: "Always create worktrees",
-            summarizationModel: { provider: "p", modelId: "chosen", thinkingLevel: "off" },
+            summarizationModel: {
+              source: "model",
+              model: { provider: "p", modelId: "chosen", thinkingLevel: "off", fastMode: false },
+            },
           },
         });
         yield* Effect.promise(() =>
@@ -179,7 +182,43 @@ describe("permanent Cake Chat", () => {
             signal: new AbortController().signal,
           }),
         );
-        expect(f.completions).toEqual(["cheap", "chosen"]);
+        // Inherit summarizes with Cake Chat's current model.
+        const preferences = { memoryViewBytes: 5_000, instructions: "Always create worktrees" };
+        f.setState({
+          ...defaultApplicationState(),
+          cakeChatPreferences: { ...preferences, summarizationModel: { source: "inherit" } },
+        });
+        yield* Effect.promise(() =>
+          summarize({
+            instructions: "compress",
+            context: "history",
+            signal: new AbortController().signal,
+            caller: { provider: "p", modelId: "chat", thinkingLevel: "high", fastMode: false },
+          }),
+        );
+        // A missing utility model fails clearly instead of substituting another model.
+        f.setState({ ...defaultApplicationState(), cakeChatPreferences: preferences });
+        yield* Effect.promise(() =>
+          summarize({
+            instructions: "compress",
+            context: "history",
+            signal: new AbortController().signal,
+          }).then(
+            () => expect.fail("Expected summarization to require a utility model"),
+            (error: unknown) => expect(String(error)).toMatch(/no utility model is configured/),
+          ),
+        );
+        expect(f.completions).toEqual(["cheap", "chosen", "chat"]);
+        f.setState({
+          ...defaultApplicationState(),
+          cakeChatPreferences: {
+            ...preferences,
+            summarizationModel: {
+              source: "model",
+              model: { provider: "p", modelId: "chosen", thinkingLevel: "off", fastMode: false },
+            },
+          },
+        });
         expect(options.runtime.cakeChatMemory?.preferences().instructions).toBe(
           "Always create worktrees",
         );

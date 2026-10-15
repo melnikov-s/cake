@@ -1,9 +1,8 @@
 import { observer } from "r-state-tree/react";
 import type { SettingsStore } from "../stores/SettingsStore";
-import { ModelPicker } from "./model-picker";
 import { Select } from "./ui/select";
 import { SettingsPromptField } from "./settings/settings-prompt-field";
-import { SettingsSubagentModelField } from "./settings-subagent-model-field";
+import { SettingsModelChoiceField } from "./settings-model-choice-field";
 
 export const SettingsCakeChatSection = observer(function SettingsCakeChatSection({
   settings,
@@ -11,7 +10,6 @@ export const SettingsCakeChatSection = observer(function SettingsCakeChatSection
   settings: SettingsStore;
 }) {
   const store = settings.cakeChat;
-  const model = store.preferences.summarizationModel;
   return (
     <section className="border-t border-border py-5" aria-labelledby="cake-chat-settings-title">
       <h2 id="cake-chat-settings-title" className="text-[15px] font-semibold text-foreground">
@@ -42,29 +40,18 @@ export const SettingsCakeChatSection = observer(function SettingsCakeChatSection
             ))}
           </Select>
         </label>
-        <div className="flex items-center justify-between gap-6 text-sm">
-          <span className="flex flex-col gap-1">
-            <strong className="text-xs font-medium">Summarization model</strong>
-            <small className="text-[11px] text-muted-foreground">
-              Uses your utility model unless overridden. A configured model is required for
-              summaries; background calls add cost.
-            </small>
-          </span>
-          <ModelPicker
-            ariaLabel="Cake Chat summarization model"
-            placeholder="Use utility model"
-            allowClear
-            showFastMode={false}
-            groups={() => settings.providerGroups}
-            value={model}
-            currentModelName={model?.modelId}
-            onClear={() => void store.setModel(undefined)}
-            onSelect={({ provider, modelId, thinkingLevel }) =>
-              void store.setModel({ provider, modelId, thinkingLevel })
-            }
-          />
-        </div>
-        <SettingsSubagentModelField settings={settings} />
+        <SettingsModelChoiceField
+          settings={settings}
+          setting="summarizationModel"
+          label="Summarization model"
+          description="Summarizes Cake Chat history in the background; summaries add cost. The utility model is the default. Inherit uses the chat's current model."
+        />
+        <SettingsModelChoiceField
+          settings={settings}
+          setting="subagentDefaultModel"
+          label="Subagent default model"
+          description="Used when Cake Chat starts a subagent without choosing a model. Inherit uses the chat's current model, thinking level, and Fast mode. Project Session subagents and new sessions use the default preset."
+        />
         <SettingsPromptField
           id="setting-cake-chat-instructions"
           label="Cake Chat instructions"

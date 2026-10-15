@@ -1,11 +1,12 @@
 import { Store } from "r-state-tree";
-import type {
-  ApplicationState,
-  UtilityModel,
-} from "../../contracts/conversations/session-contract";
-import { defaultCakeChatPreferences } from "../../contracts/cake-chats/cake-chat-preferences";
+import type { ApplicationState } from "../../contracts/conversations/session-contract";
+import {
+  cakeChatModelSettingDefaults,
+  defaultCakeChatPreferences,
+  type CakeChatModelSetting,
+} from "../../contracts/cake-chats/cake-chat-preferences";
 import type { CakeChatPreferences } from "../../contracts/application/application-data";
-import type { SubagentDefaultModel } from "../../contracts/model-presets/cake-model-selection";
+import type { CakeModelChoice } from "../../contracts/model-presets/cake-model-selection";
 import { ClientContext } from "./context/ClientContext";
 import { describeError } from "../lib/error-details";
 
@@ -33,18 +34,14 @@ export class CakeChatSettingsStore extends Store {
   setInstructions(instructions: string) {
     return this.save({ ...this.preferences, instructions });
   }
-  setModel(model: UtilityModel | undefined) {
+  /** Choosing a setting's default source stores nothing, matching the out-of-the-box value. */
+  setModelChoice(setting: CakeChatModelSetting, choice: CakeModelChoice) {
     const preferences = { ...this.preferences };
-    delete preferences.summarizationModel;
-    return this.save(model ? { ...preferences, summarizationModel: model } : preferences);
-  }
-
-  /** Choosing Inherit stores nothing, matching the out-of-the-box value. */
-  setSubagentDefaultModel(model: SubagentDefaultModel) {
-    const preferences = { ...this.preferences };
-    delete preferences.subagentDefaultModel;
+    delete preferences[setting];
     return this.save(
-      model.source === "inherit" ? preferences : { ...preferences, subagentDefaultModel: model },
+      choice.source === cakeChatModelSettingDefaults[setting].source
+        ? preferences
+        : { ...preferences, [setting]: choice },
     );
   }
 

@@ -104,7 +104,7 @@ test("canceling child reports retires their outbox entries and Stop stays stoppe
   await writeFile(
     journal,
     JSON.stringify({
-      version: 6,
+      version: 7,
       data: {
         families: [
           {

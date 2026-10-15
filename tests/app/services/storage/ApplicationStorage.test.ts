@@ -190,7 +190,7 @@ describe("ApplicationStorage", () => {
   );
 
   it.effect("loads a current version envelope", () =>
-    withStorage({ [documentPath]: JSON.stringify({ version: 6, data: current }) }, (storage) =>
+    withStorage({ [documentPath]: JSON.stringify({ version: 7, data: current }) }, (storage) =>
       Effect.gen(function* () {
         const loaded = yield* storage.load();
         assert.strictEqual(loaded.source, "current");
@@ -203,7 +203,7 @@ describe("ApplicationStorage", () => {
     withStorage(
       {
         [documentPath]: JSON.stringify({
-          version: 6,
+          version: 7,
           data: {
             ...current,
             globalCustomInstructions: undefined,
@@ -294,11 +294,49 @@ describe("ApplicationStorage", () => {
     }),
   );
 
+  it.effect("migrates a version-six summarization model to an explicit model choice", () =>
+    Effect.gen(function* () {
+      const legacy = { provider: "p", modelId: "summary", thinkingLevel: "low" };
+      for (const [summarizationModel, expected] of [
+        [legacy, { source: "model", model: { ...legacy, fastMode: false } }],
+        [undefined, undefined],
+      ] as const) {
+        const preferences = { memoryViewBytes: 8_000, instructions: "Guidance" };
+        yield* withStorage(
+          {
+            [documentPath]: JSON.stringify({
+              version: 6,
+              data: {
+                ...current,
+                cakeChatPreferences: summarizationModel
+                  ? { ...preferences, summarizationModel }
+                  : preferences,
+              },
+            }),
+          },
+          (storage, controls) =>
+            Effect.gen(function* () {
+              const loaded = yield* storage.load();
+              assert.equal(loaded.source, "migrated");
+              assert.deepEqual(
+                loaded.state.cakeChatPreferences,
+                expected ? { ...preferences, summarizationModel: expected } : preferences,
+              );
+              const persistedText = controls.files.get(documentPath);
+              assert.ok(persistedText);
+              assert.equal(JSON.parse(persistedText).version, 7);
+              assert.equal((yield* storage.load()).source, "current");
+            }),
+        );
+      }
+    }),
+  );
+
   it.effect("preserves explicit current-version text and lets domain policy resolve it", () =>
     withStorage(
       {
         [documentPath]: JSON.stringify({
-          version: 6,
+          version: 7,
           data: {
             ...current,
             cakePrompts: {
@@ -363,7 +401,7 @@ describe("ApplicationStorage", () => {
             const persistedText = controls.files.get(documentPath);
             assert.ok(persistedText);
             const persisted = JSON.parse(persistedText);
-            assert.strictEqual(persisted.version, 6);
+            assert.strictEqual(persisted.version, 7);
             assert.ok(!("schemaVersion" in persisted.data));
           }),
         );
@@ -423,10 +461,10 @@ describe("ApplicationStorage", () => {
         ["{", ApplicationMalformedDocumentError],
         [JSON.stringify({ nope: true }), ApplicationMalformedDocumentError],
         [
-          JSON.stringify({ version: 6, data: { ...current, projects: "invalid" } }),
+          JSON.stringify({ version: 7, data: { ...current, projects: "invalid" } }),
           ApplicationDecodeError,
         ],
-        [JSON.stringify({ version: 7, data: current }), ApplicationUnsupportedVersionError],
+        [JSON.stringify({ version: 8, data: current }), ApplicationUnsupportedVersionError],
         [
           JSON.stringify({ version: 0, data: { schemaVersion: 1, projects: "invalid" } }),
           ApplicationMigrationError,

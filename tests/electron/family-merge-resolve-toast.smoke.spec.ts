@@ -91,7 +91,7 @@ test("merging and resolving a family root shows one consolidated toast", async (
   await writeFile(
     join(cakeHome, "state", "session-families.json"),
     JSON.stringify({
-      version: 6,
+      version: 7,
       data: {
         families: [
           {

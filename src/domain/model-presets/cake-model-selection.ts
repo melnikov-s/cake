@@ -4,9 +4,10 @@ import type {
   ExplicitCakeModelSelection,
   CakeModelLaunch,
   CakeModelPresetCatalog,
-  SubagentDefaultModel,
+  CakeModelChoice,
 } from "../../contracts/model-presets/cake-model-selection";
 import type { ApplicationState, ModelPreset } from "../../contracts/application/application-data";
+import { cakeChatModelSettingDefaults } from "../../contracts/cake-chats/cake-chat-preferences";
 
 const presetConfiguration = (preset: ModelPreset): ExplicitCakeModelSelection => ({
   provider: preset.provider,
@@ -28,8 +29,7 @@ export const cakeModelCatalog = (
   subagentDefaultModel: state.cakeChatPreferences?.subagentDefaultModel,
 });
 
-const DEFAULT: SubagentDefaultModel = { source: "default" };
-const INHERIT: SubagentDefaultModel = { source: "inherit" };
+const DEFAULT: CakeModelChoice = { source: "default" };
 
 /**
  * Resolves one snapshot of Cake-owned preset configuration at operation execution time.
@@ -37,7 +37,7 @@ const INHERIT: SubagentDefaultModel = { source: "inherit" };
  * An explicit selection is always honored exactly. An omitted selection on a `session` launch
  * uses the configured default preset, falling back to `caller` (the calling session's current
  * settings) only when no default preset is configured. On a `subagent` launch it follows the
- * catalog's Subagent default model setting (see {@link SubagentDefaultModel}), which only Cake
+ * catalog's Subagent default model setting (see {@link CakeModelChoice}), which only Cake
  * Chat composition requests; Project Session subagents resolve as `session` launches.
  */
 export function resolveCakeModelSelection(
@@ -47,8 +47,10 @@ export function resolveCakeModelSelection(
   launch: CakeModelLaunch = "session",
 ): ExplicitCakeModelSelection {
   if (selection === undefined)
-    return resolveOmitted(
-      launch === "subagent" ? (catalog.subagentDefaultModel ?? INHERIT) : DEFAULT,
+    return resolveCakeModelChoice(
+      launch === "subagent"
+        ? (catalog.subagentDefaultModel ?? cakeChatModelSettingDefaults.subagentDefaultModel)
+        : DEFAULT,
       catalog,
       caller,
     );
@@ -64,8 +66,13 @@ export function resolveCakeModelSelection(
   return presetConfiguration(matches[0]!);
 }
 
-function resolveOmitted(
-  source: SubagentDefaultModel,
+/**
+ * Resolves one Cake Chat model choice. Default and Inherit fall back to each other when their
+ * primary source is unavailable; a missing utility model or deleted preset fails instead of
+ * substituting another model.
+ */
+export function resolveCakeModelChoice(
+  source: CakeModelChoice,
   catalog: CakeModelPresetCatalog,
   caller: ExplicitCakeModelSelection | undefined,
 ): ExplicitCakeModelSelection {
@@ -77,7 +84,7 @@ function resolveOmitted(
       const utility = catalog.utilityModel;
       if (!utility)
         throw new Error(
-          "The Subagent default model is the utility model, but no utility model is configured. Configure one in Settings or pass a model.",
+          "The chosen model is the utility model, but no utility model is configured. Configure one in Settings or choose another model.",
         );
       return { ...utility, fastMode: false };
     }
@@ -85,13 +92,12 @@ function resolveOmitted(
       const preset = findPreset(source.presetId);
       if (!preset)
         throw new Error(
-          "The Subagent default model preset no longer exists. Choose another in Settings → Cake Chat or pass a model.",
+          "The chosen model preset no longer exists. Choose another model in Settings → Cake Chat.",
         );
       return presetConfiguration(preset);
     }
     case "default":
     case "inherit": {
-      // Default and Inherit fall back to each other when their primary source is unavailable.
       const preset = findPreset(catalog.defaultPresetId);
       const defaultConfiguration = preset ? presetConfiguration(preset) : undefined;
       const callerConfiguration = caller ? { ...caller } : undefined;

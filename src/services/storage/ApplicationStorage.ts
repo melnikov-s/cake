@@ -1,6 +1,7 @@
 import { Context, Effect, FileSystem, Layer, Path, Schema, Semaphore } from "effect";
 import {
   ApplicationState,
+  CakeChatPreferences,
   ModelPreset,
   ProjectRecord,
   ProjectSettings,
@@ -19,7 +20,7 @@ import {
   ApplicationWriteError,
 } from "../../contracts/storage/application-storage-errors";
 
-const APPLICATION_DOCUMENT_VERSION = 6;
+const APPLICATION_DOCUMENT_VERSION = 7;
 export const APPLICATION_DOCUMENT_NAME = "application.json";
 
 class ApplicationReadError extends Schema.TaggedError<ApplicationReadError>()(
@@ -159,8 +160,21 @@ const ApplicationStateV4 = Schema.Struct({
 });
 type ApplicationStateV4 = typeof ApplicationStateV4.Type;
 
-const ApplicationStateV5 = Schema.Struct({
+// Versions five and six stored the Cake Chat summarization model as a bare utility-style
+// model; version seven stores a model choice shared with the Subagent default model.
+const ApplicationStateV6 = Schema.Struct({
   ...ApplicationState.fields,
+  cakeChatPreferences: Schema.optionalKey(
+    Schema.Struct({
+      ...CakeChatPreferences.fields,
+      summarizationModel: Schema.optionalKey(UtilityModel),
+    }),
+  ),
+});
+type ApplicationStateV6 = typeof ApplicationStateV6.Type;
+
+const ApplicationStateV5 = Schema.Struct({
+  ...ApplicationStateV6.fields,
   cakePrompts: CakePrompts,
 });
 type ApplicationStateV5 = typeof ApplicationStateV5.Type;
@@ -299,6 +313,28 @@ const migrateVersionFive = Effect.fn("ApplicationStorage.migrateVersionFive")((
       prompts[key] = value;
   }
   return Effect.succeed({ ...state, cakePrompts: prompts });
+});
+
+// A stored summarization override becomes an explicit model choice with Fast mode off, which
+// is how summaries already ran; an absent value keeps meaning the utility model.
+const migrateVersionSix = Effect.fn("ApplicationStorage.migrateVersionSix")((
+  state: ApplicationStateV6,
+) => {
+  const { cakeChatPreferences, ...rest } = state;
+  if (!cakeChatPreferences) return Effect.succeed<ApplicationStateValue>(rest);
+  const { summarizationModel, ...preferences } = cakeChatPreferences;
+  return Effect.succeed<ApplicationStateValue>({
+    ...rest,
+    cakeChatPreferences: summarizationModel
+      ? {
+          ...preferences,
+          summarizationModel: {
+            source: "model",
+            model: { ...summarizationModel, fastMode: false },
+          },
+        }
+      : preferences,
+  });
 });
 
 const writeError = (stage: AtomicFileStage, cause: unknown) =>
@@ -443,6 +479,17 @@ export const makeApplicationStorageLive = (userDataDirectory: string) =>
               ),
             );
             data = yield* migrateVersionFive(previous);
+          } else if (version === 6) {
+            const previous = yield* Schema.decodeUnknownEffect(ApplicationStateV6)(data).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ApplicationMigrationError({
+                    fromVersion: 6,
+                    message: cause.message,
+                  }),
+              ),
+            );
+            data = yield* migrateVersionSix(previous);
           } else
             return yield* new ApplicationMigrationError({
               fromVersion: version,

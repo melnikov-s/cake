@@ -24,15 +24,15 @@ export type ExplicitCakeModelSelection = typeof ExplicitCakeModelSelection.Type;
 export type CakeModelSelection = typeof CakeModelSelection.Type;
 
 /**
- * Stored Cake Chat "Subagent default model" setting: what a Cake Chat subagent launched
- * without a model uses. Absent means `inherit`. Project Session subagents ignore it.
+ * A stored Cake Chat model setting (Subagent default model, Summarization model). Each
+ * setting has its own unstored default source.
  * - default: the configured default model preset.
- * - inherit: the calling session's current model, thinking level, and Fast mode.
+ * - inherit: Cake Chat's current model, thinking level, and Fast mode.
  * - utility: the configured utility model (Fast mode off).
  * - preset: one configured preset, referenced by ID so renames keep working.
  * - model: one explicit provider, model ID, thinking level, and Fast mode.
  */
-export const SubagentDefaultModel = Schema.Union([
+export const CakeModelChoice = Schema.Union([
   Schema.Struct({ source: Schema.Literal("default") }),
   Schema.Struct({ source: Schema.Literal("inherit") }),
   Schema.Struct({ source: Schema.Literal("utility") }),
@@ -42,12 +42,13 @@ export const SubagentDefaultModel = Schema.Union([
   }),
   Schema.Struct({ source: Schema.Literal("model"), model: ExplicitCakeModelSelection }),
 ]);
-export type SubagentDefaultModel = typeof SubagentDefaultModel.Type;
+export type CakeModelChoice = typeof CakeModelChoice.Type;
 
 /**
  * Which launch path is resolving a model. An omitted model on a `session` launch (sessions,
  * drafts, children, workflow agents, and Project Session subagents) uses the default preset;
- * on a Cake Chat `subagent` launch it follows the catalog's `subagentDefaultModel` setting.
+ * on a Cake Chat `subagent` launch it follows the catalog's `subagentDefaultModel` setting
+ * (absent means `inherit`).
  */
 export type CakeModelLaunch = "session" | "subagent";
 
@@ -56,5 +57,5 @@ export interface CakeModelPresetCatalog {
   readonly presets: readonly ModelPreset[];
   readonly defaultPresetId?: string;
   readonly utilityModel?: UtilityModel;
-  readonly subagentDefaultModel?: SubagentDefaultModel;
+  readonly subagentDefaultModel?: CakeModelChoice;
 }

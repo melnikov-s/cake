@@ -17,7 +17,7 @@ test("prompt defaults remain placeholders while custom overrides persist, clear,
     mkdir(userData, { recursive: true }),
     mkdir(join(cakeHome, "state"), { recursive: true }),
   ]);
-  await writeFile(document, JSON.stringify({ version: 6, data: defaultApplicationState() }));
+  await writeFile(document, JSON.stringify({ version: 7, data: defaultApplicationState() }));
   const launch = () =>
     electron.launch({
       args: [repositoryRoot],

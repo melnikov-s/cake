@@ -170,16 +170,17 @@ export async function createDurableCakeChatRuntime(
   let streaming = false;
   let activeTurnIds: string[] = [];
   const diagnostics: string[] = [...providerDiagnostics];
+  const currentConfiguration = (): ExplicitCakeModelSelection => ({
+    provider: selected.provider,
+    modelId: selected.id,
+    thinkingLevel,
+    fastMode,
+  });
   const resolveModel = (
     selection: CakeModelSelection | undefined,
     launch?: CakeModelLaunch,
   ): ExplicitCakeModelSelection => {
-    const caller = {
-      provider: selected.provider,
-      modelId: selected.id,
-      thinkingLevel,
-      fastMode,
-    };
+    const caller = currentConfiguration();
     if (options.resolveModelSelection)
       return options.resolveModelSelection(selection, caller, launch);
     if (typeof selection === "string")
@@ -337,6 +338,7 @@ export async function createDurableCakeChatRuntime(
       summarize: (input) =>
         preferences.summarize({
           ...input,
+          caller: currentConfiguration(),
           observeRequest: inspection
             ? (model, settings) =>
                 inspection.begin(sessionId, model, settings, settings.fastMode, "memory-summary")

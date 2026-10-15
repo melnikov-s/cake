@@ -1,19 +1,31 @@
 import { useState } from "react";
 import { observer } from "r-state-tree/react";
+import {
+  cakeChatModelSettingDefaults,
+  type CakeChatModelSetting,
+} from "../../contracts/cake-chats/cake-chat-preferences";
+import type { CakeModelChoice } from "../../contracts/model-presets/cake-model-selection";
 import type { SettingsStore } from "../stores/SettingsStore";
 import { ModelPicker } from "./model-picker";
 import { Select } from "./ui/select";
 
 const PRESET_PREFIX = "preset:";
 
-/** Chooses what subagents launched without an explicit model use. */
-export const SettingsSubagentModelField = observer(function SettingsSubagentModelField({
+/** Chooses one Cake Chat model setting: Inherit, Default preset, Utility, a preset, or a model. */
+export const SettingsModelChoiceField = observer(function SettingsModelChoiceField({
   settings,
+  setting,
+  label,
+  description,
 }: {
   settings: SettingsStore;
+  setting: CakeChatModelSetting;
+  label: string;
+  description: string;
 }) {
   const store = settings.cakeChat;
-  const stored = store.preferences.subagentDefaultModel ?? { source: "inherit" };
+  const fallback: CakeModelChoice = cakeChatModelSettingDefaults[setting];
+  const stored = store.preferences[setting] ?? fallback;
   const presets = settings.modelPresets.presets;
   const defaultPreset = presets.find(
     (preset) => preset.id === settings.modelPresets.defaultPresetId,
@@ -30,11 +42,16 @@ export const SettingsSubagentModelField = observer(function SettingsSubagentMode
     stored.source === "preset" && !presets.some((preset) => preset.id === stored.presetId)
       ? stored.presetId
       : undefined;
+  // One parenthetical per option, e.g. "Utility model (default, gpt-mini)".
+  const optionLabel = (name: string, source: CakeModelChoice["source"], detail?: string) => {
+    const notes = [source === fallback.source ? "default" : undefined, detail].filter(Boolean);
+    return notes.length > 0 ? `${name} (${notes.join(", ")})` : name;
+  };
 
   const choose = (next: string) => {
     setChoosingModel(false);
     if (next.startsWith(PRESET_PREFIX))
-      return void store.setSubagentDefaultModel({
+      return void store.setModelChoice(setting, {
         source: "preset",
         presetId: next.slice(PRESET_PREFIX.length),
       });
@@ -42,7 +59,7 @@ export const SettingsSubagentModelField = observer(function SettingsSubagentMode
       case "default":
       case "inherit":
       case "utility":
-        return void store.setSubagentDefaultModel({ source: next });
+        return void store.setModelChoice(setting, { source: next });
       case "model":
         if (stored.source !== "model") setChoosingModel(true);
         return;
@@ -52,26 +69,22 @@ export const SettingsSubagentModelField = observer(function SettingsSubagentMode
   return (
     <div className="flex items-center justify-between gap-6 text-sm">
       <span className="flex flex-col gap-1">
-        <strong className="text-xs font-medium">Subagent default model</strong>
-        <small className="text-[11px] text-muted-foreground">
-          Used when Cake Chat starts a subagent without choosing a model. Inherit (the default) uses
-          the chat's current model, thinking level, and Fast mode. Project Session subagents and new
-          sessions use the default preset.
-        </small>
+        <strong className="text-xs font-medium">{label}</strong>
+        <small className="text-[11px] text-muted-foreground">{description}</small>
       </span>
       <span className="flex shrink-0 flex-col items-end gap-2">
         <Select
-          aria-label="Subagent default model"
-          className="w-56"
+          aria-label={label}
+          className="w-64"
           value={value}
           onChange={(event) => choose(event.target.value)}
         >
-          <option value="inherit">Inherit chat model (default)</option>
+          <option value="inherit">{optionLabel("Inherit chat model", "inherit")}</option>
           <option value="default">
-            Default preset{defaultPreset ? ` (${defaultPreset.name})` : ""}
+            {optionLabel("Default preset", "default", defaultPreset?.name)}
           </option>
           <option value="utility" disabled={!utility && stored.source !== "utility"}>
-            Utility model{utility ? ` (${utility.modelId})` : " (not configured)"}
+            {optionLabel("Utility model", "utility", utility?.modelId ?? "not configured")}
           </option>
           {presets.length > 0 && (
             <optgroup label="Presets">
@@ -89,14 +102,14 @@ export const SettingsSubagentModelField = observer(function SettingsSubagentMode
         </Select>
         {value === "model" && (
           <ModelPicker
-            ariaLabel="Subagent default model configuration"
+            ariaLabel={`${label} configuration`}
             placeholder="Choose model"
             groups={() => settings.providerGroups}
             value={stored.source === "model" ? stored.model : undefined}
             currentModelName={stored.source === "model" ? stored.model.modelId : undefined}
             onSelect={(model) => {
               setChoosingModel(false);
-              void store.setSubagentDefaultModel({ source: "model", model });
+              void store.setModelChoice(setting, { source: "model", model });
             }}
           />
         )}
