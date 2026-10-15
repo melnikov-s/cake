@@ -43,7 +43,7 @@ import {
   type SubagentUpdate,
 } from "../../contracts/subagents/subagent-data";
 import {
-  PiSessionError,
+  type PiSessionError,
   CakeSessionRuntimes,
   type CakeSessionRuntimeAcquireOptions,
 } from "../../services/pi/CakeSessionRuntimes";
@@ -62,8 +62,9 @@ import {
 } from "../../services/subagents/SubagentCoordinator";
 import {
   SubagentEnvironment,
-  SubagentEnvironmentError,
+  type SubagentEnvironmentError,
 } from "../../services/subagents/SubagentEnvironment";
+import { subagentErrorMessage } from "./subagent-error-message";
 
 export * from "../../contracts/subagents/subagent-data";
 
@@ -82,20 +83,11 @@ export interface SubagentParentRuntime {
   readonly messages?: SubagentMessageFactory;
 }
 
-const messageOf = (cause: unknown): string =>
-  cause instanceof Error ? cause.message : String(cause);
-
 const asError = (operation: string) =>
   Effect.mapError((error: PiSessionError | SubagentEnvironmentError | SubagentError | unknown) =>
     error instanceof SubagentError
       ? error
-      : new SubagentError({
-          operation,
-          message:
-            error instanceof PiSessionError || error instanceof SubagentEnvironmentError
-              ? error.message
-              : messageOf(error),
-        }),
+      : new SubagentError({ operation, message: subagentErrorMessage(error) }),
   );
 
 const jsonValue = <A>(value: A): Schema.Schema.Type<typeof Schema.Json> =>
@@ -131,7 +123,8 @@ const boundedError = (message: string) => message.slice(0, 16_384);
 const normalizeTask = Effect.fn("Subagents.normalizeTask")(function* (input: SubagentTaskInput) {
   const decoded = yield* Schema.decodeUnknownEffect(SubagentTaskInput)(input).pipe(
     Effect.mapError(
-      (error) => new SubagentError({ operation: "preflight", message: error.message }),
+      (error) =>
+        new SubagentError({ operation: "preflight", message: subagentErrorMessage(error) }),
     ),
   );
   const task: SubagentTask = {
@@ -164,7 +157,8 @@ const forwardInputs = Effect.fn("Subagents.forwardInputs")(function* (
     });
   const references = yield* Effect.tryPromise({
     try: (signal) => access.forward(selected, signal),
-    catch: (cause) => new SubagentError({ operation: "forwardInputs", message: messageOf(cause) }),
+    catch: (cause) =>
+      new SubagentError({ operation: "forwardInputs", message: subagentErrorMessage(cause) }),
   });
   return yield* Schema.decodeUnknownEffect(Schema.Array(TaskInputReference))(references).pipe(
     asError("forwardInputs"),
@@ -374,7 +368,7 @@ const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
     catch: (cause) =>
       cause instanceof SubagentError
         ? cause
-        : new SubagentError({ operation: "preflight", message: messageOf(cause) }),
+        : new SubagentError({ operation: "preflight", message: subagentErrorMessage(cause) }),
   });
 });
 
@@ -954,7 +948,7 @@ export const parallel = Effect.fn("Subagents.parallel")(function* (
 ) {
   const parsed = yield* Schema.decodeUnknownEffect(ParallelSubagentInput)(input).pipe(
     Effect.mapError(
-      (error) => new SubagentError({ operation: "parallel", message: error.message }),
+      (error) => new SubagentError({ operation: "parallel", message: subagentErrorMessage(error) }),
     ),
   );
   const prepared = yield* prepareTasks(parsed.tasks, parent);

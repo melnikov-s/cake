@@ -755,6 +755,24 @@ describe("subagent attachment references", () => {
       }),
   );
 
+  it.effect("reports structured forwarding failures as readable SubagentErrors", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture();
+      const attachments = makeAttachmentFixture();
+      attachments.forwards.mockRejectedValueOnce(
+        Object.assign(new Error("outer"), {
+          message: { message: "Grant failed", issues: [{ message: "reference expired" }] },
+        }),
+      );
+      const caller = { ...cakeChatParent(fixture), attachments: attachments.factory };
+      const error = yield* subagents
+        .start({ task: "Inspect", inputRefs: [imageReference.id] }, caller)
+        .pipe(Effect.flip, Effect.provide(fixture.layer));
+      assert.equal(error._tag, "SubagentError");
+      assert.equal(error.message, "Grant failed: reference expired");
+    }),
+  );
+
   it.effect(
     "rejects unauthorized forwarding without starting a worker or consuming a follow-up turn",
     () =>
