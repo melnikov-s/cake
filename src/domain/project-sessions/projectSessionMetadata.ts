@@ -506,11 +506,14 @@ const catalogEventForChange = Effect.fn("ProjectSessions.catalogEventForChange")
 ) {
   if (change._tag === "ProjectSessionActivityChanged") {
     if (change.projectPath !== query.projectPath || query.resolved) return undefined;
-    const status = yield* (yield* CakeSessionRuntimes).currentStatus(change);
+    const sessions = yield* CakeSessionRuntimes;
+    const status = yield* sessions.currentStatus(change);
+    const modifiedAt = yield* sessions.currentModifiedAt(change);
     return {
       _tag: "ActivityChanged",
       sessionId: change.sessionId,
       running: status?.streaming ?? false,
+      ...(modifiedAt ? { modifiedAt } : null),
     } as const;
   }
   if (change._tag === "ProjectSessionRemoved")

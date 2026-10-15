@@ -26,9 +26,11 @@ const SessionCatalogEvent = Schema.TaggedUnion({
   Replaced: { sessions: Schema.Array(ProjectSessionSummary) },
   Upserted: { session: ProjectSessionSummary },
   UpsertedBatch: { sessions: Schema.Array(ProjectSessionSummary) },
+  /** Turn start/settle: cheap live fields only, so it never re-reads a transcript. */
   ActivityChanged: {
     sessionId: ProjectSessionSummary.fields.sessionId,
     running: ProjectSessionSummary.fields.running,
+    modifiedAt: Schema.optionalKey(ProjectSessionSummary.fields.modifiedAt),
   },
   Removed: { sessionId: ProjectSessionSummary.fields.sessionId },
   RemovedBatch: { sessionIds: Schema.Array(ProjectSessionSummary.fields.sessionId) },

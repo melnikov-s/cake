@@ -113,6 +113,32 @@ function sidebar() {
 afterEach(cleanup);
 
 describe("Session catalog lifecycle workflows", () => {
+  it("moves an unopened session up when its background turn settles, ignoring stale times", async () => {
+    using fixture = await renderCatalog({
+      sessions: [
+        summary("newer", { title: "Newer", modifiedAt: "2026-01-02T00:00:00.000Z" }),
+        summary("background", { title: "Background", modifiedAt: "2026-01-01T00:00:00.000Z" }),
+      ],
+    });
+    const order = () =>
+      sidebar()
+        .getAllByRole("button", { name: /^(Newer|Background) / })
+        .map((button) => button.closest(".session-item")?.getAttribute("data-session-id"));
+    expect(order()).toEqual(["newer", "background"]);
+    const settled = (revision: number, modifiedAt: string) =>
+      fixture.publishUpdate({
+        _tag: "Event",
+        revision,
+        event: { _tag: "ActivityChanged", sessionId: "background", running: false, modifiedAt },
+      });
+    // The settle event alone carries the new transcript time; no Upsert or open is needed.
+    await settled(2, "2026-01-03T00:00:00.000Z");
+    expect(order()).toEqual(["background", "newer"]);
+    // A late event observed before a newer write must not move the row back.
+    await settled(3, "2026-01-01T12:00:00.000Z");
+    expect(order()).toEqual(["background", "newer"]);
+  });
+
   it("shows background child activity without opening it, then clears it on settlement", async () => {
     const child = summary("child", {
       title: "Background worker",

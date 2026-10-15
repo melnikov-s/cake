@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises";
 import type { CakeOperationOptions } from "../../contracts/agent/cake-operation-options";
 import {
   Context,
@@ -308,6 +309,10 @@ export class CakeSessionRuntimes extends Context.Service<
     readonly currentStatus: (
       target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
     ) => Effect.Effect<CakeSessionRuntimeStatus | undefined>;
+    /** Last transcript write of an already-acquired runtime: one stat, never a transcript parse. */
+    readonly currentModifiedAt: (
+      target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
+    ) => Effect.Effect<string | undefined>;
     readonly currentTurnIds: (
       target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
     ) => Effect.Effect<ReadonlyArray<string>>;
@@ -1223,6 +1228,25 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         };
       });
 
+      const currentModifiedAt = Effect.fn("CakeSessionRuntimes.currentModifiedAt")(function* (
+        target: Pick<PiSessionTarget, "workingDirectory" | "sessionId" | "sessionDirectory">,
+      ) {
+        const sessionFile = [...activeRuntimes].find(
+          (candidate) =>
+            candidate.workingDirectory === target.workingDirectory &&
+            candidate.sessionDirectory === target.sessionDirectory &&
+            candidate.runtime.sessionId === target.sessionId,
+        )?.runtime.sessionFile;
+        if (!sessionFile) return undefined;
+        // An unwritten or relocated transcript simply has no newer activity time.
+        return yield* Effect.promise(() =>
+          stat(sessionFile).then(
+            (stats) => stats.mtime.toISOString(),
+            () => undefined,
+          ),
+        );
+      });
+
       return CakeSessionRuntimes.of({
         sessionIds,
         catalog,
@@ -1232,6 +1256,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
         acquireCurrent,
         acquireSession,
         currentStatus,
+        currentModifiedAt,
         currentTurnIds,
         executingTurnIds,
         refreshModels,

@@ -128,7 +128,11 @@ export function applySessionCatalogGroupUpdate(
       }
     } else if (event._tag === "ActivityChanged") {
       const existing = model.find(event.sessionId);
-      if (existing && belongsToGroup(existing)) existing.running = event.running;
+      if (existing && belongsToGroup(existing)) {
+        existing.running = event.running;
+        if (event.modifiedAt && event.modifiedAt > existing.modifiedAt)
+          existing.modifiedAt = event.modifiedAt;
+      }
     } else if (event._tag === "TitleChanged") {
       const existing = model.find(event.sessionId);
       if (existing && belongsToGroup(existing)) existing.title = event.title;

@@ -77,7 +77,9 @@ The lightweight Project Session catalog projects active Pi work, including promp
 preparation before streaming starts, but not queued follow-ups or turn correlations
 retained after Pi settles. Pi activity transitions and acceptance/settlement events
 refresh sidebar indicators without demanding a Conversation observation or selecting
-the session. Activity is runtime-derived and is not persisted as session metadata.
+the session. These activity events also carry the transcript's last write time (one
+file stat, never a transcript read), so sidebar recency follows background turns.
+Activity is runtime-derived and is not persisted as session metadata.
 Conversation activity likewise clears when Pi stops, independently of later turn
 completion bookkeeping.
 

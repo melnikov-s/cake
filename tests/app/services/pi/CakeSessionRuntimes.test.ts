@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { it } from "@effect/vitest";
 import {
   Context,
@@ -630,6 +633,52 @@ describe("CakeSessionRuntimes", () => {
       assert.equal(yield* Ref.get(acquisitions), 1);
 
       yield* Scope.close(owner, Exit.void);
+    }),
+  );
+
+  it.effect("reads the live transcript write time from one stat, without a catalog read", () =>
+    Effect.gen(function* () {
+      const directory = mkdtempSync(join(tmpdir(), "cake-modified-at-"));
+      const sessionFile = join(directory, "session-1.jsonl");
+      writeFileSync(sessionFile, "{}\n");
+      const written = new Date("2026-03-04T05:06:07.000Z");
+      utimesSync(sessionFile, written, written);
+      let currentFile = sessionFile;
+      const catalogReads = yield* Ref.make(0);
+      const context = yield* Layer.build(
+        makeCakeSessionRuntimesLayer({
+          ...adapter(yield* Ref.make(0), yield* Ref.make(0)),
+          catalogEntry: () =>
+            Ref.update(catalogReads, (count) => count + 1).pipe(Effect.as(undefined)),
+          createRuntime: (runtimeOptions) =>
+            Effect.succeed(
+              Object.defineProperty(
+                fakeRuntime(runtimeOptions, () => undefined),
+                "sessionFile",
+                {
+                  get: () => currentFile,
+                },
+              ),
+            ),
+        }),
+      );
+      const sessions = Context.get(context, CakeSessionRuntimes);
+      const target = {
+        workingDirectory: "/project",
+        sessionDirectory: "/sessions",
+        sessionId: "session-1",
+      };
+      assert.equal(yield* sessions.currentModifiedAt(target), undefined);
+
+      const owner = yield* Scope.make();
+      yield* sessions.acquire(options()).pipe(Effect.provideService(Scope.Scope, owner));
+      assert.equal(yield* sessions.currentModifiedAt(target), written.toISOString());
+      currentFile = join(directory, "missing.jsonl");
+      assert.equal(yield* sessions.currentModifiedAt(target), undefined);
+      assert.equal(yield* Ref.get(catalogReads), 0);
+
+      yield* Scope.close(owner, Exit.void);
+      rmSync(directory, { recursive: true, force: true });
     }),
   );
 
