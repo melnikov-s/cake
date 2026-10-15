@@ -54,6 +54,44 @@ export interface ChatTranscriptHandle {
 }
 
 const defaultTranscriptBehavior: ChatTranscriptBehavior = {};
+const selectionRevealMargin = 16;
+
+/**
+ * Scrolls a keyboard-selected item into the visible transcript area above the
+ * composer dock. Tall items align their top; items that fit move the minimum
+ * distance. An unrendered virtualized item is reached through Virtuoso.
+ */
+function revealSelectedItem(
+  scroller: HTMLElement,
+  item: HTMLElement | null,
+  scrollToIndex: (location: {
+    align: "start";
+    behavior: "auto" | "smooth";
+    offset: number;
+  }) => void,
+) {
+  const behavior: "auto" | "smooth" = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")
+    .matches
+    ? "auto"
+    : "smooth";
+  if (!item) {
+    scrollToIndex({ align: "start", behavior, offset: -selectionRevealMargin });
+    return;
+  }
+  const viewport = scroller.getBoundingClientRect();
+  const dockInset =
+    Number.parseFloat(getComputedStyle(scroller).getPropertyValue("--composer-dock-height")) || 0;
+  const top = viewport.top + selectionRevealMargin;
+  const bottom = viewport.bottom - dockInset - selectionRevealMargin;
+  const rect = item.getBoundingClientRect();
+  const delta =
+    rect.top < top || rect.height > bottom - top
+      ? rect.top - top
+      : rect.bottom > bottom
+        ? rect.bottom - bottom
+        : 0;
+  if (Math.abs(delta) >= 1) scroller.scrollTo?.({ top: scroller.scrollTop + delta, behavior });
+}
 
 export const ChatTranscript = observer(function ChatTranscript({
   store,
@@ -88,7 +126,8 @@ export const ChatTranscript = observer(function ChatTranscript({
     stopScroll,
   } = useStickToBottom({
     initial:
-      restoredScrollPosition || store.transcriptInteraction.messageNavigationRequest
+      restoredScrollPosition ||
+      store.transcriptInteraction.messageSelection?.origin === "navigation"
         ? false
         : "instant",
     resize: "instant",
@@ -173,16 +212,27 @@ export const ChatTranscript = observer(function ChatTranscript({
     }),
     [behavior, sideChat, store],
   );
-  const messageNavigationRequest = store.transcriptInteraction.messageNavigationRequest;
-  const messageNavigationItemIndex = messageNavigationRequest
+  const messageSelection = store.transcriptInteraction.messageSelection;
+  const selectedMessageId = store.transcriptInteraction.selectedMessageId;
+  const selectedItemIndex = selectedMessageId
     ? items.findIndex((item) =>
         item.kind === "activity-group" ||
         item.kind === "source-group" ||
         item.kind === "context-group"
-          ? item.parts.some((part) => part.id === messageNavigationRequest.messageId)
-          : item.id === messageNavigationRequest.messageId,
+          ? item.parts.some((part) => part.id === selectedMessageId)
+          : item.id === selectedMessageId,
       )
     : -1;
+  const navigationItemIndex = messageSelection?.origin === "navigation" ? selectedItemIndex : -1;
+  // Each selection revision is revealed once. A keyboard selection that survives a
+  // remount keeps the restored scroll position; linked navigation reveals again.
+  const revealedSelectionRevision = useRef(
+    untracked(() =>
+      store.transcriptInteraction.messageSelection?.origin === "keyboard"
+        ? store.transcriptInteraction.messageSelection.revision
+        : undefined,
+    ),
+  );
   const restoredMessageItemIndex =
     restoredScrollPosition?.kind === "message"
       ? items.findIndex((item) =>
@@ -194,7 +244,7 @@ export const ChatTranscript = observer(function ChatTranscript({
         )
       : -1;
   const openingItemLocation = useMemo(() => {
-    if (messageNavigationItemIndex >= 0) return undefined;
+    if (navigationItemIndex >= 0) return undefined;
     if (restoredScrollPosition?.kind === "top") return { index: 0, align: "start" as const };
     if (restoredScrollPosition?.kind === "message" && restoredMessageItemIndex >= 0)
       return {
@@ -207,23 +257,50 @@ export const ChatTranscript = observer(function ChatTranscript({
     // location settles, including the footer/composer spacer at the bottom.
     // Later height changes still use our cancellable bottom alignment.
     return { index: "LAST" as const, align: "end" as const };
-  }, [messageNavigationItemIndex, restoredMessageItemIndex, restoredScrollPosition]);
+  }, [navigationItemIndex, restoredMessageItemIndex, restoredScrollPosition]);
   useLayoutEffect(() => {
-    if (!messageNavigationRequest || messageNavigationItemIndex < 0) return;
+    if (!messageSelection || selectedItemIndex < 0 || !scroller) return;
+    if (revealedSelectionRevision.current === messageSelection.revision) return;
+    // Virtuoso is mounted in the commit after the scroller; wait for its handle.
+    if (virtualized && !virtuosoRef.current) return;
+    revealedSelectionRevision.current = messageSelection.revision;
     allowFollowing.current = false;
     atBottom.current = false;
     if (!virtualized) stopScroll();
-    if (virtualized)
-      virtuosoRef.current?.scrollToIndex({
-        index: messageNavigationItemIndex,
-        align: "center",
-        behavior: "auto",
-      });
-    else
-      scroller
-        ?.querySelector<HTMLElement>(`[data-transcript-item-index="${messageNavigationItemIndex}"]`)
-        ?.scrollIntoView({ block: "center" });
-  }, [messageNavigationItemIndex, messageNavigationRequest, scroller, stopScroll, virtualized]);
+    const item = scroller.querySelector<HTMLElement>(
+      `[data-transcript-item-index="${selectedItemIndex}"]`,
+    );
+    if (messageSelection.origin === "navigation") {
+      if (virtualized)
+        virtuosoRef.current?.scrollToIndex({
+          index: selectedItemIndex,
+          align: "center",
+          behavior: "auto",
+        });
+      else item?.scrollIntoView?.({ block: "center" });
+      return;
+    }
+    revealSelectedItem(scroller, item, (location) => {
+      virtuosoRef.current?.scrollToIndex({ index: selectedItemIndex, ...location });
+    });
+  }, [messageSelection, scroller, selectedItemIndex, stopScroll, virtualized]);
+  // Clicking anywhere outside the selected message ends the selection; clicks
+  // inside it are left for actions on that message.
+  useEffect(() => {
+    if (selectedMessageId === undefined || !scroller) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        scroller.contains(target) &&
+        target.closest('[data-slot="transcript-item"][aria-current="true"]')
+      )
+        return;
+      store.transcriptInteraction.clearMessageSelection();
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [scroller, selectedMessageId, store]);
   useLayoutEffect(() => {
     if (!scroller) return;
     let pendingPosition = untracked(() => store.transcriptInteraction.transcriptScrollPosition);
@@ -418,7 +495,7 @@ export const ChatTranscript = observer(function ChatTranscript({
       item={item}
       index={index}
       errorFollowsUser={errorNoticeFollowsUser(items, index)}
-      selected={index === messageNavigationItemIndex}
+      selected={index === selectedItemIndex}
       parts={parts}
       behavior={transcriptBehavior}
       changedFilesOpen={changedFilesOpen}
@@ -430,7 +507,10 @@ export const ChatTranscript = observer(function ChatTranscript({
       {selectionOverlays}
       <div
         ref={attachScroller}
-        className="transcript h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges] [overflow-anchor:none]"
+        // Clicking the transcript focuses it (not the body) so its pane keeps
+        // keyboard message selection and keyboard scrolling. Not a tab stop.
+        tabIndex={-1}
+        className="transcript outline-none h-full w-full max-w-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable_both-edges] [overflow-anchor:none]"
       >
         <div ref={virtualized ? undefined : contentRef} className="min-w-0">
           {store.history?.hasMore && (

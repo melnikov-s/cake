@@ -408,7 +408,11 @@ export class ChatStore extends Store<ChatStoreProps> {
   }
 
   setDraft(value: string) {
-    if (this.draft !== value) this.draftRevision += 1;
+    if (this.draft !== value) {
+      this.draftRevision += 1;
+      // Writing a new message ends transcript message selection.
+      this.transcriptInteraction.clearMessageSelection();
+    }
     if (this.props.setDraft) this.props.setDraft(value);
     else this.localDraft = value;
     this.rewordError = undefined;

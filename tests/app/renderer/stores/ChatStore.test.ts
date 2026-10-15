@@ -105,14 +105,16 @@ describe("ChatStore message navigation", () => {
 
     store.transcriptInteraction.navigateToMessage("assistant-1");
     expect(store.transcriptInteraction.transcriptScrollPosition).toBeUndefined();
-    expect(store.transcriptInteraction.messageNavigationRequest).toEqual({
+    expect(store.transcriptInteraction.messageSelection).toMatchObject({
       messageId: "assistant-1",
+      origin: "navigation",
       revision: 1,
     });
 
     store.transcriptInteraction.navigateToMessage("assistant-1");
-    expect(store.transcriptInteraction.messageNavigationRequest).toEqual({
+    expect(store.transcriptInteraction.messageSelection).toMatchObject({
       messageId: "assistant-1",
+      origin: "navigation",
       revision: 2,
     });
     store[Symbol.dispose]();

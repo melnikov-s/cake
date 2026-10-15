@@ -67,6 +67,7 @@ import { MessageCommentsStore } from "../../../src/renderer/stores/MessageCommen
 import { SideChatStore } from "../../../src/renderer/stores/SideChatStore";
 import type { ChatConfigurationStore } from "../../../src/renderer/stores/ChatConfigurationStore";
 import { ChatStore, type TranscriptScrollPosition } from "../../../src/renderer/stores/ChatStore";
+import type { MessageSelection } from "../../../src/renderer/stores/TranscriptInteractionStore";
 import { FullscreenSurfaceFixture } from "./fullscreen-surface-fixture";
 
 interface TranscriptHarness {
@@ -106,7 +107,7 @@ function Transcript({
   error,
   errorDetails,
   errorTitle,
-  messageNavigationRequest,
+  messageSelection,
   annotations,
   addAnnotation,
   updateAnnotation,
@@ -127,7 +128,7 @@ function Transcript({
   error?: string;
   errorDetails?: string;
   errorTitle?: string;
-  messageNavigationRequest?: { messageId: string; revision: number };
+  messageSelection?: MessageSelection;
   annotations?: readonly Annotation[];
   addAnnotation?(annotation: Parameters<ChatStore["addAnnotation"]>[0]): void;
   updateAnnotation?(id: string, update: Partial<Omit<Annotation, "id">>): void;
@@ -172,7 +173,9 @@ function Transcript({
       get transcriptScrollPosition() {
         return transcriptScrollPositionsRef.current.get(sessionId);
       },
-      messageNavigationRequest,
+      messageSelection,
+      selectedMessageId: messageSelection?.messageId,
+      clearMessageSelection() {},
       get changedFilesOpen() {
         return changedFilesStateRef.current.open;
       },
@@ -636,7 +639,7 @@ describe("Transcript scrolling", () => {
           parts={parts}
           sessionId="session-1"
           isStreaming={false}
-          messageNavigationRequest={{ messageId: "assistant-1", revision: 1 }}
+          messageSelection={{ messageId: "assistant-1", origin: "navigation", revision: 1 }}
           empty={<div />}
         />,
       ),

@@ -1,4 +1,11 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { observer } from "r-state-tree/react";
 import { cn } from "@/lib/utils";
 import { AnnotationSummary } from "@/components/annotation-summary";
@@ -21,6 +28,7 @@ import { TextAttachment } from "./ui/text-attachment";
 import { ContentTransition } from "@/components/ui/content-transition";
 import { TooltipBubble, useTooltip } from "@/components/ui/tooltip";
 import type { ChatTranscriptHandle } from "./chat-transcript";
+import { messageSelectionKeyAction } from "../lib/message-selection-keys";
 import type { ChatStore } from "../stores/ChatStore";
 
 function formatCompactTokenCount(tokens: number | null | undefined) {
@@ -229,6 +237,34 @@ export const Chat = observer(function Chat({
     resizeObserver?.observe(dock);
     return () => resizeObserver?.disconnect();
   }, [composerVisible, embedded]);
+  // Capture phase: an existing message selection takes Escape before the composer's
+  // stop action. The rules in message-selection-keys keep text editing untouched.
+  const handleMessageSelectionKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const pane = layoutRef.current;
+    if (!pane) return;
+    const interaction = store.transcriptInteraction;
+    const action = messageSelectionKeyAction(event.nativeEvent, {
+      pane,
+      composerInput: composerInputRef.current,
+      hasSelection: interaction.selectedMessageId !== undefined,
+    });
+    if (!action) return;
+    const handled =
+      action === "select-previous"
+        ? interaction.selectPreviousAssistantMessage()
+        : action === "select-next"
+          ? interaction.selectNextAssistantMessage()
+          : (interaction.clearMessageSelection(), true);
+    if (!handled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (action === "select-next" && interaction.selectedMessageId === undefined) {
+      // Leaving the newest message returns to writing.
+      transcriptRef.current?.scrollToBottom();
+      if (document.activeElement !== composerInputRef.current)
+        composerFocusRef.current?.requestFocus();
+    }
+  };
   const restoreSelection = (selection: { start: number; end: number }) => {
     requestAnimationFrame(() => {
       const input = composerInputRef.current;
@@ -406,6 +442,7 @@ export const Chat = observer(function Chat({
       <div
         ref={layoutRef}
         data-slot="chat"
+        onKeyDownCapture={handleMessageSelectionKey}
         className={cn(
           "relative grid h-full w-full max-w-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden",
           compact && "chat-layout-compact",

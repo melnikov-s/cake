@@ -11,9 +11,23 @@ export interface TranscriptInteractionStoreProps {
   userMessagePresentation?: UserMessagePresentationCapabilities;
 }
 
-export interface MessageNavigationRequest {
+/**
+ * The message a transcript pane has selected. Navigation selects a linked message
+ * of any kind; keyboard selection walks assistant messages only. Each new
+ * selection gets a fresh revision so the transcript reveals it exactly once.
+ */
+export interface MessageSelection {
   messageId: string;
+  /** Presentation identity that survives a streamed part settling under a new id. */
+  renderKey?: string;
+  origin: "navigation" | "keyboard";
   revision: number;
+}
+
+function isSelectableAssistantMessage(part: UiPart) {
+  return (
+    part.kind === "text" && part.role === "assistant" && !part.subagentReport && Boolean(part.text)
+  );
 }
 
 export type TranscriptScrollPosition =
@@ -21,7 +35,7 @@ export type TranscriptScrollPosition =
   | { kind: "bottom" }
   | { kind: "message"; messageId: string; offset: number };
 
-/** Owns transcript restoration, message navigation, disclosure, and message presentation edits. */
+/** Owns transcript restoration, message selection, disclosure, and message presentation edits. */
 export class TranscriptInteractionStore extends Store<TranscriptInteractionStoreProps> {
   readonly updatingUserMessagePresentation = observable(new Set<string>());
   private readonly requestedUserMessagePresentation = observable(
@@ -29,10 +43,10 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
   );
   loadingStartedAt: number | undefined;
   transcriptScrollPosition: TranscriptScrollPosition | undefined;
-  messageNavigationRequest: MessageNavigationRequest | undefined;
+  messageSelection: MessageSelection | undefined;
   changedFilesOpen = false;
   userMessagePresentationError: string | undefined;
-  private messageNavigationRevision = 0;
+  private messageSelectionRevision = 0;
   private changedFilesChurning: boolean | undefined;
 
   constructor(props: TranscriptInteractionStore["props"]) {
@@ -115,11 +129,75 @@ export class TranscriptInteractionStore extends Store<TranscriptInteractionStore
     this.transcriptScrollPosition = position;
   }
 
+  /** Selects and reveals a linked message, superseding any saved scroll anchor. */
   navigateToMessage(messageId: string) {
     this.transcriptScrollPosition = undefined;
-    this.messageNavigationRequest = {
+    this.selectMessage(messageId, "navigation");
+  }
+
+  /** The selected message's current part id, or undefined when it left the transcript. */
+  @computed
+  get selectedMessageId() {
+    return this.selectedMessageIndex === undefined
+      ? undefined
+      : this.props.parts()[this.selectedMessageIndex]?.id;
+  }
+
+  /**
+   * Selects the assistant message before the current selection, or the newest one
+   * when nothing is selected. Returns false when there is no assistant message to
+   * select; at the oldest message the selection stays and is revealed again.
+   */
+  selectPreviousAssistantMessage() {
+    const parts = this.props.parts();
+    const before = this.selectedMessageIndex ?? parts.length;
+    const target =
+      parts.findLast((part, index) => index < before && isSelectableAssistantMessage(part)) ??
+      (this.selectedMessageIndex === undefined ? undefined : parts[this.selectedMessageIndex]);
+    if (!target) return false;
+    this.selectMessage(target.id, "keyboard");
+    return true;
+  }
+
+  /**
+   * Moves the selection to the next assistant message. Moving past the newest one
+   * clears the selection. Returns false when nothing was selected.
+   */
+  selectNextAssistantMessage() {
+    const selected = this.selectedMessageIndex;
+    if (selected === undefined) return false;
+    const target = this.props
+      .parts()
+      .find((part, index) => index > selected && isSelectableAssistantMessage(part));
+    if (target) this.selectMessage(target.id, "keyboard");
+    else this.clearMessageSelection();
+    return true;
+  }
+
+  clearMessageSelection() {
+    this.messageSelection = undefined;
+  }
+
+  @computed
+  private get selectedMessageIndex() {
+    const selection = this.messageSelection;
+    if (!selection) return undefined;
+    const parts = this.props.parts();
+    let index = parts.findIndex((part) => part.id === selection.messageId);
+    if (index < 0 && selection.renderKey)
+      index = parts.findIndex(
+        (part) => part.kind === "text" && part.renderKey === selection.renderKey,
+      );
+    return index < 0 ? undefined : index;
+  }
+
+  private selectMessage(messageId: string, origin: MessageSelection["origin"]) {
+    const part = this.props.parts().find((candidate) => candidate.id === messageId);
+    this.messageSelection = {
       messageId,
-      revision: ++this.messageNavigationRevision,
+      renderKey: part?.kind === "text" ? part.renderKey : undefined,
+      origin,
+      revision: ++this.messageSelectionRevision,
     };
   }
 
