@@ -18,7 +18,9 @@ import type {
 } from "../../../contracts/conversations/session-contract";
 import {
   applyFastModePayload,
+  decodeFastModeResponseEvent,
   FastModePayload,
+  observeFastModeResponse,
   supportsFastMode,
   type FastModeModel,
 } from "../fast-mode";
@@ -43,11 +45,18 @@ export function createCakeSessionRuntimeConfigurationState(
 
   return {
     fastModeExtension: (pi) => {
+      // Requests in one session are sequential; track only the latest Fast request.
+      let observeResponse: ReturnType<typeof observeFastModeResponse> | undefined;
       pi.on("before_provider_request", (event, context) => {
         const payload = Schema.decodeUnknownOption(FastModePayload)(event.payload);
-        return Option.isSome(payload)
-          ? applyFastModePayload(payload.value, context.model, enabledFastMode())
-          : event.payload;
+        if (Option.isNone(payload)) return event.payload;
+        const enabled = enabledFastMode() && supportsFastMode(context.model);
+        observeResponse =
+          enabled && context.model ? observeFastModeResponse(context.model) : undefined;
+        return applyFastModePayload(payload.value, context.model, enabled);
+      });
+      pi.on("provider_stream_event", (event) => {
+        if (observeResponse) Option.map(decodeFastModeResponseEvent(event.data), observeResponse);
       });
     },
     enabledFastMode,

@@ -1,7 +1,7 @@
 import { ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
 import type { SimpleStreamOptions } from "@earendil-works/pi-ai";
-import { Cache, Clock, Duration, Effect, Exit, Layer } from "effect";
+import { Cache, Clock, Duration, Effect, Exit, Layer, Option, Schema } from "effect";
 import { makePiModels, PiModels, type PiProviderAuthInteraction } from "../PiModels";
 import type { ProviderRequestObservation } from "../../../contracts/pi/request-observation";
 import type {
@@ -9,7 +9,13 @@ import type {
   PiModel,
   PiNonChatModel,
 } from "../../../contracts/pi/model-data";
-import { OPENAI_FAST_MODE_SERVICE_TIER, supportsFastMode } from "../fast-mode";
+import {
+  applyFastModePayload,
+  decodeFastModeResponseEvent,
+  FastModePayload,
+  observeFastModeResponse,
+  supportsFastMode,
+} from "../fast-mode";
 import { registerAgentDirectoryExtensionProviders } from "../runtime/extension-providers";
 
 interface CatalogModel {
@@ -295,28 +301,39 @@ export const makePiModelsLive = (agentDirectory: string) =>
         const timestamp = yield* Clock.currentTimeMillis;
         return yield* Effect.tryPromise({
           try: async (signal) => {
-            const options: SimpleStreamOptions & { serviceTier?: "priority" } = {
-              reasoning:
-                input.selection.thinkingLevel === "off" ? undefined : input.selection.thinkingLevel,
-              // The provider budget includes reasoning; display length is bounded separately.
-              maxTokens: Math.min(
-                8_192,
-                Math.max(2_048, Math.ceil(input.maximumOutputCharacters / 2)),
-              ),
-              signal,
-              serviceTier: input.selection.fastMode ? OPENAI_FAST_MODE_SERVICE_TIER : undefined,
-            };
+            const reasoning =
+              input.selection.thinkingLevel === "off" ? undefined : input.selection.thinkingLevel;
+            // The provider budget includes reasoning; display length is bounded separately.
+            const maxTokens = Math.min(
+              8_192,
+              Math.max(2_048, Math.ceil(input.maximumOutputCharacters / 2)),
+            );
             const capture = observeRequest?.(model, {
-              reasoning: options.reasoning,
-              maxTokens: options.maxTokens ?? 8192,
+              reasoning,
+              maxTokens,
               fastMode: input.selection.fastMode,
             });
-            if (capture) {
-              options.fetch = capture.fetch();
-              options.onPayload = (payload) => {
-                capture.payload(payload);
-              };
-            }
+            const fastMode = input.selection.fastMode && supportsFastMode(model);
+            const observeResponse = fastMode ? observeFastModeResponse(model) : undefined;
+            const options: SimpleStreamOptions = {
+              reasoning,
+              maxTokens,
+              signal,
+              fetch: capture?.fetch(),
+              onPayload: (payload) => {
+                const decoded = Schema.decodeUnknownOption(FastModePayload)(payload);
+                const transformed = Option.isSome(decoded)
+                  ? applyFastModePayload(decoded.value, model, fastMode)
+                  : payload;
+                capture?.payload(transformed);
+                return transformed;
+              },
+              onProviderStreamEvent: observeResponse
+                ? (data) => {
+                    Option.map(decodeFastModeResponseEvent(data), observeResponse);
+                  }
+                : undefined,
+            };
             let response;
             try {
               response = await runtime.completeSimple(

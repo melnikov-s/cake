@@ -7,8 +7,14 @@ import {
   type AssistantMessageEventStream,
 } from "@earendil-works/pi-durable-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { Schema } from "effect";
-import { applyFastModePayload, FastModePayload } from "../pi/fast-mode";
+import { Option, Schema } from "effect";
+import {
+  applyFastModePayload,
+  decodeFastModeResponseEvent,
+  FastModePayload,
+  observeFastModeResponse,
+  supportsFastMode,
+} from "../pi/fast-mode";
 import { durableModelFacade } from "./durable-model-facade";
 import type { RequestInspection } from "./request-inspection";
 import { CAKE_CHAT_SESSION_ID } from "../../contracts/cake-chats/cake-chat-data";
@@ -103,21 +109,28 @@ export function durableModels(
   };
   const streamSimple: Models["streamSimple"] = (model, context, options) => {
     const capture = inspection?.begin(CAKE_CHAT_SESSION_ID, model, options, fastMode());
+    let observeResponse: ReturnType<typeof observeFastModeResponse> | undefined;
     return relay(
       async () =>
         runtime.streamSimple(model, await projectContext(context, options?.signal), {
           ...options,
           fetch: capture ? capture.fetch(options?.fetch) : options?.fetch,
           onPayload: async (payload, selected) => {
+            const enabled = fastMode() && supportsFastMode(selected);
+            observeResponse = enabled ? observeFastModeResponse(selected) : undefined;
             const transformed = applyFastModePayload(
               Schema.decodeUnknownSync(FastModePayload)(
                 (await options?.onPayload?.(payload, selected)) ?? payload,
               ),
               selected,
-              fastMode(),
+              enabled,
             );
             capture?.payload(transformed);
             return transformed;
+          },
+          onProviderStreamEvent: async (data, selected) => {
+            if (observeResponse) Option.map(decodeFastModeResponseEvent(data), observeResponse);
+            await options?.onProviderStreamEvent?.(data, selected);
           },
         }),
       model,
