@@ -65,7 +65,10 @@ export const ChatTranscriptItem = memo(
         className={cn(
           "min-w-0 pb-5 in-[.chat-layout-compact]:pb-3.5",
           errorFollowsUser && "pt-3",
-          selected && "rounded-md bg-accent/5 ring-1 ring-accent/60",
+          // The selection ring outlines only the message bubble, not its label or
+          // action row. Items without a bubble (tools, groups) ring the whole item.
+          selected &&
+            "[&_[data-slot=message-content]]:ring-1 [&_[data-slot=message-content]]:ring-accent/60 [&:not(:has([data-slot=message-content]))]:rounded-md [&:not(:has([data-slot=message-content]))]:ring-1 [&:not(:has([data-slot=message-content]))]:ring-accent/60",
         )}
       >
         {item.kind === "activity-group" ? (

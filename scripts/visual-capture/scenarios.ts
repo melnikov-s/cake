@@ -81,7 +81,7 @@ const assistantMarkdown = [
 const assistantMarkdownCode: VisualCaptureScenario = {
   name: "assistant-markdown-code",
   description: "Assistant Markdown with a highlighted TypeScript code block",
-  states: ["default", "hover", "quick-assistant", "assistant-chat", "resolved"],
+  states: ["default", "hover", "selected", "quick-assistant", "assistant-chat", "resolved"],
   async seed(paths, theme) {
     const sessionId = "visual-assistant-markdown-code";
     const timestamp = new Date(0).toISOString();
@@ -198,6 +198,16 @@ const assistantMarkdownCode: VisualCaptureScenario = {
       });
       return;
     }
+    if (state === "selected") {
+      // Keyboard selection from the empty composer; hovering reveals the action
+      // row so the capture shows the ring stays on the bubble alone.
+      await page.getByRole("combobox", { name: "Message", exact: true }).first().click();
+      await page.keyboard.press("ArrowUp");
+      const selected = page.locator('[data-slot="transcript-item"][aria-current="true"]');
+      await selected.waitFor();
+      await selected.locator('[data-slot="message-content"]').hover();
+      return;
+    }
     const assistant = page.getByRole("button", { name: "Ask session assistant" });
     if (state === "quick-assistant") {
       await assistant.click();
@@ -213,7 +223,9 @@ const assistantMarkdownCode: VisualCaptureScenario = {
     }
     await page.mouse.move(1, 1);
   },
-  region(page) {
+  region(page, state) {
+    if (state === "selected")
+      return page.locator('[data-slot="transcript-item"][aria-current="true"]');
     const dialog = page.getByRole("dialog");
     const message = page
       .locator('[data-slot="message"]')

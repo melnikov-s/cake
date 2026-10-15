@@ -115,6 +115,13 @@ test("selects assistant messages with the keyboard in the focused pane", async (
     await expect(selected).toHaveCount(1);
     await expect(selected).toContainText("Answer 3.");
     await expect(composer).toBeFocused();
+    // The ring outlines the message bubble only, not the action row beneath it.
+    const boxShadow = (locator: typeof selected) =>
+      locator.evaluate((element) => getComputedStyle(element).boxShadow);
+    expect(await boxShadow(selected)).toBe("none");
+    expect(await boxShadow(selected.locator('[data-slot="message-content"]'))).toMatch(
+      /0px 0px 0px 1px/,
+    );
 
     await page.keyboard.press("ArrowUp");
     await expect(selected).toContainText("Answer 2.");
