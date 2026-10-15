@@ -336,7 +336,6 @@ const startPrepared = Effect.fn("Workflows.startPrepared")(function* (
         (turn) =>
           callerSessionId === input.sessionId &&
           turn.sessionId === input.sessionId &&
-          turn.completionContract &&
           !turn.reported &&
           executingTurnIds.includes(turn.turnId),
       )

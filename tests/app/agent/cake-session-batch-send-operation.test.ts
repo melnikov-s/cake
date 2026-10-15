@@ -34,8 +34,8 @@ describe("sessions.send-batch operation", () => {
       maxMessages: 5,
     });
     expect(send.mock.calls.map(([input]) => input)).toEqual([
-      { sessionId: "a", text: "Shared message", expectsResponse: true, maxMessages: 5 },
-      { sessionId: "b", text: "Shared message", expectsResponse: true, maxMessages: 5 },
+      { sessionId: "a", text: "Shared message", expectsResponse: false, maxMessages: 5 },
+      { sessionId: "b", text: "Shared message", expectsResponse: false, maxMessages: 5 },
     ]);
     expect(result.structuredContent).toEqual({
       command: "sessions.send-batch",
@@ -43,7 +43,7 @@ describe("sessions.send-batch operation", () => {
         ok: true,
         command: "sessions.send-batch",
         status: "complete",
-        expectsResponse: true,
+        expectsResponse: false,
         outcomes: ["a", "b"].map((sessionId) => ({
           sessionId,
           ok: true,

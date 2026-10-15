@@ -333,7 +333,7 @@ export const acquireOptions = Effect.fn("ProjectSessions.acquireOptions")(functi
         const familyTurn = (yield* families.state()).turns.find(
           (turn) => turn.turnId === event.turnId,
         );
-        if (workflowOwnsCompletion && familyTurn?.completionContract) return;
+        if (workflowOwnsCompletion && familyTurn) return;
         // Only an answer to the requester itself may become its implicit result.
         const text = familyTurn
           ? implicitTurnResultFor(event.result, familyTurn.senderSessionId)

@@ -62,6 +62,8 @@ export interface CurrentSessionControl extends ProjectSessionLivePolicyControl {
       title: string;
       initialPrompt: string;
       model: ChatConfiguration;
+      /** Whether the initial assignment owes the parent one report; defaults to true. */
+      expectsResponse?: boolean;
       placement: "none" | "right" | "down";
       worktreeName?: string;
       senderContext: CrossSessionContextSnapshot;

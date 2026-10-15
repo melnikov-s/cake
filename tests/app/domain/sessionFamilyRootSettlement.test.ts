@@ -130,7 +130,6 @@ it.effect("retains a completed root request that expected a response", () =>
           turnId: state.turns[0]?.turnId,
           requestMessageId: requestId,
           threadId: familyId,
-          expectsResponse: true,
           reported: false,
           outcome: "complete",
         },

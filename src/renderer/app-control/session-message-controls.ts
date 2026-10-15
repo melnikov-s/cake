@@ -175,7 +175,7 @@ export const sessionMessageControls = [
       maxMessages: Schema.optionalKey(
         Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1000)),
       ),
-      expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+      expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
       replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
     }),
     scope: "global",
@@ -183,6 +183,9 @@ export const sessionMessageControls = [
       topic: "sessions",
       summary:
         "Send, queue, or steer a correlated message to one explicitly targeted session. The result is a visible delivery receipt; optional maxMessages bounds the exchange.",
+      guidance: [
+        "expectsResponse defaults to false. Set true only when you need an answer (an assignment, question, or blocker); the recipient then owes exactly one result, or one failure/stopped notice if the turn handling this message ends without one. With false, the recipient never reports back automatically.",
+      ],
     },
     run: async (input, { host, source }, command, known): Promise<AppControlResult> => {
       const { sessionId } = input;

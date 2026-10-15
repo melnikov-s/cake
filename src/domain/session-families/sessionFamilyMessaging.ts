@@ -109,7 +109,7 @@ export const route: (
         )
       : undefined;
   if (command === "sessions.reply" && !pending) return undefined;
-  if (pending?.completionContract && pending.outcome === undefined && input.outcome) {
+  if (pending && pending.outcome === undefined && input.outcome) {
     if (!substantiveTurnResult({ stopReason: "stop", text: input.text }))
       return yield* routingError(
         "A terminal report must contain substantive findings, changes, or a blocker",
@@ -180,7 +180,8 @@ export const route: (
   const messageId = crypto.randomUUID();
   const threadId = pending?.threadId ?? input.threadId ?? crypto.randomUUID();
   const replyToMessageId = pending?.requestMessageId ?? input.replyToMessageId;
-  const expectsResponse = input.expectsResponse ?? command === "sessions.send";
+  // Neither sends nor replies create a reply obligation unless the caller asks for one.
+  const expectsResponse = input.expectsResponse ?? false;
   const messageMetadata = {
     version: 1 as const,
     messageId,
@@ -221,11 +222,10 @@ export const route: (
     : [];
   if (substantiveTurnResult({ stopReason: "stop", text: input.text }))
     for (const request of preparedRequests)
-      if (request.completionContract)
-        yield* families.recordReport(request.turnId, {
-          outcome: input.outcome ?? "result",
-          text: input.text,
-        });
+      yield* families.recordReport(request.turnId, {
+        outcome: input.outcome ?? "result",
+        text: input.text,
+      });
   // Ordinary delivery starts an idle recipient or queues behind active work.
   // An explicit steer deliberately interrupts and redirects the target.
   const delivery = input.delivery ?? (destinationSnapshot.streaming ? "queue" : "prompt");

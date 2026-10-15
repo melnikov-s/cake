@@ -67,21 +67,19 @@ describe("Session Family lifecycle", () => {
           sessionId: turn.sessionId,
           senderSessionId: turn.senderSessionId,
           turnId: turn.turnId,
-          expectsResponse: turn.expectsResponse,
         })),
         [
           {
             sessionId: "grandchild",
             senderSessionId: "child",
             turnId: "grandchild-turn",
-            expectsResponse: true,
           },
         ],
       );
     }).pipe(Effect.provide(layer())),
   );
 
-  it.effect("records only accepted family messages and ignores generated notices", () =>
+  it.effect("records only messages that request a response and ignores generated notices", () =>
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;
       yield* storage.addChild(reservation);
@@ -103,14 +101,8 @@ describe("Session Family lifecycle", () => {
         { turnId: "notice-turn", text: message("parent", false, true) },
         Effect.void,
       );
-      assert.deepEqual(
-        (yield* storage.state()).turns.map((turn) => [turn.turnId, turn.expectsResponse]),
-        [
-          ["request-turn", true],
-          ["informational-turn", false],
-        ],
-      );
-      yield* storage.settleTurn("informational-turn", "complete");
+      // A message with expectsResponse false never creates an obligation, so
+      // neither success nor failure of the turn handling it can notify anyone.
       assert.deepEqual(
         (yield* storage.state()).turns.map((turn) => turn.turnId),
         ["request-turn"],

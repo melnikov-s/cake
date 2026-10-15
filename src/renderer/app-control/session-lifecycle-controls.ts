@@ -38,6 +38,7 @@ const createDraftSessionArgs = Schema.Struct({
   workspacePath: bounded(1, 4096),
   name: trimmed(1, 500),
   initialPrompt: trimmed(1, 100000),
+  expectsResponse: Schema.optionalKey(Schema.Boolean),
   model: Schema.optionalKey(
     Schema.Struct({
       provider: trimmed(1, 256),
@@ -61,6 +62,7 @@ export const sessionLifecycleControls = [
       guidance: [
         "Omit model unless the user explicitly asks for a specific model. When omitted, the new session uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling Cake Chat's current model. Only when no default preset is configured does it use the calling Cake Chat's current settings.",
         "Pass exact attachment IDs from input metadata or attachments.list in inputRefs to forward without reading. Use attachments.read only when you want to inspect the content yourself.",
+        "expectsResponse defaults to true for the initial assignment: the session reports back exactly once when the turn handling that assignment finishes (a result, or one failure/stopped notice). Later turns the user starts directly in that session never report back. Set false when no report is wanted.",
       ],
       examples: [
         {

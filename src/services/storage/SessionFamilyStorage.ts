@@ -18,7 +18,7 @@ import {
   SessionRequester,
 } from "../../contracts/project-sessions/session-reporting";
 
-const DOCUMENT_VERSION = 6;
+const DOCUMENT_VERSION = 7;
 const BoundedId = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const BoundedPath = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096));
 
@@ -127,23 +127,33 @@ const SpawnedSession = Schema.Struct({
 });
 export interface SpawnedSession extends Schema.Schema.Type<typeof SpawnedSession> {}
 
+/**
+ * One pending reply obligation. Cake records it only when an accepted incoming
+ * message explicitly set `expectsResponse: true`; the turn that consumes that
+ * message owes exactly one result (or one factual failure notice), after which
+ * the record is removed. Turns without a record never notify anyone.
+ */
 const FamilyTurn = Schema.Struct({
-  completionContract: Schema.optionalKey(Schema.Boolean),
   report: Schema.optionalKey(SessionCompletionReport),
   /** The session executing the request. */
   sessionId: BoundedId,
-  /** The session that should receive a response or factual failure notice. */
+  /** The session that asked for the response. */
   senderSessionId: BoundedId,
   turnId: BoundedId,
   requestMessageId: BoundedId,
   threadId: BoundedId,
-  expectsResponse: Schema.Boolean,
   reported: Schema.Boolean,
   deliveryTurnId: Schema.optionalKey(BoundedId),
   replyMessageIds: Schema.optionalKey(Schema.Array(BoundedId)),
   outcome: Schema.optionalKey(Schema.Literals(["complete", "failed", "aborted"])),
 });
 export interface FamilyTurn extends Schema.Schema.Type<typeof FamilyTurn> {}
+/** Version 6 recorded every correlated message, including ones that requested no response. */
+const Version6FamilyTurn = Schema.Struct({
+  ...FamilyTurn.fields,
+  completionContract: Schema.optionalKey(Schema.Boolean),
+  expectsResponse: Schema.Boolean,
+});
 export const SessionFamilyDocument = Schema.Struct({
   families: Schema.Array(SessionFamily),
   turns: Schema.Array(FamilyTurn),
@@ -229,6 +239,21 @@ const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : 
 const storageError = (operation: string, cause: unknown) =>
   new SessionFamilyStorageError({ operation, message: messageOf(cause) });
 
+/** The initial assignment's obligation is the spawned session's one handoff to Cake Chat. */
+const settleHandoffs = (
+  spawnedSessions: ReadonlyArray<SpawnedSession>,
+  turns: ReadonlyArray<FamilyTurn>,
+  reportDelivered: (turn: FamilyTurn) => boolean,
+): ReadonlyArray<SpawnedSession> =>
+  spawnedSessions.map((spawn) => {
+    const initial = turns.find(
+      (turn) => turn.sessionId === spawn.sessionId && turn.requestMessageId === spawn.sessionId,
+    );
+    return initial
+      ? { ...spawn, handoffSettled: true, reportDelivered: reportDelivered(initial) }
+      : spawn;
+  });
+
 const validateDocument = (document: SessionFamilyDocument): SessionFamilyDocument => {
   const familyIds = new Set<string>();
   const memberIds = new Set<string>();
@@ -283,12 +308,14 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         const envelope = yield* Schema.decodeUnknownEffect(StoredEnvelope)(parsed).pipe(
           Effect.mapError((cause) => storageError("load", cause)),
         );
-        if (![1, 2, 3, 4, 5, DOCUMENT_VERSION].includes(envelope.version))
+        if (![1, 2, 3, 4, 5, 6, DOCUMENT_VERSION].includes(envelope.version))
           return yield* storageError(
             "load",
             `Unsupported session family document version ${envelope.version}`,
           );
-        const migrateTurn = (turn: typeof LegacyFamilyTurn.Type): FamilyTurn => {
+        const migrateTurn = (
+          turn: typeof LegacyFamilyTurn.Type,
+        ): typeof Version6FamilyTurn.Type => {
           const { parentSessionId, ...rest } = turn;
           return {
             ...rest,
@@ -342,10 +369,23 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
           const previous = yield* Schema.decodeUnknownEffect(
             Schema.Struct({
               families: Schema.Array(SessionFamily),
-              turns: Schema.Array(FamilyTurn),
+              turns: Schema.Array(Version6FamilyTurn),
             }),
           )(data).pipe(Effect.mapError((cause) => storageError("migrate", cause)));
           data = { ...previous, spawnedSessions: [] };
+        }
+        if (envelope.version < 7) {
+          const previous = yield* Schema.decodeUnknownEffect(
+            Schema.Struct({
+              families: Schema.Array(SessionFamily),
+              turns: Schema.Array(Version6FamilyTurn),
+              spawnedSessions: Schema.Array(SpawnedSession),
+            }),
+          )(data).pipe(Effect.mapError((cause) => storageError("migrate", cause)));
+          // v7 journals only explicit reply obligations. Records for messages that asked
+          // for no response must not become notices after upgrade. Decoding the v7
+          // document below drops the retired per-record flags.
+          data = { ...previous, turns: previous.turns.filter((turn) => turn.expectsResponse) };
         }
         // v5 drops member-synchronization journals. The root's actual namespace
         // is authoritative even when an older transition stopped halfway through.
@@ -542,19 +582,13 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
             turns: document.turns.flatMap((turn) =>
               turn.turnId !== turnId || turn.outcome !== undefined
                 ? [turn]
-                : turn.reported ||
-                    (outcome === "aborted" && !turn.completionContract) ||
-                    (outcome === "complete" && !turn.expectsResponse)
+                : turn.reported
                   ? []
                   : [
                       {
                         ...turn,
                         outcome,
-                        ...(turn.completionContract &&
-                        report &&
-                        (!turn.report || outcome === "failed")
-                          ? { report }
-                          : null),
+                        ...(report && (!turn.report || outcome === "failed") ? { report } : null),
                       },
                     ],
             ),
@@ -575,7 +609,6 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
               .find(
                 (turn) =>
                   turn.sessionId === sessionId &&
-                  turn.expectsResponse &&
                   !turn.reported &&
                   (executing.has(turn.turnId) ||
                     (explicitlyCorrelated && turn.outcome !== undefined)) &&
@@ -600,7 +633,6 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
               turn.sessionId === sessionId &&
               turn.senderSessionId === targetSessionId &&
               turn.requestMessageId === requestMessageId &&
-              turn.expectsResponse &&
               !turn.reported,
           );
           if (!requestedTurn) return document;
@@ -616,7 +648,6 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                 coversExecutingInputs &&
                 turn.sessionId === sessionId &&
                 turn.senderSessionId === targetSessionId &&
-                turn.expectsResponse &&
                 !turn.reported &&
                 executing.has(turn.turnId);
               if (!isRequestedTurn && !isCoveredExecutingInput) return turn;
@@ -631,16 +662,22 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
       });
       const confirmResponse = Effect.fn("SessionFamilyStorage.confirmResponse")(
         (responseMessageId: string) =>
-          update((document) => ({
-            ...document,
-            turns: document.turns.flatMap((turn) =>
-              turn.replyMessageIds?.includes(responseMessageId)
-                ? turn.outcome
-                  ? []
-                  : [{ ...turn, reported: true }]
-                : [turn],
-            ),
-          })),
+          update((document) => {
+            const answered = document.turns.filter((turn) =>
+              turn.replyMessageIds?.includes(responseMessageId),
+            );
+            return {
+              ...document,
+              turns: document.turns.flatMap((turn) =>
+                answered.includes(turn)
+                  ? turn.outcome
+                    ? []
+                    : [{ ...turn, reported: true }]
+                  : [turn],
+              ),
+              spawnedSessions: settleHandoffs(document.spawnedSessions, answered, () => true),
+            };
+          }),
       );
       const markNoticeAttempt = Effect.fn("SessionFamilyStorage.markNoticeAttempt")(
         (turnId: string, deliveryTurnId: string) =>
@@ -655,24 +692,16 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
         update((document) => ({
           ...document,
           turns: document.turns.filter((turn) => turn.turnId !== turnId),
-          spawnedSessions: document.spawnedSessions.map((spawn) => {
-            const turn = document.turns.find(
-              (item) => item.turnId === turnId && item.sessionId === spawn.sessionId,
-            );
-            if (
-              !turn ||
-              turn.outcome === undefined ||
-              !turn.completionContract ||
-              turn.requestMessageId !== spawn.sessionId
-            )
-              return spawn;
-            const reportDelivered = Boolean(
-              turn.report &&
-              (turn.outcome === "complete" ||
-                (turn.outcome === "failed" && turn.report.outcome === "failed")),
-            );
-            return { ...spawn, handoffSettled: true, reportDelivered };
-          }),
+          spawnedSessions: settleHandoffs(
+            document.spawnedSessions,
+            document.turns.filter((turn) => turn.turnId === turnId && turn.outcome !== undefined),
+            (turn) =>
+              Boolean(
+                turn.report &&
+                (turn.outcome === "complete" ||
+                  (turn.outcome === "failed" && turn.report.outcome === "failed")),
+              ),
+          ),
         })),
       );
       const withdrawNotices = Effect.fn("SessionFamilyStorage.withdrawNotices")(
@@ -693,16 +722,7 @@ export const makeSessionFamilyStorageLive = (documentPath: string) =>
                     ? []
                     : [{ ...turn, reported: true }],
               ),
-              spawnedSessions: document.spawnedSessions.map((spawn) =>
-                withdrawn.some(
-                  (turn) =>
-                    turn.sessionId === spawn.sessionId &&
-                    turn.completionContract &&
-                    turn.requestMessageId === spawn.sessionId,
-                )
-                  ? { ...spawn, handoffSettled: true, reportDelivered: false }
-                  : spawn,
-              ),
+              spawnedSessions: settleHandoffs(document.spawnedSessions, withdrawn, () => false),
             };
           }),
       );

@@ -1970,7 +1970,7 @@ describe("AppControlBridge", () => {
       targetTitle: "Review",
       messageNumber: 1,
       maxMessages: 3,
-      expectsResponse: true,
+      expectsResponse: false,
       recipientContext: { usedTokens: 96_000, windowTokens: 128_000 },
     });
     const threadId = (first as { threadId: string }).threadId;
@@ -1982,7 +1982,7 @@ describe("AppControlBridge", () => {
       expect.objectContaining({
         threadId,
         sequence: 1,
-        expectsResponse: true,
+        expectsResponse: false,
         context: { usedTokens: 64_000, windowTokens: 128_000 },
         sender: {
           kind: "project-session",

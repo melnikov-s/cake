@@ -25,9 +25,7 @@ const assignment = (turnId: string) => ({
   senderSessionId: "parent",
   requestMessageId: turnId,
   threadId: turnId,
-  expectsResponse: true,
   reported: false,
-  completionContract: true,
 });
 
 describe("Workflow completion ownership", () => {

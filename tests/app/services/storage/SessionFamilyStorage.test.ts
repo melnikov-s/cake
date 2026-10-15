@@ -16,7 +16,6 @@ const turn = (overrides: Partial<FamilyTurn> = {}): FamilyTurn => ({
   turnId: "turn",
   requestMessageId: "request-message",
   threadId: "thread",
-  expectsResponse: true,
   reported: false,
   ...overrides,
 });
@@ -88,7 +87,7 @@ describe("SessionFamilyStorage", () => {
             data: {
               families: [family],
               transitions: [{ parentSessionId: "parent", resolved: true }],
-              turns: [turn()],
+              turns: [{ ...turn(), expectsResponse: true }],
             },
           }),
         ],
@@ -103,7 +102,7 @@ describe("SessionFamilyStorage", () => {
         yield* storage.settleTurn("turn", "complete");
         const persisted = JSON.parse(files.get("state/session-families.json") ?? "{}");
         assert.deepEqual(persisted, {
-          version: 6,
+          version: 7,
           data: { families: [family], turns: [turn({ outcome: "complete" })], spawnedSessions: [] },
         });
       }).pipe(Effect.provide(familyStorageHarness(files).layer));
@@ -123,7 +122,7 @@ describe("SessionFamilyStorage", () => {
       yield* storage.settleTurn("turn", "complete");
       assert.deepEqual((yield* storage.state()).turns, []);
       assert.equal((yield* storage.list()).length, 1);
-      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 6);
+      assert.equal(JSON.parse(files.get("state/session-families.json") ?? "{}").version, 7);
     }).pipe(Effect.provide(familyStorageHarness(files).layer));
   });
 
@@ -200,28 +199,74 @@ describe("SessionFamilyStorage", () => {
         turnId: "legacy-turn",
         requestMessageId: "legacy-turn",
         threadId: "legacy-turn",
-        expectsResponse: true,
         reported: false,
       });
     }).pipe(Effect.provide(familyStorageHarness(files).layer));
   });
 
-  it.effect("settles successful informational and aborted turns silently", () =>
+  it.effect("settles every pending obligation once, including aborted turns", () =>
     Effect.gen(function* () {
       const storage = yield* SessionFamilyStorage;
-      yield* storage.recordTurn(turn({ expectsResponse: false }));
-      yield* storage.settleTurn("turn", "complete");
-      assert.deepEqual((yield* storage.state()).turns, []);
-
-      yield* storage.recordTurn(turn({ turnId: "aborted", expectsResponse: true }));
+      const report = { outcome: "result" as const, text: "Substantive findings" };
+      yield* storage.recordTurn(turn());
+      yield* storage.settleTurn("turn", "complete", report);
+      yield* storage.recordTurn(turn({ turnId: "aborted" }));
       yield* storage.settleTurn("aborted", "aborted");
-      assert.deepEqual((yield* storage.state()).turns, []);
-
-      yield* storage.recordTurn(turn({ turnId: "failed", expectsResponse: false }));
-      yield* storage.settleTurn("failed", "failed");
-      assert.equal((yield* storage.state()).turns[0]?.outcome, "failed");
+      // A second settlement of the same turn never replaces the first outcome.
+      yield* storage.settleTurn("turn", "failed");
+      assert.deepEqual(
+        (yield* storage.state()).turns.map((item) => [item.turnId, item.outcome, item.report]),
+        [
+          ["turn", "complete", report],
+          ["aborted", "aborted", undefined],
+        ],
+      );
+      // An obligation already satisfied by a confirmed reply clears silently.
+      yield* storage.recordTurn(turn({ turnId: "answered", reported: true }));
+      yield* storage.settleTurn("answered", "complete");
+      assert.ok(!(yield* storage.state()).turns.some((item) => item.turnId === "answered"));
     }).pipe(Effect.provide(testLayer())),
   );
+
+  it.effect("migrates version 6 journals to explicit reply obligations only", () => {
+    const files = new Map<string, string>();
+    const legacy = (turnId: string, expectsResponse: boolean) => ({
+      sessionId: "child",
+      senderSessionId: "parent",
+      turnId,
+      requestMessageId: turnId,
+      threadId: "thread",
+      expectsResponse,
+      completionContract: expectsResponse,
+      reported: false,
+      outcome: "failed",
+    });
+    files.set(
+      "state/session-families.json",
+      JSON.stringify({
+        version: 6,
+        data: {
+          families: [],
+          spawnedSessions: [],
+          turns: [legacy("requested", true), legacy("informational", false)],
+        },
+      }),
+    );
+    return Effect.gen(function* () {
+      const storage = yield* SessionFamilyStorage;
+      assert.deepEqual((yield* storage.state()).turns, [
+        {
+          sessionId: "child",
+          senderSessionId: "parent",
+          turnId: "requested",
+          requestMessageId: "requested",
+          threadId: "thread",
+          reported: false,
+          outcome: "failed",
+        },
+      ]);
+    }).pipe(Effect.provide(familyStorageHarness(files).layer));
+  });
 
   it.effect("only a response correlated to the request and sender satisfies it", () =>
     Effect.gen(function* () {

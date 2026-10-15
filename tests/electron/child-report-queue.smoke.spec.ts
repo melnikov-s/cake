@@ -129,8 +129,6 @@ test("canceling child reports retires their outbox entries and Stop stays stoppe
           turnId: id,
           requestMessageId: id,
           threadId: id,
-          expectsResponse: true,
-          completionContract: true,
           reported: false,
           outcome: "complete",
           report: { outcome: "result", text: `Child report ${index + 1}` },

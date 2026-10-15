@@ -83,9 +83,13 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* (
         spawn.requester.kind === "cake-chat" &&
         spawn.requester.sessionId === CAKE_CHAT_SESSION_ID &&
         senderSessionId === spawn.requester.sessionId;
+      // A reply obligation belongs to this one message, never to the session
+      // relationship: user-started turns and messages that asked for no
+      // response are not journaled and therefore never produce notices.
       if (
         (familyRequest || spawnedRequest) &&
         request &&
+        request.metadata.expectsResponse &&
         !request.metadata.generatedNotice &&
         senderSessionId !== undefined
       )
@@ -95,17 +99,7 @@ export const admitTurn = Effect.fn("SessionFamilies.admitTurn")(function* (
           turnId: input.turnId,
           requestMessageId: request.metadata.messageId,
           threadId: request.metadata.threadId,
-          expectsResponse: request.metadata.expectsResponse,
           reported: false,
-          ...(((spawnedRequest &&
-            !spawn.handoffSettled &&
-            request.metadata.messageId === sessionId) ||
-            (family &&
-              familyMember(family, sessionId)?.parentSessionId === senderSessionId &&
-              request.metadata.messageId === sessionId)) &&
-          request.metadata.expectsResponse
-            ? { completionContract: true }
-            : null),
         });
       yield* accept.pipe(
         Effect.onExit((exit) =>
@@ -133,6 +127,8 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
     title: string;
     initialPrompt: string;
     model: ChatConfiguration;
+    /** Whether the initial assignment owes the parent one result report; defaults to true. */
+    expectsResponse?: boolean;
     worktreeName?: string;
     senderContext: CrossSessionContextSnapshot;
   },
@@ -300,7 +296,7 @@ export const createChild = Effect.fn("SessionFamilies.createChild")(function* <
     messageId: prepared.child.sessionId,
     threadId: prepared.family.familyId,
     sequence: 1,
-    expectsResponse: true,
+    expectsResponse: input.expectsResponse ?? true,
     context: input.senderContext,
     sender: {
       sessionId: parentSessionId,
@@ -361,7 +357,6 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* (
         turnId: child.sessionId,
         requestMessageId: child.sessionId,
         threadId: family.familyId,
-        expectsResponse: true,
         reported: false,
         outcome: "failed",
       });
@@ -373,15 +368,14 @@ export const initialize = Effect.fn("SessionFamilies.initialize")(function* (
     if (spawn.handoffSettled || state.turns.some((turn) => turn.sessionId === spawn.sessionId))
       continue;
     // Covers a crash after recording the requester but before Pi accepted its initial input.
+    // Spawns created without an initial obligation are registered already settled.
     yield* storage.recordTurn({
       sessionId: spawn.sessionId,
       senderSessionId: spawn.requester.sessionId,
       turnId: spawn.sessionId,
       requestMessageId: spawn.sessionId,
       threadId: spawn.sessionId,
-      expectsResponse: true,
       reported: false,
-      completionContract: true,
       outcome: "aborted",
     });
   }
@@ -414,16 +408,12 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
   )
     return yield* deliverSpawnedNotice(turn, spawn);
   if (!family) return;
-  if (turn.outcome === "aborted" && !turn.completionContract) {
-    yield* storage.completeNotice(turn.turnId);
-    return;
-  }
   const senderMember = familyMember(family, turn.senderSessionId);
   const childMember = familyMember(family, turn.sessionId);
   if (!senderMember || !childMember) return;
-  // Outcome notices exist so a delegating parent learns when its child stops.
-  // A child is never told about its parent's turns, and no member is told
-  // about a session it does not own.
+  // Automatic outcome notices exist so a delegating parent learns when its child
+  // stops. Requests to a parent or sibling are answered only by explicit
+  // sessions.reply; a child is never told about its parent's turns.
   if (childMember.parentSessionId !== turn.senderSessionId) {
     yield* storage.completeNotice(turn.turnId);
     return;
@@ -490,9 +480,7 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
         ? "stopped with an error"
         : "stopped";
   const report =
-    turn.completionContract &&
-    (turn.outcome === "complete" ||
-      (turn.outcome === "failed" && turn.report?.outcome === "failed"))
+    turn.outcome === "complete" || (turn.outcome === "failed" && turn.report?.outcome === "failed")
       ? turn.report
       : undefined;
   const childSummary = yield* sessions
@@ -504,7 +492,7 @@ export const deliver = Effect.fn("SessionFamilies.deliverNotice")(function* (tur
       turn.sessionId,
     )
     .pipe(Effect.catch(() => Effect.succeed(undefined)));
-  const missingResponse = turn.expectsResponse && turn.outcome === "complete";
+  const missingResponse = turn.outcome === "complete";
   const text = encodeCrossSessionMessage(
     report
       ? `Session ${turn.sessionId} — ${report.outcome}\n\n${report.text}`
@@ -628,9 +616,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       sessionDirectory: location.sessionDirectory,
     });
     const pending =
-      command === "sessions.reply" ||
-      input.replyToMessageId ||
-      (spawn && input.expectsResponse === false)
+      command === "sessions.reply" || input.replyToMessageId || (spawn && !input.expectsResponse)
         ? yield* storage.pendingResponseRequest(
             sessionId,
             executingIds,
@@ -647,11 +633,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       (input.replyToMessageId === undefined || input.replyToMessageId === spawn.sessionId)
     )
       return toJsonValue({ ok: true, command, status: "already-reported", expectsResponse: false });
-    if (
-      pending?.completionContract &&
-      pending.outcome === undefined &&
-      !(input.expectsResponse ?? false)
-    ) {
+    if (pending && pending.outcome === undefined && !input.expectsResponse) {
       if (!substantiveTurnResult({ stopReason: "stop", text: input.text }))
         return yield* failure(
           "A result report must contain substantive findings, changes, or a blocker—not an acknowledgment",
@@ -678,7 +660,7 @@ export const routeCoordinatorMessage = Effect.fn("SessionFamilies.routeCoordinat
       messageId,
       threadId: pending?.threadId ?? input.threadId ?? spawn?.sessionId ?? crypto.randomUUID(),
       sequence: 1,
-      expectsResponse: input.expectsResponse ?? command === "sessions.send",
+      expectsResponse: input.expectsResponse ?? false,
       ...(replyToMessageId ? { replyToMessageId } : null),
       ...(senderContext ? { context: senderContext } : null),
       sender: {

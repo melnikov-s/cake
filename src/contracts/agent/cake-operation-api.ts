@@ -29,6 +29,7 @@ export interface RuntimeOperationApi {
       title: string;
       initialPrompt: string;
       model?: CakeModelSelection;
+      expectsResponse: boolean;
       placement: "none" | "right" | "down";
       worktreeName?: string;
     },

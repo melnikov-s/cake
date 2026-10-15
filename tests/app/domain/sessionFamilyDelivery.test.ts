@@ -48,7 +48,6 @@ const outcome = {
   turnId,
   requestMessageId: childId,
   threadId: turnId,
-  expectsResponse: true,
   reported: false,
   outcome: "complete" as const,
 };
@@ -77,24 +76,51 @@ const environment = Layer.mergeAll(
 );
 
 describe("Session Family outcome delivery", () => {
-  it.effect("discards persisted aborted outcomes without messaging the sender", () =>
+  it.effect("an aborted turn with a pending obligation sends exactly one canceled notice", () =>
     Effect.gen(function* () {
-      const storage = yield* SessionFamilyStorage;
+      const received: string[] = [];
+      const first = yield* Deferred.make<void>();
       const aborted = { ...outcome, outcome: "aborted" as const };
-      yield* storage.addChild(reservation);
-      yield* storage.recordTurn(aborted);
-      yield* Effect.scoped(deliver(aborted));
-      assert.deepEqual((yield* storage.state()).turns, []);
-    }).pipe(
-      Effect.provide(
-        Layer.mergeAll(
-          familyStorageHarness().layer,
-          environment,
-          Layer.mock(SessionArchiveStorage, {}),
-          Layer.mock(CakeSessionRuntimes, {}),
+      yield* Effect.gen(function* () {
+        const storage = yield* SessionFamilyStorage;
+        yield* storage.addChild(reservation);
+        yield* storage.recordTurn(aborted);
+        yield* Effect.scoped(deliver(aborted));
+        yield* Deferred.await(first);
+        // Repeated worker passes while the notice is pending must not resend it.
+        yield* Effect.scoped(deliver(aborted));
+        assert.equal(received.length, 1);
+        const notice = parseCrossSessionMessage(received[0] ?? "");
+        assert.equal(notice?.metadata.expectsResponse, false);
+        assert.equal(notice?.metadata.generatedNotice, true);
+        assert.match(notice?.text ?? "", /canceled or interrupted/);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            familyStorageHarness().layer,
+            environment,
+            Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
+            makeCakeSessionRuntimesLayer({
+              sessionIds: () => Stream.empty,
+              catalog: () => Stream.empty,
+              catalogEntry: () => Effect.succeed(undefined),
+              inspect: () => Effect.succeed(undefined),
+              changelog: () => Effect.succeed(""),
+              createRuntime: (runtimeOptions) =>
+                Effect.succeed({
+                  ...fakeRuntime(runtimeOptions, () => undefined),
+                  snapshot: async () => ({ ...snapshot, streaming: true }),
+                  listQueuedMessages: async () => ({ steering: [], followUp: [...received] }),
+                  prompt: async (text: string) => {
+                    received.push(text);
+                    Deferred.doneUnsafe(first, Effect.void);
+                  },
+                }),
+            }),
+          ),
         ),
-      ),
-    ),
+      );
+    }),
   );
 
   it.effect("never messages a child about its parent's turn", () =>
@@ -107,7 +133,6 @@ describe("Session Family outcome delivery", () => {
         turnId: "0a7d1e6c-3a8b-4d2e-9f11-6f2b7c1d9e01",
         requestMessageId: "a262d069-78f8-4c36-9118-1b4aec199bf3",
         threadId: "e648e33b-7192-499e-a471-3ee472e7d0a2",
-        expectsResponse: true,
         reported: false,
         outcome: "failed" as const,
       };
@@ -292,7 +317,6 @@ describe("Session Family outcome delivery", () => {
         const received = yield* Deferred.make<string>();
         const restored = {
           ...outcome,
-          completionContract: true,
           replyMessageIds: ["803c90fa-d718-4ecd-97f4-31071609156b"],
           deliveryTurnId: "lost-queue-turn",
           report: {
@@ -366,50 +390,6 @@ describe("Session Family outcome delivery", () => {
                     assert.equal(delivery, "follow-up");
                     Deferred.doneUnsafe(received, Effect.void);
                   },
-                }),
-            }),
-          ),
-        ),
-      );
-    }),
-  );
-
-  it.effect("reports informational failures without creating a response obligation", () =>
-    Effect.gen(function* () {
-      const received = yield* Deferred.make<string>();
-      const failedInformational = {
-        ...outcome,
-        turnId: "69127286-fb4e-4831-a47e-b4d423ab4af0",
-        requestMessageId: "d4d316e8-e2e9-4d8d-9e5d-d3f1314b680f",
-        expectsResponse: false,
-        outcome: "failed" as const,
-      };
-      yield* Effect.gen(function* () {
-        const storage = yield* SessionFamilyStorage;
-        yield* storage.addChild(reservation);
-        yield* storage.recordTurn(failedInformational);
-        yield* Effect.scoped(deliver(failedInformational));
-        const notice = parseCrossSessionMessage(yield* Deferred.await(received));
-        assert.equal(notice?.metadata.expectsResponse, false);
-        assert.equal(notice?.metadata.generatedNotice, true);
-        assert.match(notice?.text ?? "", /stopped with an error/);
-      }).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            familyStorageHarness().layer,
-            environment,
-            Layer.mock(SessionArchiveStorage, { locate: () => Effect.succeed("active" as const) }),
-            makeCakeSessionRuntimesLayer({
-              sessionIds: () => Stream.empty,
-              catalog: () => Stream.empty,
-              catalogEntry: () => Effect.succeed(undefined),
-              inspect: () => Effect.succeed(undefined),
-              changelog: () => Effect.succeed(""),
-              createRuntime: (runtimeOptions) =>
-                Effect.succeed({
-                  ...fakeRuntime(runtimeOptions, () => undefined),
-                  prompt: (text: string) =>
-                    Effect.runPromise(Deferred.succeed(received, text)).then(() => undefined),
                 }),
             }),
           ),

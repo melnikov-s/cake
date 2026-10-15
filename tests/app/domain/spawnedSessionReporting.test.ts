@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { WorkflowTestLive } from "../helpers/workflowFixture";
 import { it } from "@effect/vitest";
-import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
+import { Deferred, Effect, Fiber, Layer, Queue, Schema, Stream } from "effect";
 import { describe } from "vitest";
 import * as families from "../../../src/domain/session-families/sessionFamilies";
 import { acquireOptions as projectOptions } from "../../../src/domain/project-sessions/projectSessionRuntime";
@@ -12,7 +12,10 @@ import { defaultApplicationState } from "../../../src/contracts/application/appl
 import { TaskInputStorage } from "../../../src/services/storage/TaskInputStorage";
 import type { Attachment } from "../../../src/contracts/conversations/session-contract";
 import type { PiTurnResult } from "../../../src/contracts/pi/turn-result-data";
-import { parseCrossSessionMessage } from "../../../src/contracts/conversations/cross-session-message";
+import {
+  encodeCrossSessionMessage,
+  parseCrossSessionMessage,
+} from "../../../src/contracts/conversations/cross-session-message";
 import { ApplicationState } from "../../../src/services/storage/ApplicationState";
 import { SessionFamilyStorage } from "../../../src/services/storage/SessionFamilyStorage";
 import { SessionArchiveStorage } from "../../../src/services/storage/SessionArchiveStorage";
@@ -61,6 +64,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   const entered = yield* Deferred.make<{ sessionId: string; turnId: string; text: string }>();
   const finish = yield* Deferred.make<PiTurnResult>();
   const settled = yield* Deferred.make<void>();
+  const settledTurns = yield* Queue.unbounded<string>();
   const received = yield* Deferred.make<void>();
   const persisted = yield* Deferred.make<void>();
   const executing = new Map<string, string[]>();
@@ -203,6 +207,8 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
                         yield* Deferred.succeed(persisted, undefined);
                         yield* Deferred.succeed(received, undefined);
                       } else {
+                        // Pi persists the accepted input before the run finishes.
+                        options.onInitialTranscriptPersisted?.();
                         submittedAttachments.set(options.sessionId ?? "", _attachments);
                         executing.set(options.sessionId ?? "", [turnId]);
                         yield* Deferred.succeed(entered, {
@@ -233,7 +239,12 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
   const observedStorage = {
     ...storage,
     settleTurn: (...args: Parameters<typeof storage.settleTurn>) =>
-      storage.settleTurn(...args).pipe(Effect.andThen(Deferred.succeed(settled, undefined))),
+      storage
+        .settleTurn(...args)
+        .pipe(
+          Effect.andThen(Deferred.succeed(settled, undefined)),
+          Effect.andThen(Queue.offer(settledTurns, args[0])),
+        ),
   };
   return {
     context,
@@ -242,6 +253,7 @@ const fixture = Effect.fn("SpawnedReportingTest.fixture")(function* (
     entered,
     finish,
     settled,
+    settledTurns,
     received,
     persisted,
     consumeQueued,
@@ -295,7 +307,7 @@ const createFromChat = Effect.fn("SpawnedReportingTest.createFromChat")(function
 
 const onlyTurn = Effect.fn("SpawnedReportingTest.onlyTurn")(function* () {
   const state = yield* (yield* SessionFamilyStorage).state();
-  const turns = state.turns.filter((turn) => turn.completionContract);
+  const turns = state.turns;
   assert.equal(turns.length, 1);
   const turn = turns[0];
   assert.ok(turn);
@@ -512,7 +524,7 @@ describe("automatic spawned-session reporting", () => {
             const state = yield* f.storage.state();
             assert.equal(state.families.length, 0);
             assert.equal(state.spawnedSessions[0]?.requester.sessionId, CAKE_CHAT_SESSION_ID);
-            assert.equal(state.turns[0]?.completionContract, true);
+            assert.equal(state.turns.length, 1);
             // Admission/ordinary idle is not completion; no successful report exists before Pi settles.
             yield* families.deliver(yield* onlyTurn());
             assert.equal(f.deliveries.length, 0);
@@ -631,7 +643,6 @@ describe("automatic spawned-session reporting", () => {
           );
           yield* Deferred.await(f.entered);
           assert.equal((yield* onlyTurn()).senderSessionId, parentId);
-          assert.equal((yield* onlyTurn()).completionContract, true);
           yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });
           yield* Deferred.await(f.settled);
           const turn = yield* onlyTurn();
@@ -757,10 +768,7 @@ describe("automatic spawned-session reporting", () => {
             yield* Deferred.succeed(f.consumeQueued, undefined);
             yield* Deferred.await(f.persisted);
             yield* families.deliver(turn);
-            assert.equal(
-              (yield* f.storage.state()).turns.filter((item) => item.completionContract).length,
-              0,
-            );
+            assert.equal((yield* f.storage.state()).turns.length, 0);
             assert.equal(f.deliveries.length, 1);
           }),
         );
@@ -933,9 +941,7 @@ describe("automatic spawned-session reporting", () => {
                 turnId: "82f2585c-b3cf-4b8f-8a18-4c58b5ca4c4c",
                 requestMessageId: workerId,
                 threadId: workerId,
-                completionContract: true,
                 reported: false,
-                expectsResponse: true,
                 ...(mode === "result" || mode === "missing"
                   ? { outcome: "complete" as const }
                   : null),
@@ -1050,4 +1056,138 @@ describe("automatic spawned-session reporting", () => {
         );
       }),
   );
+  describe("reply obligations belong to one message", () => {
+    const coordinatorMessage = (messageId: string, expectsResponse: boolean) =>
+      encodeCrossSessionMessage("Also check the admin-web review comments.", {
+        version: 1,
+        messageId,
+        threadId: messageId,
+        sequence: 1,
+        expectsResponse,
+        sender: { sessionId: CAKE_CHAT_SESSION_ID, title: "Cake Chat", kind: "cake-chat" },
+      });
+
+    /** Runs the initial assignment to one delivered report, then returns the worker handle. */
+    const reportInitialAssignment = Effect.fn("SpawnedReportingTest.reportInitialAssignment")(
+      function* (f: Effect.Success<ReturnType<typeof fixture>>) {
+        const created = yield* createFromChat();
+        const entered = yield* Deferred.await(f.entered);
+        yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });
+        assert.equal(yield* Queue.take(f.settledTurns), entered.turnId);
+        yield* families.deliver(yield* onlyTurn());
+        yield* Deferred.await(f.received);
+        // The recipient's transcript proves receipt; the obligation is then cleared.
+        yield* families.deliver(yield* onlyTurn());
+        const state = yield* f.storage.state();
+        assert.deepEqual(state.turns, []);
+        assert.equal(state.spawnedSessions[0]?.reportDelivered, true);
+        assert.equal(f.deliveries.length, 1);
+        return yield* (yield* CakeSessionRuntimes).acquire(
+          yield* projectOptions({ location, sessionId: created.sessionId, newSession: false }),
+        );
+      },
+    );
+
+    const deliverAll = Effect.fn("SpawnedReportingTest.deliverAll")(function* () {
+      for (const turn of (yield* (yield* SessionFamilyStorage).state()).turns)
+        yield* families.deliver(turn);
+    });
+
+    it.effect("an obligation is fulfilled once, then user-initiated turns send no notice", () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            const worker = yield* reportInitialAssignment(f);
+            // The user talks to the session directly: no obligation, no notice.
+            const userTurn = yield* worker.prompt("Please also summarize the risky files.");
+            assert.equal(yield* Queue.take(f.settledTurns), userTurn);
+            assert.deepEqual((yield* f.storage.state()).turns, []);
+            yield* deliverAll();
+            assert.equal(f.deliveries.length, 1);
+            assert.equal(f.transcript.length, 1);
+          }),
+        );
+      }),
+    );
+
+    it.effect("a coordinator send with expectsResponse false gets no notice", () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            const worker = yield* reportInitialAssignment(f);
+            const steer = yield* worker.prompt(
+              coordinatorMessage("1f0b1d0e-7f43-4a8e-9a39-6f5f7f3c2b10", false),
+            );
+            assert.equal(yield* Queue.take(f.settledTurns), steer);
+            assert.deepEqual((yield* f.storage.state()).turns, []);
+            yield* deliverAll();
+            assert.equal(f.deliveries.length, 1);
+          }),
+        );
+      }),
+    );
+
+    it.effect("a coordinator send with expectsResponse true gets exactly one result", () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            const worker = yield* reportInitialAssignment(f);
+            const requestId = "3c1b9c56-6c1e-4d7b-8a53-0b8f1b8a8f21";
+            const steer = yield* worker.prompt(coordinatorMessage(requestId, true));
+            assert.equal(yield* Queue.take(f.settledTurns), steer);
+            const [turn] = (yield* f.storage.state()).turns;
+            assert.equal(turn?.requestMessageId, requestId);
+            assert.equal(turn?.outcome, "complete");
+            assert.equal(turn?.report?.text, resultText);
+            yield* deliverAll();
+            // Wait for Cake Chat's transcript to persist the answer, then confirm receipt.
+            while (f.transcript.length < 2) yield* Effect.yieldNow;
+            yield* deliverAll();
+            assert.deepEqual((yield* f.storage.state()).turns, []);
+            assert.equal(f.deliveries.length, 2);
+            const answer = parseCrossSessionMessage(f.transcript[1] ?? "");
+            assert.ok(answer?.text.includes(resultText));
+            assert.equal(answer?.metadata.replyToMessageId, requestId);
+            assert.equal(answer?.metadata.expectsResponse, false);
+            // Neither message reports a stopped or failed outcome for the same work.
+            assert.ok(!f.transcript.some((text) => /stopped without|canceled|failed/.test(text)));
+          }),
+        );
+      }),
+    );
+
+    it.effect("creation with expectsResponse false never reports back", () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        yield* f.run(
+          Effect.gen(function* () {
+            const options = yield* assembleCoordinator();
+            yield* Effect.promise(() =>
+              options.runtime.globalControl!.invoke(
+                {
+                  name: "sessions.create",
+                  arguments: { workspacePath: "/project", ...createArgs, expectsResponse: false },
+                },
+                new AbortController().signal,
+              ),
+            );
+            const entered = yield* Deferred.await(f.entered);
+            assert.equal(parseCrossSessionMessage(entered.text)?.metadata.expectsResponse, false);
+            yield* Deferred.succeed(f.finish, { stopReason: "stop", text: resultText });
+            assert.equal(yield* Queue.take(f.settledTurns), entered.turnId);
+            const state = yield* f.storage.state();
+            assert.deepEqual(state.turns, []);
+            assert.equal(state.spawnedSessions[0]?.handoffSettled, true);
+            // A restart cannot invent an "interrupted" notice for work that owed nothing.
+            yield* families.initialize("/cake/sessions", "/cake/resolved");
+            assert.deepEqual((yield* f.storage.state()).turns, []);
+            assert.equal(f.deliveries.length, 0);
+          }),
+        );
+      }),
+    );
+  });
 });

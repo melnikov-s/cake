@@ -734,6 +734,7 @@ export async function createCakeSessionRuntime(
           requestId,
           title: input.title,
           initialPrompt: input.initialPrompt,
+          expectsResponse: input.expectsResponse,
           placement: input.placement,
           model: configuration.resolveModelSelection(input.model),
           ...(input.worktreeName === undefined ? null : { worktreeName: input.worktreeName }),

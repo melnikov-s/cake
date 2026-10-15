@@ -88,7 +88,7 @@ describe("batch tool through real session send controls", () => {
     for (const input of inputs)
       expect(input).toMatchObject({
         text: "Shared instructions",
-        crossSession: { expectsResponse: true, maxMessages: 5, sender: { sessionId: "sender" } },
+        crossSession: { expectsResponse: false, maxMessages: 5, sender: { sessionId: "sender" } },
       });
     expect(inputs[0]?.crossSession?.threadId).not.toBe(inputs[1]?.crossSession?.threadId);
     expect(inputs[0]?.crossSession?.messageId).not.toBe(inputs[1]?.crossSession?.messageId);

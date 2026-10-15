@@ -27,6 +27,7 @@ export const AgentProjectSessionCreate = Schema.Struct({
   initialPrompt: Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000))),
   model: ExplicitCakeModelSelection,
   markdown: Schema.optionalKey(Schema.Boolean),
+  expectsResponse: Schema.optionalKey(Schema.Boolean),
   worktreeName: Schema.optionalKey(
     Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,62}$/)),
   ),

@@ -91,22 +91,27 @@ follow-up input instead of discarding the message. Routing is main-process polic
 and must not depend on renderer visibility.
 
 Each accepted family message carries an explicit `expectsResponse` value and
-stable request/message correlation. Initial child assignments and ordinary
-explicit sends default to `true`; replies default to `false`. Callers set
-`expectsResponse: false` for substantive results and informational notices. A
-reply clears only the request identified by its reply correlation; an unrelated
-message in the same family or thread does not satisfy the obligation.
+stable request/message correlation. A reply obligation belongs to one message,
+never to a session relationship. Initial assignments (`sessions.create-child`,
+and Cake Chat's `sessions.create`) default to `expectsResponse: true` and accept
+an explicit `false`; `sessions.send`, `sessions.send-batch` and replies default
+to `false`. A reply clears only the request identified by its reply correlation;
+an unrelated message in the same family or thread does not satisfy the
+obligation.
 
-Cake durably records response obligations at Pi input acceptance and settles
-them only after the consumed turn stops. Successful work with no response
-expectation clears silently. If a response-expected turn stops without an
-accepted correlated reply, Cake sends exactly one factual notice to the original
-sender, whether that sender is the immediate parent or another family member.
-Failed or aborted work remains factually visible even when no response was
-expected, but generated notices carry no response expectation and are never
-recorded as new notification work, so notification chains terminate. Stop-all
-suppresses this reactivation path. Delivery intent survives restart and is
-idempotent by request, recipient turn, and notice-delivery turn IDs.
+Cake durably records an obligation at Pi input acceptance only when the message
+set `expectsResponse: true`. Turns the user starts directly, and messages that
+asked for no response, are never recorded and never produce completion,
+stopped, or failure notices. When the turn that consumed a recorded message
+stops, Cake delivers exactly one handoff and removes the record: the explicit
+or implicit result when one exists, otherwise one factual failure, canceled, or
+stopped notice. Automatic handoffs go to the immediate parent (or the Cake Chat
+requester of a spawned session); requests addressed to a parent or sibling are
+answered only through explicit `sessions.reply`. Generated notices carry no
+response expectation and are never recorded as new obligations, so notification
+chains terminate. Stop-all suppresses this reactivation path. Delivery intent
+survives restart and is idempotent by request, recipient turn, and
+notice-delivery turn IDs.
 
 Pi input acceptance and execution settlement are separate boundaries. Queued
 input retains its turn lease until Pi consumes the input and the run settles;

@@ -31,6 +31,7 @@ export function createSessionFamilyOperations(
         "The calling session becomes the child's immediate parent. Children may recursively create their own children.",
         "Omit worktreeName to share the caller's exact Working Directory. Supply worktreeName to create a Cake-managed worktree branched from the caller's current checkout.",
         "This operation returns after the initial child turn is accepted; do not wait or poll for the child, and finish the parent turn normally.",
+        "expectsResponse defaults to true for the initial assignment: the child reports back exactly once when the turn handling it finishes (a result, or one failure/stopped notice). Later turns started directly in the child never report back. Set false when no report is wanted.",
         "Pane placement defaults to none. Set placement to right or down only when the child should be opened beside the parent.",
         "Omit model unless the user explicitly asks for a specific model. When omitted, the child uses the configured default model preset's complete settings (provider, model, thinking level, and Fast mode; see models.list), not the calling session's current model. Only when no default preset is configured does it use the calling session's current settings.",
       ],
@@ -40,6 +41,7 @@ export function createSessionFamilyOperations(
           Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
         ),
         model: Schema.optionalKey(CakeModelSelection),
+        expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
         placement: Schema.Literals(["none", "right", "down"]).pipe(
           Schema.withDecodingDefaultKey(Effect.succeed("none" as const)),
         ),
@@ -69,6 +71,7 @@ export function createSessionFamilyOperations(
             title: string;
             initialPrompt: string;
             model?: CakeModelSelection;
+            expectsResponse: boolean;
             placement: "none" | "right" | "down";
             worktreeName?: string;
           },
@@ -99,7 +102,7 @@ export function createSessionFamilyOperations(
       summary: "Send a message to an explicitly targeted Project Session in any Cake project.",
       guidance: [
         "Set delivery to steer to interrupt and redirect a running target. Omit delivery for normal behavior: start an idle target or queue behind an active target.",
-        "expectsResponse defaults to true. Use true only for an assignment, actionable coordination, blocker, or question whose missing result must be reported; set false for substantive results and informational notices.",
+        "expectsResponse defaults to false. Set true only when you need an answer (an assignment, question, or blocker); the recipient then owes exactly one result, or one failure/stopped notice if the turn handling this message ends without one. With false, the recipient never reports back automatically.",
         "Set replyToMessageId when this message answers a specific request. A different or unrelated message never clears that request's response obligation.",
         "Send one substantive completion report. Never send acknowledgment-only messages or duplicate lifecycle reports; receiving a report or notification does not require a response.",
         "Delivery receipts are informational tool results. Never acknowledge a receipt; send another message only for substantive coordination.",
@@ -114,7 +117,7 @@ export function createSessionFamilyOperations(
         maxMessages: Schema.optionalKey(
           Schema.Int.check(Schema.isGreaterThan(0), Schema.isLessThanOrEqualTo(1_000)),
         ),
-        expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+        expectsResponse: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
         replyToMessageId: Schema.optionalKey(Schema.String.check(Schema.isUUID(4))),
       }),
       examples: [

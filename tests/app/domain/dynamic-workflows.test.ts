@@ -180,9 +180,7 @@ describe("Dynamic workflow lifecycle", () => {
           senderSessionId: "parent",
           requestMessageId: "request",
           threadId: "thread",
-          expectsResponse: true,
           reported: false,
-          completionContract: true,
         });
         f.executing.push("assignment");
         const receipt = yield* workflows.start(launchInput, launchInput.sessionId);

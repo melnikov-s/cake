@@ -21,7 +21,7 @@ export function createSessionSendBatchOperation(
     guidance: [
       "Supply 1–100 unique sessionIds and one text. Invalid arguments or duplicate IDs reject the whole batch before sending.",
       "Recipients are attempted sequentially in input order. Unknown targets and individual delivery failures do not stop later recipients; inspect every outcome.",
-      "Omit delivery to start idle targets or queue behind active targets; steer redirects active work. expectsResponse defaults to true; set false for results and informational notices.",
+      "Omit delivery to start idle targets or queue behind active targets; steer redirects active work. expectsResponse defaults to false; set true only when every recipient owes you one answer.",
       "Each recipient starts a separate exchange; maxMessages applies independently to each. Use sessions.send for an existing thread or a correlated reply.",
       "ok means the batch was processed, not that every delivery succeeded. status is complete, partial, or failed. Receipts are informational; no acknowledgment is needed.",
     ],

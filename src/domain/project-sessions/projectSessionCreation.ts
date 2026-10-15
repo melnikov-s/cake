@@ -24,6 +24,11 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
   readonly model: ChatConfiguration;
   readonly worktreeName?: string;
   readonly requester?: SessionRequester;
+  /**
+   * Whether the requester's initial assignment owes it one result report.
+   * Defaults to true; only meaningful with a Cake Chat requester.
+   */
+  readonly expectsResponse?: boolean;
   readonly markdown?: boolean;
 }) {
   const locations = yield* projectSessionLocations.locations();
@@ -56,6 +61,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
     input.requester?.kind === "cake-chat" && input.requester.sessionId === CAKE_CHAT_SESSION_ID
       ? input.requester
       : undefined;
+  const expectsResponse = input.expectsResponse ?? true;
   const storage = yield* SessionFamilyStorage;
   if (requester)
     yield* storage.registerSpawn({
@@ -64,7 +70,8 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
       workingDirectory,
       requester,
       reportDelivered: false,
-      handoffSettled: false,
+      // Without an initial obligation there is no handoff to wait for or recover.
+      handoffSettled: !expectsResponse,
     });
   const text = requester
     ? encodeCrossSessionMessage(input.initialPrompt, {
@@ -72,7 +79,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
         messageId: sessionId,
         threadId: sessionId,
         sequence: 1,
-        expectsResponse: true,
+        expectsResponse,
         sender: { sessionId: requester.sessionId, title: requester.title, kind: requester.kind },
       })
     : input.initialPrompt;
@@ -89,7 +96,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
     })
     .pipe(
       Effect.onExit((exit) =>
-        !requester || Exit.isSuccess(exit)
+        !requester || !expectsResponse || Exit.isSuccess(exit)
           ? Effect.void
           : Effect.gen(function* () {
               if ((yield* storage.state()).turns.some((turn) => turn.sessionId === sessionId))
@@ -100,9 +107,7 @@ export const createPrompted = Effect.fn("ProjectSessions.createPrompted")(functi
                 turnId: sessionId,
                 requestMessageId: sessionId,
                 threadId: sessionId,
-                expectsResponse: true,
                 reported: false,
-                completionContract: true,
                 outcome: Cause.hasInterrupts(exit.cause) ? "aborted" : "failed",
                 ...(!Cause.hasInterrupts(exit.cause)
                   ? {

@@ -112,7 +112,7 @@ import Effect, RPC contracts, main domain modules, or `CakeSessionRuntimes`.
 
 `sessions.send` remains a single-recipient operation. The separate Cake operation
 `sessions.send-batch` accepts `sessionIds` (1–100 unique Project Session IDs), one
-shared `text`, and shared optional `delivery`, `expectsResponse` (default true),
+shared `text`, and shared optional `delivery`, `expectsResponse` (default false),
 and `maxMessages`. It is registered in Project Session and global Cake Chat
 operation registries wherever single-send is available.
 

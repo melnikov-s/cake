@@ -1399,7 +1399,6 @@ describe("Project Sessions domain", () => {
                   turnId: "turn",
                   threadId: "nested-family",
                   requestMessageId: "request",
-                  expectsResponse: true,
                   reported: false,
                 },
               ],
