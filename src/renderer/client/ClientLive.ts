@@ -235,7 +235,7 @@ export function makeClient(
       /\.(get|list|read|inspect|catalog|effective|detail|history|compare|reference|load|suggest)/i.test(
         operation,
       ) ||
-      /^(backendConnection\.connect|projectSessions\.open|cakeChats\.open|modelPresets\.resolve)$/.test(
+      /^(backendConnection\.connect|projectSessions\.(open|lookup)|cakeChats\.open|modelPresets\.resolve)$/.test(
         operation,
       ) ||
       operation === "terminals.get-terminal-status" ||

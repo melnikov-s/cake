@@ -61,7 +61,7 @@ export function fakeRuntime(
       queued: { steering: [], followUp: [] },
       abortedTurnIds: [],
     }),
-    prompt: async () => undefined,
+    prompt: async () => runtimeOptions.onInitialTranscriptPersisted?.(),
     setUserMessageMarkdown: async () => undefined,
     queueCommand: async () => {
       throw new Error("Unexpected queueCommand");

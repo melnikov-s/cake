@@ -46,12 +46,13 @@ function deferred<Value>() {
 function renderNavigation(
   open: Client["projectSessions"]["open"] = async () => undefined,
   navigationSessions = sessions,
+  lookup?: Client["projectSessions"]["lookup"],
 ) {
   const fixture = createRendererStoreFixture({
     projects,
     sessions: navigationSessions,
     client: {
-      projectSessions: { open },
+      projectSessions: { open, ...(lookup ? { lookup } : null) },
       cakeChats: { open: async () => undefined },
       electron: { chooseProject: async () => "/beta" },
       workspaces: {
@@ -85,6 +86,8 @@ function renderNavigation(
     </StoreProvider>,
   );
   return {
+    root: fixture.root,
+    models: fixture.models,
     user: userEvent.setup(),
     async hydrate(id: string) {
       await act(async () => publish(id));
@@ -193,6 +196,75 @@ function pressActiveSessionShortcut(direction: "next" | "previous") {
 }
 
 describe("Project navigation workflow", () => {
+  it("does not let an older delayed exact-ID lookup replace a newer navigation", async () => {
+    const slow = sessionSummary({ sessionId: "slow", projectPath: "/beta" });
+    const fast = sessionSummary({ sessionId: "fast", projectPath: "/gamma" });
+    const delayed = deferred<typeof slow>();
+    const lookup = vi.fn<Client["projectSessions"]["lookup"]>(({ sessionId }) =>
+      sessionId === "slow" ? delayed.promise : Promise.resolve(fast),
+    );
+    const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
+    using fixture = renderNavigation(open, [...sessions, slow, fast], lookup);
+    await fixture.hydrate("slow");
+    await fixture.hydrate("fast");
+    const first = fixture.root.navigationStore.openSession("slow");
+    await act(async () => {
+      await fixture.root.navigationStore.openSession("fast");
+    });
+    await act(async () => {
+      delayed.resolve(slow);
+      await first;
+    });
+    expect(fixture.root.projectWorkbenchStore.activeSessionId).toBe("fast");
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledWith(
+      { sessionId: "fast", workingDirectory: "/gamma" },
+      expect.anything(),
+    );
+  });
+  it.each(["missing", "stale"] as const)(
+    "recovers a %s catalog row when opening an exact-ID worktree link, and rejects a genuinely unknown ID",
+    async (state) => {
+      const recovered = sessionSummary({
+        sessionId: "20000000-0000-4000-8000-000000000002",
+        title: "Attachment assignment",
+        projectPath: "/alpha",
+        projectName: "alpha",
+        workingDirectory: "/alpha-worktree",
+      });
+      const lookup = vi.fn<Client["projectSessions"]["lookup"]>(async ({ sessionId }) => {
+        if (sessionId !== recovered.sessionId) throw new Error("Unknown Project Session");
+        return recovered;
+      });
+      const open = vi.fn<Client["projectSessions"]["open"]>(async () => undefined);
+      using fixture = renderNavigation(open, [...sessions, recovered], lookup);
+      await fixture.hydrate(recovered.sessionId);
+      await act(async () => {
+        applySnapshot(fixture.models.sessionCatalog, {
+          sessions:
+            state === "missing"
+              ? sessions
+              : [...sessions, { ...recovered, workingDirectory: "/alpha", title: "Stale title" }],
+          resolvedHasMoreByProject: {},
+        });
+        await fixture.root.navigationStore.openSessionLink(recovered.sessionId);
+      });
+      expect(open).toHaveBeenCalledWith(
+        { sessionId: recovered.sessionId, workingDirectory: "/alpha-worktree" },
+        expect.anything(),
+      );
+      expect(fixture.root.projectWorkbenchStore.activeSessionId).toBe(recovered.sessionId);
+      expect(fixture.root.sessionCatalogStore.find(recovered.sessionId)?.title).toBe(
+        "Attachment assignment",
+      );
+      expect(screen.getByRole("button", { name: /^Attachment assignment / })).toBeTruthy();
+      await expect(fixture.root.navigationStore.openSessionLink("unknown")).rejects.toThrow(
+        "Unknown Project Session",
+      );
+      expect(fixture.root.sessionCatalogStore.find("unknown")).toBeUndefined();
+      expect(open).toHaveBeenCalledTimes(1);
+    },
+  );
   it("cycles working sessions across projects in both directions, wraps, and skips sessions as they finish", async () => {
     const navigationSessions = [
       sessions[0]!,

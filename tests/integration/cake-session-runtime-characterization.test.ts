@@ -110,7 +110,11 @@ async function registerFixtureProvider(
 async function createFixtureRuntime(
   directory: string,
   events: CakeSessionRuntimeEvent[],
-  options: { sessionFile?: string; projectInvestigation?: boolean } = {},
+  options: {
+    sessionFile?: string;
+    projectInvestigation?: boolean;
+    onInitialTranscriptPersisted?(): void;
+  } = {},
 ) {
   vi.stubEnv("PI_CODING_AGENT_DIR", join(directory, "agent"));
   const runtime = await createCakeSessionRuntime({
@@ -124,6 +128,7 @@ async function createFixtureRuntime(
       ? { auxiliary: true, ephemeral: true, projectInvestigation: true }
       : {}),
     requestUi: async () => undefined,
+    onInitialTranscriptPersisted: options.onInitialTranscriptPersisted,
     onEvent: (event) => events.push(event),
   });
   runtimes.push(runtime);
@@ -144,6 +149,60 @@ afterEach(async () => {
 });
 
 describe("CakeSessionRuntime characterization", () => {
+  it("signals initial durability after Pi writes the user message, without waiting for the provider", async () => {
+    const directory = await createTemporaryDirectory();
+    const persisted = deferred();
+    const release = deferred();
+    let signals = 0;
+    await registerFixtureProvider(directory, (_index, response) => {
+      void release.promise.then(() => finishTextResponse(response, "Finished"));
+    });
+    const runtime = await createFixtureRuntime(directory, [], {
+      onInitialTranscriptPersisted() {
+        signals++;
+        persisted.resolve();
+      },
+    });
+    let finished = false;
+    const turn = runtime
+      .prompt("Read this assignment", "prompt", [
+        {
+          kind: "input",
+          id: "10000000-0000-4000-8000-000000000001",
+          name: "context.txt",
+          mimeType: "text/plain",
+          byteLength: 18,
+        },
+      ])
+      .then(() => {
+        finished = true;
+      });
+    try {
+      await Promise.race([
+        persisted.promise,
+        turn.then(() => {
+          throw new Error("Turn finished before persistence was signaled");
+        }),
+      ]);
+      const sessions = await SessionManager.list(
+        directory,
+        cakeWorkspaceSessionDirectory(directory, join(directory, "sessions")),
+      );
+      expect(sessions.map((session) => session.id)).toContain(runtime.sessionId);
+      const manager = SessionManager.open(runtime.sessionFile);
+      expect(
+        manager
+          .getBranch()
+          .some((entry) => entry.type === "message" && entry.message.role === "user"),
+      ).toBe(true);
+      expect(finished).toBe(false);
+      expect(signals).toBe(1);
+    } finally {
+      release.resolve();
+      await turn;
+    }
+    expect(signals).toBe(1);
+  });
   it.each([false, true])(
     "resumes the same transcript from its configured directory (direct=%s)",
     async (directSessionDir) => {

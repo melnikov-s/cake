@@ -94,7 +94,8 @@ export const start = Effect.fn("ProjectSessions.start")(function* (
       )
       .pipe(asError("start")),
   );
-  yield* publishCatalogChange(input.sessionId, location, false).pipe(asError("start"));
+  // The runtime publishes its initial catalog change at Pi's first durable
+  // message, even if this caller disconnects after the turn was accepted.
   return turnId;
 });
 

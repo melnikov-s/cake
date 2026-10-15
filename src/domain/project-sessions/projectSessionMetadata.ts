@@ -418,59 +418,84 @@ const catalogForState = Effect.fn("ProjectSessions.catalogForState")(function* (
 
 type ProjectSessionChanged = Extract<SessionCatalogChange, { _tag: "ProjectSessionChanged" }>;
 
+/** One authoritative projection for catalog reconciliation and exact-ID recovery. */
+const discoverSessionAt = Effect.fn("ProjectSessions.discoverSessionAt")(function* (
+  location: ProjectSessionLocation,
+  sessionId: string,
+) {
+  const state = yield* getState();
+  const archive = yield* SessionArchiveStorage;
+  const family = yield* (yield* SessionFamilyStorage)
+    .familyForMember(sessionId)
+    .pipe(asError("catalog"));
+  const namespace = yield* resolutionNamespace(sessionId, archiveLocation(location)).pipe(
+    asError("catalog"),
+  );
+  const entry = yield* archive.resolvedProjectEntry(sessionId).pipe(asError("catalog"));
+  if (entry) {
+    const item = yield* archive
+      .resolvedEntry(sessionId, archivedStorageLocation(entry))
+      .pipe(asError("catalog"));
+    return {
+      ...archivedSummary(entry, item?.title ?? sessionId, new Set(state.unreadSessionIds), family),
+      resolved: family ? namespace === "resolved" : true,
+    };
+  }
+  const sessions = yield* CakeSessionRuntimes;
+  const item = yield* sessions
+    .catalogEntry(
+      { workingDirectory: location.workingDirectory, sessionDirectory: location.sessionDirectory },
+      sessionId,
+    )
+    .pipe(asError("catalog"));
+  if (!item) return undefined;
+  const status = yield* sessions.currentStatus({ ...location, sessionId });
+  return summary(
+    item,
+    location,
+    namespace === "resolved",
+    new Set(state.unreadSessionIds),
+    status?.streaming ?? false,
+    family,
+  );
+});
+
+/** Explicit lookup never relies on the renderer's disposable catalog or loads a runtime. */
+export const lookup = Effect.fn("ProjectSessions.lookup")(function* (target: ProjectSessionTarget) {
+  let location = yield* findLocation(target, { includeInactive: true }).pipe(
+    Effect.catchTag("ProjectSessionError", (error) =>
+      target.workingDirectory !== undefined && error.operation === "resolve"
+        ? findLocation({ sessionId: target.sessionId }, { includeInactive: true })
+        : Effect.fail(error),
+    ),
+  );
+  let session = yield* discoverSessionAt(location, target.sessionId);
+  if (!session && target.workingDirectory !== undefined) {
+    location = yield* findLocation({ sessionId: target.sessionId }, { includeInactive: true });
+    session = yield* discoverSessionAt(location, target.sessionId);
+  }
+  if (!session)
+    return yield* new ProjectSessionError({
+      operation: "lookup",
+      message: `Cake could not find Project Session ${target.sessionId}`,
+    });
+  return session;
+});
+
 const catalogEventForSessionChange = Effect.fn("ProjectSessions.catalogEventForSessionChange")(
   function* (query: ProjectSessionCatalogQuery, change: ProjectSessionChanged) {
     if (change.projectPath !== query.projectPath) return undefined;
-    const state = yield* getState();
     const archive = yield* SessionArchiveStorage;
     const entry = yield* archive.resolvedProjectEntry(change.sessionId).pipe(asError("catalog"));
-    if (entry) {
-      if (!query.resolved) return { _tag: "Removed", sessionId: change.sessionId } as const;
-      const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
-        storage.familyForMember(change.sessionId),
-      ).pipe(asError("catalog"));
-      const item = yield* archive
-        .resolvedEntry(entry.sessionId, archivedStorageLocation(entry))
-        .pipe(asError("catalog"));
-      return {
-        _tag: "Upserted",
-        session: archivedSummary(
-          entry,
-          item?.title ?? entry.sessionId,
-          new Set(state.unreadSessionIds),
-          family,
-        ),
-      } as const;
-    }
-    if (query.resolved) return { _tag: "Removed", sessionId: change.sessionId } as const;
-    const location = (yield* projectSessionLocations.locations().pipe(asError("catalog"))).find(
-      (candidate) => candidate.workingDirectory === change.workingDirectory,
-    );
+    const location = entry
+      ? archivedLocation(entry)
+      : (yield* projectSessionLocations.locations().pipe(asError("catalog"))).find(
+          (candidate) => candidate.workingDirectory === change.workingDirectory,
+        );
     if (!location || location.projectPath !== query.projectPath) return undefined;
-    const sessions = yield* CakeSessionRuntimes;
-    const family = yield* Effect.flatMap(SessionFamilyStorage, (storage) =>
-      storage.familyForMember(change.sessionId),
-    ).pipe(asError("catalog"));
-    const item = yield* sessions.catalogEntry(
-      {
-        workingDirectory: location.workingDirectory,
-        sessionDirectory: location.sessionDirectory,
-      },
-      change.sessionId,
-    );
-    const status = yield* sessions.currentStatus({ ...location, sessionId: change.sessionId });
-    return item
-      ? ({
-          _tag: "Upserted",
-          session: summary(
-            item,
-            location,
-            false,
-            new Set(state.unreadSessionIds),
-            status?.streaming ?? false,
-            family,
-          ),
-        } as const)
+    const session = yield* discoverSessionAt(location, change.sessionId);
+    return session && session.resolved === query.resolved
+      ? ({ _tag: "Upserted", session } as const)
       : ({ _tag: "Removed", sessionId: change.sessionId } as const);
   },
 );
@@ -614,14 +639,6 @@ export const observeCatalog = Effect.fn("ProjectSessions.observeCatalog")(functi
           : catalogEventForChange(query, item).pipe(Effect.map((event) => (event ? [event] : []))),
     ),
     Stream.flatMap(Stream.fromIterable),
-    Stream.mapError((error) =>
-      error instanceof ProjectSessionError
-        ? error
-        : new ProjectSessionError({
-            operation: "catalog",
-            message: error instanceof Error ? error.message : String(error),
-          }),
-    ),
     Stream.mapAccum<
       { revision: number; initialized: boolean },
       CatalogStreamItem,

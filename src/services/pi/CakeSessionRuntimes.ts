@@ -120,7 +120,10 @@ export type CakeSessionRuntimeSetup = CakeSessionRuntimeOptions & CakeOperationO
  */
 export interface CakeSessionRuntimeAcquireOptions {
   readonly profile: Schema.Schema.Type<typeof PiSessionCapabilityProfile>;
-  readonly runtime: Omit<CakeSessionRuntimeSetup, "onEvent" | "onTurnResult">;
+  readonly runtime: Omit<
+    CakeSessionRuntimeSetup,
+    "onEvent" | "onTurnResult" | "onInitialTranscriptPersisted"
+  >;
   /** Finalizes Cake-owned integrations when the final shared runtime lease is released. */
   readonly onRelease?: Effect.Effect<void, unknown>;
   readonly admitTurn?: (
@@ -335,6 +338,7 @@ interface SharedRuntime {
   readonly profile: CakeSessionRuntimeAcquireOptions["profile"]["_tag"];
   readonly runtime: CakeSessionRuntime;
   readonly events: PubSub.PubSub<PiSessionEvent>;
+  readonly initialTranscriptPersisted: Deferred.Deferred<void>;
   readonly activeTurns: Ref.Ref<ReadonlyMap<string, "prompt" | "steer" | "follow-up">>;
   readonly settledInputIds: Set<string>;
   readonly turnResults: Map<string, PiTurnResult>;
@@ -475,9 +479,19 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               >(new Map());
               const settledInputIds = new Set<string>();
               const turnResults = new Map<string, PiTurnResult>();
+              const initialTranscriptPersisted = yield* Deferred.make<void>();
+              if (key.options.profile._tag === "ProjectSession" && key.options.runtime.newSession)
+                yield* Deferred.await(initialTranscriptPersisted).pipe(
+                  Effect.andThen(key.options.onSessionChanged ?? Effect.void),
+                  Effect.orDie,
+                  Effect.forkScoped,
+                );
               let currentRuntime: CakeSessionRuntime | undefined = undefined;
               const runtime = yield* adapter.createRuntime({
                 ...key.options.runtime,
+                onInitialTranscriptPersisted() {
+                  Deferred.doneUnsafe(initialTranscriptPersisted, Effect.void);
+                },
                 onTurnResult(turnId, result) {
                   turnResults.set(turnId, result);
                 },
@@ -495,6 +509,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               currentRuntime = runtime;
               const shared: SharedRuntime = {
                 applicationLease: false,
+                initialTranscriptPersisted,
                 settledInputIds,
                 turnResults,
                 fingerprint: key.fingerprint,
@@ -705,6 +720,7 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
                 });
             }
           });
+          const finished = yield* Deferred.make<void, PiSessionError>();
           // Input the user withdrew (abort, removed queue row, cleared queue) is a
           // cancellation of accepted work, not a failure of the session.
           const run = Effect.tryPromise({
@@ -724,9 +740,17 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
             Effect.matchEffect({
               onSuccess: () => settle("complete"),
               onFailure: (cause) =>
-                cause instanceof TurnCanceledError
+                (cause instanceof TurnCanceledError
                   ? settle("aborted")
-                  : settle("failed", messageOf(cause)),
+                  : settle("failed", messageOf(cause))
+                ).pipe(
+                  Effect.andThen(
+                    Deferred.fail(
+                      finished,
+                      new PiSessionError({ operation: delivery, message: messageOf(cause) }),
+                    ),
+                  ),
+                ),
             }),
             Effect.ensuring(Scope.close(turnScope, Exit.void)),
           );
@@ -741,7 +765,10 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               delivery,
             });
             yield* options.onTurnActivityChanged ?? Effect.void;
-            yield* run.pipe(Effect.forkIn(layerScope));
+            yield* run.pipe(
+              Effect.ensuring(Deferred.succeed(finished, undefined)),
+              Effect.forkIn(layerScope),
+            );
           });
           yield* (
             options.admitTurn ? options.admitTurn({ turnId, text, delivery }, accept) : accept
@@ -753,6 +780,14 @@ export const makeCakeSessionRuntimesLayer = (adapter: CakeSessionRuntimesAdapter
               Exit.isFailure(exit) ? Scope.close(turnScope, Exit.void) : Effect.void,
             ),
           );
+          if (options.profile._tag === "ProjectSession" && options.runtime.newSession) {
+            // A new identity becomes discoverable at the first durable message, not
+            // turn acceptance. Handled commands can finish without a conversation;
+            // failed preparation must fail creation rather than leave a ghost identity.
+            yield* Deferred.await(retained.initialTranscriptPersisted).pipe(
+              Effect.raceFirst(Deferred.await(finished)),
+            );
+          }
           return turnId;
         });
 

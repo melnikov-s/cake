@@ -81,8 +81,8 @@ export function defineControl<
   };
 }
 
-/** All explicitly targeted Project Session controls validate the same live catalog
- * before invoking a capability. Keep this gate when adding or reorganizing commands.
+/** Explicit targets reconcile through the same authoritative lookup as navigation.
+ * Short references still require unambiguous membership in the discovered roster.
  */
 export function defineSessionControl<
   const Command extends AppControlCommand,
@@ -107,7 +107,19 @@ export function defineSessionControl<
         context.host.state.sessions().map((session) => session.sessionId),
       );
       if (!resolved.ok) return { ok: false, command, error: resolved.error };
-      const session = knownSession(context.host, resolved.sessionId);
+      const cached = knownSession(context.host, resolved.sessionId);
+      let session = cached;
+      if (!cached?.draft) {
+        try {
+          session = await context.host.sessions.lookup(resolved.sessionId);
+        } catch (error) {
+          return {
+            ok: false,
+            command,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
       if (!session) return { ok: false, command, error: "Cake could not find that session." };
       return definition.run({ ...input, sessionId: resolved.sessionId }, context, command, session);
     },

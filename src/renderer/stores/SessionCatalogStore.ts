@@ -4,6 +4,8 @@ import type { SessionSummary } from "../models/SessionSummary";
 import type { WorktreeCatalog } from "../models/WorktreeCatalog";
 import type { WorktreeRecord } from "../../contracts/worktrees/managed-worktree-data";
 import { compareSessionSummariesForSidebar } from "../../utils/session-summary-order";
+import { ClientContext } from "./context/ClientContext";
+import { applySessionCatalogGroupUpdate } from "../reducers/CatalogReducer";
 
 export interface PendingSessionSummary {
   sessionId: string;
@@ -71,6 +73,23 @@ export class SessionCatalogStore extends Store<{
 
   find(sessionId: string) {
     return this.sessionIndex.get(sessionId);
+  }
+
+  /** Reconcile one explicit identity without reloading the Project catalog or a transcript. */
+  async lookup(sessionId: string) {
+    const existing = this.find(sessionId);
+    if (existing?.pending) return existing;
+    const session = await ClientContext.consume(this)!.projectSessions.lookup(
+      { sessionId, ...(existing ? { workingDirectory: existing.workingDirectory } : null) },
+      { signal: this.signal },
+    );
+    this.signal.throwIfAborted();
+    applySessionCatalogGroupUpdate(
+      this.props.model,
+      { projectPath: session.projectPath, resolved: session.resolved },
+      { _tag: "Event", revision: 0, event: { _tag: "Upserted", session } },
+    );
+    return this.find(sessionId);
   }
 
   get sessionsById(): ReadonlyMap<string, SessionSummary | PendingSessionSummary> {

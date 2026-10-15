@@ -19,12 +19,14 @@ export type SessionReferenceResolution =
   | { readonly ok: true; readonly sessionId: string }
   | { readonly ok: false; readonly error: string };
 
-/** Exact catalog identities pass through unchanged; references never select the first match. */
+/** Full UUIDs can be authoritatively looked up even if discovery is stale.
+ * Short references never select the first match or search outside the discovered roster. */
 export function resolveSessionReference(
   reference: string,
   knownSessionIds: readonly string[],
 ): SessionReferenceResolution {
-  if (knownSessionIds.includes(reference)) return { ok: true, sessionId: reference };
+  if (knownSessionIds.includes(reference) || uuid.test(reference))
+    return { ok: true, sessionId: reference };
   const suffix = shortReference.exec(reference)?.[1]?.toLowerCase();
   if (!suffix) return { ok: false, error: `Unknown session reference: ${reference}` };
   const matches = [...new Set(knownSessionIds)].filter(

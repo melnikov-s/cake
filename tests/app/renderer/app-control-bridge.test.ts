@@ -122,6 +122,10 @@ function createHost(overrides: AppControlHostOverrides = {}): AppControlHost {
     },
     ...(overrides.worktrees ? { worktrees: overrides.worktrees } : null),
     sessions: {
+      lookup:
+        overrides.lookup ??
+        (async (sessionId) =>
+          overrides.sessions?.().find((session) => session.sessionId === sessionId)),
       contextSnapshot:
         overrides.contextSnapshot ?? (() => ({ usedTokens: null, windowTokens: null })),
       inspect:
@@ -1535,6 +1539,74 @@ describe("AppControlBridge", () => {
       },
     });
     expect(inspect).toHaveBeenCalledWith("session-a");
+  });
+
+  it("recovers exact UUIDs for info, open and rename when discovery is missing, while unknown IDs and undiscovered short references fail", async () => {
+    const sessionId = "10000000-0000-4000-8000-000000000001";
+    const recovered = {
+      workingDirectory: "/managed-worktree",
+      projectName: "Project",
+      sessionId,
+      title: "Attachment assignment",
+      modifiedAt: "2026-01-01",
+      messageCount: 1,
+      resolved: false,
+      draft: false,
+    };
+    let discovered: (typeof recovered)[] = [];
+    const lookup = vi.fn(async (id: string) => {
+      if (id !== sessionId) return undefined;
+      discovered = [recovered];
+      return recovered;
+    });
+    const open = vi.fn(async () => true);
+    const rename = vi.fn(async () => undefined);
+    const bridge = new AppControlBridge(
+      createHost({
+        sessions: () => discovered,
+        lookup,
+        open,
+        rename,
+        inspect: async (id) => ({
+          sessionId: id,
+          projectPath: "/project",
+          workingDirectory: "/managed-worktree",
+          sessionFile: "/sessions/task.jsonl",
+          parts: [],
+          resolved: false,
+        }),
+      }),
+    );
+    for (const command of ["sessions.info", "sessions.open", "sessions.rename"] as const) {
+      discovered = [];
+      await expect(
+        bridge.invoke({
+          name: command,
+          arguments: {
+            sessionId,
+            ...(command === "sessions.rename" ? { title: "Updated assignment" } : {}),
+          },
+        }),
+      ).resolves.toMatchObject({ ok: true, command });
+    }
+    await expect(bridge.invoke({ name: "sessions.list", arguments: {} })).resolves.toMatchObject({
+      ok: true,
+      sessions: [{ sessionId }],
+    });
+    expect(open).toHaveBeenCalledWith(sessionId);
+    expect(rename).toHaveBeenCalledWith(sessionId, "Updated assignment");
+    await expect(
+      bridge.invoke({
+        name: "sessions.info",
+        arguments: { sessionId: "20000000-0000-4000-8000-000000000002" },
+      }),
+    ).resolves.toMatchObject({ ok: false });
+    discovered = [];
+    const count = lookup.mock.calls.length;
+    await expect(
+      bridge.invoke({ name: "sessions.info", arguments: { sessionId: "s:00000001" } }),
+    ).resolves.toMatchObject({ ok: false });
+    expect(lookup).toHaveBeenCalledTimes(count);
   });
 
   it("does not report an unsuccessful session open as success and accepts a later retry", async () => {

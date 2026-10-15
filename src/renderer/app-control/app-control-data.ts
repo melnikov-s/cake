@@ -188,6 +188,7 @@ export interface AppControlHost {
     }): Promise<void>;
   };
   sessions: {
+    lookup(sessionId: string): Promise<SessionSummaryView | undefined>;
     inspect(sessionId: string): Promise<ProjectSessionPreview>;
     navigationEnabled(): boolean;
     open(sessionId: string, messageId?: string): Promise<boolean | void>;

@@ -49,7 +49,10 @@ import type {
   CakeSessionRuntime,
   CakeSessionRuntimeOptions,
 } from "../../../src/services/pi/runtime/cake-session-runtime";
-import type { ProjectSessionLocation } from "../../../src/contracts/project-sessions/project-session-data";
+import type {
+  ProjectSessionLocation,
+  ProjectSessionSummary,
+} from "../../../src/contracts/project-sessions/project-session-data";
 import { Electron } from "../../../src/services/electron/Electron";
 import { PiModels } from "../../../src/services/pi/PiModels";
 import { ProjectSessionRuntimeHost } from "../../../src/services/pi/ProjectSessionRuntimeHost";
@@ -165,6 +168,7 @@ const fakeRuntime = (
   }),
   prompt: async (_text, delivery) => {
     onOperation?.(delivery);
+    options.onInitialTranscriptPersisted?.();
     await prompt();
     options.onEvent({ type: "streaming", sessionId: snapshot.sessionId, streaming: false });
   },
@@ -226,6 +230,8 @@ const makeLayer = (
     onCatalogChange?(change: SessionCatalogChange): void;
     sessionIds?(workingDirectory: string): Stream.Stream<string, unknown>;
     catalog?(workingDirectory: string): Stream.Stream<PiSessionSummary, unknown>;
+    catalogEntry?: CakeSessionRuntimesAdapter["catalogEntry"];
+    locate?: SessionArchiveStorage["Service"]["locate"];
     resolvedCatalog?(
       workingDirectory: string,
     ): Stream.Stream<PiSessionSummary, SessionArchiveStorageError>;
@@ -369,17 +375,19 @@ const makeLayer = (
             resolved: false,
           });
     },
-    catalogEntry: (_query, sessionId) =>
-      hooks.sessionExists === false
-        ? Effect.succeed(undefined)
-        : Effect.succeed({
-            id: sessionId,
-            title: hooks.catalogTitle?.() ?? "Active branch",
-            created: "2026-01-01T00:00:00.000Z",
-            modified: hooks.catalogModifiedAt?.() ?? "2026-01-02T00:00:00.000Z",
-            messageCount: 2,
-            resolved: false,
-          }),
+    catalogEntry: (query, sessionId) =>
+      hooks.catalogEntry
+        ? hooks.catalogEntry(query, sessionId)
+        : hooks.sessionExists === false
+          ? Effect.succeed(undefined)
+          : Effect.succeed({
+              id: sessionId,
+              title: hooks.catalogTitle?.() ?? "Active branch",
+              created: "2026-01-01T00:00:00.000Z",
+              modified: hooks.catalogModifiedAt?.() ?? "2026-01-02T00:00:00.000Z",
+              messageCount: 2,
+              resolved: false,
+            }),
     inspect: (target) =>
       Effect.sync(() => {
         hooks.onInspect?.();
@@ -594,14 +602,16 @@ const makeLayer = (
                 }),
               )
             : Effect.sync(() => hooks.onDeleteArchive?.(sessionId)),
-        locate: (sessionId) =>
-          Effect.succeed(
-            hooks.sessionExists === false
-              ? undefined
-              : resolvedSessionIds.has(sessionId)
-                ? "resolved"
-                : "active",
-          ),
+        locate: (sessionId, location) =>
+          hooks.locate
+            ? hooks.locate(sessionId, location)
+            : Effect.succeed(
+                hooks.sessionExists === false
+                  ? undefined
+                  : resolvedSessionIds.has(sessionId)
+                    ? "resolved"
+                    : "active",
+              ),
         resolvedIds: () =>
           Effect.succeed(
             new Set([
@@ -818,6 +828,228 @@ const sessionSummary = (id: string): PiSessionSummary => ({
 });
 
 describe("Project Sessions domain", () => {
+  it.effect.each([false, true])(
+    "exact-ID recovery preserves family routing, root-owned resolution and user metadata (resolved=%s)",
+    (resolved) => {
+      const state = {
+        ...defaultApplicationState(),
+        projects: [
+          {
+            path: "/project",
+            name: "Project",
+            addedAt: "2026-01-01",
+            lastOpenedAt: "2026-01-01",
+            workflow: {
+              labels: [
+                {
+                  id: "10000000-0000-4000-8000-000000000001",
+                  name: "Review",
+                  color: "blue" as const,
+                },
+              ],
+              assignments: [
+                { sessionId: "child", labelIds: ["10000000-0000-4000-8000-000000000001"] },
+              ],
+              sessionDetails: [],
+            },
+          },
+        ],
+        trustedProjectPaths: ["/project"],
+        unreadSessionIds: ["child"],
+      };
+      return Effect.gen(function* () {
+        const application = yield* ApplicationState;
+        const before = application.snapshot();
+        const recovered = yield* projectSessionMetadata.lookup({ sessionId: "child" });
+        assert.equal(recovered.familyId, "family");
+        assert.equal(recovered.familyParentSessionId, "parent");
+        assert.equal(recovered.familyDepth, 1);
+        assert.equal(recovered.workingDirectory, "/retired-worktree");
+        assert.equal(recovered.resolved, resolved);
+        assert.equal(recovered.unread, true);
+        assert.deepEqual(application.snapshot(), before);
+      }).pipe(
+        Effect.provide(
+          makeLayer(state, {
+            family: {
+              familyId: "family",
+              parentSessionId: "parent",
+              projectPath: "/project",
+              workingDirectory: "/project",
+              createdAt: "2026-01-01",
+              children: [
+                {
+                  sessionId: "child",
+                  requestId: "request",
+                  createdAt: "2026-01-01",
+                  workingDirectory: "/retired-worktree",
+                },
+              ],
+            },
+            initialResolvedSessionIds: resolved ? ["parent"] : [],
+            onCreateRuntime: () => {
+              throw new Error("Lookup must not acquire a runtime");
+            },
+          }),
+        ),
+      );
+    },
+  );
+  it.effect.each([false, true])(
+    "publishes a new attachment worktree session at initial persistence and reconstructs it after completion (caller disconnected=%s)",
+    (disconnect) =>
+      Effect.gen(function* () {
+        const entered = yield* Deferred.make<void>();
+        const persist = yield* Deferred.make<void>();
+        const finish = yield* Deferred.make<void>();
+        const settled = yield* Deferred.make<void>();
+        const disposed = yield* Deferred.make<void>();
+        const ready = yield* Deferred.make<void>();
+        const appeared = yield* Deferred.make<ProjectSessionSummary>();
+        let durable = false;
+        let returned = false;
+        let streaming = false;
+        let scans = 0;
+        const attachment = {
+          kind: "input" as const,
+          id: "10000000-0000-4000-8000-000000000001",
+          name: "notes.txt",
+          mimeType: "text/plain",
+          byteLength: 18,
+        };
+        const worktree: WorktreeRecord = {
+          projectPath: "/project",
+          worktreePath: "/worktree",
+          branch: "agent/attachment-task",
+          baseBranch: "main",
+          createdAt: "2026-01-01",
+          state: "active",
+        };
+        let item = sessionSummary("session-1");
+        const layer = makeLayer(undefined, {
+          worktreeRecords: [worktree],
+          onCatalog: () => scans++,
+          onRename: (title) => {
+            item = { ...item, title };
+          },
+          catalog: (cwd) => (cwd === "/worktree" && durable ? Stream.make(item) : Stream.empty),
+          catalogEntry: (query, id) =>
+            Effect.succeed(
+              durable && query.workingDirectory === "/worktree" && id === item.id
+                ? item
+                : undefined,
+            ),
+          locate: (id, location) =>
+            Effect.succeed(
+              durable && location.cwd === "/worktree" && id === item.id ? "active" : undefined,
+            ),
+          runtime: (options) => ({
+            ...fakeRuntime(options, undefined, undefined, undefined, (title) => {
+              item = { ...item, title };
+            }),
+            dispose: () => {
+              Deferred.doneUnsafe(disposed, Effect.void);
+            },
+            get streaming() {
+              return streaming;
+            },
+            prompt: async (_text, _delivery, attachments) => {
+              assert.deepEqual(attachments, [attachment]);
+              await Effect.runPromise(
+                Effect.gen(function* () {
+                  yield* Deferred.succeed(entered, undefined);
+                  yield* Deferred.await(persist);
+                  durable = true;
+                  streaming = true;
+                  options.onInitialTranscriptPersisted?.();
+                  yield* Deferred.await(finish);
+                  streaming = false;
+                }),
+              );
+            },
+          }),
+        });
+        yield* Effect.gen(function* () {
+          const updates = yield* projectSessionMetadata.observeCatalog({
+            projectPath: "/project",
+            resolved: false,
+          });
+          yield* updates.pipe(
+            Stream.runForEach((update) => {
+              if (update._tag === "Snapshot") {
+                assert.deepEqual(update.sessions, []);
+                return Deferred.succeed(ready, undefined);
+              }
+              if (update.event._tag === "Upserted")
+                return Deferred.succeed(appeared, update.event.session);
+              if (update.event._tag === "ActivityChanged" && !update.event.running && durable)
+                return Deferred.succeed(settled, undefined);
+              return Effect.void;
+            }),
+            Effect.forkChild,
+          );
+          yield* Deferred.await(ready);
+          const creation = yield* projectSessionOperations
+            .start({
+              sessionId: item.id,
+              workingDirectory: "/worktree",
+              text: "Read the attachment",
+              attachments: [attachment],
+              renderUserMessageAsMarkdown: false,
+            })
+            .pipe(
+              Effect.scoped,
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  returned = true;
+                }),
+              ),
+              Effect.forkChild,
+            );
+          yield* Deferred.await(entered);
+          assert.equal(returned, false);
+          assert.equal(durable, false);
+          if (disconnect) yield* Fiber.interrupt(creation);
+          yield* Deferred.succeed(persist, undefined);
+          if (!disconnect) yield* Fiber.join(creation);
+          const first = yield* Deferred.await(appeared);
+          assert.equal(first.workingDirectory, "/worktree");
+          assert.equal(first.projectPath, "/project");
+          assert.equal(first.worktreeName, "attachment-task");
+          assert.equal(first.running, true);
+          assert.equal(scans, 2); // One initial metadata scan per registered location, never a retry scan.
+          yield* projectSessionMetadata.open({ sessionId: item.id });
+          yield* projectSessionOperations
+            .rename({ sessionId: item.id }, "Attachment task")
+            .pipe(Effect.scoped);
+          yield* Deferred.succeed(finish, undefined);
+          yield* Deferred.await(settled);
+          yield* Deferred.await(disposed);
+          const reconstructed = yield* (yield* projectSessionMetadata.observeCatalog({
+            projectPath: "/project",
+            resolved: false,
+          })).pipe(Stream.take(1), Stream.runCollect);
+          assert.equal(reconstructed[0]?._tag, "Snapshot");
+          assert.deepEqual(
+            reconstructed[0]?._tag === "Snapshot"
+              ? reconstructed[0].sessions.map((s) => [s.sessionId, s.workingDirectory, s.running])
+              : [],
+            [[item.id, "/worktree", false]],
+          );
+          const recovered = yield* projectSessionMetadata.lookup({
+            sessionId: item.id,
+            workingDirectory: "/project",
+          });
+          assert.equal(recovered.workingDirectory, "/worktree");
+          assert.equal(recovered.running, false);
+          assert.equal(recovered.title, "Attachment task");
+          const unknown = yield* projectSessionMetadata
+            .lookup({ sessionId: "missing" })
+            .pipe(Effect.exit);
+          assert.equal(unknown._tag, "Failure");
+        }).pipe(Effect.provide(layer));
+      }),
+  );
   it.effect(
     "includes committed IDs and typed cleanup failures in a mixed Working Directory result",
     () => {

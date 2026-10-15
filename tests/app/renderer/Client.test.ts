@@ -23,6 +23,23 @@ const browserDevices = () => ({
 });
 
 describe("Client", () => {
+  it("treats exact-ID session lookup as read-only while remote mutations are blocked", async () => {
+    const execute = vi.fn(async () => {
+      throw new Error("Lookup disconnected");
+    });
+    const uncertain = vi.fn();
+    const client = makeClient(controlledRuntime(execute), {
+      kind: "remote",
+      connected: () => true,
+      blocked: () => true,
+      uncertain,
+    });
+    await expect(client.projectSessions.lookup({ sessionId: "session" })).rejects.toBeInstanceOf(
+      ClientError,
+    );
+    expect(execute).toHaveBeenCalledOnce();
+    expect(uncertain).not.toHaveBeenCalled();
+  });
   const cleanupFailure = new ResolutionCleanupFailed({
     operation: "resolve",
     resolvedSessionIds: ["session"],

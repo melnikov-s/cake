@@ -49,8 +49,6 @@ export class NavigationStore extends Store<{
   }
 
   async openSession(sessionId: string, messageId?: string) {
-    if (!this.props.metadata().workingDirectory(sessionId))
-      throw new Error("Cake could not find that session");
     const workbench = this.workbench;
     workbench.dismissSecondarySurfaces();
     this.props.layout.focusSession(sessionId);
@@ -100,15 +98,11 @@ export class NavigationStore extends Store<{
 
   /** Opens either kind of Cake Session addressed by a Markdown session link. */
   async openSessionLink(sessionId: string) {
-    if (this.props.metadata().exists(sessionId)) {
-      await this.openSession(sessionId);
-      return;
-    }
     if (this.props.cakeChat().summaries.some((session) => session.sessionId === sessionId)) {
       await this.openCakeChat(sessionId);
       return;
     }
-    throw new Error("Cake could not find the linked session");
+    await this.openSession(sessionId);
   }
 
   async createSession(workspacePath: string) {

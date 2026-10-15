@@ -91,6 +91,7 @@ it.effect.each([false, true])(
                 Effect.runPromise(
                   Effect.gen(function* () {
                     yield* Deferred.succeed(entered, undefined);
+                    options.onInitialTranscriptPersisted?.();
                     yield* Deferred.await(complete);
                     completed = true;
                   }),

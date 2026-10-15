@@ -45,6 +45,36 @@ const adapter = (
 
 describe("CakeSessionRuntimes", () => {
   it.effect(
+    "fails new-session creation if preparation fails before persistence, but permits commands handled without a transcript",
+    () =>
+      Effect.gen(function* () {
+        const layer = makeCakeSessionRuntimesLayer({
+          sessionIds: () => Stream.empty,
+          catalog: () => Stream.empty,
+          catalogEntry: () => Effect.succeed(undefined),
+          inspect: () => Effect.succeed(undefined),
+          changelog: () => Effect.succeed(""),
+          createRuntime: (runtimeOptions) =>
+            Effect.succeed({
+              ...fakeRuntime(runtimeOptions, () => undefined),
+              prompt: async (text) => {
+                if (text === "fail") throw new Error("Initial preparation failed");
+              },
+            }),
+        });
+        const context = yield* Layer.build(layer);
+        const handle = yield* Context.get(context, CakeSessionRuntimes).acquire(
+          options({ newSession: true }),
+        );
+        const failed = yield* handle.prompt("fail").pipe(Effect.result);
+        assert.equal(failed._tag, "Failure");
+        if (failed._tag === "Failure")
+          assert.equal(failed.failure.message, "Initial preparation failed");
+        const command = yield* handle.prompt("/handled-command");
+        assert.equal(typeof command, "string");
+      }),
+  );
+  it.effect(
     "retains a queued command's runtime after the caller releases it, until execution or cancellation settles",
     () =>
       Effect.gen(function* () {

@@ -36,6 +36,7 @@ const bindRenderer = (connectionId: number, sessionId: string) =>
 export const projectSessionHandlers = ProjectSessionRpc.of({
   "projectSessions.observeCatalog": (query) =>
     Stream.unwrap(projectSessionMetadata.observeCatalog(query)),
+  "projectSessions.lookup": (target) => projectSessionMetadata.lookup(target),
   "projectSessions.inspect": (target) => projectSessionMetadata.inspect(target),
   "projectSessions.start": (input) =>
     withConnection((connectionId) =>

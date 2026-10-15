@@ -5,6 +5,7 @@ import {
   createAgentSession,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { observeMessageBoardRequests } from "./message-board-extension";
 import { createTurnResultCapture } from "./turn-result-capture";
@@ -140,6 +141,8 @@ export type CakeSessionRuntimeEvent =
   | { type: "extension-ui"; sessionId: string; event: ExtensionUiEvent };
 
 export interface CakeSessionRuntimeOptions {
+  /** Called only after Pi has written the first conversation message to its JSONL. */
+  onInitialTranscriptPersisted?(): void;
   cwd: string;
   tools?: string[];
   auxiliary?: boolean;
@@ -559,6 +562,7 @@ export async function createCakeSessionRuntime(
     reportAgentAction: capabilities.reportAgentAction,
   });
 
+  let initialTranscriptPublished = !options.newSession;
   let automaticTitleForNextMessage = true;
   const captureTurnResult = createTurnResultCapture(
     () => turnController.executingTurnIds(),
@@ -582,6 +586,20 @@ export async function createCakeSessionRuntime(
     if (event.type === "compaction_end") {
       if (!event.aborted && !event.errorMessage) emitSnapshotInBackground();
       turnController.compactionEnded(event.willRetry);
+    }
+    if (
+      !initialTranscriptPublished &&
+      event.type === "message_end" &&
+      (event.message.role === "user" || event.message.role === "assistant")
+    ) {
+      // Pi notifies public listeners before synchronously appending the message.
+      // Do not release catalog publication from inside that pre-persistence event.
+      queueMicrotask(() => {
+        if (disposed || initialTranscriptPublished || !session.sessionFile) return;
+        if (!existsSync(session.sessionFile)) return;
+        initialTranscriptPublished = true;
+        options.onInitialTranscriptPersisted?.();
+      });
     }
     if (event.type === "message_end" && event.message.role === "user") {
       const content = textFromContent(event.message.content);

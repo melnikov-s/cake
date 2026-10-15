@@ -5,22 +5,29 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 import { cakeWorkspaceSessionDirectory } from "../../src/services/pi/runtime/session-discovery";
+import { sessionReference } from "../../src/contracts/project-sessions/session-reference";
 import { installLocalModelHttpGuard } from "./main-harness";
 import { windowState } from "../fixtures/window-state";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const sourceId = "agent-navigation-source";
-const targetId = "agent-navigation-target";
 const timestamp = new Date(0).toISOString();
 
 const chunk = (delta: object, finishReason: string | null = null) =>
   `data: ${JSON.stringify({ id: "navigation", object: "chat.completion.chunk", created: 0, model: "fixture-model", choices: [{ index: 0, delta, finish_reason: finishReason }] })}\n\n`;
 
-for (const disabled of [false, true]) {
+for (const { disabled, late } of [
+  { disabled: false, late: false },
+  { disabled: false, late: true },
+  { disabled: true, late: false },
+]) {
+  const targetId = late ? "10000000-0000-4000-8000-000000000001" : "agent-navigation-target";
   test(
     disabled
       ? "user disables agent navigation, keeps manual navigation, and restores the permission after restart"
-      : "a normal Project Session agent opens an existing session through the Cake tool",
+      : late
+        ? "an exact-ID agent open recovers a durable session missing from the initial catalog"
+        : "a normal Project Session agent opens an existing session through the Cake tool",
     async () => {
       test.setTimeout(60_000);
       const root = await mkdtemp(join(tmpdir(), "cake-agent-navigation-"));
@@ -94,10 +101,12 @@ for (const disabled of [false, true]) {
         join(sessionDirectory, `1970-01-01T00-00-00-000Z_${sourceId}.jsonl`),
         transcript(sourceId, "Source conversation."),
       );
-      await writeFile(
-        join(sessionDirectory, `1970-01-01T00-00-00-000Z_${targetId}.jsonl`),
-        transcript(targetId, "Target conversation."),
-      );
+      const persistTarget = () =>
+        writeFile(
+          join(sessionDirectory, `1970-01-01T00-00-00-000Z_${targetId}.jsonl`),
+          transcript(targetId, "Target conversation."),
+        );
+      if (!late) await persistTarget();
       await writeFile(
         join(cakeHome, "pi", "models.json"),
         JSON.stringify({
@@ -155,6 +164,13 @@ for (const disabled of [false, true]) {
         await expect(
           page.locator(".transcript").getByText("Source conversation.", { exact: true }),
         ).toBeVisible({ timeout: 20_000 });
+        if (late) {
+          await expect(page.locator(`.session-item[data-session-id="${sourceId}"]`)).toBeVisible();
+          await expect(page.locator(`.session-item[data-session-id="${targetId}"]`)).toHaveCount(0);
+          // No catalog event accompanies this durable transcript. The explicit UUID
+          // must recover it through real RPC discovery, not a second full scan.
+          await persistTarget();
+        }
         if (disabled) {
           await page.getByRole("button", { name: "Open settings", exact: true }).click();
           await page.getByRole("button", { name: /^Agent Behavior and content$/ }).click();
@@ -181,7 +197,11 @@ for (const disabled of [false, true]) {
             command: "sessions.open",
             ...(disabled
               ? { error: expect.stringContaining("disabled") }
-              : { opened: expect.objectContaining({ sessionId: targetId }) }),
+              : {
+                  opened: expect.objectContaining({
+                    sessionId: sessionReference(targetId, [targetId]),
+                  }),
+                }),
           }),
         );
         await expect(page.locator('[data-slot="session-pane"]')).toHaveAttribute(

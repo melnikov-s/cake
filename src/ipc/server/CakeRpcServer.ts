@@ -61,6 +61,7 @@ export const makeCakeRpcServerLive = (
   const handlers = CakeRpc.omit(
     "projectSessions.observeCatalog",
     "projectSessions.inspect",
+    "projectSessions.lookup",
     "projectSessions.start",
     "projectSessions.open",
     "projectSessions.getChangelog",

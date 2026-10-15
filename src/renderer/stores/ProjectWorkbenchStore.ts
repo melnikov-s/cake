@@ -406,9 +406,17 @@ export class ProjectWorkbenchStore extends Store<ProjectWorkbenchStoreProps> {
     const sourceSessionId = this.activeSessionId;
     this.openingSession = undefined;
     if (!acceptedProjectOpen) this.projectOpenStore.cancelPending();
-    const summary = this.props.catalog.find(sessionId);
     const existingSession = this.sessionRegistry.findSession(sessionId);
     if (existingSession) existingSession.model.observationError = undefined;
+    if (
+      !existingSession ||
+      (!this.sessionRegistry.pendingSessions.isTemporary(sessionId) &&
+        !this.sessionRegistry.pendingSessions.canCreateRuntime(sessionId))
+    ) {
+      await this.props.catalog.lookup(sessionId);
+      if (this.signal.aborted || revision !== this.sessionOpenRevision) return false;
+    }
+    const summary = this.props.catalog.find(sessionId);
     const workspacePath = summary?.workingDirectory ?? existingSession?.workspacePath;
     if (!workspacePath) throw new Error(`Cake could not find session ${sessionId}`);
     const alreadyActive = this.activeSessionId === sessionId;

@@ -11,6 +11,7 @@ import {
   ProjectSessionCatalogQuery,
   ProjectSessionCompanionActionInput,
   ProjectSessionPreview,
+  ProjectSessionSummary,
   ProjectSessionStartInput,
   ProjectSessionTarget,
 } from "../../contracts/project-sessions/project-session-data";
@@ -23,6 +24,11 @@ export const ProjectSessionRpc = RpcGroup.make(
     success: SessionCatalogUpdate,
     error: ProjectSessionError,
     stream: true,
+  }),
+  Rpc.make("projectSessions.lookup", {
+    payload: ProjectSessionTarget,
+    success: ProjectSessionSummary,
+    error: ProjectSessionError,
   }),
   Rpc.make("projectSessions.inspect", {
     payload: ProjectSessionTarget,

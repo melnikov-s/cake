@@ -228,6 +228,7 @@ export function createRootApplicationControlHost(
       },
     },
     sessions: {
+      lookup: (sessionId) => capabilities.sessionCatalogStore.lookup(sessionId),
       contextSnapshot: (sessionId) => {
         const model =
           capabilities.sessionRegistry.findSession(sessionId)?.model ??

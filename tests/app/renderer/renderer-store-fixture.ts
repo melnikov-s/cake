@@ -29,6 +29,14 @@ export function createRendererStoreFixture(options: RendererStoreFixtureOptions 
   });
   const client = createTestClient({
     ...options.client,
+    projectSessions: {
+      lookup: async ({ sessionId }) => {
+        const session = models.sessionCatalog.find(sessionId);
+        if (!session) throw new Error(`Cake could not find Project Session ${sessionId}`);
+        return session;
+      },
+      ...options.client?.projectSessions,
+    },
     nonChatModels: { list: async () => [], ...options.client?.nonChatModels },
     piSettings: { extensions: async () => [], ...options.client?.piSettings },
     // The real Session Registry refreshes its main-owned Saved Draft snapshot when mounted.
