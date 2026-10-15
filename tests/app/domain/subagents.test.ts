@@ -860,6 +860,8 @@ describe("Cake Chat project investigators", () => {
             /no project instructions, skills, extensions or MCP/,
           );
           assert.match(options.isolatedSystemPrompt ?? "", /no guaranteed web\/search access/);
+          assert.match(options.isolatedSystemPrompt ?? "", /Investigations only/);
+          assert.doesNotMatch(options.isolatedSystemPrompt ?? "", /Mutation mode/);
           assert.equal(receipt.projectPath, undefined);
           yield* completeChild(fixture, sessionId);
           const report = Schema.decodeUnknownSync(subagents.SubagentResult)(
@@ -883,6 +885,65 @@ describe("Cake Chat project investigators", () => {
           yield* TestClock.adjust("30 minutes");
           const coordinator = yield* SubagentCoordinator;
           assert.equal((yield* SubscriptionRef.get(coordinator.state)).handles.size, 0);
+        }).pipe(Effect.provide(fixture.layer));
+      }),
+  );
+  it.effect(
+    "starts Cake Chat workers in scoped mutation mode only when allowMutations is set",
+    () =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        yield* Effect.gen(function* () {
+          yield* subagents.start(
+            {
+              task: "Kill the orphaned quick-serve Node servers",
+              projectPath: "/another",
+              instructions: "Report every PID you kill",
+              allowMutations: true,
+            },
+            cakeChatParent(fixture),
+          );
+          const projectSession = yield* Queue.take(fixture.childStarted);
+          const projectOptions = (yield* Ref.get(fixture.constructedOptions)).find(
+            (item) => item.sessionId === projectSession,
+          );
+          assert.ok(projectOptions);
+          assert.equal(projectOptions.projectInvestigation, true);
+          assert.equal(projectOptions.allowMutations, true);
+          assert.equal(projectOptions.tools, undefined);
+          assert.match(
+            (yield* Ref.get(fixture.childPrompts)).find(
+              (value) => value.sessionId === projectSession,
+            )?.text ?? "",
+            /subject to your scoped mutation-mode system instructions/,
+          );
+          yield* completeChild(fixture, projectSession);
+          yield* Queue.take(fixture.reports);
+
+          yield* subagents.start(
+            { task: "Remove a stale temp directory", allowMutations: true },
+            cakeChatParent(fixture),
+          );
+          const researchSession = yield* Queue.take(fixture.childStarted);
+          const researchOptions = (yield* Ref.get(fixture.constructedOptions)).find(
+            (item) => item.sessionId === researchSession,
+          );
+          assert.ok(researchOptions);
+          assert.equal(researchOptions.allowMutations, undefined);
+          assert.deepEqual(researchOptions.tools, ["read", "bash", "message_parent"]);
+          assert.match(researchOptions.isolatedSystemPrompt ?? "", /Mutation mode/);
+          assert.match(
+            researchOptions.isolatedSystemPrompt ?? "",
+            /Report exactly what you changed/,
+          );
+          assert.doesNotMatch(researchOptions.isolatedSystemPrompt ?? "", /Investigations only/);
+          yield* completeChild(fixture, researchSession);
+          yield* Queue.take(fixture.reports);
+
+          const wrongCaller = yield* subagents
+            .start({ task: "Kill processes", allowMutations: true }, parent(fixture))
+            .pipe(Effect.flip);
+          assert.match(wrongCaller.message, /allowMutations is available only to Cake Chat/);
         }).pipe(Effect.provide(fixture.layer));
       }),
   );
@@ -971,8 +1032,14 @@ describe("Cake Chat project investigators", () => {
           assert.equal(options.cwd, "/another");
           assert.equal(options.ephemeral, true);
           assert.equal(options.projectInvestigation, true);
+          assert.equal(options.allowMutations, false);
           assert.equal(options.isolatedSystemPrompt, undefined);
           assert.equal(options.tools, undefined);
+          assert.match(
+            (yield* Ref.get(fixture.childPrompts)).find((value) => value.sessionId === sessionId)
+              ?.text ?? "",
+            /subject to your investigation-only system instructions/,
+          );
           assert.equal(receipt.projectPath, "/another");
           const coordinator = yield* SubagentCoordinator;
           assert.equal(

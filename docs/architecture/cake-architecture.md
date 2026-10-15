@@ -136,8 +136,11 @@ projections needed by a surface. References do not transfer ownership.
   Cake Chat instead must delegate project-dependent investigations to an explicitly
   selected registered, trusted project root. These workers retain normal project
   instructions, skills, extensions and MCP, excluding edit/write tools and adding
-  an investigation-only system policy. Shell/MCP mutation restrictions are prompt
-  policy, not an enforced sandbox. General research omits projectPath and uses
+  an investigation-only system policy. `allowMutations: true` on a worker's start
+  replaces that policy with scoped mutation mode for bounded operational work
+  (scripts, process cleanup, installs): stay in assignment scope, report every
+  change, and avoid shared-branch Git mutations unless instructed. Both policies
+  are prompt policy, not an enforced sandbox. General research omits projectPath and uses
   isolated instructions and read/bash/message_parent, without repository
   resources or guaranteed web/search access. Explicitly forwarded attachment/message
   references additionally grant a scoped Cake read gateway, never broad application control. Cake Chat handles support follow-ups

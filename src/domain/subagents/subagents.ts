@@ -131,6 +131,7 @@ const normalizeTask = Effect.fn("Subagents.normalizeTask")(function* (input: Sub
     task: decoded.task,
     model: decoded.model ?? { prefer: "current" },
     fastMode: decoded.fastMode ?? false,
+    allowMutations: decoded.allowMutations ?? false,
   };
   if (decoded.instructions !== undefined)
     Object.assign(task, { instructions: decoded.instructions });
@@ -317,6 +318,12 @@ const prepareTasks = Effect.fn("Subagents.prepareTasks")(function* (
           throw new SubagentError({
             operation: "preflight",
             message: "Project selection is available only to Cake Chat investigators.",
+          });
+        if (!projectAware && input.allowMutations)
+          throw new SubagentError({
+            operation: "preflight",
+            message:
+              "allowMutations is available only to Cake Chat workers; Project Session subagents already receive edit/write tools.",
           });
         const project = input.projectPath
           ? application.projects.find((item) => item.path === input.projectPath)
@@ -719,7 +726,7 @@ const executeInitial = Effect.fn("Subagents.executeInitial")(function* (
       if (prepared.input.fastMode) yield* piHandle.setFastMode(true).pipe(asError("start"));
       const assignment =
         prepared.parent.options.profile._tag === "CakeChatSession" && prepared.input.instructions
-          ? `Assignment guidance (subject to your investigation-only system instructions):\n${prepared.input.instructions}\n\nTask:\n${prepared.input.task}`
+          ? `Assignment guidance (subject to your ${prepared.input.allowMutations ? "scoped mutation-mode" : "investigation-only"} system instructions):\n${prepared.input.instructions}\n\nTask:\n${prepared.input.task}`
           : prepared.input.task;
       const result = yield* observeTurn(
         handleId,
@@ -802,13 +809,18 @@ const startPrepared = Effect.fn("Subagents.startPrepared")(function* (
         sessionId: recipientSessionId,
         auxiliary: true,
         ephemeral: prepared.parent.options.profile._tag === "CakeChatSession",
-        ...(prepared.input.projectPath ? { projectInvestigation: true } : { tools: [...tools] }),
+        ...(prepared.input.projectPath
+          ? {
+              projectInvestigation: true,
+              allowMutations: prepared.input.allowMutations,
+            }
+          : { tools: [...tools] }),
         customTools: [createSubagentParentTool({ send: parentMessage })],
         slashCommands: [],
         isolatedSystemPrompt: prepared.input.projectPath
           ? undefined
           : prepared.parent.options.profile._tag === "CakeChatSession"
-            ? researchSystemPrompt
+            ? researchSystemPrompt({ allowMutations: prepared.input.allowMutations })
             : systemPrompt(prepared.input),
         requestUi: async () => undefined,
         fastMode: {

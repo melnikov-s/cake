@@ -180,6 +180,8 @@ export interface CakeSessionRuntimeOptions {
   ephemeral?: boolean;
   /** Fresh project resources/MCP with investigation-only instructions and no edit/write tools. */
   projectInvestigation?: boolean;
+  /** Project investigators only: replace the investigation-only policy with scoped mutation mode. */
+  allowMutations?: boolean;
   /** Workflow workers load project context/skills, but not Cake controls or project-chat prompts. */
   auxiliaryProjectResources?: boolean;
   /** Subset of builtin slash command names to advertise; defaults to all of them. */
@@ -321,6 +323,8 @@ export async function createCakeSessionRuntime(
   });
   if (options.projectInvestigation && (!options.ephemeral || !options.auxiliary))
     throw new Error("Project investigators require an ephemeral auxiliary runtime");
+  if (options.allowMutations && !options.projectInvestigation)
+    throw new Error("Mutation mode applies only to project investigator runtimes");
   if (options.ephemeral && (!options.newSession || options.sessionFile))
     throw new Error("An ephemeral runtime must create a new in-memory session");
   const sessionDir = options.directSessionDir

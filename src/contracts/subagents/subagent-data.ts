@@ -58,6 +58,7 @@ export const SubagentTaskInput = Schema.Struct({
   model: Schema.optionalKey(AgentModelPreference),
   instructions: Schema.optionalKey(boundedString(32_768)),
   fastMode: Schema.optionalKey(Schema.Boolean),
+  allowMutations: Schema.optionalKey(Schema.Boolean),
 });
 export interface SubagentTaskInput extends Schema.Schema.Type<typeof SubagentTaskInput> {}
 
@@ -69,6 +70,7 @@ export const SubagentTask = Schema.Struct({
   model: AgentModelPreference,
   instructions: Schema.optionalKey(boundedString(32_768)),
   fastMode: Schema.Boolean,
+  allowMutations: Schema.Boolean,
 });
 export interface SubagentTask extends Schema.Schema.Type<typeof SubagentTask> {}
 

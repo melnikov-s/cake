@@ -32,7 +32,7 @@ import { detectGitWorktree, worktreeSystemPrompt } from "./worktree-system-promp
 import { cakeAgentDocumentationDirectory } from "./cake-agent-documentation";
 import { createCakeSystemPromptExtension } from "./cake-system-prompt-extension";
 import projectPromptTemplate from "./prompts/project.md?raw";
-import projectInvestigationPrompt from "./prompts/project-investigation.md?raw";
+import { projectInvestigationSystemPrompt } from "../subagent-system-prompt";
 import { renderPromptTemplate } from "./prompt-template";
 import { formatUnknown } from "./session-projection";
 import { projectCakeOperationRuntime } from "./cake-operation-context";
@@ -245,7 +245,7 @@ export async function createCakeSessionRuntimeCapabilities(input: {
                   : []),
                 ...(options.projectInvestigation
                   ? [
-                      `<project_investigation>\n${projectInvestigationPrompt}\n</project_investigation>`,
+                      `<project_investigation>\n${projectInvestigationSystemPrompt({ allowMutations: options.allowMutations ?? false })}\n</project_investigation>`,
                     ]
                   : []),
               ],

@@ -173,7 +173,8 @@ parent-scoped handle, fixed tool boundary, concurrency, retention, and visibilit
 policy. It is never a Project Session and does not expose its backing Pi Session
 identity to the renderer. Cake Chat project investigators are bound to an explicit
 registered project root, with normal project resources and investigation-only
-permissions. Project-free general researchers use isolated instructions without
+permissions unless started with `allowMutations: true`, which permits scoped,
+reported operational mutations. Project-free general researchers use isolated instructions without
 repository resources and have only read/bash/message_parent. Both Cake Chat modes
 expire after 30 minutes, explicit close or backend shutdown. Their Pi history is
 in-memory; their parent retains only compact

@@ -22,6 +22,12 @@ export const subagentTaskSchema = Schema.Struct({
         "Exact Cake message links selected for this worker. Forward unchanged without reading their bodies first.",
     }),
   ),
+  allowMutations: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "Cake Chat only: true lets this worker run scripts, kill processes, install packages and make other changes within the stated assignment, reporting exactly what it changed and avoiding shared-branch Git mutations unless explicitly instructed. Omit or false keeps the default investigation-only policy.",
+    }),
+  ),
   model: Schema.optionalKey(CakeModelSelection),
   instructions: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(32_768))),
 });

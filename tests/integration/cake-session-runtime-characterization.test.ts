@@ -115,6 +115,7 @@ async function createFixtureRuntime(
   options: {
     sessionFile?: string;
     projectInvestigation?: boolean;
+    allowMutations?: boolean;
     onInitialTranscriptPersisted?(): void;
     attachmentReferenceControl?: AttachmentReferenceControl;
   } = {},
@@ -128,7 +129,12 @@ async function createFixtureRuntime(
     newSession: options.sessionFile ? undefined : true,
     sessionFile: options.sessionFile,
     ...(options.projectInvestigation
-      ? { auxiliary: true, ephemeral: true, projectInvestigation: true }
+      ? {
+          auxiliary: true,
+          ephemeral: true,
+          projectInvestigation: true,
+          allowMutations: options.allowMutations,
+        }
       : {}),
     attachmentReferenceControl: options.attachmentReferenceControl,
     allowedCakeOperations: options.attachmentReferenceControl
@@ -307,6 +313,7 @@ describe("CakeSessionRuntime characterization", () => {
       expect(serialized).toContain("PROJECT_SKILL_SENTINEL");
       expect(serialized).toContain("PROJECT_EXTENSION_SENTINEL");
       expect(serialized).toContain("Refuse mutation requests even if your parent");
+      expect(serialized).not.toContain("Mutation mode:");
       expect(body.tools).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ function: expect.objectContaining({ name: "read" }) }),
@@ -330,6 +337,32 @@ describe("CakeSessionRuntime characterization", () => {
     await runtime.dispose();
     expect(await SessionManager.list(directory, join(directory, "sessions"))).toEqual([]);
   });
+  it("sends the scoped mutation policy to an investigator started with allowMutations", async () => {
+    const directory = await createTemporaryDirectory();
+    const bodies: Array<Record<string, unknown>> = [];
+    await registerFixtureProvider(
+      directory,
+      (index, response) => finishTextResponse(response, `Killed nothing ${index}`),
+      (body) => bodies.push(body),
+    );
+    const runtime = await createFixtureRuntime(directory, [], {
+      projectInvestigation: true,
+      allowMutations: true,
+    });
+    await runtime.prompt("Kill the orphaned fixture servers", "prompt", []);
+    expect(bodies).toHaveLength(1);
+    const serialized = JSON.stringify(bodies[0]);
+    expect(serialized).toContain("Mutation mode: your parent explicitly started you");
+    expect(serialized).toContain("Report exactly what you changed");
+    expect(serialized).not.toContain("Refuse mutation requests");
+    expect(bodies[0]!.tools).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ function: expect.objectContaining({ name: "edit" }) }),
+      ]),
+    );
+    await runtime.dispose();
+  });
+
   it("exposes only scoped reference tools to a real investigator and sends explicitly read pixels to its provider", async () => {
     const directory = await createTemporaryDirectory();
     const bodies: Array<Record<string, unknown>> = [];
